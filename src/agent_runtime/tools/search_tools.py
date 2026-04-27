@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.security.path_guard import PathGuard, PathPolicyError
 from agent_runtime.tools.base import ToolResult
@@ -27,7 +25,7 @@ class SearchTextTool:
             return ToolResult(ok=False, summary=f"Path not found: {path}", error="path_not_found")
 
         needle = pattern if case_sensitive else pattern.lower()
-        results = []
+        results: list[dict[str, object]] = []
         scanned = 0
         files = [root] if root.is_file() else root.rglob("*")
         for candidate in files:
@@ -78,7 +76,7 @@ class FindFilesTool:
         root = guard.resolve_for_read(path)
         if not root.exists() or not root.is_dir():
             return ToolResult(ok=False, summary=f"Directory not found: {path}", error="directory_not_found")
-        results = []
+        results: list[dict[str, str]] = []
         for candidate in root.rglob(glob):
             if len(results) >= self.max_results:
                 break

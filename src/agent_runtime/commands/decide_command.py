@@ -108,7 +108,13 @@ class DecideCommand:
         }
         self.validator.validate("decision_point", decision)
         self.jsonl.append(decisions_path, decision, "decision_point")
-        self._record_event(run_dir, run_id, "decision_created", decision["question"], {"decision_id": decision["decision_id"]})
+        self._record_event(
+            run_dir,
+            run_id,
+            "decision_created",
+            str(decision["question"]),
+            {"decision_id": decision["decision_id"]},
+        )
         self._record_user_decision_cost(agent_dir, run_dir, run_id)
         return decision
 

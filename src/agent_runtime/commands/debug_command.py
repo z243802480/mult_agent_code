@@ -147,7 +147,8 @@ class DebugCommand:
         run_dir: Path,
     ) -> RepairSummary:
         task_id = task["task_id"]
-        context.event_logger.record(context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}")
+        if context.event_logger:
+            context.event_logger.record(context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}")
         try:
             if context.budget:
                 context.budget.record_repair_attempt()
@@ -167,7 +168,8 @@ class DebugCommand:
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
                 task_board.update_notes(task_id, action.get("completion_notes") or action["summary"])
-                context.event_logger.record(context.run_id, "repair_completed", "DebugCommand", f"Repaired {task_id}")
+                if context.event_logger:
+                    context.event_logger.record(context.run_id, "repair_completed", "DebugCommand", f"Repaired {task_id}")
                 return RepairSummary(task_id, "done", action["summary"], len(action["tool_calls"]), len(action["verification"]))
             self._block_task(task_board, task_id, "Repair verification failed.", context)
             return RepairSummary(task_id, "blocked", "Repair verification failed", len(action["tool_calls"]), len(action["verification"]))

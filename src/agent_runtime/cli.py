@@ -4,12 +4,14 @@ import argparse
 from pathlib import Path
 
 from agent_runtime.commands.init_command import InitCommand
+from agent_runtime.commands.model_check_command import ModelCheckCommand
 from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.review_command import ReviewCommand
+from agent_runtime.commands.run_command import RunCommand
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,9 +32,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Regenerate managed metadata; never overwrites user-authored AGENTS.md",
     )
 
+    model_parser = subcommands.add_parser("model-check", help="Validate model provider configuration")
+    model_parser.add_argument("--root", default=".", help="Workspace root path")
+    model_parser.add_argument("--skip-call", action="store_true", help="Only validate local configuration")
+
     plan_parser = subcommands.add_parser("plan", help="Generate GoalSpec and task plan")
     plan_parser.add_argument("goal", help="Natural-language goal")
     plan_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    run_parser = subcommands.add_parser("run", help="Plan, execute, repair, review, and report")
+    run_parser.add_argument("goal", help="Natural-language goal")
+    run_parser.add_argument("--root", default=".", help="Workspace root path")
+    run_parser.add_argument("--max-iterations", type=int, default=None, help="Maximum run loop iterations")
+    run_parser.add_argument("--max-tasks-per-iteration", type=int, default=1, help="Tasks to execute per iteration")
 
     compact_parser = subcommands.add_parser("compact", help="Create a context snapshot")
     compact_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -74,42 +86,57 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "init":
-        result = InitCommand(root=Path(args.root), profile=args.profile, force=args.force).run()
-        print(result.to_text())
+        init_result = InitCommand(root=Path(args.root), profile=args.profile, force=args.force).run()
+        print(init_result.to_text())
+        return
+
+    if args.command == "model-check":
+        model_result = ModelCheckCommand(root=Path(args.root), skip_call=args.skip_call).run()
+        print(model_result.to_text())
         return
 
     if args.command == "plan":
-        result = PlanCommand(root=Path(args.root), goal=args.goal).run()
-        print(result.to_text())
+        plan_result = PlanCommand(root=Path(args.root), goal=args.goal).run()
+        print(plan_result.to_text())
+        return
+
+    if args.command == "run":
+        run_result = RunCommand(
+            root=Path(args.root),
+            goal=args.goal,
+            max_iterations=args.max_iterations,
+            max_tasks_per_iteration=args.max_tasks_per_iteration,
+        ).run()
+        print(run_result.to_text())
         return
 
     if args.command == "compact":
-        result = CompactCommand(root=Path(args.root), run_id=args.run_id, focus=args.focus).run()
-        print(result.to_text())
+        compact_result = CompactCommand(root=Path(args.root), run_id=args.run_id, focus=args.focus).run()
+        print(compact_result.to_text())
         return
 
     if args.command == "execute":
-        result = ExecuteCommand(root=Path(args.root), run_id=args.run_id, max_tasks=args.max_tasks).run()
-        print(result.to_text())
+        execute_result = ExecuteCommand(root=Path(args.root), run_id=args.run_id, max_tasks=args.max_tasks).run()
+        print(execute_result.to_text())
         return
 
     if args.command == "debug":
-        result = DebugCommand(
+        debug_result = DebugCommand(
             root=Path(args.root),
             run_id=args.run_id,
             task_id=args.task_id,
             max_repairs=args.max_repairs,
         ).run()
-        print(result.to_text())
+        print(debug_result.to_text())
         return
 
     if args.command == "review":
-        result = ReviewCommand(root=Path(args.root), run_id=args.run_id).run()
-        print(result.to_text())
+        review_result = ReviewCommand(root=Path(args.root), run_id=args.run_id).run()
+        print(review_result.to_text())
         return
 
     if args.command == "decide":
-        result = DecideCommand(
+        decide_result = DecideCommand(
             root=Path(args.root),
             run_id=args.run_id,
             question=args.question,
@@ -122,7 +149,7 @@ def main() -> None:
             use_default=args.use_default,
             list_pending=args.list_pending,
         ).run()
-        print(result.to_text())
+        print(decide_result.to_text())
         return
 
     parser.error(f"Unsupported command: {args.command}")

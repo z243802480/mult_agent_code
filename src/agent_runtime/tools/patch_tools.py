@@ -15,8 +15,7 @@ class PatchApplyError(ValueError):
 @dataclass(frozen=True)
 class FilePatch:
     path: str
-    old_lines: list[str]
-    new_lines: list[str]
+    hunks: list[tuple[list[str], list[str]]]
 
 
 class ApplyPatchTool:
@@ -31,7 +30,8 @@ class ApplyPatchTool:
         for file_patch in patches:
             resolved = guard.resolve_for_write(file_patch.path)
             current = resolved.read_text(encoding="utf-8").splitlines(keepends=True) if resolved.exists() else []
-            if current != file_patch.old_lines:
+            patched = apply_file_patch(current, file_patch.hunks)
+            if patched is None:
                 return ToolResult(
                     ok=False,
                     summary=f"Patch context mismatch for {file_patch.path}",
@@ -39,7 +39,7 @@ class ApplyPatchTool:
                     data={"path": file_patch.path},
                 )
             resolved.parent.mkdir(parents=True, exist_ok=True)
-            resolved.write_text("".join(file_patch.new_lines), encoding="utf-8")
+            resolved.write_text("".join(patched), encoding="utf-8")
             changed.append(file_patch.path)
         return ToolResult(
             ok=True,
@@ -87,12 +87,17 @@ def parse_unified_diff(patch: str) -> list[FilePatch]:
         new_header = lines[index].strip()
         index += 1
         path = _path_from_headers(old_header, new_header)
+        hunks: list[tuple[list[str], list[str]]] = []
         old_lines: list[str] = []
         new_lines: list[str] = []
         while index < len(lines) and not lines[index].startswith("--- "):
             line = lines[index]
             index += 1
             if line.startswith("@@"):
+                if old_lines or new_lines:
+                    hunks.append((old_lines, new_lines))
+                    old_lines = []
+                    new_lines = []
                 continue
             if line.startswith(" "):
                 old_lines.append(line[1:])
@@ -107,8 +112,34 @@ def parse_unified_diff(patch: str) -> list[FilePatch]:
                 # Empty context line from malformed generators is treated as context.
                 old_lines.append(line)
                 new_lines.append(line)
-        patches.append(FilePatch(path=path, old_lines=old_lines, new_lines=new_lines))
+        if old_lines or new_lines:
+            hunks.append((old_lines, new_lines))
+        patches.append(FilePatch(path=path, hunks=hunks))
     return patches
+
+
+def apply_file_patch(current: list[str], hunks: list[tuple[list[str], list[str]]]) -> list[str] | None:
+    result: list[str] = []
+    search_from = 0
+    for old_lines, new_lines in hunks:
+        match_at = _find_hunk(current, old_lines, search_from)
+        if match_at is None:
+            return None
+        result.extend(current[search_from:match_at])
+        result.extend(new_lines)
+        search_from = match_at + len(old_lines)
+    result.extend(current[search_from:])
+    return result
+
+
+def _find_hunk(current: list[str], old_lines: list[str], start: int) -> int | None:
+    if not old_lines:
+        return start
+    last_start = len(current) - len(old_lines)
+    for index in range(start, last_start + 1):
+        if current[index : index + len(old_lines)] == old_lines:
+            return index
+    return None
 
 
 def _path_from_headers(old_header: str, new_header: str) -> str:

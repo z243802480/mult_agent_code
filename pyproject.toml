@@ -3,7 +3,9 @@ name = "agent-runtime"
 version = "0.1.0"
 description = "Local-first multi-agent autonomous development runtime"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "tzdata; platform_system == 'Windows'"
+]
 
 [project.optional-dependencies]
 dev = [
@@ -27,7 +29,6 @@ agent = "agent_runtime.cli:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
 line-length = 100

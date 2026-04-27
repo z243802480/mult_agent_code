@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
-
 from agent_runtime.agents.coder_agent import CoderAgent
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.runtime_context import RuntimeContext
@@ -157,7 +155,8 @@ class ExecuteCommand:
         project_config: dict,
     ) -> TaskExecutionSummary:
         task_id = task["task_id"]
-        context.event_logger.record(context.run_id, "task_started", "ExecuteCommand", f"Started {task_id}")
+        if context.event_logger:
+            context.event_logger.record(context.run_id, "task_started", "ExecuteCommand", f"Started {task_id}")
         task_board.update_status(task_id, "in_progress")
         try:
             action = coder.propose_action(
@@ -174,7 +173,8 @@ class ExecuteCommand:
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
                 task_board.update_notes(task_id, action.get("completion_notes") or action["summary"])
-                context.event_logger.record(context.run_id, "task_completed", "ExecuteCommand", f"Completed {task_id}")
+                if context.event_logger:
+                    context.event_logger.record(context.run_id, "task_completed", "ExecuteCommand", f"Completed {task_id}")
                 return TaskExecutionSummary(
                     task_id=task_id,
                     status="done",
@@ -184,7 +184,8 @@ class ExecuteCommand:
                 )
             task_board.update_status(task_id, "blocked")
             task_board.update_notes(task_id, "Verification failed; repair is required.")
-            context.event_logger.record(context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}")
+            if context.event_logger:
+                context.event_logger.record(context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}")
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",

@@ -32,6 +32,7 @@
 1. [RUNTIME_COMMANDS.md](./RUNTIME_COMMANDS.md)
 2. [DATA_MODEL.md](./DATA_MODEL.md)
 3. [DELIVERY_PLAN.md](./DELIVERY_PLAN.md)
+4. [DEVELOPMENT.md](./DEVELOPMENT.md)
 
 ## 3. 主文档
 
@@ -45,6 +46,7 @@
 | [QUALITY_AND_EVALUATION.md](./QUALITY_AND_EVALUATION.md) | 验收指标、评估体系、测试策略 | 合并 `EVALUATION.md`、`TEST_STRATEGY.md` |
 | [COST_SECURITY_RISK.md](./COST_SECURITY_RISK.md) | 成本控制、安全策略、风险治理 | 基于 `COST_AND_RISK.md` |
 | [MODEL_PROVIDER_SPEC.md](./MODEL_PROVIDER_SPEC.md) | MiniMax/OpenAI-compatible 模型接口、路由、重试、日志 | 新增模型适配规格 |
+| [DEVELOPMENT.md](./DEVELOPMENT.md) | 本地开发、运行、测试和模型配置说明 | 新增开发指南 |
 
 ## 4. 原始分册
 

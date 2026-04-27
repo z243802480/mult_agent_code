@@ -247,8 +247,8 @@ class InitCommand:
             languages.append("markdown")
         return languages or ["unknown"]
 
-    def _detect_commands(self) -> dict:
-        commands = {
+    def _detect_commands(self) -> dict[str, str | None]:
+        commands: dict[str, str | None] = {
             "install": None,
             "run": None,
             "test": None,
