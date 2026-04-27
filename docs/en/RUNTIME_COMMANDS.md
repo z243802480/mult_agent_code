@@ -99,3 +99,16 @@ The report includes goal, artifact, outcome, trajectory, and cost evaluation. `o
 - `pass` -> `completed`
 - `partial` -> `running`
 - `fail` -> `blocked`
+
+## `/decide` Decision Points
+
+`/decide` creates and resolves user-facing decision points.
+
+Supported modes:
+
+- create: `agent decide --question ... --options-json ...`
+- list: `agent decide --list-pending`
+- resolve: `agent decide --decision-id ... --select-option-id ...`
+- default: `agent decide --decision-id ... --use-default`
+
+Decisions are written to `decisions.jsonl`, emit `decision_created` / `decision_resolved` events, and increment `user_decisions` in `cost_report.json`.

@@ -6,6 +6,7 @@ from pathlib import Path
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.debug_command import DebugCommand
+from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.review_command import ReviewCommand
@@ -52,6 +53,19 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser = subcommands.add_parser("review", help="Evaluate a run and write review reports")
     review_parser.add_argument("--root", default=".", help="Workspace root path")
     review_parser.add_argument("--run-id", default=None, help="Run id to review; defaults to latest run")
+
+    decide_parser = subcommands.add_parser("decide", help="Create, list, or resolve user decision points")
+    decide_parser.add_argument("--root", default=".", help="Workspace root path")
+    decide_parser.add_argument("--run-id", default=None, help="Run id; defaults to latest run")
+    decide_parser.add_argument("--question", default=None, help="Decision question for creation")
+    decide_parser.add_argument("--options-json", default=None, help="JSON array of options")
+    decide_parser.add_argument("--recommended-option-id", default=None, help="Recommended option id")
+    decide_parser.add_argument("--default-option-id", default=None, help="Default option id")
+    decide_parser.add_argument("--impact-json", default=None, help="JSON impact object")
+    decide_parser.add_argument("--decision-id", default=None, help="Decision id to create or resolve")
+    decide_parser.add_argument("--select-option-id", default=None, help="Resolve with this option id")
+    decide_parser.add_argument("--use-default", action="store_true", help="Resolve with default option")
+    decide_parser.add_argument("--list-pending", action="store_true", help="List pending decisions")
     return parser
 
 
@@ -91,6 +105,23 @@ def main() -> None:
 
     if args.command == "review":
         result = ReviewCommand(root=Path(args.root), run_id=args.run_id).run()
+        print(result.to_text())
+        return
+
+    if args.command == "decide":
+        result = DecideCommand(
+            root=Path(args.root),
+            run_id=args.run_id,
+            question=args.question,
+            options_json=args.options_json,
+            recommended_option_id=args.recommended_option_id,
+            default_option_id=args.default_option_id,
+            impact_json=args.impact_json,
+            decision_id=args.decision_id,
+            select_option_id=args.select_option_id,
+            use_default=args.use_default,
+            list_pending=args.list_pending,
+        ).run()
         print(result.to_text())
         return
 

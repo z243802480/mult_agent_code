@@ -187,6 +187,15 @@ ready -> in_progress -> testing -> reviewing -> done
 - 默认选择。
 - 对预算、范围、风险、质量的影响。
 
+当前实现：
+
+- `agent decide --question ... --options-json ...` 创建 pending 决策点。
+- `agent decide --list-pending` 列出待用户处理的决策。
+- `agent decide --decision-id ... --select-option-id ...` 解析为用户选择。
+- `agent decide --decision-id ... --use-default` 采用默认选项。
+- 决策写入 `decisions.jsonl`，并记录 `decision_created` / `decision_resolved` 事件。
+- 每次创建或解析决策都会累计 `user_decisions` 成本计数，避免频繁询问用户。
+
 ### 3.7 `/review`
 
 目的：
