@@ -10,6 +10,7 @@ from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.review_command import ReviewCommand
+from agent_runtime.commands.run_command import RunCommand
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subcommands.add_parser("plan", help="Generate GoalSpec and task plan")
     plan_parser.add_argument("goal", help="Natural-language goal")
     plan_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    run_parser = subcommands.add_parser("run", help="Plan, execute, repair, review, and report")
+    run_parser.add_argument("goal", help="Natural-language goal")
+    run_parser.add_argument("--root", default=".", help="Workspace root path")
+    run_parser.add_argument("--max-iterations", type=int, default=None, help="Maximum run loop iterations")
+    run_parser.add_argument("--max-tasks-per-iteration", type=int, default=1, help="Tasks to execute per iteration")
 
     compact_parser = subcommands.add_parser("compact", help="Create a context snapshot")
     compact_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -80,6 +87,16 @@ def main() -> None:
 
     if args.command == "plan":
         result = PlanCommand(root=Path(args.root), goal=args.goal).run()
+        print(result.to_text())
+        return
+
+    if args.command == "run":
+        result = RunCommand(
+            root=Path(args.root),
+            goal=args.goal,
+            max_iterations=args.max_iterations,
+            max_tasks_per_iteration=args.max_tasks_per_iteration,
+        ).run()
         print(result.to_text())
         return
 

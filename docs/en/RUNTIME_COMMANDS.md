@@ -4,6 +4,7 @@
 
 - `/init`: initialize an agent-ready workspace.
 - `/plan`: turn a goal into GoalSpec and tasks.
+- `/run`: plan, execute, repair, review, compact, and write a final report.
 - `/brainstorm`: generate and rank candidate directions.
 - `/research`: turn sources into executable hypotheses.
 - `/compact`: create a context snapshot.
@@ -63,6 +64,22 @@ The command writes:
 - `cost_report.json`
 
 Execution is constrained by both the task `allowed_tools` field and the runtime tool registry.
+
+## `/run` Closed Loop
+
+`/run` is the user-facing MVP command for a complete local-first execution loop.
+
+```text
+init if needed
+  -> plan
+  -> execute ready tasks
+  -> debug blocked tasks when possible
+  -> review
+  -> compact
+  -> final_report.md
+```
+
+It writes `final_report.md` under `.agent/runs/<run_id>/` with task completion, blocked-task notes, cost counters, artifact summaries, and recommended next actions.
 
 ## `/debug` Repair Flow
 

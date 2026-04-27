@@ -7,6 +7,7 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.minimax import MiniMaxOpenAICompatibleClient, MiniMaxSettings, ModelProviderError
 from agent_runtime.models.model_call_logger import ModelCallLogger
+from agent_runtime.models.openai_compatible import OpenAICompatibleClient, OpenAICompatibleSettings
 from agent_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -16,10 +17,17 @@ def create_model_client(
     budget: BudgetController | None = None,
 ) -> ModelClient:
     provider = os.getenv("AGENT_MODEL_PROVIDER", "minimax").lower()
-    if provider != "minimax":
-        raise ModelProviderError(f"Unsupported model provider for MVP: {provider}")
-    return MiniMaxOpenAICompatibleClient(
-        MiniMaxSettings.from_env(),
-        logger=ModelCallLogger(run_dir, validator),
-        budget=budget,
-    )
+    logger = ModelCallLogger(run_dir, validator)
+    if provider == "minimax":
+        return MiniMaxOpenAICompatibleClient(
+            MiniMaxSettings.from_env(),
+            logger=logger,
+            budget=budget,
+        )
+    if provider in {"openai", "openai-compatible", "generic"}:
+        return OpenAICompatibleClient(
+            OpenAICompatibleSettings.from_env(provider=provider),
+            logger=logger,
+            budget=budget,
+        )
+    raise ModelProviderError(f"Unsupported model provider: {provider}")

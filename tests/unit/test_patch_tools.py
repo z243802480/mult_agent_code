@@ -33,6 +33,22 @@ def test_apply_patch_changes_file(tmp_path: Path) -> None:
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "hello\nagent\n"
 
 
+def test_apply_patch_changes_one_hunk_inside_larger_file(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
+    patch = """--- a/a.txt
++++ b/a.txt
+@@
+ two
+-three
++agent
+"""
+
+    result = ApplyPatchTool().run(context(tmp_path), patch)
+
+    assert result.ok
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "one\ntwo\nagent\n"
+
+
 def test_apply_patch_rejects_context_mismatch(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("different\n", encoding="utf-8")
     patch = """--- a/a.txt

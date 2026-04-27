@@ -82,6 +82,45 @@ Agent 自调用：
 - 包含验证策略。
 - 对模糊目标给出合理假设。
 
+### 3.2.1 `/run`
+
+目的：
+
+提供 MVP 的一键闭环入口，将规划、执行、修复、评审、压缩和最终报告串联起来。
+
+流程：
+
+```text
+init if needed
+  -> plan
+  -> execute ready tasks
+  -> debug blocked tasks when possible
+  -> review
+  -> compact
+  -> final_report.md
+```
+
+输入：
+
+- `goal` 用户目标。
+- `root` 工作区根目录。
+- `max_iterations` 可选，默认读取策略预算。
+- `max_tasks_per_iteration` 可选，默认每轮执行 1 个任务。
+
+输出产物：
+
+- `goal_spec.json`
+- `task_plan.json`
+- `review_report.md`
+- `final_report.md`
+- 更新后的事件、工具、模型和成本日志。
+
+失败处理：
+
+- 任务验证失败时进入 `/debug`。
+- 修复后仍阻塞则停止执行循环并进入 `/review`，报告阻塞原因。
+- 无 ready 任务且状态无进展时停止循环，避免空转。
+
 ### 3.3 `/brainstorm`
 
 目的：
