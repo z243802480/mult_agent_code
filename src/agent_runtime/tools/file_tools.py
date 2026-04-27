@@ -92,8 +92,8 @@ class ListFilesTool:
         if not resolved.is_dir():
             return ToolResult(ok=False, summary=f"Not a directory: {path}", error="not_a_directory")
 
-        entries = []
-        warnings = []
+        entries: list[dict[str, str]] = []
+        warnings: list[str] = []
         for child in sorted(resolved.iterdir(), key=lambda item: item.name.lower()):
             if len(entries) >= self.max_entries:
                 warnings.append(f"Entry limit reached: {self.max_entries}")

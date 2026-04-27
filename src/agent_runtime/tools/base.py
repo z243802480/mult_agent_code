@@ -53,9 +53,12 @@ def record_tool_call(
 
     if context.run_dir:
         path = context.run_dir / "tool_calls.jsonl"
-        existing = context.tool_call_store().read_all(path) if path.exists() else []
+        store = context.tool_call_store()
+        if store is None:
+            return
+        existing = store.read_all(path) if path.exists() else []
         record["tool_call_id"] = f"toolcall-{len(existing) + 1:04d}"
-        context.tool_call_store().append(path, record, "tool_call")
+        store.append(path, record, "tool_call")
 
     if context.event_logger:
         context.event_logger.record(

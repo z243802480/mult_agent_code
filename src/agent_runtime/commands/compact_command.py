@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,8 +41,6 @@ class CompactCommand:
 
         run_id = self.run_id or self._latest_run_id(agent_dir)
         run_dir = agent_dir / "runs" / run_id if run_id else None
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
-
         event_logger = None
         if run_dir and run_dir.exists():
             event_logger = EventLogger(run_dir / "events.jsonl", self.validator)

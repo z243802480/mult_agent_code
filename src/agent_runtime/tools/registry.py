@@ -12,7 +12,7 @@ class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, Tool] = {}
 
-    def register(self, tool: Tool) -> None:
+    def register(self, tool: Any) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Tool already registered: {tool.name}")
         self._tools[tool.name] = tool

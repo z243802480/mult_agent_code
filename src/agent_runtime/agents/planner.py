@@ -7,7 +7,7 @@ class RequirementPlanner:
     """Deterministic MVP planner that turns GoalSpec requirements into reviewable tasks."""
 
     def build_task_plan(self, goal_spec: dict) -> dict:
-        tasks = []
+        tasks: list[dict] = []
         for index, requirement in enumerate(goal_spec["expanded_requirements"], start=1):
             if requirement["priority"] == "wont":
                 continue

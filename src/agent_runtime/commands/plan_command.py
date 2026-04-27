@@ -61,6 +61,7 @@ class PlanCommand:
         run_dir = run_store.run_dir(run["run_id"])
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         budget = BudgetController(policy, run_id=run["run_id"])
+        model_client: ModelClient
         if self.model_client:
             model_client = MeteredModelClient(
                 self.model_client,

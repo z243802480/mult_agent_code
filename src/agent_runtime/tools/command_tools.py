@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.security.shell_guard import ShellGuard
@@ -30,6 +32,7 @@ class RunCommandTool:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
+                env=self._env(),
             )
         except subprocess.TimeoutExpired as exc:
             return ToolResult(
@@ -37,8 +40,8 @@ class RunCommandTool:
                 summary=f"Command timed out after {timeout}s: {command}",
                 error="timeout",
                 data={
-                    "stdout": self._truncate(exc.stdout or ""),
-                    "stderr": self._truncate(exc.stderr or ""),
+                    "stdout": self._truncate(self._text(exc.stdout)),
+                    "stderr": self._truncate(self._text(exc.stderr)),
                     "returncode": None,
                 },
             )
@@ -58,6 +61,19 @@ class RunCommandTool:
                 "stderr_truncated": len(completed.stderr) > len(stderr),
             },
         )
+
+    def _env(self) -> dict[str, str]:
+        env = os.environ.copy()
+        executable_dir = os.path.dirname(sys.executable)
+        env["PATH"] = executable_dir + os.pathsep + env.get("PATH", "")
+        return env
+
+    def _text(self, value: bytes | str | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return value
 
     def _truncate(self, value: str) -> str:
         if len(value) <= self.max_output_chars:
