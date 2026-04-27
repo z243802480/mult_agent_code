@@ -5,8 +5,10 @@ from pathlib import Path
 
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.compact_command import CompactCommand
+from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.review_command import ReviewCommand
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +42,16 @@ def build_parser() -> argparse.ArgumentParser:
     execute_parser.add_argument("--root", default=".", help="Workspace root path")
     execute_parser.add_argument("--run-id", default=None, help="Run id to execute; defaults to latest run")
     execute_parser.add_argument("--max-tasks", type=int, default=1, help="Maximum ready tasks to execute")
+
+    debug_parser = subcommands.add_parser("debug", help="Repair blocked tasks from a run")
+    debug_parser.add_argument("--root", default=".", help="Workspace root path")
+    debug_parser.add_argument("--run-id", default=None, help="Run id to debug; defaults to latest run")
+    debug_parser.add_argument("--task-id", default=None, help="Specific blocked task to repair")
+    debug_parser.add_argument("--max-repairs", type=int, default=1, help="Maximum blocked tasks to repair")
+
+    review_parser = subcommands.add_parser("review", help="Evaluate a run and write review reports")
+    review_parser.add_argument("--root", default=".", help="Workspace root path")
+    review_parser.add_argument("--run-id", default=None, help="Run id to review; defaults to latest run")
     return parser
 
 
@@ -64,6 +76,21 @@ def main() -> None:
 
     if args.command == "execute":
         result = ExecuteCommand(root=Path(args.root), run_id=args.run_id, max_tasks=args.max_tasks).run()
+        print(result.to_text())
+        return
+
+    if args.command == "debug":
+        result = DebugCommand(
+            root=Path(args.root),
+            run_id=args.run_id,
+            task_id=args.task_id,
+            max_repairs=args.max_repairs,
+        ).run()
+        print(result.to_text())
+        return
+
+    if args.command == "review":
+        result = ReviewCommand(root=Path(args.root), run_id=args.run_id).run()
         print(result.to_text())
         return
 

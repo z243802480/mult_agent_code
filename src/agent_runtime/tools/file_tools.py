@@ -61,11 +61,21 @@ class WriteFileTool:
             )
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(content, encoding=encoding)
+        self._clear_python_bytecode(resolved)
         return ToolResult(
             ok=True,
             summary=f"Wrote file: {path}",
             data={"path": resolved.relative_to(context.root).as_posix(), "bytes": len(content.encode(encoding))},
         )
+
+    def _clear_python_bytecode(self, path: Path) -> None:
+        if path.suffix != ".py":
+            return
+        cache_dir = path.parent / "__pycache__"
+        if not cache_dir.exists():
+            return
+        for cached in cache_dir.glob(f"{path.stem}.*.pyc"):
+            cached.unlink(missing_ok=True)
 
 
 class ListFilesTool:

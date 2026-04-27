@@ -63,3 +63,39 @@ The command writes:
 - `cost_report.json`
 
 Execution is constrained by both the task `allowed_tools` field and the runtime tool registry.
+
+## `/debug` Repair Flow
+
+`/debug` consumes blocked tasks and repairs them with DebugAgent.
+
+```text
+collect tool/model/event evidence
+  -> generate minimal repair action
+  -> run repair tool calls
+  -> rerun verification
+  -> mark done or keep blocked
+```
+
+Successful repairs move through:
+
+```text
+blocked -> ready -> in_progress -> testing -> reviewing -> done
+```
+
+The command accumulates `repair_attempts`, model calls, tool calls, and token usage in `cost_report.json`.
+
+## `/review` Evaluation Flow
+
+`/review` evaluates a run using GoalSpec, the task board, event logs, tool/model logs, and cost data.
+
+It writes:
+
+- `eval_report.json`
+- `review_report.md`
+- updated `cost_report.json`
+
+The report includes goal, artifact, outcome, trajectory, and cost evaluation. `overall.status` drives run state:
+
+- `pass` -> `completed`
+- `partial` -> `running`
+- `fail` -> `blocked`

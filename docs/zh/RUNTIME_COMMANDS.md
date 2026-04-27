@@ -203,6 +203,15 @@ ready -> in_progress -> testing -> reviewing -> done
 - 范围膨胀。
 - 可维护性。
 
+当前实现：
+
+- 读取 `goal_spec.json`、`task_plan.json`、`cost_report.json`。
+- 汇总最近的事件、工具调用和模型调用。
+- 生成确定性检查项，如任务完成率、阻塞任务数、验证通过率、成本状态。
+- 调用 ReviewAgent 生成 `eval_report.json`。
+- 同步生成面向人的 `review_report.md`。
+- 根据 `overall.status` 更新 run 状态：`pass -> completed`，`partial -> running`，`fail -> blocked`。
+
 ### 3.8 `/debug`
 
 目的：
@@ -218,6 +227,16 @@ collect evidence
   -> choose minimal fix
   -> rerun verification
 ```
+
+当前实现：
+
+- 读取 blocked 任务。
+- 汇总最近的 `tool_calls.jsonl`、`model_calls.jsonl` 和 `events.jsonl` 作为失败证据。
+- 调用 DebugAgent 生成结构化修复动作。
+- 执行修复工具调用和验证工具调用。
+- 成功时推进 `blocked -> ready -> in_progress -> testing -> reviewing -> done`。
+- 失败时保持 `blocked`，并写入修复失败原因。
+- 累计 `repair_attempts`、模型调用、工具调用和 token 成本。
 
 ### 3.9 `/handoff`
 
