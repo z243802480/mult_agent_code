@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModelCall",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "model_call_id",
+    "run_id",
+    "purpose",
+    "model_provider",
+    "model_name",
+    "model_tier",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "model_call_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "agent_id": { "type": ["string", "null"] },
+    "purpose": { "type": "string" },
+    "model_provider": { "type": "string" },
+    "model_name": { "type": "string" },
+    "model_tier": { "type": "string", "enum": ["cheap", "medium", "strong"] },
+    "input_tokens": { "type": ["integer", "null"] },
+    "output_tokens": { "type": ["integer", "null"] },
+    "status": { "type": "string" },
+    "created_at": { "type": "string" },
+    "summary": { "type": "string" }
+  }
+}

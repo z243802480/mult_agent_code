@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Experiment",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "run_id",
+    "task_id",
+    "idea",
+    "baseline",
+    "candidate",
+    "evaluator",
+    "metrics_after",
+    "decision",
+    "reason"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "experiment_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": ["string", "null"] },
+    "idea": { "type": "string" },
+    "baseline": { "type": "object" },
+    "candidate": { "type": "object" },
+    "evaluator": { "type": "object" },
+    "metrics_after": { "type": "object" },
+    "decision": { "type": "string", "enum": ["keep", "discard", "retry", "blocked"] },
+    "reason": { "type": "string" }
+  }
+}

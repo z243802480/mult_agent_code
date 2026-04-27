@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DecisionPoint",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decision_id",
+    "status",
+    "question",
+    "recommended_option_id",
+    "options",
+    "default_option_id",
+    "impact",
+    "selected_option_id",
+    "created_at",
+    "resolved_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "status": { "type": "string", "enum": ["pending", "resolved", "defaulted", "cancelled"] },
+    "question": { "type": "string" },
+    "recommended_option_id": { "type": "string" },
+    "options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["option_id", "label", "tradeoff"],
+        "properties": {
+          "option_id": { "type": "string" },
+          "label": { "type": "string" },
+          "tradeoff": { "type": "string" }
+        }
+      }
+    },
+    "default_option_id": { "type": "string" },
+    "impact": {
+      "type": "object",
+      "required": ["scope", "budget", "risk", "quality"],
+      "properties": {
+        "scope": { "type": "string", "enum": ["low", "medium", "high"] },
+        "budget": { "type": "string", "enum": ["low", "medium", "high"] },
+        "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "quality": { "type": "string", "enum": ["low", "medium", "high"] }
+      }
+    },
+    "selected_option_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "resolved_at": { "type": ["string", "null"] }
+  }
+}

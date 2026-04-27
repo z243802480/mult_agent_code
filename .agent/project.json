@@ -1,0 +1,45 @@
+{
+  "schema_version": "0.1.0",
+  "project_id": "project-0001",
+  "name": "mult_agent_code",
+  "workspace_type": "codebase",
+  "created_at": "2026-04-27T15:57:33+08:00",
+  "updated_at": "2026-04-27T15:57:33+08:00",
+  "languages": [
+    "python",
+    "markdown"
+  ],
+  "frameworks": [],
+  "package_managers": [
+    "python"
+  ],
+  "commands": {
+    "install": null,
+    "run": null,
+    "test": "pytest",
+    "lint": "ruff check .",
+    "typecheck": "mypy src",
+    "build": null,
+    "format": "ruff format ."
+  },
+  "important_paths": [
+    "src/",
+    "tests/",
+    "docs/",
+    "docs/zh/",
+    "schemas/",
+    "templates/"
+  ],
+  "protected_paths": [
+    ".env",
+    ".env.*",
+    "secrets/",
+    ".git/",
+    "*.pem",
+    "*.key",
+    "id_rsa",
+    "id_ed25519"
+  ],
+  "root_guidance_path": "AGENTS.md",
+  "default_policy_path": ".agent/policies.json"
+}

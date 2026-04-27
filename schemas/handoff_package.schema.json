@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HandoffPackage",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "handoff_id",
+    "from_agent_id",
+    "to_role",
+    "snapshot_id",
+    "current_task_ids",
+    "recent_artifacts",
+    "known_risks",
+    "recommended_next_command",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "handoff_id": { "type": "string" },
+    "from_agent_id": { "type": ["string", "null"] },
+    "to_role": { "type": "string" },
+    "snapshot_id": { "type": "string" },
+    "current_task_ids": { "type": "array", "items": { "type": "string" } },
+    "recent_artifacts": { "type": "array", "items": { "type": "string" } },
+    "known_risks": { "type": "array", "items": { "type": "string" } },
+    "recommended_next_command": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

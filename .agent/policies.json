@@ -1,0 +1,66 @@
+{
+  "schema_version": "0.1.0",
+  "decision_granularity": "balanced",
+  "budgets": {
+    "max_model_calls_per_goal": 60,
+    "max_tool_calls_per_goal": 120,
+    "max_total_minutes_per_goal": 30,
+    "max_iterations_per_goal": 8,
+    "max_repair_attempts_total": 5,
+    "max_repair_attempts_per_task": 2,
+    "max_research_calls": 5,
+    "max_user_decisions": 5
+  },
+  "context": {
+    "compaction_threshold": 0.75,
+    "hard_stop_threshold": 0.9,
+    "phase_boundary_compaction": true,
+    "handoff_compaction": true
+  },
+  "permissions": {
+    "allow_network": false,
+    "allow_shell": true,
+    "allow_destructive_shell": false,
+    "allow_global_package_install": false,
+    "allow_secret_file_read": false,
+    "allow_remote_push": false,
+    "allow_deploy": false
+  },
+  "protected_paths": [
+    ".env",
+    ".env.*",
+    "secrets/",
+    ".git/",
+    "*.pem",
+    "*.key",
+    "id_rsa",
+    "id_ed25519"
+  ],
+  "model_routing": {
+    "goal_spec": "strong",
+    "planning": "strong",
+    "brainstorming": "strong",
+    "architecture": "strong",
+    "coding": "medium",
+    "review": "strong",
+    "debugging": "medium",
+    "summarization": "cheap",
+    "classification": "cheap",
+    "evaluation": "medium"
+  },
+  "commands": {
+    "agent_invocable_without_approval": [
+      "plan",
+      "compact",
+      "review",
+      "debug",
+      "handoff"
+    ],
+    "user_invocation_required": [
+      "init"
+    ],
+    "network_required": [
+      "research"
+    ]
+  }
+}

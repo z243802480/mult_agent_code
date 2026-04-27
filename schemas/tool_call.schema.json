@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolCall",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool_call_id",
+    "run_id",
+    "tool_name",
+    "input_summary",
+    "output_summary",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "tool_call_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": ["string", "null"] },
+    "agent_id": { "type": ["string", "null"] },
+    "tool_name": { "type": "string" },
+    "input_summary": { "type": "string" },
+    "output_summary": { "type": "string" },
+    "status": { "type": "string", "enum": ["success", "failure", "denied", "timeout"] },
+    "started_at": { "type": "string" },
+    "ended_at": { "type": "string" },
+    "error": { "type": ["string", "null"] }
+  }
+}

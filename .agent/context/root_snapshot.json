@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_id": "snapshot-root",
+  "run_id": null,
+  "created_at": "2026-04-27T15:57:33+08:00",
+  "focus": "initial workspace context",
+  "goal_summary": "Workspace initialized for agentic development.",
+  "definition_of_done": [],
+  "accepted_decisions": [],
+  "active_tasks": [],
+  "modified_files": [],
+  "verification": [],
+  "failures": [],
+  "research_claims": [],
+  "open_risks": [],
+  "next_actions": [
+    "Run `agent plan` with a concrete goal.",
+    "Review AGENTS.md and .agent/policies.json."
+  ],
+  "project": {
+    "name": "mult_agent_code",
+    "workspace_type": "codebase",
+    "important_paths": [
+      "src/",
+      "tests/",
+      "docs/",
+      "docs/zh/",
+      "schemas/",
+      "templates/"
+    ]
+  }
+}

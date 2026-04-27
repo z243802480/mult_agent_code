@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContextSnapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "run_id",
+    "created_at",
+    "focus",
+    "goal_summary",
+    "definition_of_done",
+    "accepted_decisions",
+    "active_tasks",
+    "modified_files",
+    "verification",
+    "failures",
+    "research_claims",
+    "open_risks",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "snapshot_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "focus": { "type": "string" },
+    "goal_summary": { "type": "string" },
+    "definition_of_done": { "type": "array", "items": { "type": "string" } },
+    "accepted_decisions": { "type": "array", "items": { "type": "string" } },
+    "active_tasks": { "type": "array", "items": { "type": "string" } },
+    "modified_files": { "type": "array", "items": { "type": "object" } },
+    "verification": { "type": "array", "items": { "type": "object" } },
+    "failures": { "type": "array", "items": { "type": "object" } },
+    "research_claims": { "type": "array", "items": { "type": "string" } },
+    "open_risks": { "type": "array", "items": { "type": "string" } },
+    "next_actions": { "type": "array", "items": { "type": "string" } },
+    "project": { "type": "object" }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Run",
+  "type": "object",
+  "required": ["schema_version", "run_id", "goal_id", "status", "started_at", "current_phase"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": "string" },
+    "goal_id": { "type": ["string", "null"] },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "paused", "blocked", "completed", "failed", "cancelled"]
+    },
+    "started_at": { "type": "string" },
+    "ended_at": { "type": ["string", "null"] },
+    "entry_command": { "type": "string" },
+    "current_phase": { "type": "string" },
+    "workspace": { "type": "object" },
+    "summary": { "type": "string" }
+  }
+}

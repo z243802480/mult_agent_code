@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProjectConfig",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "project_id",
+    "name",
+    "workspace_type",
+    "created_at",
+    "updated_at",
+    "languages",
+    "frameworks",
+    "package_managers",
+    "commands",
+    "important_paths",
+    "protected_paths",
+    "root_guidance_path",
+    "default_policy_path"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "project_id": { "type": "string" },
+    "name": { "type": "string" },
+    "workspace_type": {
+      "type": "string",
+      "enum": ["empty_workspace", "planning_workspace", "codebase", "mixed", "unknown"]
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "languages": { "type": "array", "items": { "type": "string" } },
+    "frameworks": { "type": "array", "items": { "type": "string" } },
+    "package_managers": { "type": "array", "items": { "type": "string" } },
+    "commands": {
+      "type": "object",
+      "required": ["install", "run", "test", "lint", "typecheck", "build", "format"],
+      "properties": {
+        "install": { "type": ["string", "null"] },
+        "run": { "type": ["string", "null"] },
+        "test": { "type": ["string", "null"] },
+        "lint": { "type": ["string", "null"] },
+        "typecheck": { "type": ["string", "null"] },
+        "build": { "type": ["string", "null"] },
+        "format": { "type": ["string", "null"] }
+      }
+    },
+    "important_paths": { "type": "array", "items": { "type": "string" } },
+    "protected_paths": { "type": "array", "items": { "type": "string" } },
+    "root_guidance_path": { "type": "string" },
+    "default_policy_path": { "type": "string" }
+  }
+}

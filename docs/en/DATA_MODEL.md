@@ -1,0 +1,63 @@
+﻿# Multi-Agent Autonomous Development System - Data Model
+
+The Chinese `docs/zh/DATA_MODEL.md` is the detailed source of truth. This file is the English summary for review.
+
+## Core Objects
+
+- `ProjectConfig`: project metadata in `.agent/project.json`.
+- `PolicyConfig`: budget, security, model routing, and decision policy in `.agent/policies.json`.
+- `Run`: one execution run in `.agent/runs/<run_id>/run.json`.
+- `GoalSpec`: structured user goal.
+- `Task`: schedulable work item.
+- `DecisionPoint`: user-facing major branch decision.
+- `ContextSnapshot`: compact state for long-task continuation.
+- `CommandRun`: one command workflow execution.
+- `ToolCall`: structured tool execution log.
+- `ModelCall`: model usage and cost log.
+- `Artifact`: durable output record.
+- `Experiment`: keep/discard attempt.
+- `EvalReport`: quality and outcome report.
+- `CostReport`: budget and usage report.
+- `MemoryEntry`: reusable memory.
+- `Event`: runtime event log.
+- `HandoffPackage`: continuation package.
+
+## Storage Layout
+
+```text
+AGENTS.md
+.agent/
+  project.json
+  policies.json
+  context/
+    root_snapshot.json
+    snapshots/
+    handoffs/
+  tasks/
+    backlog.json
+  runs/
+    run-*/
+      run.json
+      goal_spec.json
+      task_plan.json
+      events.jsonl
+      tool_calls.jsonl
+      model_calls.jsonl
+      artifacts.jsonl
+      cost_report.json
+      eval_report.json
+      final_report.md
+  memory/
+```
+
+## Implementation Rule
+
+All persisted JSON must include:
+
+```json
+{
+  "schema_version": "0.1.0"
+}
+```
+
+All persisted JSON should be validated at read/write boundaries.

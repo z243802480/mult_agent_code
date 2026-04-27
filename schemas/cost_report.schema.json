@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CostReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "model_calls",
+    "tool_calls",
+    "estimated_input_tokens",
+    "estimated_output_tokens",
+    "strong_model_calls",
+    "cheap_model_calls",
+    "repair_attempts",
+    "context_compactions",
+    "user_decisions",
+    "status",
+    "warnings"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "model_calls": { "type": "integer" },
+    "tool_calls": { "type": "integer" },
+    "estimated_input_tokens": { "type": ["integer", "null"] },
+    "estimated_output_tokens": { "type": ["integer", "null"] },
+    "strong_model_calls": { "type": "integer" },
+    "cheap_model_calls": { "type": "integer" },
+    "repair_attempts": { "type": "integer" },
+    "context_compactions": { "type": "integer" },
+    "user_decisions": { "type": "integer" },
+    "status": { "type": "string", "enum": ["within_budget", "near_limit", "exceeded", "stopped"] },
+    "warnings": { "type": "array", "items": { "type": "string" } }
+  }
+}

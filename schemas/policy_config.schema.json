@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PolicyConfig",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "decision_granularity",
+    "budgets",
+    "context",
+    "permissions",
+    "protected_paths",
+    "model_routing",
+    "commands"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "decision_granularity": {
+      "type": "string",
+      "enum": ["autopilot", "balanced", "collaborative", "manual"]
+    },
+    "budgets": {
+      "type": "object",
+      "required": [
+        "max_model_calls_per_goal",
+        "max_tool_calls_per_goal",
+        "max_total_minutes_per_goal",
+        "max_iterations_per_goal",
+        "max_repair_attempts_total",
+        "max_repair_attempts_per_task",
+        "max_research_calls",
+        "max_user_decisions"
+      ],
+      "properties": {
+        "max_model_calls_per_goal": { "type": "integer" },
+        "max_tool_calls_per_goal": { "type": "integer" },
+        "max_total_minutes_per_goal": { "type": "integer" },
+        "max_iterations_per_goal": { "type": "integer" },
+        "max_repair_attempts_total": { "type": "integer" },
+        "max_repair_attempts_per_task": { "type": "integer" },
+        "max_research_calls": { "type": "integer" },
+        "max_user_decisions": { "type": "integer" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": [
+        "compaction_threshold",
+        "hard_stop_threshold",
+        "phase_boundary_compaction",
+        "handoff_compaction"
+      ],
+      "properties": {
+        "compaction_threshold": { "type": "number" },
+        "hard_stop_threshold": { "type": "number" },
+        "phase_boundary_compaction": { "type": "boolean" },
+        "handoff_compaction": { "type": "boolean" }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "required": [
+        "allow_network",
+        "allow_shell",
+        "allow_destructive_shell",
+        "allow_global_package_install",
+        "allow_secret_file_read",
+        "allow_remote_push",
+        "allow_deploy"
+      ],
+      "properties": {
+        "allow_network": { "type": "boolean" },
+        "allow_shell": { "type": "boolean" },
+        "allow_destructive_shell": { "type": "boolean" },
+        "allow_global_package_install": { "type": "boolean" },
+        "allow_secret_file_read": { "type": "boolean" },
+        "allow_remote_push": { "type": "boolean" },
+        "allow_deploy": { "type": "boolean" }
+      }
+    },
+    "protected_paths": { "type": "array", "items": { "type": "string" } },
+    "model_routing": { "type": "object" },
+    "commands": { "type": "object" }
+  }
+}
