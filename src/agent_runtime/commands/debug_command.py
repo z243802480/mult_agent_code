@@ -253,6 +253,7 @@ class DebugCommand:
             "strong_model_calls": 0,
             "cheap_model_calls": 0,
             "repair_attempts": 0,
+            "research_calls": 0,
             "context_compactions": 0,
             "user_decisions": 0,
             "status": "within_budget",

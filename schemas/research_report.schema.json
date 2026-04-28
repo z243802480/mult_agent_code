@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResearchReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "query",
+    "created_at",
+    "sources",
+    "claims",
+    "expanded_requirements",
+    "risks",
+    "decision_candidates",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "query": { "type": "string" },
+    "created_at": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "title", "source_type", "reference", "summary"],
+        "properties": {
+          "source_id": { "type": "string" },
+          "title": { "type": "string" },
+          "source_type": { "type": "string", "enum": ["local", "url", "search"] },
+          "reference": { "type": "string" },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim", "source_ids", "confidence"],
+        "properties": {
+          "claim": { "type": "string" },
+          "source_ids": { "type": "array", "items": { "type": "string" } },
+          "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+        }
+      }
+    },
+    "expanded_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description", "priority", "source_ids"],
+        "properties": {
+          "description": { "type": "string" },
+          "priority": { "type": "string", "enum": ["must", "should", "could"] },
+          "source_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["risk", "mitigation", "source_ids"],
+        "properties": {
+          "risk": { "type": "string" },
+          "mitigation": { "type": "string" },
+          "source_ids": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "decision_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "options", "recommended_option_id"],
+        "properties": {
+          "question": { "type": "string" },
+          "options": { "type": "array", "items": { "type": "object" } },
+          "recommended_option_id": { "type": "string" }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  }
+}

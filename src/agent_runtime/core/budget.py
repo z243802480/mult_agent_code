@@ -108,6 +108,7 @@ class BudgetController:
             "strong_model_calls": self.usage.strong_model_calls,
             "cheap_model_calls": self.usage.cheap_model_calls,
             "repair_attempts": self.usage.repair_attempts,
+            "research_calls": self.usage.research_calls,
             "context_compactions": self.usage.context_compactions,
             "user_decisions": self.usage.user_decisions,
             "status": status,

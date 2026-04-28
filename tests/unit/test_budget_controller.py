@@ -23,12 +23,14 @@ def test_budget_controller_records_usage_and_report() -> None:
 
     controller.record_model_call("strong", input_tokens=10, output_tokens=5)
     controller.record_tool_call()
+    controller.record_research_call()
     controller.record_context_compaction()
 
     report = controller.cost_report()
     assert report["run_id"] == "run-1"
     assert report["model_calls"] == 1
     assert report["tool_calls"] == 1
+    assert report["research_calls"] == 1
     assert report["strong_model_calls"] == 1
     assert report["estimated_input_tokens"] == 10
     assert report["estimated_output_tokens"] == 5

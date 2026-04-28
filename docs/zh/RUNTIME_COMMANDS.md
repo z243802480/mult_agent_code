@@ -159,6 +159,15 @@ generate candidates
 - 调研必须转化为任务、实验、约束或决策点。
 - 不允许只输出泛泛摘要。
 
+当前实现：
+
+- `agent research "问题"` 会创建或复用 run，收集资料并生成 `research_report.json` / `research_report.md`。
+- 资料源采用可插拔 adapter：本地文档、显式 URL、Serper 搜索 API。
+- 默认只启用本地文档检索；URL/搜索必须满足策略 `allow_network=true`。
+- MCP、skills、专用论文库可以作为后续 source adapter 接入，而不是绑定在核心流程里。
+- 报告必须包含来源、带来源的 claims、需求扩展、风险和决策候选。
+- 成本账本累计 `research_calls` 和模型调用。
+
 ### 3.5 `/compact`
 
 目的：

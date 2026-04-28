@@ -10,6 +10,7 @@ from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.commands.run_command import RunCommand
 
@@ -39,6 +40,15 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subcommands.add_parser("plan", help="Generate GoalSpec and task plan")
     plan_parser.add_argument("goal", help="Natural-language goal")
     plan_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    research_parser = subcommands.add_parser("research", help="Collect sources and synthesize research")
+    research_parser.add_argument("query", help="Research question")
+    research_parser.add_argument("--root", default=".", help="Workspace root path")
+    research_parser.add_argument("--run-id", default=None, help="Run id; creates a research run if omitted")
+    research_parser.add_argument("--url", action="append", default=[], help="URL to include as a source")
+    research_parser.add_argument("--no-local", action="store_true", help="Disable local document search")
+    research_parser.add_argument("--serper", action="store_true", help="Use Serper search when configured")
+    research_parser.add_argument("--max-sources", type=int, default=12, help="Maximum sources to collect")
 
     run_parser = subcommands.add_parser("run", help="Plan, execute, repair, review, and report")
     run_parser.add_argument("goal", help="Natural-language goal")
@@ -98,6 +108,19 @@ def main() -> None:
     if args.command == "plan":
         plan_result = PlanCommand(root=Path(args.root), goal=args.goal).run()
         print(plan_result.to_text())
+        return
+
+    if args.command == "research":
+        research_result = ResearchCommand(
+            root=Path(args.root),
+            query=args.query,
+            run_id=args.run_id,
+            urls=args.url,
+            use_local=not args.no_local,
+            use_serper=args.serper,
+            max_sources=args.max_sources,
+        ).run()
+        print(research_result.to_text())
         return
 
     if args.command == "run":

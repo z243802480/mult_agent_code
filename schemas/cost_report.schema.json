@@ -27,6 +27,7 @@
     "strong_model_calls": { "type": "integer" },
     "cheap_model_calls": { "type": "integer" },
     "repair_attempts": { "type": "integer" },
+    "research_calls": { "type": "integer" },
     "context_compactions": { "type": "integer" },
     "user_decisions": { "type": "integer" },
     "status": { "type": "string", "enum": ["within_budget", "near_limit", "exceeded", "stopped"] },

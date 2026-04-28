@@ -129,3 +129,15 @@ Supported modes:
 - default: `agent decide --decision-id ... --use-default`
 
 Decisions are written to `decisions.jsonl`, emit `decision_created` / `decision_resolved` events, and increment `user_decisions` in `cost_report.json`.
+
+## `/research` Source-Grounded Research
+
+`/research` collects evidence and writes `research_report.json` plus `research_report.md`.
+
+The implementation uses pluggable source adapters:
+
+- local project documents
+- explicit URLs when network is allowed
+- Serper search when `SERPER_API_KEY` is configured and network is allowed
+
+MCP servers and skills should be added as future source adapters rather than hard-coded into the research core.
