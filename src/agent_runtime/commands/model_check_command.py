@@ -125,9 +125,13 @@ class ModelCheckCommand:
     def _default_model(self, provider: str) -> str | None:
         if provider == "minimax":
             return "MiniMax-M2.7"
+        if provider in {"fake", "offline"}:
+            return "fake-offline"
         return None
 
     def _default_base_url(self, provider: str) -> str | None:
+        if provider in {"fake", "offline"}:
+            return "local offline provider"
         if provider == "minimax":
             return "https://api.minimaxi.com/v1"
         if provider in {"openai", "openai-compatible", "generic"}:

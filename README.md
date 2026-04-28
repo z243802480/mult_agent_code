@@ -57,4 +57,17 @@ docker run --rm agent-runtime:verify
 
 The verification command compiles sources, runs tests, runs ruff, runs mypy, and checks basic CLI commands in a temporary workspace.
 
+## Offline Model
+
+For deterministic local smoke tests without API keys:
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "fake"
+agent /model-check --root .
+agent /new "create offline artifact" --root .
+agent /run --root .
+```
+
+The fake provider is for reproducible validation only. It does not evaluate real model quality.
+
 See [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) for the Chinese development guide.
