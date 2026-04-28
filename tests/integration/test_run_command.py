@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from agent_runtime.commands.decide_command import DecideCommand
+from agent_runtime.commands.new_command import NewCommand
 from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
@@ -451,6 +452,25 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert (run_dir / "review_report.md").exists()
     assert (run_dir / "final_report.md").exists()
     assert "Review status: pass" in (run_dir / "final_report.md").read_text(encoding="utf-8")
+
+
+def test_run_command_without_goal_continues_current_session(tmp_path: Path) -> None:
+    planned = NewCommand(
+        tmp_path,
+        "create a complete module",
+        model_client=FakePlanClient(),
+    ).run()
+
+    result = RunCommand(
+        tmp_path,
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.run_id == planned.run_id
+    assert result.status == "completed"
+    assert (tmp_path / "complete_module.py").exists()
 
 
 def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:

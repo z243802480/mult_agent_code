@@ -41,7 +41,7 @@ class CompactCommand:
             raise RuntimeError("Workspace is not initialized. Run `agent init` first.")
 
         run_store = RunStore(agent_dir, self.validator)
-        run_id = self.run_id or run_store.current_run_id()
+        run_id = self.run_id or run_store.current_session_id()
         run_dir = agent_dir / "runs" / run_id if run_id else None
         event_logger = None
         if run_dir and run_dir.exists():

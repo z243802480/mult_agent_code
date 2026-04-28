@@ -6,7 +6,9 @@ The Chinese `docs/zh/DATA_MODEL.md` is the detailed source of truth. This file i
 
 - `ProjectConfig`: project metadata in `.agent/project.json`.
 - `PolicyConfig`: budget, security, model routing, and decision policy in `.agent/policies.json`.
-- `Run`: one execution run in `.agent/runs/<run_id>/run.json`.
+- `Session`: the user-facing recoverable context for one goal. It currently maps to one
+  internal `Run` id.
+- `Run`: one internal execution record in `.agent/runs/<run_id>/run.json`.
 - `GoalSpec`: structured user goal.
 - `Task`: schedulable work item.
 - `DecisionPoint`: user-facing major branch decision. Options may include an `action`
@@ -31,7 +33,7 @@ AGENTS.md
 .agent/
   project.json
   policies.json
-  current_run.json
+  current_session.json
   context/
     root_snapshot.json
     snapshots/
@@ -64,3 +66,6 @@ All persisted JSON must include:
 ```
 
 All persisted JSON should be validated at read/write boundaries.
+
+`current_run.json` is treated as a legacy compatibility pointer if present. New writes use
+`current_session.json`.

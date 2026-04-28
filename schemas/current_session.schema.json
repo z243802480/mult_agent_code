@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CurrentSession",
+  "type": "object",
+  "required": ["schema_version", "session_id", "set_at", "reason"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "session_id": { "type": "string" },
+    "set_at": { "type": "string" },
+    "reason": { "type": "string" }
+  }
+}

@@ -86,33 +86,45 @@ Agent 自调用：
 
 目的：
 
-开启一个新的隔离目标上下文，并把它设为当前 run。
+开启一个新的隔离目标上下文，并把它设为当前 session。
 
 当前实现：
 
 - `agent new "目标"` 会在必要时自动初始化工作区。
 - 内部复用 `/plan` 生成 `goal_spec.json` 和 `task_plan.json`。
-- 写入 `.agent/current_run.json`，后续不显式传 `run_id` 的命令优先使用这个 current run。
-- 用于避免多个目标之间因为默认“最新 run”而串上下文。
+- 写入 `.agent/current_session.json`，后续不显式传 `session_id` 的命令优先使用这个 current session。
+- 用于避免多个目标之间因为默认“最新记录”而串上下文。
 
-### 3.2.0.1 `/runs`
+### 3.2.0.1 `/sessions`
 
 目的：
 
-找回、查看和切换历史 run 上下文。
+找回、查看和切换历史 session 上下文。
+
+概念边界：
+
+- `Session` 是用户心智：一个目标、一段上下文、一个可恢复的工作会话。
+- `Run` 是内部记录：落盘在 `.agent/runs/<run_id>/` 的执行轨迹。
 
 当前实现：
 
-- `agent runs` 列出最近 run，并标记 current run。
-- `agent runs --run-id <id>` 查看指定 run。
-- `agent runs --run-id <id> --set-current` 将指定 run 设为当前上下文。
-- `execute`、`review`、`debug`、`decide`、`resume`、`compact` 等命令在未传 `run_id` 时优先使用 current run。
+- `agent sessions` 列出最近 session，并标记 current session。
+- `agent sessions --session-id <id>` 查看指定 session。
+- `agent sessions --session-id <id> --set-current` 将指定 session 设为当前上下文。
+- `agent runs`、`agent history` 和 `--run-id` 保留为兼容别名；新文档和新流程使用 `sessions` / `--session-id`。
+- `run`、`execute`、`review`、`debug`、`decide`、`resume`、`compact` 等命令在未传 `session_id` 时优先使用 current session。
 
 ### 3.2.1 `/run`
 
 目的：
 
 提供 MVP 的一键闭环入口，将规划、执行、修复、评审、压缩和最终报告串联起来。
+
+调用方式：
+
+- `agent run "目标"` 或 `agent /run "目标"`：创建新 session 并执行闭环。
+- `agent run` 或 `agent /run`：继续当前 session。
+- `agent run --session-id <id>`：继续指定历史 session。
 
 流程：
 
@@ -128,7 +140,8 @@ init if needed
 
 输入：
 
-- `goal` 用户目标。
+- `goal` 用户目标，可选；不传时继续当前 session。
+- `session_id` 可选，指定要继续的历史 session；兼容旧参数 `run_id`。
 - `root` 工作区根目录。
 - `max_iterations` 可选，默认读取策略预算。
 - `max_tasks_per_iteration` 可选，默认每轮执行 1 个任务。
@@ -226,7 +239,7 @@ generate candidates
 
 输入：
 
-- `run_id` 可选，默认最新 run。
+- `session_id` 可选，默认 current session；兼容旧参数 `run_id`。
 - `max_tasks` 控制单次最多执行多少个任务。
 
 输出产物：
@@ -285,7 +298,7 @@ ready -> in_progress -> testing -> reviewing -> done
 
 当前实现：
 
-- `agent resume --run-id ...` 恢复指定 run；不传 `run-id` 时默认最新 run。
+- `agent resume --session-id ...` 恢复指定 session；不传 `session-id` 时默认 current session。
 - 如果仍有 pending 决策，命令会停止并提示待处理决策。
 - 已解析但尚未应用的决策会记录 `decision_applied` 事件。
 - 对需要执行的选项，生成后续任务并接回 `/run` 的 execute/review/compact/final report 闭环。

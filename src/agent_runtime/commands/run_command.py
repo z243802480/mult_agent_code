@@ -46,7 +46,8 @@ class RunCommand:
     def __init__(
         self,
         root: Path,
-        goal: str,
+        goal: str | None = None,
+        run_id: str | None = None,
         max_iterations: int | None = None,
         max_tasks_per_iteration: int = 1,
         model_client: ModelClient | None = None,
@@ -59,6 +60,7 @@ class RunCommand:
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
+        self.run_id = run_id
         self.max_iterations = max_iterations
         self.max_tasks_per_iteration = max_tasks_per_iteration
         self.model_client = model_client
@@ -75,6 +77,14 @@ class RunCommand:
     def run(self) -> RunResult:
         if not (self.root / ".agent").exists():
             InitCommand(self.root).run()
+        if self.goal and self.run_id:
+            raise ValueError("Pass either a new goal or an existing session id, not both.")
+        if not self.goal:
+            run_store = RunStore(self.root / ".agent", self.validator)
+            run_id = self.run_id or run_store.current_session_id()
+            if not run_id:
+                raise RuntimeError("No current session found. Run `agent new \"goal\"` first.")
+            return self.continue_run(run_id)
 
         steps: list[RunStepSummary] = []
         research_context = ""

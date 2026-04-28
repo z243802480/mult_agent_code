@@ -19,10 +19,10 @@ class NewResult:
     def to_text(self) -> str:
         return "\n".join(
             [
-                f"Created new isolated run: {self.run_id}",
+                f"Created new isolated session: {self.run_id}",
                 f"GoalSpec: {self.plan_result.goal_spec_path}",
                 f"Task plan: {self.plan_result.task_plan_path}",
-                "Current run pointer updated.",
+                "Current session pointer updated.",
             ]
         )
 

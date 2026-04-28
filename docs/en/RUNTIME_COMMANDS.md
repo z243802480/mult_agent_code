@@ -3,10 +3,10 @@
 ## Initial Commands
 
 - `/init`: initialize an agent-ready workspace.
-- `/new`: start a new isolated goal context and make it the current run.
+- `/new`: start a new isolated goal context and make it the current session.
 - `/plan`: turn a goal into GoalSpec and tasks.
-- `/runs`: list, show, or switch run contexts.
-- `/run`: plan, execute, repair, review, compact, and write a final report.
+- `/sessions`: list, show, or switch user-facing session contexts.
+- `/run`: with a goal, create and execute a new session; without a goal, continue the current session.
 - `/resume`: continue a paused run after user decisions are resolved.
 - `/brainstorm`: generate and rank candidate directions.
 - `/research`: turn sources into executable hypotheses.
@@ -68,21 +68,33 @@ The command writes:
 
 Execution is constrained by both the task `allowed_tools` field and the runtime tool registry.
 
-## `/new` And `/runs` Context Isolation
+## `/new` And `/sessions` Context Isolation
 
-`/new` creates a fresh planning run for a new goal and writes `.agent/current_run.json`.
+`Session` is the user-facing unit: one goal, one recoverable context, and one current pointer.
+The runtime still stores the execution record as a run under `.agent/runs/<run_id>/`.
 
-`/runs` helps recover or switch context:
+`/new` creates a fresh planning run for a new goal and writes `.agent/current_session.json`.
 
-- `agent runs`: list recent runs and mark the current run.
-- `agent runs --run-id <id>`: show one run.
-- `agent runs --run-id <id> --set-current`: make a run current.
+`/sessions` helps recover or switch context:
 
-Commands such as `/execute`, `/review`, `/debug`, `/decide`, `/resume`, and `/compact` prefer the current run when `--run-id` is omitted. This prevents unrelated goals from accidentally sharing context.
+- `agent sessions`: list recent sessions and mark the current session.
+- `agent sessions --session-id <id>`: show one session.
+- `agent sessions --session-id <id> --set-current`: make a session current.
+
+`/runs`, `/history`, and `--run-id` remain compatibility aliases. New documentation and user
+flows should use `/sessions` and `--session-id`.
+
+Commands such as `/run`, `/execute`, `/review`, `/debug`, `/decide`, `/resume`, and `/compact`
+prefer the current session when `--session-id` is omitted. This prevents unrelated goals from
+accidentally sharing context.
 
 ## `/run` Closed Loop
 
 `/run` is the user-facing MVP command for a complete local-first execution loop.
+
+- `agent run "goal"` or `agent /run "goal"` creates a new session and runs it.
+- `agent run` or `agent /run` continues the current session.
+- `agent run --session-id <id>` continues the selected historical session.
 
 ```text
 init if needed
@@ -170,7 +182,7 @@ Decisions are written to `decisions.jsonl`, emit `decision_created` / `decision_
 
 New decisions should include option actions so `/resume` does not need to infer intent from labels.
 
-After resolving decisions, use `agent resume --run-id ...` to continue the run.
+After resolving decisions, use `agent resume --session-id ...` to continue the session.
 
 ## `/research` Source-Grounded Research
 

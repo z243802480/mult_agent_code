@@ -44,25 +44,53 @@ class RunStore:
     def update_run(self, run: dict) -> None:
         self.store.write(self.run_dir(run["run_id"]) / "run.json", run, "run")
 
-    def set_current_run(self, run_id: str, reason: str) -> dict:
+    def set_current_session(self, session_id: str, reason: str) -> dict:
         current = {
             "schema_version": "0.1.0",
-            "run_id": run_id,
+            "session_id": session_id,
             "set_at": now_iso(),
             "reason": reason,
         }
-        self.store.write(self.agent_dir / "current_run.json", current, "current_run")
+        self.store.write(self.agent_dir / "current_session.json", current, "current_session")
         return current
 
-    def current_run_id(self) -> str | None:
-        path = self.agent_dir / "current_run.json"
-        if not path.exists():
+    def set_current_run(self, run_id: str, reason: str) -> dict:
+        return self.set_current_session(run_id, reason)
+
+    def current_session_id(self) -> str | None:
+        path = self.agent_dir / "current_session.json"
+        if path.exists():
+            current = self.store.read(path, "current_session")
+            session_id = str(current["session_id"])
+            if (self.run_dir(session_id) / "run.json").exists():
+                return session_id
             return self.latest_run_id()
-        current = self.store.read(path, "current_run")
-        run_id = str(current["run_id"])
-        if (self.run_dir(run_id) / "run.json").exists():
-            return run_id
+        legacy_path = self.agent_dir / "current_run.json"
+        if legacy_path.exists():
+            current = self.store.read(legacy_path, "current_run")
+            run_id = str(current["run_id"])
+            if (self.run_dir(run_id) / "run.json").exists():
+                return run_id
+            return self.latest_run_id()
         return self.latest_run_id()
+
+    def current_run_id(self) -> str | None:
+        return self.current_session_id()
+
+    def current_session_path(self) -> Path:
+        return self.agent_dir / "current_session.json"
+
+    def current_run_path(self) -> Path:
+        return self.current_session_path()
+
+    def latest_session_id(self) -> str | None:
+        return self.latest_run_id()
+
+    def list_sessions(self) -> list[dict]:
+        return self.list_runs()
+
+    def session_dir(self, session_id: str) -> Path:
+        return self.run_dir(session_id)
 
     def latest_run_id(self) -> str | None:
         runs = self.list_runs()

@@ -88,7 +88,7 @@ AGENTS.md
 .agent/
   project.json
   policies.json
-  current_run.json
+  current_session.json
   context/
     root_snapshot.json
     snapshots/
@@ -226,7 +226,33 @@ decision_granularity:
   manual
 ```
 
-## 6. Run
+## 6. Session 与 Run
+
+`Session` 是面向用户的上下文单位：一个目标、一组任务、一段可恢复的工作会话。
+
+`Run` 是内部执行记录：当前 MVP 中一个 session 映射到一个 `.agent/runs/<run_id>/`
+目录。为了兼容已有日志和 schema，内部字段仍使用 `run_id`；用户命令和文档使用
+`session_id` 表达要恢复或切换的上下文。
+
+当前 session 指针文件：
+
+```text
+.agent/current_session.json
+```
+
+旧的 `.agent/current_run.json` 只作为兼容读取入口；新的运行时写入
+`.agent/current_session.json`。
+
+```json
+{
+  "schema_version": "0.1.0",
+  "session_id": "run-20260427-0001",
+  "set_at": "2026-04-27T14:30:00+08:00",
+  "reason": "plan_created"
+}
+```
+
+## 7. Run
 
 文件：
 
@@ -287,7 +313,7 @@ current_phase:
   BLOCKED
 ```
 
-## 7. GoalSpec
+## 8. GoalSpec
 
 文件：
 
@@ -368,7 +394,7 @@ expanded_requirements.source:
   decision
 ```
 
-## 8. Task
+## 9. Task
 
 文件：
 
@@ -425,7 +451,7 @@ task.priority:
   low
 ```
 
-## 9. AgentSpec
+## 10. AgentSpec
 
 用途：
 
@@ -470,7 +496,7 @@ model_tier:
   strong
 ```
 
-## 10. DecisionPoint
+## 11. DecisionPoint
 
 文件：
 
@@ -543,7 +569,7 @@ decision.options[].action:
   require_replan
 ```
 
-## 11. ContextSnapshot
+## 12. ContextSnapshot
 
 文件：
 
@@ -589,7 +615,7 @@ decision.options[].action:
 }
 ```
 
-## 12. CommandRun
+## 13. CommandRun
 
 用途：
 
@@ -640,7 +666,7 @@ command.status:
   cancelled
 ```
 
-## 13. ToolCall
+## 14. ToolCall
 
 文件：
 
@@ -679,7 +705,7 @@ tool_call.status:
   timeout
 ```
 
-## 14. ModelCall
+## 15. ModelCall
 
 文件：
 
@@ -724,7 +750,7 @@ model_call.purpose:
   evaluation
 ```
 
-## 15. Artifact
+## 16. Artifact
 
 文件：
 
@@ -765,7 +791,7 @@ artifact.type:
   memory_entry
 ```
 
-## 16. Experiment
+## 17. Experiment
 
 文件：
 
@@ -814,7 +840,7 @@ experiment.decision:
   blocked
 ```
 
-## 17. EvalReport
+## 18. EvalReport
 
 文件：
 
@@ -867,7 +893,7 @@ overall.status:
   fail
 ```
 
-## 18. CostReport
+## 19. CostReport
 
 文件：
 
@@ -907,7 +933,7 @@ cost.status:
   stopped
 ```
 
-## 19. MemoryEntry
+## 20. MemoryEntry
 
 文件：
 
@@ -948,7 +974,7 @@ memory.type:
   failure_lesson
 ```
 
-## 20. Event
+## 21. Event
 
 文件：
 
@@ -998,7 +1024,7 @@ event.type:
   error
 ```
 
-## 21. HandoffPackage
+## 22. HandoffPackage
 
 文件：
 
@@ -1025,7 +1051,7 @@ event.type:
 }
 ```
 
-## 22. 状态转移约束
+## 23. 状态转移约束
 
 ### 22.1 Task 状态转移
 
@@ -1060,7 +1086,7 @@ running -> failed
 running -> cancelled
 ```
 
-## 23. 最小实现优先级
+## 24. 最小实现优先级
 
 MVP 必须先实现以下对象：
 
@@ -1080,7 +1106,7 @@ MVP 必须先实现以下对象：
 
 其余对象可以在 V1 中补齐。
 
-## 24. Schema 校验策略
+## 25. Schema 校验策略
 
 实现时应提供：
 
@@ -1095,6 +1121,7 @@ MVP 必须先实现以下对象：
 
 ```text
 schemas/
+  current_session.schema.json
   project_config.schema.json
   policy_config.schema.json
   run.schema.json
