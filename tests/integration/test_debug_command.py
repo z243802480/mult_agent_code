@@ -114,6 +114,43 @@ class FakeDebugClient:
         )
 
 
+class FakePatchDebugClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        assert '"tool_name": "apply_patch"' in request.messages[0].content + request.messages[-1].content
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Patch VALUE to satisfy verification.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "apply_patch",
+                            "args": {
+                                "patch": "--- a/repairable.py\n+++ b/repairable.py\n@@\n-VALUE = 1\n+VALUE = 2\n"
+                            },
+                            "reason": "minimal patch repair",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "reason": "verify repaired value",
+                        }
+                    ],
+                    "completion_notes": "repairable.py patched to VALUE = 2",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(12, 18, 30),
+            model_provider="fake",
+            model_name="fake-debug",
+            raw_response={},
+        )
+
+
 def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
@@ -141,3 +178,18 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
     assert cost_report["repair_attempts"] == 1
     assert cost_report["estimated_input_tokens"] == 37
     assert cost_report["estimated_output_tokens"] == 63
+
+
+def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    assert execute.blocked == 1
+
+    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakePatchDebugClient()).run()
+
+    assert result.repaired == 1
+    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
+    assert "apply_patch" in tool_calls

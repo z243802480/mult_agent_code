@@ -21,8 +21,11 @@ class FilePatch:
 class ApplyPatchTool:
     name = "apply_patch"
 
-    def run(self, context: RuntimeContext, patch: str) -> ToolResult:
-        patches = parse_unified_diff(patch)
+    def run(self, context: RuntimeContext, patch: str | None = None, diff: str | None = None) -> ToolResult:
+        patch_text = patch if patch is not None else diff
+        if patch_text is None:
+            return ToolResult(ok=False, summary="Patch text is required", error="missing_patch")
+        patches = parse_unified_diff(patch_text)
         if not patches:
             return ToolResult(ok=False, summary="No file patches found", error="empty_patch")
         guard = PathGuard(context.root, context.policy["protected_paths"])
@@ -40,6 +43,7 @@ class ApplyPatchTool:
                 )
             resolved.parent.mkdir(parents=True, exist_ok=True)
             resolved.write_text("".join(patched), encoding="utf-8")
+            _clear_python_bytecode(resolved)
             changed.append(file_patch.path)
         return ToolResult(
             ok=True,
@@ -149,3 +153,13 @@ def _path_from_headers(old_header: str, new_header: str) -> str:
     if candidate in {"/dev/null", "dev/null"}:
         raise PatchApplyError("Creating or deleting files via unified diff is not supported yet")
     return candidate
+
+
+def _clear_python_bytecode(path) -> None:
+    if path.suffix != ".py":
+        return
+    cache_dir = path.parent / "__pycache__"
+    if not cache_dir.exists():
+        return
+    for cached in cache_dir.glob(f"{path.stem}.*.pyc"):
+        cached.unlink(missing_ok=True)

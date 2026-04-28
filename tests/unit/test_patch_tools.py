@@ -33,6 +33,22 @@ def test_apply_patch_changes_file(tmp_path: Path) -> None:
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "hello\nagent\n"
 
 
+def test_apply_patch_accepts_legacy_diff_argument(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("hello\nworld\n", encoding="utf-8")
+    diff = """--- a/a.txt
++++ b/a.txt
+@@
+ hello
+-world
++agent
+"""
+
+    result = ApplyPatchTool().run(context(tmp_path), diff=diff)
+
+    assert result.ok
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "hello\nagent\n"
+
+
 def test_apply_patch_changes_one_hunk_inside_larger_file(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
     patch = """--- a/a.txt

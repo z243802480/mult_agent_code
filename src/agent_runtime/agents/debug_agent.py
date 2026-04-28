@@ -92,7 +92,7 @@ You must:
                 "tool_calls": [
                     {
                         "tool_name": "apply_patch",
-                        "args": {"diff": "--- a/file.py\n+++ b/file.py\n..."},
+                        "args": {"patch": "--- a/file.py\n+++ b/file.py\n..."},
                         "reason": "minimal repair",
                     }
                 ],

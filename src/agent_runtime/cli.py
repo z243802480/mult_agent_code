@@ -110,16 +110,6 @@ def main() -> None:
         print(run_result.to_text())
         return
 
-    if args.command == "run":
-        result = RunCommand(
-            root=Path(args.root),
-            goal=args.goal,
-            max_iterations=args.max_iterations,
-            max_tasks_per_iteration=args.max_tasks_per_iteration,
-        ).run()
-        print(result.to_text())
-        return
-
     if args.command == "compact":
         compact_result = CompactCommand(root=Path(args.root), run_id=args.run_id, focus=args.focus).run()
         print(compact_result.to_text())
