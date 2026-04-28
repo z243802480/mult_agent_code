@@ -157,12 +157,15 @@ init if needed
 决策交互：
 
 - 当 `/review` 发现高影响 follow-up，例如输出形态、隐私、网络、预算或技术栈选择，会创建 `DecisionPoint`。
+- 当 `/execute` 发现某个工具调用触碰策略边界，例如被禁止的 shell 控制符、破坏性命令、远程推送、部署或全局安装，会创建一次性执行审批决策。
 - 产生待处理决策时，run 状态变为 `paused`，当前阶段变为 `DECISION`。
 - `final_report.md` 会列出 `Pending Decisions`，用户用 `/decide` 解析后再执行 `/resume`。
+- 一次性执行审批只对同一任务、同一工具、同一参数指纹生效，不修改全局策略。
 
 失败处理：
 
-- 任务验证失败时进入 `/debug`。
+- 任务验证失败时先通过备份清单回滚本次候选改动，并在 `experiments.jsonl` 记录为 `discard`。
+- 回滚后任务进入 `/debug`；DebugAgent 基于失败证据和干净基线提出下一次最小修复。
 - 修复后仍阻塞则停止执行循环并进入 `/review`，报告阻塞原因。
 - 无 ready 任务且状态无进展时停止循环，避免空转。
 
@@ -191,6 +194,13 @@ generate candidates
 - 风险。
 - 新颖性。
 - 验证难度。
+
+当前实现：
+
+- `agent brainstorm "目标"` 会生成 `brainstorm_report.json` / `brainstorm_report.md`。
+- 未传目标时，命令会默认使用 current session 的 GoalSpec。
+- `--apply` 会把 `task_candidates` 追加到 `task_plan.json` / `.agent/tasks/backlog.json`，并把 `decision_candidates` 写入 `decisions.jsonl`。
+- `/brainstorm` 只创建规划产物和决策点，不直接修改业务代码。
 
 ### 3.4 `/research`
 
@@ -257,7 +267,9 @@ generate candidates
 ready -> in_progress -> testing -> reviewing -> done
 ```
 
-工具失败、验证失败或模型返回非法行动时进入 `blocked`，等待 `/debug`、修复循环或用户决策。
+工具失败、验证失败或模型返回非法行动时进入 `blocked`，等待 `/debug`、修复循环或用户决策。验证失败的候选会先尝试 `restore_backup`，成功候选才会写入 `artifacts.jsonl`。
+
+如果工具计划被策略拦截，`/execute` 不会先执行部分候选，而是创建 `DecisionPoint` 并暂停 run。用户选择 `approve_once` 后，`/resume` 会把原任务重新置为 `ready`，并只放行同一条命令；选择 `skip` 则保留阻塞状态，等待重新规划或人工调整。
 
 约束：
 
@@ -303,7 +315,9 @@ ready -> in_progress -> testing -> reviewing -> done
 - 已解析但尚未应用的决策会记录 `decision_applied` 事件。
 - 对需要执行的选项，生成后续任务并接回 `/run` 的 execute/review/compact/final report 闭环。
 - `create_task` 和 `require_replan` 会生成后续任务。
-- `record_constraint` 和 `cancel_scope` 只记录为已接受决策，不创建任务。
+- `require_replan` 生成 `PlannerAgent` 后续任务，并把当前 run 的 `task_plan.json` 作为期望产物。
+- `record_constraint` 和 `cancel_scope` 不创建任务，但会写入 `.agent/memory/decisions.jsonl`，供后续规划和交接读取。
+- 所有已应用决策都会写入长期 memory，内容包含问题、选择、动作和应用效果。
 - 旧决策没有 `action` 字段时，运行时会根据选项 id/label 做兼容推断。
 - `final_report.md` 会列出 `Accepted Decisions`。
 
@@ -355,7 +369,7 @@ collect evidence
 - 调用 DebugAgent 生成结构化修复动作。
 - 执行修复工具调用和验证工具调用。
 - 成功时推进 `blocked -> ready -> in_progress -> testing -> reviewing -> done`。
-- 失败时保持 `blocked`，并写入修复失败原因。
+- 修复验证失败时回滚该次修复候选，在 `experiments.jsonl` 记录为 `discard`，并保持 `blocked`。
 - 累计 `repair_attempts`、模型调用、工具调用和 token 成本。
 
 ### 3.9 `/handoff`
@@ -374,6 +388,13 @@ collect evidence
 - 验证状态。
 - 风险。
 - 推荐下一步。
+
+当前实现：
+
+- `agent handoff --to ReviewerAgent` 会基于当前或指定 session 自动生成一个 `ContextSnapshot`。
+- 命令会在 `.agent/context/handoffs/` 下写入机器可读交接包。
+- 交接包会引用 snapshot、活跃任务、最近产物、已知风险和推荐下一步命令。
+- `--next-command` 可显式指定建议命令；未指定时会按 `debug -> execute -> review` 顺序推断。
 
 ## 4. 命令预算建议
 

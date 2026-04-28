@@ -50,6 +50,7 @@
     },
     "selected_option_id": { "type": ["string", "null"] },
     "created_at": { "type": "string" },
+    "metadata": { "type": "object" },
     "resolved_at": { "type": ["string", "null"] }
   }
 }

@@ -72,9 +72,13 @@ def test_file_tools_write_read_and_log(tmp_path: Path) -> None:
     assert read.data["content"] == "hello world"
 
     tool_calls = (ctx.run_dir / "tool_calls.jsonl").read_text(encoding="utf-8").splitlines()
-    events = (ctx.run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    events = [
+        json.loads(line)
+        for line in (ctx.run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
     assert len(tool_calls) == 2
-    assert len(events) == 2
+    assert "file_backup_created" in {event["type"] for event in events}
+    assert len([event for event in events if event["type"] == "tool_called"]) == 2
 
 
 def test_search_tool_finds_text(tmp_path: Path) -> None:

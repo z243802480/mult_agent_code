@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BrainstormReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "goal",
+    "created_at",
+    "candidates",
+    "recommendation",
+    "task_candidates",
+    "decision_candidates",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "goal": { "type": "string" },
+    "created_at": { "type": "string" },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidate_id", "title", "description", "scores", "risks"],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "scores": {
+            "type": "object",
+            "required": ["goal_fit", "feasibility", "cost", "user_value", "risk", "novelty", "verification_difficulty"],
+            "properties": {
+              "goal_fit": { "type": "number" },
+              "feasibility": { "type": "number" },
+              "cost": { "type": "number" },
+              "user_value": { "type": "number" },
+              "risk": { "type": "number" },
+              "novelty": { "type": "number" },
+              "verification_difficulty": { "type": "number" }
+            }
+          },
+          "risks": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "recommendation": {
+      "type": "object",
+      "required": ["candidate_id", "reason"],
+      "properties": {
+        "candidate_id": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "task_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "description", "priority", "role", "acceptance", "expected_artifacts"],
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "priority": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+          "role": { "type": "string" },
+          "acceptance": { "type": "array", "items": { "type": "string" } },
+          "expected_artifacts": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "decision_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "recommended_option_id", "default_option_id", "options", "impact"],
+        "properties": {
+          "question": { "type": "string" },
+          "recommended_option_id": { "type": "string" },
+          "default_option_id": { "type": "string" },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["option_id", "label", "tradeoff", "action"],
+              "properties": {
+                "option_id": { "type": "string" },
+                "label": { "type": "string" },
+                "tradeoff": { "type": "string" },
+                "action": {
+                  "type": "string",
+                  "enum": ["create_task", "record_constraint", "cancel_scope", "require_replan"]
+                }
+              }
+            }
+          },
+          "impact": {
+            "type": "object",
+            "required": ["scope", "budget", "risk", "quality"],
+            "properties": {
+              "scope": { "type": "string", "enum": ["low", "medium", "high"] },
+              "budget": { "type": "string", "enum": ["low", "medium", "high"] },
+              "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+              "quality": { "type": "string", "enum": ["low", "medium", "high"] }
+            }
+          }
+        }
+      }
+    },
+    "summary": { "type": "string" }
+  }
+}

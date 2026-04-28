@@ -127,7 +127,7 @@ class FakePatchDebugClient:
                         {
                             "tool_name": "apply_patch",
                             "args": {
-                                "patch": "--- a/repairable.py\n+++ b/repairable.py\n@@\n-VALUE = 1\n+VALUE = 2\n"
+                                "patch": "--- a/repairable.py\n+++ b/repairable.py\n@@\n-VALUE = 0\n+VALUE = 2\n"
                             },
                             "reason": "minimal patch repair",
                         }
@@ -140,6 +140,40 @@ class FakePatchDebugClient:
                         }
                     ],
                     "completion_notes": "repairable.py patched to VALUE = 2",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(12, 18, 30),
+            model_provider="fake",
+            model_name="fake-debug",
+            raw_response={},
+        )
+
+
+class FakeStillBrokenDebugClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Attempt a repair that still fails verification.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": "repairable.py", "content": "VALUE = 3\n", "overwrite": True},
+                            "reason": "incorrect repair",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "reason": "verify repaired value",
+                        }
+                    ],
+                    "completion_notes": "still broken",
                 },
                 ensure_ascii=False,
             ),
@@ -174,7 +208,7 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
-    assert cost_report["tool_calls"] == 4
+    assert cost_report["tool_calls"] == 5
     assert cost_report["repair_attempts"] == 1
     assert cost_report["estimated_input_tokens"] == 37
     assert cost_report["estimated_output_tokens"] == 63
@@ -182,9 +216,11 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
 
 def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
+    (tmp_path / "repairable.py").write_text("VALUE = 0\n", encoding="utf-8")
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
     execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
     assert execute.blocked == 1
+    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 0\n"
 
     result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakePatchDebugClient()).run()
 
@@ -193,3 +229,23 @@ def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
     assert "apply_patch" in tool_calls
+
+
+def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    assert execute.blocked == 1
+
+    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeStillBrokenDebugClient()).run()
+
+    assert result.repaired == 0
+    assert result.still_blocked == 1
+    assert not (tmp_path / "repairable.py").exists()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    experiments = [
+        json.loads(line)
+        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert experiments[-1]["decision"] == "discard"
+    assert experiments[-1]["candidate"]["rollback"][0]["restored"] == ["repairable.py"]

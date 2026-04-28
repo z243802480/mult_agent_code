@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass
+from pathlib import Path
 
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.security.path_guard import PathGuard
+from agent_runtime.storage.file_backup import FileBackupStore
 from agent_runtime.tools.base import ToolResult
 
 
@@ -29,7 +31,7 @@ class ApplyPatchTool:
         if not patches:
             return ToolResult(ok=False, summary="No file patches found", error="empty_patch")
         guard = PathGuard(context.root, context.policy["protected_paths"])
-        changed = []
+        planned: list[tuple[str, Path, list[str]]] = []
         for file_patch in patches:
             resolved = guard.resolve_for_write(file_patch.path)
             current = resolved.read_text(encoding="utf-8").splitlines(keepends=True) if resolved.exists() else []
@@ -41,14 +43,22 @@ class ApplyPatchTool:
                     error="patch_context_mismatch",
                     data={"path": file_patch.path},
                 )
+            planned.append((file_patch.path, resolved, patched))
+
+        backup = FileBackupStore(context).backup_paths(
+            [resolved for _, resolved, _ in planned],
+            "apply_patch",
+        )
+        changed = []
+        for path, resolved, patched in planned:
             resolved.parent.mkdir(parents=True, exist_ok=True)
             resolved.write_text("".join(patched), encoding="utf-8")
             _clear_python_bytecode(resolved)
-            changed.append(file_patch.path)
+            changed.append(path)
         return ToolResult(
             ok=True,
             summary=f"Applied patch to {len(changed)} file(s)",
-            data={"changed_files": changed},
+            data={"changed_files": changed, "backup_id": backup["backup_id"]},
         )
 
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from agent_runtime.agents.coder_agent import CoderAgent
+from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
@@ -10,7 +13,9 @@ from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
 from agent_runtime.models.model_call_logger import ModelCallLogger
+from agent_runtime.security.shell_guard import ShellGuard, ShellPolicyError
 from agent_runtime.storage.event_logger import EventLogger
+from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
@@ -122,7 +127,12 @@ class ExecuteCommand:
         blocked = len([item for item in executed if item.status == "blocked"])
         remaining_ready = task_board.ready_tasks()
         all_tasks = task_board.list_tasks()
-        if all(task["status"] == "done" for task in all_tasks):
+        if self._pending_decisions(run_dir):
+            run["status"] = "paused"
+            run["current_phase"] = "DECISION"
+            run["summary"] = "Execution paused for a user decision."
+            event_logger.record(run_id, "run_paused", "ExecuteCommand", run["summary"])
+        elif all(task["status"] == "done" for task in all_tasks):
             run["status"] = "completed"
             run["current_phase"] = "DONE"
             run["ended_at"] = now_iso()
@@ -166,10 +176,43 @@ class ExecuteCommand:
                 available_tools=self.registry.names(),
                 run_id=context.run_id or "",
             )
-            self._run_tool_calls(action["tool_calls"], task, context)
+            decision = self._create_policy_decision_if_needed(action, task, context)
+            if decision is not None:
+                task_board.update_status(task_id, "blocked")
+                task_board.update_notes(task_id, f"Waiting for decision: {decision['decision_id']}")
+                if context.event_logger:
+                    context.event_logger.record(
+                        context.run_id,
+                        "task_paused_for_decision",
+                        "ExecuteCommand",
+                        f"{task_id} paused for {decision['decision_id']}",
+                        {"task_id": task_id, "decision_id": decision["decision_id"]},
+                    )
+                return TaskExecutionSummary(
+                    task_id=task_id,
+                    status="blocked",
+                    summary=f"Waiting for decision: {decision['decision_id']}",
+                    tool_calls=0,
+                    verification_calls=0,
+                )
+            tool_results = self._run_tool_calls(action["tool_calls"], task, context)
             task_board.update_status(task_id, "testing")
-            verification_results = self._run_tool_calls(action["verification"], task, context)
+            verification_results = self._run_tool_calls(
+                action["verification"],
+                task,
+                context,
+                stop_on_failure=False,
+            )
             if all(result.ok for result in verification_results):
+                self._record_experiment(
+                    context,
+                    task,
+                    action,
+                    tool_results,
+                    verification_results,
+                    "keep",
+                    "Verification passed.",
+                )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
                 task_board.update_notes(task_id, action.get("completion_notes") or action["summary"])
@@ -182,8 +225,18 @@ class ExecuteCommand:
                     tool_calls=len(action["tool_calls"]),
                     verification_calls=len(action["verification"]),
                 )
+            self._record_experiment(
+                context,
+                task,
+                action,
+                tool_results,
+                verification_results,
+                "discard",
+                "Verification failed; candidate was rolled back before repair.",
+                rollback_results=self._rollback_backups(context, task, tool_results),
+            )
             task_board.update_status(task_id, "blocked")
-            task_board.update_notes(task_id, "Verification failed; repair is required.")
+            task_board.update_notes(task_id, "Verification failed; candidate was rolled back.")
             if context.event_logger:
                 context.event_logger.record(context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}")
             return TaskExecutionSummary(
@@ -203,7 +256,13 @@ class ExecuteCommand:
                 verification_calls=0,
             )
 
-    def _run_tool_calls(self, calls: list[dict], task: dict, context: RuntimeContext) -> list:
+    def _run_tool_calls(
+        self,
+        calls: list[dict],
+        task: dict,
+        context: RuntimeContext,
+        stop_on_failure: bool = True,
+    ) -> list:
         results = []
         allowed = set(task["allowed_tools"])
         for call in calls:
@@ -212,15 +271,327 @@ class ExecuteCommand:
                 raise PermissionError(f"Tool is not allowed for {task['task_id']}: {tool_name}")
             result = self.registry.call(
                 tool_name,
-                context,
+                self._context_with_approval(context, task, tool_name, call["args"]),
                 task_id=task["task_id"],
                 agent_id="CoderAgent",
                 **call["args"],
             )
             results.append(result)
-            if not result.ok:
+            if stop_on_failure and not result.ok:
                 raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")
         return results
+
+    def _create_policy_decision_if_needed(
+        self,
+        action: dict,
+        task: dict,
+        context: RuntimeContext,
+    ) -> dict | None:
+        for call in [*action.get("tool_calls", []), *action.get("verification", [])]:
+            tool_name = call["tool_name"]
+            if tool_name not in {"run_command", "run_tests"}:
+                continue
+            command = str(call.get("args", {}).get("command") or "")
+            if not command:
+                continue
+            denial = self._shell_denial(context.policy, command)
+            if denial is None or self._has_execution_approval(context, task, tool_name, call["args"]):
+                continue
+            return self._create_execution_decision(context, task, tool_name, call["args"], denial)
+        return None
+
+    def _shell_denial(self, policy: dict, command: str) -> str | None:
+        try:
+            ShellGuard(policy["permissions"]).validate(command)
+        except ShellPolicyError as exc:
+            return str(exc)
+        return None
+
+    def _create_execution_decision(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_name: str,
+        args: dict,
+        denial: str,
+    ) -> dict:
+        assert context.run_id is not None
+        assert context.run_dir is not None
+        existing = self._matching_decisions(context.run_dir, task, tool_name, args)
+        for decision in existing:
+            if decision["status"] == "pending":
+                return decision
+        options = [
+            {
+                "option_id": "approve_once",
+                "label": "Approve once",
+                "tradeoff": "Allow this exact command once for this task; keeps global policy unchanged.",
+                "action": "record_constraint",
+            },
+            {
+                "option_id": "skip",
+                "label": "Keep blocked",
+                "tradeoff": "Do not run the command; the task remains blocked until replanned or changed.",
+                "action": "record_constraint",
+            },
+        ]
+        result = DecideCommand(
+            self.root,
+            run_id=context.run_id,
+            question=(
+                f"Approve one-time execution for task {task['task_id']}? "
+                f"Policy blocked `{tool_name}` because: {denial}"
+            ),
+            options_json=json.dumps(options, ensure_ascii=False),
+            recommended_option_id="skip",
+            default_option_id="skip",
+            impact_json=json.dumps(
+                {"scope": "medium", "budget": "low", "risk": "high", "quality": "medium"},
+                ensure_ascii=False,
+            ),
+            metadata={
+                "kind": "execution_policy_approval",
+                "task_id": task["task_id"],
+                "tool_name": tool_name,
+                "args_fingerprint": self._args_fingerprint(args),
+                "denial": denial,
+            },
+        ).run()
+        return result.decisions[0]
+
+    def _context_with_approval(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_name: str,
+        args: dict,
+    ) -> RuntimeContext:
+        if tool_name not in {"run_command", "run_tests"}:
+            return context
+        if not self._has_execution_approval(context, task, tool_name, args):
+            return context
+        policy = deepcopy(context.policy)
+        permissions = policy.setdefault("permissions", {})
+        permissions["allow_shell"] = True
+        permissions["allow_shell_operators"] = True
+        permissions["allow_destructive_shell"] = True
+        permissions["allow_remote_push"] = True
+        permissions["allow_deploy"] = True
+        permissions["allow_global_package_install"] = True
+        return RuntimeContext(
+            root=context.root,
+            run_id=context.run_id,
+            policy=policy,
+            validator=context.validator,
+            event_logger=context.event_logger,
+            budget=context.budget,
+        )
+
+    def _has_execution_approval(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_name: str,
+        args: dict,
+    ) -> bool:
+        if context.run_dir is None:
+            return False
+        for decision in self._matching_decisions(context.run_dir, task, tool_name, args):
+            if decision["status"] in {"resolved", "defaulted"}:
+                return decision.get("selected_option_id") == "approve_once"
+        return False
+
+    def _matching_decisions(
+        self,
+        run_dir: Path,
+        task: dict,
+        tool_name: str,
+        args: dict,
+    ) -> list[dict]:
+        path = run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        fingerprint = self._args_fingerprint(args)
+        matches = []
+        for decision in JsonlStore(self.validator).read_all(path, "decision_point"):
+            metadata = decision.get("metadata") or {}
+            if (
+                metadata.get("kind") == "execution_policy_approval"
+                and metadata.get("task_id") == task["task_id"]
+                and metadata.get("tool_name") == tool_name
+                and metadata.get("args_fingerprint") == fingerprint
+            ):
+                matches.append(decision)
+        return matches
+
+    def _args_fingerprint(self, args: dict) -> str:
+        return json.dumps(args, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+    def _record_experiment(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        action: dict,
+        tool_results: list,
+        verification_results: list,
+        decision: str,
+        reason: str,
+        rollback_results: list | None = None,
+    ) -> None:
+        if not context.run_dir:
+            return
+        if decision == "keep":
+            self._record_artifacts(context, task, tool_results)
+        path = context.run_dir / "experiments.jsonl"
+        store = JsonlStore(self.validator)
+        existing = store.read_all(path, "experiment") if path.exists() else []
+        backup_ids = [
+            result.data["backup_id"]
+            for result in tool_results
+            if result.ok and isinstance(result.data, dict) and result.data.get("backup_id")
+        ]
+        changed_files = []
+        for result in tool_results:
+            if not result.ok or not isinstance(result.data, dict):
+                continue
+            if result.data.get("path"):
+                changed_files.append(result.data["path"])
+            changed_files.extend(result.data.get("changed_files", []))
+        verification_passed = len([result for result in verification_results if result.ok])
+        experiment = {
+            "schema_version": "0.1.0",
+            "experiment_id": f"exp-{len(existing) + 1:04d}",
+            "run_id": context.run_id,
+            "task_id": task["task_id"],
+            "idea": action["summary"],
+            "baseline": {
+                "task_status": task["status"],
+                "acceptance_count": len(task.get("acceptance", [])),
+            },
+            "candidate": {
+                "changed_files": sorted(set(changed_files)),
+                "backup_ids": backup_ids,
+                "rollback": self._rollback_summary(rollback_results or []),
+            },
+            "evaluator": {
+                "commands": [call.get("args", {}).get("command") for call in action.get("verification", [])],
+                "tool_count": len(action.get("tool_calls", [])),
+            },
+            "metrics_after": {
+                "verification_total": len(verification_results),
+                "verification_passed": verification_passed,
+                "verification_pass_rate": (
+                    verification_passed / len(verification_results) if verification_results else 1.0
+                ),
+            },
+            "decision": decision,
+            "reason": reason,
+        }
+        store.append(path, experiment, "experiment")
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "experiment_recorded",
+                "ExecuteCommand",
+                f"{experiment['experiment_id']} -> {decision}",
+                {
+                    "experiment_id": experiment["experiment_id"],
+                    "task_id": task["task_id"],
+                    "decision": decision,
+                    "backup_ids": backup_ids,
+                },
+            )
+
+    def _rollback_backups(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_results: list,
+    ) -> list:
+        backup_ids = [
+            result.data["backup_id"]
+            for result in tool_results
+            if result.ok and isinstance(result.data, dict) and result.data.get("backup_id")
+        ]
+        rollback_results = []
+        delete_created_files = bool(
+            context.policy.get("permissions", {}).get("allow_restore_delete_created_files", False)
+        )
+        for backup_id in reversed(backup_ids):
+            result = self.registry.call(
+                "restore_backup",
+                context,
+                task_id=task["task_id"],
+                agent_id="ExecuteCommand",
+                backup_id=backup_id,
+                delete_created_files=delete_created_files,
+            )
+            rollback_results.append(result)
+        return rollback_results
+
+    def _rollback_summary(self, rollback_results: list) -> list[dict]:
+        summary = []
+        for result in rollback_results:
+            item = {
+                "ok": result.ok,
+                "summary": result.summary,
+                "warnings": result.warnings,
+            }
+            if isinstance(result.data, dict):
+                item["backup_id"] = result.data.get("backup_id")
+                item["restored"] = result.data.get("restored", [])
+                item["skipped"] = result.data.get("skipped", [])
+            summary.append(item)
+        return summary
+
+    def _record_artifacts(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_results: list,
+    ) -> None:
+        if not context.run_dir:
+            return
+        changed_files = []
+        for result in tool_results:
+            if not result.ok or not isinstance(result.data, dict):
+                continue
+            if result.data.get("path"):
+                changed_files.append(result.data["path"])
+            changed_files.extend(result.data.get("changed_files", []))
+        if not changed_files:
+            return
+
+        path = context.run_dir / "artifacts.jsonl"
+        store = JsonlStore(self.validator)
+        existing = store.read_all(path, "artifact") if path.exists() else []
+        known = {artifact["path"] for artifact in existing}
+        next_index = len(existing) + 1
+        for artifact_path in sorted(set(changed_files)):
+            if artifact_path in known:
+                continue
+            artifact = {
+                "schema_version": "0.1.0",
+                "artifact_id": f"artifact-{next_index:04d}",
+                "run_id": context.run_id,
+                "task_id": task["task_id"],
+                "type": self._artifact_type(artifact_path),
+                "path": artifact_path,
+                "created_by": "CoderAgent",
+                "summary": f"Created or modified by {task['task_id']}: {task['title']}",
+                "created_at": now_iso(),
+            }
+            store.append(path, artifact, "artifact")
+            known.add(artifact_path)
+            next_index += 1
+
+    def _artifact_type(self, path: str) -> str:
+        lowered = path.lower()
+        if "test" in lowered or lowered.endswith((".spec.py", ".test.py")):
+            return "test_file"
+        if lowered.endswith((".md", ".txt", ".rst")):
+            return "report"
+        return "source_file"
 
     def _block_task(self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext) -> None:
         try:
@@ -264,6 +635,16 @@ class ExecuteCommand:
 
     def _mirror_backlog(self, agent_dir: Path, task_board: TaskBoard) -> None:
         self.store.write(agent_dir / "tasks" / "backlog.json", {"schema_version": "0.1.0", "tasks": task_board.list_tasks()}, "task_board")
+
+    def _pending_decisions(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        return [
+            decision
+            for decision in JsonlStore(self.validator).read_all(path, "decision_point")
+            if decision["status"] == "pending"
+        ]
 
     def _latest_run_id(self, agent_dir: Path) -> str | None:
         runs_dir = agent_dir / "runs"

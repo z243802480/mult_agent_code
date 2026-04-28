@@ -43,6 +43,8 @@ class FakeModelClient:
             return self._eval_report(request)
         if request.purpose == "research":
             return self._research_report(request)
+        if request.purpose == "brainstorming":
+            return self._brainstorm_report(request)
         return {"ok": True, "purpose": request.purpose}
 
     def _goal_spec(self, request: ChatRequest) -> dict:
@@ -171,6 +173,70 @@ class FakeModelClient:
             "risks": [],
             "decision_candidates": [],
             "summary": "Offline fake research synthesized local sources.",
+        }
+
+    def _brainstorm_report(self, request: ChatRequest) -> dict:
+        payload = json.loads(request.messages[-1].content)
+        goal = payload.get("goal", "offline verification")
+        return {
+            "schema_version": "0.1.0",
+            "run_id": payload.get("run_id"),
+            "goal": goal,
+            "created_at": "2026-04-28T00:00:00+08:00",
+            "candidates": [
+                {
+                    "candidate_id": "candidate-0001",
+                    "title": "Offline artifact workflow",
+                    "description": "Create a deterministic local artifact with verification and reporting.",
+                    "scores": {
+                        "goal_fit": 0.9,
+                        "feasibility": 0.95,
+                        "cost": 0.2,
+                        "user_value": 0.75,
+                        "risk": 0.1,
+                        "novelty": 0.2,
+                        "verification_difficulty": 0.2,
+                    },
+                    "risks": ["Fake model quality is not representative of production models."],
+                }
+            ],
+            "recommendation": {
+                "candidate_id": "candidate-0001",
+                "reason": "It is deterministic, local-first, and easy to verify.",
+            },
+            "task_candidates": [
+                {
+                    "title": "Create offline verification artifact",
+                    "description": "Create and verify a deterministic offline artifact for the goal.",
+                    "priority": "high",
+                    "role": "CoderAgent",
+                    "acceptance": ["offline_artifact.txt exists", "local verification passes"],
+                    "expected_artifacts": ["offline_artifact.txt"],
+                }
+            ],
+            "decision_candidates": [
+                {
+                    "question": "Should the offline artifact flow remain local-only?",
+                    "recommended_option_id": "local_only",
+                    "default_option_id": "local_only",
+                    "options": [
+                        {
+                            "option_id": "local_only",
+                            "label": "Keep local only",
+                            "tradeoff": "Fast and private, but does not test network research.",
+                            "action": "record_constraint",
+                        },
+                        {
+                            "option_id": "allow_research",
+                            "label": "Allow research later",
+                            "tradeoff": "Improves realism, but needs explicit network policy.",
+                            "action": "require_replan",
+                        },
+                    ],
+                    "impact": {"scope": "medium", "budget": "medium", "risk": "medium", "quality": "medium"},
+                }
+            ],
+            "summary": "Offline fake brainstorming produced one local-first recommendation.",
         }
 
     def _extract_goal(self, prompt: str) -> str:

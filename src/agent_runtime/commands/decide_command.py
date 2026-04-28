@@ -45,6 +45,7 @@ class DecideCommand:
         recommended_option_id: str | None = None,
         default_option_id: str | None = None,
         impact_json: str | None = None,
+        metadata: dict | None = None,
         decision_id: str | None = None,
         select_option_id: str | None = None,
         use_default: bool = False,
@@ -57,6 +58,7 @@ class DecideCommand:
         self.recommended_option_id = recommended_option_id
         self.default_option_id = default_option_id
         self.impact_json = impact_json
+        self.metadata = metadata or {}
         self.decision_id = decision_id
         self.select_option_id = select_option_id
         self.use_default = use_default
@@ -121,6 +123,7 @@ class DecideCommand:
             "impact": self._parse_impact(),
             "selected_option_id": None,
             "created_at": now_iso(),
+            "metadata": self.metadata,
             "resolved_at": None,
         }
         self.validator.validate("decision_point", decision)

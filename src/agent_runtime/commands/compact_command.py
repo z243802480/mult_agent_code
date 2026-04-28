@@ -69,6 +69,7 @@ class CompactCommand:
         events = self._read_optional_jsonl(run_dir / "events.jsonl" if run_dir else None, "event")
         tool_calls = self._read_optional_jsonl(run_dir / "tool_calls.jsonl" if run_dir else None, "tool_call")
         model_calls = self._read_optional_jsonl(run_dir / "model_calls.jsonl" if run_dir else None, "model_call")
+        artifacts = self._read_optional_jsonl(run_dir / "artifacts.jsonl" if run_dir else None, "artifact")
 
         tasks = task_plan.get("tasks", []) if task_plan else []
         active_tasks = [
@@ -76,7 +77,7 @@ class CompactCommand:
             for task in tasks
             if task["status"] in {"ready", "in_progress", "testing", "reviewing", "blocked"}
         ]
-        modified_files = self._modified_files(tool_calls)
+        modified_files = self._modified_files(tool_calls, artifacts)
         failures = self._failures(tool_calls, events, model_calls)
         next_actions = self._next_actions(goal_spec, tasks, failures)
 
@@ -140,7 +141,12 @@ class CompactCommand:
         report["context_compactions"] = int(report.get("context_compactions", 0)) + 1
         self.store.write(path, report, "cost_report")
 
-    def _modified_files(self, tool_calls: list[dict]) -> list[dict]:
+    def _modified_files(self, tool_calls: list[dict], artifacts: list[dict] | None = None) -> list[dict]:
+        if artifacts:
+            return [
+                {"path": artifact["path"], "reason": artifact["summary"]}
+                for artifact in artifacts[-20:]
+            ]
         files = []
         for call in tool_calls:
             if call["tool_name"] not in {"write_file", "apply_patch"} or call["status"] != "success":

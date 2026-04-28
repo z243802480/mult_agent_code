@@ -364,6 +364,12 @@ class RunCommand:
         ]
 
     def _artifact_paths(self, run_dir: Path) -> list[str]:
+        artifact_log = run_dir / "artifacts.jsonl"
+        if artifact_log.exists():
+            return [
+                f"{artifact['path']} - {artifact['summary']}"
+                for artifact in self.jsonl.read_all(artifact_log, "artifact")
+            ][-20:]
         path = run_dir / "tool_calls.jsonl"
         if not path.exists():
             return []

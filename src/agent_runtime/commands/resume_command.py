@@ -151,23 +151,56 @@ class ResumeCommand:
         created_tasks = []
         for decision in resolved:
             option = self._selected_option(decision)
+            effect = "recorded"
+            if self._apply_execution_approval(decision, option, task_plan):
+                effect = "execution_approval_applied"
+                self._record_decision_applied(run_dir, run_id, decision, option, effect)
+                self._record_decision_memory(agent_dir, run_id, decision, option, effect)
+                continue
             if option and self._should_create_task(option):
-                task = self._task_from_decision(decision, option, task_plan["tasks"])
+                task = self._task_from_decision(decision, option, task_plan["tasks"], run_id)
                 self.validator.validate("task", task)
                 task_plan["tasks"].append(task)
                 created_tasks.append(task)
-            self._record_decision_applied(run_dir, run_id, decision, option)
+                effect = "replan_task_created" if self._option_action(option) == "require_replan" else "task_created"
+            elif option and self._option_action(option) == "cancel_scope":
+                effect = "scope_cancelled"
+            elif option and self._option_action(option) == "record_constraint":
+                effect = "constraint_recorded"
+            self._record_decision_applied(run_dir, run_id, decision, option, effect)
+            self._record_decision_memory(agent_dir, run_id, decision, option, effect)
 
         self._promote_ready_tasks(task_plan)
         self.store.write(task_plan_path, task_plan, "task_board")
         self.store.write(agent_dir / "tasks" / "backlog.json", task_plan, "task_board")
         return len(resolved), len(created_tasks)
 
+    def _apply_execution_approval(
+        self,
+        decision: dict,
+        option: dict | None,
+        task_plan: dict,
+    ) -> bool:
+        metadata = decision.get("metadata") or {}
+        if metadata.get("kind") != "execution_policy_approval":
+            return False
+        if not option or option["option_id"] != "approve_once":
+            return True
+        task_id = str(metadata.get("task_id") or "")
+        for task in task_plan["tasks"]:
+            if task["task_id"] == task_id and task["status"] == "blocked":
+                task["status"] = "ready"
+                task["notes"] = f"Approved one-time execution via {decision['decision_id']}."
+                task["updated_at"] = now_iso()
+                return True
+        return True
+
     def _task_from_decision(
         self,
         decision: dict,
         option: dict,
         existing_tasks: list[dict],
+        run_id: str,
     ) -> dict:
         next_index = self._next_task_index(existing_tasks)
         dependency = self._last_active_task_id(existing_tasks)
@@ -180,6 +213,11 @@ class ResumeCommand:
             f"Tradeoff: {option['tradeoff']}"
         )
         role = "PlannerAgent" if self._option_action(option) == "require_replan" else "CoderAgent"
+        expected_artifacts = (
+            [f".agent/runs/{run_id}/task_plan.json"]
+            if self._option_action(option) == "require_replan"
+            else []
+        )
         return {
             "schema_version": "0.1.0",
             "task_id": f"task-{next_index:04d}",
@@ -197,10 +235,11 @@ class ResumeCommand:
                 "search_text",
                 "write_file",
                 "apply_patch",
+                "restore_backup",
                 "run_command",
                 "run_tests",
             ],
-            "expected_artifacts": [],
+            "expected_artifacts": expected_artifacts,
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -249,20 +288,56 @@ class ResumeCommand:
         run_id: str,
         decision: dict,
         option: dict | None,
+        effect: str,
     ) -> None:
         selected = decision["selected_option_id"] or decision["default_option_id"]
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             "decision_applied",
             "ResumeCommand",
-            f"{decision['decision_id']} -> {selected}",
+            f"{decision['decision_id']} -> {selected} ({effect})",
             {
                 "decision_id": decision["decision_id"],
                 "selected_option_id": selected,
                 "label": option["label"] if option else None,
                 "action": self._option_action(option) if option else None,
+                "effect": effect,
             },
         )
+
+    def _record_decision_memory(
+        self,
+        agent_dir: Path,
+        run_id: str,
+        decision: dict,
+        option: dict | None,
+        effect: str,
+    ) -> None:
+        path = agent_dir / "memory" / "decisions.jsonl"
+        existing = self.jsonl.read_all(path, "memory_entry") if path.exists() else []
+        selected = decision["selected_option_id"] or decision["default_option_id"]
+        action = self._option_action(option) if option else "unknown"
+        content = (
+            f"Decision {decision['decision_id']} resolved with `{selected}`. "
+            f"Question: {decision['question']} "
+            f"Action: {action}. Effect: {effect}."
+        )
+        memory = {
+            "schema_version": "0.1.0",
+            "memory_id": f"memory-{len(existing) + 1:04d}",
+            "type": "project_decision",
+            "content": content,
+            "source": {
+                "run_id": run_id,
+                "decision_id": decision["decision_id"],
+                "selected_option_id": selected,
+                "effect": effect,
+            },
+            "tags": ["decision", action, effect],
+            "confidence": 1.0,
+            "created_at": now_iso(),
+        }
+        self.jsonl.append(path, memory, "memory_entry")
 
     def _pending_decisions(self, run_dir: Path) -> list[dict]:
         return [

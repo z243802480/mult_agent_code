@@ -171,6 +171,19 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
     assert "write_file" in tool_calls
     assert "run_command" in tool_calls
+    experiments = [
+        json.loads(line)
+        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert experiments[0]["decision"] == "keep"
+    assert experiments[0]["candidate"]["backup_ids"]
+    assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
+    artifacts = [
+        json.loads(line)
+        for line in (run_dir / "artifacts.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert artifacts[0]["path"] == "notes_tool.py"
+    assert artifacts[0]["type"] == "source_file"
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 2
@@ -202,9 +215,18 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
 
     assert result.completed == 0
     assert result.blocked == 1
-    assert (tmp_path / "broken_tool.py").exists()
+    assert not (tmp_path / "broken_tool.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
     tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
     assert "nonzero_exit" in tool_calls
+    assert "restore_backup" in tool_calls
+    experiments = [
+        json.loads(line)
+        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert experiments[0]["decision"] == "discard"
+    assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.0
+    assert experiments[0]["candidate"]["rollback"][0]["restored"] == ["broken_tool.py"]
+    assert not (run_dir / "artifacts.jsonl").exists()

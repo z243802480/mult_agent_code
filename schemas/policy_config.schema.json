@@ -65,7 +65,8 @@
         "allow_global_package_install",
         "allow_secret_file_read",
         "allow_remote_push",
-        "allow_deploy"
+        "allow_deploy",
+        "allow_restore_delete_created_files"
       ],
       "properties": {
         "allow_network": { "type": "boolean" },
@@ -74,7 +75,8 @@
         "allow_global_package_install": { "type": "boolean" },
         "allow_secret_file_read": { "type": "boolean" },
         "allow_remote_push": { "type": "boolean" },
-        "allow_deploy": { "type": "boolean" }
+        "allow_deploy": { "type": "boolean" },
+        "allow_restore_delete_created_files": { "type": "boolean" }
       }
     },
     "protected_paths": { "type": "array", "items": { "type": "string" } },

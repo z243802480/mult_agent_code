@@ -15,6 +15,12 @@ agent /sessions --root .
 
 `agent /run "goal"` writes run artifacts under `.agent/runs/<run_id>/`, including
 `goal_spec.json`, `task_plan.json`, logs, `review_report.md`, and `final_report.md`.
+Failed implementation candidates are backed up, rolled back, and recorded as discarded experiments
+before the debug loop attempts a clean repair.
+Policy-blocked execution plans pause the run with a one-time decision point; approving it resumes
+the original task without changing global permissions.
+Applied decisions are also written to `.agent/memory/decisions.jsonl`, so constraints,
+cancelled scope, and replanning choices remain durable across handoffs.
 
 ## Model Configuration
 
@@ -56,6 +62,16 @@ docker run --rm agent-runtime:verify
 ```
 
 The verification command compiles sources, runs tests, runs ruff, runs mypy, and checks basic CLI commands in a temporary workspace.
+
+## Benchmarks
+
+Run deterministic MVP regression scenarios:
+
+```powershell
+python scripts/run_benchmarks.py
+```
+
+The runner currently covers the password-tool smoke scenario and a failing-tests repair scenario.
 
 ## Offline Model
 

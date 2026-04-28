@@ -12,6 +12,7 @@ class RequirementPlanner:
             if requirement["priority"] == "wont":
                 continue
             task_id = f"task-{index:04d}"
+            expected_artifacts = self._expected_artifacts(requirement, goal_spec)
             tasks.append(
                 {
                     "schema_version": "0.1.0",
@@ -28,14 +29,15 @@ class RequirementPlanner:
                         "search_text",
                         "write_file",
                         "apply_patch",
+                        "restore_backup",
                         "run_command",
                         "run_tests",
                     ],
-                    "expected_artifacts": [],
+                    "expected_artifacts": expected_artifacts,
                     "assigned_agent_id": None,
                     "created_at": now_iso(),
                     "updated_at": now_iso(),
-                    "notes": f"Generated from {requirement['id']}",
+                    "notes": self._notes(requirement["id"], requirement, expected_artifacts),
                 }
             )
 
@@ -52,11 +54,14 @@ class RequirementPlanner:
                     "depends_on": [],
                     "acceptance": goal_spec["definition_of_done"][:3] or ["Goal is clarified"],
                     "allowed_tools": ["read_file", "search_text", "write_file"],
-                    "expected_artifacts": [],
+                    "expected_artifacts": self._fallback_artifacts(goal_spec),
                     "assigned_agent_id": None,
                     "created_at": now_iso(),
                     "updated_at": now_iso(),
-                    "notes": "Fallback task because no actionable requirements were generated.",
+                    "notes": (
+                        "Fallback task because no actionable requirements were generated. "
+                        "Quality: clarity=0.60 testability=0.60 size=0.70 artifact=0.60."
+                    ),
                 }
             )
         return {"schema_version": "0.1.0", "tasks": tasks}
@@ -74,6 +79,51 @@ class RequirementPlanner:
         if len(trimmed) <= 60:
             return trimmed
         return trimmed[:57].rstrip() + "..."
+
+    def _expected_artifacts(self, requirement: dict, goal_spec: dict) -> list[str]:
+        explicit = requirement.get("expected_artifacts")
+        if isinstance(explicit, list) and explicit:
+            return [str(item) for item in explicit]
+        description = str(requirement.get("description", "")).lower()
+        target_outputs = {str(item).lower() for item in goal_spec.get("target_outputs", [])}
+        artifacts: list[str] = []
+        if "readme" in target_outputs or "doc" in description or "documentation" in description:
+            artifacts.append("README.md")
+        if "test" in description or "unit_tests" in goal_spec.get("verification_strategy", []):
+            artifacts.append("tests/")
+        if any(output in target_outputs for output in ["local_cli", "cli", "python_module"]):
+            artifacts.append("src/")
+        if any(output in target_outputs for output in ["report", "markdown_report"]):
+            artifacts.append("report.md")
+        if not artifacts:
+            artifacts.append("implementation artifact")
+        return list(dict.fromkeys(artifacts))
+
+    def _fallback_artifacts(self, goal_spec: dict) -> list[str]:
+        outputs = [str(item) for item in goal_spec.get("target_outputs", [])]
+        return outputs or ["planning artifact"]
+
+    def _notes(self, requirement_id: str, requirement: dict, expected_artifacts: list[str]) -> str:
+        scores = self._quality_scores(requirement, expected_artifacts)
+        return (
+            f"Generated from {requirement_id}. "
+            "Quality: "
+            f"clarity={scores['clarity']:.2f} "
+            f"testability={scores['testability']:.2f} "
+            f"size={scores['size']:.2f} "
+            f"artifact={scores['artifact']:.2f}."
+        )
+
+    def _quality_scores(self, requirement: dict, expected_artifacts: list[str]) -> dict[str, float]:
+        description = str(requirement.get("description", "")).strip()
+        acceptance = requirement.get("acceptance", [])
+        acceptance_count = len(acceptance) if isinstance(acceptance, list) else 0
+        return {
+            "clarity": 0.85 if len(description.split()) >= 4 else 0.65,
+            "testability": 0.85 if acceptance_count >= 1 else 0.55,
+            "size": 0.80 if acceptance_count <= 4 else 0.65,
+            "artifact": 0.85 if expected_artifacts else 0.50,
+        }
 
 
 class FollowUpTaskPlanner:
@@ -126,10 +176,11 @@ class FollowUpTaskPlanner:
                     "allowed_tools": [
                         "read_file",
                         "search_text",
-                        "write_file",
-                        "apply_patch",
-                        "run_command",
-                        "run_tests",
+                    "write_file",
+                    "apply_patch",
+                    "restore_backup",
+                    "run_command",
+                    "run_tests",
                     ],
                     "expected_artifacts": expected_artifacts,
                     "assigned_agent_id": None,

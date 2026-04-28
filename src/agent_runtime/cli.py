@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from agent_runtime.commands.brainstorm_command import BrainstormCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.model_check_command import ModelCheckCommand
 from agent_runtime.commands.new_command import NewCommand
@@ -10,6 +11,7 @@ from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
+from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
@@ -123,6 +125,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum sources to collect",
     )
 
+    brainstorm_parser = subcommands.add_parser(
+        "brainstorm",
+        aliases=["/brainstorm"],
+        help="Generate and score product or implementation directions",
+    )
+    brainstorm_parser.add_argument("goal", nargs="?", help="Goal to brainstorm; defaults to current session")
+    brainstorm_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(brainstorm_parser, "Session id; defaults to current session")
+    brainstorm_parser.add_argument(
+        "--max-candidates",
+        type=int,
+        default=5,
+        help="Maximum candidate directions to request",
+    )
+    brainstorm_parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Append generated task and decision candidates to the current run",
+    )
+
     run_parser = subcommands.add_parser(
         "run",
         aliases=["/run"],
@@ -178,6 +200,35 @@ def build_parser() -> argparse.ArgumentParser:
         "--focus",
         default="manual context compaction",
         help="Snapshot focus",
+    )
+
+    handoff_parser = subcommands.add_parser(
+        "handoff",
+        aliases=["/handoff"],
+        help="Create a handoff package for another agent or a future run",
+    )
+    handoff_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(handoff_parser, "Session id to hand off; defaults to current session")
+    handoff_parser.add_argument(
+        "--to",
+        dest="to_role",
+        default="FutureRun",
+        help="Target role for the handoff package",
+    )
+    handoff_parser.add_argument(
+        "--from-agent-id",
+        default=None,
+        help="Optional source agent identifier",
+    )
+    handoff_parser.add_argument(
+        "--next-command",
+        default=None,
+        help="Recommended next command; inferred when omitted",
+    )
+    handoff_parser.add_argument(
+        "--focus",
+        default=None,
+        help="Optional snapshot focus override",
     )
 
     execute_parser = subcommands.add_parser(
@@ -304,6 +355,17 @@ def main() -> None:
         print(research_result.to_text())
         return
 
+    if command == "brainstorm":
+        brainstorm_result = BrainstormCommand(
+            root=Path(args.root),
+            goal=args.goal,
+            run_id=args.session_id,
+            max_candidates=args.max_candidates,
+            apply=args.apply,
+        ).run()
+        print(brainstorm_result.to_text())
+        return
+
     if command == "run":
         run_result = RunCommand(
             root=Path(args.root),
@@ -332,6 +394,18 @@ def main() -> None:
             focus=args.focus,
         ).run()
         print(compact_result.to_text())
+        return
+
+    if command == "handoff":
+        handoff_result = HandoffCommand(
+            root=Path(args.root),
+            run_id=args.session_id,
+            to_role=args.to_role,
+            from_agent_id=args.from_agent_id,
+            recommended_next_command=args.next_command,
+            focus=args.focus,
+        ).run()
+        print(handoff_result.to_text())
         return
 
     if command == "execute":

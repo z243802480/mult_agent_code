@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1.0",
+  "benchmark_id": "password_tool",
+  "goal": "做一个本地优先的密码测试工具",
+  "purpose": "Validate fuzzy-goal expansion, local privacy constraints, implementation, verification, and final reporting.",
+  "budget": {
+    "max_model_calls": 60,
+    "max_tool_calls": 120,
+    "max_iterations": 8
+  },
+  "expected_capabilities": [
+    "Expands the vague password-tool goal into privacy-safe requirements.",
+    "Creates at least one runnable local artifact.",
+    "Includes a clear limitation that password strength does not prove absolute security.",
+    "Runs local verification before final reporting."
+  ],
+  "expected_artifacts": [
+    "goal_spec.json",
+    "task_plan.json",
+    "tool_calls.jsonl",
+    "experiments.jsonl",
+    "artifacts.jsonl",
+    "review_report.md",
+    "final_report.md"
+  ],
+  "acceptance": [
+    "GoalSpec contains local-first or privacy-safe constraints.",
+    "Task plan contains at least one implementation task and one verification path.",
+    "Final report lists produced artifacts and cost summary.",
+    "No network access is required by default."
+  ],
+  "recommended_command": "agent /run \"做一个本地优先的密码测试工具\" --root <workspace>"
+}

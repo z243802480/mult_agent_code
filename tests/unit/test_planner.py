@@ -1,4 +1,33 @@
-from agent_runtime.agents.planner import FollowUpTaskPlanner
+from agent_runtime.agents.planner import FollowUpTaskPlanner, RequirementPlanner
+
+
+def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Create a local CLI notes tool",
+        "target_outputs": ["local_cli", "readme", "tests"],
+        "definition_of_done": ["CLI works"],
+        "verification_strategy": ["unit_tests"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create a notes command line module",
+                "acceptance": ["Module exists", "Unit test passes"],
+            }
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+    task = task_plan["tasks"][0]
+
+    assert task["expected_artifacts"]
+    assert "src/" in task["expected_artifacts"]
+    assert "tests/" in task["expected_artifacts"]
+    assert "README.md" in task["expected_artifacts"]
+    assert "restore_backup" in task["allowed_tools"]
+    assert "Quality:" in task["notes"]
 
 
 def test_follow_up_planner_skips_duplicate_tasks() -> None:

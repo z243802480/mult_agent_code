@@ -351,6 +351,49 @@ class FakeDecisionExecuteClient:
         )
 
 
+class FakeApprovalExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": json.loads(request.messages[-1].content)["task"]["task_id"],
+                    "summary": "Create artifact and verify with a shell operator.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "approval.txt",
+                                "content": "approved\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c \"from pathlib import Path; "
+                                    "assert Path('approval.txt').exists()\" "
+                                    "&& python -c \"print('approved')\""
+                                )
+                            },
+                            "reason": "verify with an operator that needs approval",
+                        }
+                    ],
+                    "completion_notes": "approval.txt exists",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
 class FakeBrokenExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -623,3 +666,135 @@ def test_resume_command_records_constraint_action_without_creating_task(tmp_path
     ]
     applied = [event for event in events if event["type"] == "decision_applied"]
     assert applied[0]["data"]["action"] == "record_constraint"
+    assert applied[0]["data"]["effect"] == "constraint_recorded"
+    memory = [
+        json.loads(line)
+        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert memory[0]["source"]["effect"] == "constraint_recorded"
+
+
+def test_resume_command_applies_cancel_and_replan_decision_effects(tmp_path: Path) -> None:
+    planned = NewCommand(
+        tmp_path,
+        "create a complete module",
+        model_client=FakePlanClient(),
+    ).run()
+    options = [
+        {
+            "option_id": "cancel",
+            "label": "Cancel extra UI",
+            "tradeoff": "Keep the current scope small.",
+            "action": "cancel_scope",
+        },
+        {
+            "option_id": "replan",
+            "label": "Replan task board",
+            "tradeoff": "Spend planning effort to update the task board.",
+            "action": "require_replan",
+        },
+    ]
+    DecideCommand(
+        tmp_path,
+        run_id=planned.run_id,
+        question="Should we cancel the extra UI scope?",
+        options_json=json.dumps(options),
+        default_option_id="cancel",
+    ).run()
+    DecideCommand(
+        tmp_path,
+        run_id=planned.run_id,
+        question="Should we refresh the task board?",
+        options_json=json.dumps(options),
+        default_option_id="replan",
+    ).run()
+    DecideCommand(
+        tmp_path,
+        run_id=planned.run_id,
+        decision_id="decision-0001",
+        select_option_id="cancel",
+    ).run()
+    DecideCommand(
+        tmp_path,
+        run_id=planned.run_id,
+        decision_id="decision-0002",
+        select_option_id="replan",
+    ).run()
+
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=planned.run_id,
+        max_iterations=0,
+        execute_model_client=FakeDecisionExecuteClient(),
+        review_model_client=FakeReviewClient(),
+    ).run()
+
+    assert resumed.applied_decisions == 2
+    assert resumed.created_tasks == 1
+    run_dir = tmp_path / ".agent" / "runs" / planned.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    replan_task = task_plan["tasks"][-1]
+    assert replan_task["role"] == "PlannerAgent"
+    assert replan_task["expected_artifacts"] == [f".agent/runs/{planned.run_id}/task_plan.json"]
+    events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    effects = [event["data"]["effect"] for event in events if event["type"] == "decision_applied"]
+    assert "scope_cancelled" in effects
+    assert "replan_task_created" in effects
+    memories = [
+        json.loads(line)
+        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    assert [memory["source"]["effect"] for memory in memories] == [
+        "scope_cancelled",
+        "replan_task_created",
+    ]
+
+
+def test_run_command_pauses_for_execution_policy_approval_and_resumes(tmp_path: Path) -> None:
+    paused = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=2,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeApprovalExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert paused.status == "paused"
+    assert not (tmp_path / "approval.txt").exists()
+    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert decisions[0]["metadata"]["kind"] == "execution_policy_approval"
+    assert decisions[0]["metadata"]["task_id"] == "task-0001"
+
+    DecideCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        decision_id="decision-0001",
+        select_option_id="approve_once",
+    ).run()
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        max_iterations=2,
+        execute_model_client=FakeApprovalExecuteClient(),
+        review_model_client=FakeReviewClient(),
+    ).run()
+
+    assert resumed.status == "completed"
+    assert resumed.applied_decisions == 1
+    assert resumed.created_tasks == 0
+    assert (tmp_path / "approval.txt").exists()
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "done"

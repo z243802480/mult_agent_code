@@ -24,7 +24,8 @@
     "allow_global_package_install": false,
     "allow_secret_file_read": false,
     "allow_remote_push": false,
-    "allow_deploy": false
+    "allow_deploy": false,
+    "allow_restore_delete_created_files": true
   },
   "protected_paths": [
     ".env",
@@ -51,6 +52,7 @@
   "commands": {
     "agent_invocable_without_approval": [
       "plan",
+      "brainstorm",
       "compact",
       "review",
       "debug",

@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1.0",
+  "benchmark_id": "failing_tests_project",
+  "goal": "修复已有项目中失败的测试，并生成修复报告",
+  "purpose": "Validate verification failure handling, debug repair, backup creation, experiment recording, and final reporting.",
+  "budget": {
+    "max_model_calls": 60,
+    "max_tool_calls": 120,
+    "max_iterations": 8
+  },
+  "fixtures": [
+    "fixtures/buggy_math.py",
+    "fixtures/test_buggy_math.py"
+  ],
+  "expected_capabilities": [
+    "Runs the failing verification command.",
+    "Records the failed attempt as an experiment with a blocked or retry decision.",
+    "Applies a minimal repair.",
+    "Creates backups for modified files before writing.",
+    "Reports the final verification result."
+  ],
+  "expected_artifacts": [
+    "tool_calls.jsonl",
+    "experiments.jsonl",
+    "artifacts.jsonl",
+    "review_report.md",
+    "final_report.md"
+  ],
+  "acceptance": [
+    "The fixture test fails before repair.",
+    "The fixture test passes after repair.",
+    "At least one backup manifest is created for the modified source file.",
+    "Final report lists the repaired artifact."
+  ],
+  "verification_command": "python -m pytest tests",
+  "recommended_command": "agent /run \"修复已有项目中失败的测试，并生成修复报告\" --root <workspace>"
+}

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from agent_runtime.commands.compact_command import CompactCommand
+from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
@@ -63,3 +64,22 @@ def test_compact_command_creates_snapshot_from_latest_run(tmp_path: Path) -> Non
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 1
     assert cost_report["context_compactions"] == 1
+
+
+def test_handoff_command_creates_package_from_snapshot(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
+
+    handoff = HandoffCommand(tmp_path, to_role="ReviewerAgent").run()
+
+    assert handoff.run_id == plan.run_id
+    assert handoff.handoff_path.exists()
+    package = json.loads(handoff.handoff_path.read_text(encoding="utf-8"))
+    assert package["to_role"] == "ReviewerAgent"
+    assert package["current_task_ids"] == ["task-0001"]
+    assert package["recommended_next_command"] == "execute"
+    assert package["snapshot_id"].startswith("snapshot-")
+
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "Created handoff package for ReviewerAgent" in events

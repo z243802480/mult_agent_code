@@ -4,6 +4,7 @@ from pathlib import Path
 
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.security.path_guard import PathGuard
+from agent_runtime.storage.file_backup import FileBackupStore
 from agent_runtime.tools.base import ToolResult
 
 
@@ -59,13 +60,18 @@ class WriteFileTool:
                 summary=f"File exists and overwrite is false: {path}",
                 error="file_exists",
             )
+        backup = FileBackupStore(context).backup_paths([resolved], "write_file")
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(content, encoding=encoding)
         self._clear_python_bytecode(resolved)
         return ToolResult(
             ok=True,
             summary=f"Wrote file: {path}",
-            data={"path": resolved.relative_to(context.root).as_posix(), "bytes": len(content.encode(encoding))},
+            data={
+                "path": resolved.relative_to(context.root).as_posix(),
+                "bytes": len(content.encode(encoding)),
+                "backup_id": backup["backup_id"],
+            },
         )
 
     def _clear_python_bytecode(self, path: Path) -> None:

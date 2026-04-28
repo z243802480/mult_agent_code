@@ -161,23 +161,55 @@ class DebugCommand:
                 available_tools=self.registry.names(),
                 run_id=context.run_id or "",
             )
-            self._run_tool_calls(action["tool_calls"], task, context)
+            tool_results = self._run_tool_calls(action["tool_calls"], task, context)
+            self._record_repair_artifacts(context, task, tool_results)
             task_board.update_status(task_id, "testing")
-            verification = self._run_tool_calls(action["verification"], task, context)
+            verification = self._run_tool_calls(
+                action["verification"],
+                task,
+                context,
+                stop_on_failure=False,
+            )
             if all(result.ok for result in verification):
+                self._record_repair_experiment(
+                    context,
+                    task,
+                    action,
+                    tool_results,
+                    verification,
+                    "keep",
+                    "Repair verification passed.",
+                )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
                 task_board.update_notes(task_id, action.get("completion_notes") or action["summary"])
                 if context.event_logger:
                     context.event_logger.record(context.run_id, "repair_completed", "DebugCommand", f"Repaired {task_id}")
                 return RepairSummary(task_id, "done", action["summary"], len(action["tool_calls"]), len(action["verification"]))
+            rollback_results = self._rollback_backups(context, task, tool_results)
             self._block_task(task_board, task_id, "Repair verification failed.", context)
+            self._record_repair_experiment(
+                context,
+                task,
+                action,
+                tool_results,
+                verification,
+                "discard",
+                "Repair verification failed; candidate was rolled back.",
+                rollback_results=rollback_results,
+            )
             return RepairSummary(task_id, "blocked", "Repair verification failed", len(action["tool_calls"]), len(action["verification"]))
         except Exception as exc:  # noqa: BLE001 - repair loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             return RepairSummary(task_id, "blocked", str(exc), 0, 0)
 
-    def _run_tool_calls(self, calls: list[dict], task: dict, context: RuntimeContext) -> list:
+    def _run_tool_calls(
+        self,
+        calls: list[dict],
+        task: dict,
+        context: RuntimeContext,
+        stop_on_failure: bool = True,
+    ) -> list:
         results = []
         allowed = set(task["allowed_tools"])
         for call in calls:
@@ -192,9 +224,162 @@ class DebugCommand:
                 **call["args"],
             )
             results.append(result)
-            if not result.ok:
+            if stop_on_failure and not result.ok:
                 raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")
         return results
+
+    def _record_repair_artifacts(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_results: list,
+    ) -> None:
+        if not context.run_dir:
+            return
+        changed_files = self._changed_files(tool_results)
+        if not changed_files:
+            return
+        path = context.run_dir / "artifacts.jsonl"
+        existing = self.jsonl.read_all(path, "artifact") if path.exists() else []
+        known = {artifact["path"] for artifact in existing}
+        next_index = len(existing) + 1
+        for artifact_path in sorted(set(changed_files)):
+            if artifact_path in known:
+                continue
+            artifact = {
+                "schema_version": "0.1.0",
+                "artifact_id": f"artifact-{next_index:04d}",
+                "run_id": context.run_id,
+                "task_id": task["task_id"],
+                "type": self._artifact_type(artifact_path),
+                "path": artifact_path,
+                "created_by": "DebugAgent",
+                "summary": f"Repaired by DebugAgent for {task['task_id']}: {task['title']}",
+                "created_at": now_iso(),
+            }
+            self.jsonl.append(path, artifact, "artifact")
+            known.add(artifact_path)
+            next_index += 1
+
+    def _record_repair_experiment(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        action: dict,
+        tool_results: list,
+        verification_results: list,
+        decision: str,
+        reason: str,
+        rollback_results: list | None = None,
+    ) -> None:
+        if not context.run_dir:
+            return
+        path = context.run_dir / "experiments.jsonl"
+        existing = self.jsonl.read_all(path, "experiment") if path.exists() else []
+        backup_ids = [
+            result.data["backup_id"]
+            for result in tool_results
+            if result.ok and isinstance(result.data, dict) and result.data.get("backup_id")
+        ]
+        verification_passed = len([result for result in verification_results if result.ok])
+        experiment = {
+            "schema_version": "0.1.0",
+            "experiment_id": f"exp-{len(existing) + 1:04d}",
+            "run_id": context.run_id,
+            "task_id": task["task_id"],
+            "idea": action["summary"],
+            "baseline": {
+                "task_status": "blocked",
+                "failure_evidence": "repair loop",
+            },
+            "candidate": {
+                "changed_files": sorted(set(self._changed_files(tool_results))),
+                "backup_ids": backup_ids,
+                "rollback": self._rollback_summary(rollback_results or []),
+            },
+            "evaluator": {
+                "commands": [call.get("args", {}).get("command") for call in action.get("verification", [])],
+                "tool_count": len(action.get("tool_calls", [])),
+            },
+            "metrics_after": {
+                "verification_total": len(verification_results),
+                "verification_passed": verification_passed,
+                "verification_pass_rate": (
+                    verification_passed / len(verification_results) if verification_results else 1.0
+                ),
+            },
+            "decision": decision,
+            "reason": reason,
+        }
+        self.jsonl.append(path, experiment, "experiment")
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "experiment_recorded",
+                "DebugCommand",
+                f"{experiment['experiment_id']} -> {decision}",
+                {"experiment_id": experiment["experiment_id"], "task_id": task["task_id"], "decision": decision},
+            )
+
+    def _rollback_backups(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_results: list,
+    ) -> list:
+        backup_ids = [
+            result.data["backup_id"]
+            for result in tool_results
+            if result.ok and isinstance(result.data, dict) and result.data.get("backup_id")
+        ]
+        rollback_results = []
+        delete_created_files = bool(
+            context.policy.get("permissions", {}).get("allow_restore_delete_created_files", False)
+        )
+        for backup_id in reversed(backup_ids):
+            result = self.registry.call(
+                "restore_backup",
+                context,
+                task_id=task["task_id"],
+                agent_id="DebugCommand",
+                backup_id=backup_id,
+                delete_created_files=delete_created_files,
+            )
+            rollback_results.append(result)
+        return rollback_results
+
+    def _rollback_summary(self, rollback_results: list) -> list[dict]:
+        summary = []
+        for result in rollback_results:
+            item = {
+                "ok": result.ok,
+                "summary": result.summary,
+                "warnings": result.warnings,
+            }
+            if isinstance(result.data, dict):
+                item["backup_id"] = result.data.get("backup_id")
+                item["restored"] = result.data.get("restored", [])
+                item["skipped"] = result.data.get("skipped", [])
+            summary.append(item)
+        return summary
+
+    def _changed_files(self, tool_results: list) -> list[str]:
+        changed_files = []
+        for result in tool_results:
+            if not result.ok or not isinstance(result.data, dict):
+                continue
+            if result.data.get("path"):
+                changed_files.append(result.data["path"])
+            changed_files.extend(result.data.get("changed_files", []))
+        return changed_files
+
+    def _artifact_type(self, path: str) -> str:
+        lowered = path.lower()
+        if "test" in lowered or lowered.endswith((".spec.py", ".test.py")):
+            return "test_file"
+        if lowered.endswith((".md", ".txt", ".rst")):
+            return "report"
+        return "source_file"
 
     def _failure_evidence(self, run_dir: Path, task_id: str) -> dict:
         tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
