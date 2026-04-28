@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from agent_runtime.agents.planner import FollowUpTaskPlanner
 from agent_runtime.agents.review_agent import ReviewAgent
+from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.decision_policy import DecisionPolicy
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -27,6 +30,7 @@ class ReviewResult:
     review_report_path: Path
     cost_report_path: Path
     follow_up_count: int = 0
+    decision_count: int = 0
 
     def to_text(self) -> str:
         return "\n".join(
@@ -38,6 +42,7 @@ class ReviewResult:
                 f"Review report: {self.review_report_path}",
                 f"Cost report: {self.cost_report_path}",
                 f"Follow-up tasks: {self.follow_up_count}",
+                f"Decision points: {self.decision_count}",
             ]
         )
 
@@ -86,7 +91,11 @@ class ReviewCommand:
         eval_report = reviewer.evaluate(review_context, run_id)
         eval_report_path = run_dir / "eval_report.json"
         self.store.write(eval_report_path, eval_report, "eval_report")
-        follow_up_count = self._append_follow_up_tasks(run_dir, eval_report)
+        follow_up_count, decision_count = self._handle_follow_up_actions(
+            agent_dir,
+            run_dir,
+            eval_report,
+        )
         review_report_path = run_dir / "review_report.md"
         review_report_path.write_text(self._markdown_report(eval_report), encoding="utf-8")
         event_logger.record(
@@ -97,12 +106,22 @@ class ReviewCommand:
             {"path": "eval_report.json", "score": eval_report["overall"]["score"]},
         )
 
-        self.store.write(cost_report_path, budget.cost_report(), "cost_report")
+        self.store.write(
+            cost_report_path,
+            self._merge_cost_reports(
+                budget.cost_report(),
+                self._read_cost(cost_report_path, run_id),
+            ),
+            "cost_report",
+        )
         status = eval_report["overall"]["status"]
         if status == "pass":
             run["status"] = "completed"
             run["current_phase"] = "REVIEWED"
             run["ended_at"] = now_iso()
+        elif decision_count:
+            run["status"] = "paused"
+            run["current_phase"] = "DECISION"
         elif status == "partial":
             run["status"] = "running"
             run["current_phase"] = "REVIEWED"
@@ -120,21 +139,107 @@ class ReviewCommand:
             review_report_path=review_report_path,
             cost_report_path=cost_report_path,
             follow_up_count=follow_up_count,
+            decision_count=decision_count,
         )
 
-    def _append_follow_up_tasks(self, run_dir: Path, eval_report: dict) -> int:
+    def _handle_follow_up_actions(
+        self,
+        agent_dir: Path,
+        run_dir: Path,
+        eval_report: dict,
+    ) -> tuple[int, int]:
         if eval_report["overall"]["status"] == "pass":
-            return 0
+            return 0, 0
+        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        task_follow_ups, decision_count = self._split_follow_ups(run_dir, eval_report, policy)
         task_plan_path = run_dir / "task_plan.json"
         task_plan = self.store.read(task_plan_path, "task_board")
-        new_tasks = FollowUpTaskPlanner().build_follow_up_tasks(eval_report, task_plan["tasks"])
+        task_eval_report = dict(eval_report)
+        task_eval_report["outcome_eval"] = dict(eval_report.get("outcome_eval", {}))
+        task_eval_report["outcome_eval"]["follow_up_tasks"] = task_follow_ups
+        task_eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval", {}))
+        task_eval_report["trajectory_eval"]["follow_up_tasks"] = []
+        new_tasks = FollowUpTaskPlanner().build_follow_up_tasks(
+            task_eval_report,
+            task_plan["tasks"],
+        )
         if not new_tasks:
-            return 0
+            return 0, decision_count
         task_plan["tasks"].extend(new_tasks)
         self._promote_ready_follow_ups(task_plan)
         self.store.write(task_plan_path, task_plan, "task_board")
         self.store.write(self.root / ".agent" / "tasks" / "backlog.json", task_plan, "task_board")
-        return len(new_tasks)
+        return len(new_tasks), decision_count
+
+    def _split_follow_ups(
+        self,
+        run_dir: Path,
+        eval_report: dict,
+        policy: dict,
+    ) -> tuple[list[dict], int]:
+        follow_ups = self._follow_ups(eval_report)
+        if not follow_ups:
+            return [], 0
+        decision_policy = DecisionPolicy(policy)
+        pending_questions = self._pending_decision_questions(run_dir)
+        task_follow_ups = []
+        decision_count = 0
+        for follow_up in follow_ups:
+            candidate = decision_policy.candidate_for_follow_up(follow_up)
+            if candidate is None:
+                task_follow_ups.append(follow_up)
+                continue
+            normalized_question = self._normalize(candidate.question)
+            if normalized_question in pending_questions:
+                decision_count += 1
+                continue
+            DecideCommand(
+                self.root,
+                run_id=str(eval_report["run_id"]),
+                question=candidate.question,
+                options_json=json.dumps(candidate.options, ensure_ascii=False),
+                recommended_option_id=candidate.recommended_option_id,
+                default_option_id=candidate.default_option_id,
+                impact_json=json.dumps(candidate.impact, ensure_ascii=False),
+            ).run()
+            pending_questions.add(normalized_question)
+            decision_count += 1
+        return task_follow_ups, decision_count
+
+    def _follow_ups(self, eval_report: dict) -> list[dict]:
+        follow_ups = eval_report.get("outcome_eval", {}).get("follow_up_tasks", [])
+        if not follow_ups:
+            follow_ups = eval_report.get("trajectory_eval", {}).get("follow_up_tasks", [])
+        if not isinstance(follow_ups, list):
+            return []
+        return [item for item in follow_ups if isinstance(item, dict)]
+
+    def _pending_decision_questions(self, run_dir: Path) -> set[str]:
+        decisions_path = run_dir / "decisions.jsonl"
+        if not decisions_path.exists():
+            return set()
+        return {
+            self._normalize(decision["question"])
+            for decision in self.jsonl.read_all(decisions_path, "decision_point")
+            if decision["status"] == "pending"
+        }
+
+    def _normalize(self, value: object) -> str:
+        return " ".join(str(value).strip().lower().split())
+
+    def _merge_cost_reports(self, review_cost: dict, latest_cost: dict) -> dict:
+        merged = dict(review_cost)
+        merged["user_decisions"] = max(
+            int(review_cost.get("user_decisions", 0)),
+            int(latest_cost.get("user_decisions", 0)),
+        )
+        warnings = list(review_cost.get("warnings", []))
+        for warning in latest_cost.get("warnings", []):
+            if warning not in warnings:
+                warnings.append(warning)
+        merged["warnings"] = warnings
+        merged["status"] = "near_limit" if warnings else review_cost.get("status", "within_budget")
+        return merged
 
     def _promote_ready_follow_ups(self, task_plan: dict) -> None:
         done = {task["task_id"] for task in task_plan["tasks"] if task["status"] == "done"}

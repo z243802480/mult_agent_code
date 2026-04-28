@@ -112,7 +112,7 @@ class RunCommand:
         max_iterations = self.max_iterations or self._policy_iterations()
         for index in range(max_iterations):
             self._execute_until_no_ready(run_id, steps, iteration=index + 1)
-            if self._run_status(run_id) == "blocked":
+            if self._run_status(run_id) in {"blocked", "paused"}:
                 break
 
             review = ReviewCommand(
@@ -124,9 +124,15 @@ class RunCommand:
                 RunStepSummary(
                     "review",
                     review.status,
-                    f"Score {review.score:.2f}; {review.follow_up_count} follow-up task(s).",
+                    (
+                        f"Score {review.score:.2f}; "
+                        f"{review.follow_up_count} follow-up task(s); "
+                        f"{review.decision_count} decision point(s)."
+                    ),
                 )
             )
+            if review.decision_count:
+                break
             if review.status == "pass" or review.follow_up_count == 0:
                 break
             if index == max_iterations - 1:
@@ -264,6 +270,7 @@ class RunCommand:
         cost_report = self.store.read(run_dir / "cost_report.json", "cost_report")
         done = len([task for task in task_plan["tasks"] if task["status"] == "done"])
         blocked_tasks = [task for task in task_plan["tasks"] if task["status"] == "blocked"]
+        pending_decisions = self._pending_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
         lines = [
             "# Final Report",
@@ -289,18 +296,35 @@ class RunCommand:
                 f"- {task['task_id']}: {task['title']} - {task.get('notes') or 'No notes recorded'}"
                 for task in blocked_tasks
             )
+        if pending_decisions:
+            lines.extend(["", "## Pending Decisions", ""])
+            lines.extend(
+                f"- {decision['decision_id']}: {decision['question']}"
+                for decision in pending_decisions
+            )
         lines.extend(
             [
                 "",
                 "## Next Actions",
                 "",
                 "- Review `review_report.md` before trusting the result for production use.",
+                "- Resolve pending decisions with `agent decide` if the run is paused.",
                 "- Continue with `agent debug` if any task remains blocked.",
             ]
         )
         path = run_dir / "final_report.md"
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return path
+
+    def _pending_decisions(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        return [
+            decision
+            for decision in self.jsonl.read_all(path, "decision_point")
+            if decision["status"] == "pending"
+        ]
 
     def _artifact_paths(self, run_dir: Path) -> list[str]:
         path = run_dir / "tool_calls.jsonl"

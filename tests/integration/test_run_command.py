@@ -164,6 +164,53 @@ class FakePartialThenPassReviewClient:
         )
 
 
+class FakeDecisionReviewClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "run_id": payload["run_id"],
+                    "goal_eval": {"goal_clarity_score": 0.9, "requirement_coverage": 0.8},
+                    "artifact_eval": {"artifacts_present": True, "logs_present": True},
+                    "outcome_eval": {
+                        "verification_pass_rate": 1.0,
+                        "run_success": True,
+                        "follow_up_tasks": [
+                            {
+                                "title": "Add web UI",
+                                "description": "Add a web UI output medium for the tool.",
+                                "category": "output_medium",
+                                "impact": {
+                                    "scope": "high",
+                                    "budget": "medium",
+                                    "risk": "medium",
+                                    "quality": "high",
+                                },
+                                "decision_question": (
+                                    "Should the first product surface be a web UI?"
+                                ),
+                            }
+                        ],
+                    },
+                    "trajectory_eval": {"blocked_task_count": 0, "repair_success_rate": 1.0},
+                    "cost_eval": {"status": "within_budget"},
+                    "overall": {
+                        "status": "partial",
+                        "score": 0.74,
+                        "reason": "Output medium needs user steering.",
+                    },
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(20, 30, 50),
+            model_provider="fake",
+            model_name="fake-review",
+            raw_response={},
+        )
+
+
 class FakeResearchClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
@@ -409,3 +456,24 @@ def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path)
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "research: completed" in final_report
     assert "follow-up task(s)" in final_report
+
+
+def test_run_command_pauses_when_review_creates_decision_point(tmp_path: Path) -> None:
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=3,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeDecisionReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "paused"
+    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    decisions = (run_dir / "decisions.jsonl").read_text(encoding="utf-8")
+    assert "Should the first product surface be a web UI?" in decisions
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "decision point(s)" in final_report
+    assert "## Pending Decisions" in final_report
+    assert "decision-0001" in final_report
