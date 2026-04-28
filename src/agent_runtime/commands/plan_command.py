@@ -6,6 +6,7 @@ from pathlib import Path
 from agent_runtime.agents.goal_spec_agent import GoalSpecAgent
 from agent_runtime.agents.planner import RequirementPlanner
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -79,11 +80,13 @@ class PlanCommand:
             "INIT -> SPEC",
             {"from": "INIT", "to": "SPEC"},
         )
+        runtime_context = ContextLoader(self.root, self.validator).load()
 
         goal_spec = GoalSpecAgent(model_client, self.validator).generate(
             self.goal,
             project_context={
                 "project": project_config,
+                "runtime_context": runtime_context,
                 "policy": {
                     "decision_granularity": policy["decision_granularity"],
                     "budgets": policy["budgets"],
@@ -96,7 +99,7 @@ class PlanCommand:
         self.store.write(goal_spec_path, goal_spec, "goal_spec")
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")
 
-        task_plan = RequirementPlanner().build_task_plan(goal_spec)
+        task_plan = RequirementPlanner().build_task_plan(goal_spec, runtime_context=runtime_context)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)
         task_plan_path = run_dir / "task_plan.json"

@@ -21,6 +21,8 @@ Policy-blocked execution plans pause the run with a one-time decision point; app
 the original task without changing global permissions.
 Applied decisions are also written to `.agent/memory/decisions.jsonl`, so constraints,
 cancelled scope, and replanning choices remain durable across handoffs.
+Planner, coder, and debug agents receive a bounded runtime context assembled from memory,
+the latest snapshot, and the latest handoff package.
 
 ## Model Configuration
 

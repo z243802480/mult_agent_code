@@ -7,6 +7,7 @@ from pathlib import Path
 from agent_runtime.agents.coder_agent import CoderAgent
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
@@ -100,6 +101,7 @@ class ExecuteCommand:
         model_client = self._model_client(run_dir, budget)
         coder = CoderAgent(model_client, self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
+        runtime_context = ContextLoader(self.root, self.validator).load(run_id)
 
         run["status"] = "running"
         run["current_phase"] = "EXECUTE"
@@ -116,6 +118,7 @@ class ExecuteCommand:
                     coder=coder,
                     goal_spec=goal_spec,
                     project_config=project_config,
+                    runtime_context=runtime_context,
                 )
             )
             task_board.promote_unblocked()
@@ -163,6 +166,7 @@ class ExecuteCommand:
         coder: CoderAgent,
         goal_spec: dict,
         project_config: dict,
+        runtime_context: dict,
     ) -> TaskExecutionSummary:
         task_id = task["task_id"]
         if context.event_logger:
@@ -175,6 +179,7 @@ class ExecuteCommand:
                 project_config=project_config,
                 available_tools=self.registry.names(),
                 run_id=context.run_id or "",
+                runtime_context=runtime_context,
             )
             decision = self._create_policy_decision_if_needed(action, task, context)
             if decision is not None:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agent_runtime.agents.debug_agent import DebugAgent
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
@@ -97,6 +98,7 @@ class DebugCommand:
         )
         debug_agent = DebugAgent(self._model_client(run_dir, budget), self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
+        runtime_context = ContextLoader(self.root, self.validator).load(run_id)
 
         run["status"] = "running"
         run["current_phase"] = "DEBUG"
@@ -105,7 +107,17 @@ class DebugCommand:
 
         repairs: list[RepairSummary] = []
         for task in self._blocked_tasks(task_board)[: self.max_repairs]:
-            repairs.append(self._repair_task(task, task_board, context, debug_agent, goal_spec, run_dir))
+            repairs.append(
+                self._repair_task(
+                    task,
+                    task_board,
+                    context,
+                    debug_agent,
+                    goal_spec,
+                    run_dir,
+                    runtime_context,
+                )
+            )
             task_board.promote_unblocked()
 
         self._mirror_backlog(agent_dir, task_board)
@@ -145,6 +157,7 @@ class DebugCommand:
         debug_agent: DebugAgent,
         goal_spec: dict,
         run_dir: Path,
+        runtime_context: dict,
     ) -> RepairSummary:
         task_id = task["task_id"]
         if context.event_logger:
@@ -160,6 +173,7 @@ class DebugCommand:
                 failure_evidence=self._failure_evidence(run_dir, task_id),
                 available_tools=self.registry.names(),
                 run_id=context.run_id or "",
+                runtime_context=runtime_context,
             )
             tool_results = self._run_tool_calls(action["tool_calls"], task, context)
             self._record_repair_artifacts(context, task, tool_results)

@@ -6,7 +6,8 @@ from agent_runtime.utils.time import now_iso
 class RequirementPlanner:
     """Deterministic MVP planner that turns GoalSpec requirements into reviewable tasks."""
 
-    def build_task_plan(self, goal_spec: dict) -> dict:
+    def build_task_plan(self, goal_spec: dict, runtime_context: dict | None = None) -> dict:
+        runtime_context = runtime_context or {}
         tasks: list[dict] = []
         for index, requirement in enumerate(goal_spec["expanded_requirements"], start=1):
             if requirement["priority"] == "wont":
@@ -37,7 +38,12 @@ class RequirementPlanner:
                     "assigned_agent_id": None,
                     "created_at": now_iso(),
                     "updated_at": now_iso(),
-                    "notes": self._notes(requirement["id"], requirement, expected_artifacts),
+                    "notes": self._notes(
+                        requirement["id"],
+                        requirement,
+                        expected_artifacts,
+                        runtime_context,
+                    ),
                 }
             )
 
@@ -103,8 +109,15 @@ class RequirementPlanner:
         outputs = [str(item) for item in goal_spec.get("target_outputs", [])]
         return outputs or ["planning artifact"]
 
-    def _notes(self, requirement_id: str, requirement: dict, expected_artifacts: list[str]) -> str:
+    def _notes(
+        self,
+        requirement_id: str,
+        requirement: dict,
+        expected_artifacts: list[str],
+        runtime_context: dict,
+    ) -> str:
         scores = self._quality_scores(requirement, expected_artifacts)
+        context_note = self._context_note(runtime_context)
         return (
             f"Generated from {requirement_id}. "
             "Quality: "
@@ -112,6 +125,7 @@ class RequirementPlanner:
             f"testability={scores['testability']:.2f} "
             f"size={scores['size']:.2f} "
             f"artifact={scores['artifact']:.2f}."
+            f"{context_note}"
         )
 
     def _quality_scores(self, requirement: dict, expected_artifacts: list[str]) -> dict[str, float]:
@@ -124,6 +138,19 @@ class RequirementPlanner:
             "size": 0.80 if acceptance_count <= 4 else 0.65,
             "artifact": 0.85 if expected_artifacts else 0.50,
         }
+
+    def _context_note(self, runtime_context: dict) -> str:
+        memory_count = len(runtime_context.get("memory", []))
+        snapshot_id = runtime_context.get("latest_snapshot", {}).get("snapshot_id")
+        handoff_id = runtime_context.get("latest_handoff", {}).get("handoff_id")
+        parts = []
+        if memory_count:
+            parts.append(f"{memory_count} memory entr{'y' if memory_count == 1 else 'ies'}")
+        if snapshot_id:
+            parts.append(f"snapshot {snapshot_id}")
+        if handoff_id:
+            parts.append(f"handoff {handoff_id}")
+        return f" Context: {', '.join(parts)}." if parts else ""
 
 
 class FollowUpTaskPlanner:

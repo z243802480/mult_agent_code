@@ -241,6 +241,13 @@ generate candidates
 - 未解决风险。
 - 下一步行动。
 
+上下文使用：
+
+- 运行时会通过 `ContextLoader` 汇总 `.agent/memory/*.jsonl`、最近的 context snapshot 和 handoff package。
+- `/plan` 会把该上下文传给 GoalSpecAgent，并在确定性任务 notes 中记录可审计摘要。
+- `/execute` 和 `/debug` 会把同一类裁剪后的上下文传给 CoderAgent / DebugAgent。
+- 上下文输入有数量限制，只传递近期 memory、活跃任务、最近失败、风险和推荐下一步，避免无界 prompt 膨胀。
+
 ### 3.5.1 `/execute`
 
 目的：

@@ -23,6 +23,7 @@ class CoderAgent:
         project_config: dict,
         available_tools: list[str],
         run_id: str,
+        runtime_context: dict | None = None,
     ) -> dict:
         request = ChatRequest(
             purpose="task_execution",
@@ -31,7 +32,13 @@ class CoderAgent:
                 ChatMessage(role="system", content=self._system_prompt()),
                 ChatMessage(
                     role="user",
-                    content=self._user_prompt(task, goal_spec, project_config, available_tools),
+                    content=self._user_prompt(
+                        task,
+                        goal_spec,
+                        project_config,
+                        available_tools,
+                        runtime_context or {},
+                    ),
                 ),
             ],
             response_format="json",
@@ -80,11 +87,13 @@ You must:
         goal_spec: dict,
         project_config: dict,
         available_tools: list[str],
+        runtime_context: dict,
     ) -> str:
         payload = {
             "task": task,
             "goal_spec": goal_spec,
             "project": project_config,
+            "runtime_context": runtime_context,
             "available_tools": available_tools,
             "allowed_tools": task["allowed_tools"],
             "output_schema": {
