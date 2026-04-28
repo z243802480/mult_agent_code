@@ -6,6 +6,7 @@ from pathlib import Path
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.fake import FakeModelClient
+from agent_runtime.models.local import local_provider_names, local_settings_from_env
 from agent_runtime.models.minimax import MiniMaxOpenAICompatibleClient, MiniMaxSettings, ModelProviderError
 from agent_runtime.models.model_call_logger import ModelCallLogger
 from agent_runtime.models.openai_compatible import OpenAICompatibleClient, OpenAICompatibleSettings
@@ -21,6 +22,12 @@ def create_model_client(
     logger = ModelCallLogger(run_dir, validator)
     if provider in {"fake", "offline"}:
         return FakeModelClient(logger=logger)
+    if provider in local_provider_names():
+        return OpenAICompatibleClient(
+            local_settings_from_env(provider),
+            logger=logger,
+            budget=budget,
+        )
     if provider == "minimax":
         return MiniMaxOpenAICompatibleClient(
             MiniMaxSettings.from_env(),

@@ -7,6 +7,11 @@ from pathlib import Path
 
 from agent_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from agent_runtime.models.factory import create_model_client
+from agent_runtime.models.local import (
+    local_default_base_url,
+    local_default_model,
+    local_provider_names,
+)
 from agent_runtime.models.minimax import ModelProviderError
 from agent_runtime.models.openai_compatible import OpenAICompatibleProviderError
 from agent_runtime.storage.schema_validator import SchemaValidator
@@ -127,11 +132,15 @@ class ModelCheckCommand:
             return "MiniMax-M2.7"
         if provider in {"fake", "offline"}:
             return "fake-offline"
+        if provider in local_provider_names():
+            return os.getenv("AGENT_MODEL_NAME") or local_default_model(provider)
         return None
 
     def _default_base_url(self, provider: str) -> str | None:
         if provider in {"fake", "offline"}:
             return "local offline provider"
+        if provider in local_provider_names():
+            return os.getenv("AGENT_MODEL_BASE_URL") or local_default_base_url(provider)
         if provider == "minimax":
             return "https://api.minimaxi.com/v1"
         if provider in {"openai", "openai-compatible", "generic"}:

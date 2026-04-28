@@ -78,6 +78,7 @@ Phase 1B：可复现运行环境和执行闭环加固
 2. Docker：`docker build -t agent-runtime:verify .` 后执行 `docker run --rm agent-runtime:verify`。
 3. CI：GitHub Actions 使用同一套验证脚本，覆盖 Python 3.11 和 3.13。
 4. 离线模型：设置 `AGENT_MODEL_PROVIDER=fake` 后可不依赖 API key 跑 CLI smoke。
+5. 本地模型：设置 `AGENT_MODEL_PROVIDER=ollama` 和 `AGENT_MODEL_NAME=qwen2.5-coder:7b` 后可连接本机 OpenAI-compatible 服务。
 
 ## 6. 文档维护原则
 

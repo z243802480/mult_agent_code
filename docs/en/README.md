@@ -25,3 +25,4 @@ Verification:
 - Local: `python -m pip install -e ".[dev]"`, then `bash scripts/verify.sh`.
 - Docker: `docker build -t agent-runtime:verify .`, then `docker run --rm agent-runtime:verify`.
 - Offline model smoke: set `AGENT_MODEL_PROVIDER=fake` before running CLI workflows.
+- Local model smoke: set `AGENT_MODEL_PROVIDER=ollama` and `AGENT_MODEL_NAME=qwen2.5-coder:7b`.

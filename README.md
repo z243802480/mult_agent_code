@@ -70,4 +70,21 @@ agent /run --root .
 
 The fake provider is for reproducible validation only. It does not evaluate real model quality.
 
+## Local Models
+
+Local OpenAI-compatible servers are supported through provider aliases:
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "ollama"
+$env:AGENT_MODEL_NAME = "qwen2.5-coder:7b"
+agent /model-check --root .
+```
+
+Default local endpoints:
+
+- `ollama` / `local`: `http://localhost:11434/v1`
+- `lmstudio`: `http://localhost:1234/v1`
+- `vllm`: `http://localhost:8000/v1`
+- `localai`: `http://localhost:8080/v1`
+
 See [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) for the Chinese development guide.

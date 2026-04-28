@@ -101,6 +101,49 @@ AGENT_MODEL_TIMEOUT_SECONDS
 AGENT_MODEL_MAX_RETRIES
 ```
 
+### 6.1 本地模型 Provider
+
+本地模型优先走 OpenAI-compatible 接口，不在核心运行时绑定某个本地推理框架。
+
+支持的 provider 别名：
+
+```text
+local
+ollama
+lmstudio
+vllm
+localai
+```
+
+默认端点：
+
+```text
+ollama   -> http://localhost:11434/v1
+lmstudio -> http://localhost:1234/v1
+vllm     -> http://localhost:8000/v1
+localai  -> http://localhost:8080/v1
+local    -> http://localhost:11434/v1
+```
+
+推荐配置示例：
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "ollama"
+$env:AGENT_MODEL_NAME = "qwen2.5-coder:7b"
+```
+
+如果使用 LM Studio、vLLM 或自定义服务：
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "local"
+$env:AGENT_MODEL_BASE_URL = "http://localhost:1234/v1"
+$env:AGENT_MODEL_NAME = "<your local model>"
+$env:AGENT_MODEL_API_KEY = "local"
+```
+
+本地模型默认超时为 180 秒，默认重试 1 次。适合 7B/14B 量化模型的离线验证、
+低成本开发和隐私敏感任务。复杂规划、架构评审和高风险决策仍建议保留远程强模型兜底。
+
 可选多模型配置：
 
 ```yaml

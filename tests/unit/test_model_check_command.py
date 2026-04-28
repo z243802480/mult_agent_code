@@ -67,3 +67,16 @@ def test_model_check_reports_missing_provider_config(tmp_path: Path, monkeypatch
     assert not result.config_ok
     assert not result.call_ok
     assert "api key" in result.summary.lower()
+
+
+def test_model_check_reports_local_provider_defaults(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "ollama")
+    monkeypatch.delenv("AGENT_MODEL_NAME", raising=False)
+    monkeypatch.delenv("AGENT_MODEL_BASE_URL", raising=False)
+
+    result = ModelCheckCommand(tmp_path, skip_call=True).run()
+
+    assert result.config_ok
+    assert result.provider == "ollama"
+    assert result.model_name == "qwen2.5-coder:7b"
+    assert result.base_url == "http://localhost:11434/v1"
