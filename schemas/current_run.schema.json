@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CurrentRun",
+  "type": "object",
+  "required": ["schema_version", "run_id", "set_at", "reason"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": "string" },
+    "set_at": { "type": "string" },
+    "reason": { "type": "string" }
+  }
+}

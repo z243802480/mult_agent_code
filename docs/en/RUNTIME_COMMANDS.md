@@ -3,7 +3,9 @@
 ## Initial Commands
 
 - `/init`: initialize an agent-ready workspace.
+- `/new`: start a new isolated goal context and make it the current run.
 - `/plan`: turn a goal into GoalSpec and tasks.
+- `/runs`: list, show, or switch run contexts.
 - `/run`: plan, execute, repair, review, compact, and write a final report.
 - `/resume`: continue a paused run after user decisions are resolved.
 - `/brainstorm`: generate and rank candidate directions.
@@ -65,6 +67,18 @@ The command writes:
 - `cost_report.json`
 
 Execution is constrained by both the task `allowed_tools` field and the runtime tool registry.
+
+## `/new` And `/runs` Context Isolation
+
+`/new` creates a fresh planning run for a new goal and writes `.agent/current_run.json`.
+
+`/runs` helps recover or switch context:
+
+- `agent runs`: list recent runs and mark the current run.
+- `agent runs --run-id <id>`: show one run.
+- `agent runs --run-id <id> --set-current`: make a run current.
+
+Commands such as `/execute`, `/review`, `/debug`, `/decide`, `/resume`, and `/compact` prefer the current run when `--run-id` is omitted. This prevents unrelated goals from accidentally sharing context.
 
 ## `/run` Closed Loop
 

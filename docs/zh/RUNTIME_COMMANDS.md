@@ -82,6 +82,32 @@ Agent 自调用：
 - 包含验证策略。
 - 对模糊目标给出合理假设。
 
+### 3.2.0 `/new`
+
+目的：
+
+开启一个新的隔离目标上下文，并把它设为当前 run。
+
+当前实现：
+
+- `agent new "目标"` 会在必要时自动初始化工作区。
+- 内部复用 `/plan` 生成 `goal_spec.json` 和 `task_plan.json`。
+- 写入 `.agent/current_run.json`，后续不显式传 `run_id` 的命令优先使用这个 current run。
+- 用于避免多个目标之间因为默认“最新 run”而串上下文。
+
+### 3.2.0.1 `/runs`
+
+目的：
+
+找回、查看和切换历史 run 上下文。
+
+当前实现：
+
+- `agent runs` 列出最近 run，并标记 current run。
+- `agent runs --run-id <id>` 查看指定 run。
+- `agent runs --run-id <id> --set-current` 将指定 run 设为当前上下文。
+- `execute`、`review`、`debug`、`decide`、`resume`、`compact` 等命令在未传 `run_id` 时优先使用 current run。
+
 ### 3.2.1 `/run`
 
 目的：

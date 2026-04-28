@@ -72,7 +72,7 @@ class ExecuteCommand:
             raise RuntimeError("Workspace is not initialized. Run `agent init` first.")
 
         run_store = RunStore(agent_dir, self.validator)
-        run_id = self.run_id or self._latest_run_id(agent_dir)
+        run_id = self.run_id or run_store.current_run_id()
         if not run_id:
             raise RuntimeError("No run found. Run `agent plan` first.")
         run_dir = run_store.run_dir(run_id)

@@ -88,6 +88,7 @@ AGENTS.md
 .agent/
   project.json
   policies.json
+  current_run.json
   context/
     root_snapshot.json
     snapshots/

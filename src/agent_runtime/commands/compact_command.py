@@ -6,6 +6,7 @@ from pathlib import Path
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
+from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
 
@@ -39,7 +40,8 @@ class CompactCommand:
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `agent init` first.")
 
-        run_id = self.run_id or self._latest_run_id(agent_dir)
+        run_store = RunStore(agent_dir, self.validator)
+        run_id = self.run_id or run_store.current_run_id()
         run_dir = agent_dir / "runs" / run_id if run_id else None
         event_logger = None
         if run_dir and run_dir.exists():

@@ -44,6 +44,39 @@ class RunStore:
     def update_run(self, run: dict) -> None:
         self.store.write(self.run_dir(run["run_id"]) / "run.json", run, "run")
 
+    def set_current_run(self, run_id: str, reason: str) -> dict:
+        current = {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "set_at": now_iso(),
+            "reason": reason,
+        }
+        self.store.write(self.agent_dir / "current_run.json", current, "current_run")
+        return current
+
+    def current_run_id(self) -> str | None:
+        path = self.agent_dir / "current_run.json"
+        if not path.exists():
+            return self.latest_run_id()
+        current = self.store.read(path, "current_run")
+        run_id = str(current["run_id"])
+        if (self.run_dir(run_id) / "run.json").exists():
+            return run_id
+        return self.latest_run_id()
+
+    def latest_run_id(self) -> str | None:
+        runs = self.list_runs()
+        return runs[-1]["run_id"] if runs else None
+
+    def list_runs(self) -> list[dict]:
+        if not self.runs_dir.exists():
+            return []
+        runs = []
+        for path in sorted(self.runs_dir.iterdir(), key=lambda item: item.name):
+            if path.is_dir() and (path / "run.json").exists():
+                runs.append(self.store.read(path / "run.json", "run"))
+        return runs
+
     def run_dir(self, run_id: str) -> Path:
         return self.runs_dir / run_id
 

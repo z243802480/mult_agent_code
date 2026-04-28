@@ -118,6 +118,7 @@ class PlanCommand:
         run["status"] = "completed"
         run["summary"] = f"Generated GoalSpec and {len(task_plan['tasks'])} tasks."
         run_store.update_run(run)
+        run_store.set_current_run(run["run_id"], "plan_created")
         event_logger.record(run["run_id"], "run_completed", "PlanCommand", run["summary"])
 
         return PlanResult(
