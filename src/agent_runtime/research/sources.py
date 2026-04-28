@@ -51,7 +51,7 @@ class LocalDocumentSource:
         candidates: list[Path] = []
         for pattern in self.include_globs:
             candidates.extend(self.root.glob(pattern))
-        records = []
+        records: list[ResearchSourceRecord] = []
         seen: set[Path] = set()
         for path in sorted(candidates, key=lambda item: item.as_posix()):
             if path in seen or not path.is_file():
@@ -91,9 +91,12 @@ class UrlSource:
             return []
         if not self.allow_network:
             raise PermissionError("Network research is disabled by policy")
-        records = []
+        records: list[ResearchSourceRecord] = []
         for url in self.urls:
-            request = urllib.request.Request(url, headers={"User-Agent": "agent-runtime-research/0.1"})
+            request = urllib.request.Request(
+                url,
+                headers={"User-Agent": "agent-runtime-research/0.1"},
+            )
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                     body = response.read(120_000).decode("utf-8", errors="replace")
@@ -131,7 +134,7 @@ class SerperSearchSource:
         )
         with urllib.request.urlopen(request, timeout=20) as response:
             data = json.loads(response.read().decode("utf-8"))
-        records = []
+        records: list[ResearchSourceRecord] = []
         for item in data.get("organic", [])[: self.max_results]:
             title = item.get("title") or item.get("link") or "Untitled result"
             link = item.get("link") or ""

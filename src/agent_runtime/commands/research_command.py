@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,7 +124,12 @@ class ResearchCommand:
         if self.urls:
             records.extend(UrlSource(self.urls, allow_network=allow_network).collect(self.query))
         if self.use_serper:
-            records.extend(SerperSearchSource(allow_network=allow_network, max_results=self.max_sources).collect(self.query))
+            records.extend(
+                SerperSearchSource(
+                    allow_network=allow_network,
+                    max_results=self.max_sources,
+                ).collect(self.query)
+            )
         return records[: self.max_sources]
 
     def _source_payload(self, record: ResearchSourceRecord) -> dict:

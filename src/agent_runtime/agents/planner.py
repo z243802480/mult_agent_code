@@ -94,7 +94,7 @@ class FollowUpTaskPlanner:
             self._normalize(task.get("description", "")) for task in existing_tasks
         }
         dependency = done_or_ready[-1:] if done_or_ready else []
-        tasks = []
+        tasks: list[dict] = []
         for item in follow_ups:
             if not isinstance(item, dict):
                 continue

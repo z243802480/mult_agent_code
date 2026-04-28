@@ -1,19 +1,20 @@
-# agent-runtime
+# Agent Runtime
 
-Local-first multi-agent development runtime. The current MVP path is a CLI that turns a goal into a GoalSpec, task plan, controlled tool execution, repair, review, context snapshot, and final report.
+Local-first multi-agent autonomous development runtime. The current MVP path is a CLI that
+turns a goal into a GoalSpec, task plan, controlled tool execution, repair, review, context
+snapshot, and final report.
 
 ## Quick Start
 
-Use Python 3.11+ from the repository root.
-
 ```powershell
-$env:PYTHONPATH = "src"
-python -m agent_runtime --help
-python -m agent_runtime init --root .
-python -m agent_runtime run "create a tiny local notes module" --root .
+python -m pip install -e ".[dev]"
+agent --help
+agent /init --root .
+agent /sessions --root .
 ```
 
-`agent run` writes run artifacts under `.agent/runs/<run_id>/`, including `goal_spec.json`, `task_plan.json`, logs, `review_report.md`, and `final_report.md`.
+`agent /run "goal"` writes run artifacts under `.agent/runs/<run_id>/`, including
+`goal_spec.json`, `task_plan.json`, logs, `review_report.md`, and `final_report.md`.
 
 ## Model Configuration
 
@@ -33,16 +34,27 @@ $env:AGENT_MODEL_NAME = "<model name>"
 $env:AGENT_MODEL_API_KEY = "<your key>"
 ```
 
-## Development
+## Verify Locally
 
-Install dev dependencies in your preferred local environment, then run:
+Windows:
 
 ```powershell
-$env:PYTHONPATH = "src"
-python -m pytest
-python -m compileall -q src tests
-ruff check .
-mypy src
+.\scripts\verify.ps1
 ```
+
+Linux/macOS:
+
+```bash
+bash scripts/verify.sh
+```
+
+Docker:
+
+```bash
+docker build -t agent-runtime:verify .
+docker run --rm agent-runtime:verify
+```
+
+The verification command compiles sources, runs tests, runs ruff, runs mypy, and checks basic CLI commands in a temporary workspace.
 
 See [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) for the Chinese development guide.

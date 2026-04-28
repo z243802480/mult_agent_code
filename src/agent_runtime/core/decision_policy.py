@@ -134,11 +134,11 @@ class DecisionPolicy:
     def _options(self, follow_up: dict) -> list[dict]:
         raw_options = follow_up.get("decision_options") or follow_up.get("options")
         if isinstance(raw_options, list):
-            options = [
-                self._option(option, index)
-                for index, option in enumerate(raw_options, start=1)
-            ]
-            options = [option for option in options if option]
+            options: list[dict] = []
+            for index, option in enumerate(raw_options, start=1):
+                parsed = self._option(option, index)
+                if parsed is not None:
+                    options.append(parsed)
             if 2 <= len(options) <= 4:
                 return options
         title = self._title(follow_up)

@@ -17,11 +17,10 @@ Recommended order:
 Current phase:
 
 ```text
-Phase 0: documentation and specification freeze
+Phase 1B: reproducible runtime environment and execution loop hardening
 ```
 
-Next phase:
+Verification:
 
-```text
-Phase 1A: schema, project skeleton, storage, and /init
-```
+- Local: `python -m pip install -e ".[dev]"`, then `bash scripts/verify.sh`.
+- Docker: `docker build -t agent-runtime:verify .`, then `docker run --rm agent-runtime:verify`.

@@ -69,15 +69,14 @@
 当前项目处于：
 
 ```text
-Phase 0：文档和规格冻结
+Phase 1B：可复现运行环境和执行闭环加固
 ```
 
-下一步建议：
+当前验证方式：
 
-1. 根据 [DATA_MODEL.md](./DATA_MODEL.md) 创建 `schemas/*.schema.json`。
-2. 根据 [DELIVERY_PLAN.md](./DELIVERY_PLAN.md) 创建 Python 工程骨架。
-3. 根据 [RUNTIME_COMMANDS.md](./RUNTIME_COMMANDS.md) 优先实现 `/init`、`/plan`、`/compact`。
-4. 根据 [QUALITY_AND_EVALUATION.md](./QUALITY_AND_EVALUATION.md) 建立 MVP 测试场景。
+1. 本机：`python -m pip install -e ".[dev]"` 后执行 `.\scripts\verify.ps1`。
+2. Docker：`docker build -t agent-runtime:verify .` 后执行 `docker run --rm agent-runtime:verify`。
+3. CI：GitHub Actions 使用同一套验证脚本，覆盖 Python 3.11 和 3.13。
 
 ## 6. 文档维护原则
 
