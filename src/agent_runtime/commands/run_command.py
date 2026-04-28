@@ -108,7 +108,14 @@ class RunCommand:
         ).run()
         steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
-        run_id = plan.run_id
+        return self.continue_run(plan.run_id, steps)
+
+    def continue_run(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary] | None = None,
+    ) -> RunResult:
+        steps = steps or []
         max_iterations = self.max_iterations or self._policy_iterations()
         for index in range(max_iterations):
             self._execute_until_no_ready(run_id, steps, iteration=index + 1)
@@ -271,6 +278,7 @@ class RunCommand:
         done = len([task for task in task_plan["tasks"] if task["status"] == "done"])
         blocked_tasks = [task for task in task_plan["tasks"] if task["status"] == "blocked"]
         pending_decisions = self._pending_decisions(run_dir)
+        accepted_decisions = self._accepted_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
         lines = [
             "# Final Report",
@@ -302,6 +310,15 @@ class RunCommand:
                 f"- {decision['decision_id']}: {decision['question']}"
                 for decision in pending_decisions
             )
+        if accepted_decisions:
+            lines.extend(["", "## Accepted Decisions", ""])
+            lines.extend(
+                (
+                    f"- {decision['decision_id']}: {decision['question']} "
+                    f"-> {decision['selected_option_id']}"
+                )
+                for decision in accepted_decisions
+            )
         lines.extend(
             [
                 "",
@@ -324,6 +341,16 @@ class RunCommand:
             decision
             for decision in self.jsonl.read_all(path, "decision_point")
             if decision["status"] == "pending"
+        ]
+
+    def _accepted_decisions(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        return [
+            decision
+            for decision in self.jsonl.read_all(path, "decision_point")
+            if decision["status"] in {"resolved", "defaulted"}
         ]
 
     def _artifact_paths(self, run_dir: Path) -> list[str]:

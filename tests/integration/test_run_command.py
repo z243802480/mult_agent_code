@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from agent_runtime.commands.decide_command import DecideCommand
+from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
@@ -303,6 +305,51 @@ class FakeSequentialExecuteClient:
         )
 
 
+class FakeDecisionExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        content = request.messages[-1].content
+        if "Implement accepted decision" in content:
+            path = "WEB_UI.md"
+            body = "web ui selected\n"
+            command = (
+                "python -c \"from pathlib import Path; "
+                "assert Path('WEB_UI.md').exists()\""
+            )
+        else:
+            path = "complete_module.py"
+            body = "def answer():\n    return 42\n"
+            command = "python -c \"from complete_module import answer; assert answer() == 42\""
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": json.loads(content)["task"]["task_id"],
+                    "summary": f"Create {path}.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": path, "content": body, "overwrite": True},
+                            "reason": "create artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": command},
+                            "reason": "verify artifact",
+                        }
+                    ],
+                    "completion_notes": f"{path} works",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
 class FakeBrokenExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -477,3 +524,43 @@ def test_run_command_pauses_when_review_creates_decision_point(tmp_path: Path) -
     assert "decision point(s)" in final_report
     assert "## Pending Decisions" in final_report
     assert "decision-0001" in final_report
+
+
+def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Path) -> None:
+    paused = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=3,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeDecisionReviewClient(),
+        enable_research=False,
+    ).run()
+    assert paused.status == "paused"
+
+    DecideCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        decision_id="decision-0001",
+        select_option_id="approve",
+    ).run()
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        max_iterations=2,
+        execute_model_client=FakeDecisionExecuteClient(),
+        review_model_client=FakeReviewClient(),
+    ).run()
+
+    assert resumed.status == "completed"
+    assert resumed.applied_decisions == 1
+    assert resumed.created_tasks == 1
+    assert (tmp_path / "WEB_UI.md").exists()
+    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert len(task_plan["tasks"]) == 2
+    assert all(task["status"] == "done" for task in task_plan["tasks"])
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "decision_applied" in events
+    final_report = resumed.run_result.final_report_path.read_text(encoding="utf-8")
+    assert "## Accepted Decisions" in final_report

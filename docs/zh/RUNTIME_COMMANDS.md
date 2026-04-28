@@ -115,6 +115,12 @@ init if needed
 - `final_report.md`
 - 更新后的事件、工具、模型和成本日志。
 
+决策交互：
+
+- 当 `/review` 发现高影响 follow-up，例如输出形态、隐私、网络、预算或技术栈选择，会创建 `DecisionPoint`。
+- 产生待处理决策时，run 状态变为 `paused`，当前阶段变为 `DECISION`。
+- `final_report.md` 会列出 `Pending Decisions`，用户用 `/decide` 解析后再执行 `/resume`。
+
 失败处理：
 
 - 任务验证失败时进入 `/debug`。
@@ -243,6 +249,21 @@ ready -> in_progress -> testing -> reviewing -> done
 - `agent decide --decision-id ... --use-default` 采用默认选项。
 - 决策写入 `decisions.jsonl`，并记录 `decision_created` / `decision_resolved` 事件。
 - 每次创建或解析决策都会累计 `user_decisions` 成本计数，避免频繁询问用户。
+
+### 3.6.1 `/resume`
+
+目的：
+
+在用户处理完 `/decide` 决策后，恢复同一个 paused run，不重新规划、不重新调研。
+
+当前实现：
+
+- `agent resume --run-id ...` 恢复指定 run；不传 `run-id` 时默认最新 run。
+- 如果仍有 pending 决策，命令会停止并提示待处理决策。
+- 已解析但尚未应用的决策会记录 `decision_applied` 事件。
+- 对需要执行的选项，生成后续任务并接回 `/run` 的 execute/review/compact/final report 闭环。
+- 对 `defer`、`skip`、`local_only` 等非执行选项，只记录为已接受决策，不创建任务。
+- `final_report.md` 会列出 `Accepted Decisions`。
 
 ### 3.7 `/review`
 

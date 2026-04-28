@@ -13,6 +13,7 @@ from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.commands.run_command import RunCommand
+from agent_runtime.commands.resume_command import ResumeCommand
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -55,6 +56,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--root", default=".", help="Workspace root path")
     run_parser.add_argument("--max-iterations", type=int, default=None, help="Maximum run loop iterations")
     run_parser.add_argument("--max-tasks-per-iteration", type=int, default=1, help="Tasks to execute per iteration")
+
+    resume_parser = subcommands.add_parser("resume", help="Resume a paused run after decisions")
+    resume_parser.add_argument("--root", default=".", help="Workspace root path")
+    resume_parser.add_argument("--run-id", default=None, help="Run id; defaults to latest run")
+    resume_parser.add_argument("--max-iterations", type=int, default=None, help="Maximum run loop iterations")
+    resume_parser.add_argument(
+        "--max-tasks-per-iteration",
+        type=int,
+        default=1,
+        help="Tasks to execute per iteration",
+    )
 
     compact_parser = subcommands.add_parser("compact", help="Create a context snapshot")
     compact_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -131,6 +143,16 @@ def main() -> None:
             max_tasks_per_iteration=args.max_tasks_per_iteration,
         ).run()
         print(run_result.to_text())
+        return
+
+    if args.command == "resume":
+        resume_result = ResumeCommand(
+            root=Path(args.root),
+            run_id=args.run_id,
+            max_iterations=args.max_iterations,
+            max_tasks_per_iteration=args.max_tasks_per_iteration,
+        ).run()
+        print(resume_result.to_text())
         return
 
     if args.command == "compact":

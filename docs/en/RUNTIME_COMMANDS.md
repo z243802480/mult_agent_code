@@ -5,6 +5,7 @@
 - `/init`: initialize an agent-ready workspace.
 - `/plan`: turn a goal into GoalSpec and tasks.
 - `/run`: plan, execute, repair, review, compact, and write a final report.
+- `/resume`: continue a paused run after user decisions are resolved.
 - `/brainstorm`: generate and rank candidate directions.
 - `/research`: turn sources into executable hypotheses.
 - `/compact`: create a context snapshot.
@@ -81,6 +82,22 @@ init if needed
 
 It writes `final_report.md` under `.agent/runs/<run_id>/` with task completion, blocked-task notes, cost counters, artifact summaries, and recommended next actions.
 
+When review creates a high-impact decision point, `/run` pauses the run instead of silently expanding scope. The final report lists `Pending Decisions`.
+
+## `/resume` Decision Continuation
+
+`/resume` continues the same paused run after `/decide` resolves user decisions.
+
+```text
+load paused run
+  -> refuse if decisions are still pending
+  -> apply resolved/defaulted decisions
+  -> create follow-up tasks when the selected option requires work
+  -> continue execute/review/compact/final report loop
+```
+
+It writes `decision_applied` events. Non-execution choices such as `defer`, `skip`, or `local_only` are recorded as accepted decisions without creating tasks.
+
 ## `/debug` Repair Flow
 
 `/debug` consumes blocked tasks and repairs them with DebugAgent.
@@ -129,6 +146,8 @@ Supported modes:
 - default: `agent decide --decision-id ... --use-default`
 
 Decisions are written to `decisions.jsonl`, emit `decision_created` / `decision_resolved` events, and increment `user_decisions` in `cost_report.json`.
+
+After resolving decisions, use `agent resume --run-id ...` to continue the run.
 
 ## `/research` Source-Grounded Research
 
