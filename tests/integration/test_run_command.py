@@ -111,6 +111,151 @@ class FakeReviewClient:
         )
 
 
+class FakePartialThenPassReviewClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        if self.calls == 1:
+            overall = {
+                "status": "partial",
+                "score": 0.72,
+                "reason": "Needs a README helper artifact.",
+            }
+            outcome_eval = {
+                "verification_pass_rate": 1.0,
+                "run_success": True,
+                "follow_up_tasks": [
+                    {
+                        "title": "Create README helper",
+                        "description": "Create README helper artifact",
+                        "priority": "medium",
+                        "acceptance": ["README helper file exists"],
+                    }
+                ],
+            }
+        else:
+            overall = {
+                "status": "pass",
+                "score": 0.9,
+                "reason": "Follow-up is complete.",
+            }
+            outcome_eval = {"verification_pass_rate": 1.0, "run_success": True}
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "run_id": payload["run_id"],
+                    "goal_eval": {"goal_clarity_score": 0.9, "requirement_coverage": 1.0},
+                    "artifact_eval": {"artifacts_present": True, "logs_present": True},
+                    "outcome_eval": outcome_eval,
+                    "trajectory_eval": {"blocked_task_count": 0, "repair_success_rate": 1.0},
+                    "cost_eval": {"status": "within_budget"},
+                    "overall": overall,
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(20, 30, 50),
+            model_provider="fake",
+            model_name="fake-review",
+            raw_response={},
+        )
+
+
+class FakeResearchClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        source = payload["sources"][0]
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "run_id": payload["run_id"],
+                    "query": payload["query"],
+                    "created_at": "2026-04-28T10:00:00+08:00",
+                    "sources": [
+                        {
+                            "source_id": source["source_id"],
+                            "title": source["title"],
+                            "source_type": source["source_type"],
+                            "reference": source["reference"],
+                            "summary": source["summary"],
+                        }
+                    ],
+                    "claims": [
+                        {
+                            "claim": "A complete module should include a helper artifact.",
+                            "source_ids": [source["source_id"]],
+                            "confidence": "medium",
+                        }
+                    ],
+                    "expanded_requirements": [
+                        {
+                            "description": "Include a helper artifact.",
+                            "priority": "should",
+                            "source_ids": [source["source_id"]],
+                        }
+                    ],
+                    "risks": [],
+                    "decision_candidates": [],
+                    "summary": "Research suggests adding a helper artifact.",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(10, 10, 20),
+            model_provider="fake",
+            model_name="fake-research",
+            raw_response={},
+        )
+
+
+class FakeSequentialExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        content = request.messages[-1].content
+        if "README helper" in content:
+            path = "README_HELPER.md"
+            body = "helper\n"
+            command = (
+                "python -c \"from pathlib import Path; "
+                "assert Path('README_HELPER.md').exists()\""
+            )
+        else:
+            path = "complete_module.py"
+            body = "def answer():\n    return 42\n"
+            command = "python -c \"from complete_module import answer; assert answer() == 42\""
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": json.loads(content)["task"]["task_id"],
+                    "summary": f"Create {path}.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": path, "content": body, "overwrite": True},
+                            "reason": "create artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": command},
+                            "reason": "verify artifact",
+                        }
+                    ],
+                    "completion_notes": f"{path} works",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
 class FakeBrokenExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -202,6 +347,7 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
         plan_model_client=FakePlanClient(),
         execute_model_client=FakeExecuteClient(),
         review_model_client=FakeReviewClient(),
+        enable_research=False,
     ).run()
 
     assert result.status == "completed"
@@ -221,6 +367,7 @@ def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:
         execute_model_client=FakeBrokenExecuteClient(),
         debug_model_client=FakeDebugClient(),
         review_model_client=FakeReviewClient(),
+        enable_research=False,
     ).run()
 
     assert result.status == "completed"
@@ -230,3 +377,35 @@ def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "debug: completed" in final_report
     assert "Blocked tasks: 0" in final_report
+
+
+def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "complete.md").write_text(
+        "A complete module should include a helper artifact.\n",
+        encoding="utf-8",
+    )
+    review_client = FakePartialThenPassReviewClient()
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=3,
+        plan_model_client=FakePlanClient(),
+        research_model_client=FakeResearchClient(),
+        execute_model_client=FakeSequentialExecuteClient(),
+        review_model_client=review_client,
+    ).run()
+
+    assert result.status == "completed"
+    assert (tmp_path / "complete_module.py").exists()
+    assert (tmp_path / "README_HELPER.md").exists()
+    assert review_client.calls == 2
+    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert len(task_plan["tasks"]) == 2
+    assert all(task["status"] == "done" for task in task_plan["tasks"])
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "research: completed" in final_report
+    assert "follow-up task(s)" in final_report

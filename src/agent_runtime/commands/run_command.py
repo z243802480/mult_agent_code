@@ -8,6 +8,7 @@ from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.models.base import ModelClient
 from agent_runtime.storage.json_store import JsonStore
@@ -53,6 +54,8 @@ class RunCommand:
         execute_model_client: ModelClient | None = None,
         debug_model_client: ModelClient | None = None,
         review_model_client: ModelClient | None = None,
+        research_model_client: ModelClient | None = None,
+        enable_research: bool = True,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -63,6 +66,8 @@ class RunCommand:
         self.execute_model_client = execute_model_client
         self.debug_model_client = debug_model_client
         self.review_model_client = review_model_client
+        self.research_model_client = research_model_client
+        self.enable_research = enable_research
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -71,38 +76,102 @@ class RunCommand:
         if not (self.root / ".agent").exists():
             InitCommand(self.root).run()
 
+        steps: list[RunStepSummary] = []
+        research_context = ""
+        if self.enable_research:
+            try:
+                research = ResearchCommand(
+                    self.root,
+                    self.goal,
+                    model_client=self.research_model_client or self.model_client,
+                ).run()
+                research_context = self._research_context(research.report_path)
+                steps.append(
+                    RunStepSummary(
+                        "research",
+                        "completed",
+                        f"{research.source_count} sources, {research.claim_count} claims.",
+                    )
+                )
+            # Research can improve planning, but a local run should still proceed without sources.
+            except Exception as exc:  # noqa: BLE001
+                steps.append(RunStepSummary("research", "skipped", str(exc)))
+
+        if research_context:
+            plan_goal = f"{self.goal}\n\nResearch context:\n{research_context}"
+        else:
+            plan_goal = self.goal
         plan = PlanCommand(
             self.root,
-            self.goal,
+            plan_goal,
             model_client=self.plan_model_client or self.model_client,
         ).run()
-        steps = [
-            RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."),
-        ]
+        steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
         run_id = plan.run_id
         max_iterations = self.max_iterations or self._policy_iterations()
         for index in range(max_iterations):
-            before_counts = self._task_counts(run_id)
+            self._execute_until_no_ready(run_id, steps, iteration=index + 1)
+            if self._run_status(run_id) == "blocked":
+                break
+
+            review = ReviewCommand(
+                self.root,
+                run_id=run_id,
+                model_client=self.review_model_client or self.model_client,
+            ).run()
+            steps.append(
+                RunStepSummary(
+                    "review",
+                    review.status,
+                    f"Score {review.score:.2f}; {review.follow_up_count} follow-up task(s).",
+                )
+            )
+            if review.status == "pass" or review.follow_up_count == 0:
+                break
+            if index == max_iterations - 1:
+                break
+
+        compact = CompactCommand(self.root, run_id=run_id, focus="final run handoff").run()
+        steps.append(
+            RunStepSummary("compact", "completed", f"Snapshot: {compact.snapshot_path.name}.")
+        )
+
+        review_status = self._latest_review_status(run_id)
+        final_report_path = self._write_final_report(run_id, review_status, steps)
+        return RunResult(
+            run_id=run_id,
+            status=self._run_status(run_id),
+            final_report_path=final_report_path,
+            steps=steps,
+        )
+
+    def _execute_until_no_ready(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+        iteration: int,
+    ) -> bool:
+        progressed = False
+        while self._ready_count(run_id) > 0:
             execute = ExecuteCommand(
                 self.root,
                 run_id=run_id,
                 max_tasks=self.max_tasks_per_iteration,
                 model_client=self.execute_model_client or self.model_client,
             ).run()
+            progressed = progressed or execute.completed > 0 or execute.blocked > 0
             steps.append(
                 RunStepSummary(
                     "execute",
                     "completed",
                     (
-                        f"Iteration {index + 1}: {execute.completed} completed, "
+                        f"Iteration {iteration}: {execute.completed} completed, "
                         f"{execute.blocked} blocked."
                     ),
                 )
             )
             status = self._run_status(run_id)
-            if status == "completed":
-                break
             if status == "blocked":
                 debug = DebugCommand(
                     self.root,
@@ -120,9 +189,8 @@ class RunCommand:
                     )
                 )
                 if self._run_status(run_id) == "blocked":
-                    break
-            after_counts = self._task_counts(run_id)
-            if before_counts == after_counts and execute.completed == 0 and execute.blocked == 0:
+                    return progressed
+            if execute.completed == 0 and execute.blocked == 0:
                 steps.append(
                     RunStepSummary(
                         "execute",
@@ -130,27 +198,31 @@ class RunCommand:
                         "No ready task made progress; stopping the run loop.",
                     )
                 )
-                break
+                return progressed
+        return progressed
 
-        review = ReviewCommand(
-            self.root,
-            run_id=run_id,
-            model_client=self.review_model_client or self.model_client,
-        ).run()
-        steps.append(RunStepSummary("review", review.status, f"Score {review.score:.2f}."))
-
-        compact = CompactCommand(self.root, run_id=run_id, focus="final run handoff").run()
-        steps.append(
-            RunStepSummary("compact", "completed", f"Snapshot: {compact.snapshot_path.name}.")
+    def _ready_count(self, run_id: str) -> int:
+        task_plan = self.store.read(
+            self.root / ".agent" / "runs" / run_id / "task_plan.json",
+            "task_board",
+        )
+        done = {task["task_id"] for task in task_plan["tasks"] if task["status"] == "done"}
+        return len(
+            [
+                task
+                for task in task_plan["tasks"]
+                if task["status"] == "ready" and all(dep in done for dep in task["depends_on"])
+            ]
         )
 
-        final_report_path = self._write_final_report(run_id, review.status, steps)
-        return RunResult(
-            run_id=run_id,
-            status=self._run_status(run_id),
-            final_report_path=final_report_path,
-            steps=steps,
-        )
+    def _research_context(self, report_path: Path) -> str:
+        report = self.store.read(report_path, "research_report")
+        lines = [report["summary"]]
+        for req in report.get("expanded_requirements", [])[:5]:
+            lines.append(f"- {req['priority']}: {req['description']}")
+        for risk in report.get("risks", [])[:3]:
+            lines.append(f"- risk: {risk['risk']} / mitigation: {risk['mitigation']}")
+        return "\n".join(lines)
 
     def _policy_iterations(self) -> int:
         policy_path = self.root / ".agent" / "policies.json"
@@ -172,6 +244,13 @@ class RunCommand:
         for task in task_plan["tasks"]:
             counts[task["status"]] = counts.get(task["status"], 0) + 1
         return counts
+
+    def _latest_review_status(self, run_id: str) -> str:
+        path = self.root / ".agent" / "runs" / run_id / "eval_report.json"
+        if not path.exists():
+            return "unknown"
+        report = self.store.read(path, "eval_report")
+        return report["overall"]["status"]
 
     def _write_final_report(
         self,
@@ -229,7 +308,10 @@ class RunCommand:
             return []
         artifacts: list[str] = []
         for call in self.jsonl.read_all(path, "tool_call"):
-            if call["status"] != "success" or call["tool_name"] not in {"write_file", "apply_patch"}:
+            if call["status"] != "success" or call["tool_name"] not in {
+                "write_file",
+                "apply_patch",
+            }:
                 continue
             summary = call["output_summary"]
             if summary not in artifacts:

@@ -74,3 +74,90 @@ class RequirementPlanner:
         if len(trimmed) <= 60:
             return trimmed
         return trimmed[:57].rstrip() + "..."
+
+
+class FollowUpTaskPlanner:
+    def build_follow_up_tasks(self, eval_report: dict, existing_tasks: list[dict]) -> list[dict]:
+        follow_ups = eval_report.get("outcome_eval", {}).get("follow_up_tasks", [])
+        if not follow_ups:
+            follow_ups = eval_report.get("trajectory_eval", {}).get("follow_up_tasks", [])
+        if not isinstance(follow_ups, list):
+            return []
+
+        next_index = self._next_index(existing_tasks)
+        done_or_ready = [
+            task["task_id"] for task in existing_tasks if task["status"] != "discarded"
+        ]
+        known_items = {
+            self._normalize(task.get("title", "")) for task in existing_tasks
+        } | {
+            self._normalize(task.get("description", "")) for task in existing_tasks
+        }
+        dependency = done_or_ready[-1:] if done_or_ready else []
+        tasks = []
+        for item in follow_ups:
+            if not isinstance(item, dict):
+                continue
+            description = str(item.get("description") or item.get("title") or "").strip()
+            if not description:
+                continue
+            title = self._title(str(item.get("title") or description))
+            if self._normalize(title) in known_items or self._normalize(description) in known_items:
+                continue
+            task_id = f"task-{next_index:04d}"
+            next_index += 1
+            acceptance = item.get("acceptance")
+            expected_artifacts = item.get("expected_artifacts")
+            if not isinstance(acceptance, list) or not acceptance:
+                acceptance = ["Follow-up requirement is implemented and verified"]
+            if not isinstance(expected_artifacts, list):
+                expected_artifacts = []
+            tasks.append(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "title": title,
+                    "description": description,
+                    "status": "ready" if not dependency and not tasks else "backlog",
+                    "priority": self._priority(str(item.get("priority") or "medium")),
+                    "role": str(item.get("role") or "CoderAgent"),
+                    "depends_on": dependency if not tasks else [tasks[-1]["task_id"]],
+                    "acceptance": [str(value) for value in acceptance],
+                    "allowed_tools": [
+                        "read_file",
+                        "search_text",
+                        "write_file",
+                        "apply_patch",
+                        "run_command",
+                        "run_tests",
+                    ],
+                    "expected_artifacts": expected_artifacts,
+                    "assigned_agent_id": None,
+                    "created_at": now_iso(),
+                    "updated_at": now_iso(),
+                    "notes": f"Generated from review follow-up for {eval_report.get('run_id')}",
+                }
+            )
+            known_items.add(self._normalize(title))
+            known_items.add(self._normalize(description))
+        return tasks
+
+    def _next_index(self, tasks: list[dict]) -> int:
+        indexes = []
+        for task in tasks:
+            suffix = task["task_id"].rsplit("-", 1)[-1]
+            if suffix.isdigit():
+                indexes.append(int(suffix))
+        return (max(indexes) + 1) if indexes else 1
+
+    def _priority(self, value: str) -> str:
+        return value if value in {"critical", "high", "medium", "low"} else "medium"
+
+    def _title(self, value: str) -> str:
+        trimmed = value.strip()
+        if len(trimmed) <= 60:
+            return trimmed
+        return trimmed[:57].rstrip() + "..."
+
+    def _normalize(self, value: object) -> str:
+        return " ".join(str(value).strip().lower().split())

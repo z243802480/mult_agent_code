@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from agent_runtime.agents.planner import FollowUpTaskPlanner
 from agent_runtime.agents.review_agent import ReviewAgent
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.models.base import ModelClient
@@ -25,6 +26,7 @@ class ReviewResult:
     eval_report_path: Path
     review_report_path: Path
     cost_report_path: Path
+    follow_up_count: int = 0
 
     def to_text(self) -> str:
         return "\n".join(
@@ -35,6 +37,7 @@ class ReviewResult:
                 f"Eval report: {self.eval_report_path}",
                 f"Review report: {self.review_report_path}",
                 f"Cost report: {self.cost_report_path}",
+                f"Follow-up tasks: {self.follow_up_count}",
             ]
         )
 
@@ -66,7 +69,11 @@ class ReviewCommand:
         run = run_store.load_run(run_id)
         policy = self.store.read(agent_dir / "policies.json", "policy_config")
         cost_report_path = run_dir / "cost_report.json"
-        budget = BudgetController.from_report(policy, self._read_cost(cost_report_path, run_id), run_id=run_id)
+        budget = BudgetController.from_report(
+            policy,
+            self._read_cost(cost_report_path, run_id),
+            run_id=run_id,
+        )
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         reviewer = ReviewAgent(self._model_client(run_dir, budget), self.validator)
 
@@ -79,6 +86,7 @@ class ReviewCommand:
         eval_report = reviewer.evaluate(review_context, run_id)
         eval_report_path = run_dir / "eval_report.json"
         self.store.write(eval_report_path, eval_report, "eval_report")
+        follow_up_count = self._append_follow_up_tasks(run_dir, eval_report)
         review_report_path = run_dir / "review_report.md"
         review_report_path.write_text(self._markdown_report(eval_report), encoding="utf-8")
         event_logger.record(
@@ -111,7 +119,29 @@ class ReviewCommand:
             eval_report_path=eval_report_path,
             review_report_path=review_report_path,
             cost_report_path=cost_report_path,
+            follow_up_count=follow_up_count,
         )
+
+    def _append_follow_up_tasks(self, run_dir: Path, eval_report: dict) -> int:
+        if eval_report["overall"]["status"] == "pass":
+            return 0
+        task_plan_path = run_dir / "task_plan.json"
+        task_plan = self.store.read(task_plan_path, "task_board")
+        new_tasks = FollowUpTaskPlanner().build_follow_up_tasks(eval_report, task_plan["tasks"])
+        if not new_tasks:
+            return 0
+        task_plan["tasks"].extend(new_tasks)
+        self._promote_ready_follow_ups(task_plan)
+        self.store.write(task_plan_path, task_plan, "task_board")
+        self.store.write(self.root / ".agent" / "tasks" / "backlog.json", task_plan, "task_board")
+        return len(new_tasks)
+
+    def _promote_ready_follow_ups(self, task_plan: dict) -> None:
+        done = {task["task_id"] for task in task_plan["tasks"] if task["status"] == "done"}
+        for task in task_plan["tasks"]:
+            if task["status"] == "backlog" and all(dep in done for dep in task["depends_on"]):
+                task["status"] = "ready"
+                task["updated_at"] = now_iso()
 
     def _review_context(self, agent_dir: Path, run_dir: Path, run_id: str) -> dict:
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
@@ -134,7 +164,12 @@ class ReviewCommand:
             "deterministic_checks": self._deterministic_checks(task_plan, tool_calls, cost_report),
         }
 
-    def _deterministic_checks(self, task_plan: dict, tool_calls: list[dict], cost_report: dict) -> dict:
+    def _deterministic_checks(
+        self,
+        task_plan: dict,
+        tool_calls: list[dict],
+        cost_report: dict,
+    ) -> dict:
         tasks = task_plan.get("tasks", [])
         done = [task for task in tasks if task["status"] == "done"]
         blocked = [task for task in tasks if task["status"] == "blocked"]
@@ -148,7 +183,11 @@ class ReviewCommand:
             "task_completion_rate": len(done) / len(tasks) if tasks else 0,
             "blocked_task_count": len(blocked),
             "verification_call_count": len(verification_calls),
-            "verification_pass_rate": len(passed_verification) / len(verification_calls) if verification_calls else 0,
+            "verification_pass_rate": (
+                len(passed_verification) / len(verification_calls)
+                if verification_calls
+                else 0
+            ),
             "cost_status": cost_report.get("status", "within_budget"),
         }
 
@@ -228,5 +267,8 @@ class ReviewCommand:
         runs_dir = agent_dir / "runs"
         if not runs_dir.exists():
             return None
-        runs = sorted([path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name)
+        runs = sorted(
+            [path for path in runs_dir.iterdir() if path.is_dir()],
+            key=lambda item: item.name,
+        )
         return runs[-1].name if runs else None
