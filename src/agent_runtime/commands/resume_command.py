@@ -39,16 +39,7 @@ class ResumeResult:
 
 
 class ResumeCommand:
-    _NON_TASK_OPTIONS = {
-        "defer",
-        "skip",
-        "reject",
-        "cancel",
-        "no",
-        "none",
-        "local_only",
-        "do_not_apply",
-    }
+    _TASK_ACTIONS = {"create_task", "require_replan"}
 
     def __init__(
         self,
@@ -159,7 +150,7 @@ class ResumeCommand:
         created_tasks = []
         for decision in resolved:
             option = self._selected_option(decision)
-            if option and self._should_create_task(decision, option):
+            if option and self._should_create_task(option):
                 task = self._task_from_decision(decision, option, task_plan["tasks"])
                 self.validator.validate("task", task)
                 task_plan["tasks"].append(task)
@@ -184,16 +175,18 @@ class ResumeCommand:
             f"Implement accepted decision `{decision['decision_id']}`.\n"
             f"Question: {decision['question']}\n"
             f"Selected option: {option['label']} ({selected}).\n"
+            f"Action: {self._option_action(option)}.\n"
             f"Tradeoff: {option['tradeoff']}"
         )
+        role = "PlannerAgent" if self._option_action(option) == "require_replan" else "CoderAgent"
         return {
             "schema_version": "0.1.0",
             "task_id": f"task-{next_index:04d}",
-            "title": self._title(f"Implement decision: {option['label']}"),
+            "title": self._title(self._task_title(option)),
             "description": description,
             "status": "ready" if dependency is None else "backlog",
             "priority": self._priority(decision["impact"]),
-            "role": "CoderAgent",
+            "role": role,
             "depends_on": [] if dependency is None else [dependency],
             "acceptance": [
                 f"Accepted decision is reflected in the implementation: {option['label']}"
@@ -213,14 +206,27 @@ class ResumeCommand:
             "notes": f"Generated from resolved decision {decision['decision_id']}",
         }
 
-    def _should_create_task(self, decision: dict, option: dict) -> bool:
-        selected = str(decision["selected_option_id"] or decision["default_option_id"]).lower()
-        label = str(option["label"]).lower()
-        if selected in self._NON_TASK_OPTIONS:
-            return False
-        if any(term in selected or term in label for term in ["defer", "skip", "local only"]):
-            return False
-        return True
+    def _should_create_task(self, option: dict) -> bool:
+        return self._option_action(option) in self._TASK_ACTIONS
+
+    def _task_title(self, option: dict) -> str:
+        if self._option_action(option) == "require_replan":
+            return f"Replan from decision: {option['label']}"
+        return f"Implement decision: {option['label']}"
+
+    def _option_action(self, option: dict) -> str:
+        action = str(option.get("action") or "").strip()
+        if action in {"create_task", "record_constraint", "cancel_scope", "require_replan"}:
+            return action
+        option_id = str(option.get("option_id") or "").lower()
+        label = str(option.get("label") or "").lower()
+        if any(term in option_id or term in label for term in ["defer", "skip", "local_only"]):
+            return "record_constraint"
+        if any(term in option_id or term in label for term in ["cancel", "reject"]):
+            return "cancel_scope"
+        if "replan" in option_id or "replan" in label:
+            return "require_replan"
+        return "create_task"
 
     def _selected_option(self, decision: dict) -> dict | None:
         selected = decision["selected_option_id"] or decision["default_option_id"]
@@ -253,6 +259,7 @@ class ResumeCommand:
                 "decision_id": decision["decision_id"],
                 "selected_option_id": selected,
                 "label": option["label"] if option else None,
+                "action": self._option_action(option) if option else None,
             },
         )
 

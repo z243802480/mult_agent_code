@@ -48,7 +48,11 @@ def options_json() -> str:
     return json.dumps(
         [
             {"option_id": "web", "label": "Web UI", "tradeoff": "best interaction, higher scope"},
-            {"option_id": "pdf", "label": "PDF Report", "tradeoff": "easy to share, less interactive"},
+            {
+                "option_id": "pdf",
+                "label": "PDF Report",
+                "tradeoff": "easy to share, less interactive",
+            },
         ]
     )
 
@@ -64,13 +68,17 @@ def test_decide_command_creates_lists_and_resolves_decision(tmp_path: Path) -> N
         options_json=options_json(),
         recommended_option_id="web",
         default_option_id="pdf",
-        impact_json=json.dumps({"scope": "medium", "budget": "medium", "risk": "low", "quality": "high"}),
+        impact_json=json.dumps(
+            {"scope": "medium", "budget": "medium", "risk": "low", "quality": "high"}
+        ),
     ).run()
 
     assert created.action == "create"
     decision = created.decisions[0]
     assert decision["status"] == "pending"
     assert decision["decision_id"] == "decision-0001"
+    assert decision["options"][0]["action"] == "create_task"
+    assert decision["options"][1]["action"] == "create_task"
 
     pending = DecideCommand(tmp_path, run_id=plan.run_id, list_pending=True).run()
     assert len(pending.decisions) == 1
@@ -107,7 +115,12 @@ def test_decide_command_can_use_default(tmp_path: Path) -> None:
         default_option_id="pdf",
     ).run()
 
-    result = DecideCommand(tmp_path, run_id=plan.run_id, decision_id="decision-0001", use_default=True).run()
+    result = DecideCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        decision_id="decision-0001",
+        use_default=True,
+    ).run()
 
     assert result.decisions[0]["status"] == "defaulted"
     assert result.decisions[0]["selected_option_id"] == "pdf"

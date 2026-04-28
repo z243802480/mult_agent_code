@@ -17,6 +17,10 @@ def test_balanced_policy_escalates_high_impact_follow_up() -> None:
     assert candidate is not None
     assert candidate.impact["risk"] == "high"
     assert [option["option_id"] for option in candidate.options] == ["approve", "defer"]
+    assert [option["action"] for option in candidate.options] == [
+        "create_task",
+        "record_constraint",
+    ]
 
 
 def test_balanced_policy_keeps_routine_follow_up_autonomous() -> None:
@@ -34,3 +38,33 @@ def test_manual_policy_escalates_every_follow_up() -> None:
     follow_up = {"title": "Add docs", "description": "Add short usage docs."}
 
     assert DecisionPolicy(policy("manual")).candidate_for_follow_up(follow_up) is not None
+
+
+def test_decision_policy_preserves_explicit_option_actions() -> None:
+    follow_up = {
+        "title": "Choose architecture",
+        "description": "Architecture choice has high scope impact.",
+        "impact": {"scope": "high"},
+        "decision_options": [
+            {
+                "option_id": "replan",
+                "label": "Replan architecture",
+                "tradeoff": "Higher quality, more time.",
+                "action": "require_replan",
+            },
+            {
+                "option_id": "cancel",
+                "label": "Cancel expansion",
+                "tradeoff": "Lower scope, less work.",
+                "action": "cancel_scope",
+            },
+        ],
+    }
+
+    candidate = DecisionPolicy(policy()).candidate_for_follow_up(follow_up)
+
+    assert candidate is not None
+    assert [option["action"] for option in candidate.options] == [
+        "require_replan",
+        "cancel_scope",
+    ]

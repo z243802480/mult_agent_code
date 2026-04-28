@@ -29,7 +29,11 @@
         "properties": {
           "option_id": { "type": "string" },
           "label": { "type": "string" },
-          "tradeoff": { "type": "string" }
+          "tradeoff": { "type": "string" },
+          "action": {
+            "type": "string",
+            "enum": ["create_task", "record_constraint", "cancel_scope", "require_replan"]
+          }
         }
       }
     },

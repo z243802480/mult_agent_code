@@ -492,17 +492,20 @@ model_tier:
     {
       "option_id": "no_breach_check",
       "label": "不做泄露检查",
-      "tradeoff": "完全本地且简单，但现实风险提示较弱"
+      "tradeoff": "完全本地且简单，但现实风险提示较弱",
+      "action": "cancel_scope"
     },
     {
       "option_id": "local_optional_import",
       "label": "本地可选导入",
-      "tradeoff": "隐私安全，但需要用户准备本地列表"
+      "tradeoff": "隐私安全，但需要用户准备本地列表",
+      "action": "create_task"
     },
     {
       "option_id": "online_api",
       "label": "在线 API",
-      "tradeoff": "方便，但有隐私和网络依赖问题"
+      "tradeoff": "方便，但有隐私和网络依赖问题",
+      "action": "create_task"
     }
   ],
   "default_option_id": "local_optional_import",
@@ -531,6 +534,12 @@ impact value:
   low
   medium
   high
+
+decision.options[].action:
+  create_task
+  record_constraint
+  cancel_scope
+  require_replan
 ```
 
 ## 11. ContextSnapshot

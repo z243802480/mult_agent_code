@@ -9,7 +9,9 @@ The Chinese `docs/zh/DATA_MODEL.md` is the detailed source of truth. This file i
 - `Run`: one execution run in `.agent/runs/<run_id>/run.json`.
 - `GoalSpec`: structured user goal.
 - `Task`: schedulable work item.
-- `DecisionPoint`: user-facing major branch decision.
+- `DecisionPoint`: user-facing major branch decision. Options may include an `action`
+  (`create_task`, `record_constraint`, `cancel_scope`, or `require_replan`) so the runtime
+  can resume without guessing from labels.
 - `ContextSnapshot`: compact state for long-task continuation.
 - `CommandRun`: one command workflow execution.
 - `ToolCall`: structured tool execution log.

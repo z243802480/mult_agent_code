@@ -238,6 +238,7 @@ ready -> in_progress -> testing -> reviewing -> done
 - 推荐选项。
 - 2-4 个选择。
 - 每个选择的取舍。
+- 每个选择的结构化动作：`create_task`、`record_constraint`、`cancel_scope` 或 `require_replan`。
 - 默认选择。
 - 对预算、范围、风险、质量的影响。
 
@@ -262,7 +263,9 @@ ready -> in_progress -> testing -> reviewing -> done
 - 如果仍有 pending 决策，命令会停止并提示待处理决策。
 - 已解析但尚未应用的决策会记录 `decision_applied` 事件。
 - 对需要执行的选项，生成后续任务并接回 `/run` 的 execute/review/compact/final report 闭环。
-- 对 `defer`、`skip`、`local_only` 等非执行选项，只记录为已接受决策，不创建任务。
+- `create_task` 和 `require_replan` 会生成后续任务。
+- `record_constraint` 和 `cancel_scope` 只记录为已接受决策，不创建任务。
+- 旧决策没有 `action` 字段时，运行时会根据选项 id/label 做兼容推断。
 - `final_report.md` 会列出 `Accepted Decisions`。
 
 ### 3.7 `/review`

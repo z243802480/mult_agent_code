@@ -147,11 +147,13 @@ class DecisionPolicy:
                 "option_id": "approve",
                 "label": "Approve follow-up",
                 "tradeoff": f"Continue with {title}; increases scope but may improve quality.",
+                "action": "create_task",
             },
             {
                 "option_id": "defer",
                 "label": "Defer",
                 "tradeoff": "Keep current scope; revisit later if the goal still needs it.",
+                "action": "record_constraint",
             },
         ]
 
@@ -165,7 +167,22 @@ class DecisionPolicy:
             "option_id": str(option.get("option_id") or f"option-{index}"),
             "label": label,
             "tradeoff": str(option.get("tradeoff") or option.get("description") or label),
+            "action": self._action(option),
         }
+
+    def _action(self, option: dict) -> str:
+        action = str(option.get("action") or "").strip()
+        if action in {"create_task", "record_constraint", "cancel_scope", "require_replan"}:
+            return action
+        option_id = str(option.get("option_id") or "").lower()
+        label = str(option.get("label") or option.get("title") or "").lower()
+        if any(term in option_id or term in label for term in ["defer", "skip", "local_only"]):
+            return "record_constraint"
+        if any(term in option_id or term in label for term in ["cancel", "reject"]):
+            return "cancel_scope"
+        if "replan" in option_id or "replan" in label:
+            return "require_replan"
+        return "create_task"
 
     def _title(self, follow_up: dict) -> str:
         return str(follow_up.get("title") or follow_up.get("description") or "follow-up").strip()

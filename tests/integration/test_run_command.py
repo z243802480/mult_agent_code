@@ -564,3 +564,42 @@ def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Pa
     assert "decision_applied" in events
     final_report = resumed.run_result.final_report_path.read_text(encoding="utf-8")
     assert "## Accepted Decisions" in final_report
+
+
+def test_resume_command_records_constraint_action_without_creating_task(tmp_path: Path) -> None:
+    paused = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=3,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeDecisionReviewClient(),
+        enable_research=False,
+    ).run()
+    assert paused.status == "paused"
+
+    DecideCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        decision_id="decision-0001",
+        select_option_id="defer",
+    ).run()
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        max_iterations=1,
+        execute_model_client=FakeDecisionExecuteClient(),
+        review_model_client=FakeReviewClient(),
+    ).run()
+
+    assert resumed.applied_decisions == 1
+    assert resumed.created_tasks == 0
+    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert len(task_plan["tasks"]) == 1
+    events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    applied = [event for event in events if event["type"] == "decision_applied"]
+    assert applied[0]["data"]["action"] == "record_constraint"

@@ -92,11 +92,18 @@ When review creates a high-impact decision point, `/run` pauses the run instead 
 load paused run
   -> refuse if decisions are still pending
   -> apply resolved/defaulted decisions
-  -> create follow-up tasks when the selected option requires work
+  -> map selected option actions to constraints or tasks
   -> continue execute/review/compact/final report loop
 ```
 
-It writes `decision_applied` events. Non-execution choices such as `defer`, `skip`, or `local_only` are recorded as accepted decisions without creating tasks.
+It writes `decision_applied` events. Decision options may include an `action`:
+
+- `create_task`: create follow-up implementation work.
+- `require_replan`: create a planning follow-up task.
+- `record_constraint`: record the decision without creating work.
+- `cancel_scope`: record that the proposed scope should not proceed.
+
+Older decisions without `action` are still supported through option id/label inference.
 
 ## `/debug` Repair Flow
 
@@ -146,6 +153,8 @@ Supported modes:
 - default: `agent decide --decision-id ... --use-default`
 
 Decisions are written to `decisions.jsonl`, emit `decision_created` / `decision_resolved` events, and increment `user_decisions` in `cost_report.json`.
+
+New decisions should include option actions so `/resume` does not need to infer intent from labels.
 
 After resolving decisions, use `agent resume --run-id ...` to continue the run.
 

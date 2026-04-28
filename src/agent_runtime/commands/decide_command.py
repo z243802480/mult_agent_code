@@ -21,9 +21,15 @@ class DecideResult:
     decisions: list[dict] = field(default_factory=list)
 
     def to_text(self) -> str:
-        lines = [f"Decision action: {self.action}", f"Run: {self.run_id}", f"Decisions: {self.decisions_path}"]
+        lines = [
+            f"Decision action: {self.action}",
+            f"Run: {self.run_id}",
+            f"Decisions: {self.decisions_path}",
+        ]
         for decision in self.decisions:
-            lines.append(f"- {decision['decision_id']} [{decision['status']}]: {decision['question']}")
+            lines.append(
+                f"- {decision['decision_id']} [{decision['status']}]: {decision['question']}"
+            )
             selected = decision.get("selected_option_id") or decision.get("default_option_id")
             lines.append(f"  selected/default: {selected}")
         return "\n".join(lines)
@@ -70,7 +76,11 @@ class DecideCommand:
         decisions_path = run_dir / "decisions.jsonl"
 
         if self.list_pending:
-            pending = [decision for decision in self._read_decisions(decisions_path) if decision["status"] == "pending"]
+            pending = [
+                decision
+                for decision in self._read_decisions(decisions_path)
+                if decision["status"] == "pending"
+            ]
             return DecideResult(run_id, "list_pending", decisions_path, pending)
 
         if self.select_option_id or self.use_default:
@@ -80,7 +90,13 @@ class DecideCommand:
         decision = self._create_decision(agent_dir, run_dir, decisions_path, run_id)
         return DecideResult(run_id, "create", decisions_path, [decision])
 
-    def _create_decision(self, agent_dir: Path, run_dir: Path, decisions_path: Path, run_id: str) -> dict:
+    def _create_decision(
+        self,
+        agent_dir: Path,
+        run_dir: Path,
+        decisions_path: Path,
+        run_id: str,
+    ) -> dict:
         if not self.question:
             raise ValueError("question is required when creating a decision")
         options = self._parse_options()
@@ -118,7 +134,13 @@ class DecideCommand:
         self._record_user_decision_cost(agent_dir, run_dir, run_id)
         return decision
 
-    def _resolve_decision(self, agent_dir: Path, run_dir: Path, decisions_path: Path, run_id: str) -> dict:
+    def _resolve_decision(
+        self,
+        agent_dir: Path,
+        run_dir: Path,
+        decisions_path: Path,
+        run_id: str,
+    ) -> dict:
         if not self.decision_id:
             raise ValueError("decision_id is required when resolving a decision")
         decisions = self._read_decisions(decisions_path)
@@ -145,7 +167,10 @@ class DecideCommand:
             run_id,
             "decision_resolved",
             f"{resolved['decision_id']} -> {resolved['selected_option_id']}",
-            {"decision_id": resolved["decision_id"], "selected_option_id": resolved["selected_option_id"]},
+            {
+                "decision_id": resolved["decision_id"],
+                "selected_option_id": resolved["selected_option_id"],
+            },
         )
         self._record_user_decision_cost(agent_dir, run_dir, run_id)
         return resolved
@@ -156,7 +181,28 @@ class DecideCommand:
         parsed = json.loads(self.options_json)
         if not isinstance(parsed, list):
             raise ValueError("options_json must be a JSON array")
-        return parsed
+        return [self._normalize_option(option) for option in parsed]
+
+    def _normalize_option(self, option: dict) -> dict:
+        if not isinstance(option, dict):
+            raise ValueError("each decision option must be a JSON object")
+        normalized = dict(option)
+        normalized["action"] = self._option_action(normalized)
+        return normalized
+
+    def _option_action(self, option: dict) -> str:
+        action = str(option.get("action") or "").strip()
+        if action in {"create_task", "record_constraint", "cancel_scope", "require_replan"}:
+            return action
+        option_id = str(option.get("option_id") or "").lower()
+        label = str(option.get("label") or option.get("title") or "").lower()
+        if any(term in option_id or term in label for term in ["defer", "skip", "local_only"]):
+            return "record_constraint"
+        if any(term in option_id or term in label for term in ["cancel", "reject"]):
+            return "cancel_scope"
+        if "replan" in option_id or "replan" in label:
+            return "require_replan"
+        return "create_task"
 
     def _parse_impact(self) -> dict:
         if not self.impact_json:
@@ -176,7 +222,14 @@ class DecideCommand:
         content = "\n".join(json.dumps(decision, ensure_ascii=False) for decision in decisions)
         path.write_text(content + ("\n" if content else ""), encoding="utf-8")
 
-    def _record_event(self, run_dir: Path, run_id: str, event_type: str, summary: str, data: dict) -> None:
+    def _record_event(
+        self,
+        run_dir: Path,
+        run_id: str,
+        event_type: str,
+        summary: str,
+        data: dict,
+    ) -> None:
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             event_type,
@@ -220,5 +273,8 @@ class DecideCommand:
         runs_dir = agent_dir / "runs"
         if not runs_dir.exists():
             return None
-        runs = sorted([path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name)
+        runs = sorted(
+            [path for path in runs_dir.iterdir() if path.is_dir()],
+            key=lambda item: item.name,
+        )
         return runs[-1].name if runs else None
