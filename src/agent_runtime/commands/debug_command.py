@@ -177,6 +177,8 @@ class DebugCommand:
             )
             self._require_non_empty_action(action)
             tool_results = self._run_tool_calls(action["tool_calls"], task, context)
+            if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
+                raise RuntimeError("Repair task produced no changed artifacts.")
             self._record_repair_artifacts(context, task, tool_results)
             task_board.update_status(task_id, "testing")
             verification = self._run_tool_calls(
@@ -221,6 +223,42 @@ class DebugCommand:
     def _require_non_empty_action(self, action: dict) -> None:
         if not action.get("tool_calls") and not action.get("verification"):
             raise RuntimeError("Repair action contained no tool calls or verification.")
+
+    def _requires_changed_artifact(self, task: dict) -> bool:
+        text = " ".join(
+            [
+                str(task.get("title") or ""),
+                str(task.get("description") or ""),
+                " ".join(str(item) for item in task.get("acceptance", []) if item),
+                " ".join(str(item) for item in task.get("expected_artifacts", []) if item),
+            ]
+        ).lower()
+        implementation_markers = {
+            "add",
+            "apply",
+            "build",
+            "change",
+            "create",
+            "edit",
+            "fix",
+            "implement",
+            "modify",
+            "patch",
+            "repair",
+            "update",
+            "write",
+        }
+        non_change_markers = {
+            "diagnose",
+            "identify",
+            "locate",
+            "review",
+            "run tests",
+            "verify",
+        }
+        if any(marker in text for marker in non_change_markers):
+            return False
+        return any(marker in text for marker in implementation_markers)
 
     def _run_tool_calls(
         self,

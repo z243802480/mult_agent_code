@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from agent_runtime.commands.acceptance_command import AcceptanceCommand
 from agent_runtime.commands.brainstorm_command import BrainstormCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.model_check_command import ModelCheckCommand
@@ -300,6 +301,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="Resolve with default option",
     )
     decide_parser.add_argument("--list-pending", action="store_true", help="List pending decisions")
+
+    acceptance_parser = subcommands.add_parser(
+        "acceptance",
+        aliases=["/acceptance"],
+        help="Run reproducible runtime acceptance scenarios",
+    )
+    acceptance_parser.add_argument("--root", default=".", help="Acceptance workspace root")
+    acceptance_parser.add_argument(
+        "--suite",
+        choices=["smoke", "core", "advanced", "offline"],
+        default="smoke",
+        help="Acceptance scenario suite",
+    )
+    acceptance_parser.add_argument(
+        "--scenario",
+        action="append",
+        default=[],
+        help="Specific scenario to run; can be repeated and overrides --suite",
+    )
+    acceptance_parser.add_argument("--summary-json", type=Path, default=None, help="Write JSON summary")
+    acceptance_parser.add_argument(
+        "--allow-fake",
+        action="store_true",
+        help="Allow fake/offline provider scenarios",
+    )
+    acceptance_parser.add_argument("--cleanup", action="store_true", help="Remove generated workspace on success")
+    acceptance_parser.add_argument("--run-attempts", type=int, default=2, help="Run attempts per scenario")
+    acceptance_parser.add_argument(
+        "--model-max-retries",
+        type=int,
+        default=5,
+        help="Model retry attempts inside smoke scenarios",
+    )
+    acceptance_parser.add_argument(
+        "--scenario-timeout-seconds",
+        type=int,
+        default=1200,
+        help="Maximum seconds per scenario",
+    )
     return parser
 
 
@@ -447,6 +487,23 @@ def main() -> None:
             list_pending=args.list_pending,
         ).run()
         print(decide_result.to_text())
+        return
+
+    if command == "acceptance":
+        acceptance_result = AcceptanceCommand(
+            root=Path(args.root),
+            suite=args.suite,
+            scenarios=args.scenario,
+            summary_json=args.summary_json,
+            allow_fake=args.allow_fake,
+            cleanup=args.cleanup,
+            run_attempts=args.run_attempts,
+            model_max_retries=args.model_max_retries,
+            scenario_timeout_seconds=args.scenario_timeout_seconds,
+        ).run()
+        print(acceptance_result.to_text())
+        if not acceptance_result.ok:
+            raise SystemExit(acceptance_result.returncode)
         return
 
     parser.error(f"Unsupported command: {args.command}")

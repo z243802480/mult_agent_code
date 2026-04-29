@@ -27,29 +27,58 @@ class DebugAgent:
         run_id: str,
         runtime_context: dict | None = None,
     ) -> dict:
-        request = ChatRequest(
-            purpose="task_repair",
-            model_tier="medium",
-            messages=[
-                ChatMessage(role="system", content=self._system_prompt()),
-                ChatMessage(
-                    role="user",
-                    content=self._user_prompt(
-                        task,
-                        goal_spec,
-                        failure_evidence,
-                        available_tools,
-                        runtime_context or {},
-                    ),
+        messages = [
+            ChatMessage(role="system", content=self._system_prompt()),
+            ChatMessage(
+                role="user",
+                content=self._user_prompt(
+                    task,
+                    goal_spec,
+                    failure_evidence,
+                    available_tools,
+                    runtime_context or {},
                 ),
-            ],
-            response_format="json",
-            temperature=0.15,
-            max_output_tokens=5000,
-            metadata={"run_id": run_id, "agent_id": "DebugAgent", "task_id": task["task_id"]},
-        )
-        response = self.model_client.chat(request)
-        action = self._parse_json(response.content)
+            ),
+        ]
+        last_error: Exception | None = None
+        for attempt in range(2):
+            request = ChatRequest(
+                purpose="task_repair",
+                model_tier="medium",
+                messages=messages,
+                response_format="json",
+                temperature=0.15,
+                max_output_tokens=5000,
+                metadata={
+                    "run_id": run_id,
+                    "agent_id": "DebugAgent",
+                    "task_id": task["task_id"],
+                    "attempt": attempt + 1,
+                },
+            )
+            response = self.model_client.chat(request)
+            try:
+                action = self._validated_action(response.content, task)
+            except DebugAgentError as exc:
+                last_error = exc
+                messages.extend(
+                    [
+                        ChatMessage(role="assistant", content=response.content[:4000]),
+                        ChatMessage(
+                            role="user",
+                            content=(
+                                "Your previous repair response could not be used: "
+                                f"{exc}. Return only one valid JSON object matching the schema."
+                            ),
+                        ),
+                    ]
+                )
+                continue
+            return action
+        raise DebugAgentError(str(last_error) if last_error else "Repair action generation failed")
+
+    def _validated_action(self, content: str, task: dict) -> dict:
+        action = self._parse_json(content)
         action = normalize_execution_action(action, task)
         if action.get("task_id") != task["task_id"]:
             raise DebugAgentError(f"Repair task_id mismatch: {action.get('task_id')} != {task['task_id']}")

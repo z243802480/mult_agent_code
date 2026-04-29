@@ -200,7 +200,7 @@ class ExecuteCommand:
                     summary=f"Waiting for decision: {decision['decision_id']}",
                     tool_calls=0,
                     verification_calls=0,
-                )
+            )
             tool_results = self._run_tool_calls(action["tool_calls"], task, context)
             task_board.update_status(task_id, "testing")
             verification_results = self._run_tool_calls(
@@ -210,6 +210,8 @@ class ExecuteCommand:
                 stop_on_failure=False,
             )
             if all(result.ok for result in verification_results):
+                if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
+                    raise RuntimeError("Implementation task produced no changed artifacts.")
                 self._record_experiment(
                     context,
                     task,
@@ -266,6 +268,64 @@ class ExecuteCommand:
         if not action.get("tool_calls") and not action.get("verification"):
             raise RuntimeError("ExecutionAction contained no tool calls or verification.")
 
+    def _requires_changed_artifact(self, task: dict) -> bool:
+        text = " ".join(
+            [
+                str(task.get("title") or ""),
+                str(task.get("description") or ""),
+                " ".join(str(item) for item in task.get("acceptance", []) if item),
+                " ".join(str(item) for item in task.get("expected_artifacts", []) if item),
+            ]
+        ).lower()
+        implementation_markers = {
+            "add",
+            "apply",
+            "build",
+            "change",
+            "create",
+            "edit",
+            "fix",
+            "implement",
+            "modify",
+            "patch",
+            "repair",
+            "update",
+            "write",
+        }
+        non_change_markers = {
+            "diagnose",
+            "identify",
+            "locate",
+            "review",
+            "run tests",
+            "verify",
+        }
+        if any(marker in text for marker in non_change_markers):
+            return False
+        return any(marker in text for marker in implementation_markers)
+
+    def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
+        if tool_name not in {"run_command", "run_tests"}:
+            return False
+        if getattr(result, "ok", False) or getattr(result, "error", None) != "nonzero_exit":
+            return False
+        text = " ".join(
+            [
+                str(task.get("title") or ""),
+                str(task.get("description") or ""),
+                " ".join(str(item) for item in task.get("acceptance", []) if item),
+            ]
+        ).lower()
+        diagnostic_markers = {
+            "baseline failure",
+            "capture failing",
+            "failing tests",
+            "failures reported",
+            "identify failing",
+            "identify which tests",
+        }
+        return any(marker in text for marker in diagnostic_markers)
+
     def _run_tool_calls(
         self,
         calls: list[dict],
@@ -286,6 +346,10 @@ class ExecuteCommand:
                 agent_id="CoderAgent",
                 **call["args"],
             )
+            if self._accepts_diagnostic_failure(task, tool_name, result):
+                result.ok = True
+                result.error = None
+                result.summary = f"Diagnostic failure accepted: {result.summary}"
             results.append(result)
             if stop_on_failure and not result.ok:
                 raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")
@@ -460,13 +524,7 @@ class ExecuteCommand:
             for result in tool_results
             if result.ok and isinstance(result.data, dict) and result.data.get("backup_id")
         ]
-        changed_files = []
-        for result in tool_results:
-            if not result.ok or not isinstance(result.data, dict):
-                continue
-            if result.data.get("path"):
-                changed_files.append(result.data["path"])
-            changed_files.extend(result.data.get("changed_files", []))
+        changed_files = self._changed_files(tool_results)
         verification_passed = len([result for result in verification_results if result.ok])
         experiment = {
             "schema_version": "0.1.0",
@@ -562,13 +620,7 @@ class ExecuteCommand:
     ) -> None:
         if not context.run_dir:
             return
-        changed_files = []
-        for result in tool_results:
-            if not result.ok or not isinstance(result.data, dict):
-                continue
-            if result.data.get("path"):
-                changed_files.append(result.data["path"])
-            changed_files.extend(result.data.get("changed_files", []))
+        changed_files = self._changed_files(tool_results)
         if not changed_files:
             return
 
@@ -594,6 +646,16 @@ class ExecuteCommand:
             store.append(path, artifact, "artifact")
             known.add(artifact_path)
             next_index += 1
+
+    def _changed_files(self, tool_results: list) -> list[str]:
+        changed_files = []
+        for result in tool_results:
+            if not result.ok or not isinstance(result.data, dict):
+                continue
+            if result.data.get("path"):
+                changed_files.append(result.data["path"])
+            changed_files.extend(result.data.get("changed_files", []))
+        return changed_files
 
     def _artifact_type(self, path: str) -> str:
         lowered = path.lower()

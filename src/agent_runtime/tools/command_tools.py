@@ -158,8 +158,14 @@ class RunTestsTool:
         context: RuntimeContext,
         command: str | None = None,
         timeout_seconds: int | None = None,
+        expected_returncodes: int | list[int] | None = None,
     ) -> ToolResult:
         test_command = command or context.policy.get("commands", {}).get("test") or "python -m pytest"
-        result = self.command_tool.run(context, test_command, timeout_seconds=timeout_seconds)
+        result = self.command_tool.run(
+            context,
+            test_command,
+            timeout_seconds=timeout_seconds,
+            expected_returncodes=expected_returncodes,
+        )
         result.summary = "Test " + result.summary[0].lower() + result.summary[1:]
         return result

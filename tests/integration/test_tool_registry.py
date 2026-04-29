@@ -5,7 +5,7 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.schema_validator import SchemaValidator
-from agent_runtime.tools.command_tools import RunCommandTool
+from agent_runtime.tools.command_tools import RunCommandTool, RunTestsTool
 from agent_runtime.tools.file_tools import ReadFileTool, WriteFileTool
 from agent_runtime.tools.registry import ToolRegistry
 from agent_runtime.tools.search_tools import SearchTextTool
@@ -57,6 +57,7 @@ def registry() -> ToolRegistry:
     tools.register(WriteFileTool())
     tools.register(SearchTextTool())
     tools.register(RunCommandTool(default_timeout_seconds=10))
+    tools.register(RunTestsTool(RunCommandTool(default_timeout_seconds=10)))
     return tools
 
 
@@ -137,6 +138,21 @@ def test_command_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> No
 
     result = tools.call(
         "run_command",
+        ctx,
+        command="python -c \"raise SystemExit(3)\"",
+        expected_returncodes=[3],
+    )
+
+    assert result.ok
+    assert result.data["returncode"] == 3
+
+
+def test_run_tests_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+
+    result = tools.call(
+        "run_tests",
         ctx,
         command="python -c \"raise SystemExit(3)\"",
         expected_returncodes=[3],

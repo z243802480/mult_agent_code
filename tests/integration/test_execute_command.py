@@ -148,6 +148,51 @@ class FakeFailingVerificationClient:
         )
 
 
+class FakeNoopImplementationClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Claim implementation is complete without changing files.",
+                    "tool_calls": [],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": "python -c \"assert True\""},
+                            "reason": "noop verification",
+                        }
+                    ],
+                    "completion_notes": "claimed complete",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-noop",
+            raw_response={},
+        )
+
+
+class FakeInvalidThenValidExecuteClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            return ChatResponse(
+                content="not json",
+                finish_reason="stop",
+                usage=TokenUsage(1, 1, 2),
+                model_provider="fake",
+                model_name="fake-invalid",
+                raw_response={},
+            )
+        return FakeExecuteClient().chat(request)
+
+
 def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
@@ -230,3 +275,31 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.0
     assert experiments[0]["candidate"]["rollback"][0]["restored"] == ["broken_tool.py"]
     assert not (run_dir / "artifacts.jsonl").exists()
+
+
+def test_execute_command_blocks_implementation_task_without_changed_artifacts(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeNoopImplementationClient()).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "blocked"
+    assert "no changed artifacts" in task_plan["tasks"][0]["notes"]
+
+
+def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    execute_client = FakeInvalidThenValidExecuteClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=execute_client).run()
+
+    assert result.completed == 1
+    assert execute_client.calls == 2
+    assert (tmp_path / "notes_tool.py").exists()
