@@ -12,8 +12,10 @@ class RequirementPlanner:
         for index, requirement in enumerate(goal_spec["expanded_requirements"], start=1):
             if requirement["priority"] == "wont":
                 continue
+            requirement = self._refine_requirement(requirement, goal_spec)
             task_id = f"task-{index:04d}"
             expected_artifacts = self._expected_artifacts(requirement, goal_spec)
+            quality = self._quality_assessment(requirement, expected_artifacts)
             tasks.append(
                 {
                     "schema_version": "0.1.0",
@@ -38,11 +40,13 @@ class RequirementPlanner:
                     "assigned_agent_id": None,
                     "created_at": now_iso(),
                     "updated_at": now_iso(),
+                    "quality": quality,
                     "notes": self._notes(
                         requirement["id"],
                         requirement,
                         expected_artifacts,
                         runtime_context,
+                        quality,
                     ),
                 }
             )
@@ -64,6 +68,15 @@ class RequirementPlanner:
                     "assigned_agent_id": None,
                     "created_at": now_iso(),
                     "updated_at": now_iso(),
+                    "quality": {
+                        "clarity_score": 0.60,
+                        "testability_score": 0.60,
+                        "size_score": 0.70,
+                        "artifact_score": 0.60,
+                        "dependency_score": 0.80,
+                        "risk_score": 0.70,
+                        "passed": False,
+                    },
                     "notes": (
                         "Fallback task because no actionable requirements were generated. "
                         "Quality: clarity=0.60 testability=0.60 size=0.70 artifact=0.60."
@@ -109,35 +122,70 @@ class RequirementPlanner:
         outputs = [str(item) for item in goal_spec.get("target_outputs", [])]
         return outputs or ["planning artifact"]
 
+    def _refine_requirement(self, requirement: dict, goal_spec: dict) -> dict:
+        expected_artifacts = self._expected_artifacts(requirement, goal_spec)
+        quality = self._quality_assessment(requirement, expected_artifacts)
+        if quality["passed"]:
+            return requirement
+
+        refined = dict(requirement)
+        description = str(refined.get("description", "")).strip()
+        if quality["clarity_score"] < 0.75:
+            normalized_goal = str(goal_spec.get("normalized_goal", "the requested goal")).strip()
+            refined["description"] = (
+                f"Implement a verifiable slice for '{normalized_goal}': {description or 'initial work'}"
+            )
+        acceptance = refined.get("acceptance")
+        if not isinstance(acceptance, list) or not acceptance:
+            artifacts = self._expected_artifacts(refined, goal_spec)
+            refined["acceptance"] = [
+                f"{artifact} is created or updated" for artifact in artifacts[:3]
+            ] or ["The task produces a verifiable artifact"]
+        if not isinstance(refined.get("expected_artifacts"), list) or not refined["expected_artifacts"]:
+            refined["expected_artifacts"] = self._expected_artifacts(refined, goal_spec)
+        refined["quality_refined"] = True
+        return refined
+
     def _notes(
         self,
         requirement_id: str,
         requirement: dict,
         expected_artifacts: list[str],
         runtime_context: dict,
+        quality: dict,
     ) -> str:
-        scores = self._quality_scores(requirement, expected_artifacts)
         context_note = self._context_note(runtime_context)
+        refinement_note = " Refined for task quality." if requirement.get("quality_refined") else ""
         return (
             f"Generated from {requirement_id}. "
             "Quality: "
-            f"clarity={scores['clarity']:.2f} "
-            f"testability={scores['testability']:.2f} "
-            f"size={scores['size']:.2f} "
-            f"artifact={scores['artifact']:.2f}."
+            f"clarity={quality['clarity_score']:.2f} "
+            f"testability={quality['testability_score']:.2f} "
+            f"size={quality['size_score']:.2f} "
+            f"artifact={quality['artifact_score']:.2f}."
+            f"{refinement_note}"
             f"{context_note}"
         )
 
-    def _quality_scores(self, requirement: dict, expected_artifacts: list[str]) -> dict[str, float]:
+    def _quality_assessment(self, requirement: dict, expected_artifacts: list[str]) -> dict:
         description = str(requirement.get("description", "")).strip()
         acceptance = requirement.get("acceptance", [])
         acceptance_count = len(acceptance) if isinstance(acceptance, list) else 0
-        return {
-            "clarity": 0.85 if len(description.split()) >= 4 else 0.65,
-            "testability": 0.85 if acceptance_count >= 1 else 0.55,
-            "size": 0.80 if acceptance_count <= 4 else 0.65,
-            "artifact": 0.85 if expected_artifacts else 0.50,
+        scores = {
+            "clarity_score": 0.85 if len(description.split()) >= 4 else 0.65,
+            "testability_score": 0.85 if acceptance_count >= 1 else 0.55,
+            "size_score": 0.80 if 1 <= acceptance_count <= 4 else 0.65,
+            "artifact_score": 0.85 if expected_artifacts else 0.50,
+            "dependency_score": 0.80,
+            "risk_score": 0.75,
         }
+        scores["passed"] = (
+            scores["clarity_score"] >= 0.75
+            and scores["testability_score"] >= 0.75
+            and scores["size_score"] >= 0.70
+            and scores["artifact_score"] >= 0.75
+        )
+        return scores
 
     def _context_note(self, runtime_context: dict) -> str:
         memory_count = len(runtime_context.get("memory", []))

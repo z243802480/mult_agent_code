@@ -11,6 +11,7 @@ COPY src ./src
 COPY schemas ./schemas
 COPY templates ./templates
 COPY tests ./tests
+COPY benchmarks ./benchmarks
 COPY docs ./docs
 COPY scripts ./scripts
 

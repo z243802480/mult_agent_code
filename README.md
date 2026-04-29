@@ -33,6 +33,22 @@ $env:AGENT_MODEL_PROVIDER = "minimax"
 $env:AGENT_MODEL_API_KEY = "<your key>"
 ```
 
+Model tiers can be routed independently. This keeps expensive calls for planning/review while
+using cheaper or local models for routine work:
+
+```powershell
+$env:AGENT_MODEL_STRONG_PROVIDER = "minimax"
+$env:AGENT_MODEL_STRONG_API_KEY = "<your minimax key>"
+$env:AGENT_MODEL_STRONG_NAME = "MiniMax-M2.7"
+
+$env:AGENT_MODEL_MEDIUM_PROVIDER = "ollama"
+$env:AGENT_MODEL_MEDIUM_NAME = "qwen2.5-coder:7b"
+
+$env:AGENT_MODEL_CHEAP_PROVIDER = "fake"
+```
+
+If no tier-specific provider is configured, the runtime falls back to `AGENT_MODEL_PROVIDER`.
+
 OpenAI-compatible providers are also supported:
 
 ```powershell

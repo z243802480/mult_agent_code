@@ -24,25 +24,29 @@ class OpenAICompatibleSettings:
     max_retries: int = 2
 
     @classmethod
-    def from_env(cls, provider: str = "openai-compatible") -> "OpenAICompatibleSettings":
-        api_key = os.getenv("AGENT_MODEL_API_KEY") or os.getenv("OPENAI_API_KEY")
+    def from_env(
+        cls,
+        provider: str = "openai-compatible",
+        env_prefix: str = "AGENT_MODEL",
+    ) -> "OpenAICompatibleSettings":
+        api_key = _env(env_prefix, "API_KEY") or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise OpenAICompatibleProviderError(
-                "OpenAI-compatible API key is not configured. "
-                "Set AGENT_MODEL_API_KEY or OPENAI_API_KEY."
+                f"OpenAI-compatible API key is not configured for {env_prefix}. "
+                f"Set {env_prefix}_API_KEY or OPENAI_API_KEY."
             )
-        model_name = os.getenv("AGENT_MODEL_NAME")
+        model_name = _env(env_prefix, "NAME")
         if not model_name:
             raise OpenAICompatibleProviderError(
-                "AGENT_MODEL_NAME is required for OpenAI-compatible providers."
+                f"{env_prefix}_NAME is required for OpenAI-compatible providers."
             )
         return cls(
             api_key=api_key,
-            base_url=os.getenv("AGENT_MODEL_BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            base_url=_env(env_prefix, "BASE_URL", "https://api.openai.com/v1").rstrip("/"),
             model_name=model_name,
             provider=provider,
-            timeout_seconds=int(os.getenv("AGENT_MODEL_TIMEOUT_SECONDS", "90")),
-            max_retries=int(os.getenv("AGENT_MODEL_MAX_RETRIES", "2")),
+            timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "90")),
+            max_retries=int(_env(env_prefix, "MAX_RETRIES", "2")),
         )
 
 
@@ -160,3 +164,14 @@ class OpenAICompatibleClient:
             return True
         message = str(exc)
         return "429" in message or "timeout" in message.lower() or "HTTP 5" in message
+
+
+def _env(env_prefix: str, key: str, default: str | None = None) -> str:
+    value = os.getenv(f"{env_prefix}_{key}")
+    if value is not None:
+        return value
+    if env_prefix != "AGENT_MODEL":
+        value = os.getenv(f"AGENT_MODEL_{key}")
+        if value is not None:
+            return value
+    return default or ""

@@ -23,22 +23,23 @@ class MiniMaxSettings:
     max_retries: int = 2
 
     @classmethod
-    def from_env(cls) -> "MiniMaxSettings":
+    def from_env(cls, env_prefix: str = "AGENT_MODEL") -> "MiniMaxSettings":
         api_key = (
-            os.getenv("AGENT_MODEL_API_KEY")
+            _env(env_prefix, "API_KEY")
             or os.getenv("MINIMAX_API_KEY")
             or os.getenv("MINIMAX_CN_API_KEY")
         )
         if not api_key:
             raise ModelProviderError(
-                "MiniMax API key is not configured. Set AGENT_MODEL_API_KEY, MINIMAX_API_KEY, or MINIMAX_CN_API_KEY."
+                f"MiniMax API key is not configured for {env_prefix}. "
+                f"Set {env_prefix}_API_KEY, MINIMAX_API_KEY, or MINIMAX_CN_API_KEY."
             )
         return cls(
             api_key=api_key,
-            base_url=os.getenv("AGENT_MODEL_BASE_URL", "https://api.minimaxi.com/v1").rstrip("/"),
-            model_name=os.getenv("AGENT_MODEL_NAME", "MiniMax-M2.7"),
-            timeout_seconds=int(os.getenv("AGENT_MODEL_TIMEOUT_SECONDS", "90")),
-            max_retries=int(os.getenv("AGENT_MODEL_MAX_RETRIES", "2")),
+            base_url=_env(env_prefix, "BASE_URL", "https://api.minimaxi.com/v1").rstrip("/"),
+            model_name=_env(env_prefix, "NAME", "MiniMax-M2.7"),
+            timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "90")),
+            max_retries=int(_env(env_prefix, "MAX_RETRIES", "2")),
         )
 
 
@@ -177,3 +178,14 @@ class MiniMaxOpenAICompatibleClient:
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
         )
+
+
+def _env(env_prefix: str, key: str, default: str | None = None) -> str:
+    value = os.getenv(f"{env_prefix}_{key}")
+    if value is not None:
+        return value
+    if env_prefix != "AGENT_MODEL":
+        value = os.getenv(f"AGENT_MODEL_{key}")
+        if value is not None:
+            return value
+    return default or ""

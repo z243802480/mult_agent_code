@@ -28,6 +28,35 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert "README.md" in task["expected_artifacts"]
     assert "restore_backup" in task["allowed_tools"]
     assert "Quality:" in task["notes"]
+    assert task["quality"]["passed"]
+
+
+def test_requirement_planner_refines_low_quality_requirements() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Create a password testing tool",
+        "target_outputs": ["local_cli"],
+        "definition_of_done": ["Tool is usable"],
+        "verification_strategy": ["unit_tests"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Improve",
+                "acceptance": [],
+            }
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+    task = task_plan["tasks"][0]
+
+    assert "Create a password testing tool" in task["description"]
+    assert task["acceptance"]
+    assert task["expected_artifacts"]
+    assert task["quality"]["passed"]
+    assert "Refined for task quality" in task["notes"]
 
 
 def test_follow_up_planner_skips_duplicate_tasks() -> None:

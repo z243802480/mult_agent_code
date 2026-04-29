@@ -36,6 +36,18 @@
     "assigned_agent_id": { "type": ["string", "null"] },
     "created_at": { "type": "string" },
     "updated_at": { "type": "string" },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "clarity_score": { "type": "number" },
+        "testability_score": { "type": "number" },
+        "size_score": { "type": "number" },
+        "artifact_score": { "type": "number" },
+        "dependency_score": { "type": "number" },
+        "risk_score": { "type": "number" },
+        "passed": { "type": "boolean" }
+      }
+    },
     "notes": { "type": "string" }
   }
 }

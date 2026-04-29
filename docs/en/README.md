@@ -26,3 +26,5 @@ Verification:
 - Docker: `docker build -t agent-runtime:verify .`, then `docker run --rm agent-runtime:verify`.
 - Offline model smoke: set `AGENT_MODEL_PROVIDER=fake` before running CLI workflows.
 - Local model smoke: set `AGENT_MODEL_PROVIDER=ollama` and `AGENT_MODEL_NAME=qwen2.5-coder:7b`.
+- Tiered routing: set `AGENT_MODEL_STRONG_PROVIDER`, `AGENT_MODEL_MEDIUM_PROVIDER`, or
+  `AGENT_MODEL_CHEAP_PROVIDER` to route strong, medium, and cheap model calls independently.

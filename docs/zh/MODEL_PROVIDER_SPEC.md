@@ -101,7 +101,54 @@ AGENT_MODEL_TIMEOUT_SECONDS
 AGENT_MODEL_MAX_RETRIES
 ```
 
-### 6.1 本地模型 Provider
+### 6.1 分层模型路由
+
+运行时支持按模型层级配置不同 provider。这样可以把规划、评审、调研等高价值调用交给强模型，
+把代码执行、debug 或压缩交给本地/便宜模型，避免所有阶段都消耗同一档模型。
+
+全局配置仍然有效：
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "minimax"
+$env:AGENT_MODEL_API_KEY = "<your key>"
+```
+
+如果设置了分层 provider，则对应 `model_tier` 会走该 provider，未设置的 tier 回退到全局 provider。
+
+```powershell
+$env:AGENT_MODEL_STRONG_PROVIDER = "minimax"
+$env:AGENT_MODEL_STRONG_API_KEY = "<your minimax key>"
+$env:AGENT_MODEL_STRONG_NAME = "MiniMax-M2.7"
+
+$env:AGENT_MODEL_MEDIUM_PROVIDER = "ollama"
+$env:AGENT_MODEL_MEDIUM_NAME = "qwen2.5-coder:7b"
+
+$env:AGENT_MODEL_CHEAP_PROVIDER = "fake"
+```
+
+支持的 tier：
+
+```text
+strong  -> goal_spec / planning / brainstorming / research / review
+medium  -> coding / debugging / evaluation
+cheap   -> summarization / classification / model-check smoke
+```
+
+每个 tier 支持独立配置：
+
+```text
+AGENT_MODEL_<TIER>_PROVIDER
+AGENT_MODEL_<TIER>_API_KEY
+AGENT_MODEL_<TIER>_BASE_URL
+AGENT_MODEL_<TIER>_NAME
+AGENT_MODEL_<TIER>_TIMEOUT_SECONDS
+AGENT_MODEL_<TIER>_MAX_RETRIES
+```
+
+如果某个 tier 没有设置独立字段，会回退读取同名全局字段，例如
+`AGENT_MODEL_API_KEY`、`AGENT_MODEL_BASE_URL`、`AGENT_MODEL_NAME`。
+
+### 6.2 本地模型 Provider
 
 本地模型优先走 OpenAI-compatible 接口，不在核心运行时绑定某个本地推理框架。
 

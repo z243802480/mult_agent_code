@@ -552,6 +552,10 @@ artifact_score：产物是否明确
 risk_score：风险是否可控
 ```
 
+当前实现会把评分写入任务对象的 `quality` 字段，并同步写入 `notes` 方便人工查看。
+如果 requirement 过于模糊、没有验收条件或缺少明确产物，PlannerAgent 会先做一次确定性 refinement，
+补足描述、验收条件和预期产物，再进入任务看板。
+
 建议阈值：
 
 ```text
