@@ -181,6 +181,29 @@ class FakeDecisionReviewClient:
         )
 
 
+class FakeSparseReviewClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "run_id": payload["run_id"],
+                    "overall": {
+                        "status": "pass",
+                        "score": 0.9,
+                        "reason": "Looks good.",
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(20, 30, 50),
+            model_provider="fake",
+            model_name="fake-review",
+            raw_response={},
+        )
+
+
 def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
@@ -235,3 +258,20 @@ def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
     assert cost_report["user_decisions"] == 1
+
+
+def test_review_command_normalizes_sparse_eval_report(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeSparseReviewClient()).run()
+
+    assert result.status == "pass"
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    assert eval_report["schema_version"] == "0.1.0"
+    assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
+    assert eval_report["artifact_eval"]["logs_present"]
+    assert eval_report["outcome_eval"]["run_success"]

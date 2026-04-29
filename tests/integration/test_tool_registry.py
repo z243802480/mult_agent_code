@@ -117,6 +117,23 @@ def test_command_tool_runs_safe_command_and_blocks_dangerous(tmp_path: Path) -> 
     assert denied.status == "denied"
 
 
+def test_tool_registry_ignores_unsupported_model_args(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+
+    result = tools.call(
+        "run_command",
+        ctx,
+        command="python --version",
+        reason="model placed reason inside args",
+    )
+
+    assert result.ok
+    assert "Ignored unsupported tool args: reason" in result.warnings
+    row = json.loads((ctx.run_dir / "tool_calls.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert "reason" not in row["input_summary"]
+
+
 def test_tool_registry_budget_denies_before_execution(tmp_path: Path) -> None:
     ctx = context(tmp_path, max_tool_calls=1)
     tools = registry()

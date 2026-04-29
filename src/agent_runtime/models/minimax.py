@@ -17,7 +17,7 @@ class ModelProviderError(RuntimeError):
 @dataclass(frozen=True)
 class MiniMaxSettings:
     api_key: str
-    base_url: str = "https://api.minimaxi.com/v1"
+    base_url: str = "https://api.minimax.io/v1"
     model_name: str = "MiniMax-M2.7"
     timeout_seconds: int = 90
     max_retries: int = 2
@@ -34,9 +34,10 @@ class MiniMaxSettings:
                 f"MiniMax API key is not configured for {env_prefix}. "
                 f"Set {env_prefix}_API_KEY, MINIMAX_API_KEY, or MINIMAX_CN_API_KEY."
             )
+        default_base_url = default_minimax_base_url(api_key)
         return cls(
             api_key=api_key,
-            base_url=_env(env_prefix, "BASE_URL", "https://api.minimaxi.com/v1").rstrip("/"),
+            base_url=_env(env_prefix, "BASE_URL", default_base_url).rstrip("/"),
             model_name=_env(env_prefix, "NAME", "MiniMax-M2.7"),
             timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "90")),
             max_retries=int(_env(env_prefix, "MAX_RETRIES", "2")),
@@ -189,3 +190,9 @@ def _env(env_prefix: str, key: str, default: str | None = None) -> str:
         if value is not None:
             return value
     return default or ""
+
+
+def default_minimax_base_url(api_key: str | None = None) -> str:
+    if api_key and api_key.startswith("sk-cp-"):
+        return "https://api.minimaxi.com/v1"
+    return "https://api.minimax.io/v1"

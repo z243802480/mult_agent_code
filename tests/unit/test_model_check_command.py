@@ -9,6 +9,8 @@ class FakeHealthyClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         assert request.response_format == "json"
         assert request.purpose == "model_check"
+        assert request.temperature == 0.1
+        assert request.max_output_tokens == 512
         return ChatResponse(
             content=json.dumps({"ok": True}),
             finish_reason="stop",
@@ -80,3 +82,28 @@ def test_model_check_reports_local_provider_defaults(tmp_path: Path, monkeypatch
     assert result.provider == "ollama"
     assert result.model_name == "qwen2.5-coder:7b"
     assert result.base_url == "http://localhost:11434/v1"
+
+
+def test_model_check_reports_minimax_current_openai_compatible_base_url(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "minimax")
+    monkeypatch.delenv("AGENT_MODEL_BASE_URL", raising=False)
+
+    result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
+
+    assert result.base_url == "https://api.minimax.io/v1"
+
+
+def test_model_check_reports_minimax_china_base_url_for_cp_keys(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_API_KEY", "sk-cp-test")
+    monkeypatch.delenv("AGENT_MODEL_BASE_URL", raising=False)
+
+    result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
+
+    assert result.base_url == "https://api.minimaxi.com/v1"

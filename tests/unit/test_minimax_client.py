@@ -9,6 +9,7 @@ from agent_runtime.models.minimax import (
     MiniMaxOpenAICompatibleClient,
     MiniMaxSettings,
     ModelProviderError,
+    default_minimax_base_url,
 )
 from agent_runtime.models.model_call_logger import ModelCallLogger
 from agent_runtime.storage.schema_validator import SchemaValidator
@@ -93,7 +94,7 @@ def test_minimax_client_sends_openai_compatible_chat_and_logs_success(tmp_path: 
 
     assert response.content == "{\"ok\": true}"
     assert response.usage.input_tokens == 12
-    assert transport.calls[0]["url"] == "https://api.minimaxi.com/v1/chat/completions"
+    assert transport.calls[0]["url"] == "https://api.minimax.io/v1/chat/completions"
     assert transport.calls[0]["headers"]["Authorization"] == "Bearer test-key"
     assert transport.calls[0]["payload"]["response_format"] == {"type": "json_object"}
     assert (tmp_path / "model_calls.jsonl").exists()
@@ -127,3 +128,8 @@ def test_minimax_client_budget_denies_before_http_call(tmp_path: Path) -> None:
         client.chat(request())
 
     assert transport.calls == []
+
+
+def test_minimax_default_base_url_follows_key_region() -> None:
+    assert default_minimax_base_url("sk-cp-example") == "https://api.minimaxi.com/v1"
+    assert default_minimax_base_url("sk-global-example") == "https://api.minimax.io/v1"

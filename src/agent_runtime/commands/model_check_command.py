@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 from agent_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from agent_runtime.models.factory import create_model_client
+from agent_runtime.models.json_extractor import parse_json_object
 from agent_runtime.models.local import (
     local_default_base_url,
     local_default_model,
     local_provider_names,
 )
-from agent_runtime.models.minimax import ModelProviderError
+from agent_runtime.models.minimax import ModelProviderError, default_minimax_base_url
 from agent_runtime.models.openai_compatible import OpenAICompatibleProviderError
 from agent_runtime.storage.schema_validator import SchemaValidator
 
@@ -80,7 +80,7 @@ class ModelCheckCommand:
 
         try:
             response = client.chat(self._request())
-            parsed = json.loads(response.content)
+            parsed = parse_json_object(response.content)
         except Exception as exc:  # noqa: BLE001 - diagnostic command reports provider boundary failures
             return ModelCheckResult(
                 provider=provider,
@@ -117,13 +117,16 @@ class ModelCheckCommand:
             messages=[
                 ChatMessage(
                     role="system",
-                    content="Return only valid JSON. Do not wrap in markdown.",
+                    content=(
+                        "Return only valid JSON as the final answer. "
+                        "Do not wrap in markdown."
+                    ),
                 ),
                 ChatMessage(role="user", content='Return exactly: {"ok": true}'),
             ],
             response_format="json",
-            temperature=0,
-            max_output_tokens=100,
+            temperature=0.1,
+            max_output_tokens=512,
             metadata={"agent_id": "ModelCheckCommand"},
         )
 
@@ -142,7 +145,7 @@ class ModelCheckCommand:
         if provider in local_provider_names():
             return os.getenv("AGENT_MODEL_BASE_URL") or local_default_base_url(provider)
         if provider == "minimax":
-            return "https://api.minimaxi.com/v1"
+            return default_minimax_base_url(os.getenv("AGENT_MODEL_API_KEY"))
         if provider in {"openai", "openai-compatible", "generic"}:
             return "https://api.openai.com/v1"
         return None

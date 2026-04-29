@@ -64,3 +64,37 @@ def test_goal_spec_agent_rejects_invalid_json() -> None:
 
     with pytest.raises(GoalSpecError):
         agent.generate("goal", {}, "run-1")
+
+
+def test_goal_spec_agent_normalizes_common_model_shape_drift() -> None:
+    content = """{
+      "goal_id": "goal-0001",
+      "original_goal": "create a file",
+      "normalized_goal": "Create a simple local file",
+      "goal_type": "tool",
+      "assumptions": [{"description": "local only"}],
+      "constraints": [],
+      "non_goals": null,
+      "expanded_requirements": [
+        {
+          "description": "Create hello_runtime.txt",
+          "acceptance": [{"description": "file exists"}]
+        }
+      ],
+      "target_outputs": [{"path": "hello_runtime.txt"}],
+      "definition_of_done": [{"description": "file exists"}],
+      "verification_strategy": "filesystem check",
+      "budget": {"max_iterations": 1}
+    }"""
+    agent = GoalSpecAgent(FakeClient(content), SchemaValidator(Path("schemas")))
+
+    result = agent.generate("create a file", {}, "run-1")
+
+    assert result["schema_version"] == "0.1.0"
+    assert result["goal_type"] == "unknown"
+    assert result["assumptions"] == ["local only"]
+    assert result["non_goals"] == []
+    assert result["target_outputs"] == ["hello_runtime.txt"]
+    assert result["expanded_requirements"][0]["priority"] == "must"
+    assert result["expanded_requirements"][0]["source"] == "inferred"
+    assert result["expanded_requirements"][0]["acceptance"] == ["file exists"]

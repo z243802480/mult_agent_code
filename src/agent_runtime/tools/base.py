@@ -70,6 +70,7 @@ def record_tool_call(
                 "tool_name": tool_name,
                 "ok": result.ok,
                 "input_summary": input_summary,
+                "warnings": result.warnings,
                 "error": result.error,
             },
         )

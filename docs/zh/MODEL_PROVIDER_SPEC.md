@@ -113,6 +113,9 @@ $env:AGENT_MODEL_PROVIDER = "minimax"
 $env:AGENT_MODEL_API_KEY = "<your key>"
 ```
 
+MiniMax key 有区域差异。默认使用 `https://api.minimax.io/v1`，如果 key 以 `sk-cp-` 开头，
+运行时默认切换到中国区端点 `https://api.minimaxi.com/v1`。
+
 如果设置了分层 provider，则对应 `model_tier` 会走该 provider，未设置的 tier 回退到全局 provider。
 
 ```powershell

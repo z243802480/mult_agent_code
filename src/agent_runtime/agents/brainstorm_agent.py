@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 
 from agent_runtime.models.base import ChatMessage, ChatRequest, ModelClient
+from agent_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from agent_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 from agent_runtime.utils.time import now_iso
 
@@ -53,11 +54,9 @@ class BrainstormAgent:
 
     def _parse_json(self, content: str) -> dict:
         try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
+            parsed = parse_json_object(content)
+        except JsonExtractionError as exc:
             raise BrainstormAgentError(f"Brainstorm response was not valid JSON: {exc}") from exc
-        if not isinstance(parsed, dict):
-            raise BrainstormAgentError("Brainstorm response must be a JSON object")
         return parsed
 
     def _system_prompt(self) -> str:

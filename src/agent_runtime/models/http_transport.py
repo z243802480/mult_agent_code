@@ -29,7 +29,14 @@ class HttpTransport:
         try:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 response_body = response.read().decode("utf-8")
-                return HttpResponse(response.status, json.loads(response_body))
+                try:
+                    parsed_body = json.loads(response_body)
+                except json.JSONDecodeError as exc:
+                    preview = response_body[:200] if response_body else "<empty response>"
+                    raise HttpTransportError(
+                        f"HTTP {response.status} returned non-JSON body: {preview}"
+                    ) from exc
+                return HttpResponse(response.status, parsed_body)
         except urllib.error.HTTPError as exc:
             error_body = exc.read().decode("utf-8", errors="replace")
             try:

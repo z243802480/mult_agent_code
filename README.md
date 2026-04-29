@@ -33,6 +33,9 @@ $env:AGENT_MODEL_PROVIDER = "minimax"
 $env:AGENT_MODEL_API_KEY = "<your key>"
 ```
 
+MiniMax keys are region-specific. The runtime uses `https://api.minimax.io/v1` by default
+and switches to `https://api.minimaxi.com/v1` for China-region `sk-cp-` keys.
+
 Model tiers can be routed independently. This keeps expensive calls for planning/review while
 using cheaper or local models for routine work:
 

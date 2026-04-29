@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from agent_runtime.agents.execution_action import normalize_execution_action
 from agent_runtime.models.base import ChatMessage, ChatRequest, ModelClient
+from agent_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from agent_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
 
@@ -48,6 +50,7 @@ class CoderAgent:
         )
         response = self.model_client.chat(request)
         action = self._parse_json(response.content)
+        action = normalize_execution_action(action, task)
         if action.get("task_id") != task["task_id"]:
             raise CoderAgentError(
                 f"ExecutionAction task_id mismatch: {action.get('task_id')} != {task['task_id']}"
@@ -60,11 +63,9 @@ class CoderAgent:
 
     def _parse_json(self, content: str) -> dict:
         try:
-            parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
+            parsed = parse_json_object(content)
+        except JsonExtractionError as exc:
             raise CoderAgentError(f"ExecutionAction response was not valid JSON: {exc}") from exc
-        if not isinstance(parsed, dict):
-            raise CoderAgentError("ExecutionAction response must be a JSON object")
         return parsed
 
     def _system_prompt(self) -> str:
@@ -77,6 +78,7 @@ You must:
 - Use only tools from allowed_tools and available_tools.
 - Prefer apply_patch for editing existing files and write_file for new files.
 - Include verification tool calls when possible.
+- Use cross-platform Python commands for verification; do not rely on Unix-only commands like cat, wc, grep, or sed.
 - Avoid destructive commands, global installs, deployment, or network calls unless explicitly allowed.
 - Keep the implementation practical and production-oriented; do not create placeholder-only files.
 """
