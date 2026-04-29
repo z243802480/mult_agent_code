@@ -75,6 +75,16 @@ If the provider link is flaky, the script retries the full `/run` for transient 
 sets `AGENT_MODEL_MAX_RETRIES=5` for subprocesses when you have not configured it yourself.
 Never commit real API keys; keep them in process environment variables or secret storage only.
 
+For a broader manual acceptance pass, run curated real-task scenarios:
+
+```powershell
+python scripts/real_model_acceptance.py --suite core
+```
+
+The `core` suite currently covers the file smoke, a password-strength CLI, and a small markdown
+knowledge-base search tool. It is intentionally not part of default CI because it consumes real
+provider calls.
+
 ## Verify Locally
 
 Windows:

@@ -23,6 +23,7 @@ class RunCommandTool:
         context: RuntimeContext,
         command: str,
         timeout_seconds: int | None = None,
+        expected_returncodes: int | list[int] | None = None,
     ) -> ToolResult:
         ShellGuard(context.policy["permissions"]).validate(command)
         normalized_command = self._normalize_command(command)
@@ -51,7 +52,8 @@ class RunCommandTool:
             )
         stdout = self._truncate(completed.stdout)
         stderr = self._truncate(completed.stderr)
-        ok = completed.returncode == 0
+        expected = self._expected_returncodes(expected_returncodes)
+        ok = completed.returncode in expected or self._is_usage_check(command, completed)
         summary_command = (
             f"{normalized_command} (normalized from: {command})"
             if normalized_command != command
@@ -65,6 +67,7 @@ class RunCommandTool:
                 "command": normalized_command,
                 "requested_command": command,
                 "returncode": completed.returncode,
+                "expected_returncodes": sorted(expected),
                 "stdout": stdout,
                 "stderr": stderr,
                 "stdout_truncated": len(completed.stdout) > len(stdout),
@@ -110,6 +113,26 @@ class RunCommandTool:
         if os.name == "nt":
             return subprocess.list2cmdline([value])
         return shlex.quote(value)
+
+    def _expected_returncodes(self, value: int | list[int] | None) -> set[int]:
+        if value is None:
+            return {0}
+        if isinstance(value, int):
+            return {value}
+        return {int(item) for item in value}
+
+    def _is_usage_check(
+        self,
+        command: str,
+        completed: subprocess.CompletedProcess[str],
+    ) -> bool:
+        if completed.returncode == 0:
+            return False
+        normalized = command.strip().lower()
+        if not re.match(r"^(python3?|py)\s+[\w./\\-]+\.py\s*$", normalized):
+            return False
+        output = f"{completed.stdout}\n{completed.stderr}".lower()
+        return "usage:" in output
 
     def _text(self, value: bytes | str | None) -> str:
         if value is None:

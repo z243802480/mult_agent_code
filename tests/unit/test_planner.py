@@ -59,6 +59,42 @@ def test_requirement_planner_refines_low_quality_requirements() -> None:
     assert "Refined for task quality" in task["notes"]
 
 
+def test_requirement_planner_groups_single_file_tool_into_one_slice() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": "Create a single-file Python CLI named password_strength.py",
+        "normalized_goal": "Develop a single-file Python CLI password strength checker",
+        "constraints": ["Must be a single Python file named password_strength.py"],
+        "target_outputs": ["Single-file Python CLI tool"],
+        "definition_of_done": ["python password_strength.py password prints weak"],
+        "verification_strategy": ["execute CLI examples"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Accept a password argument",
+                "acceptance": ["Tool accepts password as a positional argument"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Classify weak passwords",
+                "acceptance": ["Common passwords return weak"],
+            },
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+
+    assert len(task_plan["tasks"]) == 1
+    task = task_plan["tasks"][0]
+    assert task["expected_artifacts"] == ["password_strength.py"]
+    assert "Accept a password argument" in task["description"]
+    assert "Common passwords return weak" in task["acceptance"]
+    assert "single-file tool" in task["notes"]
+
+
 def test_follow_up_planner_skips_duplicate_tasks() -> None:
     existing_tasks = [
         {

@@ -131,6 +131,35 @@ def test_command_tool_normalizes_common_model_shell_drift(tmp_path: Path) -> Non
     assert posix_listing.data["requested_command"] == "ls -la hello_runtime.txt"
 
 
+def test_command_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+
+    result = tools.call(
+        "run_command",
+        ctx,
+        command="python -c \"raise SystemExit(3)\"",
+        expected_returncodes=[3],
+    )
+
+    assert result.ok
+    assert result.data["returncode"] == 3
+
+
+def test_command_tool_accepts_cli_usage_checks(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+    (tmp_path / "cli.py").write_text(
+        "import sys\nprint('Usage: python cli.py <value>')\nsys.exit(1)\n",
+        encoding="utf-8",
+    )
+
+    result = tools.call("run_command", ctx, command="python cli.py")
+
+    assert result.ok
+    assert result.data["returncode"] == 1
+
+
 def test_tool_registry_ignores_unsupported_model_args(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()

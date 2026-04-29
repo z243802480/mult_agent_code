@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from agent_runtime.utils.time import now_iso
 
 
@@ -8,6 +10,9 @@ class RequirementPlanner:
 
     def build_task_plan(self, goal_spec: dict, runtime_context: dict | None = None) -> dict:
         runtime_context = runtime_context or {}
+        if self._is_single_file_tool(goal_spec):
+            return {"schema_version": "0.1.0", "tasks": [self._single_file_task(goal_spec, runtime_context)]}
+
         tasks: list[dict] = []
         for index, requirement in enumerate(goal_spec["expanded_requirements"], start=1):
             if requirement["priority"] == "wont":
@@ -84,6 +89,91 @@ class RequirementPlanner:
                 }
             )
         return {"schema_version": "0.1.0", "tasks": tasks}
+
+    def _is_single_file_tool(self, goal_spec: dict) -> bool:
+        text = " ".join(
+            [
+                str(goal_spec.get("original_goal", "")),
+                str(goal_spec.get("normalized_goal", "")),
+                " ".join(str(item) for item in goal_spec.get("target_outputs", [])),
+                " ".join(str(item) for item in goal_spec.get("constraints", [])),
+            ]
+        ).lower()
+        return "single-file" in text or "single file" in text
+
+    def _single_file_task(self, goal_spec: dict, runtime_context: dict) -> dict:
+        artifact = self._single_file_artifact(goal_spec)
+        requirements = [
+            requirement
+            for requirement in goal_spec.get("expanded_requirements", [])
+            if requirement.get("priority") != "wont"
+        ]
+        description_lines = [str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal"))]
+        for requirement in requirements[:12]:
+            description_lines.append(f"- {requirement.get('description', '')}")
+        acceptance = self._single_file_acceptance(goal_spec, requirements)
+        requirement = {
+            "id": "req-single-file",
+            "priority": "must",
+            "description": "\n".join(line for line in description_lines if line.strip()),
+            "acceptance": acceptance,
+            "expected_artifacts": [artifact],
+        }
+        quality = self._quality_assessment(requirement, [artifact])
+        return {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": f"Implement {artifact} as a complete single-file tool",
+            "description": requirement["description"],
+            "status": "ready",
+            "priority": "high",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": acceptance,
+            "allowed_tools": [
+                "read_file",
+                "search_text",
+                "write_file",
+                "apply_patch",
+                "restore_backup",
+                "run_command",
+                "run_tests",
+            ],
+            "expected_artifacts": [artifact],
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "quality": quality,
+            "notes": (
+                "Grouped into one complete implementation slice because the goal is a single-file tool. "
+                + self._notes("req-single-file", requirement, [artifact], runtime_context, quality)
+            ),
+        }
+
+    def _single_file_artifact(self, goal_spec: dict) -> str:
+        text = " ".join(
+            [
+                str(goal_spec.get("original_goal", "")),
+                str(goal_spec.get("normalized_goal", "")),
+                " ".join(str(item) for item in goal_spec.get("target_outputs", [])),
+                " ".join(str(item) for item in goal_spec.get("constraints", [])),
+                " ".join(str(item) for item in goal_spec.get("definition_of_done", [])),
+            ]
+        )
+        match = re.search(r"[\w.-]+\.py\b", text)
+        return match.group(0) if match else "tool.py"
+
+    def _single_file_acceptance(self, goal_spec: dict, requirements: list[dict]) -> list[str]:
+        acceptance: list[str] = []
+        for item in goal_spec.get("definition_of_done", []):
+            if isinstance(item, str) and item.strip():
+                acceptance.append(item.strip())
+        for requirement in requirements:
+            for item in requirement.get("acceptance", []):
+                if isinstance(item, str) and item.strip():
+                    acceptance.append(item.strip())
+        deduped = list(dict.fromkeys(acceptance))
+        return deduped[:12] or ["Single-file tool exists and can be executed"]
 
     def _priority(self, value: str) -> str:
         return {

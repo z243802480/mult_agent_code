@@ -79,6 +79,7 @@ You must:
 - Prefer apply_patch for editing existing files and write_file for new files.
 - Include verification tool calls when possible.
 - Use cross-platform Python commands for verification; do not rely on Unix-only commands like cat, wc, grep, or sed.
+- If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
 - Avoid destructive commands, global installs, deployment, or network calls unless explicitly allowed.
 - Keep the implementation practical and production-oriented; do not create placeholder-only files.
 """
@@ -111,9 +112,12 @@ You must:
                 ],
                 "verification": [
                     {
-                        "tool_name": "run_tests",
-                        "args": {},
-                        "reason": "verify the change",
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": "python -m pytest",
+                            "expected_returncodes": [0],
+                        },
+                        "reason": "verify the change; use expected_returncodes for expected non-zero CLI usage checks",
                     }
                 ],
                 "completion_notes": "what should be true after execution",

@@ -145,7 +145,33 @@ python scripts/real_model_smoke.py --run-attempts 3 --model-max-retries 5
 - 失败、重试、工具调用和模型调用被记录到 `.agent/` 运行日志中。
 - 仓库中不出现真实 API key。
 
-## 5. 结构化输出容错
+## 5. 真实任务验收集
+
+最小 smoke 通过后，可运行真实任务验收集：
+
+```powershell
+python scripts/real_model_acceptance.py --suite core
+```
+
+当前 `core` 套件包含：
+
+- `file_smoke`：最小文件创建闭环。
+- `password_cli`：生成单文件密码强度 CLI。
+- `markdown_kb`：生成单文件 Markdown 索引/搜索工具。
+
+也可以只跑单个场景：
+
+```powershell
+python scripts/real_model_acceptance.py --scenario password_cli
+```
+
+验收集默认要求真实 provider。只有测试 runner 本身时才使用：
+
+```powershell
+python scripts/real_model_acceptance.py --suite offline --allow-fake
+```
+
+## 6. 结构化输出容错
 
 真实模型可能返回 `<think>`、markdown code fence、近似 JSON 或轻微字段漂移。运行时在模型边界做有限容错：
 
@@ -157,7 +183,7 @@ python scripts/real_model_smoke.py --run-attempts 3 --model-max-retries 5
 
 容错不是放宽数据模型。无法安全归一化的输出必须阻塞、记录原因，并进入修复或人工决策流程。
 
-## 6. 验证产物
+## 7. 验证产物
 
 `agent run` 会在 `.agent/sessions/<session_id>/` 下写入：
 

@@ -78,6 +78,7 @@ You must:
 - Prefer editing the existing broken artifact instead of rewriting unrelated files.
 - Include verification calls that directly prove the repair.
 - Use cross-platform Python commands for verification; do not rely on Unix-only commands like cat, wc, grep, or sed.
+- If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
 - Avoid destructive commands, network calls, deployment, or secret access.
 """
 
@@ -109,9 +110,12 @@ You must:
                 ],
                 "verification": [
                     {
-                        "tool_name": "run_tests",
-                        "args": {},
-                        "reason": "verify repair",
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": "python -m pytest",
+                            "expected_returncodes": [0],
+                        },
+                        "reason": "verify repair; use expected_returncodes for expected non-zero CLI usage checks",
                     }
                 ],
                 "completion_notes": "what was repaired",

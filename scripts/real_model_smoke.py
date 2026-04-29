@@ -79,6 +79,10 @@ def main() -> None:
             "AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES",
             str(args.model_max_retries),
         )
+        os.environ.setdefault(
+            "AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS",
+            str(args.command_timeout_seconds),
+        )
         workspace, cleanup = prepare_workspace(args.root)
         result = SmokeResult(
             workspace=workspace,
@@ -156,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=5,
         help="AGENT_MODEL_MAX_RETRIES value used inside smoke subprocesses when unset.",
+    )
+    parser.add_argument(
+        "--command-timeout-seconds",
+        type=int,
+        default=900,
+        help="Maximum seconds for each agent_runtime subprocess.",
     )
     parser.add_argument(
         "--python",
@@ -330,6 +340,7 @@ def run_command(
         text=True,
         capture_output=True,
         check=False,
+        timeout=int(os.getenv("AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS", "900")),
     )
     record = CommandRecord(
         name=name,

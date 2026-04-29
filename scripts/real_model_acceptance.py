@@ -1,0 +1,253 @@
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True)
+class AcceptanceScenario:
+    name: str
+    goal: str
+    expected_file: str
+    expected_text: str
+    max_iterations: int = 5
+    max_tasks_per_iteration: int = 1
+
+
+SCENARIOS: dict[str, AcceptanceScenario] = {
+    "file_smoke": AcceptanceScenario(
+        name="file_smoke",
+        goal="Create a local file hello_runtime.txt containing one line: real model smoke ok",
+        expected_file="hello_runtime.txt",
+        expected_text="real model smoke ok",
+        max_iterations=3,
+    ),
+    "password_cli": AcceptanceScenario(
+        name="password_cli",
+        goal=(
+            "Create a single-file Python CLI tool named password_strength.py. "
+            "It should classify an input password as weak, medium, or strong using length, "
+            "character variety, and common-password checks. It must run with "
+            "`python password_strength.py <password>` and print the classification."
+        ),
+        expected_file="password_strength.py",
+        expected_text="password",
+        max_iterations=5,
+    ),
+    "markdown_kb": AcceptanceScenario(
+        name="markdown_kb",
+        goal=(
+            "Create a small single-file Python tool named markdown_kb.py that indexes markdown "
+            "files under a directory and searches for a keyword. It must support "
+            "`python markdown_kb.py <directory> <keyword>` and print matching file paths and lines."
+        ),
+        expected_file="markdown_kb.py",
+        expected_text="markdown",
+        max_iterations=5,
+    ),
+    "offline_artifact": AcceptanceScenario(
+        name="offline_artifact",
+        goal="create offline artifact",
+        expected_file="offline_artifact.txt",
+        expected_text="offline verification artifact",
+        max_iterations=3,
+    ),
+}
+
+SUITES = {
+    "smoke": ["file_smoke"],
+    "core": ["file_smoke", "password_cli", "markdown_kb"],
+    "offline": ["offline_artifact"],
+}
+
+
+class AcceptanceFailure(RuntimeError):
+    pass
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+    root, cleanup = prepare_root(args.root)
+    results: list[dict[str, Any]] = []
+    try:
+        selected = select_scenarios(args)
+        for scenario in selected:
+            results.append(run_scenario(args, root, scenario))
+        summary = {
+            "ok": all(result["ok"] for result in results),
+            "root": str(root),
+            "scenarios": results,
+        }
+        write_summary(args.summary_json, summary)
+        if not summary["ok"]:
+            failed = [result["scenario"] for result in results if not result["ok"]]
+            raise AcceptanceFailure("Scenario(s) failed: " + ", ".join(failed))
+        print("Real model acceptance passed")
+        print(f"Root: {root}")
+        print("Scenarios: " + ", ".join(result["scenario"] for result in results))
+    except Exception as exc:  # noqa: BLE001 - diagnostic script boundary
+        if results:
+            write_summary(
+                args.summary_json,
+                {
+                    "ok": False,
+                    "root": str(root),
+                    "scenarios": results,
+                    "error": str(exc),
+                },
+            )
+        print(f"Real model acceptance failed: {exc}", file=sys.stderr)
+        print(f"Root: {root}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    finally:
+        if cleanup and args.cleanup and root.exists():
+            shutil.rmtree(root)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run curated real-model acceptance scenarios in isolated workspaces."
+    )
+    parser.add_argument("--suite", choices=sorted(SUITES), default="smoke")
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        choices=sorted(SCENARIOS),
+        default=[],
+        help="Specific scenario to run. Can be repeated; overrides --suite.",
+    )
+    parser.add_argument("--root", type=Path, default=None)
+    parser.add_argument("--summary-json", type=Path, default=None)
+    parser.add_argument("--python", default=sys.executable)
+    parser.add_argument(
+        "--allow-fake",
+        action="store_true",
+        help="Allow fake/offline providers. Intended for script tests.",
+    )
+    parser.add_argument("--run-attempts", type=int, default=2)
+    parser.add_argument("--model-max-retries", type=int, default=5)
+    parser.add_argument(
+        "--scenario-timeout-seconds",
+        type=int,
+        default=1200,
+        help="Maximum seconds per scenario subprocess.",
+    )
+    parser.add_argument("--cleanup", action="store_true")
+    return parser
+
+
+def select_scenarios(args: argparse.Namespace) -> list[AcceptanceScenario]:
+    names = args.scenario or SUITES[args.suite]
+    if args.allow_fake and any(name != "offline_artifact" for name in names):
+        raise AcceptanceFailure(
+            "Fake/offline acceptance only supports offline_artifact. "
+            "Use real providers for real task scenarios."
+        )
+    return [SCENARIOS[name] for name in names]
+
+
+def prepare_root(root: Path | None) -> tuple[Path, bool]:
+    if root is not None:
+        resolved = root.resolve()
+        resolved.mkdir(parents=True, exist_ok=True)
+        return resolved, False
+    return Path(tempfile.mkdtemp(prefix="agent-real-acceptance-")).resolve(), True
+
+
+def run_scenario(
+    args: argparse.Namespace,
+    root: Path,
+    scenario: AcceptanceScenario,
+) -> dict[str, Any]:
+    workspace = root / scenario.name
+    summary_path = workspace / "acceptance_summary.json"
+    command = [
+        args.python,
+        "scripts/real_model_smoke.py",
+        "--root",
+        str(workspace),
+        "--goal",
+        scenario.goal,
+        "--expected-file",
+        scenario.expected_file,
+        "--expected-text",
+        scenario.expected_text,
+        "--max-iterations",
+        str(scenario.max_iterations),
+        "--max-tasks-per-iteration",
+        str(scenario.max_tasks_per_iteration),
+        "--run-attempts",
+        str(args.run_attempts),
+        "--model-max-retries",
+        str(args.model_max_retries),
+        "--command-timeout-seconds",
+        str(args.scenario_timeout_seconds),
+        "--summary-json",
+        str(summary_path),
+    ]
+    if args.allow_fake:
+        command.append("--allow-fake")
+    env = os.environ.copy()
+    if args.allow_fake:
+        env["AGENT_MODEL_PROVIDER"] = "fake"
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=Path(__file__).resolve().parents[1],
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=args.scenario_timeout_seconds + 30,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "scenario": scenario.name,
+            "ok": False,
+            "workspace": str(workspace),
+            "summary": read_json(summary_path),
+            "stdout": text_or_empty(exc.stdout),
+            "stderr": text_or_empty(exc.stderr)
+            + f"\nScenario timed out after {args.scenario_timeout_seconds + 30}s.",
+        }
+    return {
+        "scenario": scenario.name,
+        "ok": completed.returncode == 0,
+        "workspace": str(workspace),
+        "summary": read_json(summary_path),
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+
+
+def read_json(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def text_or_empty(value: bytes | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def write_summary(path: Path | None, summary: dict[str, Any]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()
