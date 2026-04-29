@@ -81,7 +81,7 @@ Phase 1B：可复现运行环境和执行闭环加固
 5. 本地模型：设置 `AGENT_MODEL_PROVIDER=ollama` 和 `AGENT_MODEL_NAME=qwen2.5-coder:7b` 后可连接本机 OpenAI-compatible 服务。
 6. 分层路由：设置 `AGENT_MODEL_STRONG_PROVIDER`、`AGENT_MODEL_MEDIUM_PROVIDER`、`AGENT_MODEL_CHEAP_PROVIDER`
    后可分别路由强模型、普通模型和便宜/离线模型。
-7. 真实模型 smoke：先执行 `agent /model-check --root .`，再在临时目录执行最小 `agent /run`，详见
+7. 真实模型 smoke：执行 `python scripts/real_model_smoke.py`，脚本会在隔离 workspace 内完成最小闭环，详见
    [DEVELOPMENT.md](./DEVELOPMENT.md)。
 8. 真实 API key 只能通过环境变量或 secret 注入，不能写入仓库、文档、日志或测试夹具。
 

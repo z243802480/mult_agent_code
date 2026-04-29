@@ -55,7 +55,7 @@ def _create_provider_client(
     budget: BudgetController | None,
 ) -> ModelClient:
     if provider in {"fake", "offline"}:
-        return FakeModelClient(logger=logger)
+        return FakeModelClient(logger=logger, budget=budget)
     if provider in local_provider_names():
         return OpenAICompatibleClient(
             local_settings_from_env(provider, env_prefix=env_prefix),

@@ -100,26 +100,30 @@ $env:AGENT_MODEL_CHEAP_PROVIDER = "fake"
 
 ## 4. 真实模型 smoke
 
-先做 provider 健康检查：
+推荐直接使用真实模型 smoke 脚本。脚本会创建临时 workspace，执行 `/init`、`/model-check`
+和最小 `/run`，并检查目标文件、session 日志、成本报告、模型调用、工具调用和最终报告：
 
 ```powershell
-python -m agent_runtime model-check --root .
+python scripts/real_model_smoke.py
 ```
 
-再用临时目录跑一个端到端最小任务，避免污染当前仓库：
+Windows 下也可以使用包装脚本：
 
 ```powershell
-$root = Join-Path $env:TEMP ("agent-real-e2e-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $root | Out-Null
-python -m agent_runtime run "Create a local file hello_runtime.txt containing one line: real model smoke ok" --root $root --max-iterations 3 --max-tasks-per-iteration 1
+.\scripts\real_model_smoke.ps1
 ```
 
-如果网络链路偶发 TLS EOF、超时或 provider 抖动，可提高重试次数后从 session 继续：
+如果想固定输出目录或生成机器可读摘要：
+
+```powershell
+python scripts/real_model_smoke.py --root C:\temp\agent-real-smoke --summary-json C:\temp\agent-real-smoke-summary.json
+```
+
+如果网络链路偶发 TLS EOF、超时或 provider 抖动，可提高重试次数后重跑：
 
 ```powershell
 $env:AGENT_MODEL_MAX_RETRIES = "5"
-python -m agent_runtime review --root $root --session-id <session_id>
-python -m agent_runtime resume --root $root --session-id <session_id>
+python scripts/real_model_smoke.py
 ```
 
 真实模型 smoke 的通过标准：

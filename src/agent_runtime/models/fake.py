@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from agent_runtime.core.budget import BudgetController, BudgetExceededError
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from agent_runtime.models.model_call_logger import ModelCallLogger
 
@@ -9,21 +10,46 @@ from agent_runtime.models.model_call_logger import ModelCallLogger
 class FakeModelClient:
     """Deterministic offline model for CLI smoke tests and reproducible demos."""
 
-    def __init__(self, logger: ModelCallLogger | None = None) -> None:
+    def __init__(
+        self,
+        logger: ModelCallLogger | None = None,
+        budget: BudgetController | None = None,
+    ) -> None:
         self.logger = logger
+        self.budget = budget
 
     def chat(self, request: ChatRequest) -> ChatResponse:
+        try:
+            if self.budget:
+                self.budget.record_model_call(request.model_tier)
+        except BudgetExceededError as exc:
+            if self.logger:
+                self.logger.record_failure(
+                    request,
+                    provider="fake",
+                    model_name="fake-offline",
+                    model_tier=request.model_tier,
+                    error=str(exc),
+                )
+            raise
+
         payload = self._payload(request)
         content = json.dumps(payload, ensure_ascii=False)
+        usage = TokenUsage(
+            input_tokens=self._estimate_tokens(request),
+            output_tokens=max(1, len(content) // 4),
+            total_tokens=None,
+            usage_estimated=True,
+        )
+        if self.budget:
+            self.budget.record_model_tokens(
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+            )
         response = ChatResponse(
             content=content,
             finish_reason="stop",
-            usage=TokenUsage(
-                input_tokens=self._estimate_tokens(request),
-                output_tokens=max(1, len(content) // 4),
-                total_tokens=None,
-                usage_estimated=True,
-            ),
+            usage=usage,
             model_provider="fake",
             model_name="fake-offline",
             raw_response={"purpose": request.purpose},

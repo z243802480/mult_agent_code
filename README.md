@@ -66,14 +66,12 @@ $env:AGENT_MODEL_API_KEY = "<your key>"
 Use a temporary workspace for real-provider checks so repository state stays clean:
 
 ```powershell
-agent /model-check --root .
-
-$root = Join-Path $env:TEMP ("agent-real-e2e-" + [guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $root | Out-Null
-agent /run "Create a local file hello_runtime.txt containing one line: real model smoke ok" --root $root --max-iterations 3 --max-tasks-per-iteration 1
+python scripts/real_model_smoke.py
 ```
 
-If the provider link is flaky, increase `AGENT_MODEL_MAX_RETRIES` and resume the same session.
+The script runs `/init`, `/model-check`, and a minimal `/run`, then verifies the expected file,
+session logs, cost report, model calls, tool calls, and final report. If the provider link is flaky,
+increase `AGENT_MODEL_MAX_RETRIES` and rerun the script.
 Never commit real API keys; keep them in process environment variables or secret storage only.
 
 ## Verify Locally
