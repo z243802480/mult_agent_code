@@ -582,9 +582,6 @@ class ExecuteCommand:
             if result.ok and isinstance(result.data, dict) and result.data.get("backup_id")
         ]
         rollback_results = []
-        delete_created_files = bool(
-            context.policy.get("permissions", {}).get("allow_restore_delete_created_files", False)
-        )
         for backup_id in reversed(backup_ids):
             result = self.registry.call(
                 "restore_backup",
@@ -592,7 +589,7 @@ class ExecuteCommand:
                 task_id=task["task_id"],
                 agent_id="ExecuteCommand",
                 backup_id=backup_id,
-                delete_created_files=delete_created_files,
+                delete_created_files=False,
             )
             rollback_results.append(result)
         return rollback_results

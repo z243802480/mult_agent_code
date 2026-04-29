@@ -99,7 +99,31 @@ class RequirementPlanner:
                 " ".join(str(item) for item in goal_spec.get("constraints", [])),
             ]
         ).lower()
-        return "single-file" in text or "single file" in text
+        return "single-file" in text or "single file" in text or self._single_output_file(goal_spec) is not None
+
+    def _single_output_file(self, goal_spec: dict) -> str | None:
+        outputs = [
+            str(item).strip()
+            for item in goal_spec.get("target_outputs", [])
+            if isinstance(item, str) and self._looks_like_file_path(str(item).strip())
+        ]
+        if len(outputs) == 1:
+            return outputs[0]
+        text = " ".join(
+            [
+                str(goal_spec.get("original_goal", "")),
+                str(goal_spec.get("normalized_goal", "")),
+                " ".join(str(item) for item in goal_spec.get("definition_of_done", [])),
+            ]
+        )
+        matches = list(dict.fromkeys(re.findall(r"\b[\w.-]+\.[A-Za-z0-9]{1,8}\b", text)))
+        return matches[0] if len(matches) == 1 else None
+
+    def _looks_like_file_path(self, value: str) -> bool:
+        if not value or value.endswith(("/", "\\")):
+            return False
+        name = value.replace("\\", "/").rsplit("/", 1)[-1]
+        return bool(re.match(r"^[\w.-]+\.[A-Za-z0-9]{1,8}$", name))
 
     def _single_file_task(self, goal_spec: dict, runtime_context: dict) -> dict:
         artifact = self._single_file_artifact(goal_spec)
@@ -123,7 +147,7 @@ class RequirementPlanner:
         return {
             "schema_version": "0.1.0",
             "task_id": "task-0001",
-            "title": f"Implement {artifact} as a complete single-file tool",
+            "title": f"Implement {artifact} as a complete single-file artifact",
             "description": requirement["description"],
             "status": "ready",
             "priority": "high",
@@ -145,12 +169,15 @@ class RequirementPlanner:
             "updated_at": now_iso(),
             "quality": quality,
             "notes": (
-                "Grouped into one complete implementation slice because the goal is a single-file tool. "
+                "Grouped into one complete single-file tool/artifact slice because the goal targets one concrete file. "
                 + self._notes("req-single-file", requirement, [artifact], runtime_context, quality)
             ),
         }
 
     def _single_file_artifact(self, goal_spec: dict) -> str:
+        explicit = self._single_output_file(goal_spec)
+        if explicit:
+            return explicit
         text = " ".join(
             [
                 str(goal_spec.get("original_goal", "")),
@@ -160,7 +187,7 @@ class RequirementPlanner:
                 " ".join(str(item) for item in goal_spec.get("definition_of_done", [])),
             ]
         )
-        match = re.search(r"[\w.-]+\.py\b", text)
+        match = re.search(r"\b[\w.-]+\.[A-Za-z0-9]{1,8}\b", text)
         return match.group(0) if match else "tool.py"
 
     def _single_file_acceptance(self, goal_spec: dict, requirements: list[dict]) -> list[str]:
@@ -261,10 +288,11 @@ class RequirementPlanner:
         description = str(requirement.get("description", "")).strip()
         acceptance = requirement.get("acceptance", [])
         acceptance_count = len(acceptance) if isinstance(acceptance, list) else 0
+        max_acceptance = 12 if requirement.get("id") == "req-single-file" else 4
         scores = {
             "clarity_score": 0.85 if len(description.split()) >= 4 else 0.65,
             "testability_score": 0.85 if acceptance_count >= 1 else 0.55,
-            "size_score": 0.80 if 1 <= acceptance_count <= 4 else 0.65,
+            "size_score": 0.80 if 1 <= acceptance_count <= max_acceptance else 0.65,
             "artifact_score": 0.85 if expected_artifacts else 0.50,
             "dependency_score": 0.80,
             "risk_score": 0.75,

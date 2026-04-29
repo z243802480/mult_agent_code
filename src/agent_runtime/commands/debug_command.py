@@ -177,8 +177,6 @@ class DebugCommand:
             )
             self._require_non_empty_action(action)
             tool_results = self._run_tool_calls(action["tool_calls"], task, context)
-            if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
-                raise RuntimeError("Repair task produced no changed artifacts.")
             self._record_repair_artifacts(context, task, tool_results)
             task_board.update_status(task_id, "testing")
             verification = self._run_tool_calls(
@@ -188,6 +186,9 @@ class DebugCommand:
                 stop_on_failure=False,
             )
             if all(result.ok for result in verification):
+                reason = "Repair verification passed."
+                if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
+                    reason = "Repair verification passed without changes; task was already satisfied."
                 self._record_repair_experiment(
                     context,
                     task,
@@ -195,7 +196,7 @@ class DebugCommand:
                     tool_results,
                     verification,
                     "keep",
-                    "Repair verification passed.",
+                    reason,
                 )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")

@@ -171,6 +171,13 @@ python scripts/real_model_acceptance.py --scenario password_cli
 python scripts/real_model_acceptance.py --suite offline --allow-fake
 ```
 
+`agent acceptance` 会把验收结果写入工作区下的 `.agent/acceptance/`：
+
+- `latest_summary.json`：脚本原始机器可读摘要。
+- `acceptance_report.json`：经过 schema 校验的 runtime 验收报告，包含 suite、场景、结果、失败摘要和输出尾部。
+
+这些产物用于后续把真实模型验收失败接入 memory、repair task 或 benchmark 回归。
+
 ## 6. 结构化输出容错
 
 真实模型可能返回 `<think>`、markdown code fence、近似 JSON 或轻微字段漂移。运行时在模型边界做有限容错：

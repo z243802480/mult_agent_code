@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AcceptanceReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "suite",
+    "requested_scenarios",
+    "root",
+    "ok",
+    "returncode",
+    "created_at",
+    "summary_json",
+    "scenarios"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "suite": { "type": "string" },
+    "requested_scenarios": { "type": "array", "items": { "type": "string" } },
+    "root": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "returncode": { "type": "integer" },
+    "created_at": { "type": "string" },
+    "summary_json": { "type": ["string", "null"] },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario", "ok", "workspace", "failure_summary"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "workspace": { "type": ["string", "null"] },
+          "failure_summary": { "type": "string" },
+          "stdout_tail": { "type": "string" },
+          "stderr_tail": { "type": "string" },
+          "summary": { "type": ["object", "null"] }
+        }
+      }
+    }
+  }
+}

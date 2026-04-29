@@ -85,6 +85,9 @@ The `core` suite currently covers the file smoke, a password-strength CLI, and a
 knowledge-base search tool. It is intentionally not part of default CI because it consumes real
 provider calls.
 
+`agent /acceptance` also persists machine-readable output under
+`.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
+
 ## Verify Locally
 
 Windows:

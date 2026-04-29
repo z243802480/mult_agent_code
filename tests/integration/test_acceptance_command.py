@@ -36,6 +36,12 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
 
     assert "Acceptance" in completed.stdout
     assert "Status: pass" in completed.stdout
+    assert "Report:" in completed.stdout
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["ok"] is True
     assert summary["scenarios"][0]["scenario"] == "offline_artifact"
+    report_path = tmp_path / "acceptance" / ".agent" / "acceptance" / "acceptance_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["summary_json"] == str(summary_path)
+    assert report["scenarios"][0]["scenario"] == "offline_artifact"

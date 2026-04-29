@@ -28,6 +28,45 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert "README.md" in task["expected_artifacts"]
     assert "restore_backup" in task["allowed_tools"]
     assert "Quality:" in task["notes"]
+
+
+def test_requirement_planner_groups_single_concrete_file_goal() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": "Create hello_runtime.txt containing real model smoke ok",
+        "normalized_goal": "Create hello_runtime.txt containing real model smoke ok",
+        "target_outputs": ["hello_runtime.txt"],
+        "definition_of_done": ["hello_runtime.txt exists", "content is exact"],
+        "verification_strategy": ["read file"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create hello_runtime.txt",
+                "acceptance": ["file exists"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Write exact content",
+                "acceptance": ["content matches"],
+            },
+            {
+                "id": "req-0003",
+                "priority": "must",
+                "description": "Verify content",
+                "acceptance": ["readback matches"],
+            },
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+
+    assert len(task_plan["tasks"]) == 1
+    task = task_plan["tasks"][0]
+    assert task["expected_artifacts"] == ["hello_runtime.txt"]
+    assert "one concrete file" in task["notes"]
     assert task["quality"]["passed"]
 
 

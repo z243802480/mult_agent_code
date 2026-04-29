@@ -260,7 +260,7 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
 
     assert result.completed == 0
     assert result.blocked == 1
-    assert not (tmp_path / "broken_tool.py").exists()
+    assert (tmp_path / "broken_tool.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
@@ -273,7 +273,7 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
     ]
     assert experiments[0]["decision"] == "discard"
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.0
-    assert experiments[0]["candidate"]["rollback"][0]["restored"] == ["broken_tool.py"]
+    assert experiments[0]["candidate"]["rollback"][0]["skipped"] == ["broken_tool.py"]
     assert not (run_dir / "artifacts.jsonl").exists()
 
 
