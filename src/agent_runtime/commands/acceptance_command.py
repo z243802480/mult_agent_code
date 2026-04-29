@@ -27,6 +27,7 @@ class AcceptanceResult:
     report_path: Path | None = None
     promoted_tasks: list[str] = field(default_factory=list)
     promotion_error: str | None = None
+    promoted_run_text: str | None = None
 
     def to_text(self) -> str:
         lines = [
@@ -46,6 +47,8 @@ class AcceptanceResult:
                 lines.append(f"  - {task_id}")
         if self.promotion_error:
             lines.append(f"Promotion error: {self.promotion_error}")
+        if self.promoted_run_text:
+            lines.extend(["", "Promoted task run:", self.promoted_run_text])
         if self.stdout.strip():
             lines.extend(["", self.stdout.strip()])
         if self.stderr.strip():
@@ -66,6 +69,9 @@ class AcceptanceCommand:
         model_max_retries: int = 5,
         scenario_timeout_seconds: int = 1200,
         promote_failures: bool = False,
+        run_promoted: bool = False,
+        promoted_run_max_iterations: int | None = None,
+        promoted_run_max_tasks_per_iteration: int = 1,
     ) -> None:
         self.root = root.resolve()
         self.suite = suite
@@ -77,6 +83,9 @@ class AcceptanceCommand:
         self.model_max_retries = model_max_retries
         self.scenario_timeout_seconds = scenario_timeout_seconds
         self.promote_failures = promote_failures
+        self.run_promoted = run_promoted
+        self.promoted_run_max_iterations = promoted_run_max_iterations
+        self.promoted_run_max_tasks_per_iteration = promoted_run_max_tasks_per_iteration
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
 
@@ -134,12 +143,15 @@ class AcceptanceCommand:
         )
         promoted_tasks = []
         promotion_error = None
+        promoted_run_text = None
         if self.promote_failures and completed.returncode != 0:
             report = self.store.read(report_path, "acceptance_report")
             try:
                 promoted_tasks = AcceptanceFailurePromoter(self.root, self.validator).promote(report)
             except RuntimeError as exc:
                 promotion_error = str(exc)
+        if self.run_promoted and promoted_tasks and promotion_error is None:
+            promoted_run_text = self._run_promoted_tasks()
         return AcceptanceResult(
             suite=self.suite,
             scenarios=self.scenarios,
@@ -152,6 +164,7 @@ class AcceptanceCommand:
             report_path=report_path,
             promoted_tasks=promoted_tasks,
             promotion_error=promotion_error,
+            promoted_run_text=promoted_run_text,
         )
 
     def _build_report(
@@ -232,6 +245,21 @@ class AcceptanceCommand:
 
     def _repo_root(self) -> Path:
         return Path(__file__).resolve().parents[3]
+
+    def _run_promoted_tasks(self) -> str:
+        from agent_runtime.commands.run_command import RunCommand
+
+        run_store = RunStore(self.root / ".agent", self.validator)
+        run_id = run_store.current_session_id()
+        if not run_id:
+            raise RuntimeError("Cannot run promoted tasks: no current session found.")
+        result = RunCommand(
+            self.root,
+            run_id=run_id,
+            max_iterations=self.promoted_run_max_iterations,
+            max_tasks_per_iteration=self.promoted_run_max_tasks_per_iteration,
+        ).run()
+        return result.to_text()
 
 
 class AcceptanceFailurePromoter:

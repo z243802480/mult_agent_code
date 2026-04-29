@@ -345,6 +345,23 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Turn failed acceptance scenarios into ready tasks on the current session",
     )
+    acceptance_parser.add_argument(
+        "--run-promoted",
+        action="store_true",
+        help="After promoting failures, continue the current session run loop",
+    )
+    acceptance_parser.add_argument(
+        "--promoted-run-max-iterations",
+        type=int,
+        default=None,
+        help="Maximum run-loop iterations when --run-promoted is used",
+    )
+    acceptance_parser.add_argument(
+        "--promoted-run-max-tasks-per-iteration",
+        type=int,
+        default=1,
+        help="Tasks per execute pass when --run-promoted is used",
+    )
     return parser
 
 
@@ -506,6 +523,9 @@ def main() -> None:
             model_max_retries=args.model_max_retries,
             scenario_timeout_seconds=args.scenario_timeout_seconds,
             promote_failures=args.promote_failures,
+            run_promoted=args.run_promoted,
+            promoted_run_max_iterations=args.promoted_run_max_iterations,
+            promoted_run_max_tasks_per_iteration=args.promoted_run_max_tasks_per_iteration,
         ).run()
         print(acceptance_result.to_text())
         if not acceptance_result.ok:

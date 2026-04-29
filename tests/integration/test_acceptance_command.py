@@ -143,3 +143,23 @@ def test_acceptance_result_prints_promotion_error(tmp_path: Path) -> None:
     )
 
     assert "Promotion error: Cannot promote acceptance failures" in result.to_text()
+
+
+def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
+    result = AcceptanceResult(
+        suite="core",
+        scenarios=["markdown_kb"],
+        root=tmp_path,
+        ok=False,
+        returncode=1,
+        stdout="",
+        stderr="",
+        promoted_tasks=["task-0002"],
+        promoted_run_text="Run: run-1\nStatus: blocked",
+    )
+
+    text = result.to_text()
+
+    assert "Promoted failure tasks: 1" in text
+    assert "Promoted task run:" in text
+    assert "Run: run-1" in text

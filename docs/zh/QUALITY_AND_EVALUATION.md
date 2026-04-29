@@ -345,6 +345,7 @@ benchmarks/
 - 端到端 smoke 使用临时目录，检查目标产物、session 日志和最终报告。
 - `agent acceptance` 必须持久化 `acceptance_report.json`，让验收通过/失败都可被后续 runtime 读取。
 - `agent acceptance --promote-failures` 必须把失败场景转换为当前 session 的可执行修复任务，并避免重复生成同一场景任务。
+- `agent acceptance --run-promoted` 必须是显式开关；默认不得自动触发真实模型执行成本。
 - 结构化输出测试覆盖 `<think>`、markdown code fence、近似 JSON、字段别名和少量 schema drift。
 - 无法安全归一化的输出必须被阻塞或进入修复流程，不能静默当作成功。
 - 网络超时、TLS EOF、429/5xx 等链路抖动通过有限重试验证，不能无限重试。

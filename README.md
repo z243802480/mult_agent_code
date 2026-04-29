@@ -89,6 +89,7 @@ provider calls.
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
 Pass `--promote-failures` to turn failed scenarios into ready tasks on the current session.
 Promoted tasks include report, summary, workspace, transcript, expected artifact, and reproduction commands.
+Add `--run-promoted` to immediately continue the current session after new failure tasks are promoted.
 
 ## Verify Locally
 
