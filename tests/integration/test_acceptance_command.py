@@ -128,6 +128,18 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert backlog["tasks"][1]["task_id"] == "task-0002"
     updated_run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert updated_run["status"] == "running"
+    memory_path = tmp_path / ".agent" / "memory" / "failures.jsonl"
+    memories = [
+        json.loads(line)
+        for line in memory_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(memories) == 1
+    assert memories[0]["type"] == "failure_lesson"
+    assert memories[0]["source"]["scenario"] == "markdown_kb"
+    assert memories[0]["source"]["task_id"] == "task-0002"
+    assert "python -m agent_runtime /acceptance --suite core --scenario markdown_kb" in memories[0]["content"]
+    validator.validate("memory_entry", memories[0])
 
 
 def test_acceptance_result_prints_promotion_error(tmp_path: Path) -> None:

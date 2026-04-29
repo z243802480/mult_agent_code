@@ -90,6 +90,7 @@ provider calls.
 Pass `--promote-failures` to turn failed scenarios into ready tasks on the current session.
 Promoted tasks include report, summary, workspace, transcript, expected artifact, and reproduction commands.
 Add `--run-promoted` to immediately continue the current session after new failure tasks are promoted.
+Newly promoted failures are also recorded as `failure_lesson` entries in `.agent/memory/failures.jsonl`.
 
 ## Verify Locally
 

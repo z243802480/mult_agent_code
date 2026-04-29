@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
+from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
@@ -267,6 +268,7 @@ class AcceptanceFailurePromoter:
         self.root = root.resolve()
         self.validator = validator or SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
+        self.jsonl = JsonlStore(self.validator)
 
     def promote(self, report: dict) -> list[str]:
         failed_scenarios = [
@@ -302,6 +304,7 @@ class AcceptanceFailurePromoter:
             next_index += 1
             existing_tasks.append(self._task_from_scenario(task_id, report, scenario))
             existing_keys.add(key)
+            self._record_failure_memory(agent_dir, report, scenario, task_id)
             promoted.append(task_id)
 
         if not promoted:
@@ -435,3 +438,59 @@ class AcceptanceFailurePromoter:
             scenario = notes.split(marker, 1)[1].split(";", 1)[0].strip()
             return "acceptance:" + scenario
         return title
+
+    def _record_failure_memory(
+        self,
+        agent_dir: Path,
+        report: dict,
+        scenario: dict,
+        task_id: str,
+    ) -> None:
+        path = agent_dir / "memory" / "failures.jsonl"
+        scenario_name = str(scenario.get("scenario") or "unknown")
+        memory_key = self._memory_key(report, scenario_name)
+        if memory_key in self._existing_memory_keys(path):
+            return
+        failure_summary = str(scenario.get("failure_summary") or "acceptance scenario failed")
+        memory = {
+            "schema_version": "0.1.0",
+            "memory_id": self._next_memory_id(path),
+            "type": "failure_lesson",
+            "content": (
+                f"Acceptance scenario `{scenario_name}` failed in suite `{report.get('suite')}`. "
+                f"Failure summary: {failure_summary}. "
+                f"Use `{self._acceptance_cli_command(report, scenario_name)}` to reproduce; "
+                "repair task context includes report, summary, workspace, transcript, and expected artifact paths."
+            ),
+            "source": {
+                "kind": "acceptance_report",
+                "scenario": scenario_name,
+                "suite": report.get("suite"),
+                "summary_json": report.get("summary_json"),
+                "workspace": scenario.get("workspace"),
+                "task_id": task_id,
+                "memory_key": memory_key,
+            },
+            "tags": [
+                "acceptance",
+                "failure",
+                f"scenario:{scenario_name}",
+                f"suite:{report.get('suite') or 'unknown'}",
+            ],
+            "confidence": 0.8,
+            "created_at": now_iso(),
+        }
+        self.jsonl.append(path, memory, "memory_entry")
+
+    def _memory_key(self, report: dict, scenario_name: str) -> str:
+        return f"{report.get('suite') or 'unknown'}:{scenario_name}:{report.get('summary_json') or ''}"
+
+    def _existing_memory_keys(self, path: Path) -> set[str]:
+        return {
+            str(entry.get("source", {}).get("memory_key"))
+            for entry in self.jsonl.read_all(path, "memory_entry")
+            if entry.get("source", {}).get("memory_key")
+        }
+
+    def _next_memory_id(self, path: Path) -> str:
+        return f"memory-{len(self.jsonl.read_all(path, 'memory_entry')) + 1:04d}"
