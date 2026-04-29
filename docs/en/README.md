@@ -28,3 +28,6 @@ Verification:
 - Local model smoke: set `AGENT_MODEL_PROVIDER=ollama` and `AGENT_MODEL_NAME=qwen2.5-coder:7b`.
 - Tiered routing: set `AGENT_MODEL_STRONG_PROVIDER`, `AGENT_MODEL_MEDIUM_PROVIDER`, or
   `AGENT_MODEL_CHEAP_PROVIDER` to route strong, medium, and cheap model calls independently.
+- Real model smoke: run `agent /model-check --root .`, then run a minimal `agent /run` in a temporary
+  workspace. MiniMax `sk-cp-` keys are routed to the China endpoint automatically. Never commit real
+  API keys; keep them in environment variables or secret storage only.

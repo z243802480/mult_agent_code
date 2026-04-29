@@ -339,6 +339,14 @@ benchmarks/
 - 语义评分。
 - 稳定部分的快照测试。
 
+真实模型专项检查：
+
+- `model-check` 验证 provider 配置、端点、认证和基础 JSON 响应。
+- 端到端 smoke 使用临时目录，检查目标产物、session 日志和最终报告。
+- 结构化输出测试覆盖 `<think>`、markdown code fence、近似 JSON、字段别名和少量 schema drift。
+- 无法安全归一化的输出必须被阻塞或进入修复流程，不能静默当作成功。
+- 网络超时、TLS EOF、429/5xx 等链路抖动通过有限重试验证，不能无限重试。
+
 ## 20. MVP 测试完成定义
 
 最低条件：

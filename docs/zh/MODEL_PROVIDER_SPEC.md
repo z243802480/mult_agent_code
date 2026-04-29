@@ -315,8 +315,24 @@ strong: 90
 - 优先使用 provider 支持的 JSON mode。
 - 不支持时，使用强提示约束。
 - 返回后必须用 schema 校验。
-- 校验失败时允许一次修复型重试。
-- 仍失败则生成阻塞报告。
+- 运行时可在模型边界做有限 JSON 提取和字段归一化。
+- 无法安全归一化或 schema 校验仍失败时，必须生成阻塞报告。
+
+当前实现要求：
+
+- 可移除 `<think>...</think>` 推理块，避免推理文本污染 JSON 解析。
+- 只有当整段响应是 markdown code fence 时才剥离 fence，不能破坏 JSON 字符串中的代码片段。
+- 可从响应中提取最后一个可解析 JSON 对象。
+- 可修复轻微近似 JSON，例如简单未加引号的对象 key。
+- `GoalSpec`、`ExecutionAction`、`EvalReport` 允许有边界的字段归一化，例如把对象数组转为字符串数组、补齐默认优先级、兼容 `tool/name/arguments` 别名。
+- 工具调用参数会按工具函数签名过滤未知字段，并在工具事件中记录 warning。
+
+边界：
+
+- JSON 提取和归一化只能发生在模型输出边界。
+- 持久化对象仍必须通过 schema 校验。
+- 不能为了通过校验而静默改变用户目标、权限策略或成本预算。
+- 多次失败后应进入 debug、repair 或 DecisionPoint，而不是无限重试。
 
 ## 12. Tool Calling 策略
 
@@ -372,5 +388,5 @@ MVP 模型适配层完成条件：
 - 能记录 ModelCall。
 - 能处理超时和重试。
 - 能根据 purpose 路由模型 tier。
-- 能在 JSON schema 校验失败时触发一次修复重试。
+- 能从真实模型输出中提取、归一化结构化 JSON，并在 schema 校验失败时阻塞或进入修复流程。
 - 不依赖 provider 原生 tool calling。

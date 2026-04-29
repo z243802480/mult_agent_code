@@ -61,6 +61,21 @@ $env:AGENT_MODEL_NAME = "<model name>"
 $env:AGENT_MODEL_API_KEY = "<your key>"
 ```
 
+## Real Model Smoke
+
+Use a temporary workspace for real-provider checks so repository state stays clean:
+
+```powershell
+agent /model-check --root .
+
+$root = Join-Path $env:TEMP ("agent-real-e2e-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $root | Out-Null
+agent /run "Create a local file hello_runtime.txt containing one line: real model smoke ok" --root $root --max-iterations 3 --max-tasks-per-iteration 1
+```
+
+If the provider link is flaky, increase `AGENT_MODEL_MAX_RETRIES` and resume the same session.
+Never commit real API keys; keep them in process environment variables or secret storage only.
+
 ## Verify Locally
 
 Windows:
