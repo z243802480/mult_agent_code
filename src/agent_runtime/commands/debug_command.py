@@ -175,6 +175,7 @@ class DebugCommand:
                 run_id=context.run_id or "",
                 runtime_context=runtime_context,
             )
+            self._require_non_empty_action(action)
             tool_results = self._run_tool_calls(action["tool_calls"], task, context)
             self._record_repair_artifacts(context, task, tool_results)
             task_board.update_status(task_id, "testing")
@@ -216,6 +217,10 @@ class DebugCommand:
         except Exception as exc:  # noqa: BLE001 - repair loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             return RepairSummary(task_id, "blocked", str(exc), 0, 0)
+
+    def _require_non_empty_action(self, action: dict) -> None:
+        if not action.get("tool_calls") and not action.get("verification"):
+            raise RuntimeError("Repair action contained no tool calls or verification.")
 
     def _run_tool_calls(
         self,

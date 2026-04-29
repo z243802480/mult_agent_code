@@ -181,6 +181,7 @@ class ExecuteCommand:
                 run_id=context.run_id or "",
                 runtime_context=runtime_context,
             )
+            self._require_non_empty_action(action)
             decision = self._create_policy_decision_if_needed(action, task, context)
             if decision is not None:
                 task_board.update_status(task_id, "blocked")
@@ -260,6 +261,10 @@ class ExecuteCommand:
                 tool_calls=0,
                 verification_calls=0,
             )
+
+    def _require_non_empty_action(self, action: dict) -> None:
+        if not action.get("tool_calls") and not action.get("verification"):
+            raise RuntimeError("ExecutionAction contained no tool calls or verification.")
 
     def _run_tool_calls(
         self,

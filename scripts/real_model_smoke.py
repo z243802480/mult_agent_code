@@ -431,11 +431,27 @@ def validate_artifacts(
     if review_status != "pass":
         raise SmokeFailure(f"Review status is {review_status!r}, expected 'pass'.")
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    model_call_count = count_jsonl(run_dir / "model_calls.jsonl")
+    tool_call_count = count_jsonl(run_dir / "tool_calls.jsonl")
+    if int(cost_report.get("model_calls", 0)) != model_call_count:
+        raise SmokeFailure(
+            "cost_report.json model_calls does not match model_calls.jsonl: "
+            f"{cost_report.get('model_calls')} != {model_call_count}"
+        )
+    if int(cost_report.get("tool_calls", 0)) != tool_call_count:
+        raise SmokeFailure(
+            "cost_report.json tool_calls does not match tool_calls.jsonl: "
+            f"{cost_report.get('tool_calls')} != {tool_call_count}"
+        )
     if int(cost_report.get("model_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record model calls.")
     if int(cost_report.get("tool_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record tool calls.")
     return run_dir / "final_report.md"
+
+
+def count_jsonl(path: Path) -> int:
+    return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
 
 
 def write_transcript(result: SmokeResult) -> None:

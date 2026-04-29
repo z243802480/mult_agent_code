@@ -65,3 +65,40 @@ def test_real_model_acceptance_rejects_fake_for_real_scenarios(tmp_path: Path) -
 
     assert completed.returncode == 1
     assert "Fake/offline acceptance only supports offline_artifact" in completed.stderr
+
+
+def test_real_model_acceptance_runs_decision_point_without_model(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "summary.json"
+    env = os.environ.copy()
+    env["AGENT_MODEL_PROVIDER"] = "fake"
+    env["PYTHONPATH"] = str(Path.cwd() / "src")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/real_model_acceptance.py",
+            "--scenario",
+            "decision_point",
+            "--root",
+            str(tmp_path / "acceptance"),
+            "--summary-json",
+            str(summary_path),
+            "--allow-fake",
+        ],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "Real model acceptance passed" in completed.stdout
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    scenario = summary["scenarios"][0]
+    assert scenario["scenario"] == "decision_point"
+    assert scenario["ok"] is True
+    assert scenario["summary"]["resolved_decision_id"] == "decision-0001"
+    assert scenario["summary"]["resolved_status"] == "resolved"
+    assert scenario["summary"]["selected_option_id"] == "cli"

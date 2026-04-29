@@ -15,11 +15,13 @@ from typing import Any
 @dataclass(frozen=True)
 class AcceptanceScenario:
     name: str
-    goal: str
-    expected_file: str
-    expected_text: str
+    goal: str = ""
+    expected_file: str = ""
+    expected_text: str = ""
     max_iterations: int = 5
     max_tasks_per_iteration: int = 1
+    kind: str = "run"
+    setup_files: dict[str, str] | None = None
 
 
 SCENARIOS: dict[str, AcceptanceScenario] = {
@@ -60,11 +62,33 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="offline verification artifact",
         max_iterations=3,
     ),
+    "failing_tests_repair": AcceptanceScenario(
+        name="failing_tests_repair",
+        goal=(
+            "Fix the failing tests in this project. Run the Python tests, identify the bug in "
+            "buggy_math.py, and make the tests pass with the smallest reasonable change."
+        ),
+        expected_file="buggy_math.py",
+        expected_text="return a + b",
+        max_iterations=5,
+        setup_files={
+            "buggy_math.py": "def add(a, b):\n    return a - b\n",
+            "test_buggy_math.py": (
+                "from buggy_math import add\n\n\n"
+                "def test_adds_positive_numbers():\n"
+                "    assert add(2, 3) == 5\n\n\n"
+                "def test_adds_negative_numbers():\n"
+                "    assert add(-2, -3) == -5\n"
+            ),
+        },
+    ),
+    "decision_point": AcceptanceScenario(name="decision_point", kind="decision"),
 }
 
 SUITES = {
     "smoke": ["file_smoke"],
     "core": ["file_smoke", "password_cli", "markdown_kb"],
+    "advanced": ["failing_tests_repair", "decision_point"],
     "offline": ["offline_artifact"],
 }
 
@@ -146,9 +170,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def select_scenarios(args: argparse.Namespace) -> list[AcceptanceScenario]:
     names = args.scenario or SUITES[args.suite]
-    if args.allow_fake and any(name != "offline_artifact" for name in names):
+    fake_allowed = {"offline_artifact", "decision_point"}
+    if args.allow_fake and any(name not in fake_allowed for name in names):
         raise AcceptanceFailure(
-            "Fake/offline acceptance only supports offline_artifact. "
+            "Fake/offline acceptance only supports offline_artifact and decision_point. "
             "Use real providers for real task scenarios."
         )
     return [SCENARIOS[name] for name in names]
@@ -168,6 +193,9 @@ def run_scenario(
     scenario: AcceptanceScenario,
 ) -> dict[str, Any]:
     workspace = root / scenario.name
+    if scenario.kind == "decision":
+        return run_decision_scenario(args, workspace, scenario)
+    write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
     command = [
         args.python,
@@ -228,10 +256,172 @@ def run_scenario(
     }
 
 
+def write_setup_files(workspace: Path, scenario: AcceptanceScenario) -> None:
+    for relative_path, content in (scenario.setup_files or {}).items():
+        path = workspace / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def run_decision_scenario(
+    args: argparse.Namespace,
+    workspace: Path,
+    scenario: AcceptanceScenario,
+) -> dict[str, Any]:
+    del scenario
+    commands: list[dict[str, Any]] = []
+    init = run_agent_command(
+        workspace,
+        args.allow_fake,
+        "/init",
+        "--root",
+        str(workspace),
+    )
+    commands.append({"name": "init", **init})
+    new_session = run_agent_command(
+        workspace,
+        args.allow_fake,
+        "/new",
+        "Create a tiny CLI tool; choose output medium when needed.",
+        "--root",
+        str(workspace),
+    )
+    commands.append({"name": "new-session", **new_session})
+    create = run_agent_command(
+        workspace,
+        args.allow_fake,
+        "/decide",
+        "--root",
+        str(workspace),
+        "--question",
+        "Should the tool use a CLI or web UI first?",
+        "--options-json",
+        json.dumps(
+            [
+                {
+                    "option_id": "cli",
+                    "label": "CLI first",
+                    "tradeoff": "Fast and scriptable",
+                    "action": "record_constraint",
+                },
+                {
+                    "option_id": "web",
+                    "label": "Web UI first",
+                    "tradeoff": "More visual but slower",
+                    "action": "require_replan",
+                },
+            ]
+        ),
+        "--recommended-option-id",
+        "cli",
+        "--default-option-id",
+        "cli",
+    )
+    commands.append({"name": "create-decision", **create})
+    list_pending = run_agent_command(
+        workspace,
+        args.allow_fake,
+        "/decide",
+        "--root",
+        str(workspace),
+        "--list-pending",
+    )
+    commands.append({"name": "list-pending", **list_pending})
+    resolve = run_agent_command(
+        workspace,
+        args.allow_fake,
+        "/decide",
+        "--root",
+        str(workspace),
+        "--decision-id",
+        "decision-0001",
+        "--select-option-id",
+        "cli",
+    )
+    commands.append({"name": "resolve-decision", **resolve})
+    ok = all(command["returncode"] == 0 for command in commands)
+    agent_dir = workspace / ".agent"
+    decision_logs = list(agent_dir.glob("runs/*/decisions.jsonl"))
+    memory_path = agent_dir / "memory" / "decisions.jsonl"
+    decisions = [
+        decision
+        for path in decision_logs
+        for decision in read_jsonl(path)
+    ]
+    resolved_decision = next(
+        (
+            decision
+            for decision in decisions
+            if decision.get("decision_id") == "decision-0001"
+            and decision.get("status") == "resolved"
+        ),
+        None,
+    )
+    if resolved_decision is None or resolved_decision.get("selected_option_id") != "cli":
+        ok = False
+    summary = {
+        "workspace": str(workspace),
+        "decision_logs": [str(path) for path in decision_logs],
+        "memory_path": str(memory_path) if memory_path.exists() else None,
+        "resolved_decision_id": (
+            resolved_decision.get("decision_id") if resolved_decision else None
+        ),
+        "resolved_status": resolved_decision.get("status") if resolved_decision else None,
+        "selected_option_id": (
+            resolved_decision.get("selected_option_id") if resolved_decision else None
+        ),
+        "commands": commands,
+    }
+    return {
+        "scenario": "decision_point",
+        "ok": ok,
+        "workspace": str(workspace),
+        "summary": summary,
+        "stdout": "\n".join(command["stdout"] for command in commands),
+        "stderr": "\n".join(command["stderr"] for command in commands),
+    }
+
+
+def run_agent_command(workspace: Path, allow_fake: bool, *args: str) -> dict[str, Any]:
+    env = os.environ.copy()
+    if allow_fake:
+        env["AGENT_MODEL_PROVIDER"] = "fake"
+    src_path = str((Path(__file__).resolve().parents[1] / "src").resolve())
+    env["PYTHONPATH"] = (
+        src_path
+        if not env.get("PYTHONPATH")
+        else os.pathsep.join([src_path, env["PYTHONPATH"]])
+    )
+    completed = subprocess.run(
+        [sys.executable, "-m", "agent_runtime", *args],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=120,
+    )
+    return {
+        "returncode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+
+
 def read_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 def text_or_empty(value: bytes | str | None) -> str:

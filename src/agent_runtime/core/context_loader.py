@@ -15,10 +15,14 @@ class ContextLoader:
         root: Path,
         validator: SchemaValidator,
         memory_limit: int = 8,
+        workspace_file_limit: int = 20,
+        workspace_file_chars: int = 1_200,
     ) -> None:
         self.root = root.resolve()
         self.validator = validator
         self.memory_limit = memory_limit
+        self.workspace_file_limit = workspace_file_limit
+        self.workspace_file_chars = workspace_file_chars
         self.store = JsonStore(validator)
         self.jsonl = JsonlStore(validator)
 
@@ -28,6 +32,7 @@ class ContextLoader:
             "memory": self._memory(agent_dir),
             "latest_snapshot": self._latest_snapshot(agent_dir, run_id),
             "latest_handoff": self._latest_handoff(agent_dir),
+            "workspace_files": self._workspace_files(),
         }
 
     def _memory(self, agent_dir: Path) -> list[dict]:
@@ -101,6 +106,51 @@ class ContextLoader:
             "recommended_next_command": handoff.get("recommended_next_command"),
             "created_at": handoff.get("created_at"),
         }
+
+    def _workspace_files(self) -> list[dict]:
+        files: list[dict] = []
+        for path in sorted(self.root.rglob("*"), key=self._file_sort_key):
+            if len(files) >= self.workspace_file_limit:
+                break
+            if not path.is_file() or self._is_excluded(path):
+                continue
+            relative = path.relative_to(self.root).as_posix()
+            item: dict[str, object] = {"path": relative}
+            try:
+                content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                item["omitted"] = "non_utf8"
+            except OSError:
+                item["omitted"] = "unreadable"
+            else:
+                item["content"] = content[: self.workspace_file_chars]
+                item["truncated"] = len(content) > self.workspace_file_chars
+            files.append(item)
+        return files
+
+    def _file_sort_key(self, path: Path) -> tuple[int, int, str]:
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError:
+            return (999, 999, str(path))
+        parts = relative.parts
+        suffix_priority = 0 if path.suffix.lower() in {".py", ".md", ".txt"} else 1
+        return (suffix_priority, len(parts), relative.as_posix())
+
+    def _is_excluded(self, path: Path) -> bool:
+        try:
+            relative = path.relative_to(self.root)
+        except ValueError:
+            return True
+        parts = set(relative.parts)
+        if parts & {".agent", ".git", "secrets", "__pycache__", ".pytest_cache"}:
+            return True
+        name = path.name.lower()
+        if name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".key")):
+            return True
+        if name in {"id_rsa", "id_ed25519"}:
+            return True
+        return path.suffix.lower() not in {".py", ".md", ".txt", ".json", ".toml", ".yaml", ".yml"}
 
     def _safe_read(self, path: Path, schema_name: str) -> dict:
         try:
