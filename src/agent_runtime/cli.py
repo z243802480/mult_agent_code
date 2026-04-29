@@ -340,6 +340,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=1200,
         help="Maximum seconds per scenario",
     )
+    acceptance_parser.add_argument(
+        "--promote-failures",
+        action="store_true",
+        help="Turn failed acceptance scenarios into ready tasks on the current session",
+    )
     return parser
 
 
@@ -500,6 +505,7 @@ def main() -> None:
             run_attempts=args.run_attempts,
             model_max_retries=args.model_max_retries,
             scenario_timeout_seconds=args.scenario_timeout_seconds,
+            promote_failures=args.promote_failures,
         ).run()
         print(acceptance_result.to_text())
         if not acceptance_result.ok:

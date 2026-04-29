@@ -4,10 +4,12 @@ import os
 import json
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
+from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
 
@@ -23,6 +25,8 @@ class AcceptanceResult:
     stderr: str
     summary_json: Path | None = None
     report_path: Path | None = None
+    promoted_tasks: list[str] = field(default_factory=list)
+    promotion_error: str | None = None
 
     def to_text(self) -> str:
         lines = [
@@ -36,6 +40,12 @@ class AcceptanceResult:
             lines.append(f"Summary: {self.summary_json}")
         if self.report_path:
             lines.append(f"Report: {self.report_path}")
+        if self.promoted_tasks:
+            lines.append(f"Promoted failure tasks: {len(self.promoted_tasks)}")
+            for task_id in self.promoted_tasks:
+                lines.append(f"  - {task_id}")
+        if self.promotion_error:
+            lines.append(f"Promotion error: {self.promotion_error}")
         if self.stdout.strip():
             lines.extend(["", self.stdout.strip()])
         if self.stderr.strip():
@@ -55,6 +65,7 @@ class AcceptanceCommand:
         run_attempts: int = 2,
         model_max_retries: int = 5,
         scenario_timeout_seconds: int = 1200,
+        promote_failures: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.suite = suite
@@ -65,6 +76,7 @@ class AcceptanceCommand:
         self.run_attempts = run_attempts
         self.model_max_retries = model_max_retries
         self.scenario_timeout_seconds = scenario_timeout_seconds
+        self.promote_failures = promote_failures
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
 
@@ -120,6 +132,14 @@ class AcceptanceCommand:
             self._build_report(completed.returncode, summary_json, completed.stdout, completed.stderr),
             "acceptance_report",
         )
+        promoted_tasks = []
+        promotion_error = None
+        if self.promote_failures and completed.returncode != 0:
+            report = self.store.read(report_path, "acceptance_report")
+            try:
+                promoted_tasks = AcceptanceFailurePromoter(self.root, self.validator).promote(report)
+            except RuntimeError as exc:
+                promotion_error = str(exc)
         return AcceptanceResult(
             suite=self.suite,
             scenarios=self.scenarios,
@@ -130,6 +150,8 @@ class AcceptanceCommand:
             stderr=completed.stderr,
             summary_json=summary_json,
             report_path=report_path,
+            promoted_tasks=promoted_tasks,
+            promotion_error=promotion_error,
         )
 
     def _build_report(
@@ -210,3 +232,133 @@ class AcceptanceCommand:
 
     def _repo_root(self) -> Path:
         return Path(__file__).resolve().parents[3]
+
+
+class AcceptanceFailurePromoter:
+    def __init__(self, root: Path, validator: SchemaValidator | None = None) -> None:
+        self.root = root.resolve()
+        self.validator = validator or SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+        self.store = JsonStore(self.validator)
+
+    def promote(self, report: dict) -> list[str]:
+        failed_scenarios = [
+            scenario
+            for scenario in report.get("scenarios", [])
+            if isinstance(scenario, dict) and not scenario.get("ok", False)
+        ]
+        if not failed_scenarios:
+            return []
+        agent_dir = self.root / ".agent"
+        if not agent_dir.exists():
+            raise RuntimeError("Cannot promote acceptance failures: workspace is not initialized.")
+        run_store = RunStore(agent_dir, self.validator)
+        run_id = run_store.current_session_id()
+        if not run_id:
+            raise RuntimeError("Cannot promote acceptance failures: no current session found.")
+        run_dir = run_store.run_dir(run_id)
+        task_plan_path = run_dir / "task_plan.json"
+        if not task_plan_path.exists():
+            raise RuntimeError(f"Cannot promote acceptance failures: missing task plan for {run_id}.")
+
+        task_plan = self.store.read(task_plan_path, "task_board")
+        existing_tasks = task_plan["tasks"]
+        existing_keys = {self._dedupe_key(task) for task in existing_tasks}
+        next_index = self._next_task_index(existing_tasks)
+        promoted: list[str] = []
+        for scenario in failed_scenarios:
+            scenario_name = str(scenario.get("scenario") or "unknown")
+            key = f"acceptance:{scenario_name.lower()}"
+            if key in existing_keys:
+                continue
+            task_id = f"task-{next_index:04d}"
+            next_index += 1
+            existing_tasks.append(self._task_from_scenario(task_id, report, scenario))
+            existing_keys.add(key)
+            promoted.append(task_id)
+
+        if not promoted:
+            return []
+        self.store.write(task_plan_path, task_plan, "task_board")
+        self.store.write(agent_dir / "tasks" / "backlog.json", task_plan, "task_board")
+        run = run_store.load_run(run_id)
+        run["status"] = "running"
+        run["current_phase"] = "PLAN"
+        run["ended_at"] = None
+        run["summary"] = f"Promoted {len(promoted)} acceptance failure task(s)."
+        run_store.update_run(run)
+        self._record_events(run_dir, run_id, promoted)
+        return promoted
+
+    def _task_from_scenario(self, task_id: str, report: dict, scenario: dict) -> dict:
+        scenario_name = str(scenario.get("scenario") or "unknown")
+        failure_summary = str(scenario.get("failure_summary") or "acceptance scenario failed")
+        description_parts = [
+            f"Repair the failing real-model acceptance scenario `{scenario_name}`.",
+            f"Suite: {report.get('suite')}",
+            f"Failure: {failure_summary}",
+        ]
+        workspace = scenario.get("workspace")
+        if workspace:
+            description_parts.append(f"Scenario workspace: {workspace}")
+        stderr_tail = str(scenario.get("stderr_tail") or "").strip()
+        if stderr_tail:
+            description_parts.append(f"stderr tail:\n{stderr_tail}")
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task_id,
+            "title": f"Repair acceptance scenario: {scenario_name}",
+            "description": "\n\n".join(description_parts),
+            "status": "ready",
+            "priority": "high",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": [
+                f"`agent acceptance` no longer fails for scenario `{scenario_name}`",
+                "The fix is covered by deterministic tests or a documented verification command",
+                "No protected paths, secrets, or destructive shell behavior are introduced",
+            ],
+            "allowed_tools": [
+                "read_file",
+                "search_text",
+                "write_file",
+                "apply_patch",
+                "restore_backup",
+                "run_command",
+                "run_tests",
+            ],
+            "expected_artifacts": [],
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "notes": f"Generated from acceptance report for {scenario_name}",
+        }
+
+    def _record_events(self, run_dir: Path, run_id: str, task_ids: list[str]) -> None:
+        events_path = run_dir / "events.jsonl"
+        if not events_path.exists():
+            return
+        logger = EventLogger(events_path, self.validator)
+        logger.record(
+            run_id,
+            "acceptance_failures_promoted",
+            "AcceptanceCommand",
+            f"Promoted {len(task_ids)} acceptance failure task(s)",
+            {"task_ids": task_ids},
+        )
+
+    def _next_task_index(self, tasks: list[dict]) -> int:
+        indexes = []
+        for task in tasks:
+            suffix = str(task.get("task_id", "")).rsplit("-", 1)[-1]
+            if suffix.isdigit():
+                indexes.append(int(suffix))
+        return max(indexes, default=0) + 1
+
+    def _dedupe_key(self, task: dict) -> str:
+        notes = str(task.get("notes") or "").lower()
+        if "generated from acceptance report for " in notes:
+            return "acceptance:" + notes.rsplit("generated from acceptance report for ", 1)[-1].strip()
+        title = str(task.get("title") or "").lower()
+        if title.startswith("repair acceptance scenario:"):
+            return "acceptance:" + title.split(":", 1)[1].strip()
+        return title

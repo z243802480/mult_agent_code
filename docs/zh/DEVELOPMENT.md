@@ -176,6 +176,14 @@ python scripts/real_model_acceptance.py --suite offline --allow-fake
 - `latest_summary.json`：脚本原始机器可读摘要。
 - `acceptance_report.json`：经过 schema 校验的 runtime 验收报告，包含 suite、场景、结果、失败摘要和输出尾部。
 
+如果需要把失败验收纳入后续开发闭环，可以追加 `--promote-failures`：
+
+```bash
+python -m agent_runtime /acceptance --suite core --promote-failures
+```
+
+该选项会读取失败场景并在当前 session 的 `task_plan.json` 中生成 `ready` 修复任务，同时同步 `.agent/tasks/backlog.json`；如果当前没有 session，会明确失败，不会静默丢弃验收结果。
+
 这些产物用于后续把真实模型验收失败接入 memory、repair task 或 benchmark 回归。
 
 ## 6. 结构化输出容错

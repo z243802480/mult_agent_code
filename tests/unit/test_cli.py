@@ -31,3 +31,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_args.command == "/acceptance"
     assert acceptance_args.suite == "offline"
     assert acceptance_args.allow_fake
+
+    promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
+    assert promote_args.promote_failures

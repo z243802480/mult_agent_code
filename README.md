@@ -87,6 +87,7 @@ provider calls.
 
 `agent /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
+Pass `--promote-failures` to turn failed scenarios into ready tasks on the current session.
 
 ## Verify Locally
 
