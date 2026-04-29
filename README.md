@@ -70,8 +70,9 @@ python scripts/real_model_smoke.py
 ```
 
 The script runs `/init`, `/model-check`, and a minimal `/run`, then verifies the expected file,
-session logs, cost report, model calls, tool calls, and final report. If the provider link is flaky,
-increase `AGENT_MODEL_MAX_RETRIES` and rerun the script.
+session logs, cost report, model calls, tool calls, review pass status, and that every task is done.
+If the provider link is flaky, the script retries the full `/run` for transient provider errors and
+sets `AGENT_MODEL_MAX_RETRIES=5` for subprocesses when you have not configured it yourself.
 Never commit real API keys; keep them in process environment variables or secret storage only.
 
 ## Verify Locally

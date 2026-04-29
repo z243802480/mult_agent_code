@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import shlex
 import subprocess
 import sys
 
@@ -23,10 +25,12 @@ class RunCommandTool:
         timeout_seconds: int | None = None,
     ) -> ToolResult:
         ShellGuard(context.policy["permissions"]).validate(command)
+        normalized_command = self._normalize_command(command)
+        ShellGuard(context.policy["permissions"]).validate(normalized_command)
         timeout = timeout_seconds or self.default_timeout_seconds
         try:
             completed = subprocess.run(
-                command,
+                normalized_command,
                 cwd=context.root,
                 shell=True,
                 capture_output=True,
@@ -48,12 +52,18 @@ class RunCommandTool:
         stdout = self._truncate(completed.stdout)
         stderr = self._truncate(completed.stderr)
         ok = completed.returncode == 0
+        summary_command = (
+            f"{normalized_command} (normalized from: {command})"
+            if normalized_command != command
+            else command
+        )
         return ToolResult(
             ok=ok,
-            summary=f"Command {'passed' if ok else 'failed'} ({completed.returncode}): {command}",
+            summary=f"Command {'passed' if ok else 'failed'} ({completed.returncode}): {summary_command}",
             error=None if ok else "nonzero_exit",
             data={
-                "command": command,
+                "command": normalized_command,
+                "requested_command": command,
                 "returncode": completed.returncode,
                 "stdout": stdout,
                 "stderr": stderr,
@@ -67,6 +77,39 @@ class RunCommandTool:
         executable_dir = os.path.dirname(sys.executable)
         env["PATH"] = executable_dir + os.pathsep + env.get("PATH", "")
         return env
+
+    def _normalize_command(self, command: str) -> str:
+        normalized = self._normalize_python_invocation(command)
+        if os.name == "nt":
+            normalized = self._normalize_windows_ls(normalized)
+        return normalized
+
+    def _normalize_python_invocation(self, command: str) -> str:
+        match = re.match(r"^(\s*)(python3|python)(\s|$)(.*)$", command, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
+            return command
+        prefix, _python_name, separator, rest = match.groups()
+        executable = self._shell_quote(sys.executable)
+        if separator:
+            return f"{prefix}{executable}{separator}{rest}"
+        return f"{prefix}{executable}"
+
+    def _normalize_windows_ls(self, command: str) -> str:
+        match = re.match(r"^\s*ls\s+-la\s+(.+?)\s*$", command, flags=re.IGNORECASE)
+        if not match:
+            return command
+        raw_path = match.group(1).strip().strip('"').strip("'")
+        escaped = raw_path.replace("\\", "\\\\").replace("'", "\\'")
+        executable = self._shell_quote(sys.executable)
+        return (
+            f"{executable} -c \"from pathlib import Path; import sys; "
+            f"sys.exit(0 if Path('{escaped}').exists() else 1)\""
+        )
+
+    def _shell_quote(self, value: str) -> str:
+        if os.name == "nt":
+            return subprocess.list2cmdline([value])
+        return shlex.quote(value)
 
     def _text(self, value: bytes | str | None) -> str:
         if value is None:

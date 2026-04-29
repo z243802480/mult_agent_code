@@ -101,7 +101,8 @@ $env:AGENT_MODEL_CHEAP_PROVIDER = "fake"
 ## 4. 真实模型 smoke
 
 推荐直接使用真实模型 smoke 脚本。脚本会创建临时 workspace，执行 `/init`、`/model-check`
-和最小 `/run`，并检查目标文件、session 日志、成本报告、模型调用、工具调用和最终报告：
+和最小 `/run`，并检查目标文件、session 日志、成本报告、模型调用、工具调用、review pass
+状态，以及所有任务是否完成：
 
 ```powershell
 python scripts/real_model_smoke.py
@@ -126,10 +127,20 @@ $env:AGENT_MODEL_MAX_RETRIES = "5"
 python scripts/real_model_smoke.py
 ```
 
+脚本默认会在未显式设置 `AGENT_MODEL_MAX_RETRIES` 时为子进程使用 5 次模型重试，并在早期
+provider 传输失败时重试整个 `/run`。如果需要调整完整 `/run` 尝试次数：
+
+```powershell
+python scripts/real_model_smoke.py --run-attempts 3 --model-max-retries 5
+```
+
 真实模型 smoke 的通过标准：
 
 - `model-check` 能返回成功。
-- `.agent/sessions/<session_id>/final_report.md` 存在。
+- `.agent/runs/<session_id>/final_report.md` 存在。
+- run 状态为 `completed`。
+- `eval_report.json` 的 overall status 为 `pass`。
+- `task_plan.json` 中没有未完成或阻塞任务。
 - 目标产物真实存在，并与用户目标一致。
 - 失败、重试、工具调用和模型调用被记录到 `.agent/` 运行日志中。
 - 仓库中不出现真实 API key。

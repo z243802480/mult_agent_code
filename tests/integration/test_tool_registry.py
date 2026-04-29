@@ -117,6 +117,20 @@ def test_command_tool_runs_safe_command_and_blocks_dangerous(tmp_path: Path) -> 
     assert denied.status == "denied"
 
 
+def test_command_tool_normalizes_common_model_shell_drift(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+    (tmp_path / "hello_runtime.txt").write_text("ok\n", encoding="utf-8")
+
+    python_alias = tools.call("run_command", ctx, command="python3 --version")
+    posix_listing = tools.call("run_command", ctx, command="ls -la hello_runtime.txt")
+
+    assert python_alias.ok
+    assert posix_listing.ok
+    assert python_alias.data["requested_command"] == "python3 --version"
+    assert posix_listing.data["requested_command"] == "ls -la hello_runtime.txt"
+
+
 def test_tool_registry_ignores_unsupported_model_args(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()

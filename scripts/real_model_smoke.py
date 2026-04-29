@@ -75,6 +75,10 @@ def main() -> None:
     cleanup = False
     try:
         validate_environment(allow_fake=args.allow_fake)
+        os.environ.setdefault(
+            "AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES",
+            str(args.model_max_retries),
+        )
         workspace, cleanup = prepare_workspace(args.root)
         result = SmokeResult(
             workspace=workspace,
@@ -142,6 +146,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum tasks executed per iteration.",
     )
     parser.add_argument(
+        "--run-attempts",
+        type=int,
+        default=2,
+        help="Maximum attempts for the full /run command when provider transport fails early.",
+    )
+    parser.add_argument(
+        "--model-max-retries",
+        type=int,
+        default=5,
+        help="AGENT_MODEL_MAX_RETRIES value used inside smoke subprocesses when unset.",
+    )
+    parser.add_argument(
         "--python",
         default=sys.executable,
         help="Python executable used to run agent_runtime.",
@@ -202,24 +218,17 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
         str(workspace),
         name="model-check",
     )
-    run = run_command(
-        result,
-        args.python,
-        "/run",
-        args.goal,
-        "--root",
-        str(workspace),
-        "--max-iterations",
-        str(args.max_iterations),
-        "--max-tasks-per-iteration",
-        str(args.max_tasks_per_iteration),
-        name="run",
-        check=False,
-    )
+    run = run_agent_run_with_retries(args, result)
     result.run_id = current_run_id(workspace)
     if run.returncode != 0:
-        if args.no_recovery or not result.run_id:
-            raise SmokeFailure("agent /run failed; see transcript for command output.")
+        raise SmokeFailure("agent /run failed; see transcript for command output.")
+
+    if (
+        not args.no_recovery
+        and result.run_id
+        and (workspace / ".agent" / "runs" / result.run_id / "goal_spec.json").exists()
+        and not (workspace / ".agent" / "runs" / result.run_id / "eval_report.json").exists()
+    ):
         run_command(
             result,
             args.python,
@@ -254,6 +263,55 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
     )
 
 
+def run_agent_run_with_retries(args: argparse.Namespace, result: SmokeResult) -> CommandRecord:
+    last_record: CommandRecord | None = None
+    attempts = max(1, int(args.run_attempts))
+    for attempt in range(1, attempts + 1):
+        name = "run" if attempt == 1 else f"run-retry-{attempt}"
+        record = run_command(
+            result,
+            args.python,
+            "/run",
+            args.goal,
+            "--root",
+            str(result.workspace),
+            "--max-iterations",
+            str(args.max_iterations),
+            "--max-tasks-per-iteration",
+            str(args.max_tasks_per_iteration),
+            name=name,
+            check=False,
+        )
+        last_record = record
+        if record.returncode == 0:
+            return record
+        if attempt >= attempts or not is_transient_provider_failure(record):
+            return record
+    if last_record is None:
+        raise SmokeFailure("agent /run did not execute.")
+    return last_record
+
+
+def is_transient_provider_failure(record: CommandRecord) -> bool:
+    text = f"{record.stdout}\n{record.stderr}".lower()
+    transient_markers = [
+        "unexpected_eof",
+        "eof occurred in violation of protocol",
+        "tls",
+        "timeout",
+        "timed out",
+        "temporarily unavailable",
+        "too many requests",
+        "429",
+        "500",
+        "502",
+        "503",
+        "504",
+        "urlopen error",
+    ]
+    return any(marker in text for marker in transient_markers)
+
+
 def run_command(
     result: SmokeResult,
     python: str,
@@ -264,6 +322,7 @@ def run_command(
     env = os.environ.copy()
     src_path = str((Path(__file__).resolve().parents[1] / "src").resolve())
     env["PYTHONPATH"] = merge_pythonpath(src_path, env.get("PYTHONPATH"))
+    env.setdefault("AGENT_MODEL_MAX_RETRIES", str(args_model_max_retries()))
     completed = subprocess.run(
         [python, "-m", "agent_runtime", *args],
         cwd=Path(__file__).resolve().parents[1],
@@ -283,6 +342,10 @@ def run_command(
     if check and completed.returncode != 0:
         raise SmokeFailure(f"{name} failed with exit code {completed.returncode}.")
     return record
+
+
+def args_model_max_retries() -> int:
+    return int(os.getenv("AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES", "5"))
 
 
 def merge_pythonpath(src_path: str, current: str | None) -> str:
@@ -324,6 +387,8 @@ def validate_artifacts(
         run_dir / "tool_calls.jsonl",
         run_dir / "model_calls.jsonl",
         run_dir / "cost_report.json",
+        run_dir / "eval_report.json",
+        run_dir / "review_report.md",
         run_dir / "final_report.md",
     ]
     missing = [str(path) for path in required_files if not path.exists()]
@@ -339,6 +404,21 @@ def validate_artifacts(
         raise SmokeFailure(
             f"Expected output file does not contain required text: {expected_text!r}"
         )
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    if run.get("status") != "completed":
+        raise SmokeFailure(f"Run status is {run.get('status')!r}, expected 'completed'.")
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    unfinished = [
+        f"{task['task_id']}:{task['status']}"
+        for task in task_plan.get("tasks", [])
+        if task.get("status") != "done"
+    ]
+    if unfinished:
+        raise SmokeFailure("Run has unfinished task(s): " + ", ".join(unfinished))
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    review_status = eval_report.get("overall", {}).get("status")
+    if review_status != "pass":
+        raise SmokeFailure(f"Review status is {review_status!r}, expected 'pass'.")
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     if int(cost_report.get("model_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record model calls.")
