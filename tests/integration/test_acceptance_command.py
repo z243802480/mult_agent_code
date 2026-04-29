@@ -97,7 +97,10 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
                 "failure_summary": "expected output file was not created",
                 "stdout_tail": "",
                 "stderr_tail": "missing markdown_kb.py",
-                "summary": None,
+                "summary": {
+                    "transcript": str(tmp_path / "scenario" / "real_model_smoke_transcript.json"),
+                    "expected_file": str(tmp_path / "scenario" / "markdown_kb.py"),
+                },
             }
         ],
     }
@@ -113,6 +116,14 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert task["status"] == "ready"
     assert task["title"] == "Repair acceptance scenario: markdown_kb"
     assert "expected output file was not created" in task["description"]
+    assert "Acceptance report:" in task["description"]
+    assert str(tmp_path / "summary.json") in task["description"]
+    assert "python -m agent_runtime /acceptance --suite core --scenario markdown_kb" in task["description"]
+    assert "python scripts/real_model_acceptance.py --suite core --scenario markdown_kb" in task["description"]
+    assert "real_model_smoke_transcript.json" in task["description"]
+    assert "markdown_kb.py" in task["description"]
+    assert "reproduce with:" in task["notes"]
+    assert "The reproduction command succeeds" in task["acceptance"][1]
     backlog = json.loads((tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8"))
     assert backlog["tasks"][1]["task_id"] == "task-0002"
     updated_run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))

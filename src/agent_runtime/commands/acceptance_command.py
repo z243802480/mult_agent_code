@@ -296,10 +296,21 @@ class AcceptanceFailurePromoter:
             f"Repair the failing real-model acceptance scenario `{scenario_name}`.",
             f"Suite: {report.get('suite')}",
             f"Failure: {failure_summary}",
+            "Diagnostics:",
+            f"- Acceptance report: {self.root / '.agent' / 'acceptance' / 'acceptance_report.json'}",
+            f"- Summary JSON: {report.get('summary_json')}",
+            f"- Reproduce via CLI: {self._acceptance_cli_command(report, scenario_name)}",
+            f"- Reproduce via script: {self._acceptance_script_command(report, scenario_name)}",
         ]
         workspace = scenario.get("workspace")
         if workspace:
-            description_parts.append(f"Scenario workspace: {workspace}")
+            description_parts.append(f"- Scenario workspace: {workspace}")
+        transcript = self._transcript_path(scenario)
+        if transcript:
+            description_parts.append(f"- Smoke transcript: {transcript}")
+        expected_file = self._expected_file(scenario)
+        if expected_file:
+            description_parts.append(f"- Expected artifact: {expected_file}")
         stderr_tail = str(scenario.get("stderr_tail") or "").strip()
         if stderr_tail:
             description_parts.append(f"stderr tail:\n{stderr_tail}")
@@ -314,6 +325,7 @@ class AcceptanceFailurePromoter:
             "depends_on": [],
             "acceptance": [
                 f"`agent acceptance` no longer fails for scenario `{scenario_name}`",
+                f"The reproduction command succeeds: `{self._acceptance_cli_command(report, scenario_name)}`",
                 "The fix is covered by deterministic tests or a documented verification command",
                 "No protected paths, secrets, or destructive shell behavior are introduced",
             ],
@@ -330,8 +342,39 @@ class AcceptanceFailurePromoter:
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
-            "notes": f"Generated from acceptance report for {scenario_name}",
+            "notes": (
+                f"Generated from acceptance report for {scenario_name}; "
+                f"reproduce with: {self._acceptance_cli_command(report, scenario_name)}"
+            ),
         }
+
+    def _acceptance_cli_command(self, report: dict, scenario_name: str) -> str:
+        suite = str(report.get("suite") or "smoke")
+        return f"python -m agent_runtime /acceptance --suite {suite} --scenario {scenario_name}"
+
+    def _acceptance_script_command(self, report: dict, scenario_name: str) -> str:
+        suite = str(report.get("suite") or "smoke")
+        summary_json = str(report.get("summary_json") or ".agent/acceptance/latest_summary.json")
+        return (
+            "python scripts/real_model_acceptance.py "
+            f"--suite {suite} --scenario {scenario_name} --summary-json {summary_json}"
+        )
+
+    def _transcript_path(self, scenario: dict) -> str | None:
+        summary = scenario.get("summary")
+        if isinstance(summary, dict):
+            transcript = summary.get("transcript")
+            if transcript:
+                return str(transcript)
+        return None
+
+    def _expected_file(self, scenario: dict) -> str | None:
+        summary = scenario.get("summary")
+        if isinstance(summary, dict):
+            expected_file = summary.get("expected_file")
+            if expected_file:
+                return str(expected_file)
+        return None
 
     def _record_events(self, run_dir: Path, run_id: str, task_ids: list[str]) -> None:
         events_path = run_dir / "events.jsonl"
@@ -355,10 +398,12 @@ class AcceptanceFailurePromoter:
         return max(indexes, default=0) + 1
 
     def _dedupe_key(self, task: dict) -> str:
-        notes = str(task.get("notes") or "").lower()
-        if "generated from acceptance report for " in notes:
-            return "acceptance:" + notes.rsplit("generated from acceptance report for ", 1)[-1].strip()
         title = str(task.get("title") or "").lower()
         if title.startswith("repair acceptance scenario:"):
             return "acceptance:" + title.split(":", 1)[1].strip()
+        notes = str(task.get("notes") or "").lower()
+        marker = "generated from acceptance report for "
+        if marker in notes:
+            scenario = notes.split(marker, 1)[1].split(";", 1)[0].strip()
+            return "acceptance:" + scenario
         return title

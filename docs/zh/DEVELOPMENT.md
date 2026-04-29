@@ -183,6 +183,7 @@ python -m agent_runtime /acceptance --suite core --promote-failures
 ```
 
 该选项会读取失败场景并在当前 session 的 `task_plan.json` 中生成 `ready` 修复任务，同时同步 `.agent/tasks/backlog.json`；如果当前没有 session，会明确失败，不会静默丢弃验收结果。
+生成的任务会包含验收报告路径、summary JSON 路径、场景 workspace、smoke transcript、期望产物路径，以及可直接复现的 `agent /acceptance --scenario ...` 和底层脚本命令。
 
 这些产物用于后续把真实模型验收失败接入 memory、repair task 或 benchmark 回归。
 
