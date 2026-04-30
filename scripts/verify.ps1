@@ -43,6 +43,24 @@ try {
     Invoke-Checked $python -m agent_runtime /new "create offline artifact" --root (Join-Path $tmpRoot "workspace")
     Invoke-Checked $python -m agent_runtime /sessions --root (Join-Path $tmpRoot "workspace")
     Invoke-Checked $python -m agent_runtime /run --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m agent_runtime /compact --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m agent_runtime /handoff --root (Join-Path $tmpRoot "workspace") --to FutureRun
+    $sessionsContext = & $python -m agent_runtime /sessions --root (Join-Path $tmpRoot "workspace") --context
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $python -m agent_runtime /sessions --context"
+    }
+    $sessionsContextText = $sessionsContext -join "`n"
+    if ($sessionsContextText -notmatch "snapshot:" -or $sessionsContextText -notmatch "handoff:" -or $sessionsContextText -notmatch "next:") {
+        throw "Expected sessions --context output to include snapshot, handoff, and next command. Output: $sessionsContextText"
+    }
+    $snapshots = Get-ChildItem -Path (Join-Path $tmpRoot "workspace\.agent\context\snapshots") -Filter *.json
+    if ($snapshots.Count -lt 1) {
+        throw "Expected at least one context snapshot to be created."
+    }
+    $handoffs = Get-ChildItem -Path (Join-Path $tmpRoot "workspace\.agent\context\handoffs") -Filter *.json
+    if ($handoffs.Count -lt 1) {
+        throw "Expected at least one handoff package to be created."
+    }
     $artifact = Join-Path $tmpRoot "workspace\offline_artifact.txt"
     if (-not (Test-Path $artifact)) {
         throw "Expected offline artifact was not created: $artifact"
