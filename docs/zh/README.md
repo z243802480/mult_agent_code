@@ -74,7 +74,7 @@ Phase 1B：可复现运行环境和执行闭环加固
 
 当前验证方式：
 
-1. 本机：`python -m pip install -e ".[dev]"` 后执行 `.\scripts\verify.ps1`，覆盖 CLI smoke、context snapshot、handoff 和 `sessions --context` 恢复入口。
+1. 本机：`python -m pip install -e ".[dev]"` 后执行 `.\scripts\verify.ps1`，覆盖 CLI smoke、context snapshot、handoff 和 `sessions --context` 恢复入口，并写入 `.agent/verification/latest.json`。
 2. Docker：`docker build -t agent-runtime:verify .` 后执行 `docker run --rm agent-runtime:verify`。
 3. CI：GitHub Actions 使用同一套验证脚本，覆盖 Python 3.11 和 3.13。
 4. 离线模型：设置 `AGENT_MODEL_PROVIDER=fake` 后可不依赖 API key 跑 CLI smoke。

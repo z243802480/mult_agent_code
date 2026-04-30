@@ -19,6 +19,7 @@ from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.sessions_command import SessionsCommand
+from agent_runtime.commands.verification_command import VerificationStatusCommand
 
 
 def add_session_id_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
@@ -99,6 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include latest snapshot and handoff recovery context",
     )
+
+    verification_parser = subcommands.add_parser(
+        "verification",
+        aliases=["/verification", "verify-status", "/verify-status"],
+        help="Show the latest local verification summary",
+    )
+    verification_parser.add_argument("--root", default=".", help="Workspace root path")
 
     research_parser = subcommands.add_parser(
         "research",
@@ -421,6 +429,11 @@ def main() -> None:
             include_context=args.context,
         ).run()
         print(sessions_result.to_text())
+        return
+
+    if command in {"verification", "verify-status"}:
+        verification_result = VerificationStatusCommand(root=Path(args.root)).run()
+        print(verification_result.to_text())
         return
 
     if command == "research":

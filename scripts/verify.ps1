@@ -65,6 +65,8 @@ try {
     if (-not (Test-Path $artifact)) {
         throw "Expected offline artifact was not created: $artifact"
     }
+    Invoke-Checked $python scripts/write_verification_summary.py --root . --platform windows --cli-workspace (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m agent_runtime /verification --root .
 }
 finally {
     if (Test-Path $tmpRoot) {

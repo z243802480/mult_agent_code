@@ -35,3 +35,5 @@ grep -q "next:" <<<"$sessions_context"
 find "$tmp_root/workspace/.agent/context/snapshots" -maxdepth 1 -name "*.json" -print -quit | grep -q .
 find "$tmp_root/workspace/.agent/context/handoffs" -maxdepth 1 -name "*.json" -print -quit | grep -q .
 test -f "$tmp_root/workspace/offline_artifact.txt"
+"$python_bin" scripts/write_verification_summary.py --root . --platform linux --cli-workspace "$tmp_root/workspace"
+"$python_bin" -m agent_runtime /verification --root .
