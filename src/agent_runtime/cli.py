@@ -94,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Set session as current",
     )
     sessions_parser.add_argument("--limit", type=int, default=20, help="Maximum sessions to list")
+    sessions_parser.add_argument(
+        "--context",
+        action="store_true",
+        help="Include latest snapshot and handoff recovery context",
+    )
 
     research_parser = subcommands.add_parser(
         "research",
@@ -413,6 +418,7 @@ def main() -> None:
             session_id=args.session_id,
             set_current=args.set_current,
             limit=args.limit,
+            include_context=args.context,
         ).run()
         print(sessions_result.to_text())
         return

@@ -111,6 +111,7 @@ Agent 自调用：
 - `agent sessions` 列出最近 session，并标记 current session。
 - `agent sessions --session-id <id>` 查看指定 session。
 - `agent sessions --session-id <id> --set-current` 将指定 session 设为当前上下文。
+- `agent sessions --context` 会显示每个 session 最新的 snapshot、handoff、推荐下一步、待处理决策数和任务统计，方便后续 agent 恢复现场。
 - `agent runs`、`agent history` 和 `--run-id` 保留为兼容别名；新文档和新流程使用 `sessions` / `--session-id`。
 - `run`、`execute`、`review`、`debug`、`decide`、`resume`、`compact` 等命令在未传 `session_id` 时优先使用 current session。
 

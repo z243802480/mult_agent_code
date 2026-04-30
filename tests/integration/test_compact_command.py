@@ -5,6 +5,7 @@ from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.sessions_command import SessionsCommand
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -233,3 +234,25 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert package["pending_decisions"][0]["question"] == "Should we add a UI now?"
     assert "password_tool.py" in package["recent_artifacts"]
     assert "Need user decision" in package["report_summaries"]["review_report"]
+
+
+def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
+    HandoffCommand(tmp_path, to_role="FutureRun").run()
+
+    result = SessionsCommand(tmp_path, session_id=plan.run_id, include_context=True).run()
+    text = result.to_text()
+    context = result.context[plan.run_id]
+
+    assert context["snapshot_path"].startswith(".agent\\context\\snapshots\\") or context[
+        "snapshot_path"
+    ].startswith(".agent/context/snapshots/")
+    assert context["handoff_path"].startswith(".agent\\context\\handoffs\\") or context[
+        "handoff_path"
+    ].startswith(".agent/context/handoffs/")
+    assert context["recommended_next_command"] == "execute"
+    assert context["task_summary"]["remaining"] == 1
+    assert "snapshot:" in text
+    assert "handoff:" in text
+    assert "next: execute" in text

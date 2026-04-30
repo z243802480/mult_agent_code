@@ -8,7 +8,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
 
     plan_args = parser.parse_args(["/plan", "build a tool", "--root", "."])
     new_args = parser.parse_args(["/new", "build a tool", "--root", "."])
-    sessions_args = parser.parse_args(["/sessions", "--root", ".", "--limit", "3"])
+    sessions_args = parser.parse_args(["/sessions", "--root", ".", "--limit", "3", "--context"])
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(["/execute", "--root", ".", "--session-id", "run-1"])
     brainstorm_args = parser.parse_args(["/brainstorm", "build a tool", "--root", ".", "--apply"])
@@ -22,6 +22,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert new_args.goal == "build a tool"
     assert sessions_args.command == "/sessions"
     assert sessions_args.limit == 3
+    assert sessions_args.context
     assert runs_args.command == "/runs"
     assert runs_args.session_id == "run-1"
     assert execute_args.session_id == "run-1"
