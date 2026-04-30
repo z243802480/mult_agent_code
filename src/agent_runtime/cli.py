@@ -131,7 +131,9 @@ def build_parser() -> argparse.ArgumentParser:
         aliases=["/brainstorm"],
         help="Generate and score product or implementation directions",
     )
-    brainstorm_parser.add_argument("goal", nargs="?", help="Goal to brainstorm; defaults to current session")
+    brainstorm_parser.add_argument(
+        "goal", nargs="?", help="Goal to brainstorm; defaults to current session"
+    )
     brainstorm_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(brainstorm_parser, "Session id; defaults to current session")
     brainstorm_parser.add_argument(
@@ -320,14 +322,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Specific scenario to run; can be repeated and overrides --suite",
     )
-    acceptance_parser.add_argument("--summary-json", type=Path, default=None, help="Write JSON summary")
+    acceptance_parser.add_argument(
+        "--summary-json", type=Path, default=None, help="Write JSON summary"
+    )
     acceptance_parser.add_argument(
         "--allow-fake",
         action="store_true",
         help="Allow fake/offline provider scenarios",
     )
-    acceptance_parser.add_argument("--cleanup", action="store_true", help="Remove generated workspace on success")
-    acceptance_parser.add_argument("--run-attempts", type=int, default=2, help="Run attempts per scenario")
+    acceptance_parser.add_argument(
+        "--cleanup", action="store_true", help="Remove generated workspace on success"
+    )
+    acceptance_parser.add_argument(
+        "--run-attempts", type=int, default=2, help="Run attempts per scenario"
+    )
     acceptance_parser.add_argument(
         "--model-max-retries",
         type=int,
@@ -349,6 +357,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-promoted",
         action="store_true",
         help="After promoting failures, continue the current session run loop",
+    )
+    acceptance_parser.add_argument(
+        "--rerun-promoted",
+        action="store_true",
+        help="After running promoted failure tasks, rerun only those promoted scenarios",
     )
     acceptance_parser.add_argument(
         "--promoted-run-max-iterations",
@@ -524,6 +537,7 @@ def main() -> None:
             scenario_timeout_seconds=args.scenario_timeout_seconds,
             promote_failures=args.promote_failures,
             run_promoted=args.run_promoted,
+            rerun_promoted=args.rerun_promoted,
             promoted_run_max_iterations=args.promoted_run_max_iterations,
             promoted_run_max_tasks_per_iteration=args.promoted_run_max_tasks_per_iteration,
         ).run()

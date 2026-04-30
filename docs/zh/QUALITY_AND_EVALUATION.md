@@ -348,6 +348,7 @@ benchmarks/
 - 新 promoted failure 必须记录为 `failure_lesson` memory，避免真实模型失败经验只存在于一次性日志里。
 - `agent acceptance --run-promoted` 必须是显式开关；默认不得自动触发真实模型执行成本。
 - 必须覆盖 `acceptance` 失败、promote、memory、run-promoted、final report 的离线闭环集成测试。
+- `agent acceptance --rerun-promoted` 必须只复验本次新 promoted 的失败场景，并记录 closed/remaining 结果。
 - 结构化输出测试覆盖 `<think>`、markdown code fence、近似 JSON、字段别名和少量 schema drift。
 - 无法安全归一化的输出必须被阻塞或进入修复流程，不能静默当作成功。
 - 验证命令归一化集中在 `verification_command_normalizer.py`；只改写已知低风险测试夹具命令，不可证明安全的命令必须保持原样交给 shell policy 拦截。

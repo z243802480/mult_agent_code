@@ -90,6 +90,8 @@ provider calls.
 Pass `--promote-failures` to turn failed scenarios into ready tasks on the current session.
 Promoted tasks include report, summary, workspace, transcript, expected artifact, and reproduction commands.
 Add `--run-promoted` to immediately continue the current session after new failure tasks are promoted.
+Add `--rerun-promoted` to run the promoted tasks and then rerun only the newly promoted scenarios;
+when the rerun passes, the command exits successfully and records the closed failures in the report.
 Newly promoted failures are also recorded as `failure_lesson` entries in `.agent/memory/failures.jsonl`.
 Verification command rewrites live in `verification_command_normalizer.py` and only cover known low-risk test fixture patterns; unsafe commands still go through policy enforcement.
 

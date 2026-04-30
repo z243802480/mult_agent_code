@@ -22,6 +22,23 @@
     "returncode": { "type": "integer" },
     "created_at": { "type": "string" },
     "summary_json": { "type": ["string", "null"] },
+    "repair_closure": {
+      "type": "object",
+      "required": [
+        "repair_run_id",
+        "rerun_summary_json",
+        "rerun_ok",
+        "closed_failures",
+        "remaining_failures"
+      ],
+      "properties": {
+        "repair_run_id": { "type": ["string", "null"] },
+        "rerun_summary_json": { "type": "string" },
+        "rerun_ok": { "type": "boolean" },
+        "closed_failures": { "type": "array", "items": { "type": "string" } },
+        "remaining_failures": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "scenarios": {
       "type": "array",
       "items": {

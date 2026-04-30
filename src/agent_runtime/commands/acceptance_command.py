@@ -29,6 +29,11 @@ class AcceptanceResult:
     promoted_tasks: list[str] = field(default_factory=list)
     promotion_error: str | None = None
     promoted_run_text: str | None = None
+    repair_run_id: str | None = None
+    rerun_summary_json: Path | None = None
+    rerun_ok: bool | None = None
+    closed_failures: list[str] = field(default_factory=list)
+    remaining_failures: list[str] = field(default_factory=list)
 
     def to_text(self) -> str:
         lines = [
@@ -50,6 +55,22 @@ class AcceptanceResult:
             lines.append(f"Promotion error: {self.promotion_error}")
         if self.promoted_run_text:
             lines.extend(["", "Promoted task run:", self.promoted_run_text])
+        if self.rerun_ok is not None:
+            lines.extend(
+                [
+                    "",
+                    "Promoted failure rerun:",
+                    f"Status: {'pass' if self.rerun_ok else 'fail'}",
+                ]
+            )
+            if self.repair_run_id:
+                lines.append(f"Repair run: {self.repair_run_id}")
+            if self.rerun_summary_json:
+                lines.append(f"Rerun summary: {self.rerun_summary_json}")
+            if self.closed_failures:
+                lines.append(f"Closed failures: {', '.join(self.closed_failures)}")
+            if self.remaining_failures:
+                lines.append(f"Remaining failures: {', '.join(self.remaining_failures)}")
         if self.stdout.strip():
             lines.extend(["", self.stdout.strip()])
         if self.stderr.strip():
@@ -71,6 +92,7 @@ class AcceptanceCommand:
         scenario_timeout_seconds: int = 1200,
         promote_failures: bool = False,
         run_promoted: bool = False,
+        rerun_promoted: bool = False,
         promoted_run_max_iterations: int | None = None,
         promoted_run_max_tasks_per_iteration: int = 1,
     ) -> None:
@@ -84,7 +106,8 @@ class AcceptanceCommand:
         self.model_max_retries = model_max_retries
         self.scenario_timeout_seconds = scenario_timeout_seconds
         self.promote_failures = promote_failures
-        self.run_promoted = run_promoted
+        self.run_promoted = run_promoted or rerun_promoted
+        self.rerun_promoted = rerun_promoted
         self.promoted_run_max_iterations = promoted_run_max_iterations
         self.promoted_run_max_tasks_per_iteration = promoted_run_max_tasks_per_iteration
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
@@ -94,6 +117,87 @@ class AcceptanceCommand:
         acceptance_dir = self.root / ".agent" / "acceptance"
         acceptance_dir.mkdir(parents=True, exist_ok=True)
         summary_json = self.summary_json or acceptance_dir / "latest_summary.json"
+        completed = self._run_acceptance_script(self.scenarios, summary_json)
+        report_path = acceptance_dir / "acceptance_report.json"
+        report = self._build_report(
+            completed.returncode, summary_json, completed.stdout, completed.stderr
+        )
+        self.store.write(report_path, report, "acceptance_report")
+        promoted_tasks = []
+        promotion_error = None
+        promoted_run_text = None
+        repair_run_id = None
+        rerun_summary_json = None
+        rerun_ok = None
+        closed_failures: list[str] = []
+        remaining_failures: list[str] = []
+        promoted_scenarios: list[str] = []
+        if self.promote_failures and completed.returncode != 0:
+            try:
+                promoter = AcceptanceFailurePromoter(self.root, self.validator)
+                promoted_tasks = promoter.promote(report)
+                promoted_scenarios = promoter.promoted_scenarios
+            except RuntimeError as exc:
+                promotion_error = str(exc)
+        if self.run_promoted and promoted_tasks and promotion_error is None:
+            promoted_run_text = self._run_promoted_tasks()
+            repair_run_id = self._current_run_id()
+        if self.rerun_promoted and promoted_tasks and promotion_error is None:
+            rerun_summary_json = acceptance_dir / "latest_promoted_rerun_summary.json"
+            rerun_completed = self._run_acceptance_script(promoted_scenarios, rerun_summary_json)
+            rerun_report = self._build_report(
+                rerun_completed.returncode,
+                rerun_summary_json,
+                rerun_completed.stdout,
+                rerun_completed.stderr,
+            )
+            rerun_ok = rerun_completed.returncode == 0
+            remaining_failures = [
+                str(scenario.get("scenario") or "unknown")
+                for scenario in rerun_report.get("scenarios", [])
+                if not scenario.get("ok", False)
+            ]
+            closed_failures = [
+                scenario
+                for scenario in promoted_scenarios
+                if scenario not in set(remaining_failures)
+            ]
+            report["repair_closure"] = {
+                "repair_run_id": repair_run_id,
+                "rerun_summary_json": str(rerun_summary_json),
+                "rerun_ok": rerun_ok,
+                "closed_failures": closed_failures,
+                "remaining_failures": remaining_failures,
+            }
+            self.store.write(report_path, report, "acceptance_report")
+        effective_ok = completed.returncode == 0 or (
+            rerun_ok is True and bool(promoted_tasks) and not remaining_failures
+        )
+        return AcceptanceResult(
+            suite=self.suite,
+            scenarios=self.scenarios,
+            root=self.root,
+            ok=effective_ok,
+            returncode=0 if effective_ok else completed.returncode,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+            summary_json=summary_json,
+            report_path=report_path,
+            promoted_tasks=promoted_tasks,
+            promotion_error=promotion_error,
+            promoted_run_text=promoted_run_text,
+            repair_run_id=repair_run_id,
+            rerun_summary_json=rerun_summary_json,
+            rerun_ok=rerun_ok,
+            closed_failures=closed_failures,
+            remaining_failures=remaining_failures,
+        )
+
+    def _run_acceptance_script(
+        self,
+        scenarios: list[str],
+        summary_json: Path,
+    ) -> subprocess.CompletedProcess[str]:
         command = [
             sys.executable,
             str(self._script_path()),
@@ -110,7 +214,7 @@ class AcceptanceCommand:
             "--summary-json",
             str(summary_json.resolve()),
         ]
-        for scenario in self.scenarios:
+        for scenario in scenarios:
             command.extend(["--scenario", scenario])
         if self.allow_fake:
             command.append("--allow-fake")
@@ -127,45 +231,14 @@ class AcceptanceCommand:
         if self.allow_fake:
             env["AGENT_MODEL_PROVIDER"] = "fake"
 
-        completed = subprocess.run(
+        return subprocess.run(
             command,
             cwd=self._repo_root(),
             env=env,
             text=True,
             capture_output=True,
             check=False,
-            timeout=self._command_timeout_seconds(),
-        )
-        report_path = acceptance_dir / "acceptance_report.json"
-        self.store.write(
-            report_path,
-            self._build_report(completed.returncode, summary_json, completed.stdout, completed.stderr),
-            "acceptance_report",
-        )
-        promoted_tasks = []
-        promotion_error = None
-        promoted_run_text = None
-        if self.promote_failures and completed.returncode != 0:
-            report = self.store.read(report_path, "acceptance_report")
-            try:
-                promoted_tasks = AcceptanceFailurePromoter(self.root, self.validator).promote(report)
-            except RuntimeError as exc:
-                promotion_error = str(exc)
-        if self.run_promoted and promoted_tasks and promotion_error is None:
-            promoted_run_text = self._run_promoted_tasks()
-        return AcceptanceResult(
-            suite=self.suite,
-            scenarios=self.scenarios,
-            root=self.root,
-            ok=completed.returncode == 0,
-            returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            summary_json=summary_json,
-            report_path=report_path,
-            promoted_tasks=promoted_tasks,
-            promotion_error=promotion_error,
-            promoted_run_text=promoted_run_text,
+            timeout=self._command_timeout_seconds(scenarios),
         )
 
     def _build_report(
@@ -238,8 +311,8 @@ class AcceptanceCommand:
             return value
         return value[-max_chars:]
 
-    def _command_timeout_seconds(self) -> int:
-        return self.scenario_timeout_seconds * max(1, len(self.scenarios) or 1) + 60
+    def _command_timeout_seconds(self, scenarios: list[str]) -> int:
+        return self.scenario_timeout_seconds * max(1, len(scenarios) or 1) + 60
 
     def _script_path(self) -> Path:
         return self._repo_root() / "scripts" / "real_model_acceptance.py"
@@ -262,15 +335,23 @@ class AcceptanceCommand:
         ).run()
         return result.to_text()
 
+    def _current_run_id(self) -> str | None:
+        run_store = RunStore(self.root / ".agent", self.validator)
+        return run_store.current_session_id()
+
 
 class AcceptanceFailurePromoter:
     def __init__(self, root: Path, validator: SchemaValidator | None = None) -> None:
         self.root = root.resolve()
-        self.validator = validator or SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+        self.validator = validator or SchemaValidator(
+            Path(__file__).resolve().parents[3] / "schemas"
+        )
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
+        self.promoted_scenarios: list[str] = []
 
     def promote(self, report: dict) -> list[str]:
+        self.promoted_scenarios = []
         failed_scenarios = [
             scenario
             for scenario in report.get("scenarios", [])
@@ -288,7 +369,9 @@ class AcceptanceFailurePromoter:
         run_dir = run_store.run_dir(run_id)
         task_plan_path = run_dir / "task_plan.json"
         if not task_plan_path.exists():
-            raise RuntimeError(f"Cannot promote acceptance failures: missing task plan for {run_id}.")
+            raise RuntimeError(
+                f"Cannot promote acceptance failures: missing task plan for {run_id}."
+            )
 
         task_plan = self.store.read(task_plan_path, "task_board")
         existing_tasks = task_plan["tasks"]
@@ -306,6 +389,7 @@ class AcceptanceFailurePromoter:
             existing_keys.add(key)
             self._record_failure_memory(agent_dir, report, scenario, task_id)
             promoted.append(task_id)
+            self.promoted_scenarios.append(scenario_name)
 
         if not promoted:
             return []
@@ -483,7 +567,9 @@ class AcceptanceFailurePromoter:
         self.jsonl.append(path, memory, "memory_entry")
 
     def _memory_key(self, report: dict, scenario_name: str) -> str:
-        return f"{report.get('suite') or 'unknown'}:{scenario_name}:{report.get('summary_json') or ''}"
+        return (
+            f"{report.get('suite') or 'unknown'}:{scenario_name}:{report.get('summary_json') or ''}"
+        )
 
     def _existing_memory_keys(self, path: Path) -> set[str]:
         return {

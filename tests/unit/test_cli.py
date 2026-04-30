@@ -42,6 +42,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             ".",
             "--promote-failures",
             "--run-promoted",
+            "--rerun-promoted",
             "--promoted-run-max-iterations",
             "2",
             "--promoted-run-max-tasks-per-iteration",
@@ -49,5 +50,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
         ]
     )
     assert run_promoted_args.run_promoted
+    assert run_promoted_args.rerun_promoted
     assert run_promoted_args.promoted_run_max_iterations == 2
     assert run_promoted_args.promoted_run_max_tasks_per_iteration == 3

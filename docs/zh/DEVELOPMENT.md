@@ -186,6 +186,7 @@ python -m agent_runtime /acceptance --suite core --promote-failures
 生成的任务会包含验收报告路径、summary JSON 路径、场景 workspace、smoke transcript、期望产物路径，以及可直接复现的 `agent /acceptance --scenario ...` 和底层脚本命令。
 新生成的失败任务也会在 `.agent/memory/failures.jsonl` 中记录为 `failure_lesson`，后续 agent 上下文会自动读取这些经验。
 如果希望生成任务后立刻继续当前 session，可以显式追加 `--run-promoted`；默认不会自动触发模型执行，避免意外产生真实模型调用成本。
+如果希望修复任务执行后自动复验本次新 promoted 的失败场景，可以显式追加 `--rerun-promoted`；该选项会隐式执行 promoted 任务，只复跑这些场景，并在 `acceptance_report.json` 的 `repair_closure` 中记录 `repair_run_id`、`rerun_ok`、`closed_failures` 和 `remaining_failures`。
 
 这些产物用于后续把真实模型验收失败接入 memory、repair task 或 benchmark 回归。
 
