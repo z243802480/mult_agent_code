@@ -1,0 +1,33 @@
+{
+  "schema_version": "0.1.0",
+  "benchmark_id": "compact_handoff",
+  "goal": "create an offline artifact and produce a recoverable handoff",
+  "purpose": "Validate context snapshot, handoff package, sessions context, and verification summary recovery data.",
+  "budget": {
+    "max_model_calls": 60,
+    "max_tool_calls": 120,
+    "max_iterations": 8
+  },
+  "expected_capabilities": [
+    "Creates a completed local run.",
+    "Writes a latest verification summary.",
+    "Creates a ContextSnapshot that carries recovery state.",
+    "Creates a HandoffPackage that carries recommended next command and verification summary.",
+    "Displays recovery pointers through sessions --context."
+  ],
+  "expected_artifacts": [
+    "goal_spec.json",
+    "task_plan.json",
+    "events.jsonl",
+    "cost_report.json",
+    "review_report.md",
+    "final_report.md"
+  ],
+  "acceptance": [
+    "Context snapshot JSON exists.",
+    "Handoff package JSON exists.",
+    "Snapshot and handoff include verification summary.",
+    "sessions --context shows snapshot, handoff, and verification status."
+  ],
+  "recommended_command": "agent /run \"create an offline artifact and produce a recoverable handoff\" --root <workspace>"
+}

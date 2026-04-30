@@ -10,3 +10,8 @@ Each benchmark includes:
 - Optional fixture files under `fixtures/`.
 - Acceptance checks that can be turned into automated runners later.
 
+Current deterministic benchmarks:
+
+- `password_tool`: local-first goal expansion and final reporting.
+- `failing_tests_project`: failed verification, repair, backup, and reporting.
+- `compact_handoff`: context snapshot, handoff, sessions context, and verification summary recovery data.

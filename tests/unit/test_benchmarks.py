@@ -9,6 +9,7 @@ def test_mvp_benchmarks_are_declared() -> None:
     assert {path.parent.name for path in manifests} >= {
         "password_tool",
         "failing_tests_project",
+        "compact_handoff",
     }
 
     for path in manifests:

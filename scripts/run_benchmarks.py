@@ -16,10 +16,15 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from agent_runtime.commands.debug_command import DebugCommand
+from agent_runtime.commands.compact_command import CompactCommand
+from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
+from agent_runtime.commands.sessions_command import SessionsCommand
+from agent_runtime.storage.json_store import JsonStore
+from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from agent_runtime.models.fake import FakeModelClient
 
@@ -132,7 +137,7 @@ def run_benchmarks(
     work_dir: Path | None = None,
     keep_workspaces: bool = False,
 ) -> list[BenchmarkResult]:
-    ids = benchmark_ids or ["password_tool", "failing_tests_project"]
+    ids = benchmark_ids or ["password_tool", "failing_tests_project", "compact_handoff"]
     results: list[BenchmarkResult] = []
     if work_dir:
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -167,6 +172,8 @@ def _run_one(benchmark_id: str, workspace: Path) -> BenchmarkResult:
         return _run_password_tool(workspace)
     if benchmark_id == "failing_tests_project":
         return _run_failing_tests_project(workspace)
+    if benchmark_id == "compact_handoff":
+        return _run_compact_handoff(workspace)
     raise ValueError(f"Unknown benchmark: {benchmark_id}")
 
 
@@ -185,9 +192,15 @@ def _run_password_tool(workspace: Path) -> BenchmarkResult:
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
         goal_spec = _read_json(run_dir / "goal_spec.json")
         constraints = set(goal_spec.get("constraints", []))
-        _check(result, bool({"local_first", "privacy_safe", "no_network"} & constraints), "goal has local/privacy constraint")
+        _check(
+            result,
+            bool({"local_first", "privacy_safe", "no_network"} & constraints),
+            "goal has local/privacy constraint",
+        )
         _check(result, (workspace / "offline_artifact.txt").exists(), "offline artifact exists")
-        _check_report_mentions(result, run_dir / "final_report.md", ["Artifacts", "Model calls", "Tool calls"])
+        _check_report_mentions(
+            result, run_dir / "final_report.md", ["Artifacts", "Model calls", "Tool calls"]
+        )
     except Exception as exc:  # noqa: BLE001 - benchmark runner reports failures instead of crashing
         result.failures.append(str(exc))
     result.ok = not result.failures
@@ -204,7 +217,9 @@ def _run_failing_tests_project(workspace: Path) -> BenchmarkResult:
         shutil.move(str(workspace / "test_buggy_math.py"), tests_dir / "test_buggy_math.py")
 
         InitCommand(workspace).run()
-        plan = PlanCommand(workspace, manifest["goal"], model_client=FailingProjectPlanClient()).run()
+        plan = PlanCommand(
+            workspace, manifest["goal"], model_client=FailingProjectPlanClient()
+        ).run()
         execute = ExecuteCommand(
             workspace,
             run_id=plan.run_id,
@@ -237,13 +252,91 @@ def _run_failing_tests_project(workspace: Path) -> BenchmarkResult:
             ),
             "failed candidate is discarded",
         )
-        _check(result, (workspace / "buggy_math.py").read_text(encoding="utf-8").strip().endswith("a + b"), "source repaired")
-        _check(result, bool(list((workspace / ".agent" / "backups").glob("*/*/manifest.json"))), "backup manifest exists")
+        _check(
+            result,
+            (workspace / "buggy_math.py").read_text(encoding="utf-8").strip().endswith("a + b"),
+            "source repaired",
+        )
+        _check(
+            result,
+            bool(list((workspace / ".agent" / "backups").glob("*/*/manifest.json"))),
+            "backup manifest exists",
+        )
         _check_report_mentions(result, run_dir / "final_report.md", ["Artifacts", "buggy_math.py"])
     except Exception as exc:  # noqa: BLE001
         result.failures.append(str(exc))
     result.ok = not result.failures
     return result
+
+
+def _run_compact_handoff(workspace: Path) -> BenchmarkResult:
+    result = BenchmarkResult("compact_handoff", ok=False, workspace=workspace)
+    manifest = _manifest("compact_handoff")
+    try:
+        run = RunCommand(
+            workspace,
+            goal=manifest["goal"],
+            model_client=FakeModelClient(),
+            enable_research=False,
+        ).run()
+        result.run_id = run.run_id
+        _write_benchmark_verification_summary(workspace)
+        compact = CompactCommand(workspace, run_id=run.run_id, focus="benchmark recovery").run()
+        handoff = HandoffCommand(workspace, run_id=run.run_id, to_role="FutureRun").run()
+        sessions = SessionsCommand(workspace, session_id=run.run_id, include_context=True).run()
+        sessions_text = sessions.to_text()
+        run_dir = workspace / ".agent" / "runs" / run.run_id
+        _check_expected_files(result, run_dir, manifest["expected_artifacts"])
+        snapshot = _read_json(compact.snapshot_path)
+        package = _read_json(handoff.handoff_path)
+        _check(
+            result,
+            snapshot["verification_summary"]["status"] == "passed",
+            "snapshot includes verification summary",
+        )
+        _check(
+            result,
+            package["verification_summary"]["status"] == "passed",
+            "handoff includes verification summary",
+        )
+        _check(
+            result,
+            package["recommended_next_command"] == "review",
+            "handoff recommends review after completed run",
+        )
+        _check(result, "snapshot:" in sessions_text, "sessions context mentions snapshot")
+        _check(result, "handoff:" in sessions_text, "sessions context mentions handoff")
+        _check(
+            result,
+            "verification: passed" in sessions_text,
+            "sessions context mentions verification",
+        )
+        _check(result, compact.snapshot_path.exists(), "context snapshot exists")
+        _check(result, handoff.handoff_path.exists(), "handoff package exists")
+    except Exception as exc:  # noqa: BLE001
+        result.failures.append(str(exc))
+    result.ok = not result.failures
+    return result
+
+
+def _write_benchmark_verification_summary(workspace: Path) -> None:
+    summary = {
+        "schema_version": "0.1.0",
+        "created_at": "2026-04-30T10:00:00+08:00",
+        "status": "passed",
+        "platform": "benchmark",
+        "checks": [
+            {"name": "run", "status": "passed", "summary": "benchmark run completed"},
+            {"name": "compact", "status": "passed", "summary": "snapshot expected"},
+            {"name": "handoff", "status": "passed", "summary": "handoff expected"},
+        ],
+        "artifacts": {},
+    }
+    JsonStore(SchemaValidator(REPO_ROOT / "schemas")).write(
+        workspace / ".agent" / "verification" / "latest.json",
+        summary,
+        "verification_summary",
+    )
 
 
 def _manifest(benchmark_id: str) -> dict:
@@ -309,8 +402,12 @@ def main() -> int:
         nargs="*",
         help="Benchmark ids to run; defaults to all MVP benchmarks.",
     )
-    parser.add_argument("--work-dir", type=Path, default=None, help="Directory for benchmark workspaces")
-    parser.add_argument("--keep-workspaces", action="store_true", help="Copy temp workspaces under .agent")
+    parser.add_argument(
+        "--work-dir", type=Path, default=None, help="Directory for benchmark workspaces"
+    )
+    parser.add_argument(
+        "--keep-workspaces", action="store_true", help="Copy temp workspaces under .agent"
+    )
     args = parser.parse_args()
 
     results = run_benchmarks(
