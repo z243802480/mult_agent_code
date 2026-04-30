@@ -221,3 +221,27 @@ python -m agent_runtime /acceptance --suite core --promote-failures
 - 新行为有单元测试或集成测试。
 - 涉及命令、模型或安全边界的修改有失败路径测试。
 - 真实模型验证只记录示例 key 前缀，不记录真实 key。
+
+## 8. ContextSnapshot 与 Handoff
+
+长任务暂停、交接给后续 agent、准备压缩上下文，或进入需要用户决策的阶段前，应该运行：
+
+```powershell
+python -m agent_runtime /compact --root .
+python -m agent_runtime /handoff --root . --to-role FutureRun
+```
+
+`ContextSnapshot` 必须保留可恢复现场，而不只是聊天摘要：
+
+- 目标摘要和 Definition of Done。
+- 已接受决策和待处理决策。
+- 当前 run 状态、阶段和任务状态统计。
+- 活跃任务、最近 artifact、修改文件、验证结果和失败证据。
+- review/final report 摘要、开放风险和下一步行动。
+
+`HandoffPackage` 会基于 snapshot 推荐下一条命令：
+
+- 有 pending decision 时推荐 `decide --decision-id ...`。
+- 有失败或 blocked task 时推荐 `debug`。
+- 有 ready/in-progress task 时推荐 `execute`。
+- 任务全部完成后推荐 `review`。

@@ -103,12 +103,20 @@ class HandoffCommand:
             "current_task_ids": snapshot.get("active_tasks", []),
             "recent_artifacts": self._recent_artifacts(run_dir, snapshot),
             "known_risks": snapshot.get("open_risks", []),
+            "run_status": snapshot.get("run_status", {}),
+            "task_summary": snapshot.get("task_summary", {}),
+            "pending_decisions": snapshot.get("pending_decisions", []),
+            "report_summaries": snapshot.get("report_summaries", {}),
             "recommended_next_command": self._recommended_next_command(snapshot),
             "created_at": now_iso(),
         }
 
     def _recent_artifacts(self, run_dir: Path, snapshot: dict) -> list[str]:
         artifacts: list[str] = []
+        for item in snapshot.get("recent_artifacts", []):
+            artifact_path = str(item.get("path") or "").strip()
+            if artifact_path and artifact_path not in artifacts:
+                artifacts.append(artifact_path)
         for item in snapshot.get("modified_files", []):
             artifact_path = str(item.get("path") or "").strip()
             if artifact_path and artifact_path not in artifacts:
@@ -124,8 +132,17 @@ class HandoffCommand:
     def _recommended_next_command(self, snapshot: dict) -> str:
         if self.recommended_next_command:
             return self.recommended_next_command
+        pending = snapshot.get("pending_decisions") or []
+        if pending:
+            return f"decide --decision-id {pending[0]['decision_id']}"
         if snapshot.get("failures"):
             return "debug"
-        if snapshot.get("active_tasks"):
+        task_summary = snapshot.get("task_summary") or {}
+        by_status = task_summary.get("by_status") or {}
+        if int(by_status.get("blocked", 0)):
+            return "debug"
+        if int(by_status.get("ready", 0)) or int(by_status.get("in_progress", 0)):
             return "execute"
+        if task_summary.get("total") and not int(task_summary.get("remaining", 0)):
+            return "review"
         return "review"

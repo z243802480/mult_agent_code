@@ -27,7 +27,9 @@ class CompactResult:
 
 
 class CompactCommand:
-    def __init__(self, root: Path, run_id: str | None = None, focus: str = "manual context compaction") -> None:
+    def __init__(
+        self, root: Path, run_id: str | None = None, focus: str = "manual context compaction"
+    ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
         self.focus = focus
@@ -57,19 +59,38 @@ class CompactCommand:
         if run_dir and run_dir.exists():
             self._record_compaction_cost(run_dir, run_id)
 
-        return CompactResult(run_id=run_id, snapshot_path=snapshot_path, next_actions=snapshot["next_actions"])
+        return CompactResult(
+            run_id=run_id, snapshot_path=snapshot_path, next_actions=snapshot["next_actions"]
+        )
 
     def _build_snapshot(self, agent_dir: Path, run_id: str | None, run_dir: Path | None) -> dict:
-        goal_spec = self._read_optional_json(run_dir / "goal_spec.json" if run_dir else None, "goal_spec")
-        task_plan = self._read_optional_json(run_dir / "task_plan.json" if run_dir else None, "task_board")
+        goal_spec = self._read_optional_json(
+            run_dir / "goal_spec.json" if run_dir else None, "goal_spec"
+        )
+        task_plan = self._read_optional_json(
+            run_dir / "task_plan.json" if run_dir else None, "task_board"
+        )
         if not task_plan:
             task_plan = self._read_optional_json(agent_dir / "tasks" / "backlog.json", "task_board")
-        cost_report = self._read_optional_json(run_dir / "cost_report.json" if run_dir else None, "cost_report")
+        cost_report = self._read_optional_json(
+            run_dir / "cost_report.json" if run_dir else None, "cost_report"
+        )
+        run_state = (
+            self._read_optional_json(run_dir / "run.json" if run_dir else None, "run")
+            if run_dir
+            else {}
+        )
 
         events = self._read_optional_jsonl(run_dir / "events.jsonl" if run_dir else None, "event")
-        tool_calls = self._read_optional_jsonl(run_dir / "tool_calls.jsonl" if run_dir else None, "tool_call")
-        model_calls = self._read_optional_jsonl(run_dir / "model_calls.jsonl" if run_dir else None, "model_call")
-        artifacts = self._read_optional_jsonl(run_dir / "artifacts.jsonl" if run_dir else None, "artifact")
+        tool_calls = self._read_optional_jsonl(
+            run_dir / "tool_calls.jsonl" if run_dir else None, "tool_call"
+        )
+        model_calls = self._read_optional_jsonl(
+            run_dir / "model_calls.jsonl" if run_dir else None, "model_call"
+        )
+        artifacts = self._read_optional_jsonl(
+            run_dir / "artifacts.jsonl" if run_dir else None, "artifact"
+        )
 
         tasks = task_plan.get("tasks", []) if task_plan else []
         active_tasks = [
@@ -79,7 +100,9 @@ class CompactCommand:
         ]
         modified_files = self._modified_files(tool_calls, artifacts)
         failures = self._failures(tool_calls, events, model_calls)
-        next_actions = self._next_actions(goal_spec, tasks, failures)
+        pending_decisions = self._pending_decisions(run_dir)
+        report_summaries = self._report_summaries(run_dir)
+        next_actions = self._next_actions(goal_spec, tasks, failures, pending_decisions)
 
         snapshot_id = f"snapshot-{now_iso().replace(':', '').replace('-', '').replace('+', '-')}"
         return {
@@ -88,13 +111,20 @@ class CompactCommand:
             "run_id": run_id,
             "created_at": now_iso(),
             "focus": self.focus,
-            "goal_summary": goal_spec.get("normalized_goal") if goal_spec else "No GoalSpec available",
+            "goal_summary": goal_spec.get("normalized_goal")
+            if goal_spec
+            else "No GoalSpec available",
             "definition_of_done": goal_spec.get("definition_of_done", []) if goal_spec else [],
             "accepted_decisions": self._accepted_decisions(run_dir),
+            "pending_decisions": pending_decisions,
+            "run_status": self._run_status(run_state),
+            "task_summary": self._task_summary(tasks),
             "active_tasks": active_tasks,
             "modified_files": modified_files,
+            "recent_artifacts": self._recent_artifacts(artifacts, run_dir),
             "verification": self._verification(tool_calls),
             "failures": failures,
+            "report_summaries": report_summaries,
             "research_claims": [],
             "open_risks": self._open_risks(cost_report, failures),
             "next_actions": next_actions,
@@ -105,7 +135,9 @@ class CompactCommand:
         runs_dir = agent_dir / "runs"
         if not runs_dir.exists():
             return None
-        runs = sorted([path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name)
+        runs = sorted(
+            [path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name
+        )
         return runs[-1].name if runs else None
 
     def _read_optional_json(self, path: Path | None, schema_name: str) -> dict:
@@ -141,7 +173,9 @@ class CompactCommand:
         report["context_compactions"] = int(report.get("context_compactions", 0)) + 1
         self.store.write(path, report, "cost_report")
 
-    def _modified_files(self, tool_calls: list[dict], artifacts: list[dict] | None = None) -> list[dict]:
+    def _modified_files(
+        self, tool_calls: list[dict], artifacts: list[dict] | None = None
+    ) -> list[dict]:
         if artifacts:
             return [
                 {"path": artifact["path"], "reason": artifact["summary"]}
@@ -149,10 +183,43 @@ class CompactCommand:
             ]
         files = []
         for call in tool_calls:
-            if call["tool_name"] not in {"write_file", "apply_patch"} or call["status"] != "success":
+            if (
+                call["tool_name"] not in {"write_file", "apply_patch"}
+                or call["status"] != "success"
+            ):
                 continue
             files.append({"path": call["input_summary"], "reason": call["output_summary"]})
         return files[-20:]
+
+    def _recent_artifacts(self, artifacts: list[dict], run_dir: Path | None) -> list[dict]:
+        recent = [
+            {
+                "path": artifact["path"],
+                "type": artifact["type"],
+                "summary": artifact["summary"],
+            }
+            for artifact in artifacts[-20:]
+        ]
+        if not run_dir:
+            return recent
+        for filename, artifact_type in (
+            ("goal_spec.json", "goal_spec"),
+            ("task_plan.json", "task_plan"),
+            ("review_report.md", "review_report"),
+            ("final_report.md", "final_report"),
+        ):
+            path = run_dir / filename
+            if path.exists() and not any(
+                item["path"] == str(path.relative_to(self.root)) for item in recent
+            ):
+                recent.append(
+                    {
+                        "path": str(path.relative_to(self.root)),
+                        "type": artifact_type,
+                        "summary": f"{filename} exists",
+                    }
+                )
+        return recent[-20:]
 
     def _verification(self, tool_calls: list[dict]) -> list[dict]:
         checks = []
@@ -167,7 +234,9 @@ class CompactCommand:
                 )
         return checks[-10:]
 
-    def _failures(self, tool_calls: list[dict], events: list[dict], model_calls: list[dict]) -> list[dict]:
+    def _failures(
+        self, tool_calls: list[dict], events: list[dict], model_calls: list[dict]
+    ) -> list[dict]:
         failures = []
         for call in tool_calls:
             if call["status"] != "success":
@@ -190,8 +259,74 @@ class CompactCommand:
         accepted = []
         for decision in decisions:
             if decision["status"] in {"resolved", "defaulted"}:
-                accepted.append(f"{decision['question']} -> {decision['selected_option_id'] or decision['default_option_id']}")
+                accepted.append(
+                    f"{decision['question']} -> {decision['selected_option_id'] or decision['default_option_id']}"
+                )
         return accepted
+
+    def _pending_decisions(self, run_dir: Path | None) -> list[dict]:
+        if not run_dir:
+            return []
+        path = run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        decisions = self.jsonl.read_all(path, "decision_point")
+        return [
+            {
+                "decision_id": decision["decision_id"],
+                "question": decision["question"],
+                "recommended_option_id": decision["recommended_option_id"],
+                "default_option_id": decision["default_option_id"],
+            }
+            for decision in decisions
+            if decision["status"] == "pending"
+        ]
+
+    def _run_status(self, run_state: dict) -> dict:
+        if not run_state:
+            return {}
+        return {
+            "status": run_state.get("status"),
+            "current_phase": run_state.get("current_phase"),
+            "summary": run_state.get("summary"),
+        }
+
+    def _task_summary(self, tasks: list[dict]) -> dict:
+        statuses = {
+            "backlog": 0,
+            "ready": 0,
+            "in_progress": 0,
+            "testing": 0,
+            "reviewing": 0,
+            "blocked": 0,
+            "done": 0,
+            "discarded": 0,
+        }
+        for task in tasks:
+            status = str(task.get("status") or "unknown")
+            statuses[status] = statuses.get(status, 0) + 1
+        return {
+            "total": len(tasks),
+            "by_status": statuses,
+            "remaining": sum(
+                count for status, count in statuses.items() if status not in {"done", "discarded"}
+            ),
+        }
+
+    def _report_summaries(self, run_dir: Path | None) -> dict:
+        if not run_dir:
+            return {}
+        return {
+            "review_report": self._markdown_excerpt(run_dir / "review_report.md"),
+            "final_report": self._markdown_excerpt(run_dir / "final_report.md"),
+        }
+
+    def _markdown_excerpt(self, path: Path, max_lines: int = 12) -> str | None:
+        if not path.exists():
+            return None
+        lines = [line.rstrip() for line in path.read_text(encoding="utf-8").splitlines()]
+        meaningful = [line for line in lines if line.strip()]
+        return "\n".join(meaningful[:max_lines])
 
     def _open_risks(self, cost_report: dict, failures: list[dict]) -> list[str]:
         risks = []
@@ -201,12 +336,25 @@ class CompactCommand:
             risks.append(f"Cost status is {cost_report['status']}")
         return risks
 
-    def _next_actions(self, goal_spec: dict, tasks: list[dict], failures: list[dict]) -> list[str]:
+    def _next_actions(
+        self,
+        goal_spec: dict,
+        tasks: list[dict],
+        failures: list[dict],
+        pending_decisions: list[dict],
+    ) -> list[str]:
+        if pending_decisions:
+            return [f"Resolve decision {pending_decisions[0]['decision_id']} with /decide"]
         if failures:
             return ["Review recent failures", "Run /debug or repair workflow"]
+        blocked = [task for task in tasks if task["status"] == "blocked"]
+        if blocked:
+            return [f"Debug blocked task {blocked[0]['task_id']}: {blocked[0]['title']}"]
         ready = [task for task in tasks if task["status"] == "ready"]
         if ready:
             return [f"Start task {ready[0]['task_id']}: {ready[0]['title']}"]
+        if tasks and all(task["status"] in {"done", "discarded"} for task in tasks):
+            return ["Run review or acceptance to verify completed work"]
         if goal_spec:
             return ["Proceed to implementation or review based on task board"]
         return ["Run agent plan with a concrete goal"]
