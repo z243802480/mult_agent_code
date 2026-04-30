@@ -349,6 +349,7 @@ benchmarks/
 - `agent acceptance --run-promoted` 必须是显式开关；默认不得自动触发真实模型执行成本。
 - 结构化输出测试覆盖 `<think>`、markdown code fence、近似 JSON、字段别名和少量 schema drift。
 - 无法安全归一化的输出必须被阻塞或进入修复流程，不能静默当作成功。
+- 验证命令归一化集中在 `verification_command_normalizer.py`；只改写已知低风险测试夹具命令，不可证明安全的命令必须保持原样交给 shell policy 拦截。
 - 网络超时、TLS EOF、429/5xx 等链路抖动通过有限重试验证，不能无限重试。
 
 ## 20. MVP 测试完成定义

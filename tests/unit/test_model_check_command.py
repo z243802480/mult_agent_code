@@ -89,6 +89,7 @@ def test_model_check_reports_minimax_current_openai_compatible_base_url(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "minimax")
+    monkeypatch.delenv("AGENT_MODEL_API_KEY", raising=False)
     monkeypatch.delenv("AGENT_MODEL_BASE_URL", raising=False)
 
     result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
