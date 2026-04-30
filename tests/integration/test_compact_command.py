@@ -99,6 +99,18 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     jsonl = JsonlStore(validator)
     run_store = RunStore(tmp_path / ".agent", validator)
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    store.write(
+        tmp_path / ".agent" / "verification" / "latest.json",
+        {
+            "schema_version": "0.1.0",
+            "created_at": "2026-04-30T10:00:00+08:00",
+            "status": "passed",
+            "platform": "windows",
+            "checks": [{"name": "pytest", "status": "passed", "summary": "full test suite passed"}],
+            "artifacts": {"snapshot_count": 1, "handoff_count": 1},
+        },
+        "verification_summary",
+    )
 
     task_plan_path = run_dir / "task_plan.json"
     task_plan = store.read(task_plan_path, "task_board")
@@ -225,6 +237,8 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert snapshot["pending_decisions"][0]["decision_id"] == "decision-0002"
     assert snapshot["recent_artifacts"][0]["path"] == "password_tool.py"
     assert snapshot["verification"][0]["status"] == "failed"
+    assert snapshot["verification_summary"]["status"] == "passed"
+    assert snapshot["verification_summary"]["checks"][0]["name"] == "pytest"
     assert snapshot["failures"][0]["summary"] == "1 failed"
     assert "Need user decision" in snapshot["report_summaries"]["review_report"]
     assert snapshot["next_actions"][0] == "Resolve decision decision-0002 with /decide"
@@ -232,6 +246,7 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert package["recommended_next_command"] == "decide --decision-id decision-0002"
     assert package["task_summary"]["remaining"] == 2
     assert package["pending_decisions"][0]["question"] == "Should we add a UI now?"
+    assert package["verification_summary"]["platform"] == "windows"
     assert "password_tool.py" in package["recent_artifacts"]
     assert "Need user decision" in package["report_summaries"]["review_report"]
 

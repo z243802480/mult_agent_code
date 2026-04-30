@@ -26,6 +26,7 @@
     "run_status": { "type": "object" },
     "task_summary": { "type": "object" },
     "pending_decisions": { "type": "array", "items": { "type": "object" } },
+    "verification_summary": { "type": "object" },
     "report_summaries": { "type": "object" },
     "recommended_next_command": { "type": "string" },
     "created_at": { "type": "string" }

@@ -106,6 +106,7 @@ class HandoffCommand:
             "run_status": snapshot.get("run_status", {}),
             "task_summary": snapshot.get("task_summary", {}),
             "pending_decisions": snapshot.get("pending_decisions", []),
+            "verification_summary": snapshot.get("verification_summary", {}),
             "report_summaries": snapshot.get("report_summaries", {}),
             "recommended_next_command": self._recommended_next_command(snapshot),
             "created_at": now_iso(),

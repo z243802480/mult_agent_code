@@ -123,12 +123,26 @@ class CompactCommand:
             "modified_files": modified_files,
             "recent_artifacts": self._recent_artifacts(artifacts, run_dir),
             "verification": self._verification(tool_calls),
+            "verification_summary": self._latest_verification_summary(agent_dir),
             "failures": failures,
             "report_summaries": report_summaries,
             "research_claims": [],
             "open_risks": self._open_risks(cost_report, failures),
             "next_actions": next_actions,
             "project": self._read_optional_json(agent_dir / "project.json", "project_config") or {},
+        }
+
+    def _latest_verification_summary(self, agent_dir: Path) -> dict:
+        path = agent_dir / "verification" / "latest.json"
+        if not path.exists():
+            return {}
+        summary = self.store.read(path, "verification_summary")
+        return {
+            "status": summary["status"],
+            "platform": summary["platform"],
+            "created_at": summary["created_at"],
+            "checks": summary.get("checks", []),
+            "artifacts": summary.get("artifacts", {}),
         }
 
     def _latest_run_id(self, agent_dir: Path) -> str | None:

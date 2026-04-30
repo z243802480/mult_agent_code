@@ -35,6 +35,7 @@
     "modified_files": { "type": "array", "items": { "type": "object" } },
     "recent_artifacts": { "type": "array", "items": { "type": "object" } },
     "verification": { "type": "array", "items": { "type": "object" } },
+    "verification_summary": { "type": "object" },
     "failures": { "type": "array", "items": { "type": "object" } },
     "report_summaries": { "type": "object" },
     "research_claims": { "type": "array", "items": { "type": "string" } },
