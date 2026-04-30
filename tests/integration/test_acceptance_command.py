@@ -6,8 +6,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_runtime.commands.acceptance_command import AcceptanceFailurePromoter, AcceptanceResult
+from agent_runtime.commands.acceptance_command import (
+    AcceptanceCommand,
+    AcceptanceFailurePromoter,
+    AcceptanceResult,
+)
 from agent_runtime.commands.init_command import InitCommand
+from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.models.fake import FakeModelClient
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
@@ -175,3 +181,80 @@ def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
     assert "Promoted failure tasks: 1" in text
     assert "Promoted task run:" in text
     assert "Run: run-1" in text
+
+
+def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "seed current session", model_client=FakeModelClient()).run()
+    original_run = subprocess.run
+
+    def fake_acceptance_run(command, *args, **kwargs):
+        command_text = " ".join(str(item) for item in command)
+        if "real_model_acceptance.py" not in command_text:
+            return original_run(command, *args, **kwargs)
+        summary_path = Path(command[command.index("--summary-json") + 1])
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "ok": False,
+                    "root": str(tmp_path),
+                    "scenarios": [
+                        {
+                            "scenario": "markdown_kb",
+                            "ok": False,
+                            "workspace": str(tmp_path / "markdown_kb"),
+                            "summary": {
+                                "transcript": str(
+                                    tmp_path / "markdown_kb" / "real_model_smoke_transcript.json"
+                                ),
+                                "expected_file": str(tmp_path / "markdown_kb" / "markdown_kb.py"),
+                            },
+                            "stdout": "",
+                            "stderr": "Expected output file was not created",
+                        }
+                    ],
+                    "error": "Scenario(s) failed: markdown_kb",
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 1, "", "Scenario(s) failed: markdown_kb")
+
+    monkeypatch.setattr(subprocess, "run", fake_acceptance_run)
+
+    result = AcceptanceCommand(
+        tmp_path,
+        suite="core",
+        scenarios=["markdown_kb"],
+        promote_failures=True,
+        run_promoted=True,
+        promoted_run_max_iterations=1,
+    ).run()
+
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    promoted_task = next(
+        task for task in task_plan["tasks"] if task["title"] == "Repair acceptance scenario: markdown_kb"
+    )
+
+    assert not result.ok
+    assert result.promoted_tasks == [promoted_task["task_id"]]
+    assert result.promoted_run_text is not None
+    assert "Run:" in result.promoted_run_text
+    assert promoted_task["status"] == "done"
+    assert (run_dir / "final_report.md").exists()
+    assert (tmp_path / "offline_artifact.txt").exists()
+    memory_path = tmp_path / ".agent" / "memory" / "failures.jsonl"
+    memories = [
+        json.loads(line)
+        for line in memory_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert memories[0]["type"] == "failure_lesson"
+    assert memories[0]["source"]["task_id"] == promoted_task["task_id"]
