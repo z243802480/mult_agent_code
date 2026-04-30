@@ -50,6 +50,14 @@ class SessionsResult:
             lines.append(f"  handoff: {context['handoff_path']}")
         if context.get("recommended_next_command"):
             lines.append(f"  next: {context['recommended_next_command']}")
+        verification = context.get("verification")
+        if verification:
+            lines.append(
+                (
+                    f"  verification: {verification['status']} "
+                    f"({verification['platform']}, {verification['created_at']})"
+                )
+            )
         pending = context.get("pending_decision_count", 0)
         if pending:
             lines.append(f"  pending decisions: {pending}")
@@ -129,13 +137,26 @@ class SessionsCommand:
         handoff = self._latest_handoff(agent_dir, snapshot.get("snapshot_id") if snapshot else None)
         snapshot_rel = self._relative_path(snapshot.get("_path")) if snapshot else None
         handoff_rel = self._relative_path(handoff.get("_path")) if handoff else None
+        verification = self._latest_verification(agent_dir)
         return {
             "snapshot_path": snapshot_rel,
             "handoff_path": handoff_rel,
             "recommended_next_command": (handoff or {}).get("recommended_next_command")
             or self._first_next_action(snapshot),
+            "verification": verification,
             "pending_decision_count": len((snapshot or {}).get("pending_decisions", [])),
             "task_summary": (snapshot or {}).get("task_summary", {}),
+        }
+
+    def _latest_verification(self, agent_dir: Path) -> dict | None:
+        path = agent_dir / "verification" / "latest.json"
+        if not path.exists():
+            return None
+        summary = self.store.read(path, "verification_summary")
+        return {
+            "status": summary["status"],
+            "platform": summary["platform"],
+            "created_at": summary["created_at"],
         }
 
     def _latest_snapshot(self, agent_dir: Path, run_id: str) -> dict | None:

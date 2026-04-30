@@ -240,6 +240,18 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
     HandoffCommand(tmp_path, to_role="FutureRun").run()
+    JsonStore(SchemaValidator(Path.cwd() / "schemas")).write(
+        tmp_path / ".agent" / "verification" / "latest.json",
+        {
+            "schema_version": "0.1.0",
+            "created_at": "2026-04-30T10:00:00+08:00",
+            "status": "passed",
+            "platform": "windows",
+            "checks": [{"name": "pytest", "status": "passed", "summary": "full test suite passed"}],
+            "artifacts": {"snapshot_count": 1, "handoff_count": 1},
+        },
+        "verification_summary",
+    )
 
     result = SessionsCommand(tmp_path, session_id=plan.run_id, include_context=True).run()
     text = result.to_text()
@@ -252,7 +264,9 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
         "handoff_path"
     ].startswith(".agent/context/handoffs/")
     assert context["recommended_next_command"] == "execute"
+    assert context["verification"]["status"] == "passed"
     assert context["task_summary"]["remaining"] == 1
     assert "snapshot:" in text
     assert "handoff:" in text
     assert "next: execute" in text
+    assert "verification: passed (windows, 2026-04-30T10:00:00+08:00)" in text
