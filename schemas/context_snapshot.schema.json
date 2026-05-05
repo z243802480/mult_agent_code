@@ -37,6 +37,7 @@
     "verification": { "type": "array", "items": { "type": "object" } },
     "verification_summary": { "type": "object" },
     "failures": { "type": "array", "items": { "type": "object" } },
+    "acceptance_failures": { "type": "array", "items": { "type": "object" } },
     "report_summaries": { "type": "object" },
     "research_claims": { "type": "array", "items": { "type": "string" } },
     "open_risks": { "type": "array", "items": { "type": "string" } },

@@ -100,9 +100,16 @@ class CompactCommand:
         ]
         modified_files = self._modified_files(tool_calls, artifacts)
         failures = self._failures(tool_calls, events, model_calls)
+        acceptance_failures = self._acceptance_failures(agent_dir)
         pending_decisions = self._pending_decisions(run_dir)
         report_summaries = self._report_summaries(run_dir)
-        next_actions = self._next_actions(goal_spec, tasks, failures, pending_decisions)
+        next_actions = self._next_actions(
+            goal_spec,
+            tasks,
+            failures,
+            pending_decisions,
+            acceptance_failures,
+        )
 
         snapshot_id = f"snapshot-{now_iso().replace(':', '').replace('-', '').replace('+', '-')}"
         return {
@@ -125,9 +132,10 @@ class CompactCommand:
             "verification": self._verification(tool_calls),
             "verification_summary": self._latest_verification_summary(agent_dir),
             "failures": failures,
+            "acceptance_failures": acceptance_failures,
             "report_summaries": report_summaries,
             "research_claims": [],
-            "open_risks": self._open_risks(cost_report, failures),
+            "open_risks": self._open_risks(cost_report, failures, acceptance_failures),
             "next_actions": next_actions,
             "project": self._read_optional_json(agent_dir / "project.json", "project_config") or {},
         }
@@ -144,6 +152,29 @@ class CompactCommand:
             "checks": summary.get("checks", []),
             "artifacts": summary.get("artifacts", {}),
         }
+
+    def _acceptance_failures(self, agent_dir: Path) -> list[dict]:
+        failures_dir = agent_dir / "acceptance" / "failures"
+        if not failures_dir.exists():
+            return []
+        failures = []
+        for path in sorted(failures_dir.glob("*.json")):
+            evidence = self._read_optional_json(path, "acceptance_failure_evidence")
+            if not evidence:
+                continue
+            failures.append(
+                {
+                    "scenario": evidence["scenario"],
+                    "suite": evidence["suite"],
+                    "failure_summary": evidence["failure_summary"],
+                    "evidence_path": path.relative_to(self.root).as_posix(),
+                    "promoted_task_id": evidence["promoted_task_id"],
+                    "reproduce": evidence.get("reproduce", {}),
+                    "created_at": evidence.get("created_at"),
+                }
+            )
+        failures.sort(key=lambda item: str(item.get("created_at", "")))
+        return failures[-10:]
 
     def _latest_run_id(self, agent_dir: Path) -> str | None:
         runs_dir = agent_dir / "runs"
@@ -342,10 +373,19 @@ class CompactCommand:
         meaningful = [line for line in lines if line.strip()]
         return "\n".join(meaningful[:max_lines])
 
-    def _open_risks(self, cost_report: dict, failures: list[dict]) -> list[str]:
+    def _open_risks(
+        self,
+        cost_report: dict,
+        failures: list[dict],
+        acceptance_failures: list[dict],
+    ) -> list[str]:
         risks = []
         if failures:
             risks.append(f"{len(failures)} recent failure(s) need review")
+        if acceptance_failures:
+            risks.append(
+                f"{len(acceptance_failures)} acceptance failure evidence item(s) need repair"
+            )
         if cost_report and cost_report.get("status") in {"near_limit", "exceeded", "stopped"}:
             risks.append(f"Cost status is {cost_report['status']}")
         return risks
@@ -356,9 +396,13 @@ class CompactCommand:
         tasks: list[dict],
         failures: list[dict],
         pending_decisions: list[dict],
+        acceptance_failures: list[dict],
     ) -> list[str]:
         if pending_decisions:
             return [f"Resolve decision {pending_decisions[0]['decision_id']} with /decide"]
+        if acceptance_failures:
+            scenario = acceptance_failures[-1]["scenario"]
+            return [f"Repair acceptance failure evidence for {scenario}", "Run /debug or /execute"]
         if failures:
             return ["Review recent failures", "Run /debug or repair workflow"]
         blocked = [task for task in tasks if task["status"] == "blocked"]

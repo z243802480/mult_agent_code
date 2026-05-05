@@ -111,6 +111,32 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
         },
         "verification_summary",
     )
+    store.write(
+        tmp_path / ".agent" / "acceptance" / "failures" / "markdown_kb.json",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "acceptance-failure-markdown_kb",
+            "suite": "core",
+            "scenario": "markdown_kb",
+            "failure_summary": "Expected markdown_kb.py was not created",
+            "acceptance_report": str(tmp_path / ".agent" / "acceptance" / "acceptance_report.json"),
+            "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+            "workspace": str(tmp_path / "acceptance" / "markdown_kb"),
+            "transcript": str(tmp_path / "acceptance" / "markdown_kb" / "transcript.json"),
+            "expected_file": str(tmp_path / "acceptance" / "markdown_kb" / "markdown_kb.py"),
+            "stdout_tail": "",
+            "stderr_tail": "missing markdown_kb.py",
+            "reproduce": {
+                "cli": "python -m agent_runtime /acceptance --suite core --scenario markdown_kb",
+                "script": (
+                    "python scripts/real_model_acceptance.py --suite core --scenario markdown_kb"
+                ),
+            },
+            "promoted_task_id": "task-0004",
+            "created_at": "2026-05-05T00:00:00+08:00",
+        },
+        "acceptance_failure_evidence",
+    )
 
     task_plan_path = run_dir / "task_plan.json"
     task_plan = store.read(task_plan_path, "task_board")
@@ -239,6 +265,11 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert snapshot["verification"][0]["status"] == "failed"
     assert snapshot["verification_summary"]["status"] == "passed"
     assert snapshot["verification_summary"]["checks"][0]["name"] == "pytest"
+    assert snapshot["acceptance_failures"][0]["scenario"] == "markdown_kb"
+    assert snapshot["acceptance_failures"][0]["evidence_path"] == (
+        ".agent/acceptance/failures/markdown_kb.json"
+    )
+    assert "acceptance failure evidence" in snapshot["open_risks"][1]
     assert snapshot["failures"][0]["summary"] == "1 failed"
     assert "Need user decision" in snapshot["report_summaries"]["review_report"]
     assert snapshot["next_actions"][0] == "Resolve decision decision-0002 with /decide"
@@ -247,6 +278,10 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert package["task_summary"]["remaining"] == 2
     assert package["pending_decisions"][0]["question"] == "Should we add a UI now?"
     assert package["verification_summary"]["platform"] == "windows"
+    assert package["acceptance_failures"][0]["failure_summary"] == (
+        "Expected markdown_kb.py was not created"
+    )
+    assert ".agent/acceptance/failures/markdown_kb.json" in package["recent_artifacts"]
     assert "password_tool.py" in package["recent_artifacts"]
     assert "Need user decision" in package["report_summaries"]["review_report"]
 
