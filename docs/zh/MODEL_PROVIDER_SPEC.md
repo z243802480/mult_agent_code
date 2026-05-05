@@ -387,6 +387,7 @@ MVP 模型适配层完成条件：
 - 能通过 OpenAI-compatible 接口调用 chat。
 - 能记录 ModelCall。
 - 能处理超时和重试。
+- `agent model-check` 失败时写入 `.agent/model/latest_failure.json`，按 configuration、authentication、rate_limited、timeout、network、server_error、budget、provider_response 等类型分类，并记录到 `.agent/memory/failures.jsonl`。
 - 能根据 purpose 路由模型 tier。
 - 能从真实模型输出中提取、归一化结构化 JSON，并在 schema 校验失败时阻塞或进入修复流程。
 - 不依赖 provider 原生 tool calling。

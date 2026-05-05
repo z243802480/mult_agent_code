@@ -56,6 +56,18 @@ def test_model_check_reports_invalid_json_response(tmp_path: Path) -> None:
     assert result.config_ok
     assert not result.call_ok
     assert "failed" in result.summary.lower()
+    assert result.failure_type == "provider_response"
+    assert result.failure_report_path is not None
+    report = json.loads(result.failure_report_path.read_text(encoding="utf-8"))
+    assert report["failure_type"] == "provider_response"
+    memories = [
+        json.loads(line)
+        for line in (tmp_path / ".agent" / "memory" / "failures.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert memories[0]["source"]["kind"] == "model_failure_report"
+    assert memories[0]["source"]["failure_type"] == "provider_response"
 
 
 def test_model_check_reports_missing_provider_config(tmp_path: Path, monkeypatch) -> None:
@@ -69,6 +81,8 @@ def test_model_check_reports_missing_provider_config(tmp_path: Path, monkeypatch
     assert not result.config_ok
     assert not result.call_ok
     assert "api key" in result.summary.lower()
+    assert result.failure_type == "configuration"
+    assert result.failure_report_path is not None
 
 
 def test_model_check_reports_local_provider_defaults(tmp_path: Path, monkeypatch) -> None:
@@ -108,3 +122,17 @@ def test_model_check_reports_minimax_china_base_url_for_cp_keys(
     result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
 
     assert result.base_url == "https://api.minimaxi.com/v1"
+
+
+def test_model_check_classifies_call_failures(tmp_path: Path) -> None:
+    class RateLimitedClient:
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            raise RuntimeError("HTTP 429 rate limit")
+
+    result = ModelCheckCommand(tmp_path, model_client=RateLimitedClient()).run()
+
+    assert result.config_ok
+    assert not result.call_ok
+    assert result.failure_type == "rate_limited"
+    assert result.failure_report_path is not None
+    assert "Failure type: rate_limited" in result.to_text()
