@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from scripts.run_benchmarks import available_benchmark_ids
+
 
 def test_mvp_benchmarks_are_declared() -> None:
     root = Path("benchmarks")
@@ -10,6 +12,7 @@ def test_mvp_benchmarks_are_declared() -> None:
         "password_tool",
         "failing_tests_project",
         "compact_handoff",
+        "file_renamer",
     }
 
     for path in manifests:
@@ -19,3 +22,12 @@ def test_mvp_benchmarks_are_declared() -> None:
         assert benchmark["goal"]
         assert benchmark["expected_artifacts"]
         assert benchmark["acceptance"]
+
+
+def test_benchmark_runner_discovers_declared_benchmarks() -> None:
+    assert set(available_benchmark_ids()) >= {
+        "password_tool",
+        "failing_tests_project",
+        "compact_handoff",
+        "file_renamer",
+    }

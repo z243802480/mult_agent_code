@@ -132,12 +132,132 @@ class FailingProjectRepairClient:
         return _response(request, payload)
 
 
+class FileRenamerClient:
+    def __init__(self) -> None:
+        self.review_client = FakeModelClient()
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        if request.purpose == "goal_spec":
+            return _response(request, self._goal_spec(request))
+        if request.purpose == "task_execution":
+            return _response(request, self._execution_action(request))
+        return self.review_client.chat(request)
+
+    def _goal_spec(self, request: ChatRequest) -> dict:
+        goal = _extract_goal(request.messages[-1].content)
+        return {
+            "schema_version": "0.1.0",
+            "goal_id": "goal-0001",
+            "original_goal": goal,
+            "normalized_goal": "Build a safe batch file renamer with dry-run preview",
+            "goal_type": "software_tool",
+            "assumptions": ["Preview-only execution is the safest MVP slice"],
+            "constraints": ["local_first", "no_network", "dry_run_before_apply"],
+            "non_goals": ["Apply destructive renames automatically"],
+            "expanded_requirements": [
+                {
+                    "id": "req-0001",
+                    "priority": "must",
+                    "description": (
+                        "Create a dry-run rename plan and validator without changing source files"
+                    ),
+                    "source": "user",
+                    "acceptance": [
+                        "rename_plan.json marks dry_run true",
+                        "rename_preview.py validates that source files exist",
+                        "original files remain unchanged after verification",
+                    ],
+                }
+            ],
+            "target_outputs": ["rename_plan.json", "rename_preview.py", "README_rename_preview.md"],
+            "definition_of_done": [
+                "Preview plan exists",
+                "Preview validator passes",
+                "No fixture file is renamed during preview",
+            ],
+            "verification_strategy": ["python rename_preview.py"],
+            "budget": {"max_iterations": 8, "max_model_calls": 60},
+        }
+
+    def _execution_action(self, request: ChatRequest) -> dict:
+        task = json.loads(request.messages[-1].content)["task"]
+        plan = {
+            "schema_version": "0.1.0",
+            "dry_run": True,
+            "mappings": [
+                {"source": "IMG_0001.txt", "target": "photo-0001.txt"},
+                {"source": "IMG_0002.txt", "target": "photo-0002.txt"},
+            ],
+        }
+        preview_script = """from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+plan = json.loads(Path("rename_plan.json").read_text(encoding="utf-8"))
+assert plan["dry_run"] is True
+for mapping in plan["mappings"]:
+    source = Path(mapping["source"])
+    target = Path(mapping["target"])
+    assert source.exists(), f"missing source: {source}"
+    assert not target.exists(), f"preview must not create target: {target}"
+print(f"preview ok: {len(plan['mappings'])} rename(s)")
+"""
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task["task_id"],
+            "summary": "Create a dry-run rename plan and preview validator.",
+            "tool_calls": [
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "rename_plan.json",
+                        "content": json.dumps(plan, indent=2) + "\n",
+                        "overwrite": True,
+                    },
+                    "reason": "record proposed renames without applying them",
+                },
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "rename_preview.py",
+                        "content": preview_script,
+                        "overwrite": True,
+                    },
+                    "reason": "validate the preview remains non-destructive",
+                },
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "README_rename_preview.md",
+                        "content": (
+                            "# Rename Preview\n\n"
+                            "This MVP only produces a dry-run plan. Review `rename_plan.json` "
+                            "and run `python rename_preview.py` before any future apply step.\n"
+                        ),
+                        "overwrite": True,
+                    },
+                    "reason": "document the safe preview workflow",
+                },
+            ],
+            "verification": [
+                {
+                    "tool_name": "run_command",
+                    "args": {"command": "python rename_preview.py"},
+                    "reason": "verify preview plan without renaming files",
+                }
+            ],
+            "completion_notes": "Preview artifacts exist and source files remain unchanged.",
+        }
+
+
 def run_benchmarks(
     benchmark_ids: list[str] | None = None,
     work_dir: Path | None = None,
     keep_workspaces: bool = False,
 ) -> list[BenchmarkResult]:
-    ids = benchmark_ids or ["password_tool", "failing_tests_project", "compact_handoff"]
+    ids = benchmark_ids or available_benchmark_ids()
     results: list[BenchmarkResult] = []
     if work_dir:
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -174,6 +294,8 @@ def _run_one(benchmark_id: str, workspace: Path) -> BenchmarkResult:
         return _run_failing_tests_project(workspace)
     if benchmark_id == "compact_handoff":
         return _run_compact_handoff(workspace)
+    if benchmark_id == "file_renamer":
+        return _run_file_renamer(workspace)
     raise ValueError(f"Unknown benchmark: {benchmark_id}")
 
 
@@ -319,6 +441,44 @@ def _run_compact_handoff(workspace: Path) -> BenchmarkResult:
     return result
 
 
+def _run_file_renamer(workspace: Path) -> BenchmarkResult:
+    result = BenchmarkResult("file_renamer", ok=False, workspace=workspace)
+    manifest = _manifest("file_renamer")
+    try:
+        _copy_fixtures("file_renamer", workspace)
+        run = RunCommand(
+            workspace,
+            goal=manifest["goal"],
+            model_client=FileRenamerClient(),
+            enable_research=False,
+        ).run()
+        result.run_id = run.run_id
+        run_dir = workspace / ".agent" / "runs" / run.run_id
+        _check_expected_files(result, run_dir, manifest["expected_artifacts"])
+
+        plan = _read_json(workspace / "rename_plan.json")
+        _check(result, plan["dry_run"] is True, "rename plan is dry-run")
+        _check(result, len(plan["mappings"]) == 2, "rename plan contains fixture mappings")
+        _check(result, (workspace / "rename_preview.py").exists(), "preview validator exists")
+        _check(result, (workspace / "IMG_0001.txt").exists(), "first source remains")
+        _check(result, (workspace / "IMG_0002.txt").exists(), "second source remains")
+        _check(result, not (workspace / "photo-0001.txt").exists(), "first target not created")
+        _check(result, not (workspace / "photo-0002.txt").exists(), "second target not created")
+        _check_report_mentions(
+            result,
+            run_dir / "final_report.md",
+            ["rename_plan.json", "rename_preview.py", "Model calls", "Tool calls"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        result.failures.append(str(exc))
+    result.ok = not result.failures
+    return result
+
+
+def available_benchmark_ids() -> list[str]:
+    return sorted(path.parent.name for path in (REPO_ROOT / "benchmarks").glob("*/benchmark.json"))
+
+
 def _write_benchmark_verification_summary(workspace: Path) -> None:
     summary = {
         "schema_version": "0.1.0",
@@ -395,6 +555,14 @@ def _response(request: ChatRequest, payload: dict) -> ChatResponse:
     )
 
 
+def _extract_goal(prompt: str) -> str:
+    marker = "User goal:"
+    if marker not in prompt:
+        return "offline benchmark goal"
+    after_marker = prompt.split(marker, 1)[1]
+    return after_marker.split("Project context:", 1)[0].strip() or "offline benchmark goal"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run deterministic agent runtime benchmarks.")
     parser.add_argument(
@@ -408,7 +576,12 @@ def main() -> int:
     parser.add_argument(
         "--keep-workspaces", action="store_true", help="Copy temp workspaces under .agent"
     )
+    parser.add_argument("--list", action="store_true", help="List available benchmark ids and exit")
     args = parser.parse_args()
+
+    if args.list:
+        print("\n".join(available_benchmark_ids()))
+        return 0
 
     results = run_benchmarks(
         benchmark_ids=args.benchmarks or None,

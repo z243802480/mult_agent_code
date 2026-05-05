@@ -10,6 +10,7 @@ def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path) -> None:
         "password_tool",
         "failing_tests_project",
         "compact_handoff",
+        "file_renamer",
     }
     assert all(result.ok for result in results), [result.to_dict() for result in results]
     assert (tmp_path / "password_tool" / "offline_artifact.txt").exists()
@@ -21,3 +22,6 @@ def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path) -> None:
     )
     assert list((tmp_path / "compact_handoff" / ".agent" / "context" / "snapshots").glob("*.json"))
     assert list((tmp_path / "compact_handoff" / ".agent" / "context" / "handoffs").glob("*.json"))
+    assert (tmp_path / "file_renamer" / "rename_plan.json").exists()
+    assert (tmp_path / "file_renamer" / "IMG_0001.txt").exists()
+    assert not (tmp_path / "file_renamer" / "photo-0001.txt").exists()

@@ -15,3 +15,4 @@ Current deterministic benchmarks:
 - `password_tool`: local-first goal expansion and final reporting.
 - `failing_tests_project`: failed verification, repair, backup, and reporting.
 - `compact_handoff`: context snapshot, handoff, sessions context, and verification summary recovery data.
+- `file_renamer`: safe file-operation planning with a dry-run rename preview.
