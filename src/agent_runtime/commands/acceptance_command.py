@@ -385,9 +385,12 @@ class AcceptanceFailurePromoter:
                 continue
             task_id = f"task-{next_index:04d}"
             next_index += 1
-            existing_tasks.append(self._task_from_scenario(task_id, report, scenario))
+            evidence_path = self._write_failure_evidence(report, scenario, task_id)
+            existing_tasks.append(
+                self._task_from_scenario(task_id, report, scenario, evidence_path)
+            )
             existing_keys.add(key)
-            self._record_failure_memory(agent_dir, report, scenario, task_id)
+            self._record_failure_memory(agent_dir, report, scenario, task_id, evidence_path)
             promoted.append(task_id)
             self.promoted_scenarios.append(scenario_name)
 
@@ -404,7 +407,13 @@ class AcceptanceFailurePromoter:
         self._record_events(run_dir, run_id, promoted)
         return promoted
 
-    def _task_from_scenario(self, task_id: str, report: dict, scenario: dict) -> dict:
+    def _task_from_scenario(
+        self,
+        task_id: str,
+        report: dict,
+        scenario: dict,
+        evidence_path: Path,
+    ) -> dict:
         scenario_name = str(scenario.get("scenario") or "unknown")
         failure_summary = str(scenario.get("failure_summary") or "acceptance scenario failed")
         description_parts = [
@@ -413,6 +422,7 @@ class AcceptanceFailurePromoter:
             f"Failure: {failure_summary}",
             "Diagnostics:",
             f"- Acceptance report: {self.root / '.agent' / 'acceptance' / 'acceptance_report.json'}",
+            f"- Failure evidence: {evidence_path}",
             f"- Summary JSON: {report.get('summary_json')}",
             f"- Reproduce via CLI: {self._acceptance_cli_command(report, scenario_name)}",
             f"- Reproduce via script: {self._acceptance_script_command(report, scenario_name)}",
@@ -453,7 +463,7 @@ class AcceptanceFailurePromoter:
                 "run_command",
                 "run_tests",
             ],
-            "expected_artifacts": [],
+            "expected_artifacts": [evidence_path.relative_to(self.root).as_posix()],
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -462,6 +472,36 @@ class AcceptanceFailurePromoter:
                 f"reproduce with: {self._acceptance_cli_command(report, scenario_name)}"
             ),
         }
+
+    def _write_failure_evidence(self, report: dict, scenario: dict, task_id: str) -> Path:
+        scenario_name = str(scenario.get("scenario") or "unknown")
+        evidence_path = (
+            self.root / ".agent" / "acceptance" / "failures" / f"{self._slug(scenario_name)}.json"
+        )
+        evidence = {
+            "schema_version": "0.1.0",
+            "evidence_id": f"acceptance-failure-{self._slug(scenario_name)}",
+            "suite": str(report.get("suite") or "unknown"),
+            "scenario": scenario_name,
+            "failure_summary": str(scenario.get("failure_summary") or "acceptance scenario failed"),
+            "acceptance_report": str(
+                self.root / ".agent" / "acceptance" / "acceptance_report.json"
+            ),
+            "summary_json": report.get("summary_json"),
+            "workspace": scenario.get("workspace"),
+            "transcript": self._transcript_path(scenario),
+            "expected_file": self._expected_file(scenario),
+            "stdout_tail": str(scenario.get("stdout_tail") or ""),
+            "stderr_tail": str(scenario.get("stderr_tail") or ""),
+            "reproduce": {
+                "cli": self._acceptance_cli_command(report, scenario_name),
+                "script": self._acceptance_script_command(report, scenario_name),
+            },
+            "promoted_task_id": task_id,
+            "created_at": now_iso(),
+        }
+        self.store.write(evidence_path, evidence, "acceptance_failure_evidence")
+        return evidence_path
 
     def _acceptance_cli_command(self, report: dict, scenario_name: str) -> str:
         suite = str(report.get("suite") or "smoke")
@@ -523,12 +563,25 @@ class AcceptanceFailurePromoter:
             return "acceptance:" + scenario
         return title
 
+    def _slug(self, value: str) -> str:
+        allowed = []
+        for character in value.lower():
+            if character.isalnum():
+                allowed.append(character)
+            elif character in {"-", "_", "."}:
+                allowed.append(character)
+            else:
+                allowed.append("-")
+        slug = "".join(allowed).strip("-")
+        return slug or "unknown"
+
     def _record_failure_memory(
         self,
         agent_dir: Path,
         report: dict,
         scenario: dict,
         task_id: str,
+        evidence_path: Path,
     ) -> None:
         path = agent_dir / "memory" / "failures.jsonl"
         scenario_name = str(scenario.get("scenario") or "unknown")
@@ -553,6 +606,7 @@ class AcceptanceFailurePromoter:
                 "summary_json": report.get("summary_json"),
                 "workspace": scenario.get("workspace"),
                 "task_id": task_id,
+                "evidence": str(evidence_path),
                 "memory_key": memory_key,
             },
             "tags": [

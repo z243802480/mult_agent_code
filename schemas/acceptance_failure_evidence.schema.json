@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AcceptanceFailureEvidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "suite",
+    "scenario",
+    "failure_summary",
+    "acceptance_report",
+    "summary_json",
+    "workspace",
+    "reproduce",
+    "promoted_task_id",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "suite": { "type": "string" },
+    "scenario": { "type": "string" },
+    "failure_summary": { "type": "string" },
+    "acceptance_report": { "type": "string" },
+    "summary_json": { "type": ["string", "null"] },
+    "workspace": { "type": ["string", "null"] },
+    "transcript": { "type": ["string", "null"] },
+    "expected_file": { "type": ["string", "null"] },
+    "stdout_tail": { "type": "string" },
+    "stderr_tail": { "type": "string" },
+    "reproduce": {
+      "type": "object",
+      "required": ["cli", "script"],
+      "properties": {
+        "cli": { "type": "string" },
+        "script": { "type": "string" }
+      }
+    },
+    "promoted_task_id": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

@@ -123,6 +123,7 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert task["title"] == "Repair acceptance scenario: markdown_kb"
     assert "expected output file was not created" in task["description"]
     assert "Acceptance report:" in task["description"]
+    assert "Failure evidence:" in task["description"]
     assert str(tmp_path / "summary.json") in task["description"]
     assert (
         "python -m agent_runtime /acceptance --suite core --scenario markdown_kb"
@@ -136,6 +137,19 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert "markdown_kb.py" in task["description"]
     assert "reproduce with:" in task["notes"]
     assert "The reproduction command succeeds" in task["acceptance"][1]
+    assert task["expected_artifacts"] == [".agent/acceptance/failures/markdown_kb.json"]
+    evidence_path = tmp_path / task["expected_artifacts"][0]
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert evidence["scenario"] == "markdown_kb"
+    assert evidence["suite"] == "core"
+    assert evidence["promoted_task_id"] == "task-0002"
+    assert evidence["failure_summary"] == "expected output file was not created"
+    assert evidence["transcript"].endswith("real_model_smoke_transcript.json")
+    assert evidence["expected_file"].endswith("markdown_kb.py")
+    assert evidence["reproduce"]["cli"] == (
+        "python -m agent_runtime /acceptance --suite core --scenario markdown_kb"
+    )
+    validator.validate("acceptance_failure_evidence", evidence)
     backlog = json.loads(
         (tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8")
     )
@@ -152,6 +166,7 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert memories[0]["type"] == "failure_lesson"
     assert memories[0]["source"]["scenario"] == "markdown_kb"
     assert memories[0]["source"]["task_id"] == "task-0002"
+    assert memories[0]["source"]["evidence"] == str(evidence_path)
     assert (
         "python -m agent_runtime /acceptance --suite core --scenario markdown_kb"
         in memories[0]["content"]
