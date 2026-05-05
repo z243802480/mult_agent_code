@@ -69,6 +69,11 @@ class SessionsResult:
                     f"{task_summary.get('total', 0)} total"
                 )
             )
+        acceptance_failure_count = int(context.get("acceptance_failure_count", 0))
+        if acceptance_failure_count:
+            latest = context.get("latest_acceptance_failure") or {}
+            scenario = latest.get("scenario") or "unknown"
+            lines.append(f"  acceptance failures: {acceptance_failure_count} (latest: {scenario})")
         return lines
 
 
@@ -138,6 +143,7 @@ class SessionsCommand:
         snapshot_rel = self._relative_path(snapshot.get("_path")) if snapshot else None
         handoff_rel = self._relative_path(handoff.get("_path")) if handoff else None
         verification = self._latest_verification(agent_dir)
+        acceptance_failures = self._acceptance_failures(snapshot, handoff)
         return {
             "snapshot_path": snapshot_rel,
             "handoff_path": handoff_rel,
@@ -146,7 +152,34 @@ class SessionsCommand:
             "verification": verification,
             "pending_decision_count": len((snapshot or {}).get("pending_decisions", [])),
             "task_summary": (snapshot or {}).get("task_summary", {}),
+            "acceptance_failure_count": len(acceptance_failures),
+            "latest_acceptance_failure": acceptance_failures[-1] if acceptance_failures else None,
+            "acceptance_failures": acceptance_failures[-3:],
         }
+
+    def _acceptance_failures(
+        self,
+        snapshot: dict | None,
+        handoff: dict | None,
+    ) -> list[dict]:
+        failures = []
+        if snapshot:
+            failures.extend(snapshot.get("acceptance_failures", []))
+        if handoff:
+            for failure in handoff.get("acceptance_failures", []):
+                key = (
+                    failure.get("suite"),
+                    failure.get("scenario"),
+                    failure.get("evidence_path"),
+                )
+                existing = {
+                    (item.get("suite"), item.get("scenario"), item.get("evidence_path"))
+                    for item in failures
+                }
+                if key not in existing:
+                    failures.append(failure)
+        failures.sort(key=lambda item: str(item.get("created_at") or ""))
+        return failures
 
     def _latest_verification(self, agent_dir: Path) -> dict | None:
         path = agent_dir / "verification" / "latest.json"
@@ -200,4 +233,4 @@ class SessionsCommand:
     def _relative_path(self, path: Path | None) -> str | None:
         if not path:
             return None
-        return str(path.relative_to(self.root))
+        return path.relative_to(self.root).as_posix()

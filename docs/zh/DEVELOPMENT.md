@@ -187,6 +187,7 @@ python -m agent_runtime /acceptance --suite core --promote-failures
 新生成的失败任务也会在 `.agent/memory/failures.jsonl` 中记录为 `failure_lesson`，后续 agent 上下文会自动读取这些经验。
 每个 promoted failure 还会写入 `.agent/acceptance/failures/<scenario>.json` 作为结构化证据；`ContextLoader` 会把最近证据裁剪后注入后续 `/execute`、`/debug` 等 agent 上下文。
 `/compact` 和 `/handoff` 也会携带最近 acceptance failure evidence，长任务交接后仍可定位失败场景、复现命令和 promoted repair task。
+`agent sessions --context` 会显示 acceptance failure 数量和最新失败场景，便于恢复当前 session 时直接判断应执行 `/debug` 还是继续 `/execute`。
 如果希望生成任务后立刻继续当前 session，可以显式追加 `--run-promoted`；默认不会自动触发模型执行，避免意外产生真实模型调用成本。
 如果希望修复任务执行后自动复验本次新 promoted 的失败场景，可以显式追加 `--rerun-promoted`；该选项会隐式执行 promoted 任务，只复跑这些场景，并在 `acceptance_report.json` 的 `repair_closure` 中记录 `repair_run_id`、`rerun_ok`、`closed_failures` 和 `remaining_failures`。
 

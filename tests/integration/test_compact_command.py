@@ -307,12 +307,8 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
     text = result.to_text()
     context = result.context[plan.run_id]
 
-    assert context["snapshot_path"].startswith(".agent\\context\\snapshots\\") or context[
-        "snapshot_path"
-    ].startswith(".agent/context/snapshots/")
-    assert context["handoff_path"].startswith(".agent\\context\\handoffs\\") or context[
-        "handoff_path"
-    ].startswith(".agent/context/handoffs/")
+    assert context["snapshot_path"].startswith(".agent/context/snapshots/")
+    assert context["handoff_path"].startswith(".agent/context/handoffs/")
     assert context["recommended_next_command"] == "execute"
     assert context["verification"]["status"] == "passed"
     assert context["task_summary"]["remaining"] == 1
@@ -320,3 +316,48 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
     assert "handoff:" in text
     assert "next: execute" in text
     assert "verification: passed (windows, 2026-04-30T10:00:00+08:00)" in text
+
+
+def test_sessions_context_shows_acceptance_failure_recovery_pointer(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
+    JsonStore(SchemaValidator(Path.cwd() / "schemas")).write(
+        tmp_path / ".agent" / "acceptance" / "failures" / "markdown_kb.json",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "acceptance-failure-markdown_kb",
+            "suite": "core",
+            "scenario": "markdown_kb",
+            "failure_summary": "Expected markdown_kb.py was not created",
+            "acceptance_report": str(tmp_path / ".agent" / "acceptance" / "acceptance_report.json"),
+            "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+            "workspace": str(tmp_path / "acceptance" / "markdown_kb"),
+            "transcript": str(tmp_path / "acceptance" / "markdown_kb" / "transcript.json"),
+            "expected_file": str(tmp_path / "acceptance" / "markdown_kb" / "markdown_kb.py"),
+            "stdout_tail": "",
+            "stderr_tail": "missing markdown_kb.py",
+            "reproduce": {
+                "cli": "python -m agent_runtime /acceptance --suite core --scenario markdown_kb",
+                "script": (
+                    "python scripts/real_model_acceptance.py --suite core --scenario markdown_kb"
+                ),
+            },
+            "promoted_task_id": "task-0002",
+            "created_at": "2026-05-05T00:00:00+08:00",
+        },
+        "acceptance_failure_evidence",
+    )
+    HandoffCommand(tmp_path, to_role="FutureRun").run()
+
+    result = SessionsCommand(tmp_path, session_id=plan.run_id, include_context=True).run()
+    text = result.to_text()
+    context = result.context[plan.run_id]
+
+    assert context["recommended_next_command"] == "debug"
+    assert context["acceptance_failure_count"] == 1
+    assert context["latest_acceptance_failure"]["scenario"] == "markdown_kb"
+    assert context["acceptance_failures"][0]["evidence_path"] == (
+        ".agent/acceptance/failures/markdown_kb.json"
+    )
+    assert "next: debug" in text
+    assert "acceptance failures: 1 (latest: markdown_kb)" in text
