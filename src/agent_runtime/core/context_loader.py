@@ -15,12 +15,14 @@ class ContextLoader:
         root: Path,
         validator: SchemaValidator,
         memory_limit: int = 8,
+        acceptance_failure_limit: int = 5,
         workspace_file_limit: int = 20,
         workspace_file_chars: int = 1_200,
     ) -> None:
         self.root = root.resolve()
         self.validator = validator
         self.memory_limit = memory_limit
+        self.acceptance_failure_limit = acceptance_failure_limit
         self.workspace_file_limit = workspace_file_limit
         self.workspace_file_chars = workspace_file_chars
         self.store = JsonStore(validator)
@@ -32,6 +34,7 @@ class ContextLoader:
             "memory": self._memory(agent_dir),
             "latest_snapshot": self._latest_snapshot(agent_dir, run_id),
             "latest_handoff": self._latest_handoff(agent_dir),
+            "acceptance_failures": self._acceptance_failures(agent_dir),
             "workspace_files": self._workspace_files(),
         }
 
@@ -106,6 +109,32 @@ class ContextLoader:
             "recommended_next_command": handoff.get("recommended_next_command"),
             "created_at": handoff.get("created_at"),
         }
+
+    def _acceptance_failures(self, agent_dir: Path) -> list[dict]:
+        failures_dir = agent_dir / "acceptance" / "failures"
+        if not failures_dir.exists():
+            return []
+        entries = []
+        for path in sorted(failures_dir.glob("*.json")):
+            evidence = self._safe_read(path, "acceptance_failure_evidence")
+            if not evidence:
+                continue
+            entries.append(
+                {
+                    "scenario": evidence["scenario"],
+                    "suite": evidence["suite"],
+                    "failure_summary": evidence["failure_summary"],
+                    "evidence_path": path.relative_to(self.root).as_posix(),
+                    "promoted_task_id": evidence["promoted_task_id"],
+                    "workspace": evidence.get("workspace"),
+                    "transcript": evidence.get("transcript"),
+                    "expected_file": evidence.get("expected_file"),
+                    "reproduce": evidence.get("reproduce", {}),
+                    "created_at": evidence.get("created_at"),
+                }
+            )
+        entries.sort(key=lambda item: str(item.get("created_at", "")))
+        return entries[-self.acceptance_failure_limit :]
 
     def _workspace_files(self) -> list[dict]:
         files: list[dict] = []
