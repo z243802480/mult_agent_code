@@ -11,10 +11,15 @@ from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
 from agent_runtime.models.model_call_logger import ModelCallLogger
+from agent_runtime.models.model_failure import (
+    ModelFailureRecorder,
+    model_failure_context_from_client,
+)
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
+from agent_runtime.utils.time import now_iso
 
 
 @dataclass(frozen=True)
@@ -82,19 +87,44 @@ class PlanCommand:
         )
         runtime_context = ContextLoader(self.root, self.validator).load()
 
-        goal_spec = GoalSpecAgent(model_client, self.validator).generate(
-            self.goal,
-            project_context={
-                "project": project_config,
-                "runtime_context": runtime_context,
-                "policy": {
-                    "decision_granularity": policy["decision_granularity"],
-                    "budgets": policy["budgets"],
-                    "permissions": policy["permissions"],
+        try:
+            goal_spec = GoalSpecAgent(model_client, self.validator).generate(
+                self.goal,
+                project_context={
+                    "project": project_config,
+                    "runtime_context": runtime_context,
+                    "policy": {
+                        "decision_granularity": policy["decision_granularity"],
+                        "budgets": policy["budgets"],
+                        "permissions": policy["permissions"],
+                    },
                 },
-            },
-            run_id=run["run_id"],
-        )
+                run_id=run["run_id"],
+            )
+        except Exception as exc:  # noqa: BLE001 - plan records model-boundary diagnostics before re-raise
+            context = model_failure_context_from_client(model_client, model_tier="strong")
+            report_path, report = ModelFailureRecorder(self.root, self.validator).record(
+                provider=context.provider,
+                model_name=context.model_name,
+                base_url=context.base_url,
+                error=exc,
+            )
+            run["current_phase"] = "SPEC"
+            run["status"] = "failed"
+            run["ended_at"] = now_iso()
+            run["summary"] = (
+                f"GoalSpec model call failed with {report['failure_type']}. "
+                f"Failure report: {report_path}"
+            )
+            run_store.update_run(run)
+            event_logger.record(
+                run["run_id"],
+                "run_failed",
+                "GoalSpecAgent",
+                run["summary"],
+                {"failure_report": str(report_path), "failure_type": report["failure_type"]},
+            )
+            raise RuntimeError(run["summary"]) from exc
         goal_spec_path = run_dir / "goal_spec.json"
         self.store.write(goal_spec_path, goal_spec, "goal_spec")
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")

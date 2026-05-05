@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
@@ -50,6 +52,14 @@ class FakePlanClient:
         )
 
 
+class FailingPlanClient:
+    provider = "fake"
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        assert request.purpose == "goal_spec"
+        raise RuntimeError("HTTP 429 rate limit")
+
+
 def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 
@@ -68,5 +78,34 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(events) >= 4
 
-    backlog = json.loads((tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8"))
+    backlog = json.loads(
+        (tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8")
+    )
     assert len(backlog["tasks"]) == 2
+
+
+def test_plan_command_records_model_failure_report_and_failed_run(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+
+    with pytest.raises(RuntimeError, match="rate_limited"):
+        PlanCommand(tmp_path, "build a local-first helper", model_client=FailingPlanClient()).run()
+
+    report_path = tmp_path / ".agent" / "model" / "latest_failure.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["provider"] == "fake"
+    assert report["failure_type"] == "rate_limited"
+
+    memories = [
+        json.loads(line)
+        for line in (tmp_path / ".agent" / "memory" / "failures.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert memories[0]["source"]["kind"] == "model_failure_report"
+    assert memories[0]["source"]["failure_type"] == "rate_limited"
+
+    run_dirs = sorted((tmp_path / ".agent" / "runs").iterdir(), key=lambda item: item.name)
+    run = json.loads((run_dirs[0] / "run.json").read_text(encoding="utf-8"))
+    assert run["status"] == "failed"
+    assert run["current_phase"] == "SPEC"
+    assert "Failure report:" in run["summary"]
