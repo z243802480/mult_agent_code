@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1.0",
+  "benchmark_id": "markdown_kb",
+  "goal": "build a local markdown knowledge base search tool",
+  "purpose": "Validate local document indexing, search artifact creation, verification, and final reporting.",
+  "fixtures": [
+    "fixtures/notes/agent_runtime.md",
+    "fixtures/notes/security.md"
+  ],
+  "budget": {
+    "max_model_calls": 60,
+    "max_tool_calls": 120,
+    "max_iterations": 8
+  },
+  "expected_capabilities": [
+    "Indexes local markdown files without network access.",
+    "Provides a CLI search path for keyword queries.",
+    "Writes durable index and usage artifacts.",
+    "Verifies a keyword search against fixture content."
+  ],
+  "expected_artifacts": [
+    "goal_spec.json",
+    "task_plan.json",
+    "tool_calls.jsonl",
+    "experiments.jsonl",
+    "artifacts.jsonl",
+    "review_report.md",
+    "final_report.md"
+  ],
+  "acceptance": [
+    "markdown_kb.py exists and supports directory plus keyword arguments.",
+    "kb_index.json contains both fixture markdown files.",
+    "Searching for runtime returns agent_runtime.md.",
+    "Final report lists search artifacts and cost summary."
+  ],
+  "recommended_command": "agent /run \"build a local markdown knowledge base search tool\" --root <workspace>"
+}

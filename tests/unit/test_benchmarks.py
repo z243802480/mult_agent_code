@@ -13,6 +13,7 @@ def test_mvp_benchmarks_are_declared() -> None:
         "failing_tests_project",
         "compact_handoff",
         "file_renamer",
+        "markdown_kb",
     }
 
     for path in manifests:
@@ -30,4 +31,5 @@ def test_benchmark_runner_discovers_declared_benchmarks() -> None:
         "failing_tests_project",
         "compact_handoff",
         "file_renamer",
+        "markdown_kb",
     }

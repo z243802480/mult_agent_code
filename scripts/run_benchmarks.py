@@ -252,6 +252,179 @@ print(f"preview ok: {len(plan['mappings'])} rename(s)")
         }
 
 
+class MarkdownKbClient:
+    def __init__(self) -> None:
+        self.review_client = FakeModelClient()
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        if request.purpose == "goal_spec":
+            return _response(request, self._goal_spec(request))
+        if request.purpose == "task_execution":
+            return _response(request, self._execution_action(request))
+        return self.review_client.chat(request)
+
+    def _goal_spec(self, request: ChatRequest) -> dict:
+        goal = _extract_goal(request.messages[-1].content)
+        return {
+            "schema_version": "0.1.0",
+            "goal_id": "goal-0001",
+            "original_goal": goal,
+            "normalized_goal": "Build a local markdown knowledge base search tool",
+            "goal_type": "software_tool",
+            "assumptions": ["Markdown files are local and UTF-8 encoded"],
+            "constraints": ["local_first", "no_network", "filesystem_json_index"],
+            "non_goals": ["Vector embeddings", "remote document crawling"],
+            "expanded_requirements": [
+                {
+                    "id": "req-0001",
+                    "priority": "must",
+                    "description": "Index local markdown files and search by keyword",
+                    "source": "user",
+                    "acceptance": [
+                        "markdown_kb.py accepts a directory and keyword",
+                        "kb_index.json includes fixture markdown files",
+                        "searching for runtime returns agent_runtime.md",
+                    ],
+                }
+            ],
+            "target_outputs": ["markdown_kb.py", "kb_index.json", "README_markdown_kb.md"],
+            "definition_of_done": [
+                "Index is generated from local markdown files",
+                "Keyword search returns matching file paths and lines",
+                "No network access is required",
+            ],
+            "verification_strategy": ["python markdown_kb.py notes runtime"],
+            "budget": {"max_iterations": 8, "max_model_calls": 60},
+        }
+
+    def _execution_action(self, request: ChatRequest) -> dict:
+        task = json.loads(request.messages[-1].content)["task"]
+        script = """from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+
+def build_index(root: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for path in sorted(root.rglob("*.md")):
+        lines = path.read_text(encoding="utf-8").splitlines()
+        rows.append(
+            {
+                "path": path.as_posix(),
+                "title": next((line[2:].strip() for line in lines if line.startswith("# ")), ""),
+                "line_count": len(lines),
+                "lines": lines,
+            }
+        )
+    return rows
+
+
+def search(index: list[dict[str, object]], keyword: str) -> list[str]:
+    needle = keyword.lower()
+    matches: list[str] = []
+    for item in index:
+        for line_number, line in enumerate(item["lines"], start=1):
+            text = str(line)
+            if needle in text.lower():
+                matches.append(f"{item['path']}:{line_number}: {text}")
+    return matches
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3:
+        print("usage: python markdown_kb.py <directory> <keyword>", file=sys.stderr)
+        return 2
+    root = Path(argv[1])
+    keyword = argv[2]
+    index = build_index(root)
+    Path("kb_index.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
+    matches = search(index, keyword)
+    for match in matches:
+        print(match)
+    return 0 if matches else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))
+"""
+        seed_index = [
+            {
+                "path": "notes/agent_runtime.md",
+                "title": "Agent Runtime",
+                "line_count": 3,
+                "lines": [
+                    "# Agent Runtime",
+                    "",
+                    (
+                        "The local runtime turns goals into verified artifacts through planning, "
+                        "execution, review, and handoff."
+                    ),
+                ],
+            },
+            {
+                "path": "notes/security.md",
+                "title": "Security Notes",
+                "line_count": 3,
+                "lines": [
+                    "# Security Notes",
+                    "",
+                    (
+                        "The runtime keeps protected paths private and prefers local-first workflows "
+                        "before network access."
+                    ),
+                ],
+            },
+        ]
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task["task_id"],
+            "summary": "Create a local markdown indexer and keyword search CLI.",
+            "tool_calls": [
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "markdown_kb.py",
+                        "content": script,
+                        "overwrite": True,
+                    },
+                    "reason": "implement local markdown indexing and keyword search",
+                },
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "README_markdown_kb.md",
+                        "content": (
+                            "# Markdown KB\n\n"
+                            "Run `python markdown_kb.py notes runtime` to build `kb_index.json` "
+                            "and print matching markdown lines. The tool only reads local files.\n"
+                        ),
+                        "overwrite": True,
+                    },
+                    "reason": "document local usage and safety boundary",
+                },
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "kb_index.json",
+                        "content": json.dumps(seed_index, indent=2) + "\n",
+                        "overwrite": True,
+                    },
+                    "reason": "create an initial durable index artifact for review",
+                },
+            ],
+            "verification": [
+                {
+                    "tool_name": "run_command",
+                    "args": {"command": "python markdown_kb.py notes runtime"},
+                    "reason": "verify keyword search against local fixture notes",
+                }
+            ],
+            "completion_notes": "Markdown search CLI and local JSON index are verified.",
+        }
+
+
 def run_benchmarks(
     benchmark_ids: list[str] | None = None,
     work_dir: Path | None = None,
@@ -296,6 +469,8 @@ def _run_one(benchmark_id: str, workspace: Path) -> BenchmarkResult:
         return _run_compact_handoff(workspace)
     if benchmark_id == "file_renamer":
         return _run_file_renamer(workspace)
+    if benchmark_id == "markdown_kb":
+        return _run_markdown_kb(workspace)
     raise ValueError(f"Unknown benchmark: {benchmark_id}")
 
 
@@ -475,6 +650,43 @@ def _run_file_renamer(workspace: Path) -> BenchmarkResult:
     return result
 
 
+def _run_markdown_kb(workspace: Path) -> BenchmarkResult:
+    result = BenchmarkResult("markdown_kb", ok=False, workspace=workspace)
+    manifest = _manifest("markdown_kb")
+    try:
+        _copy_fixtures("markdown_kb", workspace)
+        run = RunCommand(
+            workspace,
+            goal=manifest["goal"],
+            model_client=MarkdownKbClient(),
+            enable_research=False,
+        ).run()
+        result.run_id = run.run_id
+        run_dir = workspace / ".agent" / "runs" / run.run_id
+        _check_expected_files(result, run_dir, manifest["expected_artifacts"])
+
+        index = _read_json(workspace / "kb_index.json")
+        items = index.get("items", []) if isinstance(index, dict) else index
+        paths = {item["path"] for item in items}
+        _check(result, (workspace / "markdown_kb.py").exists(), "markdown search CLI exists")
+        _check(result, "notes/agent_runtime.md" in paths, "index includes runtime note")
+        _check(result, "notes/security.md" in paths, "index includes security note")
+        _check(
+            result,
+            any("Agent Runtime" == item.get("title") for item in items),
+            "index captures markdown titles",
+        )
+        _check_report_mentions(
+            result,
+            run_dir / "final_report.md",
+            ["markdown_kb.py", "kb_index.json", "Model calls", "Tool calls"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        result.failures.append(str(exc))
+    result.ok = not result.failures
+    return result
+
+
 def available_benchmark_ids() -> list[str]:
     return sorted(path.parent.name for path in (REPO_ROOT / "benchmarks").glob("*/benchmark.json"))
 
@@ -505,9 +717,12 @@ def _manifest(benchmark_id: str) -> dict:
 
 def _copy_fixtures(benchmark_id: str, workspace: Path) -> None:
     manifest = _manifest(benchmark_id)
+    fixtures_dir = REPO_ROOT / "benchmarks" / benchmark_id / "fixtures"
     for fixture in manifest.get("fixtures", []):
         source = REPO_ROOT / "benchmarks" / benchmark_id / fixture
-        shutil.copy2(source, workspace / source.name)
+        target = workspace / source.relative_to(fixtures_dir)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
 
 
 def _check_expected_files(result: BenchmarkResult, run_dir: Path, names: list[str]) -> None:
