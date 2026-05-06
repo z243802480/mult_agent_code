@@ -86,6 +86,8 @@ flows should use `/sessions` and `--session-id`.
 `agent acceptance-history` / `agent acceptance-trend` shows persisted acceptance history and trend
 deltas from `.agent/acceptance/history.jsonl`.
 Use `--fail-on-warning` to turn trend warnings into a non-zero exit code for local gates.
+Use `agent acceptance --fail-on-trend-warning` when the acceptance run itself should fail on
+trend regressions.
 
 Commands such as `/run`, `/execute`, `/review`, `/debug`, `/decide`, `/resume`, and `/compact`
 prefer the current session when `--session-id` is omitted. This prevents unrelated goals from

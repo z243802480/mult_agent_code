@@ -114,6 +114,11 @@ AGENTS.md
     user_memory.jsonl
     research_memory.jsonl
     experiment_memory.jsonl
+  acceptance/
+    latest_summary.json
+    acceptance_report.json
+    history.jsonl
+    failures/
 ```
 
 ## 4. ProjectConfig
@@ -894,7 +899,62 @@ overall.status:
   fail
 ```
 
-## 19. CostReport
+## 19. AcceptanceReport
+
+文件：
+
+```text
+.agent/acceptance/acceptance_report.json
+```
+
+用途：
+
+记录 runtime 级验收结果、场景明细、聚合指标、趋势 delta、趋势告警，以及失败场景转任务后的闭环结果。
+
+关键字段：
+
+```json
+{
+  "schema_version": "0.1.0",
+  "suite": "core",
+  "requested_scenarios": ["password_cli"],
+  "root": ".",
+  "ok": true,
+  "returncode": 0,
+  "summary_json": ".agent/acceptance/latest_summary.json",
+  "aggregate": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "model_calls": 3,
+    "tool_calls": 2,
+    "duration_seconds": 118.4
+  },
+  "trend": {
+    "previous": null,
+    "deltas": {}
+  },
+  "trend_warnings": [],
+  "scenarios": [
+    {
+      "scenario": "password_cli",
+      "ok": true,
+      "workspace": ".agent/acceptance/workspaces/password_cli",
+      "failure_summary": ""
+    }
+  ]
+}
+```
+
+补充文件：
+
+- `.agent/acceptance/latest_summary.json`：底层验收脚本的机器摘要。
+- `.agent/acceptance/history.jsonl`：每次验收追加一行，用于趋势比较。
+- `.agent/acceptance/failures/*.json`：失败场景被 promote 成修复任务时写入的证据。
+
+当 `/acceptance` 使用 `--fail-on-trend-warning` 时，`trend_warnings` 非空会让命令以非零状态退出，但原始 `ok` 字段仍表示场景本身是否通过。
+
+## 20. CostReport
 
 文件：
 
@@ -935,7 +995,7 @@ cost.status:
   stopped
 ```
 
-## 20. MemoryEntry
+## 21. MemoryEntry
 
 文件：
 
@@ -976,7 +1036,7 @@ memory.type:
   failure_lesson
 ```
 
-## 21. Event
+## 22. Event
 
 文件：
 
@@ -1026,7 +1086,7 @@ event.type:
   error
 ```
 
-## 22. HandoffPackage
+## 23. HandoffPackage
 
 文件：
 
@@ -1053,9 +1113,9 @@ event.type:
 }
 ```
 
-## 23. 状态转移约束
+## 24. 状态转移约束
 
-### 22.1 Task 状态转移
+### 24.1 Task 状态转移
 
 ```text
 backlog -> ready
@@ -1075,7 +1135,7 @@ in_progress -> discarded
 - `done -> in_progress`，除非创建新任务。
 - `discarded -> done`，除非恢复为新任务。
 
-### 22.2 Run 状态转移
+### 24.2 Run 状态转移
 
 ```text
 queued -> running
@@ -1088,7 +1148,7 @@ running -> failed
 running -> cancelled
 ```
 
-## 24. 最小实现优先级
+## 25. 最小实现优先级
 
 MVP 必须先实现以下对象：
 
@@ -1108,7 +1168,7 @@ MVP 必须先实现以下对象：
 
 其余对象可以在 V1 中补齐。
 
-## 25. Schema 校验策略
+## 26. Schema 校验策略
 
 实现时应提供：
 

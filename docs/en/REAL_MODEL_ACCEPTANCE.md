@@ -83,10 +83,17 @@ Use trend warnings as a local gate:
 python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
 ```
 
+Run acceptance and fail the same command on trend warnings:
+
+```powershell
+python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warning
+```
+
 The warning thresholds are configurable:
 
 ```powershell
 python -m agent_runtime /acceptance-history --root . --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-warning
+python -m agent_runtime /acceptance --root . --suite core --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-trend-warning
 ```
 
 ## Pass Criteria

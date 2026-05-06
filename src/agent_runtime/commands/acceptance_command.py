@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.core.task_contract import completion_contract
 from agent_runtime.storage.event_logger import EventLogger
@@ -37,6 +38,7 @@ class AcceptanceResult:
     rerun_ok: bool | None = None
     closed_failures: list[str] = field(default_factory=list)
     remaining_failures: list[str] = field(default_factory=list)
+    trend_warnings: list[str] = field(default_factory=list)
 
     def to_text(self) -> str:
         lines = [
@@ -50,6 +52,9 @@ class AcceptanceResult:
             lines.append(f"Summary: {self.summary_json}")
         if self.report_path:
             lines.append(f"Report: {self.report_path}")
+        if self.trend_warnings:
+            lines.append("Trend warnings:")
+            lines.extend(f"  - {warning}" for warning in self.trend_warnings)
         if self.promoted_tasks:
             lines.append(f"Promoted failure tasks: {len(self.promoted_tasks)}")
             for task_id in self.promoted_tasks:
@@ -98,6 +103,11 @@ class AcceptanceCommand:
         rerun_promoted: bool = False,
         promoted_run_max_iterations: int | None = None,
         promoted_run_max_tasks_per_iteration: int = 1,
+        fail_on_trend_warning: bool = False,
+        warn_model_call_delta: int = 5,
+        warn_duration_delta: float = 120.0,
+        warn_repair_delta: int = 1,
+        warn_context_compaction_delta: int = 1,
     ) -> None:
         self.root = root.resolve()
         self.suite = suite
@@ -113,6 +123,11 @@ class AcceptanceCommand:
         self.rerun_promoted = rerun_promoted
         self.promoted_run_max_iterations = promoted_run_max_iterations
         self.promoted_run_max_tasks_per_iteration = promoted_run_max_tasks_per_iteration
+        self.fail_on_trend_warning = fail_on_trend_warning
+        self.warn_model_call_delta = warn_model_call_delta
+        self.warn_duration_delta = warn_duration_delta
+        self.warn_repair_delta = warn_repair_delta
+        self.warn_context_compaction_delta = warn_context_compaction_delta
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
 
@@ -125,6 +140,8 @@ class AcceptanceCommand:
         report = self._build_report(
             completed.returncode, summary_json, completed.stdout, completed.stderr
         )
+        trend_warnings = self._trend_warnings()
+        report["trend_warnings"] = trend_warnings
         self.store.write(report_path, report, "acceptance_report")
         promoted_tasks = []
         promotion_error = None
@@ -176,12 +193,14 @@ class AcceptanceCommand:
         effective_ok = completed.returncode == 0 or (
             rerun_ok is True and bool(promoted_tasks) and not remaining_failures
         )
+        if effective_ok and self.fail_on_trend_warning and trend_warnings:
+            effective_ok = False
         return AcceptanceResult(
             suite=self.suite,
             scenarios=self.scenarios,
             root=self.root,
             ok=effective_ok,
-            returncode=0 if effective_ok else completed.returncode,
+            returncode=0 if effective_ok else completed.returncode or 1,
             stdout=completed.stdout,
             stderr=completed.stderr,
             summary_json=summary_json,
@@ -194,6 +213,7 @@ class AcceptanceCommand:
             rerun_ok=rerun_ok,
             closed_failures=closed_failures,
             remaining_failures=remaining_failures,
+            trend_warnings=trend_warnings,
         )
 
     def _run_acceptance_script(
@@ -343,6 +363,19 @@ class AcceptanceCommand:
     def _current_run_id(self) -> str | None:
         run_store = RunStore(self.root / ".agent", self.validator)
         return run_store.current_session_id()
+
+    def _trend_warnings(self) -> list[str]:
+        history_path = self.root / ".agent" / "acceptance" / "history.jsonl"
+        return AcceptanceHistoryCommand(
+            self.root,
+            limit=1,
+            suite=self.suite,
+            history_jsonl=history_path,
+            warn_model_call_delta=self.warn_model_call_delta,
+            warn_duration_delta=self.warn_duration_delta,
+            warn_repair_delta=self.warn_repair_delta,
+            warn_context_compaction_delta=self.warn_context_compaction_delta,
+        ).run().warnings
 
 
 class AcceptanceFailurePromoter:

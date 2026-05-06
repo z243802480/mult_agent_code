@@ -82,10 +82,17 @@ python -m agent_runtime /acceptance-history --root . --history-jsonl .agent/veri
 python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
 ```
 
+也可以让 `/acceptance` 在同一次验收中直接因为趋势告警失败：
+
+```powershell
+python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warning
+```
+
 告警阈值可以配置：
 
 ```powershell
 python -m agent_runtime /acceptance-history --root . --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-warning
+python -m agent_runtime /acceptance --root . --suite core --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-trend-warning
 ```
 
 ## 通过标准

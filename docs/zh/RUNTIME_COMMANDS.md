@@ -117,6 +117,7 @@ Agent 自调用：
 - `agent verification` / `agent verify-status` 显示最近一次统一 verify 的覆盖摘要，来源是 `.agent/verification/latest.json`。
 - `agent acceptance-history` / `agent acceptance-trend` 显示 `.agent/acceptance/history.jsonl` 中的真实验收历史和趋势 delta。
 - `agent acceptance-history --fail-on-warning` 可把趋势告警转换为非零退出码，用于本地门禁。
+- `agent acceptance --fail-on-trend-warning` 可让验收命令本身在趋势回归时失败。
 
 ### 3.2.1 `/run`
 

@@ -100,6 +100,12 @@ Use it as a local gate with:
 python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
 ```
 
+Or make `/acceptance` fail immediately when the latest run introduces trend regressions:
+
+```powershell
+python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warning
+```
+
 `agent /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
 Pass `--promote-failures` to turn failed scenarios into ready tasks on the current session.

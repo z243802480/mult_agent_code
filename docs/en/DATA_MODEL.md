@@ -21,6 +21,8 @@ The Chinese `docs/zh/DATA_MODEL.md` is the detailed source of truth. This file i
 - `Artifact`: durable output record.
 - `Experiment`: keep/discard attempt.
 - `EvalReport`: quality and outcome report.
+- `AcceptanceReport`: runtime acceptance result with scenario details, aggregate trend data, and
+  optional trend warnings.
 - `CostReport`: budget and usage report.
 - `MemoryEntry`: reusable memory.
 - `Event`: runtime event log.
@@ -54,6 +56,10 @@ AGENTS.md
       final_report.md
   memory/
 ```
+
+`agent acceptance` also writes `.agent/acceptance/acceptance_report.json`,
+`.agent/acceptance/latest_summary.json`, `.agent/acceptance/history.jsonl`, and optional
+`.agent/acceptance/failures/*.json` evidence records.
 
 ## Implementation Rule
 

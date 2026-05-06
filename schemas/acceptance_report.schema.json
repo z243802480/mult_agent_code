@@ -22,6 +22,7 @@
     "returncode": { "type": "integer" },
     "created_at": { "type": "string" },
     "summary_json": { "type": ["string", "null"] },
+    "trend_warnings": { "type": "array", "items": { "type": "string" } },
     "repair_closure": {
       "type": "object",
       "required": [

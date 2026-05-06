@@ -198,6 +198,24 @@ def test_acceptance_result_prints_promotion_error(tmp_path: Path) -> None:
     assert "Promotion error: Cannot promote acceptance failures" in result.to_text()
 
 
+def test_acceptance_result_prints_trend_warnings(tmp_path: Path) -> None:
+    result = AcceptanceResult(
+        suite="core",
+        scenarios=[],
+        root=tmp_path,
+        ok=False,
+        returncode=1,
+        stdout="",
+        stderr="",
+        trend_warnings=["model calls increased by 6 (threshold 5)"],
+    )
+
+    text = result.to_text()
+
+    assert "Trend warnings:" in text
+    assert "model calls increased by 6" in text
+
+
 def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
     result = AcceptanceResult(
         suite="core",
@@ -320,6 +338,80 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     ]
     assert memories[0]["type"] == "failure_lesson"
     assert memories[0]["source"]["task_id"] == promoted_task["task_id"]
+
+
+def test_acceptance_command_can_fail_on_trend_warning(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    original_run = subprocess.run
+
+    def fake_acceptance_run(command, *args, **kwargs):
+        command_text = " ".join(str(item) for item in command)
+        if "real_model_acceptance.py" not in command_text:
+            return original_run(command, *args, **kwargs)
+        summary_path = Path(command[command.index("--summary-json") + 1])
+        history_path = Path(command[command.index("--history-jsonl") + 1])
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        summary = {
+            "ok": True,
+            "root": str(tmp_path),
+            "suite": "core",
+            "created_at": "2026-05-06T12:00:00+08:00",
+            "aggregate": {
+                "total": 1,
+                "passed": 1,
+                "failed": 0,
+                "model_calls": 12,
+                "tool_calls": 2,
+                "duration_seconds": 60,
+            },
+            "trend": {
+                "previous": {"created_at": "2026-05-06T11:00:00+08:00"},
+                "deltas": {
+                    "failed": 0,
+                    "duration_seconds": 0,
+                    "model_calls": 6,
+                    "repair_attempts": 0,
+                    "context_compactions": 0,
+                },
+            },
+            "scenarios": [
+                {
+                    "scenario": "password_cli",
+                    "ok": True,
+                    "workspace": str(tmp_path / "password_cli"),
+                    "summary": {},
+                    "stdout": "",
+                    "stderr": "",
+                }
+            ],
+        }
+        summary_path.write_text(json.dumps(summary, ensure_ascii=False), encoding="utf-8")
+        history_path.write_text(json.dumps(summary, ensure_ascii=False) + "\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "Real model acceptance passed", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_acceptance_run)
+
+    result = AcceptanceCommand(
+        tmp_path,
+        suite="core",
+        scenarios=["password_cli"],
+        fail_on_trend_warning=True,
+        warn_model_call_delta=5,
+    ).run()
+
+    report = json.loads(
+        (tmp_path / ".agent" / "acceptance" / "acceptance_report.json").read_text(encoding="utf-8")
+    )
+
+    assert not result.ok
+    assert result.returncode == 1
+    assert result.trend_warnings == ["model calls increased by 6 (threshold 5)"]
+    assert report["ok"] is True
+    assert report["trend_warnings"] == result.trend_warnings
+    assert "Trend warnings:" in result.to_text()
 
 
 def test_acceptance_failure_can_be_rerun_after_promoted_repair(

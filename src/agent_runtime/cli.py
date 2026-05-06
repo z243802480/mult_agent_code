@@ -410,6 +410,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Tasks per execute pass when --run-promoted is used",
     )
+    acceptance_parser.add_argument(
+        "--fail-on-trend-warning",
+        action="store_true",
+        help="Exit non-zero when acceptance trend warnings are present",
+    )
+    acceptance_parser.add_argument(
+        "--warn-model-call-delta",
+        type=int,
+        default=5,
+        help="Warn when model calls increase by this amount",
+    )
+    acceptance_parser.add_argument(
+        "--warn-duration-delta",
+        type=float,
+        default=120.0,
+        help="Warn when duration increases by this many seconds",
+    )
+    acceptance_parser.add_argument(
+        "--warn-repair-delta",
+        type=int,
+        default=1,
+        help="Warn when repair attempts increase by this amount",
+    )
+    acceptance_parser.add_argument(
+        "--warn-context-compaction-delta",
+        type=int,
+        default=1,
+        help="Warn when context compactions increase by this amount",
+    )
 
     acceptance_history_parser = subcommands.add_parser(
         "acceptance-history",
@@ -644,6 +673,11 @@ def main() -> None:
             rerun_promoted=args.rerun_promoted,
             promoted_run_max_iterations=args.promoted_run_max_iterations,
             promoted_run_max_tasks_per_iteration=args.promoted_run_max_tasks_per_iteration,
+            fail_on_trend_warning=args.fail_on_trend_warning,
+            warn_model_call_delta=args.warn_model_call_delta,
+            warn_duration_delta=args.warn_duration_delta,
+            warn_repair_delta=args.warn_repair_delta,
+            warn_context_compaction_delta=args.warn_context_compaction_delta,
         ).run()
         print(acceptance_result.to_text())
         if not acceptance_result.ok:
