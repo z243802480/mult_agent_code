@@ -91,6 +91,9 @@ class CompactCommand:
         artifacts = self._read_optional_jsonl(
             run_dir / "artifacts.jsonl" if run_dir else None, "artifact"
         )
+        task_failures = self._read_optional_jsonl(
+            run_dir / "task_failures.jsonl" if run_dir else None, "task_failure_evidence"
+        )
 
         tasks = task_plan.get("tasks", []) if task_plan else []
         active_tasks = [
@@ -132,10 +135,13 @@ class CompactCommand:
             "verification": self._verification(tool_calls),
             "verification_summary": self._latest_verification_summary(agent_dir),
             "failures": failures,
+            "task_failures": self._task_failures(task_failures, run_dir),
             "acceptance_failures": acceptance_failures,
             "report_summaries": report_summaries,
             "research_claims": [],
-            "open_risks": self._open_risks(cost_report, failures, acceptance_failures),
+            "open_risks": self._open_risks(
+                cost_report, failures, task_failures, acceptance_failures
+            ),
             "next_actions": next_actions,
             "project": self._read_optional_json(agent_dir / "project.json", "project_config") or {},
         }
@@ -294,6 +300,27 @@ class CompactCommand:
                 failures.append({"summary": event["summary"], "status": event["type"]})
         return failures[-20:]
 
+    def _task_failures(self, task_failures: list[dict], run_dir: Path | None) -> list[dict]:
+        failures = []
+        for item in task_failures[-10:]:
+            evidence_path = None
+            if run_dir:
+                evidence_path = (run_dir / "task_failures.jsonl").relative_to(self.root).as_posix()
+            failures.append(
+                {
+                    "evidence_id": item["evidence_id"],
+                    "task_id": item["task_id"],
+                    "phase": item["phase"],
+                    "failure_type": item["failure_type"],
+                    "summary": item["summary"],
+                    "contract_check": item.get("contract_check", {}),
+                    "recommendations": item.get("recommendations", [])[:5],
+                    "evidence_path": evidence_path,
+                    "created_at": item.get("created_at"),
+                }
+            )
+        return failures
+
     def _accepted_decisions(self, run_dir: Path | None) -> list[str]:
         if not run_dir:
             return []
@@ -377,11 +404,18 @@ class CompactCommand:
         self,
         cost_report: dict,
         failures: list[dict],
+        task_failures: list[dict],
         acceptance_failures: list[dict],
     ) -> list[str]:
         risks = []
         if failures:
             risks.append(f"{len(failures)} recent failure(s) need review")
+        if task_failures:
+            latest = task_failures[-1]
+            risks.append(
+                f"{len(task_failures)} task failure evidence item(s) need repair "
+                f"(latest: {latest.get('task_id')})"
+            )
         if acceptance_failures:
             risks.append(
                 f"{len(acceptance_failures)} acceptance failure evidence item(s) need repair"

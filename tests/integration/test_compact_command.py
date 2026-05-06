@@ -226,6 +226,35 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
         "tool_call",
     )
     jsonl.append(
+        run_dir / "task_failures.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "task-failure-0001",
+            "run_id": plan.run_id,
+            "task_id": "task-0001",
+            "phase": "execute",
+            "failure_type": "contract_violation",
+            "summary": "Task completion contract violated: verification did not pass",
+            "task_status": "blocked",
+            "contract_check": {
+                "ok": False,
+                "violations": ["verification did not pass"],
+                "changed_files": ["password_tool.py"],
+                "expected_changed_files": [],
+                "verification_total": 1,
+                "verification_passed": 0,
+            },
+            "tool_failures": [],
+            "verification_failures": [{"summary": "1 failed", "error": "AssertionError"}],
+            "candidate": {"changed_files": ["password_tool.py"]},
+            "recommendations": [
+                "Inspect verification failures and repair the smallest related artifact."
+            ],
+            "created_at": "2026-05-05T00:00:01+08:00",
+        },
+        "task_failure_evidence",
+    )
+    jsonl.append(
         run_dir / "artifacts.jsonl",
         {
             "schema_version": "0.1.0",
@@ -265,11 +294,16 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert snapshot["verification"][0]["status"] == "failed"
     assert snapshot["verification_summary"]["status"] == "passed"
     assert snapshot["verification_summary"]["checks"][0]["name"] == "pytest"
+    assert snapshot["task_failures"][0]["evidence_id"] == "task-failure-0001"
+    assert snapshot["task_failures"][0]["contract_check"]["violations"] == [
+        "verification did not pass"
+    ]
     assert snapshot["acceptance_failures"][0]["scenario"] == "markdown_kb"
     assert snapshot["acceptance_failures"][0]["evidence_path"] == (
         ".agent/acceptance/failures/markdown_kb.json"
     )
-    assert "acceptance failure evidence" in snapshot["open_risks"][1]
+    assert "task failure evidence" in snapshot["open_risks"][1]
+    assert "acceptance failure evidence" in snapshot["open_risks"][2]
     assert snapshot["failures"][0]["summary"] == "1 failed"
     assert "Need user decision" in snapshot["report_summaries"]["review_report"]
     assert snapshot["next_actions"][0] == "Resolve decision decision-0002 with /decide"
@@ -278,9 +312,11 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert package["task_summary"]["remaining"] == 2
     assert package["pending_decisions"][0]["question"] == "Should we add a UI now?"
     assert package["verification_summary"]["platform"] == "windows"
+    assert package["task_failures"][0]["failure_type"] == "contract_violation"
     assert package["acceptance_failures"][0]["failure_summary"] == (
         "Expected markdown_kb.py was not created"
     )
+    assert ".agent/runs/" + plan.run_id + "/task_failures.jsonl" in package["recent_artifacts"]
     assert ".agent/acceptance/failures/markdown_kb.json" in package["recent_artifacts"]
     assert "password_tool.py" in package["recent_artifacts"]
     assert "Need user decision" in package["report_summaries"]["review_report"]

@@ -18,6 +18,7 @@ class ContextLoader:
         acceptance_failure_limit: int = 5,
         workspace_file_limit: int = 20,
         workspace_file_chars: int = 1_200,
+        task_failure_limit: int = 5,
     ) -> None:
         self.root = root.resolve()
         self.validator = validator
@@ -25,6 +26,7 @@ class ContextLoader:
         self.acceptance_failure_limit = acceptance_failure_limit
         self.workspace_file_limit = workspace_file_limit
         self.workspace_file_chars = workspace_file_chars
+        self.task_failure_limit = task_failure_limit
         self.store = JsonStore(validator)
         self.jsonl = JsonlStore(validator)
 
@@ -35,6 +37,7 @@ class ContextLoader:
             "latest_snapshot": self._latest_snapshot(agent_dir, run_id),
             "latest_handoff": self._latest_handoff(agent_dir),
             "acceptance_failures": self._acceptance_failures(agent_dir),
+            "task_failures": self._task_failures(agent_dir, run_id),
             "workspace_files": self._workspace_files(),
         }
 
@@ -87,6 +90,7 @@ class ContextLoader:
             "modified_files": snapshot.get("modified_files", [])[-10:],
             "verification": snapshot.get("verification", [])[-5:],
             "failures": snapshot.get("failures", [])[-5:],
+            "task_failures": snapshot.get("task_failures", [])[-5:],
             "open_risks": snapshot.get("open_risks", [])[-5:],
             "next_actions": snapshot.get("next_actions", [])[-5:],
         }
@@ -135,6 +139,36 @@ class ContextLoader:
             )
         entries.sort(key=lambda item: str(item.get("created_at", "")))
         return entries[-self.acceptance_failure_limit :]
+
+    def _task_failures(self, agent_dir: Path, run_id: str | None) -> list[dict]:
+        run_dirs = []
+        runs_dir = agent_dir / "runs"
+        if run_id:
+            run_dirs = [runs_dir / run_id]
+        elif runs_dir.exists():
+            run_dirs = sorted([path for path in runs_dir.iterdir() if path.is_dir()])[-3:]
+
+        entries = []
+        for run_dir in run_dirs:
+            path = run_dir / "task_failures.jsonl"
+            if not path.exists():
+                continue
+            for evidence in self.jsonl.read_all(path, "task_failure_evidence"):
+                entries.append(
+                    {
+                        "evidence_id": evidence["evidence_id"],
+                        "run_id": evidence.get("run_id"),
+                        "task_id": evidence["task_id"],
+                        "phase": evidence["phase"],
+                        "failure_type": evidence["failure_type"],
+                        "summary": evidence["summary"],
+                        "contract_check": evidence.get("contract_check", {}),
+                        "recommendations": evidence.get("recommendations", [])[:5],
+                        "created_at": evidence.get("created_at"),
+                    }
+                )
+        entries.sort(key=lambda item: str(item.get("created_at", "")))
+        return entries[-self.task_failure_limit :]
 
     def _workspace_files(self) -> list[dict]:
         files: list[dict] = []

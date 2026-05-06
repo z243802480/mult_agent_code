@@ -27,6 +27,7 @@
     "task_summary": { "type": "object" },
     "pending_decisions": { "type": "array", "items": { "type": "object" } },
     "verification_summary": { "type": "object" },
+    "task_failures": { "type": "array", "items": { "type": "object" } },
     "acceptance_failures": { "type": "array", "items": { "type": "object" } },
     "report_summaries": { "type": "object" },
     "recommended_next_command": { "type": "string" },

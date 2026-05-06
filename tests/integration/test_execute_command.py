@@ -349,6 +349,13 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
     ]
     assert experiments[0]["contract_check"]["ok"] is False
     assert experiments[0]["contract_check"]["verification_total"] == 0
+    task_failures = [
+        json.loads(line)
+        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert task_failures[0]["failure_type"] == "contract_violation"
+    assert task_failures[0]["contract_check"]["verification_total"] == 0
+    assert "Add a verification command" in task_failures[0]["recommendations"][0]
 
 
 def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:

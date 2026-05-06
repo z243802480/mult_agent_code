@@ -2,6 +2,7 @@ from pathlib import Path
 
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.storage.json_store import JsonStore
+from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -71,3 +72,38 @@ def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: P
     assert failures[0]["evidence_path"] == ".agent/acceptance/failures/scenario_1.json"
     assert failures[1]["failure_summary"] == "failure 2"
     assert failures[1]["reproduce"]["cli"].endswith("--scenario scenario_2")
+
+
+def test_context_loader_includes_bounded_task_failure_evidence(tmp_path: Path) -> None:
+    schema_validator = validator()
+    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    store = JsonlStore(schema_validator)
+    for index in range(3):
+        store.append(
+            run_dir / "task_failures.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "evidence_id": f"task-failure-{index}",
+                "run_id": "run-1",
+                "task_id": f"task-000{index}",
+                "phase": "execute",
+                "failure_type": "contract_violation",
+                "summary": f"failure {index}",
+                "task_status": "blocked",
+                "contract_check": {"violations": ["verification did not pass"]},
+                "tool_failures": [],
+                "verification_failures": [],
+                "candidate": {},
+                "recommendations": ["repair verification"],
+                "created_at": f"2026-05-05T00:00:0{index}+08:00",
+            },
+            "task_failure_evidence",
+        )
+
+    context = ContextLoader(tmp_path, schema_validator, task_failure_limit=2).load("run-1")
+
+    failures = context["task_failures"]
+    assert [failure["task_id"] for failure in failures] == ["task-0001", "task-0002"]
+    assert failures[0]["contract_check"]["violations"] == ["verification did not pass"]
+    assert failures[1]["recommendations"] == ["repair verification"]

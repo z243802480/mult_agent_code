@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskFailureEvidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "run_id",
+    "task_id",
+    "phase",
+    "failure_type",
+    "summary",
+    "task_status",
+    "contract_check",
+    "tool_failures",
+    "verification_failures",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "phase": { "type": "string" },
+    "failure_type": { "type": "string" },
+    "summary": { "type": "string" },
+    "task_status": { "type": "string" },
+    "contract_check": { "type": "object" },
+    "tool_failures": { "type": "array", "items": { "type": "object" } },
+    "verification_failures": { "type": "array", "items": { "type": "object" } },
+    "candidate": { "type": "object" },
+    "recommendations": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string" }
+  }
+}

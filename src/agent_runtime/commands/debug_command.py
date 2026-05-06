@@ -8,6 +8,7 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_contract import check_completion_contract
+from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -199,7 +200,9 @@ class DebugCommand:
             if contract_check.ok:
                 reason = "Repair verification passed."
                 if not self._changed_files(tool_results):
-                    reason = "Repair verification passed without changes; task was already satisfied."
+                    reason = (
+                        "Repair verification passed without changes; task was already satisfied."
+                    )
                 self._record_repair_experiment(
                     context,
                     task,
@@ -240,6 +243,19 @@ class DebugCommand:
                 rollback_results=rollback_results,
                 contract_check=contract_check.to_dict(),
             )
+            self._record_task_failure(
+                context,
+                task,
+                "repair_contract_violation",
+                reason,
+                contract_check=contract_check.to_dict(),
+                tool_results=tool_results,
+                verification_results=verification,
+                candidate={
+                    "summary": action["summary"],
+                    "changed_files": contract_check.changed_files,
+                },
+            )
             return RepairSummary(
                 task_id,
                 "blocked",
@@ -249,6 +265,7 @@ class DebugCommand:
             )
         except Exception as exc:  # noqa: BLE001 - repair loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
+            self._record_task_failure(context, task, self._failure_type(exc), str(exc))
             return RepairSummary(task_id, "blocked", str(exc), 0, 0)
 
     def _require_non_empty_action(self, action: dict) -> None:
@@ -381,6 +398,53 @@ class DebugCommand:
                 },
             )
 
+    def _record_task_failure(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        failure_type: str,
+        summary: str,
+        contract_check: dict | None = None,
+        tool_results: list | None = None,
+        verification_results: list | None = None,
+        candidate: dict | None = None,
+    ) -> None:
+        if not context.run_dir:
+            return
+        evidence = TaskFailureRecorder(context.run_dir, self.validator).record(
+            run_id=context.run_id,
+            task=task,
+            phase="debug",
+            failure_type=failure_type,
+            summary=summary,
+            contract_check=contract_check,
+            tool_results=tool_results,
+            verification_results=verification_results,
+            candidate=candidate,
+        )
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "task_failure_recorded",
+                "DebugCommand",
+                summary,
+                {
+                    "evidence_id": evidence["evidence_id"],
+                    "task_id": task["task_id"],
+                    "failure_type": failure_type,
+                },
+            )
+
+    def _failure_type(self, exc: Exception) -> str:
+        if isinstance(exc, PermissionError):
+            return "tool_permission"
+        message = str(exc).lower()
+        if message.startswith("tool failed:"):
+            return "tool_failure"
+        if "no tool calls or verification" in message:
+            return "empty_action"
+        return "repair_exception"
+
     def _rollback_backups(
         self,
         context: RuntimeContext,
@@ -447,6 +511,7 @@ class DebugCommand:
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
         experiments = self._read_jsonl(run_dir / "experiments.jsonl", "experiment")
+        task_failures = self._read_jsonl(run_dir / "task_failures.jsonl", "task_failure_evidence")
         return {
             "task_id": task_id,
             "recent_tool_failures": [
@@ -468,6 +533,9 @@ class DebugCommand:
                 experiment.get("contract_check")
                 for experiment in experiments
                 if experiment.get("task_id") == task_id and experiment.get("contract_check")
+            ][-5:],
+            "recent_task_failures": [
+                failure for failure in task_failures if failure.get("task_id") == task_id
             ][-5:],
         }
 

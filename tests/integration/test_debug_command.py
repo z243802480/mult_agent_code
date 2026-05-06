@@ -56,14 +56,20 @@ class FakeBrokenExecuteClient:
                     "tool_calls": [
                         {
                             "tool_name": "write_file",
-                            "args": {"path": "repairable.py", "content": "VALUE = 1\n", "overwrite": True},
+                            "args": {
+                                "path": "repairable.py",
+                                "content": "VALUE = 1\n",
+                                "overwrite": True,
+                            },
                             "reason": "create initial implementation",
                         }
                     ],
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "args": {
+                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                            },
                             "reason": "verify expected value",
                         }
                     ],
@@ -82,6 +88,7 @@ class FakeBrokenExecuteClient:
 class FakeDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         assert "recent_tool_failures" in request.messages[-1].content
+        assert "recent_task_failures" in request.messages[-1].content
         return ChatResponse(
             content=json.dumps(
                 {
@@ -91,14 +98,20 @@ class FakeDebugClient:
                     "tool_calls": [
                         {
                             "tool_name": "write_file",
-                            "args": {"path": "repairable.py", "content": "VALUE = 2\n", "overwrite": True},
+                            "args": {
+                                "path": "repairable.py",
+                                "content": "VALUE = 2\n",
+                                "overwrite": True,
+                            },
                             "reason": "minimal repair",
                         }
                     ],
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "args": {
+                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                            },
                             "reason": "verify repaired value",
                         }
                     ],
@@ -116,7 +129,10 @@ class FakeDebugClient:
 
 class FakePatchDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        assert '"tool_name": "apply_patch"' in request.messages[0].content + request.messages[-1].content
+        assert (
+            '"tool_name": "apply_patch"'
+            in request.messages[0].content + request.messages[-1].content
+        )
         return ChatResponse(
             content=json.dumps(
                 {
@@ -135,7 +151,9 @@ class FakePatchDebugClient:
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "args": {
+                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                            },
                             "reason": "verify repaired value",
                         }
                     ],
@@ -162,14 +180,20 @@ class FakeStillBrokenDebugClient:
                     "tool_calls": [
                         {
                             "tool_name": "write_file",
-                            "args": {"path": "repairable.py", "content": "VALUE = 3\n", "overwrite": True},
+                            "args": {
+                                "path": "repairable.py",
+                                "content": "VALUE = 3\n",
+                                "overwrite": True,
+                            },
                             "reason": "incorrect repair",
                         }
                     ],
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "args": {
+                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                            },
                             "reason": "verify repaired value",
                         }
                     ],
@@ -197,7 +221,9 @@ class FakeVerifyOnlyDebugClient:
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"from repairable import VALUE; assert VALUE == 2\""},
+                            "args": {
+                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                            },
                             "reason": "prove task is already satisfied",
                         }
                     ],
@@ -216,7 +242,9 @@ class FakeVerifyOnlyDebugClient:
 def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    execute = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
+    ).run()
     assert execute.blocked == 1
 
     result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeDebugClient()).run()
@@ -233,6 +261,12 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "repair_started" in events
     assert "repair_completed" in events
+    task_failures = [
+        json.loads(line)
+        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert task_failures[0]["failure_type"] == "contract_violation"
+    assert task_failures[0]["verification_failures"][0]["error"] == "nonzero_exit"
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
@@ -246,7 +280,9 @@ def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     (tmp_path / "repairable.py").write_text("VALUE = 0\n", encoding="utf-8")
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    execute = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
+    ).run()
     assert execute.blocked == 1
     assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 0\n"
 
@@ -262,10 +298,14 @@ def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
 def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    execute = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
+    ).run()
     assert execute.blocked == 1
 
-    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeStillBrokenDebugClient()).run()
+    result = DebugCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeStillBrokenDebugClient()
+    ).run()
 
     assert result.repaired == 0
     assert result.still_blocked == 1
@@ -277,6 +317,12 @@ def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
     ]
     assert experiments[-1]["decision"] == "discard"
     assert experiments[-1]["candidate"]["rollback"][0]["restored"] == ["repairable.py"]
+    task_failures = [
+        json.loads(line)
+        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert task_failures[-1]["failure_type"] == "repair_contract_violation"
+    assert task_failures[-1]["contract_check"]["violations"] == ["verification did not pass"]
 
 
 def test_debug_command_can_mark_already_satisfied_task_done(tmp_path: Path) -> None:
@@ -285,11 +331,15 @@ def test_debug_command_can_mark_already_satisfied_task_done(tmp_path: Path) -> N
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     task_plan["tasks"][0]["status"] = "blocked"
-    task_plan["tasks"][0]["notes"] = "Verification command failed, but artifact may already be correct."
+    task_plan["tasks"][0]["notes"] = (
+        "Verification command failed, but artifact may already be correct."
+    )
     (run_dir / "task_plan.json").write_text(json.dumps(task_plan), encoding="utf-8")
     (tmp_path / "repairable.py").write_text("VALUE = 2\n", encoding="utf-8")
 
-    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeVerifyOnlyDebugClient()).run()
+    result = DebugCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeVerifyOnlyDebugClient()
+    ).run()
 
     assert result.repaired == 1
     updated = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))

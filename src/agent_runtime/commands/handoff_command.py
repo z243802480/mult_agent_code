@@ -107,6 +107,7 @@ class HandoffCommand:
             "task_summary": snapshot.get("task_summary", {}),
             "pending_decisions": snapshot.get("pending_decisions", []),
             "verification_summary": snapshot.get("verification_summary", {}),
+            "task_failures": snapshot.get("task_failures", []),
             "acceptance_failures": snapshot.get("acceptance_failures", []),
             "report_summaries": snapshot.get("report_summaries", {}),
             "recommended_next_command": self._recommended_next_command(snapshot),
@@ -127,6 +128,10 @@ class HandoffCommand:
             artifact_path = str(item.get("evidence_path") or "").strip()
             if artifact_path and artifact_path not in artifacts:
                 artifacts.append(artifact_path)
+        for item in snapshot.get("task_failures", []):
+            artifact_path = str(item.get("evidence_path") or "").strip()
+            if artifact_path and artifact_path not in artifacts:
+                artifacts.append(artifact_path)
         for filename in ("goal_spec.json", "task_plan.json", "review_report.md", "final_report.md"):
             file_path = run_dir / filename
             if file_path.exists():
@@ -141,7 +146,7 @@ class HandoffCommand:
         pending = snapshot.get("pending_decisions") or []
         if pending:
             return f"decide --decision-id {pending[0]['decision_id']}"
-        if snapshot.get("acceptance_failures"):
+        if snapshot.get("acceptance_failures") or snapshot.get("task_failures"):
             return "debug"
         if snapshot.get("failures"):
             return "debug"

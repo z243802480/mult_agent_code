@@ -9,6 +9,7 @@ from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
+from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_contract import (
     allows_expected_failure,
     check_completion_contract,
@@ -192,6 +193,13 @@ class ExecuteCommand:
             if decision is not None:
                 task_board.update_status(task_id, "blocked")
                 task_board.update_notes(task_id, f"Waiting for decision: {decision['decision_id']}")
+                self._record_task_failure(
+                    context,
+                    task,
+                    "policy_decision",
+                    f"Waiting for decision: {decision['decision_id']}",
+                    candidate={"decision_id": decision["decision_id"]},
+                )
                 if context.event_logger:
                     context.event_logger.record(
                         context.run_id,
@@ -261,6 +269,19 @@ class ExecuteCommand:
             )
             task_board.update_status(task_id, "blocked")
             task_board.update_notes(task_id, f"{reason}; candidate was rolled back.")
+            self._record_task_failure(
+                context,
+                task,
+                "contract_violation",
+                reason,
+                contract_check=contract_check.to_dict(),
+                tool_results=tool_results,
+                verification_results=verification_results,
+                candidate={
+                    "summary": action["summary"],
+                    "changed_files": contract_check.changed_files,
+                },
+            )
             if context.event_logger:
                 context.event_logger.record(
                     context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}"
@@ -274,6 +295,7 @@ class ExecuteCommand:
             )
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
+            self._record_task_failure(context, task, self._failure_type(exc), str(exc))
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",
@@ -542,6 +564,53 @@ class ExecuteCommand:
                     "backup_ids": backup_ids,
                 },
             )
+
+    def _record_task_failure(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        failure_type: str,
+        summary: str,
+        contract_check: dict | None = None,
+        tool_results: list | None = None,
+        verification_results: list | None = None,
+        candidate: dict | None = None,
+    ) -> None:
+        if not context.run_dir:
+            return
+        evidence = TaskFailureRecorder(context.run_dir, self.validator).record(
+            run_id=context.run_id,
+            task=task,
+            phase="execute",
+            failure_type=failure_type,
+            summary=summary,
+            contract_check=contract_check,
+            tool_results=tool_results,
+            verification_results=verification_results,
+            candidate=candidate,
+        )
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "task_failure_recorded",
+                "ExecuteCommand",
+                summary,
+                {
+                    "evidence_id": evidence["evidence_id"],
+                    "task_id": task["task_id"],
+                    "failure_type": failure_type,
+                },
+            )
+
+    def _failure_type(self, exc: Exception) -> str:
+        if isinstance(exc, PermissionError):
+            return "tool_permission"
+        message = str(exc).lower()
+        if message.startswith("tool failed:"):
+            return "tool_failure"
+        if "no tool calls or verification" in message:
+            return "empty_action"
+        return "exception"
 
     def _rollback_backups(
         self,
