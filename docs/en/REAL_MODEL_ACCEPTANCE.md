@@ -37,6 +37,12 @@ Run the broader nightly set when budget allows:
 python scripts/real_model_acceptance.py --suite nightly --summary-json .agent/verification/real_model_acceptance_nightly.json
 ```
 
+Persist a comparable history:
+
+```powershell
+python scripts/real_model_acceptance.py --suite core --summary-json .agent/verification/real_model_acceptance_core.json --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
+```
+
 ## Summary Metrics
 
 `real_model_smoke.py` writes:
@@ -54,6 +60,10 @@ python scripts/real_model_acceptance.py --suite nightly --summary-json .agent/ve
 - `diagnostics.context_compactions`
 
 `real_model_acceptance.py` aggregates the same cost and stability counters across scenarios.
+When `--history-jsonl` is provided, the script appends each summary to a JSONL history and adds
+`trend.previous` plus numeric deltas for pass/fail counts, duration, model/tool calls, token estimates,
+repair attempts, and context compactions. Runtime `agent /acceptance` writes this history by default
+to `.agent/acceptance/history.jsonl`.
 
 ## Pass Criteria
 

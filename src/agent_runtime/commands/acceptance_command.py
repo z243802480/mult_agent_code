@@ -216,6 +216,8 @@ class AcceptanceCommand:
             str(self.scenario_timeout_seconds),
             "--summary-json",
             str(summary_json.resolve()),
+            "--history-jsonl",
+            str((self.root / ".agent" / "acceptance" / "history.jsonl").resolve()),
         ]
         for scenario in scenarios:
             command.extend(["--scenario", scenario])
@@ -286,6 +288,8 @@ class AcceptanceCommand:
             "returncode": returncode,
             "created_at": now_iso(),
             "summary_json": str(summary_json),
+            "aggregate": summary.get("aggregate", {}),
+            "trend": summary.get("trend", {}),
             "scenarios": scenarios,
         }
 

@@ -11,22 +11,34 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     tmp_path: Path,
 ) -> None:
     summary_path = tmp_path / "summary.json"
+    history_path = tmp_path / "history.jsonl"
     env = os.environ.copy()
     env.pop("AGENT_MODEL_PROVIDER", None)
     env["PYTHONPATH"] = str(Path.cwd() / "src")
 
+    command = [
+        sys.executable,
+        "scripts/real_model_acceptance.py",
+        "--suite",
+        "offline",
+        "--root",
+        str(tmp_path / "acceptance"),
+        "--summary-json",
+        str(summary_path),
+        "--history-jsonl",
+        str(history_path),
+        "--allow-fake",
+    ]
     completed = subprocess.run(
-        [
-            sys.executable,
-            "scripts/real_model_acceptance.py",
-            "--suite",
-            "offline",
-            "--root",
-            str(tmp_path / "acceptance"),
-            "--summary-json",
-            str(summary_path),
-            "--allow-fake",
-        ],
+        command,
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        command,
         cwd=Path.cwd(),
         env=env,
         text=True,
@@ -38,6 +50,7 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["ok"] is True
     assert summary["suite"] == "offline"
+    assert summary["created_at"]
     assert summary["aggregate"]["total"] == 1
     assert summary["aggregate"]["passed"] == 1
     assert summary["aggregate"]["failed"] == 0
@@ -46,6 +59,15 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     assert [scenario["scenario"] for scenario in summary["scenarios"]] == ["offline_artifact"]
     assert summary["scenarios"][0]["duration_seconds"] >= 0
     assert summary["scenarios"][0]["summary"]["run_id"].startswith("run-")
+    history = [
+        json.loads(line)
+        for line in history_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(history) == 2
+    assert history[0]["trend"]["previous"] is None
+    assert history[1]["trend"]["previous"]["aggregate"]["total"] == 1
+    assert "model_calls" in history[1]["trend"]["deltas"]
 
 
 def test_real_model_acceptance_rejects_fake_for_real_scenarios(tmp_path: Path) -> None:

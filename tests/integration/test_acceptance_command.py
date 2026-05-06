@@ -57,6 +57,15 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
     assert report["ok"] is True
     assert report["summary_json"] == str(summary_path)
     assert report["scenarios"][0]["scenario"] == "offline_artifact"
+    history_path = tmp_path / "acceptance" / ".agent" / "acceptance" / "history.jsonl"
+    history = [
+        json.loads(line)
+        for line in history_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(history) == 1
+    assert history[0]["suite"] == "offline"
+    assert history[0]["trend"]["previous"] is None
 
 
 def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -111,9 +112,12 @@ def main() -> None:
             "ok": all(result["ok"] for result in results),
             "root": str(root),
             "suite": args.suite,
+            "requested_scenarios": args.scenario,
+            "created_at": now_iso(),
             "scenarios": results,
             "aggregate": aggregate_results(results),
         }
+        attach_history(args.history_jsonl, summary)
         write_summary(args.summary_json, summary)
         if not summary["ok"]:
             failed = [result["scenario"] for result in results if not result["ok"]]
@@ -129,6 +133,8 @@ def main() -> None:
                     "ok": False,
                     "root": str(root),
                     "suite": args.suite,
+                    "requested_scenarios": args.scenario,
+                    "created_at": now_iso(),
                     "scenarios": results,
                     "aggregate": aggregate_results(results),
                     "error": str(exc),
@@ -156,6 +162,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--root", type=Path, default=None)
     parser.add_argument("--summary-json", type=Path, default=None)
+    parser.add_argument(
+        "--history-jsonl",
+        type=Path,
+        default=None,
+        help="Append each acceptance summary to this JSONL file and include trend deltas.",
+    )
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument(
         "--allow-fake",
@@ -428,6 +440,82 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         ):
             aggregate[key] += int(diagnostics.get(key) or 0)
     return aggregate
+
+
+def attach_history(history_jsonl: Path | None, summary: dict[str, Any]) -> None:
+    if history_jsonl is None:
+        summary["trend"] = {"previous": None, "deltas": {}}
+        return
+    previous = latest_history_entry(history_jsonl, summary)
+    summary["trend"] = compare_with_previous(previous, summary)
+    history_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    with history_jsonl.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(summary, ensure_ascii=False) + "\n")
+
+
+def latest_history_entry(path: Path, summary: dict[str, Any]) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    current_key = history_key(summary)
+    latest: dict[str, Any] | None = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            candidate = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if history_key(candidate) == current_key:
+            latest = candidate
+    return latest
+
+
+def history_key(summary: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
+    requested = summary.get("requested_scenarios") or []
+    if not requested:
+        requested = [
+            str(item.get("scenario") or "")
+            for item in summary.get("scenarios", [])
+            if isinstance(item, dict)
+        ]
+    return str(summary.get("suite") or ""), tuple(sorted(str(item) for item in requested if item))
+
+
+def compare_with_previous(
+    previous: dict[str, Any] | None,
+    current: dict[str, Any],
+) -> dict[str, Any]:
+    if previous is None:
+        return {"previous": None, "deltas": {}}
+    previous_aggregate = previous.get("aggregate") if isinstance(previous.get("aggregate"), dict) else {}
+    current_aggregate = current.get("aggregate") if isinstance(current.get("aggregate"), dict) else {}
+    delta_keys = [
+        "passed",
+        "failed",
+        "duration_seconds",
+        "model_calls",
+        "tool_calls",
+        "estimated_input_tokens",
+        "estimated_output_tokens",
+        "repair_attempts",
+        "context_compactions",
+    ]
+    deltas = {
+        key: round(float(current_aggregate.get(key) or 0) - float(previous_aggregate.get(key) or 0), 3)
+        for key in delta_keys
+    }
+    return {
+        "previous": {
+            "created_at": previous.get("created_at"),
+            "ok": previous.get("ok"),
+            "aggregate": previous_aggregate,
+        },
+        "deltas": deltas,
+    }
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
 def run_agent_command(workspace: Path, allow_fake: bool, *args: str) -> dict[str, Any]:

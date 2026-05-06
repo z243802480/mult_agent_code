@@ -36,6 +36,12 @@ python scripts/real_model_acceptance.py --suite core --summary-json .agent/verif
 python scripts/real_model_acceptance.py --suite nightly --summary-json .agent/verification/real_model_acceptance_nightly.json
 ```
 
+持久化可对比历史：
+
+```powershell
+python scripts/real_model_acceptance.py --suite core --summary-json .agent/verification/real_model_acceptance_core.json --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
+```
+
 ## 摘要指标
 
 `real_model_smoke.py` 会写入：
@@ -53,6 +59,10 @@ python scripts/real_model_acceptance.py --suite nightly --summary-json .agent/ve
 - `diagnostics.context_compactions`
 
 `real_model_acceptance.py` 会把这些成本和稳定性指标按场景聚合。
+提供 `--history-jsonl` 时，脚本会把每次 summary 追加到 JSONL 历史，并在当前 summary 中写入
+`trend.previous` 和数值 delta，覆盖通过/失败数量、耗时、模型/工具调用、token 估算、修复次数和
+context compaction 次数。runtime 的 `agent /acceptance` 默认会把历史写入
+`.agent/acceptance/history.jsonl`。
 
 ## 通过标准
 
