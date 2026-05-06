@@ -1,16 +1,19 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.debug_command import DebugCommand
+from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.replan_command import ReplanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
+from agent_runtime.core.budget import BudgetController
 from agent_runtime.models.base import ModelClient
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -129,10 +132,14 @@ class RunCommand:
         steps = steps or []
         max_iterations = self.max_iterations or self._policy_iterations()
         for index in range(max_iterations):
+            if self._budget_guard(run_id, steps, f"iteration-{index + 1}-execute"):
+                break
             self._execute_until_no_ready(run_id, steps, iteration=index + 1)
             if self._run_status(run_id) in {"blocked", "paused"}:
                 break
 
+            if self._budget_guard(run_id, steps, f"iteration-{index + 1}-review"):
+                break
             review = ReviewCommand(
                 self.root,
                 run_id=run_id,
@@ -210,7 +217,13 @@ class RunCommand:
                     )
                 )
                 if self._run_status(run_id) == "blocked":
-                    replan = ReplanCommand(self.root, run_id=run_id).run()
+                    if self._budget_guard(run_id, steps, f"iteration-{iteration}-replan"):
+                        return progressed
+                    replan = ReplanCommand(
+                        self.root,
+                        run_id=run_id,
+                        max_replans_per_task=self._policy_replans_per_task(),
+                    ).run()
                     steps.append(
                         RunStepSummary(
                             "replan",
@@ -236,6 +249,44 @@ class RunCommand:
                 return progressed
         return progressed
 
+    def _budget_guard(self, run_id: str, steps: list[RunStepSummary], phase: str) -> bool:
+        policy = self._policy()
+        report = self._cost_report(run_id)
+        pressure = BudgetController.pressure(policy, report)
+        if pressure["status"] in {"within_budget"}:
+            return False
+        if pressure["status"] == "near_limit":
+            if int(report.get("context_compactions", 0)) == 0:
+                compact = CompactCommand(
+                    self.root,
+                    run_id=run_id,
+                    focus=f"budget guard before {phase}",
+                ).run()
+                steps.append(
+                    RunStepSummary(
+                        "compact",
+                        "budget_guard",
+                        f"Near budget; snapshot: {compact.snapshot_path.name}.",
+                    )
+                )
+            return False
+        if self._pending_budget_decision(run_id):
+            self._pause_run_for_budget(run_id, "Budget guard waiting for an existing decision.")
+            return True
+        decision = self._create_budget_decision(run_id, pressure, phase)
+        self._pause_run_for_budget(
+            run_id,
+            f"Budget guard paused before {phase}: {decision['decision_id']}.",
+        )
+        steps.append(
+            RunStepSummary(
+                "decide",
+                "paused",
+                f"Budget guard created {decision['decision_id']} before {phase}.",
+            )
+        )
+        return True
+
     def _ready_count(self, run_id: str) -> int:
         task_plan = self.store.read(
             self.root / ".agent" / "runs" / run_id / "task_plan.json",
@@ -260,11 +311,94 @@ class RunCommand:
         return "\n".join(lines)
 
     def _policy_iterations(self) -> int:
-        policy_path = self.root / ".agent" / "policies.json"
-        if not policy_path.exists():
+        if not (self.root / ".agent" / "policies.json").exists():
             return 8
-        policy = self.store.read(policy_path, "policy_config")
+        policy = self._policy()
         return int(policy["budgets"]["max_iterations_per_goal"])
+
+    def _policy_replans_per_task(self) -> int:
+        if not (self.root / ".agent" / "policies.json").exists():
+            return 2
+        policy = self._policy()
+        return int(policy["budgets"].get("max_replans_per_task", 2))
+
+    def _policy(self) -> dict:
+        return self.store.read(self.root / ".agent" / "policies.json", "policy_config")
+
+    def _cost_report(self, run_id: str) -> dict:
+        path = self.root / ".agent" / "runs" / run_id / "cost_report.json"
+        if path.exists():
+            return self.store.read(path, "cost_report")
+        return {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "model_calls": 0,
+            "tool_calls": 0,
+            "estimated_input_tokens": 0,
+            "estimated_output_tokens": 0,
+            "strong_model_calls": 0,
+            "cheap_model_calls": 0,
+            "repair_attempts": 0,
+            "research_calls": 0,
+            "context_compactions": 0,
+            "user_decisions": 0,
+            "status": "within_budget",
+            "warnings": [],
+        }
+
+    def _pending_budget_decision(self, run_id: str) -> bool:
+        run_dir = self.root / ".agent" / "runs" / run_id
+        return any(
+            decision["status"] == "pending"
+            and (decision.get("metadata") or {}).get("kind") == "budget_guard"
+            for decision in self._decisions(run_dir)
+        )
+
+    def _create_budget_decision(self, run_id: str, pressure: dict, phase: str) -> dict:
+        options = [
+            {
+                "option_id": "continue_once",
+                "label": "Continue once",
+                "tradeoff": "Spend another iteration despite budget pressure.",
+                "action": "record_constraint",
+            },
+            {
+                "option_id": "stop_and_review",
+                "label": "Stop and review",
+                "tradeoff": "Preserve evidence and avoid further automatic cost.",
+                "action": "record_constraint",
+            },
+        ]
+        result = DecideCommand(
+            self.root,
+            run_id=run_id,
+            question=(
+                "Budget guard reached "
+                f"{pressure['status']} before {phase}: "
+                f"{pressure['highest_label']} at {pressure['highest_ratio']:.0%}. Continue?"
+            ),
+            options_json=json.dumps(options, ensure_ascii=False),
+            recommended_option_id="stop_and_review",
+            default_option_id="stop_and_review",
+            impact_json=json.dumps(
+                {"scope": "low", "budget": "high", "risk": "medium", "quality": "medium"},
+                ensure_ascii=False,
+            ),
+            metadata={
+                "kind": "budget_guard",
+                "phase": phase,
+                "pressure": pressure,
+            },
+        ).run()
+        return result.decisions[0]
+
+    def _pause_run_for_budget(self, run_id: str, summary: str) -> None:
+        run_store = RunStore(self.root / ".agent", self.validator)
+        run = run_store.load_run(run_id)
+        run["status"] = "paused"
+        run["current_phase"] = "DECISION"
+        run["summary"] = summary
+        run_store.update_run(run)
 
     def _run_status(self, run_id: str) -> str:
         run = RunStore(self.root / ".agent", self.validator).load_run(run_id)
@@ -374,6 +508,12 @@ class RunCommand:
             for decision in self.jsonl.read_all(path, "decision_point")
             if decision["status"] in {"resolved", "defaulted"}
         ]
+
+    def _decisions(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        return self.jsonl.read_all(path, "decision_point")
 
     def _artifact_paths(self, run_dir: Path) -> list[str]:
         artifact_log = run_dir / "artifacts.jsonl"

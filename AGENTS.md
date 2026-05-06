@@ -133,7 +133,9 @@ max_model_calls_per_goal: 60
 max_tool_calls_per_goal: 120
 max_iterations_per_goal: 8
 max_repair_attempts_per_task: 2
+max_replans_per_task: 2
 context_compaction_threshold: 0.75
+hard_stop_threshold: 0.90
 ```
 
 When approaching budget:
@@ -143,6 +145,8 @@ When approaching budget:
 3. Stop low-value branches.
 4. Downgrade non-critical model calls.
 5. Ask the user before continuing.
+
+The runtime must create a budget DecisionPoint before crossing hard-stop thresholds.
 
 ## 11. Agent Operating Rules
 

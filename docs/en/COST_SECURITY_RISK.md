@@ -13,9 +13,11 @@ max_total_minutes: 30
 max_iterations: 8
 max_repair_attempts_total: 5
 max_repair_attempts_per_task: 2
+max_replans_per_task: 2
 max_research_calls: 5
 max_user_decisions: 5
 context_compaction_threshold: 0.75
+hard_stop_threshold: 0.90
 ```
 
 ## Degradation Strategy
@@ -28,6 +30,12 @@ context_compaction_threshold: 0.75
 6. Reduce repair attempts.
 7. Ask the user before continuing.
 8. Pause with a phase report.
+
+The `/run` loop performs a budget guard before major phases:
+
+- At `context_compaction_threshold`, it creates one context snapshot.
+- At `hard_stop_threshold` or above budget, it creates a DecisionPoint and pauses.
+- Debug and replan loops are bounded by repair and replan limits.
 
 ## Default Security Policy
 
@@ -49,5 +57,5 @@ allow_deploy: false
 - Codebase damage: workspace isolation, diff review, rollback.
 - User interruption: configurable decision granularity.
 - Missed major decision: Decision Manager.
-- Repair loops: retry limits and metric comparison.
+- Repair loops: retry/replan limits and metric comparison.
 - Multi-agent conflict: file ownership, worktrees, merge queue.

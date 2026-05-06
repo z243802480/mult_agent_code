@@ -37,6 +37,7 @@
         "max_iterations_per_goal": { "type": "integer" },
         "max_repair_attempts_total": { "type": "integer" },
         "max_repair_attempts_per_task": { "type": "integer" },
+        "max_replans_per_task": { "type": "integer" },
         "max_research_calls": { "type": "integer" },
         "max_user_decisions": { "type": "integer" }
       }

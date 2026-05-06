@@ -20,7 +20,9 @@ class FakeTransport:
         self.response = response
         self.calls: list[dict] = []
 
-    def post_json(self, url: str, headers: dict[str, str], payload: dict, timeout_seconds: int) -> HttpResponse:
+    def post_json(
+        self, url: str, headers: dict[str, str], payload: dict, timeout_seconds: int
+    ) -> HttpResponse:
         self.calls.append(
             {
                 "url": url,
@@ -56,6 +58,7 @@ def policy(max_model_calls: int = 10) -> dict:
             "max_iterations_per_goal": 8,
             "max_repair_attempts_total": 5,
             "max_repair_attempts_per_task": 2,
+            "max_replans_per_task": 2,
             "max_research_calls": 5,
             "max_user_decisions": 5,
         }
@@ -70,7 +73,7 @@ def test_minimax_client_sends_openai_compatible_chat_and_logs_success(tmp_path: 
                 "model": "MiniMax-M2.7",
                 "choices": [
                     {
-                        "message": {"role": "assistant", "content": "{\"ok\": true}"},
+                        "message": {"role": "assistant", "content": '{"ok": true}'},
                         "finish_reason": "stop",
                     }
                 ],
@@ -92,7 +95,7 @@ def test_minimax_client_sends_openai_compatible_chat_and_logs_success(tmp_path: 
 
     response = client.chat(request())
 
-    assert response.content == "{\"ok\": true}"
+    assert response.content == '{"ok": true}'
     assert response.usage.input_tokens == 12
     assert transport.calls[0]["url"] == "https://api.minimax.io/v1/chat/completions"
     assert transport.calls[0]["headers"]["Authorization"] == "Bearer test-key"

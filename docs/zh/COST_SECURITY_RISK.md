@@ -63,6 +63,7 @@ goal_budget:
   max_iterations: 8
   max_repair_attempts_total: 5
   max_repair_attempts_per_task: 2
+  max_replans_per_task: 2
   max_research_calls: 5
   max_user_decisions: 5
 
@@ -91,6 +92,12 @@ model_routing:
 6. 减少自动修复次数。
 7. 请求用户批准继续。
 8. 生成阶段性报告并暂停。
+
+运行时 `/run` 在每个阶段前执行预算守卫：
+
+- 达到 `compaction_threshold` 时自动生成一次 `ContextSnapshot`。
+- 达到 `hard_stop_threshold` 或超过预算时创建 `DecisionPoint`，暂停等待用户决定是否继续。
+- replan/debug 必须受 `max_repair_attempts_per_task` 和 `max_replans_per_task` 限制，不能无限循环。
 
 ## 6. 成本异常检测
 
@@ -225,6 +232,7 @@ blocked：删除大量文件、全局安装、远程推送、部署生产
 设计控制：
 
 - 最大修复次数。
+- 最大重规划次数。
 - 修复前后指标对比。
 - 无改善则回滚。
 - 生成阻塞报告。

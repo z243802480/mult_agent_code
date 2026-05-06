@@ -189,6 +189,7 @@ workspace_type:
     "max_iterations_per_goal": 8,
     "max_repair_attempts_total": 5,
     "max_repair_attempts_per_task": 2,
+    "max_replans_per_task": 2,
     "max_research_calls": 5,
     "max_user_decisions": 5
   },
@@ -929,6 +930,7 @@ overall.status:
 cost.status:
   within_budget
   near_limit
+  hard_stop
   exceeded
   stopped
 ```

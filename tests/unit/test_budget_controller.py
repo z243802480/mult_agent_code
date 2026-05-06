@@ -12,6 +12,7 @@ def policy(max_model_calls: int = 3, max_tool_calls: int = 3) -> dict:
             "max_iterations_per_goal": 8,
             "max_repair_attempts_total": 2,
             "max_repair_attempts_per_task": 1,
+            "max_replans_per_task": 1,
             "max_research_calls": 1,
             "max_user_decisions": 1,
         }
@@ -56,3 +57,21 @@ def test_budget_controller_blocks_after_limit() -> None:
 
     with pytest.raises(BudgetExceededError):
         controller.record_model_call()
+
+
+def test_budget_controller_reports_pressure_status() -> None:
+    report = {
+        "model_calls": 8,
+        "tool_calls": 1,
+        "repair_attempts": 0,
+        "research_calls": 0,
+        "user_decisions": 0,
+    }
+    config = policy(max_model_calls=10)
+    config["context"] = {"compaction_threshold": 0.75, "hard_stop_threshold": 0.9}
+
+    pressure = BudgetController.pressure(config, report)
+
+    assert pressure["status"] == "near_limit"
+    assert pressure["highest_label"] == "model_calls"
+    assert pressure["highest_ratio"] == 0.8

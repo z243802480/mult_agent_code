@@ -29,7 +29,9 @@ class BudgetController:
         self.usage = BudgetUsage()
 
     @classmethod
-    def from_report(cls, policy: dict, report: dict, run_id: str | None = None) -> "BudgetController":
+    def from_report(
+        cls, policy: dict, report: dict, run_id: str | None = None
+    ) -> "BudgetController":
         controller = cls(policy, run_id=run_id or report.get("run_id"))
         controller.usage.model_calls = int(report.get("model_calls", 0))
         controller.usage.tool_calls = int(report.get("tool_calls", 0))
@@ -115,6 +117,45 @@ class BudgetController:
             "warnings": self.usage.warnings,
         }
 
+    @staticmethod
+    def pressure(policy: dict, report: dict) -> dict:
+        budgets = policy["budgets"]
+        ratios: dict[str, float] = {
+            "model_calls": _ratio(
+                report.get("model_calls", 0), budgets["max_model_calls_per_goal"]
+            ),
+            "tool_calls": _ratio(report.get("tool_calls", 0), budgets["max_tool_calls_per_goal"]),
+            "repair_attempts": _ratio(
+                report.get("repair_attempts", 0),
+                budgets["max_repair_attempts_total"],
+            ),
+            "research_calls": _ratio(
+                report.get("research_calls", 0), budgets["max_research_calls"]
+            ),
+            "user_decisions": _ratio(
+                report.get("user_decisions", 0), budgets["max_user_decisions"]
+            ),
+        }
+        highest_label = max(ratios, key=lambda key: ratios[key])
+        highest_ratio = ratios[highest_label]
+        context = policy.get("context", {})
+        compaction_threshold = float(context.get("compaction_threshold", 0.75))
+        hard_stop_threshold = float(context.get("hard_stop_threshold", 0.9))
+        if highest_ratio >= 1:
+            status = "exceeded"
+        elif highest_ratio >= hard_stop_threshold:
+            status = "hard_stop"
+        elif highest_ratio >= compaction_threshold:
+            status = "near_limit"
+        else:
+            status = "within_budget"
+        return {
+            "status": status,
+            "ratios": ratios,
+            "highest_label": highest_label,
+            "highest_ratio": highest_ratio,
+        }
+
     def _check_limit(self, label: str, value: int, policy_key: str) -> None:
         limit = int(self.policy["budgets"][policy_key])
         if value > limit:
@@ -123,3 +164,20 @@ class BudgetController:
             warning = f"{label} is near budget: {value}/{limit}"
             if warning not in self.usage.warnings:
                 self.usage.warnings.append(warning)
+
+
+def _ratio(value: object, limit: object) -> float:
+    numeric_limit = max(1, _as_int(limit))
+    return max(0, _as_int(value)) / numeric_limit
+
+
+def _as_int(value: object) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str) and value.strip():
+        return int(value)
+    return 0

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from agent_runtime.commands.decide_command import DecideCommand
+from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.new_command import NewCommand
 from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.run_command import RunCommand
@@ -474,6 +475,21 @@ class FakeDebugClient:
         )
 
 
+def set_budget_policy(
+    root: Path,
+    *,
+    max_model_calls: int,
+    compaction_threshold: float,
+    hard_stop_threshold: float,
+) -> None:
+    path = root / ".agent" / "policies.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    policy["budgets"]["max_model_calls_per_goal"] = max_model_calls
+    policy["context"]["compaction_threshold"] = compaction_threshold
+    policy["context"]["hard_stop_threshold"] = hard_stop_threshold
+    path.write_text(json.dumps(policy), encoding="utf-8")
+
+
 class FakeFailingDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -644,6 +660,62 @@ def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "done"]
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "replan: completed - 1 task(s), 0 decision(s)." in final_report
+
+
+def test_run_command_compacts_once_when_near_budget(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    set_budget_policy(
+        tmp_path,
+        max_model_calls=4,
+        compaction_threshold=0.25,
+        hard_stop_threshold=0.95,
+    )
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "completed"
+    assert any(step.name == "compact" and step.status == "budget_guard" for step in result.steps)
+    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    cost = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    assert cost["context_compactions"] >= 1
+
+
+def test_run_command_pauses_at_budget_hard_stop(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    set_budget_policy(
+        tmp_path,
+        max_model_calls=1,
+        compaction_threshold=0.75,
+        hard_stop_threshold=0.9,
+    )
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "paused"
+    assert not (tmp_path / "complete_module.py").exists()
+    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert decisions[0]["metadata"]["kind"] == "budget_guard"
+    assert decisions[0]["recommended_option_id"] == "stop_and_review"
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "Budget guard created" in final_report
 
 
 def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path) -> None:

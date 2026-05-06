@@ -51,6 +51,7 @@ def policy(max_model_calls: int = 10) -> dict:
             "max_iterations_per_goal": 8,
             "max_repair_attempts_total": 5,
             "max_repair_attempts_per_task": 2,
+            "max_replans_per_task": 2,
             "max_research_calls": 5,
             "max_user_decisions": 5,
         }
@@ -63,7 +64,7 @@ def test_openai_compatible_client_sends_chat_request_and_logs_success(tmp_path: 
             200,
             {
                 "model": "test-model",
-                "choices": [{"message": {"content": "{\"ok\": true}"}, "finish_reason": "stop"}],
+                "choices": [{"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17},
             },
         )
@@ -81,7 +82,7 @@ def test_openai_compatible_client_sends_chat_request_and_logs_success(tmp_path: 
 
     response = client.chat(request())
 
-    assert response.content == "{\"ok\": true}"
+    assert response.content == '{"ok": true}'
     assert transport.calls[0]["url"] == "https://example.test/v1/chat/completions"
     assert transport.calls[0]["payload"]["response_format"] == {"type": "json_object"}
     assert (tmp_path / "model_calls.jsonl").exists()

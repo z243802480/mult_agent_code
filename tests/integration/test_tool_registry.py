@@ -20,6 +20,7 @@ def policy(max_tool_calls: int = 20) -> dict:
             "max_iterations_per_goal": 8,
             "max_repair_attempts_total": 5,
             "max_repair_attempts_per_task": 2,
+            "max_replans_per_task": 2,
             "max_research_calls": 5,
             "max_user_decisions": 5,
         },
@@ -139,7 +140,7 @@ def test_command_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> No
     result = tools.call(
         "run_command",
         ctx,
-        command="python -c \"raise SystemExit(3)\"",
+        command='python -c "raise SystemExit(3)"',
         expected_returncodes=[3],
     )
 
@@ -154,7 +155,7 @@ def test_run_tests_tool_accepts_expected_nonzero_returncodes(tmp_path: Path) -> 
     result = tools.call(
         "run_tests",
         ctx,
-        command="python -c \"raise SystemExit(3)\"",
+        command='python -c "raise SystemExit(3)"',
         expected_returncodes=[3],
     )
 
