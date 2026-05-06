@@ -354,6 +354,77 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
     assert "verification: passed (windows, 2026-04-30T10:00:00+08:00)" in text
 
 
+def test_sessions_context_summarizes_blockers_cost_and_failure_evidence(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    jsonl = JsonlStore(validator)
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    task_plan["tasks"][0]["status"] = "blocked"
+    task_plan["tasks"][0]["notes"] = "verification failed"
+    store.write(run_dir / "task_plan.json", task_plan, "task_board")
+    store.write(
+        run_dir / "cost_report.json",
+        {
+            "schema_version": "0.1.0",
+            "run_id": plan.run_id,
+            "model_calls": 8,
+            "tool_calls": 13,
+            "estimated_input_tokens": 100,
+            "estimated_output_tokens": 50,
+            "strong_model_calls": 2,
+            "cheap_model_calls": 1,
+            "repair_attempts": 1,
+            "research_calls": 0,
+            "context_compactions": 0,
+            "user_decisions": 0,
+            "status": "near_limit",
+            "warnings": ["tool budget is warming up"],
+        },
+        "cost_report",
+    )
+    jsonl.append(
+        run_dir / "task_failures.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "task-failure-0001",
+            "run_id": plan.run_id,
+            "task_id": "task-0001",
+            "phase": "execute",
+            "failure_type": "contract_violation",
+            "summary": "verification did not pass",
+            "task_status": "blocked",
+            "contract_check": {},
+            "tool_failures": [],
+            "verification_failures": [],
+            "candidate": {},
+            "recommendations": ["Run debug with the latest failure evidence."],
+            "created_at": "2026-05-06T12:00:00+08:00",
+        },
+        "task_failure_evidence",
+    )
+
+    result = SessionsCommand(tmp_path, session_id=plan.run_id, include_context=True).run()
+    text = result.to_text()
+    context = result.context[plan.run_id]
+
+    assert context["goal_summary"] == "Build a local-first password test tool"
+    assert context["recommended_next_command"] == "debug"
+    assert context["cost_summary"]["status"] == "near_limit"
+    assert context["latest_task_failure"]["failure_type"] == "contract_violation"
+    assert "blocked task task-0001" in context["blockers"][0]
+    assert "cost status is near_limit" in context["risks"]
+    assert "goal: Build a local-first password test tool" in text
+    assert "next: debug" in text
+    assert "cost: near_limit (8 model, 13 tool)" in text
+    assert "latest failure: task-0001 contract_violation - verification did not pass" in text
+    assert "risks: cost status is near_limit" in text
+
+
 def test_sessions_context_shows_acceptance_failure_recovery_pointer(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
