@@ -130,6 +130,22 @@ class RunCommand:
         steps: list[RunStepSummary] | None = None,
     ) -> RunResult:
         steps = steps or []
+        if self._task_plan_quality_gate(run_id, steps):
+            compact = CompactCommand(self.root, run_id=run_id, focus="task plan quality gate").run()
+            steps.append(
+                RunStepSummary("compact", "completed", f"Snapshot: {compact.snapshot_path.name}.")
+            )
+            final_report_path = self._write_final_report(
+                run_id,
+                self._latest_review_status(run_id),
+                steps,
+            )
+            return RunResult(
+                run_id=run_id,
+                status=self._run_status(run_id),
+                final_report_path=final_report_path,
+                steps=steps,
+            )
         max_iterations = self.max_iterations or self._policy_iterations()
         for index in range(max_iterations):
             if self._budget_guard(run_id, steps, f"iteration-{index + 1}-execute"):
@@ -287,6 +303,128 @@ class RunCommand:
         )
         return True
 
+    def _task_plan_quality_gate(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+    ) -> bool:
+        eval_path = self.root / ".agent" / "runs" / run_id / "task_plan_eval.json"
+        if not eval_path.exists():
+            return False
+        task_plan_eval = self.store.read(eval_path, "task_plan_eval")
+        if task_plan_eval["status"] != "fail":
+            return False
+        existing = self._task_plan_quality_decisions(run_id)
+        if any(
+            decision["status"] in {"resolved", "defaulted", "cancelled"} for decision in existing
+        ):
+            return False
+        pending = [decision for decision in existing if decision["status"] == "pending"]
+        decision = (
+            pending[0]
+            if pending
+            else self._create_task_plan_quality_decision(
+                run_id,
+                task_plan_eval,
+                eval_path,
+            )
+        )
+        self._pause_run_for_task_plan_quality(
+            run_id,
+            f"Task plan quality gate paused before execution: {decision['decision_id']}.",
+        )
+        steps.append(
+            RunStepSummary(
+                "decide",
+                "paused",
+                (
+                    f"Task plan quality failed "
+                    f"({task_plan_eval['overall_score']:.2f}); "
+                    f"created {decision['decision_id']} before execution."
+                ),
+            )
+        )
+        return True
+
+    def _task_plan_quality_decisions(self, run_id: str) -> list[dict]:
+        run_dir = self.root / ".agent" / "runs" / run_id
+        return [
+            decision
+            for decision in self._decisions(run_dir)
+            if (decision.get("metadata") or {}).get("kind") == "task_plan_quality_gate"
+        ]
+
+    def _create_task_plan_quality_decision(
+        self,
+        run_id: str,
+        task_plan_eval: dict,
+        eval_path: Path,
+    ) -> dict:
+        issue_summary = self._task_plan_issue_summary(task_plan_eval)
+        options = [
+            {
+                "option_id": "revise_plan",
+                "label": "Revise plan first",
+                "tradeoff": "Spend a planning iteration before execution to avoid unverifiable work.",
+                "action": "require_replan",
+            },
+            {
+                "option_id": "proceed_once",
+                "label": "Proceed once",
+                "tradeoff": "Bypass this gate once, accepting higher risk of wasted execution.",
+                "action": "record_constraint",
+            },
+        ]
+        result = DecideCommand(
+            self.root,
+            run_id=run_id,
+            question=(
+                "Task plan quality failed before execution. "
+                f"Score: {task_plan_eval['overall_score']:.2f}. "
+                f"Issues: {issue_summary}. Revise the plan first?"
+            ),
+            options_json=json.dumps(options, ensure_ascii=False),
+            recommended_option_id="revise_plan",
+            default_option_id="revise_plan",
+            impact_json=json.dumps(
+                {"scope": "medium", "budget": "medium", "risk": "high", "quality": "high"},
+                ensure_ascii=False,
+            ),
+            metadata={
+                "kind": "task_plan_quality_gate",
+                "task_plan_eval": str(eval_path),
+                "status": task_plan_eval["status"],
+                "overall_score": task_plan_eval["overall_score"],
+                "issue_count": len(task_plan_eval.get("issues", [])),
+                "issue_codes": [
+                    str(issue.get("code"))
+                    for issue in task_plan_eval.get("issues", [])[:10]
+                    if isinstance(issue, dict)
+                ],
+            },
+        ).run()
+        return result.decisions[0]
+
+    def _task_plan_issue_summary(self, task_plan_eval: dict) -> str:
+        issues = [
+            str(issue.get("code"))
+            for issue in task_plan_eval.get("issues", [])[:5]
+            if isinstance(issue, dict) and issue.get("code")
+        ]
+        if not issues:
+            return "no issue details recorded"
+        extra = len(task_plan_eval.get("issues", [])) - len(issues)
+        suffix = f", +{extra} more" if extra > 0 else ""
+        return ", ".join(issues) + suffix
+
+    def _pause_run_for_task_plan_quality(self, run_id: str, summary: str) -> None:
+        run_store = RunStore(self.root / ".agent", self.validator)
+        run = run_store.load_run(run_id)
+        run["status"] = "paused"
+        run["current_phase"] = "DECISION"
+        run["summary"] = summary
+        run_store.update_run(run)
+
     def _ready_count(self, run_id: str) -> int:
         task_plan = self.store.read(
             self.root / ".agent" / "runs" / run_id / "task_plan.json",
@@ -431,6 +569,7 @@ class RunCommand:
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         task_plan = self.store.read(run_dir / "task_plan.json", "task_board")
         cost_report = self.store.read(run_dir / "cost_report.json", "cost_report")
+        task_plan_eval = self._task_plan_eval(run_dir)
         done = len([task for task in task_plan["tasks"] if task["status"] == "done"])
         blocked_tasks = [task for task in task_plan["tasks"] if task["status"] == "blocked"]
         pending_decisions = self._pending_decisions(run_dir)
@@ -442,6 +581,7 @@ class RunCommand:
             f"- Run: {run_id}",
             f"- Goal: {goal_spec['normalized_goal']}",
             f"- Review status: {review_status}",
+            f"- Task plan quality: {self._task_plan_quality_summary(task_plan_eval)}",
             f"- Tasks done: {done}/{len(task_plan['tasks'])}",
             f"- Blocked tasks: {len(blocked_tasks)}",
             f"- Model calls: {cost_report['model_calls']}",
@@ -488,6 +628,21 @@ class RunCommand:
         path = run_dir / "final_report.md"
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return path
+
+    def _task_plan_eval(self, run_dir: Path) -> dict | None:
+        path = run_dir / "task_plan_eval.json"
+        if not path.exists():
+            return None
+        return self.store.read(path, "task_plan_eval")
+
+    def _task_plan_quality_summary(self, task_plan_eval: dict | None) -> str:
+        if not task_plan_eval:
+            return "unknown"
+        return (
+            f"{task_plan_eval['status']} "
+            f"({float(task_plan_eval['overall_score']):.2f}; "
+            f"{len(task_plan_eval.get('issues', []))} issue(s))"
+        )
 
     def _pending_decisions(self, run_dir: Path) -> list[dict]:
         path = run_dir / "decisions.jsonl"

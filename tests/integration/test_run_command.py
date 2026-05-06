@@ -6,6 +6,7 @@ from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.new_command import NewCommand
 from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.run_command import RunCommand
+from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
@@ -598,6 +599,74 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert (run_dir / "review_report.md").exists()
     assert (run_dir / "final_report.md").exists()
     assert "Review status: pass" in (run_dir / "final_report.md").read_text(encoding="utf-8")
+
+
+def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+        return {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "created_at": "2026-05-06T12:00:00+08:00",
+            "status": "fail",
+            "overall_score": 0.55,
+            "scores": {
+                "granularity_score": 0.5,
+                "dependency_score": 1.0,
+                "acceptance_score": 0.5,
+                "artifact_score": 0.5,
+                "tooling_score": 0.25,
+            },
+            "summary": "Task plan quality fail with score 0.55; 2 error(s), 0 warning(s).",
+            "issues": [
+                {
+                    "task_id": "task-0001",
+                    "severity": "error",
+                    "code": "missing_artifact",
+                    "message": "Deliverable task has no expected artifact.",
+                    "recommendation": "Add expected_artifacts before execution.",
+                },
+                {
+                    "task_id": "task-0001",
+                    "severity": "error",
+                    "code": "missing_write_tool",
+                    "message": "Implementation task cannot write changes.",
+                    "recommendation": "Allow apply_patch or write_file.",
+                },
+            ],
+            "recommendations": [
+                "Add expected_artifacts before execution.",
+                "Allow apply_patch or write_file.",
+            ],
+            "task_count": 1,
+        }
+
+    monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "paused"
+    assert not (tmp_path / "complete_module.py").exists()
+    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert decisions[0]["metadata"]["kind"] == "task_plan_quality_gate"
+    assert decisions[0]["recommended_option_id"] == "revise_plan"
+    assert decisions[0]["options"][0]["action"] == "require_replan"
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "Task plan quality: fail (0.55; 2 issue(s))" in final_report
+    assert "Task plan quality failed" in final_report
 
 
 def test_run_command_without_goal_continues_current_session(tmp_path: Path) -> None:
