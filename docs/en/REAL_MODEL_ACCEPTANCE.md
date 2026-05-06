@@ -65,6 +65,18 @@ When `--history-jsonl` is provided, the script appends each summary to a JSONL h
 repair attempts, and context compactions. Runtime `agent /acceptance` writes this history by default
 to `.agent/acceptance/history.jsonl`.
 
+Inspect runtime workspace history:
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --limit 5
+```
+
+Inspect a custom script-level history file:
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
+```
+
 ## Pass Criteria
 
 A scenario should pass only when:

@@ -64,6 +64,18 @@ python scripts/real_model_acceptance.py --suite core --summary-json .agent/verif
 context compaction 次数。runtime 的 `agent /acceptance` 默认会把历史写入
 `.agent/acceptance/history.jsonl`。
 
+查看 runtime 工作区历史：
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --limit 5
+```
+
+查看脚本级自定义历史文件：
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
+```
+
 ## 通过标准
 
 一个场景只有满足以下条件才算通过：

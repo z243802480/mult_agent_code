@@ -17,7 +17,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     )
     brainstorm_args = parser.parse_args(["/brainstorm", "build a tool", "--root", ".", "--apply"])
     acceptance_args = parser.parse_args(
-        ["/acceptance", "--root", ".", "--suite", "offline", "--allow-fake"]
+        ["/acceptance", "--root", ".", "--suite", "nightly", "--allow-fake"]
+    )
+    acceptance_history_args = parser.parse_args(
+        ["/acceptance-history", "--root", ".", "--suite", "smoke", "--limit", "2"]
     )
 
     assert plan_args.command == "/plan"
@@ -37,8 +40,11 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert brainstorm_args.goal == "build a tool"
     assert brainstorm_args.apply
     assert acceptance_args.command == "/acceptance"
-    assert acceptance_args.suite == "offline"
+    assert acceptance_args.suite == "nightly"
     assert acceptance_args.allow_fake
+    assert acceptance_history_args.command == "/acceptance-history"
+    assert acceptance_history_args.suite == "smoke"
+    assert acceptance_history_args.limit == 2
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures

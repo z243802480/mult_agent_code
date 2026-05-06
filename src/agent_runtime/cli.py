@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from agent_runtime.commands.acceptance_command import AcceptanceCommand
+from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.commands.brainstorm_command import BrainstormCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.model_check_command import ModelCheckCommand
@@ -346,7 +347,7 @@ def build_parser() -> argparse.ArgumentParser:
     acceptance_parser.add_argument("--root", default=".", help="Acceptance workspace root")
     acceptance_parser.add_argument(
         "--suite",
-        choices=["smoke", "core", "advanced", "offline"],
+        choices=["smoke", "core", "advanced", "nightly", "offline"],
         default="smoke",
         help="Acceptance scenario suite",
     )
@@ -408,6 +409,30 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Tasks per execute pass when --run-promoted is used",
+    )
+
+    acceptance_history_parser = subcommands.add_parser(
+        "acceptance-history",
+        aliases=["/acceptance-history", "acceptance-trend", "/acceptance-trend"],
+        help="Show persisted acceptance history and trend deltas",
+    )
+    acceptance_history_parser.add_argument("--root", default=".", help="Workspace root path")
+    acceptance_history_parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Maximum history entries to show",
+    )
+    acceptance_history_parser.add_argument(
+        "--suite",
+        default=None,
+        help="Only show entries for this suite",
+    )
+    acceptance_history_parser.add_argument(
+        "--history-jsonl",
+        type=Path,
+        default=None,
+        help="Read history from a custom JSONL path",
     )
     return parser
 
@@ -594,6 +619,16 @@ def main() -> None:
         print(acceptance_result.to_text())
         if not acceptance_result.ok:
             raise SystemExit(acceptance_result.returncode)
+        return
+
+    if command in {"acceptance-history", "acceptance-trend"}:
+        acceptance_history_result = AcceptanceHistoryCommand(
+            root=Path(args.root),
+            limit=args.limit,
+            suite=args.suite,
+            history_jsonl=args.history_jsonl,
+        ).run()
+        print(acceptance_history_result.to_text())
         return
 
     parser.error(f"Unsupported command: {args.command}")
