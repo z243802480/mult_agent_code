@@ -146,7 +146,9 @@ class RunCommand:
                 final_report_path=final_report_path,
                 steps=steps,
             )
-        max_iterations = self.max_iterations or self._policy_iterations()
+        max_iterations = (
+            self.max_iterations if self.max_iterations is not None else self._policy_iterations()
+        )
         for index in range(max_iterations):
             if self._budget_guard(run_id, steps, f"iteration-{index + 1}-execute"):
                 break

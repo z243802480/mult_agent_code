@@ -157,12 +157,33 @@ class ResumeCommand:
                 self._record_decision_applied(run_dir, run_id, decision, option, effect)
                 self._record_decision_memory(agent_dir, run_id, decision, option, effect)
                 continue
+            quality_gate_task = self._apply_task_plan_quality_gate(
+                decision,
+                option,
+                task_plan,
+                run_id,
+            )
+            if quality_gate_task:
+                created_tasks.append(quality_gate_task)
+                effect = "task_plan_revision_task_created"
+                self._record_decision_applied(run_dir, run_id, decision, option, effect)
+                self._record_decision_memory(agent_dir, run_id, decision, option, effect)
+                continue
+            if self._records_task_plan_quality_bypass(decision, option):
+                effect = "task_plan_quality_bypass_recorded"
+                self._record_decision_applied(run_dir, run_id, decision, option, effect)
+                self._record_decision_memory(agent_dir, run_id, decision, option, effect)
+                continue
             if option and self._should_create_task(option):
                 task = self._task_from_decision(decision, option, task_plan["tasks"], run_id)
                 self.validator.validate("task", task)
                 task_plan["tasks"].append(task)
                 created_tasks.append(task)
-                effect = "replan_task_created" if self._option_action(option) == "require_replan" else "task_created"
+                effect = (
+                    "replan_task_created"
+                    if self._option_action(option) == "require_replan"
+                    else "task_created"
+                )
             elif option and self._option_action(option) == "cancel_scope":
                 effect = "scope_cancelled"
             elif option and self._option_action(option) == "record_constraint":
@@ -174,6 +195,111 @@ class ResumeCommand:
         self.store.write(task_plan_path, task_plan, "task_board")
         self.store.write(agent_dir / "tasks" / "backlog.json", task_plan, "task_board")
         return len(resolved), len(created_tasks)
+
+    def _apply_task_plan_quality_gate(
+        self,
+        decision: dict,
+        option: dict | None,
+        task_plan: dict,
+        run_id: str,
+    ) -> dict | None:
+        metadata = decision.get("metadata") or {}
+        if metadata.get("kind") != "task_plan_quality_gate":
+            return None
+        if not option or self._option_action(option) != "require_replan":
+            return None
+        task = self._task_plan_revision_task(decision, option, task_plan["tasks"], run_id)
+        self.validator.validate("task", task)
+        self._sequence_active_tasks_after_quality_revision(task_plan["tasks"], task["task_id"])
+        task_plan["tasks"].append(task)
+        return task
+
+    def _records_task_plan_quality_bypass(self, decision: dict, option: dict | None) -> bool:
+        metadata = decision.get("metadata") or {}
+        return (
+            metadata.get("kind") == "task_plan_quality_gate"
+            and option is not None
+            and self._option_action(option) == "record_constraint"
+        )
+
+    def _task_plan_revision_task(
+        self,
+        decision: dict,
+        option: dict,
+        existing_tasks: list[dict],
+        run_id: str,
+    ) -> dict:
+        next_index = self._next_task_index(existing_tasks)
+        task_plan_path = f".agent/runs/{run_id}/task_plan.json"
+        task_plan_eval_path = f".agent/runs/{run_id}/task_plan_eval.json"
+        issue_codes = ", ".join(
+            str(code) for code in (decision.get("metadata") or {}).get("issue_codes", [])
+        )
+        description = (
+            f"Revise the task plan blocked by quality gate `{decision['decision_id']}`.\n"
+            f"Question: {decision['question']}\n"
+            f"Selected option: {option['label']}.\n"
+            f"Quality issues: {issue_codes or 'see task_plan_eval.json'}.\n"
+            "Update the task plan so work is concrete, sequenced, and verifiable before "
+            "implementation tasks run."
+        )
+        return {
+            "schema_version": "0.1.0",
+            "task_id": f"task-{next_index:04d}",
+            "title": "Revise failed task plan before execution",
+            "description": description,
+            "status": "ready",
+            "priority": "high",
+            "role": "PlannerAgent",
+            "depends_on": [],
+            "acceptance": [
+                "task_plan.json is updated to address the recorded quality gate issues",
+                "Implementation tasks have concrete expected artifacts and allowed write tools",
+                "The updated plan can be re-evaluated to pass or warn before execution",
+            ],
+            "allowed_tools": [
+                "read_file",
+                "search_text",
+                "write_file",
+                "apply_patch",
+                "restore_backup",
+                "run_command",
+                "run_tests",
+            ],
+            "expected_artifacts": [task_plan_path, task_plan_eval_path],
+            "task_kind": "implementation",
+            "expected_changed_files": [task_plan_path, task_plan_eval_path],
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "notes": f"Generated from task plan quality decision {decision['decision_id']}",
+            "completion_contract": {
+                "requires_changed_artifact": True,
+                "requires_verification": False,
+                "allows_expected_failure": False,
+            },
+            "verification_policy": {
+                "required": False,
+                "allow_expected_failure": False,
+                "commands": [],
+            },
+        }
+
+    def _sequence_active_tasks_after_quality_revision(
+        self,
+        tasks: list[dict],
+        revision_task_id: str,
+    ) -> None:
+        for task in tasks:
+            if task["status"] not in {"ready", "backlog"}:
+                continue
+            depends_on = list(task.get("depends_on", []))
+            if revision_task_id not in depends_on:
+                depends_on.insert(0, revision_task_id)
+            task["depends_on"] = depends_on
+            if task["status"] == "ready":
+                task["status"] = "backlog"
+            task["updated_at"] = now_iso()
 
     def _apply_execution_approval(
         self,

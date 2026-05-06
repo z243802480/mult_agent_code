@@ -669,6 +669,91 @@ def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
     assert "Task plan quality failed" in final_report
 
 
+def test_resume_prioritizes_task_plan_revision_after_quality_gate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+        return {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "created_at": "2026-05-06T12:00:00+08:00",
+            "status": "fail",
+            "overall_score": 0.55,
+            "scores": {
+                "granularity_score": 0.5,
+                "dependency_score": 1.0,
+                "acceptance_score": 0.5,
+                "artifact_score": 0.5,
+                "tooling_score": 0.25,
+            },
+            "summary": "Task plan quality fail with score 0.55; 2 error(s), 0 warning(s).",
+            "issues": [
+                {
+                    "task_id": "task-0001",
+                    "severity": "error",
+                    "code": "missing_artifact",
+                    "message": "Deliverable task has no expected artifact.",
+                    "recommendation": "Add expected_artifacts before execution.",
+                },
+                {
+                    "task_id": "task-0001",
+                    "severity": "error",
+                    "code": "missing_write_tool",
+                    "message": "Implementation task cannot write changes.",
+                    "recommendation": "Allow apply_patch or write_file.",
+                },
+            ],
+            "recommendations": [
+                "Add expected_artifacts before execution.",
+                "Allow apply_patch or write_file.",
+            ],
+            "task_count": 1,
+        }
+
+    monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+    paused = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    DecideCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        decision_id="decision-0001",
+        select_option_id="revise_plan",
+    ).run()
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        max_iterations=0,
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+    ).run()
+
+    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    original_task = task_plan["tasks"][0]
+    revision_task = task_plan["tasks"][1]
+
+    assert resumed.applied_decisions == 1
+    assert resumed.created_tasks == 1
+    assert original_task["status"] == "backlog"
+    assert original_task["depends_on"] == [revision_task["task_id"]]
+    assert revision_task["status"] == "ready"
+    assert revision_task["role"] == "PlannerAgent"
+    assert revision_task["expected_artifacts"] == [
+        f".agent/runs/{paused.run_id}/task_plan.json",
+        f".agent/runs/{paused.run_id}/task_plan_eval.json",
+    ]
+    assert revision_task["completion_contract"]["requires_changed_artifact"] is True
+    assert "missing_artifact" in revision_task["description"]
+
+
 def test_run_command_without_goal_continues_current_session(tmp_path: Path) -> None:
     planned = NewCommand(
         tmp_path,
