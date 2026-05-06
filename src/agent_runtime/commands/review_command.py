@@ -276,8 +276,9 @@ class ReviewCommand:
         cost_report: dict,
     ) -> dict:
         tasks = task_plan.get("tasks", [])
-        done = [task for task in tasks if task["status"] == "done"]
-        blocked = [task for task in tasks if task["status"] == "blocked"]
+        active_tasks = [task for task in tasks if task["status"] != "discarded"]
+        done = [task for task in active_tasks if task["status"] == "done"]
+        blocked = [task for task in active_tasks if task["status"] == "blocked"]
         verification_calls = [
             call for call in tool_calls if call["tool_name"] in {"run_tests", "run_command"}
         ]
@@ -285,8 +286,9 @@ class ReviewCommand:
             call for call in verification_calls if call["status"] == "success"
         ]
         return {
-            "task_completion_rate": len(done) / len(tasks) if tasks else 0,
+            "task_completion_rate": len(done) / len(active_tasks) if active_tasks else 0,
             "blocked_task_count": len(blocked),
+            "discarded_task_count": len(tasks) - len(active_tasks),
             "verification_call_count": len(verification_calls),
             "verification_pass_rate": (
                 len(passed_verification) / len(verification_calls)

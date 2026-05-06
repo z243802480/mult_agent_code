@@ -10,6 +10,15 @@ def test_normalize_verification_command_removes_nonportable_success_suffix() -> 
     assert command == "python markdown_kb.py"
 
 
+def test_normalize_verification_command_removes_exit_code_echo_suffix() -> None:
+    command = normalize_verification_command(
+        'python markdown_kb.py nonexistent_dir "keyword" 2>&1 || echo "Exit code: $?"',
+        {"task_id": "task-0001"},
+    )
+
+    assert command == 'python markdown_kb.py nonexistent_dir "keyword"'
+
+
 def test_normalize_verification_command_rewrites_shell_fixture_setup() -> None:
     command = normalize_verification_command(
         (

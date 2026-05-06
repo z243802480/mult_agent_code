@@ -422,7 +422,7 @@ def validate_artifacts(
     unfinished = [
         f"{task['task_id']}:{task['status']}"
         for task in task_plan.get("tasks", [])
-        if task.get("status") != "done"
+        if task.get("status") not in {"done", "discarded"}
     ]
     if unfinished:
         raise SmokeFailure("Run has unfinished task(s): " + ", ".join(unfinished))

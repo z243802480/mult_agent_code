@@ -14,6 +14,12 @@ def normalize_verification_command(command: str, task: dict) -> str:
         return fixture_command
     # Real models often append this shell idiom to keep usage checks non-fatal.
     # The runtime has expected_returncodes for that, so remove only this safe suffix.
+    stripped = re.sub(
+        r"\s+2>&1\s+\|\|\s+echo\s+[\"']?exit\s+code:\s+\$\?[\"']?\s*$",
+        "",
+        stripped,
+        flags=re.IGNORECASE,
+    )
     stripped = re.sub(r"\s+2>&1\s+\|\|\s+true\s*$", "", stripped, flags=re.IGNORECASE)
     stripped = re.sub(r"\s+\|\|\s+true\s*$", "", stripped, flags=re.IGNORECASE)
     return stripped

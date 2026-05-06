@@ -275,3 +275,28 @@ def test_review_command_normalizes_sparse_eval_report(tmp_path: Path) -> None:
     assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
     assert eval_report["artifact_eval"]["logs_present"]
     assert eval_report["outcome_eval"]["run_success"]
+
+
+def test_review_command_excludes_discarded_replan_history_from_completion_rate(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    original = dict(task_plan["tasks"][0])
+    original["task_id"] = "task-0000"
+    original["status"] = "discarded"
+    original["notes"] = "Superseded by task-0001 during replan."
+    task_plan["tasks"].insert(0, original)
+    task_plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeReviewClient()).run()
+
+    assert result.status == "pass"
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
+    assert eval_report["outcome_eval"]["run_success"]
