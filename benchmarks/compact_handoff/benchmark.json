@@ -18,6 +18,7 @@
   "expected_artifacts": [
     "goal_spec.json",
     "task_plan.json",
+    "task_plan_eval.json",
     "events.jsonl",
     "cost_report.json",
     "review_report.md",

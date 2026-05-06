@@ -100,6 +100,7 @@ AGENTS.md
       run.json
       goal_spec.json
       task_plan.json
+      task_plan_eval.json
       events.jsonl
       tool_calls.jsonl
       model_calls.jsonl
@@ -457,7 +458,64 @@ task.priority:
   low
 ```
 
-## 10. AgentSpec
+## 10. TaskPlanEval
+
+文件：
+
+```text
+.agent/runs/<run_id>/task_plan_eval.json
+```
+
+用途：
+
+记录整张任务计划的确定性质量评估，避免 PlannerAgent 生成“看起来有任务、实际不可执行或不可验收”的计划。
+
+```json
+{
+  "schema_version": "0.1.0",
+  "run_id": "run-20260427-0001",
+  "created_at": "2026-04-27T14:30:00+08:00",
+  "status": "pass",
+  "overall_score": 0.92,
+  "scores": {
+    "granularity_score": 0.9,
+    "dependency_score": 1.0,
+    "acceptance_score": 0.9,
+    "artifact_score": 0.9,
+    "tooling_score": 0.9
+  },
+  "summary": "Task plan quality pass with score 0.92; 0 error(s), 1 warning(s).",
+  "issues": [],
+  "recommendations": [],
+  "task_count": 4
+}
+```
+
+评估维度：
+
+- 任务颗粒度是否适中。
+- 是否有明确 ready 入口。
+- `depends_on` 是否引用有效任务。
+- `acceptance` 是否可观察、可验证。
+- `expected_artifacts` 是否足够具体。
+- `allowed_tools` 是否支持任务真实执行和验证。
+
+枚举：
+
+```text
+task_plan_eval.status:
+  pass
+  warn
+  fail
+
+task_plan_eval.issues[].severity:
+  warning
+  error
+```
+
+`fail` 代表当前计划不应直接进入 `/execute`，应优先重规划或创建决策点。
+
+## 11. AgentSpec
 
 用途：
 
@@ -502,7 +560,7 @@ model_tier:
   strong
 ```
 
-## 11. DecisionPoint
+## 12. DecisionPoint
 
 文件：
 
@@ -575,7 +633,7 @@ decision.options[].action:
   require_replan
 ```
 
-## 12. ContextSnapshot
+## 13. ContextSnapshot
 
 文件：
 
@@ -621,7 +679,7 @@ decision.options[].action:
 }
 ```
 
-## 13. CommandRun
+## 14. CommandRun
 
 用途：
 
@@ -672,7 +730,7 @@ command.status:
   cancelled
 ```
 
-## 14. ToolCall
+## 15. ToolCall
 
 文件：
 
@@ -711,7 +769,7 @@ tool_call.status:
   timeout
 ```
 
-## 15. ModelCall
+## 16. ModelCall
 
 文件：
 
@@ -756,7 +814,7 @@ model_call.purpose:
   evaluation
 ```
 
-## 16. Artifact
+## 17. Artifact
 
 文件：
 
@@ -797,7 +855,7 @@ artifact.type:
   memory_entry
 ```
 
-## 17. Experiment
+## 18. Experiment
 
 文件：
 
@@ -846,7 +904,7 @@ experiment.decision:
   blocked
 ```
 
-## 18. EvalReport
+## 19. EvalReport
 
 文件：
 
@@ -899,7 +957,7 @@ overall.status:
   fail
 ```
 
-## 19. AcceptanceReport
+## 20. AcceptanceReport
 
 文件：
 
@@ -954,7 +1012,7 @@ overall.status:
 
 当 `/acceptance` 使用 `--fail-on-trend-warning` 时，`trend_warnings` 非空会让命令以非零状态退出，但原始 `ok` 字段仍表示场景本身是否通过。
 
-## 20. CostReport
+## 21. CostReport
 
 文件：
 
@@ -995,7 +1053,7 @@ cost.status:
   stopped
 ```
 
-## 21. MemoryEntry
+## 22. MemoryEntry
 
 文件：
 
@@ -1036,7 +1094,7 @@ memory.type:
   failure_lesson
 ```
 
-## 22. Event
+## 23. Event
 
 文件：
 
@@ -1086,7 +1144,7 @@ event.type:
   error
 ```
 
-## 23. HandoffPackage
+## 24. HandoffPackage
 
 文件：
 
@@ -1113,9 +1171,9 @@ event.type:
 }
 ```
 
-## 24. 状态转移约束
+## 25. 状态转移约束
 
-### 24.1 Task 状态转移
+### 25.1 Task 状态转移
 
 ```text
 backlog -> ready
@@ -1135,7 +1193,7 @@ in_progress -> discarded
 - `done -> in_progress`，除非创建新任务。
 - `discarded -> done`，除非恢复为新任务。
 
-### 24.2 Run 状态转移
+### 25.2 Run 状态转移
 
 ```text
 queued -> running
@@ -1148,7 +1206,7 @@ running -> failed
 running -> cancelled
 ```
 
-## 25. 最小实现优先级
+## 26. 最小实现优先级
 
 MVP 必须先实现以下对象：
 
@@ -1168,7 +1226,7 @@ MVP 必须先实现以下对象：
 
 其余对象可以在 V1 中补齐。
 
-## 26. Schema 校验策略
+## 27. Schema 校验策略
 
 实现时应提供：
 

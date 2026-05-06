@@ -73,6 +73,7 @@ Agent 自调用：
 
 - `goal_spec.json`
 - `task_plan.json`
+- `task_plan_eval.json`
 - 更新后的任务看板。
 
 验收：
@@ -81,6 +82,12 @@ Agent 自调用：
 - 包含完成定义。
 - 包含验证策略。
 - 对模糊目标给出合理假设。
+- `task_plan_eval.json` 至少达到 `warn`，否则应优先重规划而不是直接执行。
+
+当前实现：
+
+- `TaskPlanEvaluator` 会检查任务数量、ready 入口、依赖有效性、验收可观察性、预期产物、工具权限和任务颗粒度。
+- 评估结果写入 `.agent/runs/<run_id>/task_plan_eval.json`，并记录到 `events.jsonl`。
 
 ### 3.2.0 `/new`
 
@@ -155,6 +162,7 @@ init if needed
 
 - `goal_spec.json`
 - `task_plan.json`
+- `task_plan_eval.json`
 - `review_report.md`
 - `final_report.md`
 - 更新后的事件、工具、模型和成本日志。

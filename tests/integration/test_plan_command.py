@@ -68,11 +68,18 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     assert result.task_count == 2
     assert result.goal_spec_path.exists()
     assert result.task_plan_path.exists()
+    assert result.task_plan_eval_path.exists()
     assert result.cost_report_path.exists()
+    assert result.task_plan_status in {"pass", "warn"}
 
     task_plan = json.loads(result.task_plan_path.read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "ready"
     assert task_plan["tasks"][1]["depends_on"] == ["task-0001"]
+    task_plan_eval = json.loads(result.task_plan_eval_path.read_text(encoding="utf-8"))
+    assert task_plan_eval["run_id"] == result.run_id
+    assert task_plan_eval["task_count"] == 2
+    assert task_plan_eval["overall_score"] == result.task_plan_score
+    assert "Task plan quality" in result.to_text()
 
     run_dir = tmp_path / ".agent" / "runs" / result.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()

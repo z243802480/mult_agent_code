@@ -20,6 +20,9 @@
     "Reports the final verification result."
   ],
   "expected_artifacts": [
+    "goal_spec.json",
+    "task_plan.json",
+    "task_plan_eval.json",
     "tool_calls.jsonl",
     "experiments.jsonl",
     "artifacts.jsonl",

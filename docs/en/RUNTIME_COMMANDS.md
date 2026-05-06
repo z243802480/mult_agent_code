@@ -48,6 +48,10 @@ artifacts: 1-4
 - risk_score
 
 PlannerAgent should rewrite tasks below quality thresholds.
+`/plan` writes `task_plan_eval.json` next to `task_plan.json`. The evaluator checks the whole
+board for task size, ready entry points, dependency validity, observable acceptance criteria,
+expected artifacts, and tool coverage. A `fail` result means the plan should be replanned before
+execution.
 
 ## `/execute` State Flow
 
@@ -60,6 +64,7 @@ Tool failures, verification failures, invalid model output, or disallowed tool r
 The command writes:
 
 - `task_plan.json`
+- `task_plan_eval.json`
 - `.agent/tasks/backlog.json`
 - `events.jsonl`
 - `tool_calls.jsonl`
