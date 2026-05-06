@@ -7,6 +7,7 @@ from pathlib import Path
 from agent_runtime.agents.coder_agent import CoderAgent
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_failure import TaskFailureRecorder
@@ -215,12 +216,26 @@ class ExecuteCommand:
                     tool_calls=0,
                     verification_calls=0,
                 )
-            tool_results = self._run_tool_calls(action["tool_calls"], task, context)
+            candidate = self._create_candidate_workspace(context, task)
+            candidate_context = self._candidate_context(context, candidate)
+            if context.event_logger:
+                context.event_logger.record(
+                    context.run_id,
+                    "candidate_workspace_created",
+                    "ExecuteCommand",
+                    f"Created candidate workspace for {task_id}",
+                    {
+                        "task_id": task_id,
+                        "candidate_id": candidate.candidate_id,
+                        "workspace": str(candidate.root),
+                    },
+                )
+            tool_results = self._run_tool_calls(action["tool_calls"], task, candidate_context)
             task_board.update_status(task_id, "testing")
             verification_results = self._run_tool_calls(
                 action["verification"],
                 task,
-                context,
+                candidate_context,
                 stop_on_failure=False,
             )
             contract_check = check_completion_contract(
@@ -229,6 +244,9 @@ class ExecuteCommand:
                 verification_results,
             )
             if contract_check.ok:
+                promoted_files = self._promote_candidate_changes(
+                    context, candidate, contract_check.changed_files
+                )
                 self._record_experiment(
                     context,
                     task,
@@ -238,11 +256,13 @@ class ExecuteCommand:
                     "keep",
                     "Verification passed.",
                     contract_check=contract_check.to_dict(),
+                    candidate_workspace=candidate,
+                    promoted_files=promoted_files,
                 )
-                task_board.update_status(task_id, "reviewing")
-                task_board.update_status(task_id, "done")
-                task_board.update_notes(
-                    task_id, action.get("completion_notes") or action["summary"]
+                self._complete_task_after_candidate_promotion(
+                    task_board,
+                    task_id,
+                    action.get("completion_notes") or action["summary"],
                 )
                 if context.event_logger:
                     context.event_logger.record(
@@ -264,11 +284,14 @@ class ExecuteCommand:
                 verification_results,
                 "discard",
                 reason,
-                rollback_results=self._rollback_backups(context, task, tool_results),
                 contract_check=contract_check.to_dict(),
+                candidate_workspace=candidate,
             )
             task_board.update_status(task_id, "blocked")
-            task_board.update_notes(task_id, f"{reason}; candidate was rolled back.")
+            task_board.update_notes(
+                task_id,
+                f"{reason}; candidate kept isolated at {candidate.root}.",
+            )
             self._record_task_failure(
                 context,
                 task,
@@ -450,6 +473,8 @@ class ExecuteCommand:
             validator=context.validator,
             event_logger=context.event_logger,
             budget=context.budget,
+            agent_dir_override=context.agent_dir,
+            run_dir_override=context.run_dir,
         )
 
     def _has_execution_approval(
@@ -503,6 +528,8 @@ class ExecuteCommand:
         reason: str,
         rollback_results: list | None = None,
         contract_check: dict | None = None,
+        candidate_workspace: CandidateWorkspace | None = None,
+        promoted_files: list[str] | None = None,
     ) -> None:
         if not context.run_dir:
             return
@@ -532,6 +559,9 @@ class ExecuteCommand:
                 "changed_files": sorted(set(changed_files)),
                 "backup_ids": backup_ids,
                 "rollback": self._rollback_summary(rollback_results or []),
+                "workspace": str(candidate_workspace.root) if candidate_workspace else None,
+                "candidate_id": (candidate_workspace.candidate_id if candidate_workspace else None),
+                "promoted_files": sorted(set(promoted_files or [])),
             },
             "evaluator": {
                 "commands": [
@@ -695,6 +725,52 @@ class ExecuteCommand:
                 changed_files.append(result.data["path"])
             changed_files.extend(result.data.get("changed_files", []))
         return changed_files
+
+    def _create_candidate_workspace(
+        self,
+        context: RuntimeContext,
+        task: dict,
+    ) -> CandidateWorkspace:
+        if context.run_dir is None:
+            raise RuntimeError("Cannot isolate candidate without a run directory.")
+        return CandidateWorkspace.create(context.root, context.run_dir, task["task_id"])
+
+    def _candidate_context(
+        self,
+        context: RuntimeContext,
+        candidate: CandidateWorkspace,
+    ) -> RuntimeContext:
+        return RuntimeContext(
+            root=candidate.root,
+            run_id=context.run_id,
+            policy=context.policy,
+            validator=context.validator,
+            event_logger=context.event_logger,
+            budget=context.budget,
+            agent_dir_override=context.agent_dir,
+            run_dir_override=context.run_dir,
+        )
+
+    def _promote_candidate_changes(
+        self,
+        context: RuntimeContext,
+        candidate: CandidateWorkspace,
+        changed_files: list[str],
+    ) -> list[str]:
+        return candidate.promote(changed_files)
+
+    def _complete_task_after_candidate_promotion(
+        self,
+        task_board: TaskBoard,
+        task_id: str,
+        notes: str,
+    ) -> None:
+        try:
+            task_board.complete_task(task_id, notes)
+        except TaskStateError as exc:
+            if not str(exc).startswith("Task not found:"):
+                raise
+            return
 
     def _artifact_type(self, path: str) -> str:
         lowered = path.lower()

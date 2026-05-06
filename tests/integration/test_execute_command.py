@@ -253,6 +253,8 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     ]
     assert experiments[0]["decision"] == "keep"
     assert experiments[0]["candidate"]["backup_ids"]
+    assert experiments[0]["candidate"]["workspace"]
+    assert experiments[0]["candidate"]["promoted_files"] == ["notes_tool.py"]
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
     artifacts = [
         json.loads(line)
@@ -295,20 +297,23 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
 
     assert result.completed == 0
     assert result.blocked == 1
-    assert (tmp_path / "broken_tool.py").exists()
+    assert not (tmp_path / "broken_tool.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
     tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
     assert "nonzero_exit" in tool_calls
-    assert "restore_backup" in tool_calls
+    assert "restore_backup" not in tool_calls
     experiments = [
         json.loads(line)
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert experiments[0]["decision"] == "discard"
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.0
-    assert experiments[0]["candidate"]["rollback"][0]["skipped"] == ["broken_tool.py"]
+    assert experiments[0]["candidate"]["workspace"]
+    assert (Path(experiments[0]["candidate"]["workspace"]) / "broken_tool.py").exists()
+    assert experiments[0]["candidate"]["rollback"] == []
+    assert experiments[0]["candidate"]["promoted_files"] == []
     assert not (run_dir / "artifacts.jsonl").exists()
 
 
@@ -343,6 +348,7 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert "required verification was not provided" in task_plan["tasks"][0]["notes"]
+    assert not (tmp_path / "notes_tool.py").exists()
     experiments = [
         json.loads(line)
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()

@@ -16,8 +16,9 @@ agent /sessions --root .
 `agent /run "goal"` writes run artifacts under `.agent/runs/<run_id>/`, including
 `goal_spec.json`, `task_plan.json`, `task_plan_eval.json`, logs, `review_report.md`, and
 `final_report.md`.
-Failed implementation candidates are backed up, rolled back, and recorded as discarded experiments
-before the debug loop attempts a clean repair.
+Execute and debug attempts run in isolated candidate workspaces under the active run directory.
+Validated changed files are promoted back to the source workspace; failed candidates stay isolated
+and are recorded as discarded experiments for repair/debug evidence.
 Policy-blocked execution plans pause the run with a one-time decision point; approving it resumes
 the original task without changing global permissions.
 Applied decisions are also written to `.agent/memory/decisions.jsonl`, so constraints,

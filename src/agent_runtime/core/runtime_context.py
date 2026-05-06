@@ -17,13 +17,19 @@ class RuntimeContext:
     validator: SchemaValidator
     event_logger: EventLogger | None = None
     budget: BudgetController | None = None
+    agent_dir_override: Path | None = None
+    run_dir_override: Path | None = None
 
     @property
     def agent_dir(self) -> Path:
+        if self.agent_dir_override is not None:
+            return self.agent_dir_override
         return self.root / ".agent"
 
     @property
     def run_dir(self) -> Path | None:
+        if self.run_dir_override is not None:
+            return self.run_dir_override
         if self.run_id is None:
             return None
         return self.agent_dir / "runs" / self.run_id

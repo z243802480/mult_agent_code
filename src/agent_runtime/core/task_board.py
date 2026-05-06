@@ -72,6 +72,27 @@ class TaskBoard:
                 return task
         raise TaskStateError(f"Task not found: {task_id}")
 
+    def complete_task(self, task_id: str, notes: str | None = None) -> None:
+        status = self.get_task(task_id)["status"]
+        if status == "blocked":
+            self.update_status(task_id, "ready")
+            status = "ready"
+        if status == "ready":
+            self.update_status(task_id, "in_progress")
+            status = "in_progress"
+        if status == "in_progress":
+            self.update_status(task_id, "testing")
+            status = "testing"
+        if status == "testing":
+            self.update_status(task_id, "reviewing")
+            status = "reviewing"
+        if status == "reviewing":
+            self.update_status(task_id, "done")
+        elif status != "done":
+            raise TaskStateError(f"Cannot complete task from status: {status}")
+        if notes is not None:
+            self.update_notes(task_id, notes)
+
     def promote_unblocked(self) -> list[dict]:
         data = self._load()
         done = {task["task_id"] for task in data["tasks"] if task["status"] == "done"}

@@ -270,7 +270,7 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
-    assert cost_report["tool_calls"] == 5
+    assert cost_report["tool_calls"] == 4
     assert cost_report["repair_attempts"] == 1
     assert cost_report["estimated_input_tokens"] == 37
     assert cost_report["estimated_output_tokens"] == 63
@@ -309,14 +309,17 @@ def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
 
     assert result.repaired == 0
     assert result.still_blocked == 1
-    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert not (tmp_path / "repairable.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     experiments = [
         json.loads(line)
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert experiments[-1]["decision"] == "discard"
-    assert experiments[-1]["candidate"]["rollback"][0]["restored"] == ["repairable.py"]
+    assert experiments[-1]["candidate"]["workspace"]
+    assert (Path(experiments[-1]["candidate"]["workspace"]) / "repairable.py").exists()
+    assert experiments[-1]["candidate"]["rollback"] == []
+    assert experiments[-1]["candidate"]["promoted_files"] == []
     task_failures = [
         json.loads(line)
         for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()

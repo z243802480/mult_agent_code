@@ -6,7 +6,9 @@ from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.storage.schema_validator import SchemaValidator
 
 
-def sample_task(task_id: str = "task-0001", status: str = "ready", depends_on: list[str] | None = None) -> dict:
+def sample_task(
+    task_id: str = "task-0001", status: str = "ready", depends_on: list[str] | None = None
+) -> dict:
     return {
         "schema_version": "0.1.0",
         "task_id": task_id,
@@ -41,6 +43,26 @@ def test_task_board_rejects_invalid_transition(tmp_path: Path) -> None:
 
     with pytest.raises(TaskStateError):
         board.update_status("task-0001", "in_progress")
+
+
+def test_task_board_completes_task_through_legal_transitions(tmp_path: Path) -> None:
+    board = TaskBoard(tmp_path / "backlog.json", SchemaValidator(Path("schemas")))
+    board.add_task(sample_task(status="ready"))
+
+    board.complete_task("task-0001", "Finished cleanly.")
+
+    task = board.get_task("task-0001")
+    assert task["status"] == "done"
+    assert task["notes"] == "Finished cleanly."
+
+
+def test_task_board_completes_blocked_repair_task(tmp_path: Path) -> None:
+    board = TaskBoard(tmp_path / "backlog.json", SchemaValidator(Path("schemas")))
+    board.add_task(sample_task(status="blocked"))
+
+    board.complete_task("task-0001")
+
+    assert board.get_task("task-0001")["status"] == "done"
 
 
 def test_task_board_ready_tasks_require_done_dependencies(tmp_path: Path) -> None:
