@@ -94,6 +94,11 @@ Inspect persisted history with:
 ```powershell
 python -m agent_runtime /acceptance-history --root . --limit 5
 ```
+Use it as a local gate with:
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
+```
 
 `agent /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.

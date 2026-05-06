@@ -20,7 +20,20 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
         ["/acceptance", "--root", ".", "--suite", "nightly", "--allow-fake"]
     )
     acceptance_history_args = parser.parse_args(
-        ["/acceptance-history", "--root", ".", "--suite", "smoke", "--limit", "2"]
+        [
+            "/acceptance-history",
+            "--root",
+            ".",
+            "--suite",
+            "smoke",
+            "--limit",
+            "2",
+            "--warn-model-call-delta",
+            "7",
+            "--warn-duration-delta",
+            "30",
+            "--fail-on-warning",
+        ]
     )
 
     assert plan_args.command == "/plan"
@@ -45,6 +58,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_history_args.command == "/acceptance-history"
     assert acceptance_history_args.suite == "smoke"
     assert acceptance_history_args.limit == 2
+    assert acceptance_history_args.warn_model_call_delta == 7
+    assert acceptance_history_args.warn_duration_delta == 30
+    assert acceptance_history_args.fail_on_warning
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures

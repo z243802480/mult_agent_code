@@ -434,6 +434,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Read history from a custom JSONL path",
     )
+    acceptance_history_parser.add_argument(
+        "--warn-model-call-delta",
+        type=int,
+        default=5,
+        help="Warn when model calls increase by this amount",
+    )
+    acceptance_history_parser.add_argument(
+        "--warn-duration-delta",
+        type=float,
+        default=120.0,
+        help="Warn when duration increases by this many seconds",
+    )
+    acceptance_history_parser.add_argument(
+        "--warn-repair-delta",
+        type=int,
+        default=1,
+        help="Warn when repair attempts increase by this amount",
+    )
+    acceptance_history_parser.add_argument(
+        "--warn-context-compaction-delta",
+        type=int,
+        default=1,
+        help="Warn when context compactions increase by this amount",
+    )
+    acceptance_history_parser.add_argument(
+        "--fail-on-warning",
+        action="store_true",
+        help="Exit non-zero when trend warnings are present",
+    )
     return parser
 
 
@@ -627,8 +656,14 @@ def main() -> None:
             limit=args.limit,
             suite=args.suite,
             history_jsonl=args.history_jsonl,
+            warn_model_call_delta=args.warn_model_call_delta,
+            warn_duration_delta=args.warn_duration_delta,
+            warn_repair_delta=args.warn_repair_delta,
+            warn_context_compaction_delta=args.warn_context_compaction_delta,
         ).run()
         print(acceptance_history_result.to_text())
+        if args.fail_on_warning and acceptance_history_result.warnings:
+            raise SystemExit(1)
         return
 
     parser.error(f"Unsupported command: {args.command}")

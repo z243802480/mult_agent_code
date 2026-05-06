@@ -116,6 +116,7 @@ Agent 自调用：
 - `run`、`execute`、`review`、`debug`、`decide`、`resume`、`compact` 等命令在未传 `session_id` 时优先使用 current session。
 - `agent verification` / `agent verify-status` 显示最近一次统一 verify 的覆盖摘要，来源是 `.agent/verification/latest.json`。
 - `agent acceptance-history` / `agent acceptance-trend` 显示 `.agent/acceptance/history.jsonl` 中的真实验收历史和趋势 delta。
+- `agent acceptance-history --fail-on-warning` 可把趋势告警转换为非零退出码，用于本地门禁。
 
 ### 3.2.1 `/run`
 

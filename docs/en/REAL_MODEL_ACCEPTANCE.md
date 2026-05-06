@@ -77,6 +77,18 @@ Inspect a custom script-level history file:
 python -m agent_runtime /acceptance-history --root . --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
 ```
 
+Use trend warnings as a local gate:
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
+```
+
+The warning thresholds are configurable:
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-warning
+```
+
 ## Pass Criteria
 
 A scenario should pass only when:

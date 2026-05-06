@@ -76,6 +76,18 @@ python -m agent_runtime /acceptance-history --root . --limit 5
 python -m agent_runtime /acceptance-history --root . --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
 ```
 
+把趋势告警作为本地门禁：
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
+```
+
+告警阈值可以配置：
+
+```powershell
+python -m agent_runtime /acceptance-history --root . --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-warning
+```
+
 ## 通过标准
 
 一个场景只有满足以下条件才算通过：
