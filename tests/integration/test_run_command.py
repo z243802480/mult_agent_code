@@ -69,7 +69,7 @@ class FakeExecuteClient:
                             "args": {
                                 "command": (
                                     "python -c "
-                                    "\"from complete_module import answer; assert answer() == 42\""
+                                    '"from complete_module import answer; assert answer() == 42"'
                                 )
                             },
                             "reason": "verify behavior",
@@ -268,13 +268,12 @@ class FakeSequentialExecuteClient:
             path = "README_HELPER.md"
             body = "helper\n"
             command = (
-                "python -c \"from pathlib import Path; "
-                "assert Path('README_HELPER.md').exists()\""
+                "python -c \"from pathlib import Path; assert Path('README_HELPER.md').exists()\""
             )
         else:
             path = "complete_module.py"
             body = "def answer():\n    return 42\n"
-            command = "python -c \"from complete_module import answer; assert answer() == 42\""
+            command = 'python -c "from complete_module import answer; assert answer() == 42"'
         return ChatResponse(
             content=json.dumps(
                 {
@@ -312,14 +311,11 @@ class FakeDecisionExecuteClient:
         if "Implement accepted decision" in content:
             path = "WEB_UI.md"
             body = "web ui selected\n"
-            command = (
-                "python -c \"from pathlib import Path; "
-                "assert Path('WEB_UI.md').exists()\""
-            )
+            command = "python -c \"from pathlib import Path; assert Path('WEB_UI.md').exists()\""
         else:
             path = "complete_module.py"
             body = "def answer():\n    return 42\n"
-            command = "python -c \"from complete_module import answer; assert answer() == 42\""
+            command = 'python -c "from complete_module import answer; assert answer() == 42"'
         return ChatResponse(
             content=json.dumps(
                 {
@@ -375,7 +371,7 @@ class FakeApprovalExecuteClient:
                             "tool_name": "run_command",
                             "args": {
                                 "command": (
-                                    "python -c \"from pathlib import Path; "
+                                    'python -c "from pathlib import Path; '
                                     "assert Path('approval.txt').exists()\" "
                                     "&& python -c \"print('approved')\""
                                 )
@@ -419,7 +415,7 @@ class FakeBrokenExecuteClient:
                             "args": {
                                 "command": (
                                     "python -c "
-                                    "\"from complete_module import answer; assert answer() == 42\""
+                                    '"from complete_module import answer; assert answer() == 42"'
                                 )
                             },
                             "reason": "verify behavior",
@@ -461,7 +457,7 @@ class FakeDebugClient:
                             "args": {
                                 "command": (
                                     "python -c "
-                                    "\"from complete_module import answer; assert answer() == 42\""
+                                    '"from complete_module import answer; assert answer() == 42"'
                                 )
                             },
                             "reason": "verify repair",
@@ -474,6 +470,97 @@ class FakeDebugClient:
             usage=TokenUsage(12, 18, 30),
             model_provider="fake",
             model_name="fake-debug",
+            raw_response={},
+        )
+
+
+class FakeFailingDebugClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Attempt a repair that still fails.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "complete_module.py",
+                                "content": "def answer():\n    return 40\n",
+                                "overwrite": True,
+                            },
+                            "reason": "incorrect repair",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c "
+                                    '"from complete_module import answer; assert answer() == 42"'
+                                )
+                            },
+                            "reason": "verify repair",
+                        }
+                    ],
+                    "completion_notes": "still broken",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(12, 18, 30),
+            model_provider="fake",
+            model_name="fake-debug",
+            raw_response={},
+        )
+
+
+class FakeReplanExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task = json.loads(request.messages[-1].content)["task"]
+        if task["task_id"] == "task-0001":
+            value = 41
+            summary = "Create module with wrong value."
+        else:
+            value = 42
+            summary = "Repair replanned module."
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task["task_id"],
+                    "summary": summary,
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "complete_module.py",
+                                "content": f"def answer():\n    return {value}\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c "
+                                    '"from complete_module import answer; assert answer() == 42"'
+                                )
+                            },
+                            "reason": "verify behavior",
+                        }
+                    ],
+                    "completion_notes": "complete_module.py works",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
             raw_response={},
         )
 
@@ -534,6 +621,29 @@ def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "debug: completed" in final_report
     assert "Blocked tasks: 0" in final_report
+
+
+def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=3,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeReplanExecuteClient(),
+        debug_model_client=FakeFailingDebugClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "completed"
+    assert (tmp_path / "complete_module.py").read_text(encoding="utf-8") == (
+        "def answer():\n    return 42\n"
+    )
+    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "done"]
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "replan: completed - 1 task(s), 0 decision(s)." in final_report
 
 
 def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path) -> None:
@@ -669,9 +779,9 @@ def test_resume_command_records_constraint_action_without_creating_task(tmp_path
     assert applied[0]["data"]["effect"] == "constraint_recorded"
     memory = [
         json.loads(line)
-        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl").read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert memory[0]["source"]["effect"] == "constraint_recorded"
 
@@ -747,9 +857,9 @@ def test_resume_command_applies_cancel_and_replan_decision_effects(tmp_path: Pat
     assert "replan_task_created" in effects
     memories = [
         json.loads(line)
-        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl").read_text(
-            encoding="utf-8"
-        ).splitlines()
+        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
     ]
     assert [memory["source"]["effect"] for memory in memories] == [
         "scope_cancelled",

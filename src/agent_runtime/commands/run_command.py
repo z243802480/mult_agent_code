@@ -8,6 +8,7 @@ from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.replan_command import ReplanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.models.base import ModelClient
@@ -83,7 +84,7 @@ class RunCommand:
             run_store = RunStore(self.root / ".agent", self.validator)
             run_id = self.run_id or run_store.current_session_id()
             if not run_id:
-                raise RuntimeError("No current session found. Run `agent new \"goal\"` first.")
+                raise RuntimeError('No current session found. Run `agent new "goal"` first.')
             return self.continue_run(run_id)
 
         steps: list[RunStepSummary] = []
@@ -205,13 +206,24 @@ class RunCommand:
                     RunStepSummary(
                         "debug",
                         "completed",
-                        (
-                            f"{debug.repaired} repaired, "
-                            f"{debug.still_blocked} still blocked."
-                        ),
+                        (f"{debug.repaired} repaired, {debug.still_blocked} still blocked."),
                     )
                 )
                 if self._run_status(run_id) == "blocked":
+                    replan = ReplanCommand(self.root, run_id=run_id).run()
+                    steps.append(
+                        RunStepSummary(
+                            "replan",
+                            "completed",
+                            (
+                                f"{replan.created_tasks} task(s), "
+                                f"{replan.created_decisions} decision(s)."
+                            ),
+                        )
+                    )
+                    if replan.created_tasks:
+                        progressed = True
+                        continue
                     return progressed
             if execute.completed == 0 and execute.blocked == 0:
                 steps.append(

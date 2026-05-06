@@ -14,6 +14,7 @@ from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.replan_command import ReplanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.commands.run_command import RunCommand
@@ -276,6 +277,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum blocked tasks to repair",
     )
 
+    replan_parser = subcommands.add_parser(
+        "replan",
+        aliases=["/replan"],
+        help="Turn task failure evidence into repair tasks or decision points",
+    )
+    replan_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(replan_parser, "Session id to replan; defaults to current session")
+    replan_parser.add_argument(
+        "--max-items",
+        type=int,
+        default=2,
+        help="Maximum failure evidence items to process",
+    )
+    replan_parser.add_argument(
+        "--max-replans-per-task",
+        type=int,
+        default=2,
+        help="Create a decision point after this many replans for one task",
+    )
+
     review_parser = subcommands.add_parser(
         "review",
         aliases=["/review"],
@@ -519,6 +540,16 @@ def main() -> None:
             max_repairs=args.max_repairs,
         ).run()
         print(debug_result.to_text())
+        return
+
+    if command == "replan":
+        replan_result = ReplanCommand(
+            root=Path(args.root),
+            run_id=args.session_id,
+            max_items=args.max_items,
+            max_replans_per_task=args.max_replans_per_task,
+        ).run()
+        print(replan_result.to_text())
         return
 
     if command == "review":
