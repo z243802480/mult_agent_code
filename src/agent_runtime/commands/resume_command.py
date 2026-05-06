@@ -366,6 +366,8 @@ class ResumeCommand:
                 "run_tests",
             ],
             "expected_artifacts": expected_artifacts,
+            "task_kind": "decision",
+            "expected_changed_files": [],
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),

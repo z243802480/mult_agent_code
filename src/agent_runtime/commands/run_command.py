@@ -14,6 +14,7 @@ from agent_runtime.commands.replan_command import ReplanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from agent_runtime.models.base import ModelClient
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -130,7 +131,7 @@ class RunCommand:
         steps: list[RunStepSummary] | None = None,
     ) -> RunResult:
         steps = steps or []
-        if self._task_plan_quality_gate(run_id, steps):
+        if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
             compact = CompactCommand(self.root, run_id=run_id, focus="task plan quality gate").run()
             steps.append(
                 RunStepSummary("compact", "completed", f"Snapshot: {compact.snapshot_path.name}.")
@@ -221,6 +222,8 @@ class RunCommand:
                 )
             )
             status = self._run_status(run_id)
+            if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
+                return progressed
             if status == "blocked":
                 debug = DebugCommand(
                     self.root,
@@ -310,16 +313,17 @@ class RunCommand:
         run_id: str,
         steps: list[RunStepSummary],
     ) -> bool:
-        eval_path = self.root / ".agent" / "runs" / run_id / "task_plan_eval.json"
-        if not eval_path.exists():
+        run_dir = self.root / ".agent" / "runs" / run_id
+        eval_path = run_dir / "task_plan_eval.json"
+        task_plan_eval = self._refresh_task_plan_eval(run_id, run_dir, eval_path)
+        if task_plan_eval is None:
             return False
-        task_plan_eval = self.store.read(eval_path, "task_plan_eval")
         if task_plan_eval["status"] != "fail":
             return False
         existing = self._task_plan_quality_decisions(run_id)
-        if any(
-            decision["status"] in {"resolved", "defaulted", "cancelled"} for decision in existing
-        ):
+        if self._task_plan_quality_bypassed(existing, task_plan_eval):
+            return False
+        if self._active_task_plan_revision(run_id, existing):
             return False
         pending = [decision for decision in existing if decision["status"] == "pending"]
         decision = (
@@ -347,6 +351,74 @@ class RunCommand:
             )
         )
         return True
+
+    def _refresh_task_plan_eval(
+        self,
+        run_id: str,
+        run_dir: Path,
+        eval_path: Path,
+    ) -> dict | None:
+        goal_spec_path = run_dir / "goal_spec.json"
+        task_plan_path = run_dir / "task_plan.json"
+        if not goal_spec_path.exists() or not task_plan_path.exists():
+            return None
+        goal_spec = self.store.read(goal_spec_path, "goal_spec")
+        task_plan = self.store.read(task_plan_path, "task_board")
+        task_plan_eval = TaskPlanEvaluator().evaluate(task_plan, goal_spec, run_id=run_id)
+        self.store.write(eval_path, task_plan_eval, "task_plan_eval")
+        return task_plan_eval
+
+    def _task_plan_quality_bypassed(self, decisions: list[dict], task_plan_eval: dict) -> bool:
+        for decision in decisions:
+            if decision["status"] not in {"resolved", "defaulted"}:
+                continue
+            option = self._selected_decision_option(decision)
+            metadata = decision.get("metadata") or {}
+            if (
+                option
+                and option.get("action") == "record_constraint"
+                and metadata.get("status") == task_plan_eval["status"]
+                and metadata.get("overall_score") == task_plan_eval["overall_score"]
+                and metadata.get("issue_codes") == self._task_plan_issue_codes(task_plan_eval)
+            ):
+                return True
+        return False
+
+    def _active_task_plan_revision(self, run_id: str, decisions: list[dict]) -> bool:
+        revision_decision_ids = {
+            decision["decision_id"]
+            for decision in decisions
+            if decision["status"] in {"resolved", "defaulted"}
+            and (self._selected_decision_option(decision) or {}).get("action") == "require_replan"
+        }
+        if not revision_decision_ids:
+            return False
+        task_plan_path = self.root / ".agent" / "runs" / run_id / "task_plan.json"
+        if not task_plan_path.exists():
+            return False
+        task_plan = self.store.read(task_plan_path, "task_board")
+        active_statuses = {"ready", "backlog", "in_progress", "testing", "reviewing", "blocked"}
+        for task in task_plan["tasks"]:
+            if task["status"] not in active_statuses:
+                continue
+            notes = str(task.get("notes") or "")
+            if any(decision_id in notes for decision_id in revision_decision_ids):
+                return True
+        return False
+
+    def _selected_decision_option(self, decision: dict) -> dict | None:
+        selected = decision.get("selected_option_id") or decision.get("default_option_id")
+        for option in decision.get("options", []):
+            if option.get("option_id") == selected:
+                return option
+        return None
+
+    def _task_plan_issue_codes(self, task_plan_eval: dict) -> list[str]:
+        return [
+            str(issue.get("code"))
+            for issue in task_plan_eval.get("issues", [])[:10]
+            if isinstance(issue, dict)
+        ]
 
     def _task_plan_quality_decisions(self, run_id: str) -> list[dict]:
         run_dir = self.root / ".agent" / "runs" / run_id
@@ -398,11 +470,7 @@ class RunCommand:
                 "status": task_plan_eval["status"],
                 "overall_score": task_plan_eval["overall_score"],
                 "issue_count": len(task_plan_eval.get("issues", [])),
-                "issue_codes": [
-                    str(issue.get("code"))
-                    for issue in task_plan_eval.get("issues", [])[:10]
-                    if isinstance(issue, dict)
-                ],
+                "issue_codes": self._task_plan_issue_codes(task_plan_eval),
             },
         ).run()
         return result.decisions[0]
