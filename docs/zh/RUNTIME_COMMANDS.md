@@ -125,6 +125,7 @@ Agent 自调用：
 - `agent acceptance-history` / `agent acceptance-trend` 显示 `.agent/acceptance/history.jsonl` 中的真实验收历史和趋势 delta。
 - `agent acceptance-history --fail-on-warning` 可把趋势告警转换为非零退出码，用于本地门禁。
 - `agent acceptance --fail-on-trend-warning` 可让验收命令本身在趋势回归时失败。
+- `agent acceptance-gate` / `agent release-gate` 会读取最新 `acceptance_report.json` 并作为发布门槛：验收失败未闭环、趋势告警、suite 或场景数量不足都会返回非零退出码。
 
 ### 3.2.1 `/run`
 

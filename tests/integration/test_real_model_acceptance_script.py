@@ -6,6 +6,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.real_model_acceptance import SCENARIOS, SUITES
+
+
+def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
+    assert "safe_file_renamer" in SCENARIOS
+    assert "safe_file_renamer" in SUITES["core"]
+    assert "safe_file_renamer" in SUITES["nightly"]
+
 
 def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     tmp_path: Path,

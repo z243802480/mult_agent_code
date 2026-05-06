@@ -45,6 +45,18 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--fail-on-warning",
         ]
     )
+    acceptance_gate_args = parser.parse_args(
+        [
+            "/acceptance-gate",
+            "--root",
+            ".",
+            "--suite",
+            "core",
+            "--min-scenarios",
+            "4",
+            "--allow-trend-warnings",
+        ]
+    )
 
     assert plan_args.command == "/plan"
     assert plan_args.goal == "build a tool"
@@ -73,6 +85,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_history_args.warn_model_call_delta == 7
     assert acceptance_history_args.warn_duration_delta == 30
     assert acceptance_history_args.fail_on_warning
+    assert acceptance_gate_args.command == "/acceptance-gate"
+    assert acceptance_gate_args.suite == "core"
+    assert acceptance_gate_args.min_scenarios == 4
+    assert acceptance_gate_args.allow_trend_warnings
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures

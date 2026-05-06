@@ -37,3 +37,5 @@ find "$tmp_root/workspace/.agent/context/handoffs" -maxdepth 1 -name "*.json" -p
 test -f "$tmp_root/workspace/offline_artifact.txt"
 "$python_bin" scripts/write_verification_summary.py --root . --platform linux --cli-workspace "$tmp_root/workspace"
 "$python_bin" -m agent_runtime /verification --root .
+"$python_bin" -m agent_runtime /acceptance --root "$tmp_root/acceptance" --suite offline --allow-fake
+"$python_bin" -m agent_runtime /acceptance-gate --root "$tmp_root/acceptance" --suite offline --min-scenarios 1

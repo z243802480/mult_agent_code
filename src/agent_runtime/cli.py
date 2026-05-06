@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from agent_runtime.commands.acceptance_command import AcceptanceCommand
+from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.commands.brainstorm_command import BrainstormCommand
 from agent_runtime.commands.init_command import InitCommand
@@ -492,6 +493,40 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Exit non-zero when trend warnings are present",
     )
+
+    acceptance_gate_parser = subcommands.add_parser(
+        "acceptance-gate",
+        aliases=["/acceptance-gate", "release-gate", "/release-gate"],
+        help="Evaluate the latest acceptance report as a release gate",
+    )
+    acceptance_gate_parser.add_argument("--root", default=".", help="Workspace root path")
+    acceptance_gate_parser.add_argument(
+        "--report",
+        type=Path,
+        default=None,
+        help="Acceptance report path; defaults to .agent/acceptance/acceptance_report.json",
+    )
+    acceptance_gate_parser.add_argument(
+        "--suite",
+        default=None,
+        help="Require the report to belong to this suite",
+    )
+    acceptance_gate_parser.add_argument(
+        "--min-scenarios",
+        type=int,
+        default=1,
+        help="Minimum scenario count required for the gate",
+    )
+    acceptance_gate_parser.add_argument(
+        "--allow-trend-warnings",
+        action="store_true",
+        help="Do not fail the gate when trend warnings are present",
+    )
+    acceptance_gate_parser.add_argument(
+        "--no-require-repair-closure",
+        action="store_true",
+        help="Do not require a successful rerun closure when the base acceptance failed",
+    )
     return parser
 
 
@@ -697,6 +732,20 @@ def main() -> None:
         ).run()
         print(acceptance_history_result.to_text())
         if args.fail_on_warning and acceptance_history_result.warnings:
+            raise SystemExit(1)
+        return
+
+    if command in {"acceptance-gate", "release-gate"}:
+        acceptance_gate_result = AcceptanceGateCommand(
+            root=Path(args.root),
+            report_path=args.report,
+            suite=args.suite,
+            min_scenarios=args.min_scenarios,
+            allow_trend_warnings=args.allow_trend_warnings,
+            require_repair_closure=not args.no_require_repair_closure,
+        ).run()
+        print(acceptance_gate_result.to_text())
+        if not acceptance_gate_result.ok:
             raise SystemExit(1)
         return
 

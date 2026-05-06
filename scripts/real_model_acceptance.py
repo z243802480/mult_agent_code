@@ -84,14 +84,45 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             ),
         },
     ),
+    "safe_file_renamer": AcceptanceScenario(
+        name="safe_file_renamer",
+        goal=(
+            "Create a safe single-file Python CLI named safe_rename.py that reads a JSON rename "
+            "plan, validates source files exist, and supports a dry-run preview without renaming "
+            "files. It must run with `python safe_rename.py rename_plan.json --dry-run` and print "
+            "the planned mappings."
+        ),
+        expected_file="safe_rename.py",
+        expected_text="dry",
+        max_iterations=5,
+        setup_files={
+            "IMG_0001.txt": "first fixture\n",
+            "IMG_0002.txt": "second fixture\n",
+            "rename_plan.json": (
+                "{\n"
+                '  "mappings": [\n'
+                '    {"source": "IMG_0001.txt", "target": "photo-0001.txt"},\n'
+                '    {"source": "IMG_0002.txt", "target": "photo-0002.txt"}\n'
+                "  ]\n"
+                "}\n"
+            ),
+        },
+    ),
     "decision_point": AcceptanceScenario(name="decision_point", kind="decision"),
 }
 
 SUITES = {
     "smoke": ["file_smoke"],
-    "core": ["file_smoke", "password_cli", "markdown_kb"],
+    "core": ["file_smoke", "password_cli", "markdown_kb", "safe_file_renamer"],
     "advanced": ["failing_tests_repair", "decision_point"],
-    "nightly": ["file_smoke", "password_cli", "markdown_kb", "failing_tests_repair", "decision_point"],
+    "nightly": [
+        "file_smoke",
+        "password_cli",
+        "markdown_kb",
+        "safe_file_renamer",
+        "failing_tests_repair",
+        "decision_point",
+    ],
     "offline": ["offline_artifact"],
 }
 
@@ -365,11 +396,7 @@ def run_decision_scenario(
     agent_dir = workspace / ".agent"
     decision_logs = list(agent_dir.glob("runs/*/decisions.jsonl"))
     memory_path = agent_dir / "memory" / "decisions.jsonl"
-    decisions = [
-        decision
-        for path in decision_logs
-        for decision in read_jsonl(path)
-    ]
+    decisions = [decision for path in decision_logs for decision in read_jsonl(path)]
     resolved_decision = next(
         (
             decision
@@ -410,7 +437,9 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "total": len(results),
         "passed": len([result for result in results if result.get("ok")]),
         "failed": len([result for result in results if not result.get("ok")]),
-        "duration_seconds": round(sum(float(result.get("duration_seconds") or 0) for result in results), 3),
+        "duration_seconds": round(
+            sum(float(result.get("duration_seconds") or 0) for result in results), 3
+        ),
         "model_calls": 0,
         "tool_calls": 0,
         "estimated_input_tokens": 0,
@@ -418,9 +447,7 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "repair_attempts": 0,
         "context_compactions": 0,
         "failed_scenarios": [
-            str(result.get("scenario"))
-            for result in results
-            if not result.get("ok")
+            str(result.get("scenario")) for result in results if not result.get("ok")
         ],
     }
     for result in results:
@@ -487,8 +514,12 @@ def compare_with_previous(
 ) -> dict[str, Any]:
     if previous is None:
         return {"previous": None, "deltas": {}}
-    previous_aggregate = previous.get("aggregate") if isinstance(previous.get("aggregate"), dict) else {}
-    current_aggregate = current.get("aggregate") if isinstance(current.get("aggregate"), dict) else {}
+    previous_aggregate = (
+        previous.get("aggregate") if isinstance(previous.get("aggregate"), dict) else {}
+    )
+    current_aggregate = (
+        current.get("aggregate") if isinstance(current.get("aggregate"), dict) else {}
+    )
     delta_keys = [
         "passed",
         "failed",
@@ -501,7 +532,9 @@ def compare_with_previous(
         "context_compactions",
     ]
     deltas = {
-        key: round(float(current_aggregate.get(key) or 0) - float(previous_aggregate.get(key) or 0), 3)
+        key: round(
+            float(current_aggregate.get(key) or 0) - float(previous_aggregate.get(key) or 0), 3
+        )
         for key in delta_keys
     }
     return {
@@ -524,9 +557,7 @@ def run_agent_command(workspace: Path, allow_fake: bool, *args: str) -> dict[str
         env["AGENT_MODEL_PROVIDER"] = "fake"
     src_path = str((Path(__file__).resolve().parents[1] / "src").resolve())
     env["PYTHONPATH"] = (
-        src_path
-        if not env.get("PYTHONPATH")
-        else os.pathsep.join([src_path, env["PYTHONPATH"]])
+        src_path if not env.get("PYTHONPATH") else os.pathsep.join([src_path, env["PYTHONPATH"]])
     )
     completed = subprocess.run(
         [sys.executable, "-m", "agent_runtime", *args],
@@ -554,9 +585,7 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     return [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
 
 

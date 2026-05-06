@@ -82,9 +82,9 @@ For a broader manual acceptance pass, run curated real-task scenarios:
 python scripts/real_model_acceptance.py --suite core
 ```
 
-The `core` suite currently covers the file smoke, a password-strength CLI, and a small markdown
-knowledge-base search tool. It is intentionally not part of default CI because it consumes real
-provider calls.
+The `core` suite currently covers the file smoke, a password-strength CLI, a small markdown
+knowledge-base search tool, and a safe dry-run file renamer. It is intentionally not part of default
+CI because it consumes real provider calls.
 When budget allows, use `--suite nightly` for the broader stability pass. Acceptance summaries include
 duration, run status, review status, task status counts, model/tool calls, token estimates, repair
 attempts, and context compactions so real-provider quality and cost can be compared over time.
@@ -106,6 +106,15 @@ Or make `/acceptance` fail immediately when the latest run introduces trend regr
 ```powershell
 python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warning
 ```
+
+For release gating, evaluate the latest persisted acceptance report:
+
+```powershell
+python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 4
+```
+
+The gate blocks when acceptance failed without a successful repair rerun, when trend warnings are
+present, or when the report does not cover the required suite/scenario count.
 
 `agent /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
