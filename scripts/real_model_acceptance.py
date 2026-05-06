@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -89,6 +90,7 @@ SUITES = {
     "smoke": ["file_smoke"],
     "core": ["file_smoke", "password_cli", "markdown_kb"],
     "advanced": ["failing_tests_repair", "decision_point"],
+    "nightly": ["file_smoke", "password_cli", "markdown_kb", "failing_tests_repair", "decision_point"],
     "offline": ["offline_artifact"],
 }
 
@@ -108,7 +110,9 @@ def main() -> None:
         summary = {
             "ok": all(result["ok"] for result in results),
             "root": str(root),
+            "suite": args.suite,
             "scenarios": results,
+            "aggregate": aggregate_results(results),
         }
         write_summary(args.summary_json, summary)
         if not summary["ok"]:
@@ -124,7 +128,9 @@ def main() -> None:
                 {
                     "ok": False,
                     "root": str(root),
+                    "suite": args.suite,
                     "scenarios": results,
+                    "aggregate": aggregate_results(results),
                     "error": str(exc),
                 },
             )
@@ -195,6 +201,7 @@ def run_scenario(
     workspace = root / scenario.name
     if scenario.kind == "decision":
         return run_decision_scenario(args, workspace, scenario)
+    started_at = time.monotonic()
     write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
     command = [
@@ -241,6 +248,7 @@ def run_scenario(
             "scenario": scenario.name,
             "ok": False,
             "workspace": str(workspace),
+            "duration_seconds": round(time.monotonic() - started_at, 3),
             "summary": read_json(summary_path),
             "stdout": text_or_empty(exc.stdout),
             "stderr": text_or_empty(exc.stderr)
@@ -250,6 +258,7 @@ def run_scenario(
         "scenario": scenario.name,
         "ok": completed.returncode == 0,
         "workspace": str(workspace),
+        "duration_seconds": round(time.monotonic() - started_at, 3),
         "summary": read_json(summary_path),
         "stdout": completed.stdout,
         "stderr": completed.stderr,
@@ -269,6 +278,7 @@ def run_decision_scenario(
     scenario: AcceptanceScenario,
 ) -> dict[str, Any]:
     del scenario
+    started_at = time.monotonic()
     commands: list[dict[str, Any]] = []
     init = run_agent_command(
         workspace,
@@ -376,10 +386,48 @@ def run_decision_scenario(
         "scenario": "decision_point",
         "ok": ok,
         "workspace": str(workspace),
+        "duration_seconds": round(time.monotonic() - started_at, 3),
         "summary": summary,
         "stdout": "\n".join(command["stdout"] for command in commands),
         "stderr": "\n".join(command["stderr"] for command in commands),
     }
+
+
+def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    aggregate: dict[str, Any] = {
+        "total": len(results),
+        "passed": len([result for result in results if result.get("ok")]),
+        "failed": len([result for result in results if not result.get("ok")]),
+        "duration_seconds": round(sum(float(result.get("duration_seconds") or 0) for result in results), 3),
+        "model_calls": 0,
+        "tool_calls": 0,
+        "estimated_input_tokens": 0,
+        "estimated_output_tokens": 0,
+        "repair_attempts": 0,
+        "context_compactions": 0,
+        "failed_scenarios": [
+            str(result.get("scenario"))
+            for result in results
+            if not result.get("ok")
+        ],
+    }
+    for result in results:
+        summary = result.get("summary")
+        if not isinstance(summary, dict):
+            continue
+        diagnostics = summary.get("diagnostics")
+        if not isinstance(diagnostics, dict):
+            continue
+        for key in (
+            "model_calls",
+            "tool_calls",
+            "estimated_input_tokens",
+            "estimated_output_tokens",
+            "repair_attempts",
+            "context_compactions",
+        ):
+            aggregate[key] += int(diagnostics.get(key) or 0)
+    return aggregate
 
 
 def run_agent_command(workspace: Path, allow_fake: bool, *args: str) -> dict[str, Any]:

@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -52,15 +53,21 @@ class SmokeResult:
     expected_file: Path
     final_report: Path | None
     transcript: Path
+    started_at: float = field(default_factory=time.monotonic)
+    ended_at: float | None = None
+    diagnostics: dict[str, Any] = field(default_factory=dict)
     commands: list[CommandRecord] = field(default_factory=list)
 
     def summary(self) -> dict[str, Any]:
+        ended_at = self.ended_at if self.ended_at is not None else time.monotonic()
         return {
             "workspace": str(self.workspace),
             "run_id": self.run_id,
             "expected_file": str(self.expected_file),
             "final_report": str(self.final_report) if self.final_report else None,
             "transcript": str(self.transcript),
+            "duration_seconds": round(ended_at - self.started_at, 3),
+            "diagnostics": self.diagnostics,
             "commands": [record.to_dict() for record in self.commands],
         }
 
@@ -92,6 +99,7 @@ def main() -> None:
             transcript=workspace / "real_model_smoke_transcript.json",
         )
         run_smoke(args, result)
+        result.ended_at = time.monotonic()
         write_transcript(result)
         if args.summary_json:
             args.summary_json.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +109,8 @@ def main() -> None:
             )
         print_success(result)
     except Exception as exc:  # noqa: BLE001 - this is a diagnostic script boundary
+        if result:
+            result.ended_at = time.monotonic()
         if result:
             write_transcript(result)
             print_failure(exc, result)
@@ -268,6 +278,7 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
     result.final_report = validate_artifacts(
         workspace,
         result.run_id,
+        result=result,
         expected_file=result.expected_file,
         expected_text=args.expected_text,
     )
@@ -384,6 +395,7 @@ def validate_artifacts(
     workspace: Path,
     run_id: str | None,
     *,
+    result: SmokeResult,
     expected_file: Path,
     expected_text: str,
 ) -> Path:
@@ -416,9 +428,17 @@ def validate_artifacts(
             f"Expected output file does not contain required text: {expected_text!r}"
         )
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    result.diagnostics = build_diagnostics(
+        run=run,
+        eval_report=eval_report,
+        task_plan=task_plan,
+        cost_report=cost_report,
+    )
     if run.get("status") != "completed":
         raise SmokeFailure(f"Run status is {run.get('status')!r}, expected 'completed'.")
-    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     unfinished = [
         f"{task['task_id']}:{task['status']}"
         for task in task_plan.get("tasks", [])
@@ -426,11 +446,9 @@ def validate_artifacts(
     ]
     if unfinished:
         raise SmokeFailure("Run has unfinished task(s): " + ", ".join(unfinished))
-    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     review_status = eval_report.get("overall", {}).get("status")
     if review_status != "pass":
         raise SmokeFailure(f"Review status is {review_status!r}, expected 'pass'.")
-    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     model_call_count = count_jsonl(run_dir / "model_calls.jsonl")
     tool_call_count = count_jsonl(run_dir / "tool_calls.jsonl")
     if int(cost_report.get("model_calls", 0)) != model_call_count:
@@ -448,6 +466,32 @@ def validate_artifacts(
     if int(cost_report.get("tool_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record tool calls.")
     return run_dir / "final_report.md"
+
+
+def build_diagnostics(
+    *,
+    run: dict[str, Any],
+    eval_report: dict[str, Any],
+    task_plan: dict[str, Any],
+    cost_report: dict[str, Any],
+) -> dict[str, Any]:
+    task_status_counts: dict[str, int] = {}
+    for task in task_plan.get("tasks", []):
+        status = str(task.get("status") or "unknown")
+        task_status_counts[status] = task_status_counts.get(status, 0) + 1
+    return {
+        "run_status": run.get("status"),
+        "review_status": eval_report.get("overall", {}).get("status"),
+        "review_score": eval_report.get("overall", {}).get("score"),
+        "task_status_counts": task_status_counts,
+        "model_calls": int(cost_report.get("model_calls", 0)),
+        "tool_calls": int(cost_report.get("tool_calls", 0)),
+        "estimated_input_tokens": int(cost_report.get("estimated_input_tokens", 0)),
+        "estimated_output_tokens": int(cost_report.get("estimated_output_tokens", 0)),
+        "repair_attempts": int(cost_report.get("repair_attempts", 0)),
+        "context_compactions": int(cost_report.get("context_compactions", 0)),
+        "cost_status": cost_report.get("status"),
+    }
 
 
 def count_jsonl(path: Path) -> int:

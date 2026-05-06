@@ -37,7 +37,14 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     assert "Real model acceptance passed" in completed.stdout
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["ok"] is True
+    assert summary["suite"] == "offline"
+    assert summary["aggregate"]["total"] == 1
+    assert summary["aggregate"]["passed"] == 1
+    assert summary["aggregate"]["failed"] == 0
+    assert summary["aggregate"]["model_calls"] > 0
+    assert summary["aggregate"]["tool_calls"] > 0
     assert [scenario["scenario"] for scenario in summary["scenarios"]] == ["offline_artifact"]
+    assert summary["scenarios"][0]["duration_seconds"] >= 0
     assert summary["scenarios"][0]["summary"]["run_id"].startswith("run-")
 
 
@@ -97,6 +104,8 @@ def test_real_model_acceptance_runs_decision_point_without_model(
     assert "Real model acceptance passed" in completed.stdout
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     scenario = summary["scenarios"][0]
+    assert summary["aggregate"]["passed"] == 1
+    assert summary["aggregate"]["model_calls"] == 0
     assert scenario["scenario"] == "decision_point"
     assert scenario["ok"] is True
     assert scenario["summary"]["resolved_decision_id"] == "decision-0001"

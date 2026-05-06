@@ -13,6 +13,7 @@ Recommended order:
 5. `DELIVERY_PLAN.md`
 6. `QUALITY_AND_EVALUATION.md`
 7. `COST_SECURITY_RISK.md`
+8. `REAL_MODEL_ACCEPTANCE.md`
 
 Current phase:
 
@@ -31,3 +32,6 @@ Verification:
 - Real model smoke: run `agent /model-check --root .`, then run a minimal `agent /run` in a temporary
   workspace. MiniMax `sk-cp-` keys are routed to the China endpoint automatically. Never commit real
   API keys; keep them in environment variables or secret storage only.
+- Real model acceptance: run `python scripts/real_model_acceptance.py --suite core`, or
+  `--suite nightly` when budget allows. Summaries include duration, model/tool calls, token estimates,
+  repair attempts, task status counts, and review status.

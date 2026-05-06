@@ -33,6 +33,7 @@
 2. [DATA_MODEL.md](./DATA_MODEL.md)
 3. [DELIVERY_PLAN.md](./DELIVERY_PLAN.md)
 4. [DEVELOPMENT.md](./DEVELOPMENT.md)
+5. [REAL_MODEL_ACCEPTANCE.md](./REAL_MODEL_ACCEPTANCE.md)
 
 ## 3. 主文档
 
@@ -47,6 +48,7 @@
 | [COST_SECURITY_RISK.md](./COST_SECURITY_RISK.md) | 成本控制、安全策略、风险治理 | 基于 `COST_AND_RISK.md` |
 | [MODEL_PROVIDER_SPEC.md](./MODEL_PROVIDER_SPEC.md) | MiniMax/OpenAI-compatible 模型接口、路由、重试、日志 | 新增模型适配规格 |
 | [DEVELOPMENT.md](./DEVELOPMENT.md) | 本地开发、运行、测试和模型配置说明 | 新增开发指南 |
+| [REAL_MODEL_ACCEPTANCE.md](./REAL_MODEL_ACCEPTANCE.md) | 真实模型验收套件、nightly 验收、成本和稳定性摘要指标 | 新增真实验收指南 |
 
 ## 4. 原始分册
 
@@ -83,7 +85,9 @@ Phase 1B：可复现运行环境和执行闭环加固
    后可分别路由强模型、普通模型和便宜/离线模型。
 7. 真实模型 smoke：执行 `python scripts/real_model_smoke.py`，脚本会在隔离 workspace 内完成最小闭环，详见
    [DEVELOPMENT.md](./DEVELOPMENT.md)。
-8. 真实 API key 只能通过环境变量或 secret 注入，不能写入仓库、文档、日志或测试夹具。
+8. 真实模型验收：执行 `python scripts/real_model_acceptance.py --suite core`；额度允许时执行
+   `--suite nightly`，摘要会记录耗时、模型/工具调用、token 估算、修复次数、任务状态分布和评审状态。
+9. 真实 API key 只能通过环境变量或 secret 注入，不能写入仓库、文档、日志或测试夹具。
 
 ## 6. 文档维护原则
 

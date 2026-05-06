@@ -44,6 +44,11 @@ def test_real_model_smoke_script_validates_offline_flow_when_explicitly_allowed(
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["run_id"].startswith("run-")
     assert Path(summary["final_report"]).exists()
+    assert summary["duration_seconds"] >= 0
+    assert summary["diagnostics"]["run_status"] == "completed"
+    assert summary["diagnostics"]["review_status"] == "pass"
+    assert summary["diagnostics"]["model_calls"] > 0
+    assert summary["diagnostics"]["tool_calls"] > 0
     assert [command["name"] for command in summary["commands"]] == [
         "init",
         "model-check",

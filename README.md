@@ -84,6 +84,9 @@ python scripts/real_model_acceptance.py --suite core
 The `core` suite currently covers the file smoke, a password-strength CLI, and a small markdown
 knowledge-base search tool. It is intentionally not part of default CI because it consumes real
 provider calls.
+When budget allows, use `--suite nightly` for the broader stability pass. Acceptance summaries include
+duration, run status, review status, task status counts, model/tool calls, token estimates, repair
+attempts, and context compactions so real-provider quality and cost can be compared over time.
 
 `agent /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
