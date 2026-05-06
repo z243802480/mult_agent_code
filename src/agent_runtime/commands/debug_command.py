@@ -7,7 +7,7 @@ from agent_runtime.agents.debug_agent import DebugAgent
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.core.task_contract import requires_changed_artifact
+from agent_runtime.core.task_contract import check_completion_contract
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -175,7 +175,7 @@ class DebugCommand:
             action = debug_agent.propose_repair(
                 task=task_board.get_task(task_id),
                 goal_spec=goal_spec,
-                failure_evidence=self._failure_evidence(run_dir, task_id),
+                failure_evidence=self._failure_evidence(run_dir, task_board.get_task(task_id)),
                 available_tools=self.registry.names(),
                 run_id=context.run_id or "",
                 runtime_context=runtime_context,
@@ -190,12 +190,16 @@ class DebugCommand:
                 context,
                 stop_on_failure=False,
             )
-            if all(result.ok for result in verification):
+            contract_check = check_completion_contract(
+                task,
+                self._changed_files(tool_results),
+                verification,
+                allow_verified_noop=True,
+            )
+            if contract_check.ok:
                 reason = "Repair verification passed."
-                if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
-                    reason = (
-                        "Repair verification passed without changes; task was already satisfied."
-                    )
+                if not self._changed_files(tool_results):
+                    reason = "Repair verification passed without changes; task was already satisfied."
                 self._record_repair_experiment(
                     context,
                     task,
@@ -204,6 +208,7 @@ class DebugCommand:
                     verification,
                     "keep",
                     reason,
+                    contract_check=contract_check.to_dict(),
                 )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
@@ -222,7 +227,8 @@ class DebugCommand:
                     len(action["verification"]),
                 )
             rollback_results = self._rollback_backups(context, task, tool_results)
-            self._block_task(task_board, task_id, "Repair verification failed.", context)
+            reason = contract_check.summary()
+            self._block_task(task_board, task_id, reason, context)
             self._record_repair_experiment(
                 context,
                 task,
@@ -230,13 +236,14 @@ class DebugCommand:
                 tool_results,
                 verification,
                 "discard",
-                "Repair verification failed; candidate was rolled back.",
+                f"{reason}; candidate was rolled back.",
                 rollback_results=rollback_results,
+                contract_check=contract_check.to_dict(),
             )
             return RepairSummary(
                 task_id,
                 "blocked",
-                "Repair verification failed",
+                reason,
                 len(action["tool_calls"]),
                 len(action["verification"]),
             )
@@ -247,9 +254,6 @@ class DebugCommand:
     def _require_non_empty_action(self, action: dict) -> None:
         if not action.get("tool_calls") and not action.get("verification"):
             raise RuntimeError("Repair action contained no tool calls or verification.")
-
-    def _requires_changed_artifact(self, task: dict) -> bool:
-        return requires_changed_artifact(task)
 
     def _run_tool_calls(
         self,
@@ -319,6 +323,7 @@ class DebugCommand:
         decision: str,
         reason: str,
         rollback_results: list | None = None,
+        contract_check: dict | None = None,
     ) -> None:
         if not context.run_dir:
             return
@@ -358,6 +363,7 @@ class DebugCommand:
                     verification_passed / len(verification_results) if verification_results else 1.0
                 ),
             },
+            "contract_check": contract_check or {},
             "decision": decision,
             "reason": reason,
         }
@@ -435,10 +441,12 @@ class DebugCommand:
             return "report"
         return "source_file"
 
-    def _failure_evidence(self, run_dir: Path, task_id: str) -> dict:
+    def _failure_evidence(self, run_dir: Path, task: dict) -> dict:
+        task_id = task["task_id"]
         tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
+        experiments = self._read_jsonl(run_dir / "experiments.jsonl", "experiment")
         return {
             "task_id": task_id,
             "recent_tool_failures": [
@@ -454,6 +462,13 @@ class DebugCommand:
                 for event in events
                 if event.get("type") in {"task_blocked", "tool_called", "run_blocked"}
             ][-20:],
+            "task_contract": task.get("completion_contract") or {},
+            "expected_changed_files": task.get("expected_changed_files") or [],
+            "recent_contract_checks": [
+                experiment.get("contract_check")
+                for experiment in experiments
+                if experiment.get("task_id") == task_id and experiment.get("contract_check")
+            ][-5:],
         }
 
     def _blocked_tasks(self, task_board: TaskBoard) -> list[dict]:

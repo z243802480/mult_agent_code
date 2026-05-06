@@ -167,6 +167,73 @@ def test_requirement_planner_marks_diagnostic_tasks() -> None:
     assert task["completion_contract"]["requires_changed_artifact"] is False
 
 
+def test_requirement_planner_splits_oversized_requirement_by_acceptance() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Build a practical password testing tool",
+        "target_outputs": ["local_cli"],
+        "definition_of_done": ["usable CLI"],
+        "verification_strategy": ["unit_tests"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Implement password analysis features",
+                "acceptance": [
+                    "Detect short passwords",
+                    "Detect common passwords",
+                    "Detect repeated characters",
+                    "Detect missing digits",
+                    "Detect missing symbols",
+                    "Return a readable score",
+                    "Print CLI guidance",
+                ],
+            }
+        ],
+    }
+
+    tasks = RequirementPlanner().build_task_plan(goal_spec)["tasks"]
+
+    assert len(tasks) == 3
+    assert [len(task["acceptance"]) for task in tasks] == [3, 3, 1]
+    assert tasks[0]["status"] == "ready"
+    assert tasks[1]["depends_on"] == ["task-0001"]
+    assert "Split from req-0001" in tasks[0]["notes"]
+
+
+def test_requirement_planner_splits_oversized_requirement_by_artifact() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Create a small tool package",
+        "target_outputs": ["python_module"],
+        "definition_of_done": ["package exists"],
+        "verification_strategy": ["unit_tests"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create package files",
+                "acceptance": ["CLI exists", "Library exists", "Tests exist", "Docs exist"],
+                "expected_artifacts": ["tool.py", "library.py", "tests/test_tool.py", "README.md"],
+            }
+        ],
+    }
+
+    tasks = RequirementPlanner().build_task_plan(goal_spec)["tasks"]
+
+    assert len(tasks) == 4
+    assert [task["expected_artifacts"] for task in tasks] == [
+        ["tool.py"],
+        ["library.py"],
+        ["tests/test_tool.py"],
+        ["README.md"],
+    ]
+    assert tasks[0]["expected_changed_files"] == ["tool.py"]
+    assert "Split from req-0001" in tasks[0]["notes"]
+
+
 def test_follow_up_planner_skips_duplicate_tasks() -> None:
     existing_tasks = [
         {

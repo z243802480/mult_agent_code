@@ -17,11 +17,15 @@ class RequirementPlanner:
                 "tasks": [self._single_file_task(goal_spec, runtime_context)],
             }
 
-        tasks: list[dict] = []
-        for index, requirement in enumerate(goal_spec["expanded_requirements"], start=1):
-            if requirement["priority"] == "wont":
+        requirements: list[dict] = []
+        for requirement in goal_spec["expanded_requirements"]:
+            if requirement.get("priority") == "wont":
                 continue
             requirement = self._refine_requirement(requirement, goal_spec)
+            requirements.extend(self._split_requirement_if_needed(requirement, goal_spec))
+
+        tasks: list[dict] = []
+        for index, requirement in enumerate(requirements, start=1):
             task_id = f"task-{index:04d}"
             expected_artifacts = self._expected_artifacts(requirement, goal_spec)
             kind = self._task_kind(requirement, expected_artifacts, goal_spec)
@@ -47,7 +51,9 @@ class RequirementPlanner:
                 ],
                 "expected_artifacts": expected_artifacts,
                 "task_kind": kind,
-                "expected_changed_files": self._expected_changed_files(kind, expected_artifacts),
+                "expected_changed_files": self._expected_changed_files(
+                    kind, expected_artifacts, requirement
+                ),
                 "assigned_agent_id": None,
                 "created_at": now_iso(),
                 "updated_at": now_iso(),
@@ -289,7 +295,20 @@ class RequirementPlanner:
             return "research"
         return "implementation"
 
-    def _expected_changed_files(self, kind: str, expected_artifacts: list[str]) -> list[str]:
+    def _expected_changed_files(
+        self,
+        kind: str,
+        expected_artifacts: list[str],
+        requirement: dict | None = None,
+    ) -> list[str]:
+        requirement = requirement or {}
+        if (
+            kind in {"implementation", "report", "ui"}
+            and isinstance(requirement.get("expected_artifacts"), list)
+            and not requirement.get("expected_artifacts_inferred")
+        ):
+            broad = {"implementation artifact", "planning artifact", "tests/", "src/"}
+            return [artifact for artifact in expected_artifacts if artifact not in broad]
         return expected_changed_files(kind, expected_artifacts)
 
     def _verification_policy(self, task: dict, goal_spec: dict) -> dict:
@@ -329,8 +348,71 @@ class RequirementPlanner:
             or not refined["expected_artifacts"]
         ):
             refined["expected_artifacts"] = self._expected_artifacts(refined, goal_spec)
+            refined["expected_artifacts_inferred"] = True
         refined["quality_refined"] = True
         return refined
+
+    def _split_requirement_if_needed(self, requirement: dict, goal_spec: dict) -> list[dict]:
+        acceptance = [
+            str(item).strip()
+            for item in requirement.get("acceptance", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        explicit_artifacts = [
+            str(item).strip()
+            for item in requirement.get("expected_artifacts", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        if len(acceptance) <= 4 and len(explicit_artifacts) <= 3:
+            return [requirement]
+        if explicit_artifacts and len(explicit_artifacts) > 3:
+            return self._split_by_artifact(requirement, explicit_artifacts, acceptance)
+        return self._split_by_acceptance(requirement, acceptance, goal_spec)
+
+    def _split_by_artifact(
+        self,
+        requirement: dict,
+        artifacts: list[str],
+        acceptance: list[str],
+    ) -> list[dict]:
+        split: list[dict] = []
+        for index, artifact in enumerate(artifacts, start=1):
+            item = dict(requirement)
+            item["id"] = f"{requirement.get('id', 'req')}.slice-{index:02d}"
+            item["description"] = f"{requirement.get('description', '').strip()} [{artifact}]"
+            item["acceptance"] = (
+                [acceptance[index - 1]]
+                if index <= len(acceptance)
+                else [f"{artifact} is created or updated"]
+            )
+            item["expected_artifacts"] = [artifact]
+            item["split_from"] = requirement.get("id")
+            item["granularity_refined"] = True
+            split.append(item)
+        return split
+
+    def _split_by_acceptance(
+        self,
+        requirement: dict,
+        acceptance: list[str],
+        goal_spec: dict,
+    ) -> list[dict]:
+        chunks = [acceptance[index : index + 3] for index in range(0, len(acceptance), 3)]
+        artifacts = self._expected_artifacts(requirement, goal_spec)
+        split: list[dict] = []
+        for index, chunk in enumerate(chunks, start=1):
+            item = dict(requirement)
+            item["id"] = f"{requirement.get('id', 'req')}.slice-{index:02d}"
+            item["description"] = (
+                f"{requirement.get('description', '').strip()} "
+                f"(acceptance slice {index}/{len(chunks)})"
+            )
+            item["acceptance"] = chunk
+            item["expected_artifacts"] = artifacts
+            item["split_from"] = requirement.get("id")
+            item["granularity_refined"] = True
+            split.append(item)
+        return split
 
     def _notes(
         self,
@@ -342,6 +424,11 @@ class RequirementPlanner:
     ) -> str:
         context_note = self._context_note(runtime_context)
         refinement_note = " Refined for task quality." if requirement.get("quality_refined") else ""
+        granularity_note = (
+            f" Split from {requirement.get('split_from')} for task granularity."
+            if requirement.get("granularity_refined")
+            else ""
+        )
         return (
             f"Generated from {requirement_id}. "
             "Quality: "
@@ -350,6 +437,7 @@ class RequirementPlanner:
             f"size={quality['size_score']:.2f} "
             f"artifact={quality['artifact_score']:.2f}."
             f"{refinement_note}"
+            f"{granularity_note}"
             f"{context_note}"
         )
 
@@ -487,5 +575,12 @@ class FollowUpTaskPlanner:
 def expected_changed_files(kind: str, expected_artifacts: list[str]) -> list[str]:
     if kind not in {"implementation", "report", "ui"}:
         return []
-    generic = {"implementation artifact", "planning artifact", "tests/", "src/"}
+    generic = {
+        "implementation artifact",
+        "planning artifact",
+        "tests/",
+        "src/",
+        "README.md",
+        "report.md",
+    }
     return [artifact for artifact in expected_artifacts if artifact not in generic]

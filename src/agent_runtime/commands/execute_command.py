@@ -9,7 +9,10 @@ from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.core.task_contract import allows_expected_failure, requires_changed_artifact
+from agent_runtime.core.task_contract import (
+    allows_expected_failure,
+    check_completion_contract,
+)
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -212,9 +215,12 @@ class ExecuteCommand:
                 context,
                 stop_on_failure=False,
             )
-            if all(result.ok for result in verification_results):
-                if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
-                    raise RuntimeError("Implementation task produced no changed artifacts.")
+            contract_check = check_completion_contract(
+                task,
+                self._changed_files(tool_results),
+                verification_results,
+            )
+            if contract_check.ok:
                 self._record_experiment(
                     context,
                     task,
@@ -223,6 +229,7 @@ class ExecuteCommand:
                     verification_results,
                     "keep",
                     "Verification passed.",
+                    contract_check=contract_check.to_dict(),
                 )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
@@ -240,6 +247,7 @@ class ExecuteCommand:
                     tool_calls=len(action["tool_calls"]),
                     verification_calls=len(action["verification"]),
                 )
+            reason = contract_check.summary()
             self._record_experiment(
                 context,
                 task,
@@ -247,11 +255,12 @@ class ExecuteCommand:
                 tool_results,
                 verification_results,
                 "discard",
-                "Verification failed; candidate was rolled back before repair.",
+                reason,
                 rollback_results=self._rollback_backups(context, task, tool_results),
+                contract_check=contract_check.to_dict(),
             )
             task_board.update_status(task_id, "blocked")
-            task_board.update_notes(task_id, "Verification failed; candidate was rolled back.")
+            task_board.update_notes(task_id, f"{reason}; candidate was rolled back.")
             if context.event_logger:
                 context.event_logger.record(
                     context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}"
@@ -259,7 +268,7 @@ class ExecuteCommand:
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",
-                summary="Verification failed",
+                summary=reason,
                 tool_calls=len(action["tool_calls"]),
                 verification_calls=len(action["verification"]),
             )
@@ -276,9 +285,6 @@ class ExecuteCommand:
     def _require_non_empty_action(self, action: dict) -> None:
         if not action.get("tool_calls") and not action.get("verification"):
             raise RuntimeError("ExecutionAction contained no tool calls or verification.")
-
-    def _requires_changed_artifact(self, task: dict) -> bool:
-        return requires_changed_artifact(task)
 
     def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
         if tool_name not in {"run_command", "run_tests"}:
@@ -474,6 +480,7 @@ class ExecuteCommand:
         decision: str,
         reason: str,
         rollback_results: list | None = None,
+        contract_check: dict | None = None,
     ) -> None:
         if not context.run_dir:
             return
@@ -517,6 +524,7 @@ class ExecuteCommand:
                     verification_passed / len(verification_results) if verification_results else 1.0
                 ),
             },
+            "contract_check": contract_check or {},
             "decision": decision,
             "reason": reason,
         }

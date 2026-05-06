@@ -133,7 +133,7 @@ class FakeFailingVerificationClient:
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"raise SystemExit(1)\""},
+                            "args": {"command": 'python -c "raise SystemExit(1)"'},
                             "reason": "simulate failed verification",
                         }
                     ],
@@ -160,7 +160,7 @@ class FakeNoopImplementationClient:
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"assert True\""},
+                            "args": {"command": 'python -c "assert True"'},
                             "reason": "noop verification",
                         }
                     ],
@@ -171,6 +171,37 @@ class FakeNoopImplementationClient:
             usage=TokenUsage(1, 1, 2),
             model_provider="fake",
             model_name="fake-noop",
+            raw_response={},
+        )
+
+
+class FakeNoVerificationClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Write the module but skip verification.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create the requested module",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "claimed complete",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-no-verification",
             raw_response={},
         )
 
@@ -241,7 +272,9 @@ def test_execute_command_blocks_disallowed_tool_without_tool_call(tmp_path: Path
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 
-    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeDisallowedToolClient()).run()
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeDisallowedToolClient()
+    ).run()
 
     assert result.completed == 0
     assert result.blocked == 1
@@ -256,7 +289,9 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 
-    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeFailingVerificationClient()).run()
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeFailingVerificationClient()
+    ).run()
 
     assert result.completed == 0
     assert result.blocked == 1
@@ -283,14 +318,37 @@ def test_execute_command_blocks_implementation_task_without_changed_artifacts(
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 
-    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeNoopImplementationClient()).run()
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeNoopImplementationClient()
+    ).run()
 
     assert result.completed == 0
     assert result.blocked == 1
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
-    assert "no changed artifacts" in task_plan["tasks"][0]["notes"]
+    assert "required changed artifact was not produced" in task_plan["tasks"][0]["notes"]
+
+
+def test_execute_command_blocks_required_task_without_verification(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeNoVerificationClient()
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert "required verification was not provided" in task_plan["tasks"][0]["notes"]
+    experiments = [
+        json.loads(line)
+        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert experiments[0]["contract_check"]["ok"] is False
+    assert experiments[0]["contract_check"]["verification_total"] == 0
 
 
 def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:
