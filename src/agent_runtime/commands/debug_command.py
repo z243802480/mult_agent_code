@@ -7,6 +7,7 @@ from agent_runtime.agents.debug_agent import DebugAgent
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
+from agent_runtime.core.task_contract import requires_changed_artifact
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -86,7 +87,9 @@ class DebugCommand:
         policy = self.store.read(agent_dir / "policies.json", "policy_config")
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         cost_report_path = run_dir / "cost_report.json"
-        budget = BudgetController.from_report(policy, self._read_cost(cost_report_path, run_id), run_id=run_id)
+        budget = BudgetController.from_report(
+            policy, self._read_cost(cost_report_path, run_id), run_id=run_id
+        )
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         context = RuntimeContext(
             root=self.root,
@@ -161,7 +164,9 @@ class DebugCommand:
     ) -> RepairSummary:
         task_id = task["task_id"]
         if context.event_logger:
-            context.event_logger.record(context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}")
+            context.event_logger.record(
+                context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}"
+            )
         try:
             if context.budget:
                 context.budget.record_repair_attempt()
@@ -188,7 +193,9 @@ class DebugCommand:
             if all(result.ok for result in verification):
                 reason = "Repair verification passed."
                 if self._requires_changed_artifact(task) and not self._changed_files(tool_results):
-                    reason = "Repair verification passed without changes; task was already satisfied."
+                    reason = (
+                        "Repair verification passed without changes; task was already satisfied."
+                    )
                 self._record_repair_experiment(
                     context,
                     task,
@@ -200,10 +207,20 @@ class DebugCommand:
                 )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
-                task_board.update_notes(task_id, action.get("completion_notes") or action["summary"])
+                task_board.update_notes(
+                    task_id, action.get("completion_notes") or action["summary"]
+                )
                 if context.event_logger:
-                    context.event_logger.record(context.run_id, "repair_completed", "DebugCommand", f"Repaired {task_id}")
-                return RepairSummary(task_id, "done", action["summary"], len(action["tool_calls"]), len(action["verification"]))
+                    context.event_logger.record(
+                        context.run_id, "repair_completed", "DebugCommand", f"Repaired {task_id}"
+                    )
+                return RepairSummary(
+                    task_id,
+                    "done",
+                    action["summary"],
+                    len(action["tool_calls"]),
+                    len(action["verification"]),
+                )
             rollback_results = self._rollback_backups(context, task, tool_results)
             self._block_task(task_board, task_id, "Repair verification failed.", context)
             self._record_repair_experiment(
@@ -216,7 +233,13 @@ class DebugCommand:
                 "Repair verification failed; candidate was rolled back.",
                 rollback_results=rollback_results,
             )
-            return RepairSummary(task_id, "blocked", "Repair verification failed", len(action["tool_calls"]), len(action["verification"]))
+            return RepairSummary(
+                task_id,
+                "blocked",
+                "Repair verification failed",
+                len(action["tool_calls"]),
+                len(action["verification"]),
+            )
         except Exception as exc:  # noqa: BLE001 - repair loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             return RepairSummary(task_id, "blocked", str(exc), 0, 0)
@@ -226,40 +249,7 @@ class DebugCommand:
             raise RuntimeError("Repair action contained no tool calls or verification.")
 
     def _requires_changed_artifact(self, task: dict) -> bool:
-        text = " ".join(
-            [
-                str(task.get("title") or ""),
-                str(task.get("description") or ""),
-                " ".join(str(item) for item in task.get("acceptance", []) if item),
-                " ".join(str(item) for item in task.get("expected_artifacts", []) if item),
-            ]
-        ).lower()
-        implementation_markers = {
-            "add",
-            "apply",
-            "build",
-            "change",
-            "create",
-            "edit",
-            "fix",
-            "implement",
-            "modify",
-            "patch",
-            "repair",
-            "update",
-            "write",
-        }
-        non_change_markers = {
-            "diagnose",
-            "identify",
-            "locate",
-            "review",
-            "run tests",
-            "verify",
-        }
-        if any(marker in text for marker in non_change_markers):
-            return False
-        return any(marker in text for marker in implementation_markers)
+        return requires_changed_artifact(task)
 
     def _run_tool_calls(
         self,
@@ -356,7 +346,9 @@ class DebugCommand:
                 "rollback": self._rollback_summary(rollback_results or []),
             },
             "evaluator": {
-                "commands": [call.get("args", {}).get("command") for call in action.get("verification", [])],
+                "commands": [
+                    call.get("args", {}).get("command") for call in action.get("verification", [])
+                ],
                 "tool_count": len(action.get("tool_calls", [])),
             },
             "metrics_after": {
@@ -376,7 +368,11 @@ class DebugCommand:
                 "experiment_recorded",
                 "DebugCommand",
                 f"{experiment['experiment_id']} -> {decision}",
-                {"experiment_id": experiment["experiment_id"], "task_id": task["task_id"], "decision": decision},
+                {
+                    "experiment_id": experiment["experiment_id"],
+                    "task_id": task["task_id"],
+                    "decision": decision,
+                },
             )
 
     def _rollback_backups(
@@ -446,13 +442,17 @@ class DebugCommand:
         return {
             "task_id": task_id,
             "recent_tool_failures": [
-                call for call in tool_calls if call.get("task_id") == task_id and call.get("status") != "success"
+                call
+                for call in tool_calls
+                if call.get("task_id") == task_id and call.get("status") != "success"
             ][-10:],
             "recent_model_failures": [
                 call for call in model_calls if call.get("status") != "success"
             ][-5:],
             "recent_events": [
-                event for event in events if event.get("type") in {"task_blocked", "tool_called", "run_blocked"}
+                event
+                for event in events
+                if event.get("type") in {"task_blocked", "tool_called", "run_blocked"}
             ][-20:],
         }
 
@@ -463,7 +463,9 @@ class DebugCommand:
             return [task] if task["status"] == "blocked" else []
         return [task for task in tasks if task["status"] == "blocked"]
 
-    def _block_task(self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext) -> None:
+    def _block_task(
+        self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext
+    ) -> None:
         try:
             current = task_board.get_task(task_id)
             if current["status"] not in {"blocked", "done", "discarded"}:
@@ -519,5 +521,7 @@ class DebugCommand:
         runs_dir = agent_dir / "runs"
         if not runs_dir.exists():
             return None
-        runs = sorted([path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name)
+        runs = sorted(
+            [path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name
+        )
         return runs[-1].name if runs else None

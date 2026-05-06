@@ -25,7 +25,7 @@ Do not prioritize a dashboard before the core CLI/runtime loop works.
 ## 3. Current Assumptions
 
 ```text
-The current implementation phase is Phase 1A: schema, project skeleton, storage, and /init.
+The current implementation phase is Phase 1B: reproducible runtime environment, acceptance loops, execution-loop hardening, and structured task contracts.
 The Chinese main documents in docs/zh are the most detailed project source of truth.
 The runtime should avoid fake stubs; implemented features must have real behavior and tests.
 MVP uses filesystem + JSON/JSONL before SQLite.
@@ -36,7 +36,7 @@ MVP uses filesystem + JSON/JSONL before SQLite.
 ```text
 Runtime layers: CLI, command router, orchestrator, context layer, agent layer, tool layer, evaluation layer, persistence layer.
 MVP implementation uses Python standard library where possible, with optional future dependencies documented in pyproject.toml.
-Current working command: python -m agent_runtime init --root <path>
+Current working commands: python -m agent_runtime init --root <path>, python -m agent_runtime /run "<goal>" --root <path>, and python -m agent_runtime /acceptance --suite offline --allow-fake --root <path>
 Root runtime state lives in .agent/.
 ```
 

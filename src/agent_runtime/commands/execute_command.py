@@ -9,6 +9,7 @@ from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
+from agent_runtime.core.task_contract import allows_expected_failure, requires_changed_artifact
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -170,7 +171,9 @@ class ExecuteCommand:
     ) -> TaskExecutionSummary:
         task_id = task["task_id"]
         if context.event_logger:
-            context.event_logger.record(context.run_id, "task_started", "ExecuteCommand", f"Started {task_id}")
+            context.event_logger.record(
+                context.run_id, "task_started", "ExecuteCommand", f"Started {task_id}"
+            )
         task_board.update_status(task_id, "in_progress")
         try:
             action = coder.propose_action(
@@ -200,7 +203,7 @@ class ExecuteCommand:
                     summary=f"Waiting for decision: {decision['decision_id']}",
                     tool_calls=0,
                     verification_calls=0,
-            )
+                )
             tool_results = self._run_tool_calls(action["tool_calls"], task, context)
             task_board.update_status(task_id, "testing")
             verification_results = self._run_tool_calls(
@@ -223,9 +226,13 @@ class ExecuteCommand:
                 )
                 task_board.update_status(task_id, "reviewing")
                 task_board.update_status(task_id, "done")
-                task_board.update_notes(task_id, action.get("completion_notes") or action["summary"])
+                task_board.update_notes(
+                    task_id, action.get("completion_notes") or action["summary"]
+                )
                 if context.event_logger:
-                    context.event_logger.record(context.run_id, "task_completed", "ExecuteCommand", f"Completed {task_id}")
+                    context.event_logger.record(
+                        context.run_id, "task_completed", "ExecuteCommand", f"Completed {task_id}"
+                    )
                 return TaskExecutionSummary(
                     task_id=task_id,
                     status="done",
@@ -246,7 +253,9 @@ class ExecuteCommand:
             task_board.update_status(task_id, "blocked")
             task_board.update_notes(task_id, "Verification failed; candidate was rolled back.")
             if context.event_logger:
-                context.event_logger.record(context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}")
+                context.event_logger.record(
+                    context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}"
+                )
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",
@@ -269,62 +278,14 @@ class ExecuteCommand:
             raise RuntimeError("ExecutionAction contained no tool calls or verification.")
 
     def _requires_changed_artifact(self, task: dict) -> bool:
-        text = " ".join(
-            [
-                str(task.get("title") or ""),
-                str(task.get("description") or ""),
-                " ".join(str(item) for item in task.get("acceptance", []) if item),
-                " ".join(str(item) for item in task.get("expected_artifacts", []) if item),
-            ]
-        ).lower()
-        implementation_markers = {
-            "add",
-            "apply",
-            "build",
-            "change",
-            "create",
-            "edit",
-            "fix",
-            "implement",
-            "modify",
-            "patch",
-            "repair",
-            "update",
-            "write",
-        }
-        non_change_markers = {
-            "diagnose",
-            "identify",
-            "locate",
-            "review",
-            "run tests",
-            "verify",
-        }
-        if any(marker in text for marker in non_change_markers):
-            return False
-        return any(marker in text for marker in implementation_markers)
+        return requires_changed_artifact(task)
 
     def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
         if tool_name not in {"run_command", "run_tests"}:
             return False
         if getattr(result, "ok", False) or getattr(result, "error", None) != "nonzero_exit":
             return False
-        text = " ".join(
-            [
-                str(task.get("title") or ""),
-                str(task.get("description") or ""),
-                " ".join(str(item) for item in task.get("acceptance", []) if item),
-            ]
-        ).lower()
-        diagnostic_markers = {
-            "baseline failure",
-            "capture failing",
-            "failing tests",
-            "failures reported",
-            "identify failing",
-            "identify which tests",
-        }
-        return any(marker in text for marker in diagnostic_markers)
+        return allows_expected_failure(task)
 
     def _run_tool_calls(
         self,
@@ -369,7 +330,9 @@ class ExecuteCommand:
             if not command:
                 continue
             denial = self._shell_denial(context.policy, command)
-            if denial is None or self._has_execution_approval(context, task, tool_name, call["args"]):
+            if denial is None or self._has_execution_approval(
+                context, task, tool_name, call["args"]
+            ):
                 continue
             return self._create_execution_decision(context, task, tool_name, call["args"], denial)
         return None
@@ -542,7 +505,9 @@ class ExecuteCommand:
                 "rollback": self._rollback_summary(rollback_results or []),
             },
             "evaluator": {
-                "commands": [call.get("args", {}).get("command") for call in action.get("verification", [])],
+                "commands": [
+                    call.get("args", {}).get("command") for call in action.get("verification", [])
+                ],
                 "tool_count": len(action.get("tool_calls", [])),
             },
             "metrics_after": {
@@ -662,7 +627,9 @@ class ExecuteCommand:
             return "report"
         return "source_file"
 
-    def _block_task(self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext) -> None:
+    def _block_task(
+        self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext
+    ) -> None:
         try:
             current = task_board.get_task(task_id)
             if current["status"] not in {"blocked", "done", "discarded"}:
@@ -703,7 +670,11 @@ class ExecuteCommand:
         }
 
     def _mirror_backlog(self, agent_dir: Path, task_board: TaskBoard) -> None:
-        self.store.write(agent_dir / "tasks" / "backlog.json", {"schema_version": "0.1.0", "tasks": task_board.list_tasks()}, "task_board")
+        self.store.write(
+            agent_dir / "tasks" / "backlog.json",
+            {"schema_version": "0.1.0", "tasks": task_board.list_tasks()},
+            "task_board",
+        )
 
     def _pending_decisions(self, run_dir: Path) -> list[dict]:
         path = run_dir / "decisions.jsonl"
@@ -719,5 +690,7 @@ class ExecuteCommand:
         runs_dir = agent_dir / "runs"
         if not runs_dir.exists():
             return None
-        runs = sorted([path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name)
+        runs = sorted(
+            [path for path in runs_dir.iterdir() if path.is_dir()], key=lambda item: item.name
+        )
         return runs[-1].name if runs else None

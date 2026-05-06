@@ -26,6 +26,9 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert "src/" in task["expected_artifacts"]
     assert "tests/" in task["expected_artifacts"]
     assert "README.md" in task["expected_artifacts"]
+    assert task["task_kind"] == "implementation"
+    assert task["completion_contract"]["requires_changed_artifact"] is True
+    assert task["verification_policy"]["required"] is True
     assert "restore_backup" in task["allowed_tools"]
     assert "Quality:" in task["notes"]
 
@@ -66,6 +69,8 @@ def test_requirement_planner_groups_single_concrete_file_goal() -> None:
     assert len(task_plan["tasks"]) == 1
     task = task_plan["tasks"][0]
     assert task["expected_artifacts"] == ["hello_runtime.txt"]
+    assert task["task_kind"] == "implementation"
+    assert task["expected_changed_files"] == ["hello_runtime.txt"]
     assert "one concrete file" in task["notes"]
     assert task["quality"]["passed"]
 
@@ -94,6 +99,8 @@ def test_requirement_planner_refines_low_quality_requirements() -> None:
     assert "Create a password testing tool" in task["description"]
     assert task["acceptance"]
     assert task["expected_artifacts"]
+    assert task["task_kind"] == "implementation"
+    assert "completion_contract" in task
     assert task["quality"]["passed"]
     assert "Refined for task quality" in task["notes"]
 
@@ -129,9 +136,35 @@ def test_requirement_planner_groups_single_file_tool_into_one_slice() -> None:
     assert len(task_plan["tasks"]) == 1
     task = task_plan["tasks"][0]
     assert task["expected_artifacts"] == ["password_strength.py"]
+    assert task["completion_contract"]["requires_changed_artifact"] is True
     assert "Accept a password argument" in task["description"]
     assert "Common passwords return weak" in task["acceptance"]
     assert "single-file tool" in task["notes"]
+
+
+def test_requirement_planner_marks_diagnostic_tasks() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Fix failing tests",
+        "target_outputs": ["tests"],
+        "definition_of_done": ["pytest passes"],
+        "verification_strategy": ["python -m pytest"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Run pytest to identify failing tests",
+                "acceptance": ["failures reported"],
+            }
+        ],
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
+
+    assert task["task_kind"] == "diagnostic"
+    assert task["completion_contract"]["allows_expected_failure"] is True
+    assert task["completion_contract"]["requires_changed_artifact"] is False
 
 
 def test_follow_up_planner_skips_duplicate_tasks() -> None:

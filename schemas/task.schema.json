@@ -33,6 +33,27 @@
     "acceptance": { "type": "array", "items": { "type": "string" } },
     "allowed_tools": { "type": "array", "items": { "type": "string" } },
     "expected_artifacts": { "type": "array", "items": { "type": "string" } },
+    "task_kind": {
+      "type": "string",
+      "enum": ["diagnostic", "implementation", "verification", "research", "decision", "report", "ui"]
+    },
+    "expected_changed_files": { "type": "array", "items": { "type": "string" } },
+    "verification_policy": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "allow_expected_failure": { "type": "boolean" },
+        "commands": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "completion_contract": {
+      "type": "object",
+      "properties": {
+        "requires_changed_artifact": { "type": "boolean" },
+        "requires_verification": { "type": "boolean" },
+        "allows_expected_failure": { "type": "boolean" }
+      }
+    },
     "assigned_agent_id": { "type": ["string", "null"] },
     "created_at": { "type": "string" },
     "updated_at": { "type": "string" },

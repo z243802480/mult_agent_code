@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from agent_runtime.core.task_contract import completion_contract
 from agent_runtime.utils.time import now_iso
 
 
@@ -11,7 +12,10 @@ class RequirementPlanner:
     def build_task_plan(self, goal_spec: dict, runtime_context: dict | None = None) -> dict:
         runtime_context = runtime_context or {}
         if self._is_single_file_tool(goal_spec):
-            return {"schema_version": "0.1.0", "tasks": [self._single_file_task(goal_spec, runtime_context)]}
+            return {
+                "schema_version": "0.1.0",
+                "tasks": [self._single_file_task(goal_spec, runtime_context)],
+            }
 
         tasks: list[dict] = []
         for index, requirement in enumerate(goal_spec["expanded_requirements"], start=1):
@@ -20,74 +24,83 @@ class RequirementPlanner:
             requirement = self._refine_requirement(requirement, goal_spec)
             task_id = f"task-{index:04d}"
             expected_artifacts = self._expected_artifacts(requirement, goal_spec)
+            kind = self._task_kind(requirement, expected_artifacts, goal_spec)
             quality = self._quality_assessment(requirement, expected_artifacts)
-            tasks.append(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": task_id,
-                    "title": self._title(requirement["description"]),
-                    "description": requirement["description"],
-                    "status": "ready" if not tasks else "backlog",
-                    "priority": self._priority(requirement["priority"]),
-                    "role": "CoderAgent",
-                    "depends_on": [] if not tasks else [tasks[-1]["task_id"]],
-                    "acceptance": requirement["acceptance"],
-                    "allowed_tools": [
-                        "read_file",
-                        "search_text",
-                        "write_file",
-                        "apply_patch",
-                        "restore_backup",
-                        "run_command",
-                        "run_tests",
-                    ],
-                    "expected_artifacts": expected_artifacts,
-                    "assigned_agent_id": None,
-                    "created_at": now_iso(),
-                    "updated_at": now_iso(),
-                    "quality": quality,
-                    "notes": self._notes(
-                        requirement["id"],
-                        requirement,
-                        expected_artifacts,
-                        runtime_context,
-                        quality,
-                    ),
-                }
-            )
+            task = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "title": self._title(requirement["description"]),
+                "description": requirement["description"],
+                "status": "ready" if not tasks else "backlog",
+                "priority": self._priority(requirement["priority"]),
+                "role": "CoderAgent",
+                "depends_on": [] if not tasks else [tasks[-1]["task_id"]],
+                "acceptance": requirement["acceptance"],
+                "allowed_tools": [
+                    "read_file",
+                    "search_text",
+                    "write_file",
+                    "apply_patch",
+                    "restore_backup",
+                    "run_command",
+                    "run_tests",
+                ],
+                "expected_artifacts": expected_artifacts,
+                "task_kind": kind,
+                "expected_changed_files": self._expected_changed_files(kind, expected_artifacts),
+                "assigned_agent_id": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+                "quality": quality,
+                "notes": self._notes(
+                    requirement["id"],
+                    requirement,
+                    expected_artifacts,
+                    runtime_context,
+                    quality,
+                ),
+            }
+            task["completion_contract"] = completion_contract(task)
+            task["verification_policy"] = self._verification_policy(task, goal_spec)
+            tasks.append(task)
 
         if not tasks:
-            tasks.append(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "title": "Clarify goal and create first implementation slice",
-                    "description": goal_spec["normalized_goal"],
-                    "status": "ready",
-                    "priority": "high",
-                    "role": "PlannerAgent",
-                    "depends_on": [],
-                    "acceptance": goal_spec["definition_of_done"][:3] or ["Goal is clarified"],
-                    "allowed_tools": ["read_file", "search_text", "write_file"],
-                    "expected_artifacts": self._fallback_artifacts(goal_spec),
-                    "assigned_agent_id": None,
-                    "created_at": now_iso(),
-                    "updated_at": now_iso(),
-                    "quality": {
-                        "clarity_score": 0.60,
-                        "testability_score": 0.60,
-                        "size_score": 0.70,
-                        "artifact_score": 0.60,
-                        "dependency_score": 0.80,
-                        "risk_score": 0.70,
-                        "passed": False,
-                    },
-                    "notes": (
-                        "Fallback task because no actionable requirements were generated. "
-                        "Quality: clarity=0.60 testability=0.60 size=0.70 artifact=0.60."
-                    ),
-                }
-            )
+            task = {
+                "schema_version": "0.1.0",
+                "task_id": "task-0001",
+                "title": "Clarify goal and create first implementation slice",
+                "description": goal_spec["normalized_goal"],
+                "status": "ready",
+                "priority": "high",
+                "role": "PlannerAgent",
+                "depends_on": [],
+                "acceptance": goal_spec["definition_of_done"][:3] or ["Goal is clarified"],
+                "allowed_tools": ["read_file", "search_text", "write_file"],
+                "expected_artifacts": self._fallback_artifacts(goal_spec),
+                "task_kind": "implementation",
+                "expected_changed_files": self._expected_changed_files(
+                    "implementation", self._fallback_artifacts(goal_spec)
+                ),
+                "assigned_agent_id": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+                "quality": {
+                    "clarity_score": 0.60,
+                    "testability_score": 0.60,
+                    "size_score": 0.70,
+                    "artifact_score": 0.60,
+                    "dependency_score": 0.80,
+                    "risk_score": 0.70,
+                    "passed": False,
+                },
+                "notes": (
+                    "Fallback task because no actionable requirements were generated. "
+                    "Quality: clarity=0.60 testability=0.60 size=0.70 artifact=0.60."
+                ),
+            }
+            task["completion_contract"] = completion_contract(task)
+            task["verification_policy"] = self._verification_policy(task, goal_spec)
+            tasks.append(task)
         return {"schema_version": "0.1.0", "tasks": tasks}
 
     def _is_single_file_tool(self, goal_spec: dict) -> bool:
@@ -99,7 +112,11 @@ class RequirementPlanner:
                 " ".join(str(item) for item in goal_spec.get("constraints", [])),
             ]
         ).lower()
-        return "single-file" in text or "single file" in text or self._single_output_file(goal_spec) is not None
+        return (
+            "single-file" in text
+            or "single file" in text
+            or self._single_output_file(goal_spec) is not None
+        )
 
     def _single_output_file(self, goal_spec: dict) -> str | None:
         outputs = [
@@ -132,7 +149,9 @@ class RequirementPlanner:
             for requirement in goal_spec.get("expanded_requirements", [])
             if requirement.get("priority") != "wont"
         ]
-        description_lines = [str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal"))]
+        description_lines = [
+            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal"))
+        ]
         for requirement in requirements[:12]:
             description_lines.append(f"- {requirement.get('description', '')}")
         acceptance = self._single_file_acceptance(goal_spec, requirements)
@@ -144,7 +163,7 @@ class RequirementPlanner:
             "expected_artifacts": [artifact],
         }
         quality = self._quality_assessment(requirement, [artifact])
-        return {
+        task = {
             "schema_version": "0.1.0",
             "task_id": "task-0001",
             "title": f"Implement {artifact} as a complete single-file artifact",
@@ -164,6 +183,8 @@ class RequirementPlanner:
                 "run_tests",
             ],
             "expected_artifacts": [artifact],
+            "task_kind": "implementation",
+            "expected_changed_files": [artifact],
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -173,6 +194,9 @@ class RequirementPlanner:
                 + self._notes("req-single-file", requirement, [artifact], runtime_context, quality)
             ),
         }
+        task["completion_contract"] = completion_contract(task)
+        task["verification_policy"] = self._verification_policy(task, goal_spec)
+        return task
 
     def _single_file_artifact(self, goal_spec: dict) -> str:
         explicit = self._single_output_file(goal_spec)
@@ -239,6 +263,48 @@ class RequirementPlanner:
         outputs = [str(item) for item in goal_spec.get("target_outputs", [])]
         return outputs or ["planning artifact"]
 
+    def _task_kind(self, requirement: dict, expected_artifacts: list[str], goal_spec: dict) -> str:
+        explicit = str(requirement.get("task_kind") or "").strip().lower()
+        if explicit:
+            return explicit
+        text = " ".join(
+            [
+                str(requirement.get("description", "")),
+                " ".join(str(item) for item in requirement.get("acceptance", []) if item),
+            ]
+        ).lower()
+        description = str(requirement.get("description", "")).lower()
+        if any(
+            marker in text
+            for marker in {"diagnose", "identify failing", "failing tests", "run pytest"}
+        ):
+            return "diagnostic"
+        if any(marker in description for marker in {"verify", "verification"}):
+            return "verification"
+        if any(marker in text for marker in {"report", "readme", "documentation"}):
+            return "report"
+        if any(marker in text for marker in {"ui", "web page", "interface", "dashboard"}):
+            return "ui"
+        if any(marker in text for marker in {"research", "investigate", "source"}):
+            return "research"
+        return "implementation"
+
+    def _expected_changed_files(self, kind: str, expected_artifacts: list[str]) -> list[str]:
+        return expected_changed_files(kind, expected_artifacts)
+
+    def _verification_policy(self, task: dict, goal_spec: dict) -> dict:
+        contract = completion_contract(task)
+        commands = [
+            str(item)
+            for item in goal_spec.get("verification_strategy", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        return {
+            "required": bool(contract.get("requires_verification", False)),
+            "allow_expected_failure": bool(contract.get("allows_expected_failure", False)),
+            "commands": commands[:5],
+        }
+
     def _refine_requirement(self, requirement: dict, goal_spec: dict) -> dict:
         expected_artifacts = self._expected_artifacts(requirement, goal_spec)
         quality = self._quality_assessment(requirement, expected_artifacts)
@@ -258,7 +324,10 @@ class RequirementPlanner:
             refined["acceptance"] = [
                 f"{artifact} is created or updated" for artifact in artifacts[:3]
             ] or ["The task produces a verifiable artifact"]
-        if not isinstance(refined.get("expected_artifacts"), list) or not refined["expected_artifacts"]:
+        if (
+            not isinstance(refined.get("expected_artifacts"), list)
+            or not refined["expected_artifacts"]
+        ):
             refined["expected_artifacts"] = self._expected_artifacts(refined, goal_spec)
         refined["quality_refined"] = True
         return refined
@@ -331,9 +400,7 @@ class FollowUpTaskPlanner:
         done_or_ready = [
             task["task_id"] for task in existing_tasks if task["status"] != "discarded"
         ]
-        known_items = {
-            self._normalize(task.get("title", "")) for task in existing_tasks
-        } | {
+        known_items = {self._normalize(task.get("title", "")) for task in existing_tasks} | {
             self._normalize(task.get("description", "")) for task in existing_tasks
         }
         dependency = done_or_ready[-1:] if done_or_ready else []
@@ -355,33 +422,43 @@ class FollowUpTaskPlanner:
                 acceptance = ["Follow-up requirement is implemented and verified"]
             if not isinstance(expected_artifacts, list):
                 expected_artifacts = []
-            tasks.append(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": task_id,
-                    "title": title,
-                    "description": description,
-                    "status": "ready" if not dependency and not tasks else "backlog",
-                    "priority": self._priority(str(item.get("priority") or "medium")),
-                    "role": str(item.get("role") or "CoderAgent"),
-                    "depends_on": dependency if not tasks else [tasks[-1]["task_id"]],
-                    "acceptance": [str(value) for value in acceptance],
-                    "allowed_tools": [
-                        "read_file",
-                        "search_text",
+            kind = str(item.get("task_kind") or "implementation")
+            task: dict = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "title": title,
+                "description": description,
+                "status": "ready" if not dependency and not tasks else "backlog",
+                "priority": self._priority(str(item.get("priority") or "medium")),
+                "role": str(item.get("role") or "CoderAgent"),
+                "depends_on": dependency if not tasks else [tasks[-1]["task_id"]],
+                "acceptance": [str(value) for value in acceptance],
+                "allowed_tools": [
+                    "read_file",
+                    "search_text",
                     "write_file",
                     "apply_patch",
                     "restore_backup",
                     "run_command",
                     "run_tests",
-                    ],
-                    "expected_artifacts": expected_artifacts,
-                    "assigned_agent_id": None,
-                    "created_at": now_iso(),
-                    "updated_at": now_iso(),
-                    "notes": f"Generated from review follow-up for {eval_report.get('run_id')}",
-                }
-            )
+                ],
+                "expected_artifacts": expected_artifacts,
+                "task_kind": kind,
+                "expected_changed_files": expected_changed_files(kind, expected_artifacts),
+                "assigned_agent_id": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+                "notes": f"Generated from review follow-up for {eval_report.get('run_id')}",
+            }
+            task["completion_contract"] = completion_contract(task)
+            task["verification_policy"] = {
+                "required": bool(task["completion_contract"].get("requires_verification", False)),
+                "allow_expected_failure": bool(
+                    task["completion_contract"].get("allows_expected_failure", False)
+                ),
+                "commands": [],
+            }
+            tasks.append(task)
             known_items.add(self._normalize(title))
             known_items.add(self._normalize(description))
         return tasks
@@ -405,3 +482,10 @@ class FollowUpTaskPlanner:
 
     def _normalize(self, value: object) -> str:
         return " ".join(str(value).strip().lower().split())
+
+
+def expected_changed_files(kind: str, expected_artifacts: list[str]) -> list[str]:
+    if kind not in {"implementation", "report", "ui"}:
+        return []
+    generic = {"implementation artifact", "planning artifact", "tests/", "src/"}
+    return [artifact for artifact in expected_artifacts if artifact not in generic]

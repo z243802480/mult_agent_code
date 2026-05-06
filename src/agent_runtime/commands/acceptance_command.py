@@ -6,7 +6,10 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
+from agent_runtime.commands.run_command import RunCommand
+from agent_runtime.core.task_contract import completion_contract
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -321,8 +324,6 @@ class AcceptanceCommand:
         return Path(__file__).resolve().parents[3]
 
     def _run_promoted_tasks(self) -> str:
-        from agent_runtime.commands.run_command import RunCommand
-
         run_store = RunStore(self.root / ".agent", self.validator)
         run_id = run_store.current_session_id()
         if not run_id:
@@ -439,7 +440,8 @@ class AcceptanceFailurePromoter:
         stderr_tail = str(scenario.get("stderr_tail") or "").strip()
         if stderr_tail:
             description_parts.append(f"stderr tail:\n{stderr_tail}")
-        return {
+        expected_artifacts = [evidence_path.relative_to(self.root).as_posix()]
+        task: dict[str, Any] = {
             "schema_version": "0.1.0",
             "task_id": task_id,
             "title": f"Repair acceptance scenario: {scenario_name}",
@@ -463,7 +465,9 @@ class AcceptanceFailurePromoter:
                 "run_command",
                 "run_tests",
             ],
-            "expected_artifacts": [evidence_path.relative_to(self.root).as_posix()],
+            "expected_artifacts": expected_artifacts,
+            "task_kind": "implementation",
+            "expected_changed_files": [],
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -472,6 +476,13 @@ class AcceptanceFailurePromoter:
                 f"reproduce with: {self._acceptance_cli_command(report, scenario_name)}"
             ),
         }
+        task["completion_contract"] = completion_contract(task)
+        task["verification_policy"] = {
+            "required": True,
+            "allow_expected_failure": False,
+            "commands": [self._acceptance_cli_command(report, scenario_name)],
+        }
+        return task
 
     def _write_failure_evidence(self, report: dict, scenario: dict, task_id: str) -> Path:
         scenario_name = str(scenario.get("scenario") or "unknown")
