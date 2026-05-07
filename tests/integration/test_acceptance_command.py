@@ -120,11 +120,14 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
         ],
     }
 
-    promoted = AcceptanceFailurePromoter(tmp_path, validator).promote(report)
-    promoted_again = AcceptanceFailurePromoter(tmp_path, validator).promote(report)
+    promoter = AcceptanceFailurePromoter(tmp_path, validator)
+    promoted = promoter.promote(report)
+    promoter_again = AcceptanceFailurePromoter(tmp_path, validator)
+    promoted_again = promoter_again.promote(report)
 
     assert promoted == ["task-0002"]
     assert promoted_again == []
+    assert promoter_again.repair_task_ids == ["task-0002"]
     updated = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(updated["tasks"]) == 2
     task = updated["tasks"][1]
@@ -181,6 +184,58 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
         in memories[0]["content"]
     )
     validator.validate("memory_entry", memories[0])
+
+
+def test_acceptance_failure_promoter_creates_repair_session_without_current_session(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    report = {
+        "schema_version": "0.1.0",
+        "suite": "core",
+        "requested_scenarios": ["password_cli"],
+        "root": str(tmp_path),
+        "ok": False,
+        "returncode": 1,
+        "created_at": "2026-05-07T00:00:00+08:00",
+        "summary_json": str(tmp_path / "summary.json"),
+        "scenarios": [
+            {
+                "scenario": "password_cli",
+                "ok": False,
+                "workspace": str(tmp_path / "password_cli"),
+                "failure_summary": "Run still has pending decisions: decision-0001",
+                "failure_attribution": {
+                    "category": "pending_decision",
+                    "retryable": False,
+                    "confidence": 0.9,
+                    "signals": ["pending decisions"],
+                },
+                "stdout_tail": "",
+                "stderr_tail": "Run still has pending decisions: decision-0001",
+                "summary": None,
+            }
+        ],
+    }
+
+    promoted = AcceptanceFailurePromoter(tmp_path, validator).promote(report)
+
+    run_store = RunStore(tmp_path / ".agent", validator)
+    run_id = run_store.current_session_id()
+    assert promoted == ["task-0001"]
+    assert run_id is not None
+    run_dir = tmp_path / ".agent" / "runs" / run_id
+    assert (run_dir / "goal_spec.json").exists()
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["title"] == "Repair acceptance scenario: password_cli"
+    evidence = json.loads(
+        (tmp_path / ".agent" / "acceptance" / "failures" / "password_cli.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert evidence["failure_attribution"]["category"] == "pending_decision"
+    validator.validate("acceptance_failure_evidence", evidence)
 
 
 def test_acceptance_result_prints_promotion_error(tmp_path: Path) -> None:
@@ -412,6 +467,73 @@ def test_acceptance_command_can_fail_on_trend_warning(
     assert report["ok"] is True
     assert report["trend_warnings"] == result.trend_warnings
     assert "Trend warnings:" in result.to_text()
+
+
+def test_acceptance_report_records_failure_attribution_and_repair_workflow(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    original_run = subprocess.run
+
+    def fake_acceptance_run(command, *args, **kwargs):
+        command_text = " ".join(str(item) for item in command)
+        if "real_model_acceptance.py" not in command_text:
+            return original_run(command, *args, **kwargs)
+        summary_path = Path(command[command.index("--summary-json") + 1])
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "ok": False,
+                    "root": str(tmp_path),
+                    "suite": "core",
+                    "scenarios": [
+                        {
+                            "scenario": "password_cli",
+                            "ok": False,
+                            "workspace": str(tmp_path / "password_cli"),
+                            "attempts": [
+                                {
+                                    "attempt": 1,
+                                    "returncode": 1,
+                                    "retryable": False,
+                                    "failure_type": "scenario_failure",
+                                    "stderr_tail": "Run still has pending decisions: decision-0001",
+                                    "stdout_tail": "",
+                                }
+                            ],
+                            "summary": None,
+                            "stdout": "",
+                            "stderr": "Run still has pending decisions: decision-0001",
+                        }
+                    ],
+                    "aggregate": {"failed": 1},
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 1, "", "Scenario(s) failed: password_cli")
+
+    monkeypatch.setattr(subprocess, "run", fake_acceptance_run)
+
+    result = AcceptanceCommand(
+        tmp_path,
+        suite="core",
+        scenarios=["password_cli"],
+        promote_failures=True,
+    ).run()
+
+    report = json.loads(
+        (tmp_path / ".agent" / "acceptance" / "acceptance_report.json").read_text(encoding="utf-8")
+    )
+
+    assert not result.ok
+    assert result.promoted_tasks == ["task-0001"]
+    assert report["scenarios"][0]["failure_attribution"]["category"] == "pending_decision"
+    assert report["repair_workflow"]["status"] == "promoted"
+    assert report["repair_workflow"]["promoted_scenarios"] == ["password_cli"]
+    SchemaValidator(Path.cwd() / "schemas").validate("acceptance_report", report)
 
 
 def test_acceptance_failure_can_be_rerun_after_promoted_repair(

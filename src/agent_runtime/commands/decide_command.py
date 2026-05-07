@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -243,7 +244,7 @@ class DecideCommand:
         )
 
     def _record_user_decision_cost(self, agent_dir: Path, run_dir: Path, run_id: str) -> None:
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         cost_path = run_dir / "cost_report.json"
         report = self._read_cost(cost_path, run_id)
         budget = BudgetController.from_report(policy, report, run_id=run_id)

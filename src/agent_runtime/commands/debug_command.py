@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agent_runtime.agents.debug_agent import DebugAgent
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.runtime_context import RuntimeContext
@@ -86,7 +87,7 @@ class DebugCommand:
             raise RuntimeError("No run found. Run `agent plan` first.")
         run_dir = run_store.run_dir(run_id)
         run = run_store.load_run(run_id)
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         cost_report_path = run_dir / "cost_report.json"
         budget = BudgetController.from_report(

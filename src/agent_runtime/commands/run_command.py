@@ -13,8 +13,9 @@ from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.replan_command import ReplanCommand
 from agent_runtime.commands.research_command import ResearchCommand
 from agent_runtime.commands.review_command import ReviewCommand
+from agent_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from agent_runtime.core.budget import BudgetController
-from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.models.base import ModelClient
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -313,32 +314,11 @@ class RunCommand:
         run_id: str,
         steps: list[RunStepSummary],
     ) -> bool:
-        run_dir = self.root / ".agent" / "runs" / run_id
-        eval_path = run_dir / "task_plan_eval.json"
-        task_plan_eval = self._refresh_task_plan_eval(run_id, run_dir, eval_path)
-        if task_plan_eval is None:
+        result = TaskPlanQualityGate(self.root, self.validator).check(run_id, pause_run=True)
+        if not result.blocked:
             return False
-        if task_plan_eval["status"] != "fail":
-            return False
-        existing = self._task_plan_quality_decisions(run_id)
-        if self._task_plan_quality_bypassed(existing, task_plan_eval):
-            return False
-        if self._active_task_plan_revision(run_id, existing):
-            return False
-        pending = [decision for decision in existing if decision["status"] == "pending"]
-        decision = (
-            pending[0]
-            if pending
-            else self._create_task_plan_quality_decision(
-                run_id,
-                task_plan_eval,
-                eval_path,
-            )
-        )
-        self._pause_run_for_task_plan_quality(
-            run_id,
-            f"Task plan quality gate paused before execution: {decision['decision_id']}.",
-        )
+        task_plan_eval = result.task_plan_eval or {}
+        decision = result.decision or {"decision_id": "unknown"}
         steps.append(
             RunStepSummary(
                 "decide",
@@ -358,15 +338,7 @@ class RunCommand:
         run_dir: Path,
         eval_path: Path,
     ) -> dict | None:
-        goal_spec_path = run_dir / "goal_spec.json"
-        task_plan_path = run_dir / "task_plan.json"
-        if not goal_spec_path.exists() or not task_plan_path.exists():
-            return None
-        goal_spec = self.store.read(goal_spec_path, "goal_spec")
-        task_plan = self.store.read(task_plan_path, "task_board")
-        task_plan_eval = TaskPlanEvaluator().evaluate(task_plan, goal_spec, run_id=run_id)
-        self.store.write(eval_path, task_plan_eval, "task_plan_eval")
-        return task_plan_eval
+        return TaskPlanQualityGate(self.root, self.validator).refresh(run_id, run_dir, eval_path)
 
     def _task_plan_quality_bypassed(self, decisions: list[dict], task_plan_eval: dict) -> bool:
         for decision in decisions:
@@ -531,7 +503,7 @@ class RunCommand:
         return int(policy["budgets"].get("max_replans_per_task", 2))
 
     def _policy(self) -> dict:
-        return self.store.read(self.root / ".agent" / "policies.json", "policy_config")
+        return load_policy_config(self.root / ".agent", self.validator)
 
     def _cost_report(self, run_id: str) -> dict:
         path = self.root / ".agent" / "runs" / run_id / "cost_report.json"
@@ -645,6 +617,7 @@ class RunCommand:
         pending_decisions = self._pending_decisions(run_dir)
         accepted_decisions = self._accepted_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
+        execution_evidence = self._execution_evidence(run_dir)
         lines = [
             "# Final Report",
             "",
@@ -664,6 +637,15 @@ class RunCommand:
         if artifacts:
             lines.extend(["", "## Artifacts", ""])
             lines.extend(f"- {path}" for path in artifacts)
+        if execution_evidence:
+            lines.extend(["", "## Execution Evidence", ""])
+            lines.extend(
+                (
+                    f"- {item['task_id']}: {item['status']} - {item['summary']} "
+                    f"({item['evidence_path']})"
+                )
+                for item in execution_evidence[-10:]
+            )
         if blocked_tasks:
             lines.extend(["", "## Blocked Tasks", ""])
             lines.extend(
@@ -761,3 +743,18 @@ class RunCommand:
             if summary not in artifacts:
                 artifacts.append(summary)
         return artifacts[-20:]
+
+    def _execution_evidence(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "task_execution_evidence.jsonl"
+        if not path.exists():
+            return []
+        relative = path.relative_to(self.root).as_posix()
+        return [
+            {
+                "task_id": evidence["task_id"],
+                "status": evidence["status"],
+                "summary": evidence["summary"],
+                "evidence_path": relative,
+            }
+            for evidence in self.jsonl.read_all(path, "task_execution_evidence")
+        ]

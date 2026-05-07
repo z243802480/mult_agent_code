@@ -6,7 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.real_model_acceptance import SCENARIOS, SUITES
+from scripts.real_model_acceptance import (
+    SCENARIOS,
+    SUITES,
+    classify_acceptance_subprocess_failure,
+)
 
 
 def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
@@ -66,6 +70,8 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     assert summary["aggregate"]["tool_calls"] > 0
     assert [scenario["scenario"] for scenario in summary["scenarios"]] == ["offline_artifact"]
     assert summary["scenarios"][0]["duration_seconds"] >= 0
+    assert summary["scenarios"][0]["attempts"][0]["attempt"] == 1
+    assert summary["scenarios"][0]["attempts"][0]["returncode"] == 0
     assert summary["scenarios"][0]["summary"]["run_id"].startswith("run-")
     history = [
         json.loads(line)
@@ -141,3 +147,17 @@ def test_real_model_acceptance_runs_decision_point_without_model(
     assert scenario["summary"]["resolved_decision_id"] == "decision-0001"
     assert scenario["summary"]["resolved_status"] == "resolved"
     assert scenario["summary"]["selected_option_id"] == "cli"
+
+
+def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> None:
+    completed = subprocess.CompletedProcess(
+        ["agent"],
+        1,
+        stdout="",
+        stderr="provider returned 429 too many requests",
+    )
+
+    retryable, failure_type = classify_acceptance_subprocess_failure(completed)
+
+    assert retryable is True
+    assert failure_type == "rate_limited"

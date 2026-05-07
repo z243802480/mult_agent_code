@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agent_runtime.agents.brainstorm_agent import BrainstormAgent
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -64,7 +65,7 @@ class BrainstormCommand:
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `agent init` first.")
 
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         run_store = RunStore(agent_dir, self.validator)
         run = self._load_or_create_run(run_store)

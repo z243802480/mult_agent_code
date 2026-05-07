@@ -111,6 +111,11 @@ def test_sessions_command_can_restore_context_for_default_execution(tmp_path: Pa
     assert result.run_id == first.run_id
     assert (tmp_path / "alpha.txt").exists()
     assert not (tmp_path / "beta.txt").exists()
+    sessions = SessionsCommand(tmp_path, session_id=first.run_id, include_context=True).run()
+    context = sessions.context[first.run_id]
+    assert context["latest_execution_evidence"]["task_id"] == "task-0001"
+    assert context["latest_execution_evidence"]["status"] == "done"
+    assert "latest execution:" in sessions.to_text()
 
 
 def test_runs_command_remains_a_compatibility_alias(tmp_path: Path) -> None:

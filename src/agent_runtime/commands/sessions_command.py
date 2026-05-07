@@ -94,6 +94,14 @@ class SessionsResult:
                     f"{latest_failure.get('failure_type')} - {latest_failure.get('summary')}"
                 )
             )
+        latest_execution = context.get("latest_execution_evidence") or {}
+        if latest_execution:
+            lines.append(
+                (
+                    f"  latest execution: {latest_execution.get('task_id')} "
+                    f"{latest_execution.get('status')} - {latest_execution.get('summary')}"
+                )
+            )
         blockers = context.get("blockers") or []
         if blockers:
             lines.append(f"  blockers: {'; '.join(blockers[:3])}")
@@ -183,6 +191,7 @@ class SessionsCommand:
             run_dir
         )
         task_failures = (snapshot or {}).get("task_failures") or self._task_failures(run_dir)
+        execution_evidence = self._task_execution_evidence(run_dir)
         blockers = self._blockers(run_dir, pending_decisions, task_failures, acceptance_failures)
         risks = (snapshot or {}).get("open_risks") or self._risks(
             run_dir, task_failures, acceptance_failures
@@ -205,6 +214,8 @@ class SessionsCommand:
             "task_summary": task_summary,
             "latest_task_failure": task_failures[-1] if task_failures else None,
             "task_failures": task_failures[-3:],
+            "latest_execution_evidence": execution_evidence[-1] if execution_evidence else None,
+            "task_execution_evidence": execution_evidence[-3:],
             "blockers": blockers,
             "risks": risks,
             "acceptance_failure_count": len(acceptance_failures),
@@ -318,6 +329,28 @@ class SessionsCommand:
                 "created_at": failure.get("created_at"),
             }
             for failure in failures[-10:]
+        ]
+
+    def _task_execution_evidence(self, run_dir: Path) -> list[dict]:
+        evidence_items = self._read_jsonl(
+            run_dir / "task_execution_evidence.jsonl",
+            "task_execution_evidence",
+        )
+        return [
+            {
+                "evidence_id": evidence["evidence_id"],
+                "task_id": evidence["task_id"],
+                "status": evidence["status"],
+                "summary": evidence["summary"],
+                "failure_type": evidence.get("failure_type"),
+                "contract_ok": (evidence.get("contract_check") or {}).get("ok"),
+                "promoted_files": (evidence.get("candidate") or {}).get("promoted_files", []),
+                "evidence_path": (run_dir / "task_execution_evidence.jsonl")
+                .relative_to(self.root)
+                .as_posix(),
+                "created_at": evidence.get("created_at"),
+            }
+            for evidence in evidence_items[-10:]
         ]
 
     def _blockers(

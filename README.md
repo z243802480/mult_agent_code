@@ -190,4 +190,4 @@ Default local endpoints:
 - `vllm`: `http://localhost:8000/v1`
 - `localai`: `http://localhost:8080/v1`
 
-See [docs/zh/DEVELOPMENT.md](docs/zh/DEVELOPMENT.md) for the Chinese development guide.
+See [docs/zh/开发指南.md](docs/zh/开发指南.md) for the Chinese development guide.

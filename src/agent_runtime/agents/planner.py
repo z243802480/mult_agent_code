@@ -508,8 +508,8 @@ class FollowUpTaskPlanner:
             expected_artifacts = item.get("expected_artifacts")
             if not isinstance(acceptance, list) or not acceptance:
                 acceptance = ["Follow-up requirement is implemented and verified"]
-            if not isinstance(expected_artifacts, list):
-                expected_artifacts = []
+            if not isinstance(expected_artifacts, list) or not expected_artifacts:
+                expected_artifacts = self._infer_expected_artifacts(item)
             kind = str(item.get("task_kind") or "implementation")
             task: dict = {
                 "schema_version": "0.1.0",
@@ -567,6 +567,23 @@ class FollowUpTaskPlanner:
         if len(trimmed) <= 60:
             return trimmed
         return trimmed[:57].rstrip() + "..."
+
+    def _infer_expected_artifacts(self, item: dict) -> list[str]:
+        text = " ".join(str(item.get(key) or "") for key in ("title", "description"))
+        acceptance = item.get("acceptance", [])
+        if isinstance(acceptance, list):
+            text = " ".join([text, *[str(value) for value in acceptance if value]])
+        explicit = re.findall(r"[\w./-]+\.(?:py|md|txt|json|html|css|js|ts|tsx|pdf)", text)
+        if explicit:
+            return [explicit[0]]
+        title = str(item.get("title") or item.get("description") or "follow up").strip()
+        stem = re.sub(r"^(create|add|implement|write|update)\s+", "", title, flags=re.I)
+        stem = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_").upper()
+        if not stem:
+            stem = "FOLLOW_UP"
+        if "README" in stem:
+            return [f"{stem}.md"]
+        return [f"{stem.lower()}.txt"]
 
     def _normalize(self, value: object) -> str:
         return " ".join(str(value).strip().lower().split())

@@ -647,7 +647,10 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     run_dir = tmp_path / ".agent" / "runs" / result.run_id
     assert (run_dir / "review_report.md").exists()
     assert (run_dir / "final_report.md").exists()
-    assert "Review status: pass" in (run_dir / "final_report.md").read_text(encoding="utf-8")
+    final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "Review status: pass" in final_report
+    assert "## Execution Evidence" in final_report
+    assert "task_execution_evidence.jsonl" in final_report
 
 
 def test_run_command_pauses_before_execute_when_task_plan_quality_fails(

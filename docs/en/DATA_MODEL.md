@@ -1,6 +1,6 @@
 ﻿# Multi-Agent Autonomous Development System - Data Model
 
-The Chinese `docs/zh/DATA_MODEL.md` is the detailed source of truth. This file is the English summary for review.
+The detailed Chinese source of truth lives in the Chinese documentation tree. This file is the English summary for review.
 
 ## Core Objects
 

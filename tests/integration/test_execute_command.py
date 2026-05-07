@@ -4,6 +4,7 @@ from pathlib import Path
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
@@ -262,6 +263,16 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     ]
     assert artifacts[0]["path"] == "notes_tool.py"
     assert artifacts[0]["type"] == "source_file"
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert evidence[0]["status"] == "done"
+    assert evidence[0]["task"]["acceptance"]
+    assert evidence[0]["candidate"]["promoted_files"] == ["notes_tool.py"]
+    assert evidence[0]["verification_results"][0]["ok"] is True
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 2
@@ -362,6 +373,15 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
     assert task_failures[0]["failure_type"] == "contract_violation"
     assert task_failures[0]["contract_check"]["verification_total"] == 0
     assert "Add a verification command" in task_failures[0]["recommendations"][0]
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert evidence[0]["status"] == "blocked"
+    assert evidence[0]["failure_type"] == "contract_violation"
+    assert evidence[0]["contract_check"]["verification_total"] == 0
 
 
 def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:
@@ -374,3 +394,56 @@ def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None
     assert result.completed == 1
     assert execute_client.calls == 2
     assert (tmp_path / "notes_tool.py").exists()
+
+
+def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+        return {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "created_at": "2026-05-07T12:00:00+08:00",
+            "status": "fail",
+            "overall_score": 0.5,
+            "scores": {
+                "granularity_score": 0.5,
+                "dependency_score": 1.0,
+                "acceptance_score": 0.5,
+                "artifact_score": 0.25,
+                "tooling_score": 0.25,
+            },
+            "summary": "Task plan quality fail with score 0.50; 2 error(s), 0 warning(s).",
+            "issues": [
+                {
+                    "task_id": "task-0001",
+                    "severity": "error",
+                    "code": "missing_artifact",
+                    "message": "Deliverable task has no expected artifact.",
+                    "recommendation": "Add expected_artifacts before execution.",
+                }
+            ],
+            "recommendations": ["Add expected_artifacts before execution."],
+            "task_count": 1,
+        }
+
+    monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+
+    assert result.completed == 0
+    assert result.blocked == 0
+    assert result.executed_tasks[0].status == "paused"
+    assert result.executed_tasks[0].evidence_path is not None
+    assert not (tmp_path / "notes_tool.py").exists()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert run["status"] == "paused"
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert decisions[0]["metadata"]["kind"] == "task_plan_quality_gate"

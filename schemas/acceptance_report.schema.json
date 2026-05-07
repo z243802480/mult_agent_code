@@ -50,10 +50,26 @@
           "ok": { "type": "boolean" },
           "workspace": { "type": ["string", "null"] },
           "failure_summary": { "type": "string" },
+          "failure_attribution": { "type": "object" },
+          "attempts": { "type": "array", "items": { "type": "object" } },
           "stdout_tail": { "type": "string" },
           "stderr_tail": { "type": "string" },
           "summary": { "type": ["object", "null"] }
         }
+      }
+    },
+    "repair_workflow": {
+      "type": "object",
+      "properties": {
+        "promoted_tasks": { "type": "array", "items": { "type": "string" } },
+        "promoted_scenarios": { "type": "array", "items": { "type": "string" } },
+        "promotion_error": { "type": ["string", "null"] },
+        "repair_run_id": { "type": ["string", "null"] },
+        "rerun_summary_json": { "type": ["string", "null"] },
+        "rerun_ok": { "type": ["boolean", "null"] },
+        "closed_failures": { "type": "array", "items": { "type": "string" } },
+        "remaining_failures": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string" }
       }
     }
   }

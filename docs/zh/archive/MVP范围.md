@@ -205,11 +205,11 @@ rollback_on_regression: true
 
 产物：
 
-- `MVP_SCOPE.md`
-- `COMMAND_SPECS.md`
-- `EVALUATION.md`
-- `TEST_STRATEGY.md`
-- `COST_AND_RISK.md`
+- `MVP范围.md`
+- `命令规格.md`
+- `评估体系.md`
+- `测试策略.md`
+- `成本与风险.md`
 
 ### Phase 1：单 agent harness
 

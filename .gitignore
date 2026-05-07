@@ -14,3 +14,7 @@ env/
 .env
 .env.*
 secrets/
+/password_cli/
+/markdown_kb/
+/safe_file_renamer/
+/file_smoke/

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agent_runtime.agents.research_agent import ResearchAgent
 from agent_runtime.core.budget import BudgetController
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -64,7 +65,7 @@ class ResearchCommand:
         agent_dir = self.root / ".agent"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `agent init` first.")
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         run_store = RunStore(agent_dir, self.validator)
         run = run_store.load_run(self.run_id) if self.run_id else run_store.create_run(f'agent research "{self.query}"')
         run_id = run["run_id"]

@@ -6,9 +6,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from agent_runtime.agents.coder_agent import CoderAgent
 from agent_runtime.commands.decide_command import DecideCommand
+from agent_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_contract import (
@@ -37,6 +39,7 @@ class TaskExecutionSummary:
     summary: str
     tool_calls: int
     verification_calls: int
+    evidence_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,8 @@ class ExecuteResult:
             lines.append(
                 f"- {task.task_id}: {task.status} ({task.tool_calls} tool, {task.verification_calls} verification)"
             )
+            if task.evidence_path:
+                lines.append(f"  evidence: {task.evidence_path}")
         if self.cost_report_path:
             lines.append(f"Cost report: {self.cost_report_path}")
         return "\n".join(lines)
@@ -89,7 +94,7 @@ class ExecuteCommand:
             raise RuntimeError("No run found. Run `agent plan` first.")
         run_dir = run_store.run_dir(run_id)
         run = run_store.load_run(run_id)
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         cost_report_path = run_dir / "cost_report.json"
@@ -108,6 +113,37 @@ class ExecuteCommand:
         coder = CoderAgent(model_client, self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
         runtime_context = ContextLoader(self.root, self.validator).load(run_id)
+
+        quality_gate = TaskPlanQualityGate(self.root, self.validator).check(run_id, pause_run=True)
+        if quality_gate.blocked:
+            event_logger.record(
+                run_id,
+                "run_paused",
+                "ExecuteCommand",
+                quality_gate.reason,
+                {
+                    "gate": "task_plan_quality",
+                    "task_plan_eval": str(quality_gate.eval_path),
+                    "decision_id": (quality_gate.decision or {}).get("decision_id"),
+                },
+            )
+            self.store.write(cost_report_path, budget.cost_report(), "cost_report")
+            return ExecuteResult(
+                run_id=run_id,
+                completed=0,
+                blocked=0,
+                executed_tasks=[
+                    TaskExecutionSummary(
+                        task_id="task-plan",
+                        status="paused",
+                        summary=quality_gate.reason,
+                        tool_calls=0,
+                        verification_calls=0,
+                        evidence_path=quality_gate.eval_path,
+                    )
+                ],
+                cost_report_path=cost_report_path,
+            )
 
         run["status"] = "running"
         run["current_phase"] = "EXECUTE"
@@ -209,12 +245,24 @@ class ExecuteCommand:
                         f"{task_id} paused for {decision['decision_id']}",
                         {"task_id": task_id, "decision_id": decision["decision_id"]},
                     )
+                evidence_path = self._record_execution_evidence(
+                    context,
+                    task,
+                    action,
+                    [],
+                    [],
+                    "blocked",
+                    f"Waiting for decision: {decision['decision_id']}",
+                    candidate={"decision_id": decision["decision_id"]},
+                    failure_type="policy_decision",
+                )
                 return TaskExecutionSummary(
                     task_id=task_id,
                     status="blocked",
                     summary=f"Waiting for decision: {decision['decision_id']}",
                     tool_calls=0,
                     verification_calls=0,
+                    evidence_path=evidence_path,
                 )
             candidate = self._create_candidate_workspace(context, task)
             candidate_context = self._candidate_context(context, candidate)
@@ -247,6 +295,18 @@ class ExecuteCommand:
                 promoted_files = self._promote_candidate_changes(
                     context, candidate, contract_check.changed_files
                 )
+                evidence_path = self._record_execution_evidence(
+                    context,
+                    task,
+                    action,
+                    tool_results,
+                    verification_results,
+                    "done",
+                    "Verification passed.",
+                    contract_check=contract_check.to_dict(),
+                    candidate_workspace=candidate,
+                    promoted_files=promoted_files,
+                )
                 self._record_experiment(
                     context,
                     task,
@@ -274,8 +334,21 @@ class ExecuteCommand:
                     summary=action["summary"],
                     tool_calls=len(action["tool_calls"]),
                     verification_calls=len(action["verification"]),
+                    evidence_path=evidence_path,
                 )
             reason = contract_check.summary()
+            evidence_path = self._record_execution_evidence(
+                context,
+                task,
+                action,
+                tool_results,
+                verification_results,
+                "blocked",
+                reason,
+                contract_check=contract_check.to_dict(),
+                candidate_workspace=candidate,
+                failure_type="contract_violation",
+            )
             self._record_experiment(
                 context,
                 task,
@@ -315,16 +388,28 @@ class ExecuteCommand:
                 summary=reason,
                 tool_calls=len(action["tool_calls"]),
                 verification_calls=len(action["verification"]),
+                evidence_path=evidence_path,
             )
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             self._record_task_failure(context, task, self._failure_type(exc), str(exc))
+            evidence_path = self._record_execution_evidence(
+                context,
+                task,
+                None,
+                [],
+                [],
+                "blocked",
+                str(exc),
+                failure_type=self._failure_type(exc),
+            )
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",
                 summary=str(exc),
                 tool_calls=0,
                 verification_calls=0,
+                evidence_path=evidence_path,
             )
 
     def _require_non_empty_action(self, action: dict) -> None:
@@ -594,6 +679,92 @@ class ExecuteCommand:
                     "backup_ids": backup_ids,
                 },
             )
+
+    def _record_execution_evidence(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        action: dict | None,
+        tool_results: list,
+        verification_results: list,
+        status: str,
+        summary: str,
+        *,
+        contract_check: dict | None = None,
+        candidate_workspace: CandidateWorkspace | None = None,
+        promoted_files: list[str] | None = None,
+        candidate: dict | None = None,
+        failure_type: str | None = None,
+    ) -> Path | None:
+        if not context.run_dir:
+            return None
+        path = context.run_dir / "task_execution_evidence.jsonl"
+        store = JsonlStore(self.validator)
+        existing = store.read_all(path, "task_execution_evidence") if path.exists() else []
+        record = {
+            "schema_version": "0.1.0",
+            "evidence_id": f"task-execution-{len(existing) + 1:04d}",
+            "run_id": context.run_id,
+            "task_id": task["task_id"],
+            "status": status,
+            "summary": summary,
+            "failure_type": failure_type,
+            "task": {
+                "title": task.get("title"),
+                "task_kind": task.get("task_kind"),
+                "acceptance": task.get("acceptance", []),
+                "expected_artifacts": task.get("expected_artifacts", []),
+                "expected_changed_files": task.get("expected_changed_files", []),
+                "allowed_tools": task.get("allowed_tools", []),
+            },
+            "action": {
+                "summary": (action or {}).get("summary"),
+                "tool_count": len((action or {}).get("tool_calls", [])),
+                "verification_count": len((action or {}).get("verification", [])),
+                "completion_notes": (action or {}).get("completion_notes"),
+            },
+            "candidate": {
+                "workspace": str(candidate_workspace.root) if candidate_workspace else None,
+                "candidate_id": candidate_workspace.candidate_id if candidate_workspace else None,
+                "changed_files": self._changed_files(tool_results),
+                "promoted_files": sorted(set(promoted_files or [])),
+                **(candidate or {}),
+            },
+            "contract_check": contract_check or {},
+            "tool_results": self._result_evidence(tool_results),
+            "verification_results": self._result_evidence(verification_results),
+            "created_at": now_iso(),
+        }
+        store.append(path, record, "task_execution_evidence")
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "task_execution_evidence_recorded",
+                "ExecuteCommand",
+                f"{record['evidence_id']} -> {status}",
+                {
+                    "evidence_id": record["evidence_id"],
+                    "task_id": task["task_id"],
+                    "status": status,
+                    "artifact": str(path),
+                },
+            )
+        return path
+
+    def _result_evidence(self, results: list) -> list[dict]:
+        evidence = []
+        for result in results:
+            data = getattr(result, "data", {})
+            evidence.append(
+                {
+                    "ok": bool(getattr(result, "ok", False)),
+                    "summary": str(getattr(result, "summary", "")),
+                    "error": getattr(result, "error", None),
+                    "warnings": list(getattr(result, "warnings", []) or []),
+                    "data": data if isinstance(data, dict) else {},
+                }
+            )
+        return evidence
 
     def _record_task_failure(
         self,

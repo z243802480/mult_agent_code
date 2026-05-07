@@ -7,6 +7,7 @@ from agent_runtime.agents.goal_spec_agent import GoalSpecAgent
 from agent_runtime.agents.planner import RequirementPlanner
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.context_loader import ContextLoader
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -66,7 +67,7 @@ class PlanCommand:
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `agent init` first.")
 
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         run_store = RunStore(agent_dir, self.validator)
         run = run_store.create_run(f'agent plan "{self.goal}"')

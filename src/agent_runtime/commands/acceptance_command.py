@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
+from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.core.task_contract import completion_contract
 from agent_runtime.storage.event_logger import EventLogger
@@ -157,8 +158,21 @@ class AcceptanceCommand:
                 promoter = AcceptanceFailurePromoter(self.root, self.validator)
                 promoted_tasks = promoter.promote(report)
                 promoted_scenarios = promoter.promoted_scenarios
+                promoted_tasks = promoter.repair_task_ids or promoted_tasks
+                report["repair_workflow"] = self._repair_workflow(
+                    promoted_tasks=promoted_tasks,
+                    promoted_scenarios=promoted_scenarios,
+                    promotion_error=None,
+                )
+                self.store.write(report_path, report, "acceptance_report")
             except RuntimeError as exc:
                 promotion_error = str(exc)
+                report["repair_workflow"] = self._repair_workflow(
+                    promoted_tasks=[],
+                    promoted_scenarios=[],
+                    promotion_error=promotion_error,
+                )
+                self.store.write(report_path, report, "acceptance_report")
         if self.run_promoted and promoted_tasks and promotion_error is None:
             promoted_run_text = self._run_promoted_tasks()
             repair_run_id = self._current_run_id()
@@ -189,6 +203,16 @@ class AcceptanceCommand:
                 "closed_failures": closed_failures,
                 "remaining_failures": remaining_failures,
             }
+            report["repair_workflow"] = self._repair_workflow(
+                promoted_tasks=promoted_tasks,
+                promoted_scenarios=promoted_scenarios,
+                promotion_error=None,
+                repair_run_id=repair_run_id,
+                rerun_summary_json=rerun_summary_json,
+                rerun_ok=rerun_ok,
+                closed_failures=closed_failures,
+                remaining_failures=remaining_failures,
+            )
             self.store.write(report_path, report, "acceptance_report")
         effective_ok = completed.returncode == 0 or (
             rerun_ok is True and bool(promoted_tasks) and not remaining_failures
@@ -282,6 +306,8 @@ class AcceptanceCommand:
                     "ok": bool(scenario.get("ok", False)),
                     "workspace": scenario.get("workspace"),
                     "failure_summary": self._failure_summary(scenario),
+                    "failure_attribution": self._failure_attribution(scenario),
+                    "attempts": scenario.get("attempts", []),
                     "stdout_tail": self._tail(str(scenario.get("stdout") or "")),
                     "stderr_tail": self._tail(str(scenario.get("stderr") or "")),
                     "summary": scenario.get("summary"),
@@ -294,6 +320,10 @@ class AcceptanceCommand:
                     "ok": False,
                     "workspace": str(self.root),
                     "failure_summary": self._tail(stderr or stdout or "acceptance failed"),
+                    "failure_attribution": self._failure_attribution(
+                        {"stderr": stderr, "stdout": stdout, "attempts": []}
+                    ),
+                    "attempts": [],
                     "stdout_tail": self._tail(stdout),
                     "stderr_tail": self._tail(stderr),
                     "summary": summary or None,
@@ -332,6 +362,128 @@ class AcceptanceCommand:
         stderr = str(scenario.get("stderr") or "").strip()
         stdout = str(scenario.get("stdout") or "").strip()
         return self._tail(stderr or stdout or "scenario failed")
+
+    def _failure_attribution(self, scenario: dict) -> dict:
+        if scenario.get("ok"):
+            return {"category": "none", "retryable": False, "confidence": 1.0, "signals": []}
+        text = "\n".join(
+            [
+                str(scenario.get("failure_summary") or ""),
+                str(scenario.get("stderr") or ""),
+                str(scenario.get("stdout") or ""),
+                json.dumps(scenario.get("summary") or {}, ensure_ascii=False),
+                json.dumps(scenario.get("attempts") or [], ensure_ascii=False),
+            ]
+        ).lower()
+        attempts = scenario.get("attempts")
+        if isinstance(attempts, list):
+            for attempt in attempts:
+                if not isinstance(attempt, dict):
+                    continue
+                failure_type = attempt.get("failure_type")
+                if failure_type in {"rate_limited", "server_error", "timeout", "network"}:
+                    return {
+                        "category": "provider_transient",
+                        "retryable": True,
+                        "confidence": 0.9,
+                        "signals": [str(failure_type)],
+                    }
+        rules = [
+            (
+                "pending_decision",
+                ["pending decisions", "decision-"],
+                False,
+                0.9,
+            ),
+            (
+                "model_output_invalid_json",
+                ["invalid json", "not json", "jsondecode", "schema validation"],
+                False,
+                0.75,
+            ),
+            (
+                "tool_call_invalid",
+                ["tool is not allowed", "unknown_tool", "policy blocked", "shell policy"],
+                False,
+                0.8,
+            ),
+            (
+                "verification_missing",
+                ["required verification was not provided", "no verification"],
+                False,
+                0.8,
+            ),
+            (
+                "plan_quality_failed",
+                ["task plan quality failed", "task_plan_quality_gate"],
+                False,
+                0.85,
+            ),
+            (
+                "code_bug",
+                ["assertionerror", "nonzero_exit", "expected output file", "tests failed"],
+                False,
+                0.65,
+            ),
+        ]
+        for category, markers, retryable, confidence in rules:
+            matched = [marker for marker in markers if marker in text]
+            if matched:
+                return {
+                    "category": category,
+                    "retryable": retryable,
+                    "confidence": confidence,
+                    "signals": matched[:5],
+                }
+        return {
+            "category": "scenario_validation_failure",
+            "retryable": False,
+            "confidence": 0.5,
+            "signals": ["no specific classifier matched"],
+        }
+
+    def _repair_workflow(
+        self,
+        *,
+        promoted_tasks: list[str],
+        promoted_scenarios: list[str],
+        promotion_error: str | None,
+        repair_run_id: str | None = None,
+        rerun_summary_json: Path | None = None,
+        rerun_ok: bool | None = None,
+        closed_failures: list[str] | None = None,
+        remaining_failures: list[str] | None = None,
+    ) -> dict:
+        return {
+            "promoted_tasks": promoted_tasks,
+            "promoted_scenarios": promoted_scenarios,
+            "promotion_error": promotion_error,
+            "repair_run_id": repair_run_id,
+            "rerun_summary_json": str(rerun_summary_json) if rerun_summary_json else None,
+            "rerun_ok": rerun_ok,
+            "closed_failures": closed_failures or [],
+            "remaining_failures": remaining_failures or [],
+            "status": self._repair_workflow_status(
+                promoted_tasks, promotion_error, rerun_ok, remaining_failures or []
+            ),
+        }
+
+    def _repair_workflow_status(
+        self,
+        promoted_tasks: list[str],
+        promotion_error: str | None,
+        rerun_ok: bool | None,
+        remaining_failures: list[str],
+    ) -> str:
+        if promotion_error:
+            return "promotion_failed"
+        if rerun_ok is True and not remaining_failures:
+            return "closed"
+        if rerun_ok is False:
+            return "remaining_failures"
+        if promoted_tasks:
+            return "promoted"
+        return "not_started"
 
     def _tail(self, value: str, max_chars: int = 4000) -> str:
         if len(value) <= max_chars:
@@ -387,9 +539,11 @@ class AcceptanceFailurePromoter:
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
         self.promoted_scenarios: list[str] = []
+        self.repair_task_ids: list[str] = []
 
     def promote(self, report: dict) -> list[str]:
         self.promoted_scenarios = []
+        self.repair_task_ids = []
         failed_scenarios = [
             scenario
             for scenario in report.get("scenarios", [])
@@ -399,27 +553,28 @@ class AcceptanceFailurePromoter:
             return []
         agent_dir = self.root / ".agent"
         if not agent_dir.exists():
-            raise RuntimeError("Cannot promote acceptance failures: workspace is not initialized.")
+            InitCommand(self.root).run()
+            agent_dir = self.root / ".agent"
         run_store = RunStore(agent_dir, self.validator)
-        run_id = run_store.current_session_id()
-        if not run_id:
-            raise RuntimeError("Cannot promote acceptance failures: no current session found.")
+        run_id = self._ensure_repair_session(run_store, report)
         run_dir = run_store.run_dir(run_id)
         task_plan_path = run_dir / "task_plan.json"
         if not task_plan_path.exists():
-            raise RuntimeError(
-                f"Cannot promote acceptance failures: missing task plan for {run_id}."
-            )
+            self._write_repair_seed_artifacts(run_store, report, run_id)
 
         task_plan = self.store.read(task_plan_path, "task_board")
         existing_tasks = task_plan["tasks"]
-        existing_keys = {self._dedupe_key(task) for task in existing_tasks}
+        existing_by_key = {self._dedupe_key(task): task for task in existing_tasks}
+        existing_keys = set(existing_by_key)
         next_index = self._next_task_index(existing_tasks)
         promoted: list[str] = []
         for scenario in failed_scenarios:
             scenario_name = str(scenario.get("scenario") or "unknown")
             key = f"acceptance:{scenario_name.lower()}"
             if key in existing_keys:
+                existing_task = existing_by_key[key]
+                self.repair_task_ids.append(str(existing_task["task_id"]))
+                self.promoted_scenarios.append(scenario_name)
                 continue
             task_id = f"task-{next_index:04d}"
             next_index += 1
@@ -430,6 +585,7 @@ class AcceptanceFailurePromoter:
             existing_keys.add(key)
             self._record_failure_memory(agent_dir, report, scenario, task_id, evidence_path)
             promoted.append(task_id)
+            self.repair_task_ids.append(task_id)
             self.promoted_scenarios.append(scenario_name)
 
         if not promoted:
@@ -444,6 +600,81 @@ class AcceptanceFailurePromoter:
         run_store.update_run(run)
         self._record_events(run_dir, run_id, promoted)
         return promoted
+
+    def _ensure_repair_session(self, run_store: RunStore, report: dict) -> str:
+        run_id = run_store.current_session_id()
+        if run_id and (run_store.run_dir(run_id) / "task_plan.json").exists():
+            return run_id
+        run = run_store.create_run(
+            f"agent acceptance repair session for suite {report.get('suite')}",
+            goal_id="goal-acceptance-repair",
+        )
+        self._write_repair_seed_artifacts(run_store, report, run["run_id"])
+        run_store.set_current_session(run["run_id"], "acceptance_failure_promotion")
+        return str(run["run_id"])
+
+    def _write_repair_seed_artifacts(
+        self,
+        run_store: RunStore,
+        report: dict,
+        run_id: str,
+    ) -> None:
+        run_dir = run_store.run_dir(run_id)
+        goal_spec = {
+            "schema_version": "0.1.0",
+            "goal_id": "goal-acceptance-repair",
+            "original_goal": "Repair failed real-model acceptance scenarios.",
+            "normalized_goal": (
+                f"Repair failed acceptance scenarios for suite `{report.get('suite')}`."
+            ),
+            "goal_type": "codebase_improvement",
+            "assumptions": ["Failure evidence and scenario workspaces are available locally."],
+            "constraints": [
+                "Do not read or write protected paths.",
+                "Do not commit secrets.",
+                "Repair only the acceptance failure cause.",
+            ],
+            "non_goals": ["Do not redesign unrelated runtime architecture."],
+            "expanded_requirements": [
+                {
+                    "id": "req-acceptance-repair",
+                    "priority": "must",
+                    "description": "Promote failed acceptance scenarios into repair tasks.",
+                    "source": "inferred",
+                    "acceptance": ["Each failed scenario has evidence and a repair task."],
+                }
+            ],
+            "target_outputs": ["repair_tasks", "acceptance_report"],
+            "definition_of_done": ["Promoted scenario reruns pass or remaining failures are recorded."],
+            "verification_strategy": ["Run /acceptance with --rerun-promoted."],
+            "budget": {"max_iterations": 3, "max_model_calls": 20},
+        }
+        task_plan = {"schema_version": "0.1.0", "tasks": []}
+        cost_report = {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "model_calls": 0,
+            "tool_calls": 0,
+            "estimated_input_tokens": 0,
+            "estimated_output_tokens": 0,
+            "strong_model_calls": 0,
+            "cheap_model_calls": 0,
+            "repair_attempts": 0,
+            "research_calls": 0,
+            "context_compactions": 0,
+            "user_decisions": 0,
+            "status": "within_budget",
+            "warnings": [],
+        }
+        self.store.write(run_dir / "goal_spec.json", goal_spec, "goal_spec")
+        self.store.write(run_dir / "task_plan.json", task_plan, "task_board")
+        self.store.write(run_dir / "cost_report.json", cost_report, "cost_report")
+        run = run_store.load_run(run_id)
+        run["goal_id"] = goal_spec["goal_id"]
+        run["status"] = "running"
+        run["current_phase"] = "PLAN"
+        run["summary"] = "Acceptance repair session seeded for promoted failure tasks."
+        run_store.update_run(run)
 
     def _task_from_scenario(
         self,
@@ -532,6 +763,7 @@ class AcceptanceFailurePromoter:
             "suite": str(report.get("suite") or "unknown"),
             "scenario": scenario_name,
             "failure_summary": str(scenario.get("failure_summary") or "acceptance scenario failed"),
+            "failure_attribution": scenario.get("failure_attribution") or {},
             "acceptance_report": str(
                 self.root / ".agent" / "acceptance" / "acceptance_report.json"
             ),

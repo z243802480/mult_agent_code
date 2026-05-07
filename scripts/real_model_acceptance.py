@@ -274,38 +274,95 @@ def run_scenario(
     if args.allow_fake:
         command.append("--allow-fake")
     env = os.environ.copy()
+    env["AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES"] = str(args.model_max_retries)
+    env["AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS"] = str(args.scenario_timeout_seconds)
     if args.allow_fake:
         env["AGENT_MODEL_PROVIDER"] = "fake"
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=Path(__file__).resolve().parents[1],
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=args.scenario_timeout_seconds + 30,
+    attempts: list[dict[str, Any]] = []
+    completed: subprocess.CompletedProcess[str] | None = None
+    max_attempts = max(1, int(args.run_attempts))
+    for attempt in range(1, max_attempts + 1):
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=Path(__file__).resolve().parents[1],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=args.scenario_timeout_seconds + 30,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = text_or_empty(exc.stdout)
+            stderr = (
+                text_or_empty(exc.stderr)
+                + f"\nScenario timed out after {args.scenario_timeout_seconds + 30}s."
+            )
+            attempts.append(
+                {
+                    "attempt": attempt,
+                    "returncode": None,
+                    "retryable": True,
+                    "failure_type": "timeout",
+                    "stdout_tail": stdout[-2000:],
+                    "stderr_tail": stderr[-2000:],
+                }
+            )
+            if attempt >= max_attempts:
+                return {
+                    "scenario": scenario.name,
+                    "ok": False,
+                    "workspace": str(workspace),
+                    "duration_seconds": round(time.monotonic() - started_at, 3),
+                    "attempts": attempts,
+                    "summary": read_json(summary_path),
+                    "stdout": stdout,
+                    "stderr": stderr,
+                }
+            continue
+        retryable, failure_type = classify_acceptance_subprocess_failure(completed)
+        attempts.append(
+            {
+                "attempt": attempt,
+                "returncode": completed.returncode,
+                "retryable": retryable,
+                "failure_type": failure_type,
+                "stdout_tail": completed.stdout[-2000:],
+                "stderr_tail": completed.stderr[-2000:],
+            }
         )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "scenario": scenario.name,
-            "ok": False,
-            "workspace": str(workspace),
-            "duration_seconds": round(time.monotonic() - started_at, 3),
-            "summary": read_json(summary_path),
-            "stdout": text_or_empty(exc.stdout),
-            "stderr": text_or_empty(exc.stderr)
-            + f"\nScenario timed out after {args.scenario_timeout_seconds + 30}s.",
-        }
+        if completed.returncode == 0 or attempt >= max_attempts or not retryable:
+            break
+    if completed is None:
+        raise AcceptanceFailure(f"Scenario did not execute: {scenario.name}")
     return {
         "scenario": scenario.name,
         "ok": completed.returncode == 0,
         "workspace": str(workspace),
         "duration_seconds": round(time.monotonic() - started_at, 3),
+        "attempts": attempts,
         "summary": read_json(summary_path),
         "stdout": completed.stdout,
         "stderr": completed.stderr,
     }
+
+
+def classify_acceptance_subprocess_failure(
+    completed: subprocess.CompletedProcess[str],
+) -> tuple[bool, str | None]:
+    if completed.returncode == 0:
+        return False, None
+    text = f"{completed.stdout}\n{completed.stderr}".lower()
+    markers = {
+        "rate_limited": ["429", "rate limit", "too many requests"],
+        "server_error": ["500", "502", "503", "504", "temporarily unavailable"],
+        "timeout": ["timeout", "timed out"],
+        "network": ["unexpected_eof", "tls", "ssl", "urlopen error"],
+    }
+    for failure_type, needles in markers.items():
+        if any(needle in text for needle in needles):
+            return True, failure_type
+    return False, "scenario_failure"
 
 
 def write_setup_files(workspace: Path, scenario: AcceptanceScenario) -> None:

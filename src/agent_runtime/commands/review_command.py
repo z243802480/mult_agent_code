@@ -9,6 +9,7 @@ from agent_runtime.agents.review_agent import ReviewAgent
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.decision_policy import DecisionPolicy
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -72,7 +73,7 @@ class ReviewCommand:
             raise RuntimeError("No run found. Run `agent plan` first.")
         run_dir = run_store.run_dir(run_id)
         run = run_store.load_run(run_id)
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         cost_report_path = run_dir / "cost_report.json"
         budget = BudgetController.from_report(
             policy,
@@ -150,7 +151,7 @@ class ReviewCommand:
     ) -> tuple[int, int]:
         if eval_report["overall"]["status"] == "pass":
             return 0, 0
-        policy = self.store.read(agent_dir / "policies.json", "policy_config")
+        policy = load_policy_config(agent_dir, self.validator)
         task_follow_ups, decision_count = self._split_follow_ups(run_dir, eval_report, policy)
         task_plan_path = run_dir / "task_plan.json"
         task_plan = self.store.read(task_plan_path, "task_board")
@@ -255,6 +256,10 @@ class ReviewCommand:
         tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
+        execution_evidence = self._read_jsonl(
+            run_dir / "task_execution_evidence.jsonl",
+            "task_execution_evidence",
+        )
         return {
             "run_id": run_id,
             "project": self.store.read(agent_dir / "project.json", "project_config"),
@@ -265,8 +270,14 @@ class ReviewCommand:
                 "events": events[-50:],
                 "tool_calls": tool_calls[-50:],
                 "model_calls": model_calls[-20:],
+                "task_execution_evidence": execution_evidence[-20:],
             },
-            "deterministic_checks": self._deterministic_checks(task_plan, tool_calls, cost_report),
+            "deterministic_checks": self._deterministic_checks(
+                task_plan,
+                tool_calls,
+                cost_report,
+                execution_evidence,
+            ),
         }
 
     def _deterministic_checks(
@@ -274,7 +285,9 @@ class ReviewCommand:
         task_plan: dict,
         tool_calls: list[dict],
         cost_report: dict,
+        execution_evidence: list[dict] | None = None,
     ) -> dict:
+        execution_evidence = execution_evidence or []
         tasks = task_plan.get("tasks", [])
         active_tasks = [task for task in tasks if task["status"] != "discarded"]
         done = [task for task in active_tasks if task["status"] == "done"]
@@ -289,6 +302,10 @@ class ReviewCommand:
             "task_completion_rate": len(done) / len(active_tasks) if active_tasks else 0,
             "blocked_task_count": len(blocked),
             "discarded_task_count": len(tasks) - len(active_tasks),
+            "task_execution_evidence_count": len(execution_evidence),
+            "latest_execution_status": (
+                execution_evidence[-1].get("status") if execution_evidence else None
+            ),
             "verification_call_count": len(verification_calls),
             "verification_pass_rate": (
                 len(passed_verification) / len(verification_calls)

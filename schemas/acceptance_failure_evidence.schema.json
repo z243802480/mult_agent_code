@@ -21,6 +21,7 @@
     "suite": { "type": "string" },
     "scenario": { "type": "string" },
     "failure_summary": { "type": "string" },
+    "failure_attribution": { "type": "object" },
     "acceptance_report": { "type": "string" },
     "summary_json": { "type": ["string", "null"] },
     "workspace": { "type": ["string", "null"] },
