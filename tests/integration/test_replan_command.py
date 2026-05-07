@@ -102,7 +102,9 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "ready"]
     repair_task = task_plan["tasks"][1]
     assert repair_task["task_id"] == "task-0002"
-    assert repair_task["replan"]["source_evidence_id"] == "task-failure-0001"
+    assert repair_task["replan"]["source_evidence_id"] == "task-execution-0001"
+    assert "Primary evidence: task-execution-0001" in repair_task["description"]
+    assert "Candidate workspace:" in repair_task["description"]
     assert "verification did not pass" in repair_task["description"]
     backlog = json.loads(
         (tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8")
@@ -129,4 +131,4 @@ def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> N
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert decisions[0]["metadata"]["kind"] == "replan_decision"
-    assert decisions[0]["metadata"]["source_evidence_id"] == "task-failure-0001"
+    assert decisions[0]["metadata"]["source_evidence_id"] == "task-execution-0001"

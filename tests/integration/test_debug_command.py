@@ -89,6 +89,7 @@ class FakeDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         assert "recent_tool_failures" in request.messages[-1].content
         assert "recent_task_failures" in request.messages[-1].content
+        assert "recent_task_execution_evidence" in request.messages[-1].content
         return ChatResponse(
             content=json.dumps(
                 {
@@ -267,6 +268,15 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
     ]
     assert task_failures[0]["failure_type"] == "contract_violation"
     assert task_failures[0]["verification_failures"][0]["error"] == "nonzero_exit"
+    execution_evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert [item["status"] for item in execution_evidence] == ["blocked", "done"]
+    assert execution_evidence[-1]["candidate"]["promoted_files"] == ["repairable.py"]
+    assert execution_evidence[-1]["verification_results"][0]["ok"] is True
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
@@ -326,6 +336,15 @@ def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
     ]
     assert task_failures[-1]["failure_type"] == "repair_contract_violation"
     assert task_failures[-1]["contract_check"]["violations"] == ["verification did not pass"]
+    execution_evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert execution_evidence[-1]["status"] == "blocked"
+    assert execution_evidence[-1]["failure_type"] == "repair_contract_violation"
+    assert execution_evidence[-1]["candidate"]["promoted_files"] == []
 
 
 def test_debug_command_can_mark_already_satisfied_task_done(tmp_path: Path) -> None:

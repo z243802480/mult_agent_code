@@ -5,11 +5,12 @@ from pathlib import Path
 
 from agent_runtime.agents.debug_agent import DebugAgent
 from agent_runtime.core.budget import BudgetController
-from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
+from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_contract import check_completion_contract
+from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
@@ -32,6 +33,7 @@ class RepairSummary:
     summary: str
     repair_calls: int
     verification_calls: int
+    evidence_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,8 @@ class DebugResult:
             lines.append(
                 f"- {repair.task_id}: {repair.status} ({repair.repair_calls} repair, {repair.verification_calls} verification)"
             )
+            if repair.evidence_path:
+                lines.append(f"  evidence: {repair.evidence_path}")
         if self.cost_report_path:
             lines.append(f"Cost report: {self.cost_report_path}")
         return "\n".join(lines)
@@ -75,6 +79,7 @@ class DebugCommand:
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
         self.registry = create_default_tool_registry()
+        self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
 
     def run(self) -> DebugResult:
         agent_dir = self.root / ".agent"
@@ -222,6 +227,19 @@ class DebugCommand:
                     reason = (
                         "Repair verification passed without changes; task was already satisfied."
                     )
+                evidence_path = self.execution_evidence.record(
+                    context,
+                    task,
+                    action,
+                    tool_results,
+                    verification,
+                    "done",
+                    reason,
+                    actor="DebugCommand",
+                    contract_check=contract_check.to_dict(),
+                    candidate_workspace=candidate,
+                    promoted_files=promoted_files,
+                )
                 self._record_repair_experiment(
                     context,
                     task,
@@ -249,9 +267,23 @@ class DebugCommand:
                     action["summary"],
                     len(action["tool_calls"]),
                     len(action["verification"]),
+                    evidence_path,
                 )
             reason = contract_check.summary()
             self._block_task(task_board, task_id, reason, context)
+            evidence_path = self.execution_evidence.record(
+                context,
+                task,
+                action,
+                tool_results,
+                verification,
+                "blocked",
+                reason,
+                actor="DebugCommand",
+                contract_check=contract_check.to_dict(),
+                candidate_workspace=candidate,
+                failure_type="repair_contract_violation",
+            )
             self._record_repair_experiment(
                 context,
                 task,
@@ -282,11 +314,23 @@ class DebugCommand:
                 reason,
                 len(action["tool_calls"]),
                 len(action["verification"]),
+                evidence_path,
             )
         except Exception as exc:  # noqa: BLE001 - repair loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             self._record_task_failure(context, task, self._failure_type(exc), str(exc))
-            return RepairSummary(task_id, "blocked", str(exc), 0, 0)
+            evidence_path = self.execution_evidence.record(
+                context,
+                task,
+                None,
+                [],
+                [],
+                "blocked",
+                str(exc),
+                actor="DebugCommand",
+                failure_type=self._failure_type(exc),
+            )
+            return RepairSummary(task_id, "blocked", str(exc), 0, 0, evidence_path)
 
     def _require_non_empty_action(self, action: dict) -> None:
         if not action.get("tool_calls") and not action.get("verification"):
@@ -583,8 +627,17 @@ class DebugCommand:
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
         experiments = self._read_jsonl(run_dir / "experiments.jsonl", "experiment")
         task_failures = self._read_jsonl(run_dir / "task_failures.jsonl", "task_failure_evidence")
+        task_execution_evidence = self._read_jsonl(
+            run_dir / "task_execution_evidence.jsonl",
+            "task_execution_evidence",
+        )
         return {
             "task_id": task_id,
+            "recent_task_execution_evidence": [
+                evidence
+                for evidence in task_execution_evidence
+                if evidence.get("task_id") == task_id
+            ][-5:],
             "recent_tool_failures": [
                 call
                 for call in tool_calls

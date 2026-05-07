@@ -119,14 +119,15 @@ class ReplanCommand:
         )
 
     def _candidate_failures(self, run_dir: Path, task_board: TaskBoard) -> list[dict]:
-        path = run_dir / "task_failures.jsonl"
-        if not path.exists():
-            return []
         tasks = {task["task_id"]: task for task in task_board.list_tasks()}
         handled = self._handled_evidence(task_board, run_dir)
         candidates = []
         seen_tasks: set[str] = set()
-        for evidence in reversed(self.jsonl.read_all(path, "task_failure_evidence")):
+        evidence_items = [
+            *self._execution_failure_candidates(run_dir),
+            *self._task_failure_candidates(run_dir),
+        ]
+        for evidence in evidence_items:
             if evidence["evidence_id"] in handled:
                 continue
             if evidence["task_id"] in seen_tasks:
@@ -137,6 +138,54 @@ class ReplanCommand:
             seen_tasks.add(evidence["task_id"])
             candidates.append(evidence)
         return candidates
+
+    def _execution_failure_candidates(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "task_execution_evidence.jsonl"
+        if not path.exists():
+            return []
+        candidates = []
+        for evidence in reversed(self.jsonl.read_all(path, "task_execution_evidence")):
+            if evidence["status"] not in {"blocked", "failed"}:
+                continue
+            candidates.append(self._from_execution_evidence(evidence))
+        return candidates
+
+    def _task_failure_candidates(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "task_failures.jsonl"
+        if not path.exists():
+            return []
+        return list(reversed(self.jsonl.read_all(path, "task_failure_evidence")))
+
+    def _from_execution_evidence(self, evidence: dict) -> dict:
+        contract_check = evidence.get("contract_check") or {}
+        recommendations = []
+        if contract_check.get("violations"):
+            recommendations.append(
+                "Use task execution evidence candidate, contract, and verification results."
+            )
+        verification_failures = [
+            result
+            for result in evidence.get("verification_results", [])
+            if isinstance(result, dict) and not result.get("ok", False)
+        ]
+        if verification_failures:
+            recommendations.append("Repair the latest failing verification command.")
+        return {
+            "evidence_id": evidence["evidence_id"],
+            "task_id": evidence["task_id"],
+            "phase": "execute",
+            "failure_type": evidence.get("failure_type") or "execution_blocked",
+            "summary": evidence["summary"],
+            "contract_check": contract_check,
+            "recommendations": recommendations,
+            "task_execution_evidence": {
+                "candidate": evidence.get("candidate") or {},
+                "action": evidence.get("action") or {},
+                "tool_results": evidence.get("tool_results", []),
+                "verification_results": evidence.get("verification_results", []),
+            },
+            "created_at": evidence.get("created_at"),
+        }
 
     def _handled_evidence(self, task_board: TaskBoard, run_dir: Path) -> set[str]:
         handled = set()
@@ -268,9 +317,23 @@ class ReplanCommand:
         parts = [
             f"Repair the blocked task '{source_task['title']}'.",
             f"Failure summary: {evidence['summary']}",
+            f"Primary evidence: {evidence['evidence_id']}",
         ]
         if violations:
             parts.append("Contract violations: " + "; ".join(violations))
+        execution_evidence = evidence.get("task_execution_evidence") or {}
+        if execution_evidence:
+            candidate = execution_evidence.get("candidate") or {}
+            if candidate.get("workspace"):
+                parts.append(f"Candidate workspace: {candidate['workspace']}")
+            verification_results = execution_evidence.get("verification_results") or []
+            failed_verifications = [
+                str(result.get("summary"))
+                for result in verification_results
+                if isinstance(result, dict) and not result.get("ok", False)
+            ][:3]
+            if failed_verifications:
+                parts.append("Failed verification evidence: " + "; ".join(failed_verifications))
         if recommendations:
             parts.append(
                 "Recommended repair: " + " ".join(str(item) for item in recommendations[:3])

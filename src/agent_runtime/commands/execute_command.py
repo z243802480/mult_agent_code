@@ -4,6 +4,7 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+
 from agent_runtime.agents.coder_agent import CoderAgent
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
@@ -12,11 +13,12 @@ from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_contract import (
     allows_expected_failure,
     check_completion_contract,
 )
+from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
+from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -82,6 +84,7 @@ class ExecuteCommand:
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.registry = create_default_tool_registry()
+        self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
 
     def run(self) -> ExecuteResult:
         agent_dir = self.root / ".agent"
@@ -245,7 +248,7 @@ class ExecuteCommand:
                         f"{task_id} paused for {decision['decision_id']}",
                         {"task_id": task_id, "decision_id": decision["decision_id"]},
                     )
-                evidence_path = self._record_execution_evidence(
+                evidence_path = self.execution_evidence.record(
                     context,
                     task,
                     action,
@@ -253,6 +256,7 @@ class ExecuteCommand:
                     [],
                     "blocked",
                     f"Waiting for decision: {decision['decision_id']}",
+                    actor="ExecuteCommand",
                     candidate={"decision_id": decision["decision_id"]},
                     failure_type="policy_decision",
                 )
@@ -295,7 +299,7 @@ class ExecuteCommand:
                 promoted_files = self._promote_candidate_changes(
                     context, candidate, contract_check.changed_files
                 )
-                evidence_path = self._record_execution_evidence(
+                evidence_path = self.execution_evidence.record(
                     context,
                     task,
                     action,
@@ -303,6 +307,7 @@ class ExecuteCommand:
                     verification_results,
                     "done",
                     "Verification passed.",
+                    actor="ExecuteCommand",
                     contract_check=contract_check.to_dict(),
                     candidate_workspace=candidate,
                     promoted_files=promoted_files,
@@ -337,7 +342,7 @@ class ExecuteCommand:
                     evidence_path=evidence_path,
                 )
             reason = contract_check.summary()
-            evidence_path = self._record_execution_evidence(
+            evidence_path = self.execution_evidence.record(
                 context,
                 task,
                 action,
@@ -345,6 +350,7 @@ class ExecuteCommand:
                 verification_results,
                 "blocked",
                 reason,
+                actor="ExecuteCommand",
                 contract_check=contract_check.to_dict(),
                 candidate_workspace=candidate,
                 failure_type="contract_violation",
@@ -393,7 +399,7 @@ class ExecuteCommand:
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             self._record_task_failure(context, task, self._failure_type(exc), str(exc))
-            evidence_path = self._record_execution_evidence(
+            evidence_path = self.execution_evidence.record(
                 context,
                 task,
                 None,
@@ -401,6 +407,7 @@ class ExecuteCommand:
                 [],
                 "blocked",
                 str(exc),
+                actor="ExecuteCommand",
                 failure_type=self._failure_type(exc),
             )
             return TaskExecutionSummary(
@@ -679,92 +686,6 @@ class ExecuteCommand:
                     "backup_ids": backup_ids,
                 },
             )
-
-    def _record_execution_evidence(
-        self,
-        context: RuntimeContext,
-        task: dict,
-        action: dict | None,
-        tool_results: list,
-        verification_results: list,
-        status: str,
-        summary: str,
-        *,
-        contract_check: dict | None = None,
-        candidate_workspace: CandidateWorkspace | None = None,
-        promoted_files: list[str] | None = None,
-        candidate: dict | None = None,
-        failure_type: str | None = None,
-    ) -> Path | None:
-        if not context.run_dir:
-            return None
-        path = context.run_dir / "task_execution_evidence.jsonl"
-        store = JsonlStore(self.validator)
-        existing = store.read_all(path, "task_execution_evidence") if path.exists() else []
-        record = {
-            "schema_version": "0.1.0",
-            "evidence_id": f"task-execution-{len(existing) + 1:04d}",
-            "run_id": context.run_id,
-            "task_id": task["task_id"],
-            "status": status,
-            "summary": summary,
-            "failure_type": failure_type,
-            "task": {
-                "title": task.get("title"),
-                "task_kind": task.get("task_kind"),
-                "acceptance": task.get("acceptance", []),
-                "expected_artifacts": task.get("expected_artifacts", []),
-                "expected_changed_files": task.get("expected_changed_files", []),
-                "allowed_tools": task.get("allowed_tools", []),
-            },
-            "action": {
-                "summary": (action or {}).get("summary"),
-                "tool_count": len((action or {}).get("tool_calls", [])),
-                "verification_count": len((action or {}).get("verification", [])),
-                "completion_notes": (action or {}).get("completion_notes"),
-            },
-            "candidate": {
-                "workspace": str(candidate_workspace.root) if candidate_workspace else None,
-                "candidate_id": candidate_workspace.candidate_id if candidate_workspace else None,
-                "changed_files": self._changed_files(tool_results),
-                "promoted_files": sorted(set(promoted_files or [])),
-                **(candidate or {}),
-            },
-            "contract_check": contract_check or {},
-            "tool_results": self._result_evidence(tool_results),
-            "verification_results": self._result_evidence(verification_results),
-            "created_at": now_iso(),
-        }
-        store.append(path, record, "task_execution_evidence")
-        if context.event_logger:
-            context.event_logger.record(
-                context.run_id,
-                "task_execution_evidence_recorded",
-                "ExecuteCommand",
-                f"{record['evidence_id']} -> {status}",
-                {
-                    "evidence_id": record["evidence_id"],
-                    "task_id": task["task_id"],
-                    "status": status,
-                    "artifact": str(path),
-                },
-            )
-        return path
-
-    def _result_evidence(self, results: list) -> list[dict]:
-        evidence = []
-        for result in results:
-            data = getattr(result, "data", {})
-            evidence.append(
-                {
-                    "ok": bool(getattr(result, "ok", False)),
-                    "summary": str(getattr(result, "summary", "")),
-                    "error": getattr(result, "error", None),
-                    "warnings": list(getattr(result, "warnings", []) or []),
-                    "data": data if isinstance(data, dict) else {},
-                }
-            )
-        return evidence
 
     def _record_task_failure(
         self,
