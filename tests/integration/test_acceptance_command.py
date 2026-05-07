@@ -271,6 +271,17 @@ def test_acceptance_result_prints_trend_warnings(tmp_path: Path) -> None:
     assert "model calls increased by 6" in text
 
 
+def test_acceptance_command_timeout_accounts_for_suite_defaults(tmp_path: Path) -> None:
+    command = AcceptanceCommand(
+        tmp_path,
+        suite="core",
+        scenario_timeout_seconds=1200,
+    )
+
+    assert command._command_timeout_seconds([]) == 7260  # noqa: SLF001
+    assert command._command_timeout_seconds(["markdown_kb"]) == 1260  # noqa: SLF001
+
+
 def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
     result = AcceptanceResult(
         suite="core",

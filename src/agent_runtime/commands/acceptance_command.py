@@ -494,7 +494,18 @@ class AcceptanceCommand:
         return value[-max_chars:]
 
     def _command_timeout_seconds(self, scenarios: list[str]) -> int:
-        return self.scenario_timeout_seconds * max(1, len(scenarios) or 1) + 60
+        return self.scenario_timeout_seconds * self._selected_scenario_count(scenarios) + 60
+
+    def _selected_scenario_count(self, scenarios: list[str]) -> int:
+        if scenarios:
+            return len(scenarios)
+        return {
+            "smoke": 1,
+            "offline": 1,
+            "core": 6,
+            "advanced": 5,
+            "nightly": 11,
+        }.get(self.suite, 1)
 
     def _script_path(self) -> Path:
         return self._repo_root() / "scripts" / "real_model_acceptance.py"
