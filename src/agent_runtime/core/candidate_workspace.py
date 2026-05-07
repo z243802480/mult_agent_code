@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -26,14 +27,20 @@ class CandidateWorkspace:
     candidate_id: str
     root: Path
     source_root: Path
+    strategy: str = "copy"
 
     @classmethod
     def create(cls, source_root: Path, run_dir: Path, task_id: str) -> "CandidateWorkspace":
         candidate_id = _candidate_id()
         candidate_root = run_dir / "cw" / task_id / _path_id(candidate_id)
         candidate_root.parent.mkdir(parents=True, exist_ok=True)
-        _copy_workspace(source_root, candidate_root)
-        return cls(candidate_id=candidate_id, root=candidate_root, source_root=source_root)
+        strategy = _create_workspace(source_root.resolve(), candidate_root)
+        return cls(
+            candidate_id=candidate_id,
+            root=candidate_root,
+            source_root=source_root.resolve(),
+            strategy=strategy,
+        )
 
     def promote(self, changed_files: list[str]) -> list[str]:
         promoted: list[str] = []
@@ -69,6 +76,40 @@ def _copy_workspace(source_root: Path, candidate_root: Path) -> None:
 def _ignore_names(directory: str, names: list[str]) -> set[str]:
     del directory
     return {name for name in names if name in EXCLUDED_NAMES}
+
+
+def _create_workspace(source_root: Path, candidate_root: Path) -> str:
+    if _can_use_worktree(source_root):
+        try:
+            _run_git(source_root, "worktree", "add", "--detach", str(candidate_root), "HEAD")
+            return "git_worktree"
+        except (OSError, subprocess.SubprocessError):
+            if candidate_root.exists():
+                shutil.rmtree(candidate_root, ignore_errors=True)
+    _copy_workspace(source_root, candidate_root)
+    return "copy"
+
+
+def _can_use_worktree(source_root: Path) -> bool:
+    if not (source_root / ".git").exists():
+        return False
+    try:
+        status = _run_git(source_root, "status", "--porcelain")
+    except (OSError, subprocess.SubprocessError):
+        return False
+    # A dirty tree may include user edits that are not in HEAD, so copy preserves intent better.
+    return not status.stdout.strip()
+
+
+def _run_git(source_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=source_root,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
 
 
 def _candidate_id() -> str:

@@ -270,6 +270,11 @@ class ReplanCommand:
         title = self._title(source_task, evidence, violations)
         description = self._description(source_task, evidence, violations)
         expected_artifacts = self._expected_artifacts(source_task, contract_check)
+        product_notes = self._product_manager_notes(source_task, evidence, expected_artifacts)
+        if product_notes:
+            description = description + "\nProduct repair constraints:\n" + "\n".join(
+                f"- {note}" for note in product_notes
+            )
         task = {
             "schema_version": "0.1.0",
             "task_id": task_id,
@@ -279,7 +284,7 @@ class ReplanCommand:
             "priority": source_task.get("priority", "high"),
             "role": "CoderAgent",
             "depends_on": self._done_dependencies(task_board),
-            "acceptance": self._acceptance(evidence, violations),
+            "acceptance": self._acceptance(evidence, violations, product_notes),
             "allowed_tools": source_task["allowed_tools"],
             "expected_artifacts": expected_artifacts,
             "task_kind": "implementation",
@@ -340,6 +345,34 @@ class ReplanCommand:
             )
         return "\n".join(parts)
 
+    def _product_manager_notes(
+        self,
+        source_task: dict,
+        evidence: dict,
+        expected_artifacts: list[str],
+    ) -> list[str]:
+        notes = []
+        acceptance = [str(item) for item in source_task.get("acceptance", [])]
+        allowed_tools = [str(item) for item in source_task.get("allowed_tools", [])]
+        title_and_description = (
+            f"{source_task.get('title', '')}\n{source_task.get('description', '')}"
+        ).lower()
+        if len(acceptance) < 2:
+            notes.append(
+                "Add concrete acceptance criteria that prove the repaired behavior, not just task completion."
+            )
+        if not expected_artifacts:
+            notes.append("Declare at least one expected artifact or changed file for the repair.")
+        if len(allowed_tools) > 6:
+            notes.append("Narrow allowed tools to the minimum needed for this repair iteration.")
+        if any(marker in title_and_description for marker in [" and ", " plus ", "multiple", "all "]):
+            notes.append(
+                "Split broad work into the smallest repair slice that closes the primary evidence first."
+            )
+        if evidence.get("failure_type") in {"scenario_validation_failure", "execution_blocked"}:
+            notes.append("Include a reproduction command and rerun it before marking the task done.")
+        return list(dict.fromkeys(notes))
+
     def _expected_artifacts(self, source_task: dict, contract_check: dict) -> list[str]:
         expected_files = [
             str(item)
@@ -350,7 +383,12 @@ class ReplanCommand:
             return expected_files
         return [str(item) for item in source_task.get("expected_artifacts", [])]
 
-    def _acceptance(self, evidence: dict, violations: list[str]) -> list[str]:
+    def _acceptance(
+        self,
+        evidence: dict,
+        violations: list[str],
+        product_notes: list[str] | None = None,
+    ) -> list[str]:
         acceptance = ["Original task acceptance criteria are satisfied"]
         if "required verification was not provided" in violations:
             acceptance.append("A verification command directly proves the repair")
@@ -360,6 +398,13 @@ class ReplanCommand:
             acceptance.append("A concrete artifact is created or modified")
         if any(item.startswith("expected changed files were not modified") for item in violations):
             acceptance.append("At least one expected changed file is modified")
+        for note in product_notes or []:
+            if "acceptance criteria" in note:
+                acceptance.append("Repair task has concrete acceptance criteria")
+            if "expected artifact" in note:
+                acceptance.append("Repair task declares expected artifacts or changed files")
+            if "reproduction command" in note:
+                acceptance.append("The failing reproduction command passes")
         return list(dict.fromkeys(acceptance))
 
     def _supersede_task(

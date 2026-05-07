@@ -17,6 +17,10 @@ def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
     assert "safe_file_renamer" in SCENARIOS
     assert "safe_file_renamer" in SUITES["core"]
     assert "safe_file_renamer" in SUITES["nightly"]
+    assert "multi_file_todo_cli" in SUITES["core"]
+    assert "config_driven_report" in SUITES["core"]
+    assert "docs_code_sync" in SUITES["advanced"]
+    assert SCENARIOS["multi_file_todo_cli"].capability == "multi_file_change"
 
 
 def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
@@ -68,6 +72,8 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     assert summary["aggregate"]["failed"] == 0
     assert summary["aggregate"]["model_calls"] > 0
     assert summary["aggregate"]["tool_calls"] > 0
+    assert summary["scenario_metadata"][0]["capability"] == "offline_artifact"
+    assert summary["aggregate"]["capabilities"]["offline_artifact"]["passed"] == 1
     assert [scenario["scenario"] for scenario in summary["scenarios"]] == ["offline_artifact"]
     assert summary["scenarios"][0]["duration_seconds"] >= 0
     assert summary["scenarios"][0]["attempts"][0]["attempt"] == 1
@@ -142,11 +148,47 @@ def test_real_model_acceptance_runs_decision_point_without_model(
     scenario = summary["scenarios"][0]
     assert summary["aggregate"]["passed"] == 1
     assert summary["aggregate"]["model_calls"] == 0
+    assert summary["aggregate"]["capabilities"]["decision_memory"]["passed"] == 1
     assert scenario["scenario"] == "decision_point"
     assert scenario["ok"] is True
     assert scenario["summary"]["resolved_decision_id"] == "decision-0001"
     assert scenario["summary"]["resolved_status"] == "resolved"
     assert scenario["summary"]["selected_option_id"] == "cli"
+
+
+def test_real_model_acceptance_runs_memory_lesson_reuse_without_model(
+    tmp_path: Path,
+) -> None:
+    summary_path = tmp_path / "summary.json"
+    env = os.environ.copy()
+    env["AGENT_MODEL_PROVIDER"] = "fake"
+    env["PYTHONPATH"] = str(Path.cwd() / "src")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/real_model_acceptance.py",
+            "--scenario",
+            "memory_lesson_reuse",
+            "--root",
+            str(tmp_path / "acceptance"),
+            "--summary-json",
+            str(summary_path),
+            "--allow-fake",
+        ],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "Real model acceptance passed" in completed.stdout
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    scenario = summary["scenarios"][0]
+    assert scenario["scenario"] == "memory_lesson_reuse"
+    assert scenario["summary"]["lesson_reused"] is True
+    assert summary["aggregate"]["capabilities"]["memory_effectiveness"]["passed"] == 1
 
 
 def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> None:

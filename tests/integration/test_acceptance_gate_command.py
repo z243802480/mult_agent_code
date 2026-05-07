@@ -22,6 +22,8 @@ def test_acceptance_gate_passes_clean_report(tmp_path: Path) -> None:
                 scenario("password_cli", True),
                 scenario("markdown_kb", True),
                 scenario("safe_file_renamer", True),
+                scenario("multi_file_todo_cli", True),
+                scenario("config_driven_report", True),
             ],
         },
     )
@@ -30,12 +32,12 @@ def test_acceptance_gate_passes_clean_report(tmp_path: Path) -> None:
         tmp_path,
         report_path=report_path,
         suite="core",
-        min_scenarios=4,
+        min_scenarios=6,
     ).run()
 
     assert result.ok
     assert result.release_status == "ready"
-    assert result.passed_count == 4
+    assert result.passed_count == 6
     assert "Status: pass" in result.to_text()
 
 
@@ -51,7 +53,12 @@ def test_acceptance_gate_blocks_trend_warnings_by_default(tmp_path: Path) -> Non
         },
     )
 
-    result = AcceptanceGateCommand(tmp_path, report_path=report_path).run()
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        min_capabilities=1,
+        require_tiers=[],
+    ).run()
 
     assert not result.ok
     assert result.release_status == "blocked"
@@ -77,7 +84,12 @@ def test_acceptance_gate_allows_closed_repair_with_conditional_status(tmp_path: 
         },
     )
 
-    result = AcceptanceGateCommand(tmp_path, report_path=report_path).run()
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        min_capabilities=0,
+        require_tiers=[],
+    ).run()
 
     assert result.ok
     assert result.release_status == "conditional"
@@ -120,9 +132,42 @@ def test_acceptance_gate_cli_exits_nonzero_for_blocked_release(tmp_path: Path) -
     assert "repair closure did not prove recovery" in completed.stdout
 
 
+def test_acceptance_gate_blocks_insufficient_capability_coverage(tmp_path: Path) -> None:
+    report_path = write_report(
+        tmp_path,
+        {
+            "suite": "core",
+            "ok": True,
+            "returncode": 0,
+            "scenarios": [scenario("file_smoke", True), scenario("password_cli", True)],
+        },
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=2,
+    ).run()
+
+    assert not result.ok
+    assert any("capability coverage" in failure for failure in result.failures)
+    assert any("broader acceptance suite" in action for action in result.next_actions)
+
+
 def scenario(name: str, ok: bool) -> dict:
+    capability = {
+        "file_smoke": "artifact_creation",
+        "password_cli": "single_file_cli",
+        "markdown_kb": "search_cli",
+        "safe_file_renamer": "config_driven_cli",
+        "multi_file_todo_cli": "multi_file_change",
+        "config_driven_report": "configuration_change",
+    }.get(name, "unknown")
     return {
         "scenario": name,
+        "capability": capability,
+        "tier": "smoke" if name == "file_smoke" else "core",
         "ok": ok,
         "workspace": None,
         "failure_summary": "" if ok else f"{name} failed",
@@ -146,8 +191,19 @@ def write_report(tmp_path: Path, overrides: dict) -> Path:
         "trend": {},
         "trend_warnings": [],
         "scenarios": [],
+        "scenario_metadata": [],
     }
     report.update(overrides)
+    if report["scenarios"] and not report.get("scenario_metadata"):
+        report["scenario_metadata"] = [
+            {
+                "scenario": item["scenario"],
+                "capability": item.get("capability", "unknown"),
+                "tier": item.get("tier", "core"),
+                "kind": "run",
+            }
+            for item in report["scenarios"]
+        ]
     report.setdefault("aggregate", {})
     report.setdefault("trend", {})
     report.setdefault("trend_warnings", [])

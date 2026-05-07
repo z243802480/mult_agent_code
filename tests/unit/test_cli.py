@@ -54,8 +54,15 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "core",
             "--min-scenarios",
             "4",
+            "--min-capabilities",
+            "3",
+            "--require-tier",
+            "core",
             "--allow-trend-warnings",
         ]
+    )
+    capability_report_args = parser.parse_args(
+        ["/capability-report", "--root", ".", "--limit", "5"]
     )
 
     assert plan_args.command == "/plan"
@@ -88,7 +95,11 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_gate_args.command == "/acceptance-gate"
     assert acceptance_gate_args.suite == "core"
     assert acceptance_gate_args.min_scenarios == 4
+    assert acceptance_gate_args.min_capabilities == 3
+    assert acceptance_gate_args.require_tier == ["core"]
     assert acceptance_gate_args.allow_trend_warnings
+    assert capability_report_args.command == "/capability-report"
+    assert capability_report_args.limit == 5
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures

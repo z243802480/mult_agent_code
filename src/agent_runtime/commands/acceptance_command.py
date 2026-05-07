@@ -303,6 +303,8 @@ class AcceptanceCommand:
             scenarios.append(
                 {
                     "scenario": str(scenario.get("scenario") or "unknown"),
+                    "capability": scenario.get("capability"),
+                    "tier": scenario.get("tier"),
                     "ok": bool(scenario.get("ok", False)),
                     "workspace": scenario.get("workspace"),
                     "failure_summary": self._failure_summary(scenario),
@@ -340,6 +342,7 @@ class AcceptanceCommand:
             "summary_json": str(summary_json),
             "aggregate": summary.get("aggregate", {}),
             "trend": summary.get("trend", {}),
+            "scenario_metadata": summary.get("scenario_metadata", []),
             "scenarios": scenarios,
         }
 

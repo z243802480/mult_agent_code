@@ -50,6 +50,8 @@ class AcceptanceGateCommand:
         report_path: Path | None = None,
         suite: str | None = None,
         min_scenarios: int = 1,
+        min_capabilities: int | None = None,
+        require_tiers: list[str] | None = None,
         allow_trend_warnings: bool = False,
         require_repair_closure: bool = True,
     ) -> None:
@@ -57,6 +59,8 @@ class AcceptanceGateCommand:
         self.report_path = report_path
         self.suite = suite
         self.min_scenarios = min_scenarios
+        self.min_capabilities = min_capabilities
+        self.require_tiers = require_tiers
         self.allow_trend_warnings = allow_trend_warnings
         self.require_repair_closure = require_repair_closure
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
@@ -89,6 +93,21 @@ class AcceptanceGateCommand:
             failures.append(
                 f"scenario count {scenario_count} is below required minimum {self.min_scenarios}"
             )
+        capability_count, missing_tiers = self._coverage(report, scenarios)
+        required_capabilities = self.min_capabilities
+        if required_capabilities is None:
+            required_capabilities = self._default_min_capabilities(suite)
+        if capability_count < required_capabilities:
+            failures.append(
+                f"capability coverage {capability_count} is below required minimum "
+                f"{required_capabilities}"
+            )
+            next_actions.append(
+                "Run a broader acceptance suite with multi-file, config, repair, docs, and refactor scenarios."
+            )
+        if missing_tiers:
+            failures.append("missing required acceptance tiers: " + ", ".join(missing_tiers))
+            next_actions.append("Run scenarios from the missing tiers before release.")
 
         if not report.get("ok", False):
             closure = self._dict(report.get("repair_closure"))
@@ -164,3 +183,46 @@ class AcceptanceGateCommand:
         if warnings or report.get("repair_closure"):
             return "conditional"
         return "ready"
+
+    def _coverage(self, report: dict, scenarios: list[dict]) -> tuple[int, list[str]]:
+        metadata = {
+            str(item.get("scenario")): item
+            for item in report.get("scenario_metadata", [])
+            if isinstance(item, dict)
+        }
+        passed_capabilities = set()
+        present_tiers = set()
+        for scenario in scenarios:
+            name = str(scenario.get("scenario") or "")
+            item = metadata.get(name, {})
+            capability = scenario.get("capability") or item.get("capability")
+            tier = scenario.get("tier") or item.get("tier")
+            if tier:
+                present_tiers.add(str(tier))
+            if scenario.get("ok") and capability:
+                passed_capabilities.add(str(capability))
+        required_tiers = (
+            self.require_tiers
+            if self.require_tiers is not None
+            else self._default_required_tiers(str(report.get("suite")))
+        )
+        missing_tiers = [tier for tier in required_tiers if tier not in present_tiers]
+        return len(passed_capabilities), missing_tiers
+
+    def _default_min_capabilities(self, suite: str) -> int:
+        return {
+            "smoke": 1,
+            "offline": 1,
+            "core": 5,
+            "advanced": 4,
+            "nightly": 8,
+        }.get(suite, 1)
+
+    def _default_required_tiers(self, suite: str) -> list[str]:
+        if suite == "nightly":
+            return ["smoke", "core", "advanced"]
+        if suite == "advanced":
+            return ["advanced"]
+        if suite == "core":
+            return ["smoke", "core"]
+        return []

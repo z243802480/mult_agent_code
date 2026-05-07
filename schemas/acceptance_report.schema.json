@@ -22,6 +22,8 @@
     "returncode": { "type": "integer" },
     "created_at": { "type": "string" },
     "summary_json": { "type": ["string", "null"] },
+    "scenario_metadata": { "type": "array", "items": { "type": "object" } },
+    "aggregate": { "type": "object" },
     "trend_warnings": { "type": "array", "items": { "type": "string" } },
     "repair_closure": {
       "type": "object",
@@ -47,6 +49,8 @@
         "required": ["scenario", "ok", "workspace", "failure_summary"],
         "properties": {
           "scenario": { "type": "string" },
+          "capability": { "type": ["string", "null"] },
+          "tier": { "type": ["string", "null"] },
           "ok": { "type": "boolean" },
           "workspace": { "type": ["string", "null"] },
           "failure_summary": { "type": "string" },

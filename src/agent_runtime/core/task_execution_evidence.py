@@ -60,6 +60,7 @@ class TaskExecutionEvidenceRecorder:
             "candidate": {
                 "workspace": str(candidate_workspace.root) if candidate_workspace else None,
                 "candidate_id": candidate_workspace.candidate_id if candidate_workspace else None,
+                "strategy": candidate_workspace.strategy if candidate_workspace else None,
                 "changed_files": self._changed_files(tool_results),
                 "promoted_files": sorted(set(promoted_files or [])),
                 **(candidate or {}),

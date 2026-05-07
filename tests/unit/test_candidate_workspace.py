@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -21,10 +22,50 @@ def test_candidate_workspace_copies_safe_files_and_excludes_agent_state(tmp_path
 
     candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
 
+    assert candidate.strategy == "copy"
     assert (candidate.root / "src" / "tool.py").exists()
     assert not (candidate.root / ".agent").exists()
     assert not (candidate.root / ".git").exists()
     assert not (candidate.root / "src" / "__pycache__").exists()
+
+
+def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path) -> None:
+    source = tmp_path / "workspace"
+    source.mkdir()
+    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (source / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
+    try:
+        subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "agent@example.test"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Agent Test"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "commit", "-m", "seed"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.skip(f"git worktree unavailable: {exc}")
+
+    candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
+
+    assert candidate.strategy == "git_worktree"
+    assert (candidate.root / "tool.py").exists()
 
 
 def test_candidate_workspace_promotes_only_changed_files(tmp_path: Path) -> None:

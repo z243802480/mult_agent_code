@@ -17,6 +17,8 @@ from typing import Any
 @dataclass(frozen=True)
 class AcceptanceScenario:
     name: str
+    capability: str
+    tier: str = "core"
     goal: str = ""
     expected_file: str = ""
     expected_text: str = ""
@@ -29,6 +31,8 @@ class AcceptanceScenario:
 SCENARIOS: dict[str, AcceptanceScenario] = {
     "file_smoke": AcceptanceScenario(
         name="file_smoke",
+        capability="artifact_creation",
+        tier="smoke",
         goal="Create a local file hello_runtime.txt containing one line: real model smoke ok",
         expected_file="hello_runtime.txt",
         expected_text="real model smoke ok",
@@ -36,6 +40,7 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
     ),
     "password_cli": AcceptanceScenario(
         name="password_cli",
+        capability="single_file_cli",
         goal=(
             "Create a single-file Python CLI tool named password_strength.py. "
             "It should classify an input password as weak, medium, or strong using length, "
@@ -48,6 +53,7 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
     ),
     "markdown_kb": AcceptanceScenario(
         name="markdown_kb",
+        capability="search_cli",
         goal=(
             "Create a small single-file Python tool named markdown_kb.py that indexes markdown "
             "files under a directory and searches for a keyword. It must support "
@@ -59,6 +65,8 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
     ),
     "offline_artifact": AcceptanceScenario(
         name="offline_artifact",
+        capability="offline_artifact",
+        tier="offline",
         goal="create offline artifact",
         expected_file="offline_artifact.txt",
         expected_text="offline verification artifact",
@@ -66,6 +74,8 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
     ),
     "failing_tests_repair": AcceptanceScenario(
         name="failing_tests_repair",
+        capability="test_driven_repair",
+        tier="advanced",
         goal=(
             "Fix the failing tests in this project. Run the Python tests, identify the bug in "
             "buggy_math.py, and make the tests pass with the smallest reasonable change."
@@ -86,6 +96,7 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
     ),
     "safe_file_renamer": AcceptanceScenario(
         name="safe_file_renamer",
+        capability="config_driven_cli",
         goal=(
             "Create a safe single-file Python CLI named safe_rename.py that reads a JSON rename "
             "plan, validates source files exist, and supports a dry-run preview without renaming "
@@ -108,19 +119,150 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             ),
         },
     ),
-    "decision_point": AcceptanceScenario(name="decision_point", kind="decision"),
+    "multi_file_todo_cli": AcceptanceScenario(
+        name="multi_file_todo_cli",
+        capability="multi_file_change",
+        tier="core",
+        goal=(
+            "Create a small multi-file Python todo CLI. Use a package directory named todo_app "
+            "with storage and CLI modules, plus a runnable todo.py entrypoint. It must support "
+            "`python todo.py add \"buy milk\"` and `python todo.py list`, storing tasks in a JSON "
+            "file under the current directory."
+        ),
+        expected_file="todo.py",
+        expected_text="todo_app",
+        max_iterations=6,
+    ),
+    "config_driven_report": AcceptanceScenario(
+        name="config_driven_report",
+        capability="configuration_change",
+        tier="core",
+        goal=(
+            "Create a Python report generator named report_from_config.py that reads "
+            "report_config.json and sales.csv, applies the configured currency and minimum total, "
+            "and writes report.md with a concise sales summary. It must run with "
+            "`python report_from_config.py report_config.json`."
+        ),
+        expected_file="report_from_config.py",
+        expected_text="report_config",
+        max_iterations=6,
+        setup_files={
+            "report_config.json": (
+                "{\n"
+                '  "input_csv": "sales.csv",\n'
+                '  "output_markdown": "report.md",\n'
+                '  "currency": "USD",\n'
+                '  "minimum_total": 20\n'
+                "}\n"
+            ),
+            "sales.csv": "item,quantity,price\nnotebook,3,8\npen,5,2\nbag,1,35\n",
+        },
+    ),
+    "docs_code_sync": AcceptanceScenario(
+        name="docs_code_sync",
+        capability="docs_code_sync",
+        tier="advanced",
+        goal=(
+            "Update the existing CLI documentation and implementation together. The README says "
+            "the calculator supports add only, but users need multiply too. Modify calculator.py "
+            "and README.md so `python calculator.py multiply 6 7` prints 42 and the docs describe "
+            "both add and multiply."
+        ),
+        expected_file="README.md",
+        expected_text="multiply",
+        max_iterations=6,
+        setup_files={
+            "calculator.py": (
+                "import sys\n\n\n"
+                "def main():\n"
+                "    command, left, right = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])\n"
+                "    if command == 'add':\n"
+                "        print(left + right)\n"
+                "    else:\n"
+                "        raise SystemExit('unknown command')\n\n\n"
+                "if __name__ == '__main__':\n"
+                "    main()\n"
+            ),
+            "README.md": "# Calculator\n\nRun `python calculator.py add 2 3` to add numbers.\n",
+        },
+    ),
+    "refactor_existing_module": AcceptanceScenario(
+        name="refactor_existing_module",
+        capability="safe_refactor",
+        tier="advanced",
+        goal=(
+            "Refactor the existing invoice.py module without changing behavior. Extract clearer "
+            "helper functions, keep public function names stable, and make the existing tests pass. "
+            "Run the tests before finishing."
+        ),
+        expected_file="invoice.py",
+        expected_text="def",
+        max_iterations=6,
+        setup_files={
+            "invoice.py": (
+                "def invoice_total(items, tax_rate):\n"
+                "    subtotal = 0\n"
+                "    for item in items:\n"
+                "        subtotal += item['quantity'] * item['price']\n"
+                "    return round(subtotal + subtotal * tax_rate, 2)\n\n\n"
+                "def invoice_lines(items):\n"
+                "    lines = []\n"
+                "    for item in items:\n"
+                "        lines.append(f\"{item['name']}: {item['quantity']} x {item['price']}\")\n"
+                "    return lines\n"
+            ),
+            "test_invoice.py": (
+                "from invoice import invoice_lines, invoice_total\n\n\n"
+                "def test_invoice_total_keeps_behavior():\n"
+                "    items = [{'name': 'A', 'quantity': 2, 'price': 5}]\n"
+                "    assert invoice_total(items, 0.1) == 11\n\n\n"
+                "def test_invoice_lines_keep_behavior():\n"
+                "    assert invoice_lines([{'name': 'A', 'quantity': 2, 'price': 5}]) == ['A: 2 x 5']\n"
+            ),
+        },
+    ),
+    "memory_lesson_reuse": AcceptanceScenario(
+        name="memory_lesson_reuse",
+        capability="memory_effectiveness",
+        tier="advanced",
+        kind="memory",
+    ),
+    "decision_point": AcceptanceScenario(
+        name="decision_point",
+        capability="decision_memory",
+        tier="advanced",
+        kind="decision",
+    ),
 }
 
 SUITES = {
     "smoke": ["file_smoke"],
-    "core": ["file_smoke", "password_cli", "markdown_kb", "safe_file_renamer"],
-    "advanced": ["failing_tests_repair", "decision_point"],
+    "core": [
+        "file_smoke",
+        "password_cli",
+        "markdown_kb",
+        "safe_file_renamer",
+        "multi_file_todo_cli",
+        "config_driven_report",
+    ],
+    "advanced": [
+        "failing_tests_repair",
+        "docs_code_sync",
+        "refactor_existing_module",
+        "memory_lesson_reuse",
+        "decision_point",
+    ],
     "nightly": [
         "file_smoke",
         "password_cli",
         "markdown_kb",
         "safe_file_renamer",
+        "multi_file_todo_cli",
+        "config_driven_report",
         "failing_tests_repair",
+        "docs_code_sync",
+        "refactor_existing_module",
+        "memory_lesson_reuse",
         "decision_point",
     ],
     "offline": ["offline_artifact"],
@@ -139,14 +281,16 @@ def main() -> None:
         selected = select_scenarios(args)
         for scenario in selected:
             results.append(run_scenario(args, root, scenario))
+        scenario_metadata = scenario_metadata_for(selected)
         summary = {
             "ok": all(result["ok"] for result in results),
             "root": str(root),
             "suite": args.suite,
             "requested_scenarios": args.scenario,
             "created_at": now_iso(),
+            "scenario_metadata": scenario_metadata,
             "scenarios": results,
-            "aggregate": aggregate_results(results),
+            "aggregate": aggregate_results(results, scenario_metadata),
         }
         attach_history(args.history_jsonl, summary)
         write_summary(args.summary_json, summary)
@@ -166,8 +310,9 @@ def main() -> None:
                     "suite": args.suite,
                     "requested_scenarios": args.scenario,
                     "created_at": now_iso(),
+                    "scenario_metadata": scenario_metadata_for(selected),
                     "scenarios": results,
-                    "aggregate": aggregate_results(results),
+                    "aggregate": aggregate_results(results, scenario_metadata_for(selected)),
                     "error": str(exc),
                 },
             )
@@ -219,7 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def select_scenarios(args: argparse.Namespace) -> list[AcceptanceScenario]:
     names = args.scenario or SUITES[args.suite]
-    fake_allowed = {"offline_artifact", "decision_point"}
+    fake_allowed = {"offline_artifact", "decision_point", "memory_lesson_reuse"}
     if args.allow_fake and any(name not in fake_allowed for name in names):
         raise AcceptanceFailure(
             "Fake/offline acceptance only supports offline_artifact and decision_point. "
@@ -244,6 +389,8 @@ def run_scenario(
     workspace = root / scenario.name
     if scenario.kind == "decision":
         return run_decision_scenario(args, workspace, scenario)
+    if scenario.kind == "memory":
+        return run_memory_scenario(args, workspace, scenario)
     started_at = time.monotonic()
     write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
@@ -337,6 +484,8 @@ def run_scenario(
         raise AcceptanceFailure(f"Scenario did not execute: {scenario.name}")
     return {
         "scenario": scenario.name,
+        "capability": scenario.capability,
+        "tier": scenario.tier,
         "ok": completed.returncode == 0,
         "workspace": str(workspace),
         "duration_seconds": round(time.monotonic() - started_at, 3),
@@ -480,6 +629,8 @@ def run_decision_scenario(
     }
     return {
         "scenario": "decision_point",
+        "capability": "decision_memory",
+        "tier": "advanced",
         "ok": ok,
         "workspace": str(workspace),
         "duration_seconds": round(time.monotonic() - started_at, 3),
@@ -489,7 +640,72 @@ def run_decision_scenario(
     }
 
 
-def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+def run_memory_scenario(
+    args: argparse.Namespace,
+    workspace: Path,
+    scenario: AcceptanceScenario,
+) -> dict[str, Any]:
+    del scenario
+    started_at = time.monotonic()
+    agent_dir = workspace / ".agent"
+    memory_dir = agent_dir / "memory"
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    memory_path = memory_dir / "failures.jsonl"
+    lesson = {
+        "schema_version": "0.1.0",
+        "memory_id": "memory-lesson-0001",
+        "kind": "failure_lesson",
+        "summary": "Prefer explicit reproduction commands when repairing similar CLI failures.",
+        "source": {"scenario": "memory_lesson_reuse", "failure_type": "scenario_validation_failure"},
+        "tags": ["acceptance", "repair", "cli"],
+        "created_at": now_iso(),
+    }
+    memory_path.write_text(json.dumps(lesson, ensure_ascii=False) + "\n", encoding="utf-8")
+    second_prompt = (
+        "Repair a similar CLI failure. Use prior lesson: "
+        f"{lesson['summary']} Reproduce with `python broken_cli.py --check`."
+    )
+    prompt_path = workspace / "second_attempt_prompt.txt"
+    prompt_path.write_text(second_prompt, encoding="utf-8")
+    ok = "Use prior lesson" in prompt_path.read_text(encoding="utf-8") and memory_path.exists()
+    return {
+        "scenario": "memory_lesson_reuse",
+        "capability": "memory_effectiveness",
+        "tier": "advanced",
+        "ok": ok,
+        "workspace": str(workspace),
+        "duration_seconds": round(time.monotonic() - started_at, 3),
+        "summary": {
+            "memory_path": str(memory_path),
+            "prompt_path": str(prompt_path),
+            "lesson_reused": ok,
+        },
+        "stdout": second_prompt,
+        "stderr": "",
+    }
+
+
+def scenario_metadata_for(scenarios: list[AcceptanceScenario]) -> list[dict[str, str]]:
+    return [
+        {
+            "scenario": scenario.name,
+            "capability": scenario.capability,
+            "tier": scenario.tier,
+            "kind": scenario.kind,
+        }
+        for scenario in scenarios
+    ]
+
+
+def aggregate_results(
+    results: list[dict[str, Any]],
+    scenario_metadata: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    metadata_by_name = {
+        item["scenario"]: item for item in scenario_metadata or [] if item.get("scenario")
+    }
+    capability_status: dict[str, dict[str, Any]] = {}
+    tier_status: dict[str, dict[str, Any]] = {}
     aggregate: dict[str, Any] = {
         "total": len(results),
         "passed": len([result for result in results if result.get("ok")]),
@@ -506,8 +722,16 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         "failed_scenarios": [
             str(result.get("scenario")) for result in results if not result.get("ok")
         ],
+        "capabilities": capability_status,
+        "tiers": tier_status,
     }
     for result in results:
+        name = str(result.get("scenario") or "")
+        metadata = metadata_by_name.get(name, {})
+        capability = str(result.get("capability") or metadata.get("capability") or "unknown")
+        tier = str(result.get("tier") or metadata.get("tier") or "unknown")
+        _add_status(capability_status, capability, bool(result.get("ok")))
+        _add_status(tier_status, tier, bool(result.get("ok")))
         summary = result.get("summary")
         if not isinstance(summary, dict):
             continue
@@ -524,6 +748,16 @@ def aggregate_results(results: list[dict[str, Any]]) -> dict[str, Any]:
         ):
             aggregate[key] += int(diagnostics.get(key) or 0)
     return aggregate
+
+
+def _add_status(target: dict[str, dict[str, Any]], key: str, ok: bool) -> None:
+    status = target.setdefault(key, {"total": 0, "passed": 0, "failed": 0, "ok": True})
+    status["total"] += 1
+    if ok:
+        status["passed"] += 1
+    else:
+        status["failed"] += 1
+        status["ok"] = False
 
 
 def attach_history(history_jsonl: Path | None, summary: dict[str, Any]) -> None:

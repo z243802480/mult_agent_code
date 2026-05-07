@@ -93,6 +93,10 @@ deltas from `.agent/acceptance/history.jsonl`.
 Use `--fail-on-warning` to turn trend warnings into a non-zero exit code for local gates.
 Use `agent acceptance --fail-on-trend-warning` when the acceptance run itself should fail on
 trend regressions.
+`agent acceptance-gate` / `agent release-gate` also enforces capability and tier coverage, not just
+raw scenario count.
+`agent capability-report` summarizes acceptance trends, capability coverage, failure types, repair
+rounds, cost signals, common blockers, and recommended next actions.
 
 Commands such as `/run`, `/execute`, `/review`, `/debug`, `/decide`, `/resume`, and `/compact`
 prefer the current session when `--session-id` is omitted. This prevents unrelated goals from

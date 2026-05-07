@@ -83,9 +83,10 @@ For a broader manual acceptance pass, run curated real-task scenarios:
 python scripts/real_model_acceptance.py --suite core
 ```
 
-The `core` suite currently covers the file smoke, a password-strength CLI, a small markdown
-knowledge-base search tool, and a safe dry-run file renamer. It is intentionally not part of default
-CI because it consumes real provider calls.
+The `core` suite covers file smoke, single-file CLI work, markdown search, safe dry-run rename,
+multi-file changes, and config-driven reporting. The `advanced` and `nightly` suites add
+test-driven repair, docs+code sync, safe refactor, decision memory, and memory lesson reuse. These
+are intentionally not part of default CI because they consume real provider calls.
 When budget allows, use `--suite nightly` for the broader stability pass. Acceptance summaries include
 duration, run status, review status, task status counts, model/tool calls, token estimates, repair
 attempts, and context compactions so real-provider quality and cost can be compared over time.
@@ -111,11 +112,20 @@ python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warnin
 For release gating, evaluate the latest persisted acceptance report:
 
 ```powershell
-python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 4
+python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 6
 ```
 
 The gate blocks when acceptance failed without a successful repair rerun, when trend warnings are
-present, or when the report does not cover the required suite/scenario count.
+present, or when the report does not cover the required suite/scenario/capability/tier count.
+
+Summarize recent real-task capability health with:
+
+```powershell
+python -m agent_runtime /capability-report --root .
+```
+
+The report combines acceptance history, capability coverage, failure type distribution, repair
+rounds, model/tool cost signals, common blockers, and recommended next actions.
 
 `agent /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
