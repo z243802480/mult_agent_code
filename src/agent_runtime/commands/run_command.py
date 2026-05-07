@@ -618,15 +618,31 @@ class RunCommand:
         accepted_decisions = self._accepted_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
         execution_evidence = self._execution_evidence(run_dir)
+        acceptance = self._latest_acceptance_report()
+        completion = self._completion_state(
+            done=done,
+            total=len(task_plan["tasks"]),
+            blocked=len(blocked_tasks),
+            pending_decisions=len(pending_decisions),
+            review_status=review_status,
+        )
+        blockers = self._report_blockers(blocked_tasks, pending_decisions, acceptance)
+        risks = self._report_risks(cost_report, task_plan_eval, execution_evidence, acceptance)
+        next_actions = self._final_next_actions(completion, blockers, risks, acceptance)
         lines = [
             "# Final Report",
             "",
+            "## Current State",
+            "",
             f"- Run: {run_id}",
             f"- Goal: {goal_spec['normalized_goal']}",
+            f"- Completion: {completion}",
             f"- Review status: {review_status}",
             f"- Task plan quality: {self._task_plan_quality_summary(task_plan_eval)}",
             f"- Tasks done: {done}/{len(task_plan['tasks'])}",
             f"- Blocked tasks: {len(blocked_tasks)}",
+            f"- Pending decisions: {len(pending_decisions)}",
+            f"- Release gate signal: {self._acceptance_summary(acceptance)}",
             f"- Model calls: {cost_report['model_calls']}",
             f"- Tool calls: {cost_report['tool_calls']}",
             "",
@@ -642,10 +658,17 @@ class RunCommand:
             lines.extend(
                 (
                     f"- {item['task_id']}: {item['status']} - {item['summary']} "
-                    f"({item['evidence_path']})"
+                    f"({item['evidence_path']}; strategy={item['candidate_strategy']}; "
+                    f"promoted={item['promoted_files']}; failure={item['failure_type']})"
                 )
                 for item in execution_evidence[-10:]
             )
+        if blockers:
+            lines.extend(["", "## Blockers", ""])
+            lines.extend(f"- {item}" for item in blockers)
+        if risks:
+            lines.extend(["", "## Risks", ""])
+            lines.extend(f"- {item}" for item in risks)
         if blocked_tasks:
             lines.extend(["", "## Blocked Tasks", ""])
             lines.extend(
@@ -672,9 +695,7 @@ class RunCommand:
                 "",
                 "## Next Actions",
                 "",
-                "- Review `review_report.md` before trusting the result for production use.",
-                "- Resolve pending decisions with `agent decide` if the run is paused.",
-                "- Continue with `agent debug` if any task remains blocked.",
+                *[f"- {action}" for action in next_actions],
             ]
         )
         path = run_dir / "final_report.md"
@@ -749,12 +770,126 @@ class RunCommand:
         if not path.exists():
             return []
         relative = path.relative_to(self.root).as_posix()
-        return [
-            {
-                "task_id": evidence["task_id"],
-                "status": evidence["status"],
-                "summary": evidence["summary"],
-                "evidence_path": relative,
-            }
-            for evidence in self.jsonl.read_all(path, "task_execution_evidence")
+        items = []
+        for evidence in self.jsonl.read_all(path, "task_execution_evidence"):
+            candidate = evidence.get("candidate") or {}
+            items.append(
+                {
+                    "task_id": evidence["task_id"],
+                    "status": evidence["status"],
+                    "summary": evidence["summary"],
+                    "failure_type": evidence.get("failure_type") or "none",
+                    "candidate_strategy": candidate.get("strategy") or "unknown",
+                    "promoted_files": ", ".join(candidate.get("promoted_files", []) or []) or "none",
+                    "evidence_path": relative,
+                }
+            )
+        return items
+
+    def _latest_acceptance_report(self) -> dict:
+        path = self.root / ".agent" / "acceptance" / "acceptance_report.json"
+        if not path.exists():
+            return {}
+        return self.store.read(path, "acceptance_report")
+
+    def _completion_state(
+        self,
+        *,
+        done: int,
+        total: int,
+        blocked: int,
+        pending_decisions: int,
+        review_status: str,
+    ) -> str:
+        if pending_decisions:
+            return "paused_for_decision"
+        if blocked:
+            return "blocked"
+        if total and done == total and review_status == "pass":
+            return "complete"
+        if total and done == total:
+            return "implemented_needs_review"
+        return "in_progress"
+
+    def _acceptance_summary(self, acceptance: dict) -> str:
+        if not acceptance:
+            return "not_run"
+        raw_aggregate = acceptance.get("aggregate")
+        aggregate: dict = raw_aggregate if isinstance(raw_aggregate, dict) else {}
+        passed = int(aggregate.get("passed") or 0)
+        total = int(aggregate.get("total") or len(acceptance.get("scenarios", [])))
+        if acceptance.get("ok"):
+            status = "pass"
+        elif acceptance.get("repair_closure", {}).get("rerun_ok") is True:
+            status = "conditional_after_repair"
+        else:
+            status = "fail"
+        return f"{status} suite={acceptance.get('suite')} scenarios={passed}/{total}"
+
+    def _report_blockers(
+        self,
+        blocked_tasks: list[dict],
+        pending_decisions: list[dict],
+        acceptance: dict,
+    ) -> list[str]:
+        blockers: list[str] = []
+        blockers.extend(
+            f"Decision {decision['decision_id']} is pending: {decision['question']}"
+            for decision in pending_decisions[:3]
+        )
+        blockers.extend(
+            f"Task {task['task_id']} is blocked: {task['title']}" for task in blocked_tasks[:3]
+        )
+        if acceptance and not acceptance.get("ok"):
+            failed = [
+                str(item.get("scenario") or "unknown")
+                for item in acceptance.get("scenarios", [])
+                if isinstance(item, dict) and not item.get("ok")
+            ]
+            if failed:
+                blockers.append("Acceptance failures remain: " + ", ".join(failed[:5]))
+        return blockers
+
+    def _report_risks(
+        self,
+        cost_report: dict,
+        task_plan_eval: dict | None,
+        execution_evidence: list[dict],
+        acceptance: dict,
+    ) -> list[str]:
+        risks = []
+        if task_plan_eval and task_plan_eval.get("status") in {"warn", "fail"}:
+            risks.append(self._task_plan_quality_summary(task_plan_eval))
+        if cost_report.get("status") in {"near_limit", "exceeded", "stopped"}:
+            risks.append(f"Cost status is {cost_report['status']}")
+        failed_evidence = [
+            item for item in execution_evidence if item["status"] in {"blocked", "failed"}
         ]
+        if failed_evidence:
+            risks.append(f"{len(failed_evidence)} execution evidence item(s) still need repair")
+        if acceptance.get("trend_warnings"):
+            risks.extend(str(item) for item in acceptance.get("trend_warnings", [])[:3])
+        return list(dict.fromkeys(risks))
+
+    def _final_next_actions(
+        self,
+        completion: str,
+        blockers: list[str],
+        risks: list[str],
+        acceptance: dict,
+    ) -> list[str]:
+        if blockers:
+            return [
+                "Resolve the listed blockers before widening scope.",
+                "Run `agent /debug` or `agent /replan` against the latest evidence.",
+            ]
+        if completion in {"complete", "implemented_needs_review"} and not acceptance:
+            return ["Run `agent /acceptance --suite core` before release."]
+        if acceptance and not acceptance.get("ok"):
+            return [
+                "Run `agent /acceptance --promote-failures --run-promoted --rerun-promoted`.",
+                "Re-run `agent /acceptance-gate` after repair closure.",
+            ]
+        if risks:
+            return ["Review risks, then run `agent /acceptance-gate` before release."]
+        return ["Run `agent /acceptance-gate --suite core --min-scenarios 6` before release."]

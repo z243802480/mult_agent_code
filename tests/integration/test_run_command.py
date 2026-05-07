@@ -648,9 +648,15 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert (run_dir / "review_report.md").exists()
     assert (run_dir / "final_report.md").exists()
     final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "## Current State" in final_report
+    assert "Completion: complete" in final_report
+    assert "Release gate signal: not_run" in final_report
     assert "Review status: pass" in final_report
     assert "## Execution Evidence" in final_report
+    assert "strategy=" in final_report
+    assert "promoted=complete_module.py" in final_report
     assert "task_execution_evidence.jsonl" in final_report
+    assert "Run `agent /acceptance --suite core` before release." in final_report
 
 
 def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
