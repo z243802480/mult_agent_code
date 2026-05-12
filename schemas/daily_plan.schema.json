@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DailyPlan",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "date",
+    "root",
+    "status",
+    "created_at",
+    "summary",
+    "budget",
+    "signals",
+    "actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "date": { "type": "string" },
+    "root": { "type": "string" },
+    "status": { "type": "string" },
+    "created_at": { "type": "string" },
+    "summary": { "type": "string" },
+    "budget": { "type": "object" },
+    "signals": { "type": "object" },
+    "actions": { "type": "array", "items": { "type": "object" } }
+  }
+}

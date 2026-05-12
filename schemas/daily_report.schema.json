@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DailyReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "date",
+    "root",
+    "status",
+    "created_at",
+    "plan_path",
+    "executed",
+    "results",
+    "summary",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "date": { "type": "string" },
+    "root": { "type": "string" },
+    "status": { "type": "string" },
+    "created_at": { "type": "string" },
+    "plan_path": { "type": "string" },
+    "executed": { "type": "boolean" },
+    "results": { "type": "array", "items": { "type": "object" } },
+    "summary": { "type": "string" },
+    "next_actions": { "type": "array", "items": { "type": "string" } }
+  }
+}

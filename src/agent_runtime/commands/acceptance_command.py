@@ -102,6 +102,8 @@ class AcceptanceCommand:
         promote_failures: bool = False,
         run_promoted: bool = False,
         rerun_promoted: bool = False,
+        failed_only: bool = False,
+        workspace_root: Path | None = None,
         promoted_run_max_iterations: int | None = None,
         promoted_run_max_tasks_per_iteration: int = 1,
         fail_on_trend_warning: bool = False,
@@ -122,6 +124,8 @@ class AcceptanceCommand:
         self.promote_failures = promote_failures
         self.run_promoted = run_promoted or rerun_promoted
         self.rerun_promoted = rerun_promoted
+        self.failed_only = failed_only
+        self.workspace_root = workspace_root
         self.promoted_run_max_iterations = promoted_run_max_iterations
         self.promoted_run_max_tasks_per_iteration = promoted_run_max_tasks_per_iteration
         self.fail_on_trend_warning = fail_on_trend_warning
@@ -135,8 +139,9 @@ class AcceptanceCommand:
     def run(self) -> AcceptanceResult:
         acceptance_dir = self.root / ".agent" / "acceptance"
         acceptance_dir.mkdir(parents=True, exist_ok=True)
+        scenarios = self._effective_scenarios()
         summary_json = self.summary_json or acceptance_dir / "latest_summary.json"
-        completed = self._run_acceptance_script(self.scenarios, summary_json)
+        completed = self._run_acceptance_script(scenarios, summary_json)
         report_path = acceptance_dir / "acceptance_report.json"
         report = self._build_report(
             completed.returncode, summary_json, completed.stdout, completed.stderr
@@ -221,7 +226,7 @@ class AcceptanceCommand:
             effective_ok = False
         return AcceptanceResult(
             suite=self.suite,
-            scenarios=self.scenarios,
+            scenarios=scenarios,
             root=self.root,
             ok=effective_ok,
             returncode=0 if effective_ok else completed.returncode or 1,
@@ -245,13 +250,14 @@ class AcceptanceCommand:
         scenarios: list[str],
         summary_json: Path,
     ) -> subprocess.CompletedProcess[str]:
+        workspace_root = self._workspace_root(summary_json)
         command = [
             sys.executable,
             str(self._script_path()),
             "--suite",
             self.suite,
             "--root",
-            str(self.root),
+            str(workspace_root),
             "--run-attempts",
             str(self.run_attempts),
             "--model-max-retries",
@@ -289,6 +295,41 @@ class AcceptanceCommand:
             check=False,
             timeout=self._command_timeout_seconds(scenarios),
         )
+
+    def _effective_scenarios(self) -> list[str]:
+        if self.scenarios:
+            return self.scenarios
+        if not self.failed_only:
+            return []
+        report_path = self.root / ".agent" / "acceptance" / "acceptance_report.json"
+        if not report_path.exists():
+            raise RuntimeError("Cannot use --failed-only before an acceptance report exists.")
+        report = self.store.read(report_path, "acceptance_report")
+        raw_closure = report.get("repair_closure")
+        closure: dict[str, Any] = raw_closure if isinstance(raw_closure, dict) else {}
+        remaining = [str(item) for item in closure.get("remaining_failures", [])]
+        if remaining:
+            return list(dict.fromkeys(remaining))
+        failed = [
+            str(scenario.get("scenario") or "")
+            for scenario in report.get("scenarios", [])
+            if isinstance(scenario, dict) and not scenario.get("ok", False)
+        ]
+        return [item for item in dict.fromkeys(failed) if item]
+
+    def _workspace_root(self, summary_json: Path) -> Path:
+        if self.workspace_root:
+            workspace_root = self.workspace_root.resolve()
+        else:
+            workspace_root = (
+                self.root
+                / ".agent"
+                / "acceptance"
+                / "workspaces"
+                / summary_json.stem
+            ).resolve()
+        workspace_root.mkdir(parents=True, exist_ok=True)
+        return workspace_root
 
     def _build_report(
         self,

@@ -8,6 +8,11 @@ from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.commands.brainstorm_command import BrainstormCommand
 from agent_runtime.commands.capability_report_command import CapabilityReportCommand
+from agent_runtime.commands.daily_command import (
+    DailyPlanCommand,
+    DailyReportCommand,
+    DailyRunCommand,
+)
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.model_check_command import ModelCheckCommand
 from agent_runtime.commands.new_command import NewCommand
@@ -360,6 +365,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Specific scenario to run; can be repeated and overrides --suite",
     )
     acceptance_parser.add_argument(
+        "--failed-only",
+        action="store_true",
+        help="Run only scenarios that failed in the latest acceptance report",
+    )
+    acceptance_parser.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=None,
+        help="Directory for scenario workspaces; defaults to .agent/acceptance/workspaces/<run>",
+    )
+    acceptance_parser.add_argument(
         "--summary-json", type=Path, default=None, help="Write JSON summary"
     )
     acceptance_parser.add_argument(
@@ -552,6 +568,39 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="Maximum acceptance history entries to include",
     )
+    daily_plan_parser = subcommands.add_parser(
+        "daily-plan",
+        aliases=["/daily-plan"],
+        help="Create a bounded daily production plan",
+    )
+    daily_plan_parser.add_argument("--root", default=".", help="Workspace root path")
+    daily_plan_parser.add_argument("--date", default=None, help="Plan date, default today")
+    daily_plan_parser.add_argument("--max-model-calls", type=int, default=20)
+    daily_plan_parser.add_argument("--max-tool-calls", type=int, default=60)
+    daily_plan_parser.add_argument("--max-runtime-minutes", type=int, default=60)
+    daily_plan_parser.add_argument("--max-repair-attempts", type=int, default=2)
+
+    daily_run_parser = subcommands.add_parser(
+        "daily-run",
+        aliases=["/daily-run"],
+        help="Run or stage today's bounded production plan",
+    )
+    daily_run_parser.add_argument("--root", default=".", help="Workspace root path")
+    daily_run_parser.add_argument("--date", default=None, help="Run date, default today")
+    daily_run_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute selected daily actions; omitted means plan-only safe mode",
+    )
+    daily_run_parser.add_argument("--max-actions", type=int, default=1)
+
+    daily_report_parser = subcommands.add_parser(
+        "daily-report",
+        aliases=["/daily-report"],
+        help="Show or create today's daily production report",
+    )
+    daily_report_parser.add_argument("--root", default=".", help="Workspace root path")
+    daily_report_parser.add_argument("--date", default=None, help="Report date, default today")
     return parser
 
 
@@ -722,6 +771,8 @@ def main() -> None:
             root=Path(args.root),
             suite=args.suite,
             scenarios=args.scenario,
+            failed_only=args.failed_only,
+            workspace_root=args.workspace_root,
             summary_json=args.summary_json,
             allow_fake=args.allow_fake,
             cleanup=args.cleanup,
@@ -782,6 +833,33 @@ def main() -> None:
             limit=args.limit,
         ).run()
         print(capability_report_result.to_text())
+        return
+
+    if command == "daily-plan":
+        daily_plan_result = DailyPlanCommand(
+            root=Path(args.root),
+            date=args.date,
+            max_model_calls=args.max_model_calls,
+            max_tool_calls=args.max_tool_calls,
+            max_runtime_minutes=args.max_runtime_minutes,
+            max_repair_attempts=args.max_repair_attempts,
+        ).run()
+        print(daily_plan_result.to_text())
+        return
+
+    if command == "daily-run":
+        daily_run_result = DailyRunCommand(
+            root=Path(args.root),
+            date=args.date,
+            execute=args.execute,
+            max_actions=args.max_actions,
+        ).run()
+        print(daily_run_result.to_text())
+        return
+
+    if command == "daily-report":
+        daily_report_result = DailyReportCommand(root=Path(args.root), date=args.date).run()
+        print(daily_report_result.to_text())
         return
 
     parser.error(f"Unsupported command: {args.command}")

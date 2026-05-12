@@ -282,6 +282,85 @@ def test_acceptance_command_timeout_accounts_for_suite_defaults(tmp_path: Path) 
     assert command._command_timeout_seconds(["markdown_kb"]) == 1260  # noqa: SLF001
 
 
+def test_acceptance_command_failed_only_uses_latest_failed_scenarios(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    InitCommand(tmp_path).run()
+    report_path = tmp_path / ".agent" / "acceptance" / "acceptance_report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "suite": "core",
+                "requested_scenarios": [],
+                "root": str(tmp_path),
+                "ok": False,
+                "returncode": 1,
+                "created_at": "2026-05-12T00:00:00+08:00",
+                "summary_json": str(tmp_path / "summary.json"),
+                "scenarios": [
+                    {
+                        "scenario": "password_cli",
+                        "ok": True,
+                        "workspace": None,
+                        "failure_summary": "",
+                    },
+                    {
+                        "scenario": "multi_file_todo_cli",
+                        "ok": False,
+                        "workspace": None,
+                        "failure_summary": "failed",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    captured: dict[str, list[str]] = {}
+
+    def fake_acceptance_run(command, *args, **kwargs):
+        del args, kwargs
+        captured["command"] = [str(item) for item in command]
+        summary_path = Path(command[command.index("--summary-json") + 1])
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary_path.write_text(
+            json.dumps(
+                {
+                    "ok": True,
+                    "root": str(tmp_path),
+                    "suite": "core",
+                    "scenarios": [
+                        {
+                            "scenario": "multi_file_todo_cli",
+                            "ok": True,
+                            "workspace": str(tmp_path / "isolated" / "multi_file_todo_cli"),
+                            "summary": {},
+                            "stdout": "",
+                            "stderr": "",
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_acceptance_run)
+
+    result = AcceptanceCommand(tmp_path, suite="core", failed_only=True).run()
+
+    assert result.ok
+    assert result.scenarios == ["multi_file_todo_cli"]
+    assert captured["command"].count("--scenario") == 1
+    assert "multi_file_todo_cli" in captured["command"]
+    workspace_root = Path(captured["command"][captured["command"].index("--root") + 1])
+    assert workspace_root.is_relative_to(tmp_path / ".agent" / "acceptance" / "workspaces")
+
+
 def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
     result = AcceptanceResult(
         suite="core",

@@ -64,6 +64,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     capability_report_args = parser.parse_args(
         ["/capability-report", "--root", ".", "--limit", "5"]
     )
+    daily_plan_args = parser.parse_args(["/daily-plan", "--root", ".", "--max-model-calls", "10"])
+    daily_run_args = parser.parse_args(["/daily-run", "--root", ".", "--execute"])
+    daily_report_args = parser.parse_args(["/daily-report", "--root", "."])
 
     assert plan_args.command == "/plan"
     assert plan_args.goal == "build a tool"
@@ -100,9 +103,16 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_gate_args.allow_trend_warnings
     assert capability_report_args.command == "/capability-report"
     assert capability_report_args.limit == 5
+    assert daily_plan_args.command == "/daily-plan"
+    assert daily_plan_args.max_model_calls == 10
+    assert daily_run_args.command == "/daily-run"
+    assert daily_run_args.execute
+    assert daily_report_args.command == "/daily-report"
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures
+    failed_only_args = parser.parse_args(["/acceptance", "--root", ".", "--failed-only"])
+    assert failed_only_args.failed_only
 
     run_promoted_args = parser.parse_args(
         [
