@@ -570,11 +570,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     daily_plan_parser = subcommands.add_parser(
         "daily-plan",
-        aliases=["/daily-plan"],
-        help="Create a bounded daily production plan",
+        aliases=["/daily-plan", "long-run-plan", "/long-run-plan"],
+        help="Create a bounded long-run production cycle plan",
     )
     daily_plan_parser.add_argument("--root", default=".", help="Workspace root path")
-    daily_plan_parser.add_argument("--date", default=None, help="Plan date, default today")
+    daily_plan_parser.add_argument("--date", default=None, help="Legacy plan date, default today")
+    daily_plan_parser.add_argument(
+        "--cycle-id",
+        default=None,
+        help="Long-run cycle id; overrides --date when provided",
+    )
+    daily_plan_parser.add_argument(
+        "--objective",
+        default=None,
+        help="Long-running objective this cycle should advance",
+    )
     daily_plan_parser.add_argument("--max-model-calls", type=int, default=20)
     daily_plan_parser.add_argument("--max-tool-calls", type=int, default=60)
     daily_plan_parser.add_argument("--max-runtime-minutes", type=int, default=60)
@@ -582,25 +592,49 @@ def build_parser() -> argparse.ArgumentParser:
 
     daily_run_parser = subcommands.add_parser(
         "daily-run",
-        aliases=["/daily-run"],
-        help="Run or stage today's bounded production plan",
+        aliases=["/daily-run", "long-run", "/long-run"],
+        help="Run or stage a bounded long-run production cycle",
     )
     daily_run_parser.add_argument("--root", default=".", help="Workspace root path")
-    daily_run_parser.add_argument("--date", default=None, help="Run date, default today")
+    daily_run_parser.add_argument("--date", default=None, help="Legacy run date, default today")
+    daily_run_parser.add_argument(
+        "--cycle-id",
+        default=None,
+        help="Long-run cycle id; overrides --date when provided",
+    )
+    daily_run_parser.add_argument(
+        "--objective",
+        default=None,
+        help="Long-running objective this cycle should advance",
+    )
     daily_run_parser.add_argument(
         "--execute",
         action="store_true",
         help="Execute selected daily actions; omitted means plan-only safe mode",
     )
     daily_run_parser.add_argument("--max-actions", type=int, default=1)
+    daily_run_parser.add_argument("--max-model-calls", type=int, default=20)
+    daily_run_parser.add_argument("--max-tool-calls", type=int, default=60)
+    daily_run_parser.add_argument("--max-runtime-minutes", type=int, default=60)
+    daily_run_parser.add_argument("--max-repair-attempts", type=int, default=2)
 
     daily_report_parser = subcommands.add_parser(
         "daily-report",
-        aliases=["/daily-report"],
-        help="Show or create today's daily production report",
+        aliases=["/daily-report", "long-run-report", "/long-run-report"],
+        help="Show or create a long-run production cycle report",
     )
     daily_report_parser.add_argument("--root", default=".", help="Workspace root path")
-    daily_report_parser.add_argument("--date", default=None, help="Report date, default today")
+    daily_report_parser.add_argument("--date", default=None, help="Legacy report date, default today")
+    daily_report_parser.add_argument(
+        "--cycle-id",
+        default=None,
+        help="Long-run cycle id; overrides --date when provided",
+    )
+    daily_report_parser.add_argument(
+        "--objective",
+        default=None,
+        help="Long-running objective this cycle should describe",
+    )
     return parser
 
 
@@ -835,30 +869,40 @@ def main() -> None:
         print(capability_report_result.to_text())
         return
 
-    if command == "daily-plan":
+    if command in {"daily-plan", "long-run-plan"}:
         daily_plan_result = DailyPlanCommand(
             root=Path(args.root),
-            date=args.date,
+            date=args.cycle_id or args.date,
             max_model_calls=args.max_model_calls,
             max_tool_calls=args.max_tool_calls,
             max_runtime_minutes=args.max_runtime_minutes,
             max_repair_attempts=args.max_repair_attempts,
+            objective=args.objective,
         ).run()
         print(daily_plan_result.to_text())
         return
 
-    if command == "daily-run":
+    if command in {"daily-run", "long-run"}:
         daily_run_result = DailyRunCommand(
             root=Path(args.root),
-            date=args.date,
+            date=args.cycle_id or args.date,
             execute=args.execute,
             max_actions=args.max_actions,
+            max_model_calls=args.max_model_calls,
+            max_tool_calls=args.max_tool_calls,
+            max_runtime_minutes=args.max_runtime_minutes,
+            max_repair_attempts=args.max_repair_attempts,
+            objective=args.objective,
         ).run()
         print(daily_run_result.to_text())
         return
 
-    if command == "daily-report":
-        daily_report_result = DailyReportCommand(root=Path(args.root), date=args.date).run()
+    if command in {"daily-report", "long-run-report"}:
+        daily_report_result = DailyReportCommand(
+            root=Path(args.root),
+            date=args.cycle_id or args.date,
+            objective=args.objective,
+        ).run()
         print(daily_report_result.to_text())
         return
 

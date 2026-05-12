@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,80 @@ from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
 
 
+@dataclass
+class DailyBudgetGuard:
+    max_actions: int
+    max_model_calls: int
+    max_tool_calls: int
+    max_runtime_minutes: int
+    max_repair_attempts: int
+    max_failures: int = 1
+    action_count: int = 0
+    failure_count: int = 0
+    model_calls: int = 0
+    tool_calls: int = 0
+    repair_attempts: int = 0
+    started_at: float = field(default_factory=time.monotonic)
+
+    def before_action(self) -> str | None:
+        if self.action_count >= self.max_actions:
+            return f"max_actions reached ({self.action_count}/{self.max_actions})"
+        return self._budget_stop_reason()
+
+    def after_action(self, result: dict[str, Any]) -> str | None:
+        self.action_count += 1
+        if result.get("status") == "fail":
+            self.failure_count += 1
+            if self.failure_count >= self.max_failures:
+                return f"failure limit reached ({self.failure_count}/{self.max_failures})"
+        return self._budget_stop_reason()
+
+    def apply_delta(self, before: dict[str, int], after: dict[str, int]) -> None:
+        self.model_calls += max(0, after.get("model_calls", 0) - before.get("model_calls", 0))
+        self.tool_calls += max(0, after.get("tool_calls", 0) - before.get("tool_calls", 0))
+        self.repair_attempts += max(
+            0,
+            after.get("repair_attempts", 0) - before.get("repair_attempts", 0),
+        )
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "max_actions": self.max_actions,
+            "max_model_calls": self.max_model_calls,
+            "max_tool_calls": self.max_tool_calls,
+            "max_runtime_minutes": self.max_runtime_minutes,
+            "max_repair_attempts": self.max_repair_attempts,
+            "max_failures": self.max_failures,
+            "actions": self.action_count,
+            "failures": self.failure_count,
+            "model_calls": self.model_calls,
+            "tool_calls": self.tool_calls,
+            "repair_attempts": self.repair_attempts,
+            "elapsed_seconds": round(time.monotonic() - self.started_at, 3),
+        }
+
+    def remaining_timeout_seconds(self) -> float:
+        total = max(0, self.max_runtime_minutes) * 60
+        if total <= 0:
+            return 0.0
+        return max(0.0, total - (time.monotonic() - self.started_at))
+
+    def _budget_stop_reason(self) -> str | None:
+        elapsed_minutes = (time.monotonic() - self.started_at) / 60
+        if elapsed_minutes >= self.max_runtime_minutes:
+            return f"runtime budget reached ({elapsed_minutes:.2f}/{self.max_runtime_minutes} min)"
+        if self.model_calls >= self.max_model_calls:
+            return f"model call budget reached ({self.model_calls}/{self.max_model_calls})"
+        if self.tool_calls >= self.max_tool_calls:
+            return f"tool call budget reached ({self.tool_calls}/{self.max_tool_calls})"
+        if self.repair_attempts >= self.max_repair_attempts:
+            return (
+                "repair attempt budget reached "
+                f"({self.repair_attempts}/{self.max_repair_attempts})"
+            )
+        return None
+
+
 @dataclass(frozen=True)
 class DailyPlanResult:
     date: str
@@ -25,8 +100,8 @@ class DailyPlanResult:
     def to_text(self) -> str:
         return "\n".join(
             [
-                "Daily plan",
-                f"Date: {self.date}",
+                "Long-run plan",
+                f"Cycle: {self.date}",
                 f"Plan: {self.plan_path}",
                 f"Actions: {self.action_count}",
                 f"Summary: {self.summary}",
@@ -44,8 +119,8 @@ class DailyRunResult:
 
     def to_text(self) -> str:
         lines = [
-            "Daily run",
-            f"Date: {self.date}",
+            "Long-run cycle",
+            f"Cycle: {self.date}",
             f"Status: {self.status}",
             f"Executed: {self.executed}",
             f"Report: {self.report_path}",
@@ -67,8 +142,8 @@ class DailyReportResult:
 
     def to_text(self) -> str:
         lines = [
-            "Daily report",
-            f"Date: {self.date}",
+            "Long-run report",
+            f"Cycle: {self.date}",
             f"Status: {self.status}",
             f"Report: {self.report_path}",
             f"Summary: {self.summary}",
@@ -89,6 +164,7 @@ class DailyPlanCommand:
         max_tool_calls: int = 60,
         max_runtime_minutes: int = 60,
         max_repair_attempts: int = 2,
+        objective: str | None = None,
     ) -> None:
         self.root = root.resolve()
         self.date = date or now_iso()[:10]
@@ -96,6 +172,7 @@ class DailyPlanCommand:
         self.max_tool_calls = max_tool_calls
         self.max_runtime_minutes = max_runtime_minutes
         self.max_repair_attempts = max_repair_attempts
+        self.objective = objective
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -109,9 +186,12 @@ class DailyPlanCommand:
         plan = {
             "schema_version": "0.1.0",
             "date": self.date,
+            "cycle_id": self.date,
+            "schedule_type": "long_running_cycle",
             "root": str(self.root),
             "status": "ready" if actions else "idle",
             "created_at": now_iso(),
+            "objective": self.objective or summary,
             "summary": summary,
             "budget": {
                 "max_model_calls": self.max_model_calls,
@@ -265,6 +345,8 @@ class DailyPlanCommand:
             return "No daily action is currently required."
         action = actions[0]
         current = signals.get("current_run_id") or "none"
+        if self.objective:
+            return f"Selected {action['kind']} for long-run objective: {self.objective}"
         return f"Selected {action['kind']} for current run {current}."
 
 
@@ -276,33 +358,78 @@ class DailyRunCommand:
         date: str | None = None,
         execute: bool = False,
         max_actions: int = 1,
+        max_model_calls: int = 20,
+        max_tool_calls: int = 60,
+        max_runtime_minutes: int = 60,
+        max_repair_attempts: int = 2,
+        objective: str | None = None,
     ) -> None:
         self.root = root.resolve()
         self.date = date or now_iso()[:10]
         self.execute = execute
         self.max_actions = max_actions
+        self.max_model_calls = max_model_calls
+        self.max_tool_calls = max_tool_calls
+        self.max_runtime_minutes = max_runtime_minutes
+        self.max_repair_attempts = max_repair_attempts
+        self.objective = objective
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
+        self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> DailyRunResult:
-        plan_result = DailyPlanCommand(self.root, date=self.date).run()
+        plan_result = DailyPlanCommand(
+            self.root,
+            date=self.date,
+            max_model_calls=self.max_model_calls,
+            max_tool_calls=self.max_tool_calls,
+            max_runtime_minutes=self.max_runtime_minutes,
+            max_repair_attempts=self.max_repair_attempts,
+            objective=self.objective,
+        ).run()
         plan = self.store.read(plan_result.plan_path, "daily_plan")
+        guard = DailyBudgetGuard(
+            max_actions=self.max_actions,
+            max_model_calls=self.max_model_calls,
+            max_tool_calls=self.max_tool_calls,
+            max_runtime_minutes=self.max_runtime_minutes,
+            max_repair_attempts=self.max_repair_attempts,
+        )
         results = []
-        for action in plan.get("actions", [])[: self.max_actions]:
-            results.append(self._run_action(action))
-        status = "completed" if all(item["status"] == "pass" for item in results) else "planned"
+        stop_reason = None
+        for action in plan.get("actions", []):
+            stop_reason = guard.before_action()
+            if stop_reason:
+                break
+            result = self._run_action(action, guard)
+            results.append(result)
+            self._record_action_evidence(action, result, plan)
+            stop_reason = guard.after_action(result)
+            if stop_reason:
+                break
+        status = self._status(results, stop_reason)
+        if not self.execute:
+            stop_reason = "plan_only"
         if self.execute and any(item["status"] == "fail" for item in results):
             status = "blocked"
         report = {
             "schema_version": "0.1.0",
             "date": self.date,
+            "cycle_id": self.date,
+            "schedule_type": "long_running_cycle",
             "root": str(self.root),
             "status": status,
             "created_at": now_iso(),
             "plan_path": str(plan_result.plan_path),
             "executed": self.execute,
+            "goal": self._goal(plan),
+            "objective": str(plan.get("objective") or self.objective or self._goal(plan)),
+            "progress": self._progress(results, plan),
+            "stop_reason": stop_reason,
+            "budget": guard.snapshot(),
             "results": results,
             "summary": self._summary(results),
+            "risks": self._risks(results, stop_reason, plan),
             "next_actions": self._next_actions(results),
         }
         report_path = self.root / ".agent" / "daily" / self.date / "daily_report.json"
@@ -316,13 +443,14 @@ class DailyRunCommand:
             results=results,
         )
 
-    def _run_action(self, action: dict[str, Any]) -> dict[str, Any]:
+    def _run_action(self, action: dict[str, Any], guard: DailyBudgetGuard) -> dict[str, Any]:
         if not self.execute:
             return {
                 "kind": action.get("kind"),
                 "status": "planned",
                 "summary": action.get("summary"),
                 "command": action.get("command"),
+                "risk": action.get("risk"),
             }
         command = [sys.executable, "-m", "agent_runtime", *self._command_args(action)]
         env = os.environ.copy()
@@ -332,24 +460,54 @@ class DailyRunCommand:
             if not env.get("PYTHONPATH")
             else os.pathsep.join([src_path, env["PYTHONPATH"]])
         )
-        completed = subprocess.run(
-            command,
-            cwd=self.root,
-            env=env,
-            text=True,
-            capture_output=True,
-            check=False,
-            timeout=3600,
-        )
-        return {
-            "kind": action.get("kind"),
-            "status": "pass" if completed.returncode == 0 else "fail",
-            "summary": action.get("summary"),
-            "command": " ".join(command),
-            "returncode": completed.returncode,
-            "stdout_tail": completed.stdout[-4000:],
-            "stderr_tail": completed.stderr[-4000:],
-        }
+        run_id = self._current_run_id()
+        before = self._cost_snapshot(run_id)
+        started_at = now_iso()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.root,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=max(1.0, guard.remaining_timeout_seconds()),
+            )
+            after = self._cost_snapshot(run_id)
+            guard.apply_delta(before, after)
+            status = "pass" if completed.returncode == 0 else "fail"
+            failure_type = None if status == "pass" else self._failure_type(action, completed.stderr)
+            return {
+                "kind": action.get("kind"),
+                "status": status,
+                "summary": action.get("summary"),
+                "command": " ".join(command),
+                "risk": action.get("risk"),
+                "returncode": completed.returncode,
+                "failure_type": failure_type,
+                "started_at": started_at,
+                "ended_at": now_iso(),
+                "cost_delta": self._cost_delta(before, after),
+                "stdout_tail": completed.stdout[-4000:],
+                "stderr_tail": completed.stderr[-4000:],
+            }
+        except subprocess.TimeoutExpired as exc:
+            after = self._cost_snapshot(run_id)
+            guard.apply_delta(before, after)
+            return {
+                "kind": action.get("kind"),
+                "status": "fail",
+                "summary": action.get("summary"),
+                "command": " ".join(command),
+                "risk": action.get("risk"),
+                "returncode": None,
+                "failure_type": "daily_timeout",
+                "started_at": started_at,
+                "ended_at": now_iso(),
+                "cost_delta": self._cost_delta(before, after),
+                "stdout_tail": self._tail(exc.stdout),
+                "stderr_tail": self._tail(exc.stderr),
+            }
 
     def _command_args(self, action: dict[str, Any]) -> list[str]:
         kind = action.get("kind")
@@ -363,6 +521,17 @@ class DailyRunCommand:
             return ["/decide", "--root", str(self.root), "--list-pending"]
         return ["/capability-report", "--root", str(self.root)]
 
+    def _status(self, results: list[dict[str, Any]], stop_reason: str | None) -> str:
+        if not results:
+            return "idle"
+        if not self.execute:
+            return "planned"
+        if any(item["status"] == "fail" for item in results):
+            return "blocked"
+        if stop_reason:
+            return "paused"
+        return "completed"
+
     def _summary(self, results: list[dict[str, Any]]) -> str:
         if not results:
             return "No daily action was selected."
@@ -375,7 +544,10 @@ class DailyRunCommand:
         if not self.execute:
             return ["Review the daily plan, then run `agent /daily-run --execute` if appropriate."]
         if any(item["status"] == "fail" for item in results):
-            return ["Inspect daily_report.md and the failing command evidence before retrying."]
+            return [
+                "Inspect daily_report.md and the failing task_execution_evidence before retrying.",
+                "Run `agent /replan` or `agent /debug` only after the failure type is understood.",
+            ]
         return ["Review daily_report.md and continue with the next daily plan."]
 
     def _write_markdown(self, path: Path, report: dict[str, Any]) -> None:
@@ -383,31 +555,231 @@ class DailyRunCommand:
             "# Daily Report",
             "",
             f"- Date: {report['date']}",
+            f"- Cycle: {report.get('cycle_id') or report['date']}",
+            f"- Schedule type: {report.get('schedule_type') or 'long_running_cycle'}",
             f"- Status: {report['status']}",
             f"- Executed: {report['executed']}",
+            f"- Goal: {report['goal']}",
+            f"- Objective: {report.get('objective') or report['goal']}",
+            f"- Progress: {report['progress']['completed_actions']}/{report['progress']['planned_actions']} action(s)",
+            f"- Stop reason: {report.get('stop_reason') or 'none'}",
             f"- Summary: {report['summary']}",
+            "",
+            "## Budget",
+            "",
+            f"- Runtime seconds: {report['budget']['elapsed_seconds']}",
+            f"- Model calls: {report['budget']['model_calls']}/{report['budget']['max_model_calls']}",
+            f"- Tool calls: {report['budget']['tool_calls']}/{report['budget']['max_tool_calls']}",
+            f"- Repair attempts: {report['budget']['repair_attempts']}/{report['budget']['max_repair_attempts']}",
             "",
             "## Results",
             "",
         ]
         for result in report["results"]:
-            lines.append(f"- {result.get('kind')}: {result.get('status')} - {result.get('summary')}")
+            evidence = result.get("evidence_path") or "none"
+            failure = result.get("failure_type") or "none"
+            lines.append(
+                f"- {result.get('kind')}: {result.get('status')} - {result.get('summary')} "
+                f"(failure={failure}; evidence={evidence})"
+            )
+        lines.extend(["", "## Risks", ""])
+        lines.extend(f"- {item}" for item in report.get("risks", []))
         lines.extend(["", "## Next Actions", ""])
         lines.extend(f"- {item}" for item in report["next_actions"])
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    def _goal(self, plan: dict[str, Any]) -> str:
+        actions = plan.get("actions", [])
+        if actions:
+            return str(actions[0].get("summary") or plan.get("summary"))
+        return str(plan.get("summary") or "Keep the autonomous runtime ready.")
+
+    def _progress(self, results: list[dict[str, Any]], plan: dict[str, Any]) -> dict[str, int]:
+        planned = len(plan.get("actions", []))
+        completed = len([item for item in results if item.get("status") == "pass"])
+        failed = len([item for item in results if item.get("status") == "fail"])
+        return {
+            "planned_actions": planned,
+            "attempted_actions": len(results),
+            "completed_actions": completed,
+            "failed_actions": failed,
+        }
+
+    def _risks(
+        self,
+        results: list[dict[str, Any]],
+        stop_reason: str | None,
+        plan: dict[str, Any],
+    ) -> list[str]:
+        risks = []
+        if stop_reason and stop_reason != "plan_only":
+            risks.append(f"Daily run paused: {stop_reason}.")
+        for result in results:
+            if result.get("status") == "fail":
+                risks.append(
+                    f"{result.get('kind')} failed with "
+                    f"{result.get('failure_type') or 'unknown_failure'}."
+                )
+        acceptance = (plan.get("signals") or {}).get("acceptance") or {}
+        failed = acceptance.get("failed_scenarios") or []
+        if failed:
+            risks.append("Acceptance still has failing scenarios: " + ", ".join(failed[:5]))
+        return risks or ["No immediate daily automation risk was detected."]
+
+    def _record_action_evidence(
+        self,
+        action: dict[str, Any],
+        result: dict[str, Any],
+        plan: dict[str, Any],
+    ) -> None:
+        evidence = self._action_evidence(action, result, plan)
+        daily_path = self.root / ".agent" / "daily" / self.date / "task_execution_evidence.jsonl"
+        self.jsonl.append(daily_path, evidence, "task_execution_evidence")
+        result["evidence_path"] = str(daily_path)
+        run_id = self._current_run_id()
+        if not run_id:
+            return
+        run_path = self.root / ".agent" / "runs" / run_id / "task_execution_evidence.jsonl"
+        self.jsonl.append(run_path, evidence, "task_execution_evidence")
+        result["run_evidence_path"] = str(run_path)
+
+    def _action_evidence(
+        self,
+        action: dict[str, Any],
+        result: dict[str, Any],
+        plan: dict[str, Any],
+    ) -> dict[str, Any]:
+        run_id = self._current_run_id()
+        existing = self.jsonl.read_all(
+            self.root / ".agent" / "daily" / self.date / "task_execution_evidence.jsonl",
+            "task_execution_evidence",
+        )
+        task_id = f"daily-{self.date}-{action.get('kind') or 'action'}"
+        return {
+            "schema_version": "0.1.0",
+            "evidence_id": f"daily-task-execution-{len(existing) + 1:04d}",
+            "run_id": run_id,
+            "task_id": task_id,
+            "status": "done" if result.get("status") == "pass" else result.get("status", "blocked"),
+            "summary": str(result.get("summary") or action.get("summary") or "Daily action"),
+            "failure_type": result.get("failure_type"),
+            "task": {
+                "title": str(action.get("summary") or action.get("kind") or "Daily action"),
+                "task_kind": "daily_action",
+                "acceptance": [
+                    "Daily action completes within budget",
+                    "Daily report contains evidence and next action",
+                ],
+                "expected_artifacts": [
+                    str(self.root / ".agent" / "daily" / self.date / "daily_report.json")
+                ],
+                "expected_changed_files": [],
+                "allowed_tools": ["run_command"],
+            },
+            "action": {
+                "summary": action.get("summary"),
+                "tool_count": 1 if self.execute else 0,
+                "verification_count": 0,
+                "completion_notes": result.get("status"),
+                "command": result.get("command") or action.get("command"),
+                "risk": action.get("risk"),
+            },
+            "candidate": {
+                "workspace": str(self.root),
+                "candidate_id": f"daily-{self.date}",
+                "strategy": "daily_control_loop",
+                "changed_files": [],
+                "promoted_files": [],
+                "daily_report": str(self.root / ".agent" / "daily" / self.date / "daily_report.json"),
+            },
+            "contract_check": {
+                "ok": result.get("status") in {"pass", "planned"},
+                "stop_reason": result.get("failure_type"),
+                "returncode": result.get("returncode"),
+            },
+            "tool_results": [
+                {
+                    "ok": result.get("status") in {"pass", "planned"},
+                    "summary": result.get("summary") or "",
+                    "error": result.get("stderr_tail") if result.get("status") == "fail" else None,
+                    "warnings": [],
+                    "data": {
+                        "kind": result.get("kind"),
+                        "command": result.get("command"),
+                        "cost_delta": result.get("cost_delta", {}),
+                    },
+                }
+            ],
+            "verification_results": [],
+            "created_at": now_iso(),
+        }
+
+    def _current_run_id(self) -> str | None:
+        try:
+            return RunStore(self.root / ".agent", self.validator).current_session_id()
+        except RuntimeError:
+            return None
+
+    def _cost_snapshot(self, run_id: str | None) -> dict[str, int]:
+        if not run_id:
+            return {"model_calls": 0, "tool_calls": 0, "repair_attempts": 0}
+        path = self.root / ".agent" / "runs" / run_id / "cost_report.json"
+        if not path.exists():
+            return {"model_calls": 0, "tool_calls": 0, "repair_attempts": 0}
+        report = self.store.read(path, "cost_report")
+        return {
+            "model_calls": int(report.get("model_calls") or 0),
+            "tool_calls": int(report.get("tool_calls") or 0),
+            "repair_attempts": int(report.get("repair_attempts") or 0),
+        }
+
+    def _cost_delta(self, before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
+        return {
+            key: max(0, after.get(key, 0) - before.get(key, 0))
+            for key in {"model_calls", "tool_calls", "repair_attempts"}
+        }
+
+    def _failure_type(self, action: dict[str, Any], stderr: str) -> str:
+        lowered = stderr.lower()
+        if "decision" in lowered and "pending" in lowered:
+            return "pending_decision"
+        if "json" in lowered:
+            return "model_format_error"
+        if action.get("kind") == "acceptance_failed_only":
+            return "acceptance_failed"
+        return "daily_action_failed"
+
+    def _tail(self, value: str | bytes | None) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")[-4000:]
+        return value[-4000:]
+
 
 class DailyReportCommand:
-    def __init__(self, root: Path, *, date: str | None = None) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        date: str | None = None,
+        objective: str | None = None,
+    ) -> None:
         self.root = root.resolve()
         self.date = date or now_iso()[:10]
+        self.objective = objective
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
 
     def run(self) -> DailyReportResult:
         report_path = self.root / ".agent" / "daily" / self.date / "daily_report.json"
         if not report_path.exists():
-            result = DailyRunCommand(self.root, date=self.date, execute=False).run()
+            result = DailyRunCommand(
+                self.root,
+                date=self.date,
+                execute=False,
+                objective=self.objective,
+            ).run()
             report_path = result.report_path
         report = self.store.read(report_path, "daily_report")
         return DailyReportResult(

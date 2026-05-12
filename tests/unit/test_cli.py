@@ -65,8 +65,35 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
         ["/capability-report", "--root", ".", "--limit", "5"]
     )
     daily_plan_args = parser.parse_args(["/daily-plan", "--root", ".", "--max-model-calls", "10"])
-    daily_run_args = parser.parse_args(["/daily-run", "--root", ".", "--execute"])
+    daily_run_args = parser.parse_args(
+        [
+            "/daily-run",
+            "--root",
+            ".",
+            "--execute",
+            "--max-model-calls",
+            "9",
+            "--max-tool-calls",
+            "11",
+            "--max-runtime-minutes",
+            "3",
+            "--max-repair-attempts",
+            "1",
+        ]
+    )
     daily_report_args = parser.parse_args(["/daily-report", "--root", "."])
+    long_run_args = parser.parse_args(
+        [
+            "/long-run",
+            "--root",
+            ".",
+            "--cycle-id",
+            "release-hardening",
+            "--objective",
+            "run a long autonomous task safely",
+            "--execute",
+        ]
+    )
 
     assert plan_args.command == "/plan"
     assert plan_args.goal == "build a tool"
@@ -107,7 +134,15 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert daily_plan_args.max_model_calls == 10
     assert daily_run_args.command == "/daily-run"
     assert daily_run_args.execute
+    assert daily_run_args.max_model_calls == 9
+    assert daily_run_args.max_tool_calls == 11
+    assert daily_run_args.max_runtime_minutes == 3
+    assert daily_run_args.max_repair_attempts == 1
     assert daily_report_args.command == "/daily-report"
+    assert long_run_args.command == "/long-run"
+    assert long_run_args.cycle_id == "release-hardening"
+    assert long_run_args.objective == "run a long autonomous task safely"
+    assert long_run_args.execute
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures
