@@ -1,0 +1,6 @@
+{
+  "input_csv": "sales.csv",
+  "output_markdown": "report.md",
+  "currency": "USD",
+  "minimum_total": 20
+}

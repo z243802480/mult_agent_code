@@ -67,6 +67,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     weekly_report_args = parser.parse_args(
         ["/weekly-report", "--root", ".", "--week-id", "2026-W20", "--limit", "4"]
     )
+    roadmap_args = parser.parse_args(
+        ["/roadmap-update", "--root", ".", "--output", "docs/zh/自动路线图.md"]
+    )
     daily_plan_args = parser.parse_args(["/daily-plan", "--root", ".", "--max-model-calls", "10"])
     daily_run_args = parser.parse_args(
         [
@@ -136,6 +139,8 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert weekly_report_args.command == "/weekly-report"
     assert weekly_report_args.week_id == "2026-W20"
     assert weekly_report_args.limit == 4
+    assert roadmap_args.command == "/roadmap-update"
+    assert roadmap_args.output.as_posix() == "docs/zh/自动路线图.md"
     assert daily_plan_args.command == "/daily-plan"
     assert daily_plan_args.max_model_calls == 10
     assert daily_run_args.command == "/daily-run"

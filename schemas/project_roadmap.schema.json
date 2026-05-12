@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProjectRoadmap",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "root",
+    "created_at",
+    "status",
+    "product_brief",
+    "current_capabilities",
+    "open_risks",
+    "milestones",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "root": { "type": "string" },
+    "created_at": { "type": "string" },
+    "status": { "type": "string" },
+    "product_brief": { "type": "string" },
+    "current_capabilities": { "type": "array", "items": { "type": "string" } },
+    "open_risks": { "type": "array", "items": { "type": "string" } },
+    "milestones": { "type": "array", "items": { "type": "object" } },
+    "next_actions": { "type": "array", "items": { "type": "string" } },
+    "source_reports": { "type": "object" }
+  }
+}

@@ -24,6 +24,7 @@ from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.replan_command import ReplanCommand
 from agent_runtime.commands.research_command import ResearchCommand
+from agent_runtime.commands.roadmap_command import RoadmapCommand
 from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.commands.resume_command import ResumeCommand
@@ -582,6 +583,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=7,
         help="Maximum long-run and acceptance records to include",
     )
+    roadmap_parser = subcommands.add_parser(
+        "roadmap-update",
+        aliases=["/roadmap-update", "prd-update", "/prd-update"],
+        help="Update project roadmap and PRD-style Markdown from runtime evidence",
+    )
+    roadmap_parser.add_argument("--root", default=".", help="Workspace root path")
+    roadmap_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Markdown output path; defaults to docs/zh/自动路线图.md",
+    )
     daily_plan_parser = subcommands.add_parser(
         "daily-plan",
         aliases=["/daily-plan", "long-run-plan", "/long-run-plan"],
@@ -890,6 +903,14 @@ def main() -> None:
             limit=args.limit,
         ).run()
         print(weekly_report_result.to_text())
+        return
+
+    if command in {"roadmap-update", "prd-update"}:
+        roadmap_result = RoadmapCommand(
+            root=Path(args.root),
+            output=args.output,
+        ).run()
+        print(roadmap_result.to_text())
         return
 
     if command in {"daily-plan", "long-run-plan"}:
