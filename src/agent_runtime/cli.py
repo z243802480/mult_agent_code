@@ -29,6 +29,7 @@ from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.sessions_command import SessionsCommand
 from agent_runtime.commands.verification_command import VerificationStatusCommand
+from agent_runtime.commands.weekly_report_command import WeeklyReportCommand
 
 
 def add_session_id_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
@@ -568,6 +569,19 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="Maximum acceptance history entries to include",
     )
+    weekly_report_parser = subcommands.add_parser(
+        "weekly-report",
+        aliases=["/weekly-report", "production-report", "/production-report"],
+        help="Summarize long-run cycles, acceptance, model capability, and weekly risks",
+    )
+    weekly_report_parser.add_argument("--root", default=".", help="Workspace root path")
+    weekly_report_parser.add_argument("--week-id", default=None, help="Week id such as 2026-W20")
+    weekly_report_parser.add_argument(
+        "--limit",
+        type=int,
+        default=7,
+        help="Maximum long-run and acceptance records to include",
+    )
     daily_plan_parser = subcommands.add_parser(
         "daily-plan",
         aliases=["/daily-plan", "long-run-plan", "/long-run-plan"],
@@ -867,6 +881,15 @@ def main() -> None:
             limit=args.limit,
         ).run()
         print(capability_report_result.to_text())
+        return
+
+    if command in {"weekly-report", "production-report"}:
+        weekly_report_result = WeeklyReportCommand(
+            root=Path(args.root),
+            week_id=args.week_id,
+            limit=args.limit,
+        ).run()
+        print(weekly_report_result.to_text())
         return
 
     if command in {"daily-plan", "long-run-plan"}:
