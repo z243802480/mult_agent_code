@@ -739,11 +739,15 @@ class AcceptanceFailurePromoter:
         evidence_path: Path,
     ) -> dict:
         scenario_name = str(scenario.get("scenario") or "unknown")
+        repair_focus = self._repair_focus(scenario, str(report.get("suite") or "smoke"))
         failure_summary = str(scenario.get("failure_summary") or "acceptance scenario failed")
         description_parts = [
             f"Repair the failing real-model acceptance scenario `{scenario_name}`.",
             f"Suite: {report.get('suite')}",
+            f"Capability: {repair_focus['capability']}",
             f"Failure: {failure_summary}",
+            "Repair focus:",
+            *[f"- {item}" for item in repair_focus["guidance"]],
             "Diagnostics:",
             f"- Acceptance report: {self.root / '.agent' / 'acceptance' / 'acceptance_report.json'}",
             f"- Failure evidence: {evidence_path}",
@@ -764,6 +768,7 @@ class AcceptanceFailurePromoter:
         if stderr_tail:
             description_parts.append(f"stderr tail:\n{stderr_tail}")
         expected_artifacts = [evidence_path.relative_to(self.root).as_posix()]
+        expected_artifacts.extend(repair_focus["expected_artifacts"])
         task: dict[str, Any] = {
             "schema_version": "0.1.0",
             "task_id": task_id,
@@ -776,6 +781,7 @@ class AcceptanceFailurePromoter:
             "acceptance": [
                 f"`agent acceptance` no longer fails for scenario `{scenario_name}`",
                 f"The reproduction command succeeds: `{self._acceptance_cli_command(report, scenario_name)}`",
+                *repair_focus["acceptance"],
                 "The fix is covered by deterministic tests or a documented verification command",
                 "No protected paths, secrets, or destructive shell behavior are introduced",
             ],
@@ -790,7 +796,7 @@ class AcceptanceFailurePromoter:
             ],
             "expected_artifacts": expected_artifacts,
             "task_kind": "implementation",
-            "expected_changed_files": [],
+            "expected_changed_files": repair_focus["expected_changed_files"],
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -803,12 +809,16 @@ class AcceptanceFailurePromoter:
         task["verification_policy"] = {
             "required": True,
             "allow_expected_failure": False,
-            "commands": [self._acceptance_cli_command(report, scenario_name)],
+            "commands": [
+                *repair_focus["verification_commands"],
+                self._acceptance_cli_command(report, scenario_name),
+            ],
         }
         return task
 
     def _write_failure_evidence(self, report: dict, scenario: dict, task_id: str) -> Path:
         scenario_name = str(scenario.get("scenario") or "unknown")
+        repair_focus = self._repair_focus(scenario, str(report.get("suite") or "smoke"))
         evidence_path = (
             self.root / ".agent" / "acceptance" / "failures" / f"{self._slug(scenario_name)}.json"
         )
@@ -817,8 +827,10 @@ class AcceptanceFailurePromoter:
             "evidence_id": f"acceptance-failure-{self._slug(scenario_name)}",
             "suite": str(report.get("suite") or "unknown"),
             "scenario": scenario_name,
+            "capability": repair_focus["capability"],
             "failure_summary": str(scenario.get("failure_summary") or "acceptance scenario failed"),
             "failure_attribution": scenario.get("failure_attribution") or {},
+            "repair_focus": repair_focus,
             "acceptance_report": str(
                 self.root / ".agent" / "acceptance" / "acceptance_report.json"
             ),
@@ -837,6 +849,68 @@ class AcceptanceFailurePromoter:
         }
         self.store.write(evidence_path, evidence, "acceptance_failure_evidence")
         return evidence_path
+
+    def _repair_focus(self, scenario: dict, suite: str) -> dict[str, Any]:
+        scenario_name = str(scenario.get("scenario") or "unknown")
+        capability = str(scenario.get("capability") or "unknown")
+        expected_file = self._expected_file(scenario)
+        base_command = f"python -m agent_runtime /acceptance --suite {suite} --scenario {scenario_name}"
+        focus: dict[str, Any] = {
+            "capability": capability,
+            "guidance": [
+                "Start from the scenario workspace and transcript before editing unrelated code.",
+                "Make the smallest change that closes this scenario, then rerun only this scenario.",
+            ],
+            "acceptance": [
+                "The fix is scoped to the failed capability and does not widen unrelated behavior."
+            ],
+            "expected_changed_files": [],
+            "expected_artifacts": [],
+            "verification_commands": [base_command],
+        }
+        if capability == "multi_file_change" or scenario_name == "multi_file_todo_cli":
+            if expected_file:
+                focus["expected_artifacts"].append(expected_file)
+            focus["guidance"].extend(
+                [
+                    "Verify the package layout, entrypoint, and cross-file imports together.",
+                    "Exercise both add and list flows so storage and CLI modules integrate correctly.",
+                ]
+            )
+            focus["acceptance"].extend(
+                [
+                    "The entrypoint and package modules are both present.",
+                    "`python todo.py add \"buy milk\"` and `python todo.py list` work in the scenario workspace.",
+                ]
+            )
+            focus["expected_changed_files"].extend(
+                ["todo.py", "todo_app/__init__.py", "todo_app/cli.py", "todo_app/storage.py"]
+            )
+            focus["verification_commands"].insert(
+                0,
+                "python todo.py add \"buy milk\" && python todo.py list",
+            )
+        elif capability == "configuration_change" or scenario_name == "config_driven_report":
+            if expected_file:
+                focus["expected_artifacts"].append(expected_file)
+            focus["guidance"].extend(
+                [
+                    "Treat report_config.json as the source of truth for inputs and outputs.",
+                    "Verify CSV parsing, minimum_total filtering, currency formatting, and report.md output.",
+                ]
+            )
+            focus["acceptance"].extend(
+                [
+                    "`report_from_config.py` reads report_config.json instead of hard-coding paths.",
+                    "`report.md` reflects configured currency and minimum_total filtering.",
+                ]
+            )
+            focus["expected_changed_files"].extend(["report_from_config.py", "report.md"])
+            focus["verification_commands"].insert(
+                0,
+                "python report_from_config.py report_config.json",
+            )
+        return focus
 
     def _acceptance_cli_command(self, report: dict, scenario_name: str) -> str:
         suite = str(report.get("suite") or "smoke")

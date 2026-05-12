@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModelCapabilityProfile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "root",
+    "profile_count",
+    "profiles"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "root": { "type": "string" },
+    "profile_count": { "type": "integer" },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "provider",
+          "model",
+          "purpose",
+          "model_tier",
+          "total_calls",
+          "success_calls",
+          "failure_calls",
+          "success_rate",
+          "input_tokens",
+          "output_tokens",
+          "failure_types",
+          "recommended_action"
+        ],
+        "properties": {
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "purpose": { "type": "string" },
+          "model_tier": { "type": "string" },
+          "total_calls": { "type": "integer" },
+          "success_calls": { "type": "integer" },
+          "failure_calls": { "type": "integer" },
+          "success_rate": { "type": "number" },
+          "input_tokens": { "type": "integer" },
+          "output_tokens": { "type": "integer" },
+          "average_input_tokens": { "type": "number" },
+          "average_output_tokens": { "type": "number" },
+          "failure_types": { "type": "object" },
+          "recommended_action": { "type": "string" },
+          "recent_failures": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    }
+  }
+}

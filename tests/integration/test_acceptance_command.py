@@ -626,6 +626,103 @@ def test_acceptance_report_records_failure_attribution_and_repair_workflow(
     SchemaValidator(Path.cwd() / "schemas").validate("acceptance_report", report)
 
 
+def test_acceptance_promotion_adds_targeted_repair_focus_for_core_capabilities(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    original_run = subprocess.run
+
+    def fake_acceptance_run(command, *args, **kwargs):
+        command_text = " ".join(str(item) for item in command)
+        if "real_model_acceptance.py" not in command_text:
+            return original_run(command, *args, **kwargs)
+        summary_path = Path(command[command.index("--summary-json") + 1])
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        summary = {
+            "ok": False,
+            "root": str(tmp_path),
+            "suite": "core",
+            "scenarios": [
+                {
+                    "scenario": "multi_file_todo_cli",
+                    "capability": "multi_file_change",
+                    "tier": "core",
+                    "ok": False,
+                    "workspace": str(tmp_path / "multi_file_todo_cli"),
+                    "summary": {
+                        "expected_file": str(tmp_path / "multi_file_todo_cli" / "todo.py"),
+                    },
+                    "stdout": "",
+                    "stderr": "ModuleNotFoundError: No module named todo_app",
+                },
+                {
+                    "scenario": "config_driven_report",
+                    "capability": "configuration_change",
+                    "tier": "core",
+                    "ok": False,
+                    "workspace": str(tmp_path / "config_driven_report"),
+                    "summary": {
+                        "expected_file": str(
+                            tmp_path / "config_driven_report" / "report_from_config.py"
+                        ),
+                    },
+                    "stdout": "",
+                    "stderr": "report.md was not created",
+                },
+            ],
+            "aggregate": {"failed": 2},
+        }
+        summary_path.write_text(json.dumps(summary, ensure_ascii=False), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 1, "", "Scenario(s) failed")
+
+    monkeypatch.setattr(subprocess, "run", fake_acceptance_run)
+
+    result = AcceptanceCommand(
+        tmp_path,
+        suite="core",
+        scenarios=["multi_file_todo_cli", "config_driven_report"],
+        promote_failures=True,
+    ).run()
+
+    run_dir = tmp_path / ".agent" / "runs" / "run-20260512-0001"
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    todo_task = next(
+        task
+        for task in task_plan["tasks"]
+        if task["title"] == "Repair acceptance scenario: multi_file_todo_cli"
+    )
+    report_task = next(
+        task
+        for task in task_plan["tasks"]
+        if task["title"] == "Repair acceptance scenario: config_driven_report"
+    )
+    todo_evidence = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(
+        tmp_path / ".agent" / "acceptance" / "failures" / "multi_file_todo_cli.json",
+        "acceptance_failure_evidence",
+    )
+    report_evidence = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(
+        tmp_path / ".agent" / "acceptance" / "failures" / "config_driven_report.json",
+        "acceptance_failure_evidence",
+    )
+
+    assert result.promoted_tasks == ["task-0001", "task-0002"]
+    assert todo_task["expected_changed_files"] == [
+        "todo.py",
+        "todo_app/__init__.py",
+        "todo_app/cli.py",
+        "todo_app/storage.py",
+    ]
+    assert "cross-file imports" in todo_task["description"]
+    assert "python todo.py add" in todo_task["verification_policy"]["commands"][0]
+    assert report_task["expected_changed_files"] == ["report_from_config.py", "report.md"]
+    assert "report_config.json as the source of truth" in report_task["description"]
+    assert "python report_from_config.py report_config.json" in (
+        report_task["verification_policy"]["commands"][0]
+    )
+    assert todo_evidence["repair_focus"]["capability"] == "multi_file_change"
+    assert report_evidence["repair_focus"]["capability"] == "configuration_change"
+
+
 def test_acceptance_failure_can_be_rerun_after_promoted_repair(
     tmp_path: Path,
     monkeypatch,

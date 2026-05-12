@@ -20,6 +20,7 @@
     "results",
     "summary",
     "risks",
+    "model_profile",
     "next_actions"
   ],
   "properties": {
@@ -40,6 +41,7 @@
     "results": { "type": "array", "items": { "type": "object" } },
     "summary": { "type": "string" },
     "risks": { "type": "array", "items": { "type": "string" } },
+    "model_profile": { "type": "object" },
     "next_actions": { "type": "array", "items": { "type": "string" } }
   }
 }

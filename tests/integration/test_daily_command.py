@@ -67,6 +67,7 @@ def test_daily_plan_selects_failed_only_acceptance_action(tmp_path: Path) -> Non
     assert plan["cycle_id"] == "2026-05-12"
     assert plan["schedule_type"] == "long_running_cycle"
     assert plan["actions"][0]["kind"] == "acceptance_failed_only"
+    assert plan["actions"][0]["responsible_role"] == "Evaluator"
     assert "--failed-only" in plan["actions"][0]["command"]
     validator.validate("daily_plan", plan)
 
@@ -89,14 +90,66 @@ def test_daily_run_plan_only_writes_report_and_markdown(tmp_path: Path) -> None:
     assert report["goal"]
     assert report["progress"]["planned_actions"] == 1
     assert report["stop_reason"] == "plan_only"
+    assert report["model_profile"]["status"] == "missing"
     assert report["risks"]
+    assert any("Model capability profile is missing" in risk for risk in report["risks"])
     assert report["results"][0]["status"] == "planned"
     assert (result.report_path.with_suffix(".md")).exists()
     markdown = result.report_path.with_suffix(".md").read_text(encoding="utf-8")
     assert "## Budget" in markdown
     assert "## Risks" in markdown
+    assert "## Model Profile" in markdown
     assert "release-hardening" in markdown
     SchemaValidator(Path.cwd() / "schemas").validate("daily_report", report)
+
+
+def test_daily_plan_reads_model_profile_weak_routes(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    profile_path = tmp_path / ".agent" / "model" / "capability_profile.json"
+    store.write(
+        profile_path,
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "minimax",
+                    "model": "MiniMax-M2.7",
+                    "purpose": "task_execution",
+                    "model_tier": "medium",
+                    "total_calls": 3,
+                    "success_calls": 1,
+                    "failure_calls": 2,
+                    "success_rate": 0.3333,
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "average_input_tokens": 33.33,
+                    "average_output_tokens": 16.67,
+                    "failure_types": {"provider_response": 2},
+                    "recommended_action": "use_json_stricter_or_switch_model",
+                    "recent_failures": ["invalid JSON"],
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    result = DailyPlanCommand(tmp_path, date="release-hardening").run()
+
+    plan = json.loads(result.plan_path.read_text(encoding="utf-8"))
+    model_profile = plan["signals"]["model_profile"]
+    assert model_profile["status"] == "ready"
+    assert model_profile["profile_count"] == 1
+    assert model_profile["weak_routes"][0]["purpose"] == "task_execution"
+    assert model_profile["weak_routes"][0]["recommended_action"] == (
+        "use_json_stricter_or_switch_model"
+    )
+    assert plan["actions"][0]["kind"] == "model_route_review"
+    assert plan["actions"][0]["risk"] == "model_route_risk"
+    assert plan["actions"][0]["responsible_role"] == "Product"
 
 
 def test_daily_report_creates_plan_only_report_when_missing(tmp_path: Path) -> None:
@@ -136,6 +189,7 @@ def test_daily_run_execute_records_evidence_and_budget_delta(
     assert report["budget"]["tool_calls"] == 3
     assert report["budget"]["repair_attempts"] == 1
     assert report["results"][0]["evidence_path"]
+    assert report["results"][0]["responsible_role"] == "Evaluator"
     daily_evidence = tmp_path / ".agent" / "daily" / "2026-05-12" / "task_execution_evidence.jsonl"
     run_evidence = run_dir / "task_execution_evidence.jsonl"
     assert daily_evidence.exists()

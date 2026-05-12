@@ -231,6 +231,7 @@ class DailyPlanCommand:
             "acceptance": acceptance,
             "task_summary": task_summary,
             "pending_decisions": pending_decisions,
+            "model_profile": self._model_profile_signal(agent_dir),
         }
 
     def _latest_acceptance(self, agent_dir: Path) -> dict[str, Any]:
@@ -285,6 +286,42 @@ class DailyPlanCommand:
             if decision.get("status") == "pending"
         ]
 
+    def _model_profile_signal(self, agent_dir: Path) -> dict[str, Any]:
+        path = agent_dir / "model" / "capability_profile.json"
+        if not path.exists():
+            return {
+                "status": "missing",
+                "profile_count": 0,
+                "weak_routes": [],
+                "profile_path": None,
+            }
+        profile = self.store.read(path, "model_capability_profile")
+        weak_routes = []
+        for item in profile.get("profiles", []):
+            if not isinstance(item, dict):
+                continue
+            if int(item.get("total_calls") or 0) < 2:
+                continue
+            if float(item.get("success_rate") or 0.0) >= 0.8:
+                continue
+            weak_routes.append(
+                {
+                    "provider": str(item.get("provider") or "unknown"),
+                    "model": str(item.get("model") or "unknown"),
+                    "purpose": str(item.get("purpose") or "unknown"),
+                    "success_rate": float(item.get("success_rate") or 0.0),
+                    "recommended_action": str(
+                        item.get("recommended_action") or "review_route_before_scaling"
+                    ),
+                }
+            )
+        return {
+            "status": "ready",
+            "profile_count": int(profile.get("profile_count") or 0),
+            "weak_routes": weak_routes[:5],
+            "profile_path": str(path),
+        }
+
     def _actions(self, signals: dict[str, Any]) -> list[dict[str, Any]]:
         actions = []
         pending = signals.get("pending_decisions", [])
@@ -295,6 +332,7 @@ class DailyPlanCommand:
                     "command": "python -m agent_runtime /decide --list-pending --root .",
                     "summary": f"Resolve pending decision {pending[0]['decision_id']}.",
                     "risk": "manual_input_required",
+                    "responsible_role": "Product",
                 }
             )
             return actions
@@ -307,6 +345,26 @@ class DailyPlanCommand:
                     "command": "python -m agent_runtime /acceptance --root . --failed-only",
                     "summary": "Rerun only failed acceptance scenarios: " + ", ".join(failed[:5]),
                     "risk": "bounded_model_cost",
+                    "responsible_role": "Evaluator",
+                }
+            )
+            return actions
+        model_profile = signals.get("model_profile", {})
+        weak_routes = model_profile.get("weak_routes") or []
+        if weak_routes:
+            labels = [
+                f"{item['provider']}/{item['model']}:{item['purpose']}"
+                for item in weak_routes[:3]
+            ]
+            actions.append(
+                {
+                    "kind": "model_route_review",
+                    "command": "python -m agent_runtime /capability-report --root .",
+                    "summary": "Review weak model routes before spending long-run budget: "
+                    + ", ".join(labels),
+                    "risk": "model_route_risk",
+                    "recommended_action": weak_routes[0].get("recommended_action"),
+                    "responsible_role": "Product",
                 }
             )
             return actions
@@ -318,6 +376,7 @@ class DailyPlanCommand:
                     "command": "python -m agent_runtime /execute --root . --max-tasks 1",
                     "summary": "Execute one ready task under the daily budget.",
                     "risk": "model_cost",
+                    "responsible_role": "Coder",
                 }
             )
         elif int(tasks.get("blocked", 0)):
@@ -327,15 +386,22 @@ class DailyPlanCommand:
                     "command": "python -m agent_runtime /debug --root . --max-repairs 1",
                     "summary": "Repair one blocked task using latest evidence.",
                     "risk": "repair_may_pause",
+                    "responsible_role": "Debugger",
                 }
             )
         else:
+            model_profile = signals.get("model_profile", {})
+            if model_profile.get("status") == "missing":
+                summary = "Generate capability and model profile data before scaling long-run work."
+            else:
+                summary = "Summarize current production and model capability before widening scope."
             actions.append(
                 {
                     "kind": "capability_report",
                     "command": "python -m agent_runtime /capability-report --root .",
-                    "summary": "Summarize current production capability and next risks.",
+                    "summary": summary,
                     "risk": "read_only",
+                    "responsible_role": "Evaluator",
                 }
             )
         return actions
@@ -430,6 +496,7 @@ class DailyRunCommand:
             "results": results,
             "summary": self._summary(results),
             "risks": self._risks(results, stop_reason, plan),
+            "model_profile": (plan.get("signals") or {}).get("model_profile", {}),
             "next_actions": self._next_actions(results),
         }
         report_path = self.root / ".agent" / "daily" / self.date / "daily_report.json"
@@ -451,6 +518,7 @@ class DailyRunCommand:
                 "summary": action.get("summary"),
                 "command": action.get("command"),
                 "risk": action.get("risk"),
+                "responsible_role": action.get("responsible_role"),
             }
         command = [sys.executable, "-m", "agent_runtime", *self._command_args(action)]
         env = os.environ.copy()
@@ -483,6 +551,7 @@ class DailyRunCommand:
                 "summary": action.get("summary"),
                 "command": " ".join(command),
                 "risk": action.get("risk"),
+                "responsible_role": action.get("responsible_role"),
                 "returncode": completed.returncode,
                 "failure_type": failure_type,
                 "started_at": started_at,
@@ -500,6 +569,7 @@ class DailyRunCommand:
                 "summary": action.get("summary"),
                 "command": " ".join(command),
                 "risk": action.get("risk"),
+                "responsible_role": action.get("responsible_role"),
                 "returncode": None,
                 "failure_type": "daily_timeout",
                 "started_at": started_at,
@@ -519,6 +589,8 @@ class DailyRunCommand:
             return ["/debug", "--root", str(self.root), "--max-repairs", "1"]
         if kind == "resolve_decision":
             return ["/decide", "--root", str(self.root), "--list-pending"]
+        if kind == "model_route_review":
+            return ["/capability-report", "--root", str(self.root)]
         return ["/capability-report", "--root", str(self.root)]
 
     def _status(self, results: list[dict[str, Any]], stop_reason: str | None) -> str:
@@ -565,6 +637,12 @@ class DailyRunCommand:
             f"- Stop reason: {report.get('stop_reason') or 'none'}",
             f"- Summary: {report['summary']}",
             "",
+            "## Model Profile",
+            "",
+            f"- Status: {(report.get('model_profile') or {}).get('status', 'missing')}",
+            f"- Profiles: {(report.get('model_profile') or {}).get('profile_count', 0)}",
+            f"- Profile path: {(report.get('model_profile') or {}).get('profile_path') or 'none'}",
+            "",
             "## Budget",
             "",
             f"- Runtime seconds: {report['budget']['elapsed_seconds']}",
@@ -578,8 +656,10 @@ class DailyRunCommand:
         for result in report["results"]:
             evidence = result.get("evidence_path") or "none"
             failure = result.get("failure_type") or "none"
+            role = result.get("responsible_role") or "unknown"
             lines.append(
-                f"- {result.get('kind')}: {result.get('status')} - {result.get('summary')} "
+                f"- {result.get('kind')}: {result.get('status')} [{role}] - "
+                f"{result.get('summary')} "
                 f"(failure={failure}; evidence={evidence})"
             )
         lines.extend(["", "## Risks", ""])
@@ -624,6 +704,16 @@ class DailyRunCommand:
         failed = acceptance.get("failed_scenarios") or []
         if failed:
             risks.append("Acceptance still has failing scenarios: " + ", ".join(failed[:5]))
+        model_profile = (plan.get("signals") or {}).get("model_profile") or {}
+        if model_profile.get("status") == "missing":
+            risks.append("Model capability profile is missing; routing decisions lack history.")
+        weak_routes = model_profile.get("weak_routes") or []
+        if weak_routes:
+            labels = [
+                f"{item['provider']}/{item['model']}:{item['purpose']}"
+                for item in weak_routes[:3]
+            ]
+            risks.append("Weak model routes need review: " + ", ".join(labels))
         return risks or ["No immediate daily automation risk was detected."]
 
     def _record_action_evidence(
@@ -683,6 +773,7 @@ class DailyRunCommand:
                 "completion_notes": result.get("status"),
                 "command": result.get("command") or action.get("command"),
                 "risk": action.get("risk"),
+                "responsible_role": action.get("responsible_role"),
             },
             "candidate": {
                 "workspace": str(self.root),

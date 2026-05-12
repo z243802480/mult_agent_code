@@ -20,6 +20,8 @@ class CapabilityReportResult:
     average_repair_rounds: float = 0.0
     model_calls: int = 0
     tool_calls: int = 0
+    model_profiles: list[dict[str, Any]] = field(default_factory=list)
+    model_profile_path: Path | None = None
     common_blockers: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
 
@@ -57,6 +59,19 @@ class CapabilityReportResult:
                 lines.append(f"  - {failure_type}: {count}")
         lines.append(f"Average repair rounds: {self.average_repair_rounds:.2f}")
         lines.append(f"Cost signals: {self.model_calls} model calls, {self.tool_calls} tool calls")
+        if self.model_profiles:
+            lines.append("Model capability profiles:")
+            for profile in self.model_profiles[:8]:
+                lines.append(
+                    "  - "
+                    f"{profile['provider']}/{profile['model']} "
+                    f"purpose={profile['purpose']} tier={profile['model_tier']}: "
+                    f"{profile['success_rate']:.2f} success "
+                    f"({profile['success_calls']}/{profile['total_calls']} calls, "
+                    f"{profile['input_tokens']} in/{profile['output_tokens']} out tokens)"
+                )
+        if self.model_profile_path:
+            lines.append(f"Model profile: {self.model_profile_path}")
         if self.common_blockers:
             lines.append("Common blockers:")
             lines.extend(f"  - {item}" for item in self.common_blockers[:5])
@@ -81,7 +96,15 @@ class CapabilityReportCommand:
         capability_summary = self._capability_summary(acceptance_runs, latest)
         failure_types, blockers, repair_rounds = self._execution_evidence_summary(agent_dir)
         model_calls, tool_calls = self._cost_signals(agent_dir)
-        next_actions = self._next_actions(latest, capability_summary, failure_types, blockers)
+        model_profiles = self._model_profiles(agent_dir)
+        model_profile_path = self._write_model_profile(agent_dir, model_profiles)
+        next_actions = self._next_actions(
+            latest,
+            capability_summary,
+            failure_types,
+            blockers,
+            model_profiles,
+        )
         return CapabilityReportResult(
             root=self.root,
             acceptance_runs=len(acceptance_runs),
@@ -91,6 +114,8 @@ class CapabilityReportCommand:
             average_repair_rounds=repair_rounds,
             model_calls=model_calls,
             tool_calls=tool_calls,
+            model_profiles=model_profiles,
+            model_profile_path=model_profile_path,
             common_blockers=blockers,
             next_actions=next_actions,
         )
@@ -188,6 +213,122 @@ class CapabilityReportCommand:
                 tool_calls += int(cost.get("tool_calls") or 0)
         return model_calls, tool_calls
 
+    def _model_profiles(self, agent_dir: Path) -> list[dict[str, Any]]:
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        for run_dir in self._run_dirs(agent_dir):
+            path = run_dir / "model_calls.jsonl"
+            if not path.exists():
+                continue
+            for call in self.jsonl.read_all(path, "model_call"):
+                key = (
+                    str(call.get("model_provider") or "unknown"),
+                    str(call.get("model_name") or "unknown"),
+                    str(call.get("purpose") or "unknown"),
+                    str(call.get("model_tier") or "unknown"),
+                )
+                profile = profiles.setdefault(
+                    key,
+                    {
+                        "provider": key[0],
+                        "model": key[1],
+                        "purpose": key[2],
+                        "model_tier": key[3],
+                        "total_calls": 0,
+                        "success_calls": 0,
+                        "failure_calls": 0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "failure_types": {},
+                        "recent_failures": [],
+                    },
+                )
+                profile["total_calls"] += 1
+                if call.get("status") == "success":
+                    profile["success_calls"] += 1
+                else:
+                    profile["failure_calls"] += 1
+                    failure_type = self._classify_model_failure(call)
+                    profile["failure_types"][failure_type] = (
+                        profile["failure_types"].get(failure_type, 0) + 1
+                    )
+                    if len(profile["recent_failures"]) < 5:
+                        profile["recent_failures"].append(str(call.get("summary") or failure_type))
+                profile["input_tokens"] += int(call.get("input_tokens") or 0)
+                profile["output_tokens"] += int(call.get("output_tokens") or 0)
+
+        normalized = []
+        for profile in profiles.values():
+            total = int(profile["total_calls"])
+            profile["success_rate"] = (
+                round(int(profile["success_calls"]) / total, 4) if total else 0.0
+            )
+            profile["average_input_tokens"] = (
+                round(int(profile["input_tokens"]) / total, 2) if total else 0.0
+            )
+            profile["average_output_tokens"] = (
+                round(int(profile["output_tokens"]) / total, 2) if total else 0.0
+            )
+            profile["recommended_action"] = self._model_route_action(profile)
+            normalized.append(profile)
+        return sorted(
+            normalized,
+            key=lambda item: (
+                str(item["provider"]),
+                str(item["model"]),
+                str(item["purpose"]),
+                str(item["model_tier"]),
+            ),
+        )
+
+    def _write_model_profile(
+        self,
+        agent_dir: Path,
+        profiles: list[dict[str, Any]],
+    ) -> Path | None:
+        if not profiles:
+            return None
+        path = agent_dir / "model" / "capability_profile.json"
+        profile = {
+            "schema_version": "0.1.0",
+            "root": str(self.root),
+            "profile_count": len(profiles),
+            "profiles": profiles,
+        }
+        self.store.write(path, profile, "model_capability_profile")
+        return path
+
+    def _classify_model_failure(self, call: dict[str, Any]) -> str:
+        summary = str(call.get("summary") or "").lower()
+        if "json" in summary or "schema" in summary:
+            return "provider_response"
+        if "rate" in summary or "429" in summary:
+            return "rate_limited"
+        if "timeout" in summary or "timed out" in summary:
+            return "timeout"
+        if "auth" in summary or "api key" in summary or "401" in summary or "403" in summary:
+            return "authentication"
+        if "budget" in summary:
+            return "budget"
+        if "network" in summary or "tls" in summary or "connection" in summary:
+            return "network"
+        return "model_call_failed"
+
+    def _model_route_action(self, profile: dict[str, Any]) -> str:
+        total = int(profile.get("total_calls") or 0)
+        success_rate = float(profile.get("success_rate") or 0.0)
+        failure_types = profile.get("failure_types") or {}
+        if total < 2:
+            return "collect_more_data"
+        if success_rate >= 0.8:
+            return "keep_route"
+        if failure_types.get("authentication") or failure_types.get("budget"):
+            return "pause_route_until_config_fixed"
+        if failure_types.get("rate_limited") or failure_types.get("timeout") or failure_types.get("network"):
+            return "fallback_or_retry_later"
+        if failure_types.get("provider_response"):
+            return "use_json_stricter_or_switch_model"
+        return "review_route_before_scaling"
+
     def _run_dirs(self, agent_dir: Path) -> list[Path]:
         if not agent_dir.exists():
             return []
@@ -225,6 +366,7 @@ class CapabilityReportCommand:
         capability_summary: dict[str, dict[str, int]],
         failure_types: dict[str, int],
         blockers: list[str],
+        model_profiles: list[dict[str, Any]],
     ) -> list[str]:
         actions = []
         if not latest:
@@ -244,4 +386,18 @@ class CapabilityReportCommand:
             actions.append("Use `/replan` and `/debug` on the latest execution evidence failures.")
         if blockers:
             actions.append("Inspect the most common blocker evidence before widening scope.")
+        weak_models = [
+            profile
+            for profile in model_profiles
+            if int(profile.get("total_calls") or 0) >= 2
+            and float(profile.get("success_rate") or 0.0) < 0.8
+        ]
+        if weak_models:
+            labels = [
+                f"{item['provider']}/{item['model']}:{item['purpose']}"
+                for item in weak_models[:3]
+            ]
+            actions.append("Review weak model routes before scaling long-run work: " + ", ".join(labels))
+        if not model_profiles:
+            actions.append("Run a long-run or acceptance cycle to collect model capability data.")
         return list(dict.fromkeys(actions))
