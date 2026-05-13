@@ -108,6 +108,8 @@ class HandoffCommand:
             "pending_decisions": snapshot.get("pending_decisions", []),
             "verification_summary": snapshot.get("verification_summary", {}),
             "task_failures": snapshot.get("task_failures", []),
+            "runtime_requests": snapshot.get("runtime_requests", []),
+            "worker_summary": snapshot.get("worker_summary", {}),
             "acceptance_failures": snapshot.get("acceptance_failures", []),
             "report_summaries": snapshot.get("report_summaries", {}),
             "recommended_next_command": self._recommended_next_command(snapshot),

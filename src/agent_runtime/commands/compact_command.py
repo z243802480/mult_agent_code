@@ -95,6 +95,15 @@ class CompactCommand:
         task_failures = self._read_optional_jsonl(
             run_dir / "task_failures.jsonl" if run_dir else None, "task_failure_evidence"
         )
+        runtime_requests = self._read_optional_jsonl(
+            run_dir / "runtime_requests.jsonl" if run_dir else None, "runtime_request"
+        )
+        workers = self._read_optional_jsonl(
+            run_dir / "workers.jsonl" if run_dir else None, "worker_invocation"
+        )
+        worker_results = self._read_optional_jsonl(
+            run_dir / "worker_results.jsonl" if run_dir else None, "worker_result"
+        )
 
         tasks = task_plan.get("tasks", []) if task_plan else []
         active_tasks = [
@@ -137,11 +146,13 @@ class CompactCommand:
             "verification_summary": self._latest_verification_summary(agent_dir),
             "failures": failures,
             "task_failures": self._task_failures(task_failures, run_dir),
+            "runtime_requests": self._runtime_requests(runtime_requests),
+            "worker_summary": self._worker_summary(workers, worker_results),
             "acceptance_failures": acceptance_failures,
             "report_summaries": report_summaries,
             "research_claims": [],
             "open_risks": self._open_risks(
-                cost_report, failures, task_failures, acceptance_failures
+                cost_report, failures, task_failures, acceptance_failures, runtime_requests
             ),
             "next_actions": next_actions,
             "project": self._read_optional_json(agent_dir / "project.json", "project_config") or {},
@@ -325,6 +336,53 @@ class CompactCommand:
             )
         return failures
 
+    def _runtime_requests(self, runtime_requests: list[dict]) -> list[dict]:
+        return [
+            {
+                "runtime_request_id": item["runtime_request_id"],
+                "task_id": item["task_id"],
+                "request_type": item["request_type"],
+                "risk": item["risk"],
+                "status": item["status"],
+                "decision_id": item.get("decision_id"),
+                "reason": item["reason"],
+                "details": item.get("details", {}),
+                "created_at": item.get("created_at"),
+            }
+            for item in runtime_requests[-10:]
+        ]
+
+    def _worker_summary(self, workers: list[dict], worker_results: list[dict]) -> dict:
+        by_status: dict[str, int] = {}
+        for worker in workers:
+            status = str(worker.get("status") or "unknown")
+            by_status[status] = by_status.get(status, 0) + 1
+        result_by_invocation = {
+            result["worker_invocation_id"]: result for result in worker_results
+        }
+        recent = []
+        for worker in workers[-10:]:
+            result = result_by_invocation.get(worker["worker_invocation_id"], {})
+            recent.append(
+                {
+                    "worker_invocation_id": worker["worker_invocation_id"],
+                    "task_id": worker["task_id"],
+                    "agent_id": worker["agent_id"],
+                    "runtime_profile_id": worker["runtime_profile_id"],
+                    "status": worker["status"],
+                    "result_status": result.get("status"),
+                    "artifact_refs": result.get("artifact_refs", []),
+                    "validation_refs": result.get("validation_refs", []),
+                    "failure_evidence_refs": result.get("failure_evidence_refs", []),
+                    "summary": result.get("summary") or worker.get("summary", ""),
+                }
+            )
+        return {
+            "total": len(workers),
+            "by_status": by_status,
+            "recent": recent,
+        }
+
     def _accepted_decisions(self, run_dir: Path | None) -> list[str]:
         if not run_dir:
             return []
@@ -410,6 +468,7 @@ class CompactCommand:
         failures: list[dict],
         task_failures: list[dict],
         acceptance_failures: list[dict],
+        runtime_requests: list[dict],
     ) -> list[str]:
         risks = []
         if failures:
@@ -423,6 +482,15 @@ class CompactCommand:
         if acceptance_failures:
             risks.append(
                 f"{len(acceptance_failures)} acceptance failure evidence item(s) need repair"
+            )
+        pending_runtime_requests = [
+            item
+            for item in runtime_requests
+            if item.get("status") in {"recorded", "decision_created"}
+        ]
+        if pending_runtime_requests:
+            risks.append(
+                f"{len(pending_runtime_requests)} runtime request(s) need contract review"
             )
         if cost_report and cost_report.get("status") in {"near_limit", "exceeded", "stopped"}:
             risks.append(f"Cost status is {cost_report['status']}")

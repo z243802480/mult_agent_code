@@ -38,6 +38,8 @@
     "verification_summary": { "type": "object" },
     "failures": { "type": "array", "items": { "type": "object" } },
     "task_failures": { "type": "array", "items": { "type": "object" } },
+    "runtime_requests": { "type": "array", "items": { "type": "object" } },
+    "worker_summary": { "type": "object" },
     "acceptance_failures": { "type": "array", "items": { "type": "object" } },
     "report_summaries": { "type": "object" },
     "research_claims": { "type": "array", "items": { "type": "string" } },

@@ -255,6 +255,56 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
         "task_failure_evidence",
     )
     jsonl.append(
+        run_dir / "runtime_requests.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "runtime_request_id": "runtime-request-0001",
+            "run_id": plan.run_id,
+            "task_id": "task-0001",
+            "request_type": "scope_expansion",
+            "risk": "medium",
+            "reason": "Need to write WEB_UI.md after a decision.",
+            "details": {"write_scope": ["WEB_UI.md"]},
+            "status": "decision_created",
+            "decision_id": "decision-0002",
+            "created_at": "2026-05-05T00:00:02+08:00",
+        },
+        "runtime_request",
+    )
+    jsonl.append(
+        run_dir / "workers.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_invocation_id": "worker-0001",
+            "run_id": plan.run_id,
+            "task_id": "task-0001",
+            "agent_id": "CoderAgent",
+            "runtime_profile_id": "runtime-profile-0001",
+            "status": "failed",
+            "started_at": "2026-05-05T00:00:03+08:00",
+            "ended_at": "2026-05-05T00:00:04+08:00",
+            "summary": "Worker blocked on contract violation.",
+        },
+        "worker_invocation",
+    )
+    jsonl.append(
+        run_dir / "worker_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_result_id": "worker-result-0001",
+            "worker_invocation_id": "worker-0001",
+            "run_id": plan.run_id,
+            "task_id": "task-0001",
+            "status": "failed",
+            "artifact_refs": ["artifact-0001"],
+            "validation_refs": [],
+            "failure_evidence_refs": ["task-failure-0001"],
+            "cost": {"model_calls": 1, "tool_calls": 2},
+            "summary": "Contract violation stopped promotion.",
+        },
+        "worker_result",
+    )
+    jsonl.append(
         run_dir / "artifacts.jsonl",
         {
             "schema_version": "0.1.0",
@@ -298,12 +348,19 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert snapshot["task_failures"][0]["contract_check"]["violations"] == [
         "verification did not pass"
     ]
+    assert snapshot["runtime_requests"][0]["runtime_request_id"] == "runtime-request-0001"
+    assert snapshot["runtime_requests"][0]["details"]["write_scope"] == ["WEB_UI.md"]
+    assert snapshot["worker_summary"]["by_status"]["failed"] == 1
+    assert snapshot["worker_summary"]["recent"][0]["failure_evidence_refs"] == [
+        "task-failure-0001"
+    ]
     assert snapshot["acceptance_failures"][0]["scenario"] == "markdown_kb"
     assert snapshot["acceptance_failures"][0]["evidence_path"] == (
         ".agent/acceptance/failures/markdown_kb.json"
     )
     assert "task failure evidence" in snapshot["open_risks"][1]
     assert "acceptance failure evidence" in snapshot["open_risks"][2]
+    assert "runtime request" in snapshot["open_risks"][3]
     assert snapshot["failures"][0]["summary"] == "1 failed"
     assert "Need user decision" in snapshot["report_summaries"]["review_report"]
     assert snapshot["next_actions"][0] == "Resolve decision decision-0002 with /decide"
@@ -313,6 +370,8 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert package["pending_decisions"][0]["question"] == "Should we add a UI now?"
     assert package["verification_summary"]["platform"] == "windows"
     assert package["task_failures"][0]["failure_type"] == "contract_violation"
+    assert package["runtime_requests"][0]["request_type"] == "scope_expansion"
+    assert package["worker_summary"]["total"] == 1
     assert package["acceptance_failures"][0]["failure_summary"] == (
         "Expected markdown_kb.py was not created"
     )
