@@ -4,6 +4,11 @@ Local-first multi-agent autonomous development runtime. The current MVP path is 
 turns a goal into a GoalSpec, task plan, controlled tool execution, repair, review, context
 snapshot, and final report.
 
+The active product direction is an orchestrated Agent Runtime OS for long-task autonomous
+development: task contracts, worker invocation evidence, isolated candidates, merge gates,
+resume/handoff, acceptance gates, and cost controls. The Chinese documents are the current
+source of truth; start with `docs/zh/当前状态与路线.md`.
+
 ## Quick Start
 
 ```powershell
@@ -84,7 +89,7 @@ python scripts/real_model_acceptance.py --suite core
 ```
 
 The `core` suite covers file smoke, single-file CLI work, markdown search, safe dry-run rename,
-multi-file changes, and config-driven reporting. The `advanced` and `nightly` suites add
+multi-file changes, config-driven reporting, and Runtime OS release-gate scenarios. The `advanced` and `nightly` suites add
 test-driven repair, docs+code sync, safe refactor, decision memory, and memory lesson reuse. These
 are intentionally not part of default CI because they consume real provider calls.
 When budget allows, use `--suite nightly` for the broader stability pass. Acceptance summaries include
@@ -112,11 +117,12 @@ python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warnin
 For release gating, evaluate the latest persisted acceptance report:
 
 ```powershell
-python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 6
+python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 11 --min-capabilities 11
 ```
 
 The gate blocks when acceptance failed without a successful repair rerun, when trend warnings are
-present, or when the report does not cover the required suite/scenario/capability/tier count.
+present, when Runtime OS worker/merge/resume evidence is incomplete, or when the report does not
+cover the required suite/scenario/capability/tier count.
 
 Summarize recent real-task capability health with:
 

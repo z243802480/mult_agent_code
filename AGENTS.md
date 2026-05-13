@@ -25,8 +25,10 @@ Do not prioritize a dashboard before the core CLI/runtime loop works.
 ## 3. Current Assumptions
 
 ```text
-The current implementation phase is Phase 1B: reproducible runtime environment, acceptance loops, execution-loop hardening, and structured task contracts.
+The current implementation phase is the orchestrated Agent Runtime OS stage.
+The product capability target is a long-task autonomous development runtime: orchestrated, isolated, resumable, auditable, and cost-controlled.
 The Chinese main documents in docs/zh are the most detailed project source of truth.
+Start from docs/zh/当前状态与路线.md before using older phase documents.
 The runtime should avoid fake stubs; implemented features must have real behavior and tests.
 MVP uses filesystem + JSON/JSONL before SQLite.
 ```
@@ -37,6 +39,7 @@ MVP uses filesystem + JSON/JSONL before SQLite.
 Runtime layers: CLI, command router, orchestrator, context layer, agent layer, tool layer, evaluation layer, persistence layer.
 MVP implementation uses Python standard library where possible, with optional future dependencies documented in pyproject.toml.
 Current working commands: python -m agent_runtime init --root <path>, python -m agent_runtime /run "<goal>" --root <path>, and python -m agent_runtime /acceptance --suite offline --allow-fake --root <path>
+Current Runtime OS objects include TaskGraph, WorkerInvocation, WorkerResult, RuntimeProfile, ContextMount, TaskExecutionEvidence, and MergeGate.
 Root runtime state lives in .agent/.
 ```
 

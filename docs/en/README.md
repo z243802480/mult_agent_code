@@ -1,8 +1,8 @@
 ﻿# Multi-Agent Autonomous Development System - English Documentation
 
-This directory contains the maintainable English document set for the project.
+This directory contains the English reference document set for the project.
 
-The Chinese documents in `docs/zh/` are currently the source of truth for detailed planning. The English documents are concise mirrors intended for cross-language review.
+The Chinese documents in `docs/zh/` are the source of truth for product direction, delivery planning, and current implementation status. English documents are secondary references and may lag behind the active Chinese roadmap.
 
 Recommended order:
 
@@ -18,8 +18,10 @@ Recommended order:
 Current phase:
 
 ```text
-Phase 1B: reproducible runtime environment and execution loop hardening
+Orchestrated Agent Runtime OS stage
 ```
+
+For the current status and near-term roadmap, read `docs/zh/当前状态与路线.md` first.
 
 Verification:
 
