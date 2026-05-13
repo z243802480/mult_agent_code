@@ -9,6 +9,8 @@ from agent_runtime.core.runtime_profile import (
     SandboxProfile,
     ToolPermissionProfile,
 )
+from agent_runtime.core.runtime_request import RuntimeRequest
+from agent_runtime.core.validation_result import ValidationResult
 from agent_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
 from agent_runtime.storage.schema_validator import SchemaValidator
 
@@ -116,5 +118,44 @@ def test_worker_invocation_and_result_validate_against_schemas() -> None:
             failure_evidence_refs=[],
             cost=WorkerCost(model_calls=1, tool_calls=8),
             summary="Implemented task and passed targeted validation.",
+        ).to_dict(),
+    )
+
+
+def test_runtime_request_validates_against_schema() -> None:
+    validator = SchemaValidator(SCHEMA_DIR)
+
+    validator.validate(
+        "runtime_request",
+        RuntimeRequest(
+            runtime_request_id="runtime-request-0001",
+            run_id="run-0001",
+            task_id="task-0001",
+            request_type="scope_expansion",
+            risk="medium",
+            reason="Need to write generated/report.md.",
+            details={"write_scope": ["generated/report.md"]},
+            status="decision_created",
+            decision_id="decision-0001",
+            created_at="2026-05-13T10:00:00+08:00",
+        ).to_dict(),
+    )
+
+
+def test_validation_result_validates_against_schema() -> None:
+    validator = SchemaValidator(SCHEMA_DIR)
+
+    validator.validate(
+        "validation_result",
+        ValidationResult(
+            validation_result_id="validation-0001",
+            run_id="run-0001",
+            task_id="task-0001",
+            tool_name="run_command",
+            command="pytest tests/unit/test_notes_tool.py",
+            status="passed",
+            summary="Command succeeded.",
+            data={"exit_code": 0},
+            created_at="2026-05-13T10:00:00+08:00",
         ).to_dict(),
     )

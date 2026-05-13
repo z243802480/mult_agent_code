@@ -16,6 +16,7 @@ class ContextMountBuilder:
         artifact_refs: list[str] | None = None,
         failure_evidence_refs: list[str] | None = None,
         decision_refs: list[str] | None = None,
+        validation_refs: list[str] | None = None,
     ) -> ContextMount:
         requirements = context_requirements(task)
         task_id = str(task["task_id"])
@@ -29,6 +30,7 @@ class ContextMountBuilder:
                 failure_evidence_refs if requirements.get("include_failures") else []
             ),
             "decision_refs": decision_refs if requirements.get("include_decisions") else [],
+            "validation_refs": validation_refs if requirements.get("include_validation") else [],
             "recent_event_count": int(requirements.get("recent_event_count") or 20),
         }
         return ContextMount(

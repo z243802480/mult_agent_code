@@ -31,6 +31,29 @@
         }
       }
     },
+    "runtime_requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["request_type", "reason"],
+        "properties": {
+          "request_type": {
+            "type": "string",
+            "enum": [
+              "scope_expansion",
+              "context_request",
+              "tool_request",
+              "budget_request",
+              "model_upgrade_request",
+              "decision_request"
+            ]
+          },
+          "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+          "reason": { "type": "string" },
+          "details": { "type": "object" }
+        }
+      }
+    },
     "completion_notes": { "type": "string" }
   }
 }

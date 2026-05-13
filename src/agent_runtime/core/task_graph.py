@@ -18,7 +18,7 @@ class TaskGraphScheduler:
 
     def ready_nodes(self) -> list[dict]:
         done = {task["task_id"] for task in self.tasks if task.get("status") == "done"}
-        ready = []
+        ready: list[dict] = []
         for task in self.tasks:
             dependencies = task.get("depends_on") or []
             if task.get("status") == "ready" and all(dep in done for dep in dependencies):
@@ -34,8 +34,8 @@ class TaskGraphScheduler:
         )
 
     def select_readonly_batch(self, max_tasks: int) -> ReadySelection:
-        selected = []
-        blocked = []
+        selected: list[dict] = []
+        blocked: list[dict] = []
         for task in self.ready_nodes():
             if len(selected) >= max_tasks:
                 break

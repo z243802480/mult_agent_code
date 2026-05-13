@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ValidationResult",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "validation_result_id",
+    "run_id",
+    "task_id",
+    "tool_name",
+    "status",
+    "summary",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "validation_result_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "tool_name": { "type": "string" },
+    "command": { "type": ["string", "null"] },
+    "status": { "type": "string", "enum": ["passed", "failed"] },
+    "summary": { "type": "string" },
+    "error": { "type": ["string", "null"] },
+    "data": { "type": "object" },
+    "created_at": { "type": "string" }
+  }
+}

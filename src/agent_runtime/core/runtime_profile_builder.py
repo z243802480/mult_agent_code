@@ -46,6 +46,7 @@ class RuntimeProfileBuilder:
         artifact_refs: list[str] | None = None,
         failure_evidence_refs: list[str] | None = None,
         decision_refs: list[str] | None = None,
+        validation_refs: list[str] | None = None,
     ) -> RuntimeProfileMount:
         scoped = self._runtime_context_for_task(
             context=context,
@@ -54,6 +55,7 @@ class RuntimeProfileBuilder:
             artifact_refs=artifact_refs or [],
             failure_evidence_refs=failure_evidence_refs or [],
             decision_refs=decision_refs or [],
+            validation_refs=validation_refs or [],
         )
         if context.run_dir is None:
             return RuntimeProfileMount(
@@ -139,6 +141,7 @@ class RuntimeProfileBuilder:
         artifact_refs: list[str],
         failure_evidence_refs: list[str],
         decision_refs: list[str],
+        validation_refs: list[str],
     ) -> dict:
         scoped = dict(runtime_context)
         if context.run_id:
@@ -147,6 +150,7 @@ class RuntimeProfileBuilder:
                 artifact_refs=artifact_refs,
                 failure_evidence_refs=failure_evidence_refs,
                 decision_refs=decision_refs,
+                validation_refs=validation_refs,
             ).to_dict()
             scoped["context_package"] = ContextPackageBuilder(self.validator).build(
                 context,

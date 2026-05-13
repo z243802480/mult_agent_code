@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import RLock
 
 from agent_runtime.agents.coder_agent import CoderAgent
 from agent_runtime.commands.decide_command import DecideCommand
@@ -13,6 +14,7 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.policy_config import load_policy_config
+from agent_runtime.core.runtime_request import RuntimeRequest
 from agent_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_contract import (
@@ -26,6 +28,7 @@ from agent_runtime.core.task_graph import TaskGraphScheduler
 from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
+from agent_runtime.core.validation_result import ValidationResult
 from agent_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
@@ -42,6 +45,9 @@ from agent_runtime.tools.defaults import create_default_tool_registry
 from agent_runtime.utils.time import now_iso
 
 
+_VALIDATION_RESULT_LOCK = RLock()
+
+
 @dataclass(frozen=True)
 class TaskExecutionSummary:
     task_id: str
@@ -50,6 +56,7 @@ class TaskExecutionSummary:
     tool_calls: int
     verification_calls: int
     evidence_path: Path | None = None
+    validation_refs: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -387,7 +394,7 @@ class ExecuteCommand:
             ),
             tool_calls=summary.tool_calls + summary.verification_calls,
             artifact_refs=self._task_artifact_refs(context, task["task_id"]),
-            validation_refs=[],
+            validation_refs=summary.validation_refs,
             failure_evidence_refs=self._failure_evidence_refs(summary),
             summary=summary.summary,
             runtime_profile_id=runtime_mount.runtime_profile_id,
@@ -423,6 +430,9 @@ class ExecuteCommand:
             action = self._replace_unsafe_verification(action, task, context.policy)
             action = self._prepend_python_compile_verification(action, task)
             self._require_non_empty_action(action)
+            runtime_request_summary = self._handle_runtime_requests(action, task, task_board, context)
+            if runtime_request_summary is not None:
+                return runtime_request_summary
             decision = self._create_policy_decision_if_needed(action, task, context)
             if decision is not None:
                 task_board.update_status(task_id, "blocked")
@@ -485,6 +495,12 @@ class ExecuteCommand:
                 stop_on_failure=False,
                 stop_verification_on_fatal=True,
             )
+            validation_refs = self._record_validation_results(
+                context,
+                task,
+                action.get("verification") or [],
+                verification_results,
+            )
             contract_check = check_completion_contract(
                 task,
                 self._changed_files(tool_results),
@@ -535,6 +551,7 @@ class ExecuteCommand:
                     tool_calls=len(action["tool_calls"]),
                     verification_calls=len(action["verification"]),
                     evidence_path=evidence_path,
+                    validation_refs=validation_refs,
                 )
             reason = contract_check.summary()
             evidence_path = self.execution_evidence.record(
@@ -590,6 +607,7 @@ class ExecuteCommand:
                 tool_calls=len(action["tool_calls"]),
                 verification_calls=len(action["verification"]),
                 evidence_path=evidence_path,
+                validation_refs=validation_refs,
             )
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
@@ -615,8 +633,220 @@ class ExecuteCommand:
             )
 
     def _require_non_empty_action(self, action: dict) -> None:
-        if not action.get("tool_calls") and not action.get("verification"):
-            raise RuntimeError("ExecutionAction contained no tool calls or verification.")
+        if (
+            not action.get("tool_calls")
+            and not action.get("verification")
+            and not action.get("runtime_requests")
+        ):
+            raise RuntimeError("ExecutionAction contained no tool calls, verification, or runtime requests.")
+
+    def _handle_runtime_requests(
+        self,
+        action: dict,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+    ) -> TaskExecutionSummary | None:
+        requests = action.get("runtime_requests") or []
+        if not requests:
+            return None
+        recorded = [
+            self._record_runtime_request(context, task, request)
+            for request in requests
+            if isinstance(request, dict)
+        ]
+        if not recorded:
+            return None
+        needs_decision = [request for request in recorded if request["risk"] in {"medium", "high"}]
+        decision = self._create_runtime_request_decision(context, task, needs_decision) if needs_decision else None
+        final_requests = []
+        for request in recorded:
+            if decision and request["runtime_request_id"] in decision["metadata"].get("runtime_request_ids", []):
+                request = dict(request)
+                request["status"] = "decision_created"
+                request["decision_id"] = decision["decision_id"]
+                self._rewrite_runtime_request(context, request)
+            final_requests.append(request)
+
+        reason = self._runtime_request_block_reason(final_requests, decision)
+        task_board.update_status(task["task_id"], "blocked")
+        task_board.update_notes(task["task_id"], reason)
+        self._record_task_failure(
+            context,
+            task,
+            "runtime_request",
+            reason,
+            candidate={
+                "runtime_request_ids": [request["runtime_request_id"] for request in final_requests],
+                "decision_id": decision["decision_id"] if decision else None,
+            },
+        )
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "runtime_request_blocked_task",
+                "ExecuteCommand",
+                reason,
+                {
+                    "task_id": task["task_id"],
+                    "runtime_request_ids": [
+                        request["runtime_request_id"] for request in final_requests
+                    ],
+                    "decision_id": decision["decision_id"] if decision else None,
+                },
+            )
+        evidence_path = self.execution_evidence.record(
+            context,
+            task,
+            action,
+            [],
+            [],
+            "blocked",
+            reason,
+            actor="ExecuteCommand",
+            candidate={
+                "runtime_request_ids": [request["runtime_request_id"] for request in final_requests],
+                "decision_id": decision["decision_id"] if decision else None,
+            },
+            failure_type="runtime_request",
+        )
+        return TaskExecutionSummary(
+            task_id=task["task_id"],
+            status="blocked",
+            summary=reason,
+            tool_calls=0,
+            verification_calls=0,
+            evidence_path=evidence_path,
+        )
+
+    def _record_runtime_request(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        request: dict,
+    ) -> dict:
+        raw_details = request.get("details")
+        details: dict = raw_details if isinstance(raw_details, dict) else {}
+        runtime_request = RuntimeRequest(
+            runtime_request_id=(
+                self._next_jsonl_id(context.run_dir / "runtime_requests.jsonl", "runtime-request")
+                if context.run_dir
+                else "runtime-request-0001"
+            ),
+            run_id=context.run_id,
+            task_id=task["task_id"],
+            request_type=str(request["request_type"]),
+            risk=str(request["risk"]),
+            reason=str(request["reason"]),
+            details=details,
+            status="recorded",
+            created_at=now_iso(),
+        ).to_dict()
+        self.validator.validate("runtime_request", runtime_request)
+        if context.run_dir:
+            JsonlStore(self.validator).append(
+                context.run_dir / "runtime_requests.jsonl",
+                runtime_request,
+                "runtime_request",
+            )
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "runtime_request_recorded",
+                "ExecuteCommand",
+                f"{runtime_request['request_type']}: {runtime_request['reason']}",
+                {
+                    "task_id": task["task_id"],
+                    "runtime_request_id": runtime_request["runtime_request_id"],
+                    "request_type": runtime_request["request_type"],
+                    "risk": runtime_request["risk"],
+                },
+            )
+        return runtime_request
+
+    def _rewrite_runtime_request(self, context: RuntimeContext, updated: dict) -> None:
+        if context.run_dir is None:
+            return
+        path = context.run_dir / "runtime_requests.jsonl"
+        store = JsonlStore(self.validator)
+        requests = store.read_all(path, "runtime_request") if path.exists() else []
+        rewritten = [
+            updated if item["runtime_request_id"] == updated["runtime_request_id"] else item
+            for item in requests
+        ]
+        path.write_text(
+            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in rewritten),
+            encoding="utf-8",
+        )
+
+    def _create_runtime_request_decision(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        requests: list[dict],
+    ) -> dict | None:
+        if context.run_dir is None:
+            return None
+        decisions_path = context.run_dir / "decisions.jsonl"
+        decision_id = self._next_jsonl_id(decisions_path, "decision")
+        request_ids = [request["runtime_request_id"] for request in requests]
+        decision = {
+            "schema_version": "0.1.0",
+            "decision_id": decision_id,
+            "status": "pending",
+            "question": self._runtime_request_question(task, requests),
+            "recommended_option_id": "review_contract",
+            "options": [
+                {
+                    "option_id": "review_contract",
+                    "label": "Review contract",
+                    "tradeoff": "Pause execution and revise scope, context, tools, budget, or model routing deliberately.",
+                    "action": "require_replan",
+                },
+                {
+                    "option_id": "reject_request",
+                    "label": "Reject request",
+                    "tradeoff": "Keep current task boundary and require the worker to find another valid path.",
+                    "action": "record_constraint",
+                },
+            ],
+            "default_option_id": "review_contract",
+            "impact": self._runtime_request_impact(requests),
+            "selected_option_id": None,
+            "created_at": now_iso(),
+            "metadata": {
+                "kind": "runtime_request",
+                "task_id": task["task_id"],
+                "runtime_request_ids": request_ids,
+                "request_types": sorted({request["request_type"] for request in requests}),
+            },
+            "resolved_at": None,
+        }
+        self.validator.validate("decision_point", decision)
+        JsonlStore(self.validator).append(decisions_path, decision, "decision_point")
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "decision_created",
+                "ExecuteCommand",
+                str(decision["question"]),
+                {"decision_id": decision_id, "runtime_request_ids": request_ids},
+            )
+        return decision
+
+    def _runtime_request_question(self, task: dict, requests: list[dict]) -> str:
+        kinds = ", ".join(sorted({request["request_type"] for request in requests}))
+        return f"Runtime request for {task['task_id']} requires contract review: {kinds}."
+
+    def _runtime_request_impact(self, requests: list[dict]) -> dict:
+        risk = "high" if any(request["risk"] == "high" for request in requests) else "medium"
+        return {"scope": "medium", "budget": "medium", "risk": risk, "quality": "medium"}
+
+    def _runtime_request_block_reason(self, requests: list[dict], decision: dict | None) -> str:
+        ids = ", ".join(request["runtime_request_id"] for request in requests)
+        if decision:
+            return f"Runtime request requires decision {decision['decision_id']}: {ids}"
+        return f"Runtime request recorded for contract review: {ids}"
 
     def _normalize_inline_verification(self, action: dict, task: dict) -> dict:
         if action.get("verification") or not task.get("verification_policy", {}).get("required"):
@@ -1096,6 +1326,48 @@ class ExecuteCommand:
                 },
             )
 
+    def _record_validation_results(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        calls: list[dict],
+        results: list,
+    ) -> list[str]:
+        if context.run_dir is None or not results:
+            return []
+        path = context.run_dir / "validation_results.jsonl"
+        store = JsonlStore(self.validator)
+        refs: list[str] = []
+        with _VALIDATION_RESULT_LOCK:
+            existing_count = self._jsonl_count(path)
+            for offset, result in enumerate(results, start=1):
+                call = calls[offset - 1] if offset <= len(calls) else {}
+                raw_args = call.get("args")
+                args = raw_args if isinstance(raw_args, dict) else {}
+                validation = ValidationResult(
+                    validation_result_id=f"validation-{existing_count + offset:04d}",
+                    run_id=context.run_id,
+                    task_id=task["task_id"],
+                    tool_name=str(call.get("tool_name") or "unknown"),
+                    command=args.get("command") if isinstance(args.get("command"), str) else None,
+                    status="passed" if getattr(result, "ok", False) else "failed",
+                    summary=str(getattr(result, "summary", "")),
+                    error=getattr(result, "error", None),
+                    data=getattr(result, "data", {}) if isinstance(getattr(result, "data", {}), dict) else {},
+                    created_at=now_iso(),
+                )
+                store.append(path, validation.to_dict(), "validation_result")
+                refs.append(validation.validation_result_id)
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "validation_results_recorded",
+                "ExecuteCommand",
+                f"Recorded {len(refs)} validation result(s) for {task['task_id']}.",
+                {"task_id": task["task_id"], "validation_refs": refs},
+            )
+        return refs
+
     def _record_task_failure(
         self,
         context: RuntimeContext,
@@ -1374,6 +1646,7 @@ class ExecuteCommand:
             artifact_refs=self._task_artifact_refs(context, task["task_id"]),
             failure_evidence_refs=self._task_failure_refs(context, task["task_id"]),
             decision_refs=self._task_decision_refs(context, task["task_id"]),
+            validation_refs=self._task_validation_refs(context, task["task_id"]),
         )
 
     def _task_artifact_refs(self, context: RuntimeContext, task_id: str) -> list[str]:
@@ -1420,6 +1693,19 @@ class ExecuteCommand:
             if metadata.get("task_id") == task_id and decision.get("decision_id"):
                 refs.append(decision["decision_id"])
         return refs
+
+    def _task_validation_refs(self, context: RuntimeContext, task_id: str) -> list[str]:
+        if context.run_dir is None:
+            return []
+        path = context.run_dir / "validation_results.jsonl"
+        if not path.exists():
+            return []
+        validations = JsonlStore(self.validator).read_all(path, "validation_result")
+        return [
+            validation["validation_result_id"]
+            for validation in validations
+            if validation.get("task_id") == task_id and validation.get("validation_result_id")
+        ]
 
     def _jsonl_count(self, path: Path) -> int:
         if not path.exists():

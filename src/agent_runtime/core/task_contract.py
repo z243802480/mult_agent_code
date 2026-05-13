@@ -159,6 +159,7 @@ def context_requirements(task: dict) -> dict:
         "include_artifacts": kind in {"implementation", "verification", "report", "ui"},
         "include_failures": kind in {"diagnostic", "verification"},
         "include_decisions": kind in {"review", "report", "decision"},
+        "include_validation": kind in {"diagnostic", "verification", "report"},
         "recent_event_count": 20,
     }
 

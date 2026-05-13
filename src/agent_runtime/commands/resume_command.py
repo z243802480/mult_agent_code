@@ -157,6 +157,28 @@ class ResumeCommand:
                 self._record_decision_applied(run_dir, run_id, decision, option, effect)
                 self._record_decision_memory(agent_dir, run_id, decision, option, effect)
                 continue
+            runtime_request_effect = self._apply_runtime_request_decision(
+                run_dir,
+                decision,
+                option,
+                task_plan,
+            )
+            if runtime_request_effect:
+                self._record_decision_applied(
+                    run_dir,
+                    run_id,
+                    decision,
+                    option,
+                    runtime_request_effect,
+                )
+                self._record_decision_memory(
+                    agent_dir,
+                    run_id,
+                    decision,
+                    option,
+                    runtime_request_effect,
+                )
+                continue
             quality_gate_task = self._apply_task_plan_quality_gate(
                 decision,
                 option,
@@ -319,6 +341,125 @@ class ResumeCommand:
                 task["notes"] = f"Approved one-time execution via {decision['decision_id']}."
                 task["updated_at"] = now_iso()
                 return True
+        return True
+
+    def _apply_runtime_request_decision(
+        self,
+        run_dir: Path,
+        decision: dict,
+        option: dict | None,
+        task_plan: dict,
+    ) -> str | None:
+        metadata = decision.get("metadata") or {}
+        if metadata.get("kind") != "runtime_request":
+            return None
+        if not option or option["option_id"] == "reject_request":
+            return "runtime_request_rejected"
+        requests = self._runtime_requests_by_id(
+            run_dir,
+            [str(item) for item in metadata.get("runtime_request_ids", []) if item],
+        )
+        if not requests:
+            return "runtime_request_missing"
+        task_id = str(metadata.get("task_id") or "")
+        task = self._find_task(task_plan, task_id)
+        if task is None:
+            return "runtime_request_task_missing"
+        applied_request_ids = []
+        for request in requests:
+            if self._apply_runtime_request_to_task(task, request):
+                applied_request_ids.append(request["runtime_request_id"])
+        if applied_request_ids and task["status"] == "blocked":
+            task["status"] = "ready"
+        if applied_request_ids:
+            task["notes"] = (
+                f"Runtime request approved via {decision['decision_id']}: "
+                f"{', '.join(applied_request_ids)}."
+            )
+            task["updated_at"] = now_iso()
+            self.validator.validate("task", task)
+            return "runtime_request_applied"
+        return "runtime_request_recorded"
+
+    def _runtime_requests_by_id(self, run_dir: Path, request_ids: list[str]) -> list[dict]:
+        path = run_dir / "runtime_requests.jsonl"
+        if not path.exists() or not request_ids:
+            return []
+        wanted = set(request_ids)
+        return [
+            request
+            for request in self.jsonl.read_all(path, "runtime_request")
+            if request["runtime_request_id"] in wanted
+        ]
+
+    def _find_task(self, task_plan: dict, task_id: str) -> dict | None:
+        for task in task_plan["tasks"]:
+            if task["task_id"] == task_id:
+                return task
+        return None
+
+    def _apply_runtime_request_to_task(self, task: dict, request: dict) -> bool:
+        request_type = request["request_type"]
+        raw_details = request.get("details")
+        details: dict = raw_details if isinstance(raw_details, dict) else {}
+        if request_type == "scope_expansion":
+            changed = False
+            changed |= self._merge_list_field(
+                task,
+                "read_scope",
+                self._detail_list(details, "read_scope", "requested_read_scope"),
+            )
+            changed |= self._merge_list_field(
+                task,
+                "write_scope",
+                self._detail_list(details, "write_scope", "requested_write_scope"),
+            )
+            return changed
+        if request_type == "context_request":
+            context_requirements = dict(task.get("context_requirements") or {})
+            requested = details.get("context_requirements") if isinstance(details, dict) else {}
+            if not isinstance(requested, dict):
+                requested = details
+            if not requested:
+                return False
+            context_requirements.update(requested)
+            task["context_requirements"] = context_requirements
+            return True
+        if request_type == "tool_request":
+            tools = self._detail_list(details, "allowed_tools", "tools", "tool", "tool_name")
+            return self._merge_list_field(task, "allowed_tools", tools)
+        if request_type == "budget_request":
+            hints = dict(task.get("runtime_profile_hints") or {})
+            hints["budget"] = details
+            task["runtime_profile_hints"] = hints
+            return True
+        if request_type == "model_upgrade_request":
+            hints = dict(task.get("runtime_profile_hints") or {})
+            hints["model"] = details
+            task["runtime_profile_hints"] = hints
+            return True
+        if request_type == "decision_request":
+            return False
+        return False
+
+    def _detail_list(self, details: dict, *keys: str) -> list[str]:
+        values: list[str] = []
+        for key in keys:
+            value = details.get(key)
+            if isinstance(value, list):
+                values.extend(str(item) for item in value if item)
+            elif value:
+                values.append(str(value))
+        return values
+
+    def _merge_list_field(self, task: dict, field: str, values: list[str]) -> bool:
+        if not values:
+            return False
+        existing = [str(item) for item in task.get(field, []) if item]
+        merged = list(dict.fromkeys([*existing, *values]))
+        if merged == existing:
+            return False
+        task[field] = merged
         return True
 
     def _task_from_decision(

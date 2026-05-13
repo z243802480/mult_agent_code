@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from agent_runtime.core.runtime_request import normalize_runtime_requests
 from agent_runtime.agents.verification_command_normalizer import normalize_verification_command
 
 
@@ -16,6 +17,7 @@ def normalize_execution_action(action: dict, task: dict) -> dict:
     )
     normalized["tool_calls"] = _normalize_tool_calls(normalized.get("tool_calls"), task)
     normalized["verification"] = _normalize_tool_calls(normalized.get("verification"), task)
+    normalized["runtime_requests"] = normalize_runtime_requests(normalized.get("runtime_requests"))
     normalized["completion_notes"] = str(normalized.get("completion_notes") or normalized["summary"])
     return normalized
 

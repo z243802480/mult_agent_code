@@ -45,6 +45,7 @@
         "include_artifacts": { "type": "boolean" },
         "include_failures": { "type": "boolean" },
         "include_decisions": { "type": "boolean" },
+        "include_validation": { "type": "boolean" },
         "recent_event_count": { "type": "integer" }
       }
     },
@@ -68,6 +69,7 @@
       "type": "string",
       "enum": ["none", "first_passed", "best_score", "lowest_cost_passed", "manual_decision"]
     },
+    "runtime_profile_hints": { "type": "object" },
     "task_kind": {
       "type": "string",
       "enum": ["diagnostic", "implementation", "verification", "research", "decision", "report", "ui"]

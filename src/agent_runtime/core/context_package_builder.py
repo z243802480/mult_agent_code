@@ -30,6 +30,7 @@ class ContextPackageBuilder:
             "artifacts": self._artifacts(context, includes.get("artifact_refs", [])),
             "failures": self._failures(context, includes.get("failure_evidence_refs", [])),
             "decisions": self._decisions(context, includes.get("decision_refs", [])),
+            "validations": self._validations(context, includes.get("validation_refs", [])),
             "recent_events": self._recent_events(context, int(includes.get("recent_event_count") or 0)),
         }
 
@@ -127,6 +128,28 @@ class ContextPackageBuilder:
             }
             for ref in refs
             if isinstance(ref, str) and ref in decisions
+        ]
+
+    def _validations(self, context: RuntimeContext, refs: object) -> list[dict]:
+        if context.run_dir is None or not isinstance(refs, list):
+            return []
+        validations = self._items_by_id(
+            context.run_dir / "validation_results.jsonl",
+            "validation_result",
+            "validation_result_id",
+        )
+        return [
+            {
+                "validation_result_id": validations[ref].get("validation_result_id"),
+                "task_id": validations[ref].get("task_id"),
+                "tool_name": validations[ref].get("tool_name"),
+                "command": validations[ref].get("command"),
+                "status": validations[ref].get("status"),
+                "summary": validations[ref].get("summary"),
+                "error": validations[ref].get("error"),
+            }
+            for ref in refs
+            if isinstance(ref, str) and ref in validations
         ]
 
     def _recent_events(self, context: RuntimeContext, limit: int) -> list[dict]:

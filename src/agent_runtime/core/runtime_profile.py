@@ -34,7 +34,7 @@ class ModelProfile:
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        data = {
+        data: dict[str, object] = {
             "schema_version": self.schema_version,
             "model_profile_id": self.model_profile_id,
             "purpose": self.purpose,
@@ -82,7 +82,7 @@ class AccountProfile:
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        data = {
+        data: dict[str, object] = {
             "schema_version": self.schema_version,
             "account_profile_id": self.account_profile_id,
             "provider": self.provider,

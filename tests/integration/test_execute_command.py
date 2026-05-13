@@ -1,9 +1,11 @@
 import json
 from pathlib import Path
 
+from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
+from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
@@ -241,6 +243,78 @@ class FakeOutOfScopePatchClient:
             usage=TokenUsage(3, 4, 7),
             model_provider="fake",
             model_name="fake-out-of-scope-patch",
+            raw_response={},
+        )
+
+
+class FakeScopeExpansionRequestClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Request write scope before making an out-of-scope change.",
+                    "tool_calls": [],
+                    "verification": [],
+                    "runtime_requests": [
+                        {
+                            "request_type": "scope_expansion",
+                            "risk": "medium",
+                            "reason": "Need to write generated/report.md, which is outside current write_scope.",
+                            "details": {"write_scope": ["generated/report.md"]},
+                        }
+                    ],
+                    "completion_notes": "Waiting for runtime contract review.",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-scope-expansion-request",
+            raw_response={},
+        )
+
+
+class FakeGeneratedReportClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Write the report after scope expansion.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "generated/report.md",
+                                "content": "# Report\n",
+                                "overwrite": True,
+                            },
+                            "reason": "write approved report artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"from pathlib import Path; assert Path('generated/report.md').read_text() == '# Report\\n'\""
+                            },
+                            "reason": "verify report content",
+                        }
+                    ],
+                    "completion_notes": "generated/report.md contains the report.",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-generated-report",
             raw_response={},
         )
 
@@ -600,6 +674,17 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert evidence[0]["task"]["acceptance"]
     assert evidence[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
     assert evidence[0]["verification_results"][0]["ok"] is True
+    validation_results = [
+        json.loads(line)
+        for line in (run_dir / "validation_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [item["validation_result_id"] for item in validation_results] == [
+        "validation-0001",
+        "validation-0002",
+    ]
+    assert [item["status"] for item in validation_results] == ["passed", "passed"]
+    assert validation_results[0]["command"] == "python -m py_compile src/notes_tool.py"
+    assert "notes_tool import add_note" in validation_results[1]["command"]
     workers = [
         json.loads(line) for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
     ]
@@ -624,6 +709,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert worker_results[0]["worker_invocation_id"] == workers[0]["worker_invocation_id"]
     assert worker_results[0]["status"] == "succeeded"
     assert worker_results[0]["artifact_refs"] == ["artifact-0001"]
+    assert worker_results[0]["validation_refs"] == ["validation-0001", "validation-0002"]
     assert worker_results[0]["cost"]["model_calls"] == 1
     assert worker_results[0]["cost"]["tool_calls"] == 3
     model_calls = [
@@ -896,6 +982,145 @@ def test_execute_command_denies_apply_patch_outside_write_scope(tmp_path: Path) 
         .splitlines()
     ]
     assert "ToolPermissionProfile denied write path" in evidence[0]["summary"]
+
+
+def test_execute_command_records_runtime_request_without_writing_outside_scope(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "allowed_tools": ["write_file"],
+            "expected_artifacts": ["allowed/output.txt"],
+            "expected_changed_files": ["allowed/output.txt"],
+            "write_scope": ["allowed/output.txt"],
+            "read_scope": ["AGENTS.md"],
+            "task_kind": "implementation",
+            "parallel_safety": "serial",
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeScopeExpansionRequestClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "generated" / "report.md").exists()
+    assert not (run_dir / "tool_calls.jsonl").exists()
+    runtime_requests = [
+        json.loads(line)
+        for line in (run_dir / "runtime_requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert runtime_requests[0]["request_type"] == "scope_expansion"
+    assert runtime_requests[0]["status"] == "decision_created"
+    assert runtime_requests[0]["details"]["write_scope"] == ["generated/report.md"]
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert decisions[0]["metadata"]["kind"] == "runtime_request"
+    assert decisions[0]["metadata"]["runtime_request_ids"] == [
+        runtime_requests[0]["runtime_request_id"]
+    ]
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert evidence[0]["failure_type"] == "runtime_request"
+    assert runtime_requests[0]["runtime_request_id"] in evidence[0]["summary"]
+
+
+def test_resume_applies_runtime_request_and_allows_follow_up_write(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a generated report", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "allowed_tools": ["write_file", "run_command"],
+            "expected_artifacts": ["generated/report.md"],
+            "expected_changed_files": ["generated/report.md"],
+            "write_scope": ["allowed/output.txt"],
+            "read_scope": ["AGENTS.md"],
+            "task_kind": "implementation",
+            "parallel_safety": "serial",
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    requested = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeScopeExpansionRequestClient(),
+    ).run()
+    assert requested.blocked == 1
+    runtime_request = json.loads(
+        (run_dir / "runtime_requests.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+
+    DecideCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        decision_id="decision-0001",
+        select_option_id="review_contract",
+    ).run()
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        max_iterations=0,
+        execute_model_client=FakeGeneratedReportClient(),
+    ).run()
+    assert resumed.applied_decisions == 1
+
+    updated = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task = updated["tasks"][0]
+    assert task["status"] == "ready"
+    assert "generated/report.md" in task["write_scope"]
+    assert "Runtime request approved via decision-0001" in task["notes"]
+
+    second_resume = ResumeCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        max_iterations=0,
+        execute_model_client=FakeGeneratedReportClient(),
+    ).run()
+    assert second_resume.applied_decisions == 0
+    updated_again = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    assert updated_again["tasks"][0]["write_scope"].count("generated/report.md") == 1
+
+    executed = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeGeneratedReportClient(),
+    ).run()
+    assert executed.completed == 1
+    assert (tmp_path / "generated" / "report.md").read_text(encoding="utf-8") == "# Report\n"
+    events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    applied = [
+        event
+        for event in events
+        if event["type"] == "decision_applied"
+        and event["data"]["decision_id"] == "decision-0001"
+    ]
+    assert len(applied) == 1
+    assert applied[0]["data"]["effect"] == "runtime_request_applied"
+    assert runtime_request["runtime_request_id"] in task["notes"]
 
 
 def test_execute_command_injects_context_mount_and_task_contract(tmp_path: Path) -> None:

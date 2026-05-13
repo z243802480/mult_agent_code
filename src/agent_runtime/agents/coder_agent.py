@@ -86,8 +86,14 @@ class CoderAgent:
             raise CoderAgentError(
                 f"ExecutionAction task_id mismatch: {action.get('task_id')} != {task['task_id']}"
             )
-        if not action.get("tool_calls") and not action.get("verification"):
-            raise CoderAgentError("ExecutionAction must include at least one tool call or verification command")
+        if (
+            not action.get("tool_calls")
+            and not action.get("verification")
+            and not action.get("runtime_requests")
+        ):
+            raise CoderAgentError(
+                "ExecutionAction must include at least one tool call, verification command, or runtime request"
+            )
         try:
             self.validator.validate("execution_action", action)
         except SchemaValidationError as exc:
@@ -117,6 +123,7 @@ You must:
 - If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
 - Avoid destructive commands, global installs, deployment, or network calls unless explicitly allowed.
 - Keep the implementation practical and production-oriented; do not create placeholder-only files.
+- If the task contract is too narrow, request a runtime change with runtime_requests instead of attempting an out-of-scope tool call.
 """
 
     def _user_prompt(
@@ -153,6 +160,14 @@ You must:
                             "expected_returncodes": [0],
                         },
                         "reason": "verify the change; use expected_returncodes for expected non-zero CLI usage checks",
+                    }
+                ],
+                "runtime_requests": [
+                    {
+                        "request_type": "scope_expansion",
+                        "risk": "medium",
+                        "reason": "why the current task contract is insufficient",
+                        "details": {"write_scope": ["path/to/requested_file.py"]},
                     }
                 ],
                 "completion_notes": "what should be true after execution",

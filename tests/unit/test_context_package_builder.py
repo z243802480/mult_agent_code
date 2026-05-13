@@ -86,6 +86,22 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
             "metadata": {"task_id": "task-0001"},
         },
     )
+    _append_jsonl(
+        run_dir / "validation_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "validation_result_id": "validation-0001",
+            "run_id": "run-0001",
+            "task_id": "task-0001",
+            "tool_name": "run_command",
+            "command": "pytest tests/test_notes.py",
+            "status": "failed",
+            "summary": "pytest failed",
+            "error": "nonzero_exit",
+            "data": {"exit_code": 1},
+            "created_at": "2026-05-13T10:04:00+08:00",
+        },
+    )
     task = {
         "task_id": "task-0001",
         "title": "Implement notes",
@@ -100,6 +116,7 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
             "include_artifacts": True,
             "include_failures": True,
             "include_decisions": True,
+            "include_validation": True,
             "recent_event_count": 0,
         },
     }
@@ -108,6 +125,7 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
         artifact_refs=["artifact-0001"],
         failure_evidence_refs=["failure-0001"],
         decision_refs=["decision-0001"],
+        validation_refs=["validation-0001"],
     )
     context = RuntimeContext(
         root=tmp_path,
@@ -124,6 +142,8 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
     assert package["artifacts"][0]["content"]["text"] == "VALUE = 1\n"
     assert package["failures"][0]["summary"] == "pytest failed"
     assert package["decisions"][0]["selected_option_id"] == "option-1"
+    assert package["validations"][0]["validation_result_id"] == "validation-0001"
+    assert package["validations"][0]["error"] == "nonzero_exit"
 
 
 def _append_jsonl(path: Path, payload: dict) -> None:
