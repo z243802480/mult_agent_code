@@ -116,6 +116,51 @@ class FakeReadonlyExecuteClient:
         )
 
 
+class FakeDisjointWriteExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        path = "out/alpha.txt" if task_id == "task-0001" else "out/beta.txt"
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": f"Write {path}.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": path,
+                                "content": task_id,
+                                "overwrite": True,
+                            },
+                            "reason": "write disjoint output",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c \"from pathlib import Path; "
+                                    f"assert Path('{path}').read_text() == '{task_id}'\""
+                                )
+                            },
+                            "reason": "verify disjoint output",
+                        }
+                    ],
+                    "completion_notes": f"{path} written",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-disjoint-write-execute",
+            raw_response={},
+        )
+
+
 class FakeReadonlyWriteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         task_id = str(request.metadata.get("task_id") or "task-readonly")
@@ -805,6 +850,85 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
     assert execute_profile_ids == {worker["runtime_profile_id"] for worker in workers}
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
+
+
+def test_execute_command_parallel_disjoint_writes_promotes_isolated_outputs(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "write two independent outputs", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    base = {
+        "schema_version": "0.1.0",
+        "description": "Write an independent output file.",
+        "status": "ready",
+        "priority": "medium",
+        "role": "CoderAgent",
+        "depends_on": [],
+        "acceptance": ["output file exists"],
+        "allowed_tools": ["write_file", "run_command"],
+        "expected_artifacts": [],
+        "task_kind": "implementation",
+        "parallel_safety": "disjoint_writes",
+        "completion_contract": {
+            "requires_changed_artifact": True,
+            "requires_verification": True,
+            "allows_expected_failure": False,
+        },
+        "created_at": "2026-05-13T10:00:00+08:00",
+        "updated_at": "2026-05-13T10:00:00+08:00",
+        "notes": "",
+    }
+    task_plan["tasks"] = [
+        {
+            **base,
+            "task_id": "task-0001",
+            "title": "Write alpha",
+            "expected_artifacts": ["out/alpha.txt"],
+            "expected_changed_files": ["out/alpha.txt"],
+            "read_scope": ["AGENTS.md"],
+            "write_scope": ["out/alpha.txt"],
+        },
+        {
+            **base,
+            "task_id": "task-0002",
+            "title": "Write beta",
+            "expected_artifacts": ["out/beta.txt"],
+            "expected_changed_files": ["out/beta.txt"],
+            "read_scope": ["AGENTS.md"],
+            "write_scope": ["out/beta.txt"],
+        },
+    ]
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        max_tasks=2,
+        model_client=FakeDisjointWriteExecuteClient(),
+        parallel_writes=True,
+    ).run()
+
+    assert result.completed == 2
+    assert (tmp_path / "out" / "alpha.txt").read_text(encoding="utf-8") == "task-0001"
+    assert (tmp_path / "out" / "beta.txt").read_text(encoding="utf-8") == "task-0002"
+    updated_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    assert [task["status"] for task in updated_plan["tasks"]] == ["done", "done"]
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "parallel_safe_batch_selection" in events
+    experiments = [
+        json.loads(line)
+        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert sorted(item["candidate"]["promoted_files"][0] for item in experiments) == [
+        "out/alpha.txt",
+        "out/beta.txt",
+    ]
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [item["status"] for item in worker_results] == ["succeeded", "succeeded"]
 
 
 def test_execute_command_denies_write_tool_for_readonly_task(tmp_path: Path) -> None:

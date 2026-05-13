@@ -51,6 +51,7 @@ class ResumeCommand:
         execute_model_client: ModelClient | None = None,
         debug_model_client: ModelClient | None = None,
         review_model_client: ModelClient | None = None,
+        parallel_writes: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
@@ -60,6 +61,7 @@ class ResumeCommand:
         self.execute_model_client = execute_model_client
         self.debug_model_client = debug_model_client
         self.review_model_client = review_model_client
+        self.parallel_writes = parallel_writes
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -126,6 +128,7 @@ class ResumeCommand:
             debug_model_client=self.debug_model_client,
             review_model_client=self.review_model_client,
             enable_research=False,
+            parallel_writes=self.parallel_writes,
         ).continue_run(run_id, steps)
         return ResumeResult(result, applied_decisions, created_tasks)
 

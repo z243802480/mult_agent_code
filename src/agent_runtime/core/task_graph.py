@@ -49,6 +49,28 @@ class TaskGraphScheduler:
             reason="readonly_batch_selection",
         )
 
+    def select_parallel_safe_batch(self, max_tasks: int) -> ReadySelection:
+        selected: list[dict] = []
+        blocked: list[dict] = []
+        for task in self.ready_nodes():
+            if len(selected) >= max_tasks:
+                break
+            safety = parallel_safety(task)
+            if safety == "readonly":
+                selected.append(task)
+                continue
+            if safety == "disjoint_writes" and not any(
+                self.has_write_conflict(task, existing) for existing in selected
+            ):
+                selected.append(task)
+                continue
+            blocked.append(task)
+        return ReadySelection(
+            selected=selected,
+            blocked=blocked,
+            reason="parallel_safe_batch_selection",
+        )
+
     def has_write_conflict(self, left: dict, right: dict) -> bool:
         left_scope = write_scope(left)
         right_scope = write_scope(right)

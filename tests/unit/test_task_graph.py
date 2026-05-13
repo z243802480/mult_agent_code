@@ -37,6 +37,45 @@ def test_task_graph_scheduler_selects_readonly_batch() -> None:
     assert [task["task_id"] for task in selection.blocked] == ["task-0002"]
 
 
+def test_task_graph_scheduler_selects_disjoint_write_batch_without_conflicts() -> None:
+    tasks = [
+        {
+            "task_id": "task-0001",
+            "status": "ready",
+            "depends_on": [],
+            "parallel_safety": "disjoint_writes",
+            "write_scope": ["src/a.py"],
+        },
+        {
+            "task_id": "task-0002",
+            "status": "ready",
+            "depends_on": [],
+            "parallel_safety": "disjoint_writes",
+            "write_scope": ["src/b.py"],
+        },
+        {
+            "task_id": "task-0003",
+            "status": "ready",
+            "depends_on": [],
+            "parallel_safety": "disjoint_writes",
+            "write_scope": ["src/"],
+        },
+        {
+            "task_id": "task-0004",
+            "status": "ready",
+            "depends_on": [],
+            "parallel_safety": "serial",
+            "write_scope": ["docs/"],
+        },
+    ]
+
+    selection = TaskGraphScheduler(tasks).select_parallel_safe_batch(max_tasks=4)
+
+    assert [task["task_id"] for task in selection.selected] == ["task-0001", "task-0002"]
+    assert [task["task_id"] for task in selection.blocked] == ["task-0003", "task-0004"]
+    assert selection.reason == "parallel_safe_batch_selection"
+
+
 def test_task_graph_scheduler_detects_write_scope_conflict() -> None:
     scheduler = TaskGraphScheduler([])
 

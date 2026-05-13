@@ -63,6 +63,7 @@ class RunCommand:
         review_model_client: ModelClient | None = None,
         research_model_client: ModelClient | None = None,
         enable_research: bool = True,
+        parallel_writes: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -76,6 +77,7 @@ class RunCommand:
         self.review_model_client = review_model_client
         self.research_model_client = research_model_client
         self.enable_research = enable_research
+        self.parallel_writes = parallel_writes
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -210,6 +212,8 @@ class RunCommand:
                 run_id=run_id,
                 max_tasks=self.max_tasks_per_iteration,
                 model_client=self.execute_model_client or self.model_client,
+                parallel_readonly=self.parallel_writes,
+                parallel_writes=self.parallel_writes,
             ).run()
             progressed = progressed or execute.completed > 0 or execute.blocked > 0
             steps.append(

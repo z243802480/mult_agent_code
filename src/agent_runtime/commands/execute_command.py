@@ -92,12 +92,14 @@ class ExecuteCommand:
         max_tasks: int = 1,
         model_client: ModelClient | None = None,
         parallel_readonly: bool = False,
+        parallel_writes: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
         self.max_tasks = max_tasks
         self.model_client = model_client
         self.parallel_readonly = parallel_readonly
+        self.parallel_writes = parallel_writes
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.registry = create_default_tool_registry()
@@ -180,9 +182,9 @@ class ExecuteCommand:
                 f"Selected {len(selection.selected)} task(s) for {selection.reason}.",
                 {"reason": selection.reason, "task_ids": [task["task_id"] for task in selection.selected]},
             )
-        if self.parallel_readonly and selection.reason == "readonly_batch_selection":
+        if selection.reason in {"readonly_batch_selection", "parallel_safe_batch_selection"}:
             executed.extend(
-                self._execute_readonly_batch(
+                self._execute_parallel_batch(
                     tasks=selection.selected,
                     task_board=task_board,
                     context=context,
@@ -244,13 +246,17 @@ class ExecuteCommand:
 
     def _select_tasks(self, task_board: TaskBoard):
         scheduler = TaskGraphScheduler(task_board.list_tasks())
+        if self.parallel_writes:
+            selection = scheduler.select_parallel_safe_batch(self.max_tasks)
+            if selection.selected:
+                return selection
         if self.parallel_readonly:
             selection = scheduler.select_readonly_batch(self.max_tasks)
             if selection.selected:
                 return selection
         return scheduler.select_serial(self.max_tasks)
 
-    def _execute_readonly_batch(
+    def _execute_parallel_batch(
         self,
         tasks: list[dict],
         task_board: TaskBoard,

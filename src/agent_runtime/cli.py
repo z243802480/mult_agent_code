@@ -200,6 +200,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Skip the pre-planning research pass for clear or cost-sensitive goals",
     )
+    run_parser.add_argument(
+        "--parallel-disjoint-writes",
+        action="store_true",
+        help="Allow /run to execute readonly and disjoint write-scope tasks concurrently",
+    )
 
     resume_parser = subcommands.add_parser(
         "resume",
@@ -219,6 +224,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Tasks to execute per iteration",
+    )
+    resume_parser.add_argument(
+        "--parallel-disjoint-writes",
+        action="store_true",
+        help="Allow /resume to execute readonly and disjoint write-scope tasks concurrently",
     )
 
     compact_parser = subcommands.add_parser(
@@ -280,6 +290,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--parallel-readonly",
         action="store_true",
         help="Execute readonly ready tasks concurrently; write tasks remain serial",
+    )
+    execute_parser.add_argument(
+        "--parallel-disjoint-writes",
+        action="store_true",
+        help="Execute readonly and disjoint write-scope tasks concurrently through isolated candidate workspaces",
     )
 
     debug_parser = subcommands.add_parser(
@@ -752,6 +767,7 @@ def main() -> None:
             max_iterations=args.max_iterations,
             max_tasks_per_iteration=args.max_tasks_per_iteration,
             enable_research=not args.no_research,
+            parallel_writes=args.parallel_disjoint_writes,
         ).run()
         print(run_result.to_text())
         return
@@ -762,6 +778,7 @@ def main() -> None:
             run_id=args.session_id,
             max_iterations=args.max_iterations,
             max_tasks_per_iteration=args.max_tasks_per_iteration,
+            parallel_writes=args.parallel_disjoint_writes,
         ).run()
         print(resume_result.to_text())
         return
@@ -793,6 +810,7 @@ def main() -> None:
             run_id=args.session_id,
             max_tasks=args.max_tasks,
             parallel_readonly=args.parallel_readonly,
+            parallel_writes=args.parallel_disjoint_writes,
         ).run()
         print(execute_result.to_text())
         return
