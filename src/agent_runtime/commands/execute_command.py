@@ -13,6 +13,7 @@ from agent_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
+from agent_runtime.core.merge_gate import MergeGate
 from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.runtime_request import RuntimeRequest
 from agent_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
@@ -528,8 +529,87 @@ class ExecuteCommand:
                 verification_results,
             )
             if contract_check.ok:
+                merge_gate = MergeGate().evaluate(
+                    task,
+                    contract_check.changed_files,
+                    verification_results,
+                )
+                if not merge_gate.ok:
+                    reason = merge_gate.summary()
+                    evidence_path = self.execution_evidence.record(
+                        context,
+                        task,
+                        action,
+                        tool_results,
+                        verification_results,
+                        "blocked",
+                        reason,
+                        actor="ExecuteCommand",
+                        contract_check={
+                            **contract_check.to_dict(),
+                            "merge_gate": merge_gate.to_dict(),
+                        },
+                        candidate_workspace=candidate,
+                        failure_type="merge_gate",
+                    )
+                    self._record_experiment(
+                        context,
+                        task,
+                        action,
+                        tool_results,
+                        verification_results,
+                        "discard",
+                        reason,
+                        contract_check={
+                            **contract_check.to_dict(),
+                            "merge_gate": merge_gate.to_dict(),
+                        },
+                        candidate_workspace=candidate,
+                    )
+                    task_board.update_status(task_id, "blocked")
+                    task_board.update_notes(
+                        task_id,
+                        f"{reason}; candidate kept isolated at {candidate.root}.",
+                    )
+                    self._record_task_failure(
+                        context,
+                        task,
+                        "merge_gate",
+                        reason,
+                        contract_check={
+                            **contract_check.to_dict(),
+                            "merge_gate": merge_gate.to_dict(),
+                        },
+                        tool_results=tool_results,
+                        verification_results=verification_results,
+                        candidate={
+                            "summary": action["summary"],
+                            "changed_files": contract_check.changed_files,
+                            "promotable_files": merge_gate.promotable_files,
+                        },
+                    )
+                    if context.event_logger:
+                        context.event_logger.record(
+                            context.run_id,
+                            "merge_gate_blocked",
+                            "ExecuteCommand",
+                            reason,
+                            {
+                                "task_id": task_id,
+                                "violations": merge_gate.violations,
+                            },
+                        )
+                    return TaskExecutionSummary(
+                        task_id=task_id,
+                        status="blocked",
+                        summary=reason,
+                        tool_calls=len(action["tool_calls"]),
+                        verification_calls=len(action["verification"]),
+                        evidence_path=evidence_path,
+                        validation_refs=validation_refs,
+                    )
                 promoted_files = self._promote_candidate_changes(
-                    context, candidate, contract_check.changed_files
+                    context, candidate, merge_gate.promotable_files
                 )
                 evidence_path = self.execution_evidence.record(
                     context,
@@ -540,7 +620,7 @@ class ExecuteCommand:
                     "done",
                     "Verification passed.",
                     actor="ExecuteCommand",
-                    contract_check=contract_check.to_dict(),
+                    contract_check={**contract_check.to_dict(), "merge_gate": merge_gate.to_dict()},
                     candidate_workspace=candidate,
                     promoted_files=promoted_files,
                 )
@@ -552,7 +632,7 @@ class ExecuteCommand:
                     verification_results,
                     "keep",
                     "Verification passed.",
-                    contract_check=contract_check.to_dict(),
+                    contract_check={**contract_check.to_dict(), "merge_gate": merge_gate.to_dict()},
                     candidate_workspace=candidate,
                     promoted_files=promoted_files,
                 )

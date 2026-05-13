@@ -718,6 +718,10 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert evidence[0]["status"] == "done"
     assert evidence[0]["task"]["acceptance"]
     assert evidence[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
+    assert evidence[0]["contract_check"]["merge_gate"]["ok"] is True
+    assert evidence[0]["contract_check"]["merge_gate"]["promotable_files"] == [
+        "src/notes_tool.py"
+    ]
     assert evidence[0]["verification_results"][0]["ok"] is True
     validation_results = [
         json.loads(line)
