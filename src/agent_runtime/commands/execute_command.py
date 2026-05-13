@@ -48,6 +48,21 @@ from agent_runtime.utils.time import now_iso
 _VALIDATION_RESULT_LOCK = RLock()
 
 
+class ToolPermissionDenied(PermissionError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        request_type: str,
+        details: dict,
+        risk: str = "medium",
+    ) -> None:
+        super().__init__(message)
+        self.request_type = request_type
+        self.details = details
+        self.risk = risk
+
+
 @dataclass(frozen=True)
 class TaskExecutionSummary:
     task_id: str
@@ -615,6 +630,34 @@ class ExecuteCommand:
                 evidence_path=evidence_path,
                 validation_refs=validation_refs,
             )
+        except ToolPermissionDenied as exc:
+            fallback_action = locals().get("action")
+            if not isinstance(fallback_action, dict):
+                fallback_action = {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": str(exc),
+                    "tool_calls": [],
+                    "verification": [],
+                    "completion_notes": str(exc),
+                }
+            action_with_request = dict(fallback_action)
+            action_with_request["runtime_requests"] = [
+                *list(action_with_request.get("runtime_requests") or []),
+                {
+                    "request_type": exc.request_type,
+                    "risk": exc.risk,
+                    "reason": str(exc),
+                    "details": exc.details,
+                },
+            ]
+            return self._handle_runtime_requests(action_with_request, task, task_board, context) or TaskExecutionSummary(
+                task_id=task_id,
+                status="blocked",
+                summary=str(exc),
+                tool_calls=0,
+                verification_calls=0,
+            )
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
             self._record_task_failure(context, task, self._failure_type(exc), str(exc))
@@ -1039,8 +1082,10 @@ class ExecuteCommand:
             return
         for path in self._write_paths_for_tool(tool_name, args):
             if not self._path_in_scope(path, write_scope(task)):
-                raise PermissionError(
-                    f"ToolPermissionProfile denied write path for {task['task_id']}: {path}"
+                raise ToolPermissionDenied(
+                    f"ToolPermissionProfile denied write path for {task['task_id']}: {path}",
+                    request_type="scope_expansion",
+                    details={"write_scope": [path]},
                 )
 
     def _enforce_read_scope(self, task: dict, tool_name: str, args: dict) -> None:
@@ -1053,8 +1098,10 @@ class ExecuteCommand:
             return
         scope = read_scope(task)
         if scope and not self._path_in_scope(path, scope):
-            raise PermissionError(
-                f"ToolPermissionProfile denied read path for {task['task_id']}: {path}"
+            raise ToolPermissionDenied(
+                f"ToolPermissionProfile denied read path for {task['task_id']}: {path}",
+                request_type="context_request",
+                details={"read_scope": [path], "context_requirements": {"requested_paths": [path]}},
             )
 
     def _write_paths_for_tool(self, tool_name: str, args: dict) -> list[str]:

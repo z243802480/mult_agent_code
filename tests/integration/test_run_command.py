@@ -361,8 +361,8 @@ class FakeApprovalExecuteClient:
                         {
                             "tool_name": "write_file",
                             "args": {
-                                "path": "approval.txt",
-                                "content": "approved\n",
+                                "path": "complete_module.py",
+                                "content": "def answer():\n    return 42\n",
                                 "overwrite": True,
                             },
                             "reason": "create artifact",
@@ -373,15 +373,15 @@ class FakeApprovalExecuteClient:
                             "tool_name": "run_command",
                             "args": {
                                 "command": (
-                                    'python -c "from pathlib import Path; '
-                                    "assert Path('approval.txt').exists()\" "
+                                    'python -c "from complete_module import answer; '
+                                    'assert answer() == 42" '
                                     "&& python -c \"print('approved')\""
                                 )
                             },
                             "reason": "verify with an operator that needs approval",
                         }
                     ],
-                    "completion_notes": "approval.txt exists",
+                    "completion_notes": "complete_module.py exists",
                 }
             ),
             finish_reason="stop",
@@ -1318,7 +1318,7 @@ def test_run_command_pauses_for_execution_policy_approval_and_resumes(tmp_path: 
     ).run()
 
     assert paused.status == "paused"
-    assert not (tmp_path / "approval.txt").exists()
+    assert not (tmp_path / "complete_module.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / paused.run_id
     decisions = [
         json.loads(line)
@@ -1344,6 +1344,6 @@ def test_run_command_pauses_for_execution_policy_approval_and_resumes(tmp_path: 
     assert resumed.status == "completed"
     assert resumed.applied_decisions == 1
     assert resumed.created_tasks == 0
-    assert (tmp_path / "approval.txt").exists()
+    assert (tmp_path / "complete_module.py").exists()
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"

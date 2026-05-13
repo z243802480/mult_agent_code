@@ -81,6 +81,32 @@ def test_requirement_planner_groups_single_concrete_file_goal() -> None:
     assert task["quality"]["passed"]
 
 
+def test_requirement_planner_infers_answer_module_contract() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Create a complete module",
+        "target_outputs": ["python_module"],
+        "definition_of_done": ["answer() returns 42"],
+        "verification_strategy": ["python command"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create a module exposing answer()",
+                "acceptance": ["answer() returns 42"],
+            }
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+    task = task_plan["tasks"][0]
+
+    assert task["expected_changed_files"] == ["complete_module.py"]
+    assert task["write_scope"] == ["complete_module.py"]
+    assert "complete_module.py" in task["read_scope"]
+
+
 def test_requirement_planner_refines_low_quality_requirements() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

@@ -419,15 +419,20 @@ class ResumeCommand:
             )
             return changed
         if request_type == "context_request":
+            changed = self._merge_list_field(
+                task,
+                "read_scope",
+                self._detail_list(details, "read_scope", "requested_read_scope", "paths"),
+            )
             context_requirements = dict(task.get("context_requirements") or {})
             requested = details.get("context_requirements") if isinstance(details, dict) else {}
             if not isinstance(requested, dict):
                 requested = details
-            if not requested:
-                return False
-            context_requirements.update(requested)
-            task["context_requirements"] = context_requirements
-            return True
+            if requested:
+                context_requirements.update(requested)
+                task["context_requirements"] = context_requirements
+                changed = True
+            return changed
         if request_type == "tool_request":
             tools = self._detail_list(details, "allowed_tools", "tools", "tool", "tool_name")
             return self._merge_list_field(task, "allowed_tools", tools)
@@ -483,11 +488,13 @@ class ResumeCommand:
             f"Tradeoff: {option['tradeoff']}"
         )
         role = "PlannerAgent" if self._option_action(option) == "require_replan" else "CoderAgent"
-        expected_artifacts = (
-            [f".agent/runs/{run_id}/task_plan.json"]
-            if self._option_action(option) == "require_replan"
-            else []
-        )
+        expected_artifacts = self._decision_expected_artifacts(decision, option, run_id)
+        expected_changed_files = [
+            artifact
+            for artifact in expected_artifacts
+            if artifact and not artifact.startswith(".agent/")
+        ]
+        task_kind = "decision" if self._option_action(option) == "require_replan" else "implementation"
         return {
             "schema_version": "0.1.0",
             "task_id": f"task-{next_index:04d}",
@@ -510,13 +517,65 @@ class ResumeCommand:
                 "run_tests",
             ],
             "expected_artifacts": expected_artifacts,
-            "task_kind": "decision",
-            "expected_changed_files": [],
+            "task_kind": task_kind,
+            "expected_changed_files": expected_changed_files,
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
             "notes": f"Generated from resolved decision {decision['decision_id']}",
+            "completion_contract": {
+                "requires_changed_artifact": bool(expected_changed_files),
+                "requires_verification": bool(expected_changed_files),
+                "allows_expected_failure": False,
+            },
+            "verification_policy": {
+                "required": bool(expected_changed_files),
+                "allow_expected_failure": False,
+                "commands": [],
+            },
+            "read_scope": list(dict.fromkeys(["AGENTS.md", *expected_artifacts])),
+            "write_scope": expected_changed_files,
+            "context_requirements": {
+                "mount_type": "coding_context" if expected_changed_files else "summary_context",
+                "include_artifacts": True,
+                "include_failures": False,
+                "include_decisions": True,
+                "include_validation": False,
+                "recent_event_count": 20,
+            },
+            "validation_commands": [],
+            "failure_policy": "create_repair_task",
+            "parallel_safety": "serial" if expected_changed_files else "readonly",
+            "merge_strategy": "none",
         }
+
+    def _decision_expected_artifacts(self, decision: dict, option: dict, run_id: str) -> list[str]:
+        if self._option_action(option) == "require_replan":
+            return [f".agent/runs/{run_id}/task_plan.json"]
+        explicit = option.get("expected_artifacts")
+        if isinstance(explicit, list):
+            artifacts = [str(item) for item in explicit if item]
+            if artifacts:
+                return artifacts
+        metadata = decision.get("metadata") or {}
+        metadata_artifacts = metadata.get("expected_artifacts")
+        if isinstance(metadata_artifacts, list):
+            artifacts = [str(item) for item in metadata_artifacts if item]
+            if artifacts:
+                return artifacts
+        text = " ".join(
+            [
+                str(decision.get("question") or ""),
+                str(option.get("label") or ""),
+                str(option.get("tradeoff") or ""),
+                str(option.get("option_id") or ""),
+            ]
+        ).lower()
+        if "web ui" in text or "web interface" in text:
+            return ["WEB_UI.md"]
+        if "readme" in text:
+            return ["README.md"]
+        return []
 
     def _should_create_task(self, option: dict) -> bool:
         return self._option_action(option) in self._TASK_ACTIONS

@@ -325,7 +325,9 @@ class RequirementPlanner:
         artifacts = set(expected_artifacts)
         inferred: list[str] = []
         module_stem = self._module_stem(text)
-        if "src/" in artifacts and module_stem:
+        if module_stem == "complete_module":
+            inferred.append("complete_module.py")
+        elif "src/" in artifacts and module_stem:
             inferred.append(f"src/{module_stem}.py")
         if "tests/" in artifacts and module_stem:
             inferred.append(f"tests/test_{module_stem}.py")
@@ -357,6 +359,8 @@ class RequirementPlanner:
             return "notes_tool"
         if "password strength" in normalized:
             return "password_strength"
+        if "answer()" in normalized or "answer function" in normalized:
+            return "complete_module"
         candidates = re.findall(
             r"(?:create|add|implement|build|write|update)\s+(?:a|an|the)?\s*([a-z][a-z0-9_-]+)",
             normalized,

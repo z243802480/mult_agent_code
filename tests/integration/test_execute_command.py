@@ -1016,7 +1016,13 @@ def test_execute_command_denies_write_file_outside_write_scope(tmp_path: Path) -
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert "ToolPermissionProfile denied write path" in evidence[0]["summary"]
+    runtime_requests = [
+        json.loads(line)
+        for line in (run_dir / "runtime_requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert runtime_requests[0]["request_type"] == "scope_expansion"
+    assert runtime_requests[0]["details"]["write_scope"] == ["blocked/output.txt"]
+    assert evidence[0]["failure_type"] == "runtime_request"
 
 
 def test_execute_command_denies_read_file_outside_read_scope(tmp_path: Path) -> None:
@@ -1068,7 +1074,13 @@ def test_execute_command_denies_read_file_outside_read_scope(tmp_path: Path) -> 
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert "ToolPermissionProfile denied read path" in evidence[0]["summary"]
+    runtime_requests = [
+        json.loads(line)
+        for line in (run_dir / "runtime_requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert runtime_requests[0]["request_type"] == "context_request"
+    assert runtime_requests[0]["details"]["read_scope"] == ["blocked.txt"]
+    assert evidence[0]["failure_type"] == "runtime_request"
 
 
 def test_execute_command_denies_apply_patch_outside_write_scope(tmp_path: Path) -> None:
@@ -1105,7 +1117,13 @@ def test_execute_command_denies_apply_patch_outside_write_scope(tmp_path: Path) 
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert "ToolPermissionProfile denied write path" in evidence[0]["summary"]
+    runtime_requests = [
+        json.loads(line)
+        for line in (run_dir / "runtime_requests.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert runtime_requests[0]["request_type"] == "scope_expansion"
+    assert runtime_requests[0]["details"]["write_scope"] == ["blocked.py"]
+    assert evidence[0]["failure_type"] == "runtime_request"
 
 
 def test_execute_command_records_runtime_request_without_writing_outside_scope(
@@ -1245,6 +1263,73 @@ def test_resume_applies_runtime_request_and_allows_follow_up_write(
     assert len(applied) == 1
     assert applied[0]["data"]["effect"] == "runtime_request_applied"
     assert runtime_request["runtime_request_id"] in task["notes"]
+
+
+def test_resume_applies_context_request_read_scope(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "research one local check", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"] = [
+        {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": "Read blocked file",
+            "description": "Read only after context request approval.",
+            "status": "ready",
+            "priority": "medium",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": ["request read scope"],
+            "allowed_tools": ["read_file"],
+            "expected_artifacts": [],
+            "read_scope": ["allowed.txt"],
+            "write_scope": [],
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": False,
+                "allows_expected_failure": False,
+            },
+            "created_at": "2026-05-13T10:00:00+08:00",
+            "updated_at": "2026-05-13T10:00:00+08:00",
+            "notes": "",
+        }
+    ]
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    requested = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeOutOfScopeReadClient(),
+    ).run()
+
+    assert requested.blocked == 1
+    decision = json.loads((run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    DecideCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        decision_id=decision["decision_id"],
+        select_option_id="review_contract",
+    ).run()
+
+    resumed = ResumeCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        max_iterations=0,
+        execute_model_client=FakeOutOfScopeReadClient(),
+    ).run()
+
+    assert resumed.applied_decisions == 1
+    updated = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task = updated["tasks"][0]
+    assert task["status"] == "ready"
+    assert task["read_scope"].count("blocked.txt") == 1
+    assert task["context_requirements"]["requested_paths"] == ["blocked.txt"]
 
 
 def test_execute_command_injects_context_mount_and_task_contract(tmp_path: Path) -> None:
