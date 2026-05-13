@@ -250,31 +250,15 @@ class CapabilityReportCommand:
         profiles: dict[tuple[str, str, str, str], dict[str, Any]] = {}
         for run_dir in self._run_dirs(agent_dir):
             path = run_dir / "model_calls.jsonl"
-            if not path.exists():
-                continue
-            for call in self.jsonl.read_all(path, "model_call"):
+            calls = self.jsonl.read_all(path, "model_call") if path.exists() else []
+            for call in calls:
                 key = (
                     str(call.get("model_provider") or "unknown"),
                     str(call.get("model_name") or "unknown"),
                     str(call.get("purpose") or "unknown"),
                     str(call.get("model_tier") or "unknown"),
                 )
-                profile = profiles.setdefault(
-                    key,
-                    {
-                        "provider": key[0],
-                        "model": key[1],
-                        "purpose": key[2],
-                        "model_tier": key[3],
-                        "total_calls": 0,
-                        "success_calls": 0,
-                        "failure_calls": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "failure_types": {},
-                        "recent_failures": [],
-                    },
-                )
+                profile = self._ensure_model_profile(profiles, key)
                 profile["total_calls"] += 1
                 if call.get("status") == "success":
                     profile["success_calls"] += 1
@@ -288,6 +272,7 @@ class CapabilityReportCommand:
                         profile["recent_failures"].append(str(call.get("summary") or failure_type))
                 profile["input_tokens"] += int(call.get("input_tokens") or 0)
                 profile["output_tokens"] += int(call.get("output_tokens") or 0)
+            self._merge_worker_profile_signals(run_dir, profiles)
 
         normalized = []
         for profile in profiles.values():
@@ -301,6 +286,18 @@ class CapabilityReportCommand:
             profile["average_output_tokens"] = (
                 round(int(profile["output_tokens"]) / total, 2) if total else 0.0
             )
+            total_workers = int(profile.get("total_workers") or 0)
+            profile["worker_success_rate"] = (
+                round(int(profile["successful_workers"]) / total_workers, 4)
+                if total_workers
+                else 0.0
+            )
+            validation_total = int(profile.get("validation_total") or 0)
+            profile["validation_pass_rate"] = (
+                round(int(profile["validation_passed"]) / validation_total, 4)
+                if validation_total
+                else 0.0
+            )
             profile["recommended_action"] = self._model_route_action(profile)
             normalized.append(profile)
         return sorted(
@@ -312,6 +309,105 @@ class CapabilityReportCommand:
                 str(item["model_tier"]),
             ),
         )
+
+    def _ensure_model_profile(
+        self,
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+        key: tuple[str, str, str, str],
+    ) -> dict[str, Any]:
+        return profiles.setdefault(
+            key,
+            {
+                "provider": key[0],
+                "model": key[1],
+                "purpose": key[2],
+                "model_tier": key[3],
+                "total_calls": 0,
+                "success_calls": 0,
+                "failure_calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_workers": 0,
+                "successful_workers": 0,
+                "failed_workers": 0,
+                "validation_total": 0,
+                "validation_passed": 0,
+                "failure_types": {},
+                "recent_failures": [],
+            },
+        )
+
+    def _merge_worker_profile_signals(
+        self,
+        run_dir: Path,
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> None:
+        workers_path = run_dir / "workers.jsonl"
+        worker_results_path = run_dir / "worker_results.jsonl"
+        runtime_profiles_path = run_dir / "runtime_profiles.jsonl"
+        model_profiles_path = run_dir / "model_profiles.jsonl"
+        if not (
+            workers_path.exists()
+            and worker_results_path.exists()
+            and runtime_profiles_path.exists()
+            and model_profiles_path.exists()
+        ):
+            return
+        model_profiles = {
+            item["model_profile_id"]: item
+            for item in self.jsonl.read_all(model_profiles_path, "model_profile")
+            if item.get("model_profile_id")
+        }
+        runtime_profiles = {
+            item["runtime_profile_id"]: item
+            for item in self.jsonl.read_all(runtime_profiles_path, "runtime_profile")
+            if item.get("runtime_profile_id")
+        }
+        workers = {
+            item["worker_invocation_id"]: item
+            for item in self.jsonl.read_all(workers_path, "worker_invocation")
+            if item.get("worker_invocation_id")
+        }
+        validations = {
+            item["validation_result_id"]: item
+            for item in self.jsonl.read_all(run_dir / "validation_results.jsonl", "validation_result")
+            if item.get("validation_result_id")
+        } if (run_dir / "validation_results.jsonl").exists() else {}
+        for result in self.jsonl.read_all(worker_results_path, "worker_result"):
+            worker = workers.get(result.get("worker_invocation_id"))
+            if not worker:
+                continue
+            runtime_profile = runtime_profiles.get(worker.get("runtime_profile_id"))
+            if not runtime_profile:
+                continue
+            model_profile = model_profiles.get(runtime_profile.get("model_profile_id"))
+            if not model_profile:
+                continue
+            key = (
+                str(model_profile.get("provider") or "unknown"),
+                str(model_profile.get("model_name") or "unknown"),
+                str(model_profile.get("purpose") or "unknown"),
+                str(model_profile.get("model_tier") or "unknown"),
+            )
+            profile = self._ensure_model_profile(profiles, key)
+            profile["total_workers"] += 1
+            if result.get("status") == "succeeded":
+                profile["successful_workers"] += 1
+            else:
+                profile["failed_workers"] += 1
+                failure_type = str(result.get("status") or "worker_failed")
+                profile["failure_types"][failure_type] = profile["failure_types"].get(failure_type, 0) + 1
+                if len(profile["recent_failures"]) < 5:
+                    profile["recent_failures"].append(str(result.get("summary") or failure_type))
+            raw_validation_refs = result.get("validation_refs")
+            validation_refs = raw_validation_refs if isinstance(raw_validation_refs, list) else []
+            for ref in validation_refs:
+                validation = validations.get(ref)
+                if not validation:
+                    continue
+                profile["validation_total"] += 1
+                if validation.get("status") == "passed":
+                    profile["validation_passed"] += 1
 
     def _write_model_profile(
         self,
@@ -349,10 +445,20 @@ class CapabilityReportCommand:
     def _model_route_action(self, profile: dict[str, Any]) -> str:
         total = int(profile.get("total_calls") or 0)
         success_rate = float(profile.get("success_rate") or 0.0)
+        total_workers = int(profile.get("total_workers") or 0)
+        worker_success_rate = float(profile.get("worker_success_rate") or 0.0)
+        validation_total = int(profile.get("validation_total") or 0)
+        validation_pass_rate = float(profile.get("validation_pass_rate") or 0.0)
         failure_types = profile.get("failure_types") or {}
-        if total < 2:
+        if validation_total >= 2 and validation_pass_rate < 0.8:
+            return "review_validation_or_route_before_scaling"
+        if total_workers >= 2 and worker_success_rate < 0.8:
+            return "review_worker_route_before_scaling"
+        if total < 2 and total_workers < 2:
             return "collect_more_data"
         if success_rate >= 0.8:
+            return "keep_route"
+        if total == 0 and total_workers >= 2 and worker_success_rate >= 0.8:
             return "keep_route"
         if failure_types.get("authentication") or failure_types.get("budget"):
             return "pause_route_until_config_fixed"

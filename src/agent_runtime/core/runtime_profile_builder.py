@@ -22,6 +22,7 @@ from agent_runtime.core.task_contract import (
     validation_commands,
     write_scope,
 )
+from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 
@@ -64,10 +65,11 @@ class RuntimeProfileBuilder:
             )
 
         profile_base_id = f"profile-{worker_id}"
-        model_tier = self._model_tier(task)
+        model_purpose = self._model_purpose(task)
+        model_tier = self._model_tier(task, context, model_purpose)
         model_profile = ModelProfile(
             model_profile_id=f"model-{profile_base_id}",
-            purpose=self._model_purpose(task),
+            purpose=model_purpose,
             provider="runtime",
             model_name=f"{model_tier}-route",
             model_tier=model_tier,
@@ -222,15 +224,56 @@ class RuntimeProfileBuilder:
                 },
             )
 
-    def _model_tier(self, task: dict) -> str:
+    def _model_tier(self, task: dict, context: RuntimeContext, purpose: str) -> str:
         kind = task_kind(task)
         if kind in {"architecture", "review"}:
-            return "strong"
-        if kind in {"report", "decision"}:
-            return "cheap"
-        if kind in {"research", "diagnostic", "verification"} and parallel_safety(task) == "readonly":
-            return "cheap"
-        return "medium"
+            default = "strong"
+        elif kind in {"report", "decision"}:
+            default = "cheap"
+        elif kind in {"research", "diagnostic", "verification"} and parallel_safety(task) == "readonly":
+            default = "cheap"
+        else:
+            default = "medium"
+        return self._capability_adjusted_tier(context, purpose, default)
+
+    def _capability_adjusted_tier(self, context: RuntimeContext, purpose: str, default: str) -> str:
+        hints = self._route_hints(context)
+        if not hints or default == "strong":
+            return default
+        route = self._matching_route_hint(hints, purpose, default)
+        if not route:
+            return default
+        action = str(route.get("recommended_action") or "")
+        weak_actions = {
+            "fallback_or_retry_later",
+            "pause_route_until_config_fixed",
+            "review_route_before_scaling",
+            "review_validation_or_route_before_scaling",
+            "review_worker_route_before_scaling",
+            "use_json_stricter_or_switch_model",
+        }
+        if action not in weak_actions:
+            return default
+        return "medium" if default == "cheap" else "strong"
+
+    def _route_hints(self, context: RuntimeContext) -> list[dict]:
+        path = context.agent_dir / "model" / "capability_profile.json"
+        if not path.exists():
+            return []
+        try:
+            profile = JsonStore(self.validator).read(path, "model_capability_profile")
+        except (OSError, ValueError):
+            return []
+        profiles = profile.get("profiles")
+        return profiles if isinstance(profiles, list) else []
+
+    def _matching_route_hint(self, routes: list[dict], purpose: str, tier: str) -> dict | None:
+        for route in routes:
+            if not isinstance(route, dict):
+                continue
+            if route.get("purpose") == purpose and route.get("model_tier") == tier:
+                return route
+        return None
 
     def _model_purpose(self, task: dict) -> str:
         kind = task_kind(task)

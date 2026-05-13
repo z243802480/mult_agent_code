@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.runtime_profile import (
     AccountProfile,
     BudgetProfile,
@@ -9,6 +10,7 @@ from agent_runtime.core.runtime_profile import (
     SandboxProfile,
     ToolPermissionProfile,
 )
+from agent_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from agent_runtime.core.runtime_request import RuntimeRequest
 from agent_runtime.core.validation_result import ValidationResult
 from agent_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
@@ -158,4 +160,71 @@ def test_validation_result_validates_against_schema() -> None:
             data={"exit_code": 0},
             created_at="2026-05-13T10:00:00+08:00",
         ).to_dict(),
+    )
+
+
+def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) -> None:
+    validator = SchemaValidator(SCHEMA_DIR)
+    model_dir = tmp_path / ".agent" / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "capability_profile.json").write_text(
+        """
+{
+  "schema_version": "0.1.0",
+  "root": ".",
+  "profile_count": 1,
+  "profiles": [
+    {
+      "provider": "runtime",
+      "model": "medium-route",
+      "purpose": "coding",
+      "model_tier": "medium",
+      "total_calls": 0,
+      "success_calls": 0,
+      "failure_calls": 0,
+      "success_rate": 0.0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "failure_types": {},
+      "recommended_action": "review_worker_route_before_scaling",
+      "recent_failures": [],
+      "total_workers": 3,
+      "successful_workers": 1,
+      "failed_workers": 2,
+      "worker_success_rate": 0.3333,
+      "validation_total": 3,
+      "validation_passed": 1,
+      "validation_pass_rate": 0.3333
+    }
+  ]
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-0001",
+        policy={"permissions": {}, "protected_paths": []},
+        validator=validator,
+    )
+    task = {
+        "task_id": "task-0001",
+        "role": "CoderAgent",
+        "allowed_tools": ["read_file"],
+        "task_kind": "implementation",
+        "read_scope": ["src/"],
+        "write_scope": ["src/output.py"],
+    }
+
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=context,
+        task=task,
+        worker_id="worker-0001",
+        runtime_context={},
+    )
+
+    assert mount.runtime_context["model_profile_id"] == "model-profile-worker-0001"
+    assert mount.runtime_context["runtime_profile_id"] == "runtime-profile-worker-0001"
+    assert "strong-route" in (tmp_path / ".agent" / "runs" / "run-0001" / "model_profiles.jsonl").read_text(
+        encoding="utf-8"
     )

@@ -199,6 +199,122 @@ def test_capability_report_backfills_legacy_acceptance_capabilities(tmp_path: Pa
     assert result.failure_types["runtime_recovery_failed"] == 1
 
 
+def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    jsonl = JsonlStore(validator)
+    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "run_id": "run-1",
+                "goal_id": "goal-1",
+                "status": "completed",
+                "started_at": "2026-05-13T10:00:00+08:00",
+                "ended_at": "2026-05-13T10:01:00+08:00",
+                "entry_command": "agent /execute",
+                "current_phase": "DONE",
+                "workspace": {"mode": "single_workspace", "path": "."},
+                "summary": "done",
+            }
+        ),
+        encoding="utf-8",
+    )
+    jsonl.append(
+        run_dir / "model_profiles.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_profile_id": "model-profile-0001",
+            "purpose": "coding",
+            "provider": "runtime",
+            "model_name": "medium-route",
+            "model_tier": "medium",
+            "fallback_profile_ids": [],
+        },
+        "model_profile",
+    )
+    jsonl.append(
+        run_dir / "runtime_profiles.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "runtime_profile_id": "runtime-profile-0001",
+            "agent_id": "CoderAgent",
+            "model_profile_id": "model-profile-0001",
+            "tool_permission_profile_id": "tools-profile-0001",
+            "account_profile_id": "account-profile-0001",
+            "sandbox_profile_id": "sandbox-profile-0001",
+            "context_mount_id": "context-mount-0001",
+            "budget": {"max_model_calls": 1, "max_tool_calls": 5},
+        },
+        "runtime_profile",
+    )
+    jsonl.append(
+        run_dir / "workers.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_invocation_id": "worker-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "agent_id": "CoderAgent",
+            "runtime_profile_id": "runtime-profile-0001",
+            "status": "succeeded",
+            "started_at": "2026-05-13T10:00:00+08:00",
+            "ended_at": "2026-05-13T10:00:30+08:00",
+            "summary": "worker completed",
+        },
+        "worker_invocation",
+    )
+    jsonl.append(
+        run_dir / "validation_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "validation_result_id": "validation-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "tool_name": "run_command",
+            "command": "pytest tests/test_notes.py",
+            "status": "passed",
+            "summary": "passed",
+            "error": None,
+            "data": {},
+            "created_at": "2026-05-13T10:00:20+08:00",
+        },
+        "validation_result",
+    )
+    jsonl.append(
+        run_dir / "worker_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_result_id": "worker-result-0001",
+            "worker_invocation_id": "worker-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "status": "succeeded",
+            "artifact_refs": ["artifact-0001"],
+            "validation_refs": ["validation-0001"],
+            "failure_evidence_refs": [],
+            "cost": {"model_calls": 1, "tool_calls": 2},
+            "summary": "done",
+        },
+        "worker_result",
+    )
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    profile = store.read(result.model_profile_path, "model_capability_profile")
+    route = profile["profiles"][0]
+    assert route["provider"] == "runtime"
+    assert route["model"] == "medium-route"
+    assert route["purpose"] == "coding"
+    assert route["total_workers"] == 1
+    assert route["successful_workers"] == 1
+    assert route["worker_success_rate"] == 1.0
+    assert route["validation_total"] == 1
+    assert route["validation_pass_rate"] == 1.0
+
+
 def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)

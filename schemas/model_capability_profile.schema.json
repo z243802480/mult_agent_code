@@ -43,6 +43,13 @@
           "output_tokens": { "type": "integer" },
           "average_input_tokens": { "type": "number" },
           "average_output_tokens": { "type": "number" },
+          "total_workers": { "type": "integer" },
+          "successful_workers": { "type": "integer" },
+          "failed_workers": { "type": "integer" },
+          "worker_success_rate": { "type": "number" },
+          "validation_total": { "type": "integer" },
+          "validation_passed": { "type": "integer" },
+          "validation_pass_rate": { "type": "number" },
           "failure_types": { "type": "object" },
           "recommended_action": { "type": "string" },
           "recent_failures": { "type": "array", "items": { "type": "string" } }
