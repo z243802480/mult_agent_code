@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import RLock
 
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
+
+
+_EVENT_LOGGER_LOCK = RLock()
 
 
 class EventLogger:
@@ -21,19 +25,20 @@ class EventLogger:
         summary: str,
         data: dict | None = None,
     ) -> dict:
-        self._counter += 1
-        event = {
-            "schema_version": "0.1.0",
-            "event_id": f"event-{self._counter:04d}",
-            "run_id": run_id,
-            "timestamp": now_iso(),
-            "type": event_type,
-            "actor": actor,
-            "summary": summary,
-            "data": data or {},
-        }
-        self.store.append(self.events_path, event, "event")
-        return event
+        with _EVENT_LOGGER_LOCK:
+            self._counter += 1
+            event = {
+                "schema_version": "0.1.0",
+                "event_id": f"event-{self._counter:04d}",
+                "run_id": run_id,
+                "timestamp": now_iso(),
+                "type": event_type,
+                "actor": actor,
+                "summary": summary,
+                "data": data or {},
+            }
+            self.store.append(self.events_path, event, "event")
+            return event
 
     def read_all(self) -> list[dict]:
         return self.store.read_all(self.events_path, "event")

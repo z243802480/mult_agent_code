@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkerResult",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "worker_result_id",
+    "worker_invocation_id",
+    "run_id",
+    "task_id",
+    "status",
+    "artifact_refs",
+    "validation_refs",
+    "failure_evidence_refs",
+    "cost",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "worker_result_id": { "type": "string" },
+    "worker_invocation_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "task_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["succeeded", "partial", "failed", "denied", "timeout"]
+    },
+    "artifact_refs": { "type": "array", "items": { "type": "string" } },
+    "validation_refs": { "type": "array", "items": { "type": "string" } },
+    "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "cost": {
+      "type": "object",
+      "required": ["model_calls", "tool_calls"],
+      "properties": {
+        "model_calls": { "type": "integer" },
+        "tool_calls": { "type": "integer" }
+      }
+    },
+    "summary": { "type": "string" }
+  }
+}

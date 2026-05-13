@@ -359,6 +359,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum seconds per scenario subprocess.",
     )
     parser.add_argument("--cleanup", action="store_true")
+    parser.add_argument(
+        "--reuse-workspace",
+        action="store_true",
+        help="Reuse existing scenario workspaces instead of deleting them before each run.",
+    )
     return parser
 
 
@@ -392,6 +397,8 @@ def run_scenario(
     if scenario.kind == "memory":
         return run_memory_scenario(args, workspace, scenario)
     started_at = time.monotonic()
+    if workspace.exists() and not args.reuse_workspace:
+        shutil.rmtree(workspace)
     write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
     command = [
@@ -415,6 +422,7 @@ def run_scenario(
         str(args.model_max_retries),
         "--command-timeout-seconds",
         str(args.scenario_timeout_seconds),
+        "--no-research",
         "--summary-json",
         str(summary_path),
     ]

@@ -149,3 +149,131 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
     assert "verification command failed" in result.common_blockers
     assert "Model capability profiles" in result.to_text()
     assert "Capability report" in result.to_text()
+
+
+def test_capability_report_backfills_legacy_acceptance_capabilities(tmp_path: Path) -> None:
+    jsonl = JsonlStore(SchemaValidator(Path.cwd() / "schemas"))
+    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir.mkdir(parents=True)
+    jsonl.append(
+        acceptance_dir / "history.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "suite": "core",
+            "requested_scenarios": ["password_cli", "safe_file_renamer"],
+            "root": str(tmp_path),
+            "ok": False,
+            "returncode": 1,
+            "created_at": "2026-05-07T10:00:00+08:00",
+            "summary_json": str(acceptance_dir / "legacy.json"),
+            "aggregate": {"total": 2, "passed": 1, "failed": 1},
+            "trend_warnings": [],
+            "scenarios": [
+                {
+                    "scenario": "password_cli",
+                    "ok": True,
+                    "workspace": None,
+                    "failure_summary": "",
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "summary": {},
+                },
+                {
+                    "scenario": "safe_file_renamer",
+                    "ok": False,
+                    "workspace": None,
+                    "failure_summary": "recovery-resume failed",
+                    "stdout_tail": "",
+                    "stderr_tail": "",
+                    "summary": {},
+                },
+            ],
+        },
+    )
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    assert "unknown" not in result.capability_summary
+    assert result.capability_summary["single_file_cli"]["passed"] == 1
+    assert result.capability_summary["config_driven_cli"]["failed"] == 1
+    assert result.failure_types["runtime_recovery_failed"] == 1
+
+
+def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    jsonl = JsonlStore(validator)
+    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir.mkdir(parents=True)
+    history_report = {
+        "schema_version": "0.1.0",
+        "suite": "core",
+        "requested_scenarios": ["password_cli"],
+        "root": str(tmp_path),
+        "ok": True,
+        "returncode": 0,
+        "created_at": "2026-05-07T10:00:00+08:00",
+        "summary_json": str(acceptance_dir / "latest_summary.json"),
+        "aggregate": {"total": 1, "passed": 1, "failed": 0},
+        "trend_warnings": [],
+        "scenarios": [legacy_scenario("password_cli", True)],
+    }
+    latest_report = dict(history_report)
+    latest_report["trend_warnings"] = ["model calls increased by 7 (threshold 5)"]
+    jsonl.append(acceptance_dir / "history.jsonl", history_report)
+    store.write(acceptance_dir / "acceptance_report.json", latest_report, "acceptance_report")
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    assert result.latest_acceptance["release_readiness"] == "conditional"
+
+
+def test_capability_report_marks_closed_repair_as_conditional(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir.mkdir(parents=True)
+    report = {
+        "schema_version": "0.1.0",
+        "suite": "core",
+        "requested_scenarios": ["markdown_kb"],
+        "root": str(tmp_path),
+        "ok": False,
+        "returncode": 1,
+        "created_at": "2026-05-07T10:00:00+08:00",
+        "summary_json": str(acceptance_dir / "latest_summary.json"),
+        "aggregate": {"total": 1, "passed": 0, "failed": 1},
+        "trend_warnings": [],
+        "scenarios": [legacy_scenario("markdown_kb", False)],
+        "repair_closure": {
+            "repair_run_id": "run-1",
+            "rerun_summary_json": str(acceptance_dir / "rerun.json"),
+            "rerun_ok": True,
+            "closed_failures": ["markdown_kb"],
+            "remaining_failures": [],
+        },
+    }
+    store.write(acceptance_dir / "acceptance_report.json", report, "acceptance_report")
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    assert result.latest_acceptance["release_readiness"] == "conditional"
+    assert result.latest_acceptance["ok"] is True
+    assert result.latest_acceptance["base_ok"] is False
+    assert result.latest_acceptance["passed"] == 1
+    assert result.latest_acceptance["failed"] == 0
+    assert result.capability_summary["search_cli"]["passed"] == 1
+    assert result.capability_summary["search_cli"]["failed"] == 0
+    assert not any("promote-failures" in action for action in result.next_actions)
+
+
+def legacy_scenario(name: str, ok: bool) -> dict:
+    return {
+        "scenario": name,
+        "ok": ok,
+        "workspace": None,
+        "failure_summary": "" if ok else f"{name} failed",
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "summary": {},
+    }

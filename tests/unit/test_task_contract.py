@@ -1,8 +1,14 @@
 from agent_runtime.core.task_contract import (
     allows_expected_failure,
     check_completion_contract,
+    context_requirements,
+    failure_policy,
+    parallel_safety,
+    read_scope,
     requires_changed_artifact,
     task_kind,
+    validation_commands,
+    write_scope,
 )
 
 
@@ -78,3 +84,31 @@ def test_completion_contract_can_allow_verified_noop_for_repair_closure() -> Non
     )
 
     assert check.ok is True
+
+
+def test_task_contract_exposes_runtime_scopes_and_policies() -> None:
+    task = {
+        "task_kind": "implementation",
+        "expected_artifacts": ["src/agent_runtime/example.py"],
+        "expected_changed_files": ["src/agent_runtime/example.py"],
+        "verification_policy": {"commands": ["pytest tests/unit/test_example.py"]},
+    }
+
+    assert read_scope(task) == ["AGENTS.md", "src/agent_runtime/example.py"]
+    assert write_scope(task) == ["src/agent_runtime/example.py"]
+    assert validation_commands(task) == ["pytest tests/unit/test_example.py"]
+    assert failure_policy(task) == "create_repair_task"
+    assert parallel_safety(task) == "serial"
+    assert context_requirements(task)["mount_type"] == "coding_context"
+
+
+def test_task_contract_marks_tasks_without_write_scope_as_readonly() -> None:
+    task = {
+        "task_kind": "research",
+        "title": "Research architecture",
+        "expected_artifacts": ["docs/notes.md"],
+    }
+
+    assert write_scope(task) == []
+    assert parallel_safety(task) == "readonly"
+    assert failure_policy(task) == "continue_other_branches"

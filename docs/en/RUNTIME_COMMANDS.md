@@ -97,6 +97,8 @@ trend regressions.
 raw scenario count.
 `agent capability-report` summarizes acceptance trends, capability coverage, failure types, repair
 rounds, cost signals, common blockers, and recommended next actions.
+Known scenario metadata is backfilled for older acceptance history rows, so missing
+`capability`/`tier` fields do not collapse reports into `unknown`.
 
 Commands such as `/run`, `/execute`, `/review`, `/debug`, `/decide`, `/resume`, and `/compact`
 prefer the current session when `--session-id` is omitted. This prevents unrelated goals from
@@ -123,6 +125,12 @@ init if needed
 It writes `final_report.md` under `.agent/runs/<run_id>/` with task completion, blocked-task notes, cost counters, artifact summaries, and recommended next actions.
 
 When review creates a high-impact decision point, `/run` pauses the run instead of silently expanding scope. The final report lists `Pending Decisions`.
+
+Before executing ready tasks, `/run` and `/execute` refresh `task_plan_eval.json`. If the plan fails
+quality checks, the runtime first performs one deterministic plan revision for safe mechanical
+issues such as missing ready entry points, invalid dependencies, missing acceptance criteria,
+generic artifacts, or missing write/verification tools. If the revised plan still fails, the runtime
+creates a `DecisionPoint` instead of executing low-quality work.
 
 ## `/resume` Decision Continuation
 

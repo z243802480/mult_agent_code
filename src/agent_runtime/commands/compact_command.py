@@ -7,6 +7,7 @@ from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.run_store import RunStore
+from agent_runtime.storage.schema_validator import SchemaValidationError
 from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
 
@@ -194,7 +195,10 @@ class CompactCommand:
     def _read_optional_json(self, path: Path | None, schema_name: str) -> dict:
         if path is None or not path.exists():
             return {}
-        return self.store.read(path, schema_name)
+        try:
+            return self.store.read(path, schema_name)
+        except SchemaValidationError:
+            return {}
 
     def _read_optional_jsonl(self, path: Path | None, schema_name: str) -> list[dict]:
         if path is None or not path.exists():

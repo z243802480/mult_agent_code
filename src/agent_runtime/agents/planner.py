@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import re
 
-from agent_runtime.core.task_contract import completion_contract
+from agent_runtime.core.task_contract import (
+    completion_contract,
+    context_requirements,
+    failure_policy,
+    parallel_safety,
+    read_scope,
+    validation_commands,
+    write_scope,
+)
 from agent_runtime.utils.time import now_iso
 
 
@@ -40,15 +48,7 @@ class RequirementPlanner:
                 "role": "CoderAgent",
                 "depends_on": [] if not tasks else [tasks[-1]["task_id"]],
                 "acceptance": requirement["acceptance"],
-                "allowed_tools": [
-                    "read_file",
-                    "search_text",
-                    "write_file",
-                    "apply_patch",
-                    "restore_backup",
-                    "run_command",
-                    "run_tests",
-                ],
+                "allowed_tools": self._allowed_tools(kind),
                 "expected_artifacts": expected_artifacts,
                 "task_kind": kind,
                 "expected_changed_files": self._expected_changed_files(
@@ -68,6 +68,7 @@ class RequirementPlanner:
             }
             task["completion_contract"] = completion_contract(task)
             task["verification_policy"] = self._verification_policy(task, goal_spec)
+            self._apply_runtime_contract(task)
             tasks.append(task)
 
         if not tasks:
@@ -81,7 +82,7 @@ class RequirementPlanner:
                 "role": "PlannerAgent",
                 "depends_on": [],
                 "acceptance": goal_spec["definition_of_done"][:3] or ["Goal is clarified"],
-                "allowed_tools": ["read_file", "search_text", "write_file"],
+                "allowed_tools": self._allowed_tools("implementation"),
                 "expected_artifacts": self._fallback_artifacts(goal_spec),
                 "task_kind": "implementation",
                 "expected_changed_files": self._expected_changed_files(
@@ -106,6 +107,7 @@ class RequirementPlanner:
             }
             task["completion_contract"] = completion_contract(task)
             task["verification_policy"] = self._verification_policy(task, goal_spec)
+            self._apply_runtime_contract(task)
             tasks.append(task)
         return {"schema_version": "0.1.0", "tasks": tasks}
 
@@ -179,15 +181,7 @@ class RequirementPlanner:
             "role": "CoderAgent",
             "depends_on": [],
             "acceptance": acceptance,
-            "allowed_tools": [
-                "read_file",
-                "search_text",
-                "write_file",
-                "apply_patch",
-                "restore_backup",
-                "run_command",
-                "run_tests",
-            ],
+            "allowed_tools": self._allowed_tools("implementation"),
             "expected_artifacts": [artifact],
             "task_kind": "implementation",
             "expected_changed_files": [artifact],
@@ -202,6 +196,7 @@ class RequirementPlanner:
         }
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = self._verification_policy(task, goal_spec)
+        self._apply_runtime_contract(task)
         return task
 
     def _single_file_artifact(self, goal_spec: dict) -> str:
@@ -302,6 +297,9 @@ class RequirementPlanner:
         requirement: dict | None = None,
     ) -> list[str]:
         requirement = requirement or {}
+        inferred = self._infer_changed_files_from_requirement(kind, expected_artifacts, requirement)
+        if inferred:
+            return inferred
         if (
             kind in {"implementation", "report", "ui"}
             and isinstance(requirement.get("expected_artifacts"), list)
@@ -310,6 +308,101 @@ class RequirementPlanner:
             broad = {"implementation artifact", "planning artifact", "tests/", "src/"}
             return [artifact for artifact in expected_artifacts if artifact not in broad]
         return expected_changed_files(kind, expected_artifacts)
+
+    def _infer_changed_files_from_requirement(
+        self,
+        kind: str,
+        expected_artifacts: list[str],
+        requirement: dict,
+    ) -> list[str]:
+        if kind not in {"implementation", "report", "ui"}:
+            return []
+        text = self._requirement_text(requirement)
+        explicit_paths = self._explicit_file_paths(text)
+        if explicit_paths:
+            return explicit_paths
+
+        artifacts = set(expected_artifacts)
+        inferred: list[str] = []
+        module_stem = self._module_stem(text)
+        if "src/" in artifacts and module_stem:
+            inferred.append(f"src/{module_stem}.py")
+        if "tests/" in artifacts and module_stem:
+            inferred.append(f"tests/test_{module_stem}.py")
+        if "README.md" in artifacts:
+            inferred.append("README.md")
+        if "report.md" in artifacts:
+            inferred.append("report.md")
+        return list(dict.fromkeys(inferred))
+
+    def _requirement_text(self, requirement: dict) -> str:
+        return " ".join(
+            [
+                str(requirement.get("description") or ""),
+                " ".join(str(item) for item in requirement.get("acceptance", []) if item),
+            ]
+        )
+
+    def _explicit_file_paths(self, text: str) -> list[str]:
+        matches = re.findall(
+            r"(?<![\w.-])[\w./-]+\.(?:py|md|txt|json|html|css|js|ts|tsx|toml|yaml|yml)(?![\w.-])",
+            text,
+            flags=re.I,
+        )
+        return list(dict.fromkeys(match.replace("\\", "/") for match in matches))
+
+    def _module_stem(self, text: str) -> str | None:
+        normalized = text.lower()
+        if "notes" in normalized or "note" in normalized:
+            return "notes_tool"
+        if "password strength" in normalized:
+            return "password_strength"
+        candidates = re.findall(
+            r"(?:create|add|implement|build|write|update)\s+(?:a|an|the)?\s*([a-z][a-z0-9_-]+)",
+            normalized,
+        )
+        stopwords = {
+            "local",
+            "small",
+            "simple",
+            "tiny",
+            "command",
+            "cli",
+            "module",
+            "tool",
+            "file",
+            "test",
+            "unit",
+            "source",
+        }
+        for candidate in candidates:
+            candidate = candidate.strip("_-")
+            if candidate and candidate not in stopwords:
+                return re.sub(r"[^a-z0-9_]+", "_", candidate)
+        return None
+
+    def _allowed_tools(self, kind: str) -> list[str]:
+        readonly = ["read_file", "search_text", "run_command", "run_tests"]
+        if kind in {"diagnostic", "verification", "research", "decision"}:
+            return readonly
+        if kind == "report":
+            return [
+                "read_file",
+                "search_text",
+                "write_file",
+                "apply_patch",
+                "restore_backup",
+                "run_command",
+            ]
+        return [
+            "read_file",
+            "search_text",
+            "write_file",
+            "apply_patch",
+            "restore_backup",
+            "run_command",
+            "run_tests",
+        ]
 
     def _verification_policy(self, task: dict, goal_spec: dict) -> dict:
         contract = completion_contract(task)
@@ -323,6 +416,15 @@ class RequirementPlanner:
             "allow_expected_failure": bool(contract.get("allows_expected_failure", False)),
             "commands": commands[:5],
         }
+
+    def _apply_runtime_contract(self, task: dict) -> None:
+        task["read_scope"] = read_scope(task)
+        task["write_scope"] = write_scope(task)
+        task["context_requirements"] = context_requirements(task)
+        task["validation_commands"] = validation_commands(task)
+        task["failure_policy"] = failure_policy(task)
+        task["parallel_safety"] = parallel_safety(task)
+        task["merge_strategy"] = "none"
 
     def _refine_requirement(self, requirement: dict, goal_spec: dict) -> dict:
         expected_artifacts = self._expected_artifacts(requirement, goal_spec)
@@ -521,15 +623,7 @@ class FollowUpTaskPlanner:
                 "role": str(item.get("role") or "CoderAgent"),
                 "depends_on": dependency if not tasks else [tasks[-1]["task_id"]],
                 "acceptance": [str(value) for value in acceptance],
-                "allowed_tools": [
-                    "read_file",
-                    "search_text",
-                    "write_file",
-                    "apply_patch",
-                    "restore_backup",
-                    "run_command",
-                    "run_tests",
-                ],
+                "allowed_tools": RequirementPlanner()._allowed_tools(kind),
                 "expected_artifacts": expected_artifacts,
                 "task_kind": kind,
                 "expected_changed_files": expected_changed_files(kind, expected_artifacts),
@@ -546,6 +640,7 @@ class FollowUpTaskPlanner:
                 ),
                 "commands": [],
             }
+            RequirementPlanner()._apply_runtime_contract(task)
             tasks.append(task)
             known_items.add(self._normalize(title))
             known_items.add(self._normalize(description))

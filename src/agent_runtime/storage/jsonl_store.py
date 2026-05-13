@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+from threading import RLock
 from pathlib import Path
 from typing import Any
 
 from agent_runtime.storage.schema_validator import SchemaValidator
+
+
+_JSONL_APPEND_LOCK = RLock()
 
 
 class JsonlStore:
@@ -15,8 +19,9 @@ class JsonlStore:
         if schema_name and self.validator:
             self.validator.validate(schema_name, data)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(data, ensure_ascii=False) + "\n")
+        with _JSONL_APPEND_LOCK:
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(data, ensure_ascii=False) + "\n")
 
     def read_all(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
         if not path.exists():

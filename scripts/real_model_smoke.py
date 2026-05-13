@@ -193,6 +193,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not attempt review/resume recovery after a failed /run.",
     )
     parser.add_argument(
+        "--no-research",
+        action="store_true",
+        help="Skip /run pre-planning research for clear smoke goals.",
+    )
+    parser.add_argument(
         "--cleanup",
         action="store_true",
         help="Delete the temporary workspace after a successful run.",
@@ -287,19 +292,24 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
 def run_agent_run_with_retries(args: argparse.Namespace, result: SmokeResult) -> CommandRecord:
     last_record: CommandRecord | None = None
     attempts = max(1, int(args.run_attempts))
+    run_args = [
+        "/run",
+        args.goal,
+        "--root",
+        str(result.workspace),
+        "--max-iterations",
+        str(args.max_iterations),
+        "--max-tasks-per-iteration",
+        str(args.max_tasks_per_iteration),
+    ]
+    if args.no_research:
+        run_args.append("--no-research")
     for attempt in range(1, attempts + 1):
         name = "run" if attempt == 1 else f"run-retry-{attempt}"
         record = run_command(
             result,
             args.python,
-            "/run",
-            args.goal,
-            "--root",
-            str(result.workspace),
-            "--max-iterations",
-            str(args.max_iterations),
-            "--max-tasks-per-iteration",
-            str(args.max_tasks_per_iteration),
+            *run_args,
             name=name,
             check=False,
         )

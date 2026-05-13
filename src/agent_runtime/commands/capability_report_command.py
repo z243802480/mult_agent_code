@@ -4,6 +4,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.core.acceptance_catalog import (
+    acceptance_metadata_index,
+    enrich_acceptance_report,
+    enrich_acceptance_scenario,
+)
+from agent_runtime.core.failure_attribution import classify_failure_attribution
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.run_store import RunStore
@@ -92,7 +98,7 @@ class CapabilityReportCommand:
     def run(self) -> CapabilityReportResult:
         agent_dir = self.root / ".agent"
         acceptance_runs = self._acceptance_history(agent_dir)[-self.limit :]
-        latest = acceptance_runs[-1] if acceptance_runs else self._latest_acceptance(agent_dir)
+        latest = self._latest_acceptance(agent_dir) or (acceptance_runs[-1] if acceptance_runs else {})
         capability_summary = self._capability_summary(acceptance_runs, latest)
         failure_types, blockers, repair_rounds = self._execution_evidence_summary(agent_dir)
         model_calls, tool_calls = self._cost_signals(agent_dir)
@@ -124,13 +130,13 @@ class CapabilityReportCommand:
         path = agent_dir / "acceptance" / "history.jsonl"
         if not path.exists():
             return []
-        return self.jsonl.read_all(path, None)
+        return [enrich_acceptance_report(item) for item in self.jsonl.read_all(path, None)]
 
     def _latest_acceptance(self, agent_dir: Path) -> dict[str, Any]:
         path = agent_dir / "acceptance" / "acceptance_report.json"
         if not path.exists():
             return {}
-        return self.store.read(path, "acceptance_report")
+        return enrich_acceptance_report(self.store.read(path, "acceptance_report"))
 
     def _capability_summary(
         self,
@@ -140,23 +146,17 @@ class CapabilityReportCommand:
         summary: dict[str, dict[str, int]] = {}
         sources = history or ([latest] if latest else [])
         for report in sources:
-            metadata = {
-                str(item.get("scenario")): item
-                for item in report.get("scenario_metadata", [])
-                if isinstance(item, dict)
-            }
+            metadata = acceptance_metadata_index(report)
+            closed_failures = self._closed_failures(report)
             for scenario in report.get("scenarios", []):
                 if not isinstance(scenario, dict):
                     continue
-                name = str(scenario.get("scenario") or "")
-                capability = str(
-                    scenario.get("capability")
-                    or metadata.get(name, {}).get("capability")
-                    or "unknown"
-                )
+                scenario = enrich_acceptance_scenario(scenario, metadata)
+                capability = str(scenario.get("capability") or "unknown")
                 item = summary.setdefault(capability, {"total": 0, "passed": 0, "failed": 0})
                 item["total"] += 1
-                if scenario.get("ok"):
+                scenario_name = str(scenario.get("scenario") or "")
+                if scenario.get("ok") or scenario_name in closed_failures:
                     item["passed"] += 1
                 else:
                     item["failed"] += 1
@@ -169,6 +169,7 @@ class CapabilityReportCommand:
         failure_types: dict[str, int] = {}
         blocker_counts: dict[str, int] = {}
         repair_counts: list[int] = []
+        self._acceptance_failure_summary(agent_dir, failure_types, blocker_counts)
         for run_dir in self._run_dirs(agent_dir):
             evidence_path = run_dir / "task_execution_evidence.jsonl"
             evidence_items = (
@@ -201,6 +202,38 @@ class CapabilityReportCommand:
         ]
         average = sum(repair_counts) / len(repair_counts) if repair_counts else 0.0
         return failure_types, blockers, average
+
+    def _acceptance_failure_summary(
+        self,
+        agent_dir: Path,
+        failure_types: dict[str, int],
+        blocker_counts: dict[str, int],
+    ) -> None:
+        for report in self._acceptance_history(agent_dir) or [self._latest_acceptance(agent_dir)]:
+            if not report:
+                continue
+            closed_failures = self._closed_failures(report)
+            for scenario in report.get("scenarios", []):
+                scenario_name = str(scenario.get("scenario") or "")
+                if (
+                    not isinstance(scenario, dict)
+                    or scenario.get("ok")
+                    or scenario_name in closed_failures
+                ):
+                    continue
+                attribution = scenario.get("failure_attribution")
+                attribution = attribution if isinstance(attribution, dict) else {}
+                if not attribution or not attribution.get("category"):
+                    attribution = classify_failure_attribution(scenario)
+                failure_type = str(attribution.get("category") or "acceptance_scenario_failure")
+                failure_types[failure_type] = failure_types.get(failure_type, 0) + 1
+                summary = str(
+                    scenario.get("failure_summary")
+                    or scenario.get("stderr_tail")
+                    or scenario.get("scenario")
+                    or failure_type
+                )
+                blocker_counts[summary] = blocker_counts.get(summary, 0) + 1
 
     def _cost_signals(self, agent_dir: Path) -> tuple[int, int]:
         model_calls = 0
@@ -346,17 +379,24 @@ class CapabilityReportCommand:
         aggregate: dict[str, Any] = raw_aggregate if isinstance(raw_aggregate, dict) else {}
         failed = int(aggregate.get("failed") or 0)
         trend = latest.get("trend_warnings") or []
+        raw_closure = latest.get("repair_closure")
+        closure: dict[str, Any] = raw_closure if isinstance(raw_closure, dict) else {}
+        closure_ok = closure.get("rerun_ok") is True and not closure.get("remaining_failures", [])
+        closed_failures = set(closure.get("closed_failures", [])) if closure_ok else set()
+        effective_passed = int(aggregate.get("passed") or 0) + len(closed_failures)
+        effective_failed = max(0, failed - len(closed_failures))
         release_readiness = "ready"
-        if failed:
+        if effective_failed and not closure_ok:
             release_readiness = "blocked"
         elif trend or latest.get("repair_closure"):
             release_readiness = "conditional"
         return {
-            "ok": bool(latest.get("ok")),
+            "ok": bool(latest.get("ok")) or (closure_ok and effective_failed == 0),
+            "base_ok": bool(latest.get("ok")),
             "suite": latest.get("suite"),
             "total": int(aggregate.get("total") or len(latest.get("scenarios", []))),
-            "passed": int(aggregate.get("passed") or 0),
-            "failed": failed,
+            "passed": effective_passed,
+            "failed": effective_failed,
             "release_readiness": release_readiness,
         }
 
@@ -371,7 +411,7 @@ class CapabilityReportCommand:
         actions = []
         if not latest:
             actions.append("Run `agent /acceptance --suite core` to establish a baseline.")
-        elif not latest.get("ok"):
+        elif not latest.get("ok") and not self._closed_failures(latest):
             actions.append(
                 "Run `agent /acceptance --promote-failures --run-promoted --rerun-promoted`."
             )
@@ -401,3 +441,10 @@ class CapabilityReportCommand:
         if not model_profiles:
             actions.append("Run a long-run or acceptance cycle to collect model capability data.")
         return list(dict.fromkeys(actions))
+
+    def _closed_failures(self, report: dict[str, Any]) -> set[str]:
+        closure = report.get("repair_closure")
+        closure = closure if isinstance(closure, dict) else {}
+        if closure.get("rerun_ok") is not True or closure.get("remaining_failures"):
+            return set()
+        return {str(item) for item in closure.get("closed_failures", [])}

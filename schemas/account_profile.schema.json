@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AccountProfile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "account_profile_id",
+    "provider",
+    "credential_ref",
+    "permission_tier"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "account_profile_id": { "type": "string" },
+    "provider": { "type": "string" },
+    "credential_ref": { "type": "string" },
+    "permission_tier": {
+      "type": "string",
+      "enum": ["readonly", "standard", "privileged"]
+    },
+    "rate_limit_hint": {
+      "type": "object",
+      "properties": {
+        "requests_per_minute": { "type": "integer" }
+      }
+    }
+  }
+}

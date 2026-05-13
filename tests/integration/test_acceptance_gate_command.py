@@ -96,6 +96,44 @@ def test_acceptance_gate_allows_closed_repair_with_conditional_status(tmp_path: 
     assert "base acceptance failed" in result.warnings[0]
 
 
+def test_acceptance_gate_counts_closed_failures_toward_capability_coverage(
+    tmp_path: Path,
+) -> None:
+    report_path = write_report(
+        tmp_path,
+        {
+            "suite": "core",
+            "ok": False,
+            "returncode": 1,
+            "scenarios": [
+                scenario("password_cli", True),
+                scenario("markdown_kb", False),
+                scenario("safe_file_renamer", False),
+            ],
+            "repair_closure": {
+                "repair_run_id": "run-1",
+                "rerun_summary_json": str(tmp_path / "rerun.json"),
+                "rerun_ok": True,
+                "closed_failures": ["markdown_kb", "safe_file_renamer"],
+                "remaining_failures": [],
+            },
+        },
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=3,
+        min_capabilities=3,
+        require_tiers=["core"],
+    ).run()
+
+    assert result.ok
+    assert result.passed_count == 3
+    assert result.release_status == "conditional"
+
+
 def test_acceptance_gate_cli_exits_nonzero_for_blocked_release(tmp_path: Path) -> None:
     report_path = write_report(
         tmp_path,
@@ -155,6 +193,34 @@ def test_acceptance_gate_blocks_insufficient_capability_coverage(tmp_path: Path)
     assert any("broader acceptance suite" in action for action in result.next_actions)
 
 
+def test_acceptance_gate_backfills_legacy_scenario_capabilities(tmp_path: Path) -> None:
+    report_path = write_report(
+        tmp_path,
+        {
+            "suite": "core",
+            "ok": True,
+            "returncode": 0,
+            "scenario_metadata": [],
+            "scenarios": [
+                legacy_scenario("file_smoke", True),
+                legacy_scenario("password_cli", True),
+                legacy_scenario("markdown_kb", True),
+                legacy_scenario("safe_file_renamer", True),
+            ],
+        },
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=4,
+        min_capabilities=4,
+    ).run()
+
+    assert result.ok
+
+
 def scenario(name: str, ok: bool) -> dict:
     capability = {
         "file_smoke": "artifact_creation",
@@ -175,6 +241,13 @@ def scenario(name: str, ok: bool) -> dict:
         "stderr_tail": "",
         "summary": {},
     }
+
+
+def legacy_scenario(name: str, ok: bool) -> dict:
+    item = scenario(name, ok)
+    item.pop("capability")
+    item.pop("tier")
+    return item
 
 
 def write_report(tmp_path: Path, overrides: dict) -> Path:

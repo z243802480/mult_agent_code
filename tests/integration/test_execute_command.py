@@ -57,7 +57,7 @@ class FakeExecuteClient:
                         {
                             "tool_name": "write_file",
                             "args": {
-                                "path": "notes_tool.py",
+                                "path": "src/notes_tool.py",
                                 "content": "def add_note(notes, text):\n    return [*notes, text]\n",
                                 "overwrite": True,
                             },
@@ -68,12 +68,12 @@ class FakeExecuteClient:
                         {
                             "tool_name": "run_command",
                             "args": {
-                                "command": "python -c \"from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
                             },
                             "reason": "verify the module behavior",
                         }
                     ],
-                    "completion_notes": "notes_tool.py contains a working add_note function",
+                    "completion_notes": "src/notes_tool.py contains a working add_note function",
                 },
                 ensure_ascii=False,
             ),
@@ -81,6 +81,212 @@ class FakeExecuteClient:
             usage=TokenUsage(15, 25, 40),
             model_provider="fake",
             model_name="fake-execute",
+            raw_response={},
+        )
+
+
+class FakeReadonlyExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-readonly")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Run readonly verification without modifying files.",
+                    "tool_calls": [],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": "python -c \"assert True\""},
+                            "reason": "readonly verification",
+                        }
+                    ],
+                    "completion_notes": "readonly task verified",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-readonly-execute",
+            raw_response={},
+        )
+
+
+class FakeReadonlyWriteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-readonly")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Try to write from a readonly task.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "readonly_violation.txt",
+                                "content": "should not be written",
+                                "overwrite": True,
+                            },
+                            "reason": "should be denied by tool permission profile",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "not completed",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-readonly-write",
+            raw_response={},
+        )
+
+
+class FakeOutOfScopeWriteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Try to write outside the declared write scope.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "blocked/output.txt",
+                                "content": "out of scope",
+                                "overwrite": True,
+                            },
+                            "reason": "should be denied by write_scope",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "not completed",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-out-of-scope-write",
+            raw_response={},
+        )
+
+
+class FakeOutOfScopeReadClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Try to read outside the declared read scope.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "read_file",
+                            "args": {"path": "blocked.txt"},
+                            "reason": "should be denied by read_scope",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "not completed",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-out-of-scope-read",
+            raw_response={},
+        )
+
+
+class FakeOutOfScopePatchClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Try to patch outside the declared write scope.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "apply_patch",
+                            "args": {
+                                "patch": (
+                                    "--- a/blocked.py\n"
+                                    "+++ b/blocked.py\n"
+                                    "@@\n"
+                                    "+VALUE = 1\n"
+                                )
+                            },
+                            "reason": "should be denied by write_scope",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "not completed",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(3, 4, 7),
+            model_provider="fake",
+            model_name="fake-out-of-scope-patch",
+            raw_response={},
+        )
+
+
+class RecordingContextExecuteClient:
+    def __init__(self) -> None:
+        self.runtime_contexts: list[dict] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        self.runtime_contexts.append(payload["runtime_context"])
+        task_id = request.metadata["task_id"]
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Create notes module and verify Python can import it.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create the requested module",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                            },
+                            "reason": "verify the module behavior",
+                        }
+                    ],
+                    "completion_notes": "src/notes_tool.py contains a working add_note function",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-context-execute",
             raw_response={},
         )
 
@@ -124,7 +330,7 @@ class FakeFailingVerificationClient:
                         {
                             "tool_name": "write_file",
                             "args": {
-                                "path": "broken_tool.py",
+                                "path": "src/notes_tool.py",
                                 "content": "VALUE = 1\n",
                                 "overwrite": True,
                             },
@@ -188,7 +394,7 @@ class FakeNoVerificationClient:
                         {
                             "tool_name": "write_file",
                             "args": {
-                                "path": "notes_tool.py",
+                                "path": "src/notes_tool.py",
                                 "content": "def add_note(notes, text):\n    return [*notes, text]\n",
                                 "overwrite": True,
                             },
@@ -203,6 +409,127 @@ class FakeNoVerificationClient:
             usage=TokenUsage(1, 1, 2),
             model_provider="fake",
             model_name="fake-no-verification",
+            raw_response={},
+        )
+
+
+class FakeInlineVerificationClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Write the module and put verification in tool_calls.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create the requested module",
+                        },
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                            },
+                            "reason": "verify the module behavior",
+                        },
+                    ],
+                    "verification": [],
+                    "completion_notes": "verified from inline tool_calls",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-inline-verification",
+            raw_response={},
+        )
+
+
+class FakeReservedToolArgsClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Write the module with extra reserved tool args.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                                "context": "model should not pass this",
+                                "agent_id": "wrong",
+                            },
+                            "reason": "create the requested module",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\"",
+                                "context": "reserved",
+                                "task_id": "reserved",
+                            },
+                            "reason": "verify the module behavior",
+                        }
+                    ],
+                    "completion_notes": "reserved args should be ignored",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-reserved-tool-args",
+            raw_response={},
+        )
+
+
+class FakeUnsafeVerificationClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Write the module with unsafe shell verification.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create the requested module",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "echo unsafe > out.txt",
+                                "expected_returncodes": [0],
+                            },
+                            "reason": "unsafe shell command should be replaced",
+                        }
+                    ],
+                    "completion_notes": "unsafe verification should be replaced",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-unsafe-verification",
             raw_response={},
         )
 
@@ -233,7 +560,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
 
     assert result.completed == 1
     assert result.blocked == 0
-    assert (tmp_path / "notes_tool.py").read_text(encoding="utf-8") == (
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8") == (
         "def add_note(notes, text):\n    return [*notes, text]\n"
     )
 
@@ -255,13 +582,13 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert experiments[0]["decision"] == "keep"
     assert experiments[0]["candidate"]["backup_ids"]
     assert experiments[0]["candidate"]["workspace"]
-    assert experiments[0]["candidate"]["promoted_files"] == ["notes_tool.py"]
+    assert experiments[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
     artifacts = [
         json.loads(line)
         for line in (run_dir / "artifacts.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert artifacts[0]["path"] == "notes_tool.py"
+    assert artifacts[0]["path"] == "src/notes_tool.py"
     assert artifacts[0]["type"] == "source_file"
     evidence = [
         json.loads(line)
@@ -271,14 +598,321 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     ]
     assert evidence[0]["status"] == "done"
     assert evidence[0]["task"]["acceptance"]
-    assert evidence[0]["candidate"]["promoted_files"] == ["notes_tool.py"]
+    assert evidence[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
     assert evidence[0]["verification_results"][0]["ok"] is True
+    workers = [
+        json.loads(line) for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert workers[0]["task_id"] == "task-0001"
+    assert workers[0]["status"] == "succeeded"
+    assert workers[0]["runtime_profile_id"].startswith("runtime-profile-")
+    runtime_profiles = [
+        json.loads(line)
+        for line in (run_dir / "runtime_profiles.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert runtime_profiles[0]["runtime_profile_id"] == workers[0]["runtime_profile_id"]
+    assert runtime_profiles[0]["model_profile_id"].startswith("model-profile-")
+    assert runtime_profiles[0]["tool_permission_profile_id"].startswith("tools-profile-")
+    assert (run_dir / "model_profiles.jsonl").exists()
+    assert (run_dir / "tool_permission_profiles.jsonl").exists()
+    assert (run_dir / "sandbox_profiles.jsonl").exists()
+    assert (run_dir / "context_mounts.jsonl").exists()
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert worker_results[0]["worker_invocation_id"] == workers[0]["worker_invocation_id"]
+    assert worker_results[0]["status"] == "succeeded"
+    assert worker_results[0]["artifact_refs"] == ["artifact-0001"]
+    assert worker_results[0]["cost"]["model_calls"] == 1
+    assert worker_results[0]["cost"]["tool_calls"] == 3
+    model_calls = [
+        json.loads(line)
+        for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    execute_model_call = model_calls[-1]
+    assert execute_model_call["runtime_profile_id"] == workers[0]["runtime_profile_id"]
+    assert execute_model_call["model_profile_id"] == runtime_profiles[0]["model_profile_id"]
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 2
-    assert cost_report["tool_calls"] == 2
+    assert cost_report["tool_calls"] == 3
     assert cost_report["estimated_input_tokens"] == 25
     assert cost_report["estimated_output_tokens"] == 45
+
+
+def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "research two local checks", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    base = {
+        "schema_version": "0.1.0",
+        "description": "Run a readonly verification command and record the outcome.",
+        "status": "ready",
+        "priority": "medium",
+        "role": "CoderAgent",
+        "depends_on": [],
+        "acceptance": ["command exits successfully"],
+        "allowed_tools": ["run_command"],
+        "expected_artifacts": [],
+        "task_kind": "research",
+        "parallel_safety": "readonly",
+        "completion_contract": {
+            "requires_changed_artifact": False,
+            "requires_verification": True,
+            "allows_expected_failure": False,
+        },
+        "created_at": "2026-05-13T10:00:00+08:00",
+        "updated_at": "2026-05-13T10:00:00+08:00",
+        "notes": "",
+    }
+    task_plan["tasks"] = [
+        {**base, "task_id": "task-0001", "title": "Research alpha"},
+        {**base, "task_id": "task-0002", "title": "Research beta"},
+    ]
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        max_tasks=2,
+        model_client=FakeReadonlyExecuteClient(),
+        parallel_readonly=True,
+    ).run()
+
+    assert result.completed == 2
+    assert result.blocked == 0
+    assert [task.task_id for task in result.executed_tasks] == ["task-0001", "task-0002"]
+    updated_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    assert [task["status"] for task in updated_plan["tasks"]] == ["done", "done"]
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "readonly_batch_selection" in events
+    workers = [
+        json.loads(line) for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert {worker["task_id"] for worker in workers} == {"task-0001", "task-0002"}
+    assert len({worker["runtime_profile_id"] for worker in workers}) == 2
+    runtime_profiles = [
+        json.loads(line)
+        for line in (run_dir / "runtime_profiles.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert {profile["runtime_profile_id"] for profile in runtime_profiles} == {
+        worker["runtime_profile_id"] for worker in workers
+    }
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [item["status"] for item in worker_results] == ["succeeded", "succeeded"]
+    model_calls = [
+        json.loads(line)
+        for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len({call["model_call_id"] for call in model_calls}) == len(model_calls)
+    execute_profile_ids = {
+        call["runtime_profile_id"]
+        for call in model_calls
+        if call["purpose"] == "task_execution"
+    }
+    assert execute_profile_ids == {worker["runtime_profile_id"] for worker in workers}
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    assert cost_report["model_calls"] == 3
+
+
+def test_execute_command_denies_write_tool_for_readonly_task(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "research one local check", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"] = [
+        {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": "Readonly research",
+            "description": "Run a readonly research task.",
+            "status": "ready",
+            "priority": "medium",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": ["readonly task does not write files"],
+            "allowed_tools": ["write_file"],
+            "expected_artifacts": [],
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": False,
+                "allows_expected_failure": False,
+            },
+            "created_at": "2026-05-13T10:00:00+08:00",
+            "updated_at": "2026-05-13T10:00:00+08:00",
+            "notes": "",
+        }
+    ]
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeReadonlyWriteClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "readonly_violation.txt").exists()
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert "ToolPermissionProfile denied write tool" in evidence[0]["summary"]
+
+
+def test_execute_command_denies_write_file_outside_write_scope(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "allowed_tools": ["write_file"],
+            "expected_artifacts": ["allowed/output.txt"],
+            "expected_changed_files": ["allowed/"],
+            "write_scope": ["allowed/"],
+            "read_scope": ["AGENTS.md"],
+            "task_kind": "implementation",
+            "parallel_safety": "serial",
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeOutOfScopeWriteClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "blocked" / "output.txt").exists()
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert "ToolPermissionProfile denied write path" in evidence[0]["summary"]
+
+
+def test_execute_command_denies_read_file_outside_read_scope(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "research one local check", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"] = [
+        {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": "Readonly research",
+            "description": "Read only from the declared scope.",
+            "status": "ready",
+            "priority": "medium",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": ["out of scope files are not read"],
+            "allowed_tools": ["read_file"],
+            "expected_artifacts": [],
+            "read_scope": ["allowed.txt"],
+            "write_scope": [],
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": False,
+                "allows_expected_failure": False,
+            },
+            "created_at": "2026-05-13T10:00:00+08:00",
+            "updated_at": "2026-05-13T10:00:00+08:00",
+            "notes": "",
+        }
+    ]
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeOutOfScopeReadClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert "ToolPermissionProfile denied read path" in evidence[0]["summary"]
+
+
+def test_execute_command_denies_apply_patch_outside_write_scope(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "allowed_tools": ["apply_patch"],
+            "expected_artifacts": ["allowed.py"],
+            "expected_changed_files": ["allowed.py"],
+            "write_scope": ["allowed.py"],
+            "read_scope": ["AGENTS.md", "allowed.py"],
+            "task_kind": "implementation",
+            "parallel_safety": "serial",
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeOutOfScopePatchClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "blocked.py").exists()
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert "ToolPermissionProfile denied write path" in evidence[0]["summary"]
+
+
+def test_execute_command_injects_context_mount_and_task_contract(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    execute_client = RecordingContextExecuteClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=execute_client).run()
+
+    assert result.completed == 1
+    runtime_context = execute_client.runtime_contexts[0]
+    assert runtime_context["context_mount"]["mount_type"] == "coding_context"
+    assert runtime_context["context_mount"]["task_id"] == "task-0001"
+    assert runtime_context["context_package"]["task_brief"]["task_id"] == "task-0001"
+    assert runtime_context["context_package"]["goal_brief"]["normalized_goal"] == "Create a tiny notes tool"
+    assert runtime_context["task_contract"]["read_scope"]
+    assert runtime_context["task_contract"]["parallel_safety"] == "serial"
 
 
 def test_execute_command_blocks_disallowed_tool_without_tool_call(tmp_path: Path) -> None:
@@ -308,7 +942,7 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
 
     assert result.completed == 0
     assert result.blocked == 1
-    assert not (tmp_path / "broken_tool.py").exists()
+    assert not (tmp_path / "src" / "notes_tool.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
@@ -320,9 +954,9 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert experiments[0]["decision"] == "discard"
-    assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.0
+    assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.5
     assert experiments[0]["candidate"]["workspace"]
-    assert (Path(experiments[0]["candidate"]["workspace"]) / "broken_tool.py").exists()
+    assert (Path(experiments[0]["candidate"]["workspace"]) / "src" / "notes_tool.py").exists()
     assert experiments[0]["candidate"]["rollback"] == []
     assert experiments[0]["candidate"]["promoted_files"] == []
     assert not (run_dir / "artifacts.jsonl").exists()
@@ -359,7 +993,7 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert "required verification was not provided" in task_plan["tasks"][0]["notes"]
-    assert not (tmp_path / "notes_tool.py").exists()
+    assert not (tmp_path / "src" / "notes_tool.py").exists()
     experiments = [
         json.loads(line)
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
@@ -384,6 +1018,63 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
     assert evidence[0]["contract_check"]["verification_total"] == 0
 
 
+def test_execute_command_treats_inline_run_command_as_verification(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeInlineVerificationClient()
+    ).run()
+
+    assert result.completed == 1
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert evidence[0]["verification_results"][0]["ok"] is True
+    assert evidence[0]["contract_check"]["verification_total"] == 2
+
+
+def test_execute_command_filters_reserved_model_tool_args(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeReservedToolArgsClient()
+    ).run()
+
+    assert result.completed == 1
+    tool_calls = (tmp_path / ".agent" / "runs" / plan.run_id / "tool_calls.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert "model should not pass this" not in tool_calls
+    assert "reserved" not in tool_calls
+
+
+def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeUnsafeVerificationClient()
+    ).run()
+
+    assert result.completed == 1
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    assert not (tmp_path / "out.txt").exists()
+    assert not (run_dir / "decisions.jsonl").exists()
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert "py_compile" in evidence[0]["verification_results"][0]["summary"]
+
+
 def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
@@ -393,7 +1084,7 @@ def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None
 
     assert result.completed == 1
     assert execute_client.calls == 2
-    assert (tmp_path / "notes_tool.py").exists()
+    assert (tmp_path / "src" / "notes_tool.py").exists()
 
 
 def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
@@ -438,7 +1129,7 @@ def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
     assert result.blocked == 0
     assert result.executed_tasks[0].status == "paused"
     assert result.executed_tasks[0].evidence_path is not None
-    assert not (tmp_path / "notes_tool.py").exists()
+    assert not (tmp_path / "src" / "notes_tool.py").exists()
     run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert run["status"] == "paused"

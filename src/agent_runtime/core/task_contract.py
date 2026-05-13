@@ -13,6 +13,8 @@ TASK_KINDS = {
     "ui",
 }
 
+DEFAULT_FAILURE_POLICY = "create_repair_task"
+
 
 @dataclass(frozen=True)
 class TaskContractCheck:
@@ -90,6 +92,77 @@ def completion_contract(task: dict) -> dict:
     }
 
 
+def read_scope(task: dict) -> list[str]:
+    explicit = task.get("read_scope")
+    if isinstance(explicit, list):
+        return _string_list(explicit)
+    return _default_read_scope(task)
+
+
+def write_scope(task: dict) -> list[str]:
+    explicit = task.get("write_scope")
+    if isinstance(explicit, list):
+        return _string_list(explicit)
+    expected = _expected_changed_files(task)
+    if expected:
+        return expected
+    if task_kind(task) in {"research", "decision", "verification", "diagnostic"}:
+        return []
+    return _string_list(task.get("expected_artifacts", []))
+
+
+def validation_commands(task: dict) -> list[str]:
+    explicit = task.get("validation_commands")
+    if isinstance(explicit, list):
+        return _string_list(explicit)
+    policy = task.get("verification_policy")
+    if isinstance(policy, dict) and isinstance(policy.get("commands"), list):
+        return _string_list(policy["commands"])
+    return []
+
+
+def failure_policy(task: dict) -> str:
+    explicit = str(task.get("failure_policy") or "").strip()
+    if explicit:
+        return explicit
+    kind = task_kind(task)
+    if kind in {"diagnostic", "research", "review"}:
+        return "continue_other_branches"
+    if kind == "decision":
+        return "require_user_decision"
+    return DEFAULT_FAILURE_POLICY
+
+
+def parallel_safety(task: dict) -> str:
+    explicit = str(task.get("parallel_safety") or "").strip()
+    if explicit:
+        return explicit
+    if not write_scope(task):
+        return "readonly"
+    return "serial"
+
+
+def context_requirements(task: dict) -> dict:
+    explicit = task.get("context_requirements")
+    if isinstance(explicit, dict):
+        return explicit
+    kind = task_kind(task)
+    mount_type = {
+        "diagnostic": "debug_context",
+        "verification": "debug_context",
+        "research": "planning_context",
+        "decision": "summary_context",
+        "report": "summary_context",
+    }.get(kind, "coding_context")
+    return {
+        "mount_type": mount_type,
+        "include_artifacts": kind in {"implementation", "verification", "report", "ui"},
+        "include_failures": kind in {"diagnostic", "verification"},
+        "include_decisions": kind in {"review", "report", "decision"},
+        "recent_event_count": 20,
+    }
+
+
 def requires_changed_artifact(task: dict) -> bool:
     return bool(completion_contract(task).get("requires_changed_artifact", False))
 
@@ -163,6 +236,22 @@ def _expected_changed_files(task: dict) -> list[str]:
         return []
     generic = {"implementation artifact", "planning artifact", "src/", "tests/"}
     return [str(item) for item in explicit if item and str(item) not in generic]
+
+
+def _default_read_scope(task: dict) -> list[str]:
+    scope = ["AGENTS.md"]
+    artifacts = _string_list(task.get("expected_artifacts", []))
+    expected_changes = _expected_changed_files(task)
+    for item in [*artifacts, *expected_changes]:
+        if item not in scope:
+            scope.append(item)
+    return scope
+
+
+def _string_list(values: object) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [str(item) for item in values if item]
 
 
 def _changed_expected_file(expected_files: list[str], changed_files: list[str]) -> bool:

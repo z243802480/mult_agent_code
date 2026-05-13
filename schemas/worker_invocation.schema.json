@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkerInvocation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "worker_invocation_id",
+    "run_id",
+    "task_id",
+    "agent_id",
+    "runtime_profile_id",
+    "status",
+    "started_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "worker_invocation_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "task_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "runtime_profile_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "succeeded", "failed", "denied", "timeout", "cancelled"]
+    },
+    "started_at": { "type": "string" },
+    "ended_at": { "type": ["string", "null"] },
+    "summary": { "type": "string" }
+  }
+}

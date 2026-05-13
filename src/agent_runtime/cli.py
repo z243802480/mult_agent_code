@@ -195,6 +195,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Tasks to execute per iteration",
     )
+    run_parser.add_argument(
+        "--no-research",
+        action="store_true",
+        help="Skip the pre-planning research pass for clear or cost-sensitive goals",
+    )
 
     resume_parser = subcommands.add_parser(
         "resume",
@@ -270,6 +275,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1,
         help="Maximum ready tasks to execute",
+    )
+    execute_parser.add_argument(
+        "--parallel-readonly",
+        action="store_true",
+        help="Execute readonly ready tasks concurrently; write tasks remain serial",
     )
 
     debug_parser = subcommands.add_parser(
@@ -741,6 +751,7 @@ def main() -> None:
             run_id=args.session_id,
             max_iterations=args.max_iterations,
             max_tasks_per_iteration=args.max_tasks_per_iteration,
+            enable_research=not args.no_research,
         ).run()
         print(run_result.to_text())
         return
@@ -781,6 +792,7 @@ def main() -> None:
             root=Path(args.root),
             run_id=args.session_id,
             max_tasks=args.max_tasks,
+            parallel_readonly=args.parallel_readonly,
         ).run()
         print(execute_result.to_text())
         return

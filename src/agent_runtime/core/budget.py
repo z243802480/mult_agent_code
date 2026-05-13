@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import RLock
 
 
 class BudgetExceededError(RuntimeError):
@@ -27,6 +28,7 @@ class BudgetController:
         self.policy = policy
         self.run_id = run_id
         self.usage = BudgetUsage()
+        self._lock = RLock()
 
     @classmethod
     def from_report(
@@ -51,71 +53,79 @@ class BudgetController:
         input_tokens: int | None = None,
         output_tokens: int | None = None,
     ) -> None:
-        self.usage.model_calls += 1
-        if model_tier == "strong":
-            self.usage.strong_model_calls += 1
-        if model_tier == "cheap":
-            self.usage.cheap_model_calls += 1
-        self.record_model_tokens(input_tokens, output_tokens)
-        self._check_limit("model_calls", self.usage.model_calls, "max_model_calls_per_goal")
+        with self._lock:
+            self.usage.model_calls += 1
+            if model_tier == "strong":
+                self.usage.strong_model_calls += 1
+            if model_tier == "cheap":
+                self.usage.cheap_model_calls += 1
+            self.record_model_tokens(input_tokens, output_tokens)
+            self._check_limit("model_calls", self.usage.model_calls, "max_model_calls_per_goal")
 
     def record_model_tokens(
         self,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
     ) -> None:
-        if input_tokens is not None and self.usage.estimated_input_tokens is not None:
-            self.usage.estimated_input_tokens += input_tokens
-        elif input_tokens is not None:
-            self.usage.estimated_input_tokens = None
-        if output_tokens is not None and self.usage.estimated_output_tokens is not None:
-            self.usage.estimated_output_tokens += output_tokens
-        elif output_tokens is not None:
-            self.usage.estimated_output_tokens = None
+        with self._lock:
+            if input_tokens is not None and self.usage.estimated_input_tokens is not None:
+                self.usage.estimated_input_tokens += input_tokens
+            elif input_tokens is not None:
+                self.usage.estimated_input_tokens = None
+            if output_tokens is not None and self.usage.estimated_output_tokens is not None:
+                self.usage.estimated_output_tokens += output_tokens
+            elif output_tokens is not None:
+                self.usage.estimated_output_tokens = None
 
     def record_tool_call(self) -> None:
-        self.usage.tool_calls += 1
-        self._check_limit("tool_calls", self.usage.tool_calls, "max_tool_calls_per_goal")
+        with self._lock:
+            self.usage.tool_calls += 1
+            self._check_limit("tool_calls", self.usage.tool_calls, "max_tool_calls_per_goal")
 
     def record_repair_attempt(self) -> None:
-        self.usage.repair_attempts += 1
-        self._check_limit(
-            "repair_attempts",
-            self.usage.repair_attempts,
-            "max_repair_attempts_total",
-        )
+        with self._lock:
+            self.usage.repair_attempts += 1
+            self._check_limit(
+                "repair_attempts",
+                self.usage.repair_attempts,
+                "max_repair_attempts_total",
+            )
 
     def record_research_call(self) -> None:
-        self.usage.research_calls += 1
-        self._check_limit("research_calls", self.usage.research_calls, "max_research_calls")
+        with self._lock:
+            self.usage.research_calls += 1
+            self._check_limit("research_calls", self.usage.research_calls, "max_research_calls")
 
     def record_user_decision(self) -> None:
-        self.usage.user_decisions += 1
-        self._check_limit("user_decisions", self.usage.user_decisions, "max_user_decisions")
+        with self._lock:
+            self.usage.user_decisions += 1
+            self._check_limit("user_decisions", self.usage.user_decisions, "max_user_decisions")
 
     def record_context_compaction(self) -> None:
-        self.usage.context_compactions += 1
+        with self._lock:
+            self.usage.context_compactions += 1
 
     def cost_report(self) -> dict:
-        status = "within_budget"
-        if self.usage.warnings:
-            status = "near_limit"
-        return {
-            "schema_version": "0.1.0",
-            "run_id": self.run_id,
-            "model_calls": self.usage.model_calls,
-            "tool_calls": self.usage.tool_calls,
-            "estimated_input_tokens": self.usage.estimated_input_tokens,
-            "estimated_output_tokens": self.usage.estimated_output_tokens,
-            "strong_model_calls": self.usage.strong_model_calls,
-            "cheap_model_calls": self.usage.cheap_model_calls,
-            "repair_attempts": self.usage.repair_attempts,
-            "research_calls": self.usage.research_calls,
-            "context_compactions": self.usage.context_compactions,
-            "user_decisions": self.usage.user_decisions,
-            "status": status,
-            "warnings": self.usage.warnings,
-        }
+        with self._lock:
+            status = "within_budget"
+            if self.usage.warnings:
+                status = "near_limit"
+            return {
+                "schema_version": "0.1.0",
+                "run_id": self.run_id,
+                "model_calls": self.usage.model_calls,
+                "tool_calls": self.usage.tool_calls,
+                "estimated_input_tokens": self.usage.estimated_input_tokens,
+                "estimated_output_tokens": self.usage.estimated_output_tokens,
+                "strong_model_calls": self.usage.strong_model_calls,
+                "cheap_model_calls": self.usage.cheap_model_calls,
+                "repair_attempts": self.usage.repair_attempts,
+                "research_calls": self.usage.research_calls,
+                "context_compactions": self.usage.context_compactions,
+                "user_decisions": self.usage.user_decisions,
+                "status": status,
+                "warnings": list(self.usage.warnings),
+            }
 
     @staticmethod
     def pressure(policy: dict, report: dict) -> dict:

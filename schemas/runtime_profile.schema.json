@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RuntimeProfile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "runtime_profile_id",
+    "agent_id",
+    "model_profile_id",
+    "tool_permission_profile_id",
+    "sandbox_profile_id",
+    "context_mount_id",
+    "budget"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "runtime_profile_id": { "type": "string" },
+    "agent_id": { "type": "string" },
+    "model_profile_id": { "type": "string" },
+    "tool_permission_profile_id": { "type": "string" },
+    "account_profile_id": { "type": ["string", "null"] },
+    "sandbox_profile_id": { "type": "string" },
+    "context_mount_id": { "type": "string" },
+    "budget": {
+      "type": "object",
+      "required": ["max_model_calls", "max_tool_calls"],
+      "properties": {
+        "max_model_calls": { "type": "integer" },
+        "max_tool_calls": { "type": "integer" },
+        "max_runtime_minutes": { "type": "integer" }
+      }
+    }
+  }
+}

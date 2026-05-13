@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContextMount",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "context_mount_id",
+    "run_id",
+    "task_id",
+    "mount_type",
+    "includes"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "context_mount_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "task_id": { "type": "string" },
+    "mount_type": {
+      "type": "string",
+      "enum": ["planning_context", "coding_context", "review_context", "debug_context", "summary_context"]
+    },
+    "includes": {
+      "type": "object",
+      "properties": {
+        "root_guidance": { "type": "boolean" },
+        "goal_brief": { "type": "boolean" },
+        "task_brief": { "type": "boolean" },
+        "artifact_refs": { "type": "array", "items": { "type": "string" } },
+        "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "decision_refs": { "type": "array", "items": { "type": "string" } },
+        "recent_event_count": { "type": "integer" }
+      }
+    },
+    "summary": { "type": "string" }
+  }
+}

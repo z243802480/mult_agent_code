@@ -11,6 +11,8 @@ from typing import Any
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.run_command import RunCommand
+from agent_runtime.core.acceptance_catalog import acceptance_metadata_index
+from agent_runtime.core.failure_attribution import classify_failure_attribution
 from agent_runtime.core.task_contract import completion_contract
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
@@ -340,12 +342,15 @@ class AcceptanceCommand:
     ) -> dict:
         summary = self._read_json(summary_json)
         scenarios = []
+        metadata = acceptance_metadata_index(summary)
         for scenario in summary.get("scenarios", []):
+            name = str(scenario.get("scenario") or "unknown")
+            scenario_meta = metadata.get(name, {})
             scenarios.append(
                 {
-                    "scenario": str(scenario.get("scenario") or "unknown"),
-                    "capability": scenario.get("capability"),
-                    "tier": scenario.get("tier"),
+                    "scenario": name,
+                    "capability": scenario.get("capability") or scenario_meta.get("capability"),
+                    "tier": scenario.get("tier") or scenario_meta.get("tier"),
                     "ok": bool(scenario.get("ok", False)),
                     "workspace": scenario.get("workspace"),
                     "failure_summary": self._failure_summary(scenario),
@@ -408,83 +413,7 @@ class AcceptanceCommand:
         return self._tail(stderr or stdout or "scenario failed")
 
     def _failure_attribution(self, scenario: dict) -> dict:
-        if scenario.get("ok"):
-            return {"category": "none", "retryable": False, "confidence": 1.0, "signals": []}
-        text = "\n".join(
-            [
-                str(scenario.get("failure_summary") or ""),
-                str(scenario.get("stderr") or ""),
-                str(scenario.get("stdout") or ""),
-                json.dumps(scenario.get("summary") or {}, ensure_ascii=False),
-                json.dumps(scenario.get("attempts") or [], ensure_ascii=False),
-            ]
-        ).lower()
-        attempts = scenario.get("attempts")
-        if isinstance(attempts, list):
-            for attempt in attempts:
-                if not isinstance(attempt, dict):
-                    continue
-                failure_type = attempt.get("failure_type")
-                if failure_type in {"rate_limited", "server_error", "timeout", "network"}:
-                    return {
-                        "category": "provider_transient",
-                        "retryable": True,
-                        "confidence": 0.9,
-                        "signals": [str(failure_type)],
-                    }
-        rules = [
-            (
-                "pending_decision",
-                ["pending decisions", "decision-"],
-                False,
-                0.9,
-            ),
-            (
-                "model_output_invalid_json",
-                ["invalid json", "not json", "jsondecode", "schema validation"],
-                False,
-                0.75,
-            ),
-            (
-                "tool_call_invalid",
-                ["tool is not allowed", "unknown_tool", "policy blocked", "shell policy"],
-                False,
-                0.8,
-            ),
-            (
-                "verification_missing",
-                ["required verification was not provided", "no verification"],
-                False,
-                0.8,
-            ),
-            (
-                "plan_quality_failed",
-                ["task plan quality failed", "task_plan_quality_gate"],
-                False,
-                0.85,
-            ),
-            (
-                "code_bug",
-                ["assertionerror", "nonzero_exit", "expected output file", "tests failed"],
-                False,
-                0.65,
-            ),
-        ]
-        for category, markers, retryable, confidence in rules:
-            matched = [marker for marker in markers if marker in text]
-            if matched:
-                return {
-                    "category": category,
-                    "retryable": retryable,
-                    "confidence": confidence,
-                    "signals": matched[:5],
-                }
-        return {
-            "category": "scenario_validation_failure",
-            "retryable": False,
-            "confidence": 0.5,
-            "signals": ["no specific classifier matched"],
-        }
+        return classify_failure_attribution(scenario)
 
     def _repair_workflow(
         self,
@@ -659,7 +588,13 @@ class AcceptanceFailurePromoter:
     def _ensure_repair_session(self, run_store: RunStore, report: dict) -> str:
         run_id = run_store.current_session_id()
         if run_id and (run_store.run_dir(run_id) / "task_plan.json").exists():
-            return run_id
+            run = run_store.load_run(run_id)
+            stale_repair_session = (
+                run.get("goal_id") == "goal-acceptance-repair"
+                and run.get("status") in {"completed", "paused", "cancelled"}
+            )
+            if not stale_repair_session:
+                return run_id
         run = run_store.create_run(
             f"agent acceptance repair session for suite {report.get('suite')}",
             goal_id="goal-acceptance-repair",

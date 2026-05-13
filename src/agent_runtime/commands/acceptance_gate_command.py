@@ -5,6 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
+from agent_runtime.core.acceptance_catalog import (
+    acceptance_metadata_index,
+    enrich_acceptance_report,
+    enrich_acceptance_scenario,
+)
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 
@@ -75,7 +80,7 @@ class AcceptanceGateCommand:
         if not report_path.exists():
             return self._missing_report(report_path)
 
-        report = self.store.read(report_path, "acceptance_report")
+        report = enrich_acceptance_report(self.store.read(report_path, "acceptance_report"))
         failures: list[str] = []
         warnings: list[str] = []
         next_actions: list[str] = []
@@ -86,8 +91,19 @@ class AcceptanceGateCommand:
 
         scenarios = [item for item in report.get("scenarios", []) if isinstance(item, dict)]
         scenario_count = len(scenarios)
-        passed_count = len([scenario for scenario in scenarios if scenario.get("ok")])
-        failed = [scenario for scenario in scenarios if not scenario.get("ok")]
+        closed_failures = self._closed_failures(report)
+        passed_count = len(
+            [
+                scenario
+                for scenario in scenarios
+                if scenario.get("ok") or str(scenario.get("scenario") or "") in closed_failures
+            ]
+        )
+        failed = [
+            scenario
+            for scenario in scenarios
+            if not scenario.get("ok") and str(scenario.get("scenario") or "") not in closed_failures
+        ]
         failed_count = len(failed)
         if scenario_count < self.min_scenarios:
             failures.append(
@@ -139,6 +155,12 @@ class AcceptanceGateCommand:
             .warnings
         )
         blocking_trend_warnings = list(dict.fromkeys([*trend_warnings, *history_warnings]))
+        if closed_failures:
+            blocking_trend_warnings = [
+                warning
+                for warning in blocking_trend_warnings
+                if "failed scenario" not in warning
+            ]
         warnings.extend(blocking_trend_warnings)
         if blocking_trend_warnings and not self.allow_trend_warnings:
             failures.append("acceptance trend warnings are present")
@@ -185,21 +207,18 @@ class AcceptanceGateCommand:
         return "ready"
 
     def _coverage(self, report: dict, scenarios: list[dict]) -> tuple[int, list[str]]:
-        metadata = {
-            str(item.get("scenario")): item
-            for item in report.get("scenario_metadata", [])
-            if isinstance(item, dict)
-        }
+        metadata = acceptance_metadata_index(report)
+        closed_failures = self._closed_failures(report)
         passed_capabilities = set()
         present_tiers = set()
         for scenario in scenarios:
-            name = str(scenario.get("scenario") or "")
-            item = metadata.get(name, {})
-            capability = scenario.get("capability") or item.get("capability")
-            tier = scenario.get("tier") or item.get("tier")
+            scenario = enrich_acceptance_scenario(scenario, metadata)
+            capability = scenario.get("capability")
+            tier = scenario.get("tier")
             if tier:
                 present_tiers.add(str(tier))
-            if scenario.get("ok") and capability:
+            scenario_name = str(scenario.get("scenario") or "")
+            if (scenario.get("ok") or scenario_name in closed_failures) and capability:
                 passed_capabilities.add(str(capability))
         required_tiers = (
             self.require_tiers
@@ -208,6 +227,12 @@ class AcceptanceGateCommand:
         )
         missing_tiers = [tier for tier in required_tiers if tier not in present_tiers]
         return len(passed_capabilities), missing_tiers
+
+    def _closed_failures(self, report: dict) -> set[str]:
+        closure = self._dict(report.get("repair_closure"))
+        if closure.get("rerun_ok") is not True or closure.get("remaining_failures"):
+            return set()
+        return {str(item) for item in closure.get("closed_failures", [])}
 
     def _default_min_capabilities(self, suite: str) -> int:
         return {

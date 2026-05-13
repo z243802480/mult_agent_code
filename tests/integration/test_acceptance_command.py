@@ -238,6 +238,78 @@ def test_acceptance_failure_promoter_creates_repair_session_without_current_sess
     validator.validate("acceptance_failure_evidence", evidence)
 
 
+def test_acceptance_failure_promoter_does_not_reuse_paused_repair_session(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    run_store = RunStore(tmp_path / ".agent", validator)
+    stale = run_store.create_run("old acceptance repair", goal_id="goal-acceptance-repair")
+    stale_dir = run_store.run_dir(stale["run_id"])
+    store.write(
+        stale_dir / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "tasks": [
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "title": "Old repair task",
+                    "description": "Stale task from an earlier acceptance run",
+                    "status": "ready",
+                    "priority": "medium",
+                    "role": "CoderAgent",
+                    "depends_on": [],
+                    "acceptance": ["Old repair is complete"],
+                    "allowed_tools": ["read_file"],
+                    "expected_artifacts": [],
+                }
+            ],
+        },
+        "task_board",
+    )
+    stale["status"] = "paused"
+    run_store.update_run(stale)
+    run_store.set_current_session(stale["run_id"], "test setup")
+    report = {
+        "schema_version": "0.1.0",
+        "suite": "core",
+        "requested_scenarios": ["safe_file_renamer"],
+        "root": str(tmp_path),
+        "ok": False,
+        "returncode": 1,
+        "created_at": "2026-05-07T00:00:00+08:00",
+        "summary_json": str(tmp_path / "summary.json"),
+        "scenarios": [
+            {
+                "scenario": "safe_file_renamer",
+                "ok": False,
+                "workspace": str(tmp_path / "safe_file_renamer"),
+                "failure_summary": "verification failed",
+                "stdout_tail": "",
+                "stderr_tail": "verification failed",
+                "summary": {},
+            }
+        ],
+    }
+
+    promoted = AcceptanceFailurePromoter(tmp_path, validator).promote(report)
+
+    new_run_id = run_store.current_session_id()
+    assert promoted == ["task-0001"]
+    assert new_run_id is not None
+    assert new_run_id != stale["run_id"]
+    stale_plan = json.loads((stale_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert len(stale_plan["tasks"]) == 1
+    new_plan = json.loads(
+        (tmp_path / ".agent" / "runs" / new_run_id / "task_plan.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert new_plan["tasks"][0]["title"] == "Repair acceptance scenario: safe_file_renamer"
+
+
 def test_acceptance_result_prints_promotion_error(tmp_path: Path) -> None:
     result = AcceptanceResult(
         suite="core",

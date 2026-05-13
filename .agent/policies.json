@@ -8,6 +8,7 @@
     "max_iterations_per_goal": 8,
     "max_repair_attempts_total": 5,
     "max_repair_attempts_per_task": 2,
+    "max_replans_per_task": 2,
     "max_research_calls": 5,
     "max_user_decisions": 5
   },
@@ -24,7 +25,8 @@
     "allow_global_package_install": false,
     "allow_secret_file_read": false,
     "allow_remote_push": false,
-    "allow_deploy": false
+    "allow_deploy": false,
+    "allow_restore_delete_created_files": true
   },
   "protected_paths": [
     ".env",

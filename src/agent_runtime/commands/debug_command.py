@@ -176,6 +176,32 @@ class DebugCommand:
                 context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}"
             )
         try:
+            failure_evidence = self._failure_evidence(run_dir, task_board.get_task(task_id))
+            skip_reason = self._skip_unpromoted_candidate_repair(failure_evidence)
+            if skip_reason:
+                self._block_task(task_board, task_id, skip_reason, context)
+                evidence_path = self.execution_evidence.record(
+                    context,
+                    task,
+                    {
+                        "summary": "Skipped debug repair; replan is required.",
+                        "tool_calls": [],
+                        "verification": [],
+                    },
+                    [],
+                    [],
+                    "blocked",
+                    skip_reason,
+                    actor="DebugCommand",
+                    failure_type="repair_skipped_replan_required",
+                )
+                self._record_task_failure(
+                    context,
+                    task,
+                    "repair_skipped_replan_required",
+                    skip_reason,
+                )
+                return RepairSummary(task_id, "blocked", skip_reason, 0, 0, evidence_path)
             if context.budget:
                 context.budget.record_repair_attempt()
             task_board.update_status(task_id, "ready")
@@ -183,7 +209,7 @@ class DebugCommand:
             action = debug_agent.propose_repair(
                 task=task_board.get_task(task_id),
                 goal_spec=goal_spec,
-                failure_evidence=self._failure_evidence(run_dir, task_board.get_task(task_id)),
+                failure_evidence=failure_evidence,
                 available_tools=self.registry.names(),
                 run_id=context.run_id or "",
                 runtime_context=runtime_context,
@@ -662,6 +688,37 @@ class DebugCommand:
                 failure for failure in task_failures if failure.get("task_id") == task_id
             ][-5:],
         }
+
+    def _skip_unpromoted_candidate_repair(self, failure_evidence: dict) -> str | None:
+        recent = failure_evidence.get("recent_task_execution_evidence")
+        recent = recent if isinstance(recent, list) else []
+        latest = recent[-1] if recent and isinstance(recent[-1], dict) else {}
+        candidate = latest.get("candidate") if isinstance(latest.get("candidate"), dict) else {}
+        promoted_files = candidate.get("promoted_files") if isinstance(candidate, dict) else []
+        if promoted_files:
+            return None
+        verification_results = latest.get("verification_results")
+        verification_results = verification_results if isinstance(verification_results, list) else []
+        if not any(self._fatal_verification_failure(result) for result in verification_results):
+            return None
+        return (
+            "Repair skipped: previous candidate failed before promotion with a fatal syntax "
+            "error; replan should create a fresh artifact instead of debugging missing files."
+        )
+
+    def _fatal_verification_failure(self, result: object) -> bool:
+        if not isinstance(result, dict) or result.get("ok"):
+            return False
+        raw_data = result.get("data")
+        data: dict = raw_data if isinstance(raw_data, dict) else {}
+        text = "\n".join(
+            [
+                str(result.get("summary") or ""),
+                str(data.get("stderr") or ""),
+                str(data.get("stdout") or ""),
+            ]
+        )
+        return any(signal in text for signal in ["SyntaxError", "IndentationError"])
 
     def _blocked_tasks(self, task_board: TaskBoard) -> list[dict]:
         tasks = task_board.list_tasks()

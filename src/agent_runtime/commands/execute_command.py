@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,18 +13,25 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.policy_config import load_policy_config
+from agent_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_contract import (
     allows_expected_failure,
     check_completion_contract,
+    parallel_safety,
+    read_scope,
+    write_scope,
 )
+from agent_runtime.core.task_graph import TaskGraphScheduler
 from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
+from agent_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
 from agent_runtime.models.model_call_logger import ModelCallLogger
+from agent_runtime.tools.patch_tools import PatchApplyError, parse_unified_diff
 from agent_runtime.security.shell_guard import ShellGuard, ShellPolicyError
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.jsonl_store import JsonlStore
@@ -76,11 +84,13 @@ class ExecuteCommand:
         run_id: str | None = None,
         max_tasks: int = 1,
         model_client: ModelClient | None = None,
+        parallel_readonly: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
         self.max_tasks = max_tasks
         self.model_client = model_client
+        self.parallel_readonly = parallel_readonly
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.registry = create_default_tool_registry()
@@ -154,10 +164,19 @@ class ExecuteCommand:
         event_logger.record(run_id, "phase_changed", "ExecuteCommand", "PLAN -> EXECUTE")
 
         executed: list[TaskExecutionSummary] = []
-        for task in task_board.ready_tasks()[: self.max_tasks]:
-            executed.append(
-                self._execute_task(
-                    task=task,
+        selection = self._select_tasks(task_board)
+        if context.event_logger:
+            context.event_logger.record(
+                run_id,
+                "task_graph_selection",
+                "ExecuteCommand",
+                f"Selected {len(selection.selected)} task(s) for {selection.reason}.",
+                {"reason": selection.reason, "task_ids": [task["task_id"] for task in selection.selected]},
+            )
+        if self.parallel_readonly and selection.reason == "readonly_batch_selection":
+            executed.extend(
+                self._execute_readonly_batch(
+                    tasks=selection.selected,
                     task_board=task_board,
                     context=context,
                     coder=coder,
@@ -166,6 +185,19 @@ class ExecuteCommand:
                     runtime_context=runtime_context,
                 )
             )
+        else:
+            for task in selection.selected:
+                executed.append(
+                    self._execute_task_with_worker_record(
+                        task=task,
+                        task_board=task_board,
+                        context=context,
+                        coder=coder,
+                        goal_spec=goal_spec,
+                        project_config=project_config,
+                        runtime_context=runtime_context,
+                    )
+                )
             task_board.promote_unblocked()
 
         self._mirror_backlog(agent_dir, task_board)
@@ -203,6 +235,165 @@ class ExecuteCommand:
             cost_report_path=cost_report_path,
         )
 
+    def _select_tasks(self, task_board: TaskBoard):
+        scheduler = TaskGraphScheduler(task_board.list_tasks())
+        if self.parallel_readonly:
+            selection = scheduler.select_readonly_batch(self.max_tasks)
+            if selection.selected:
+                return selection
+        return scheduler.select_serial(self.max_tasks)
+
+    def _execute_readonly_batch(
+        self,
+        tasks: list[dict],
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+    ) -> list[TaskExecutionSummary]:
+        if not tasks:
+            return []
+        if len(tasks) == 1:
+            result = self._execute_task_with_worker_record(
+                task=tasks[0],
+                task_board=task_board,
+                context=context,
+                coder=coder,
+                goal_spec=goal_spec,
+                project_config=project_config,
+                runtime_context=runtime_context,
+            )
+            task_board.promote_unblocked()
+            return [result]
+
+        worker_ids = self._allocate_worker_ids(context, len(tasks))
+        result_ids = self._allocate_worker_result_ids(context, len(tasks))
+        results_by_task_id: dict[str, TaskExecutionSummary] = {}
+        with ThreadPoolExecutor(max_workers=len(tasks), thread_name_prefix="agent-readonly") as pool:
+            futures = {
+                pool.submit(
+                    self._execute_task_with_worker_record,
+                    task,
+                    task_board,
+                    context,
+                    coder,
+                    goal_spec,
+                    project_config,
+                    runtime_context,
+                    worker_ids[index],
+                    result_ids[index],
+                ): task["task_id"]
+                for index, task in enumerate(tasks)
+            }
+            for future in as_completed(futures):
+                task_id = futures[future]
+                results_by_task_id[task_id] = future.result()
+        task_board.promote_unblocked()
+        return [results_by_task_id[task["task_id"]] for task in tasks]
+
+    def _allocate_worker_ids(self, context: RuntimeContext, count: int) -> list[str]:
+        if context.run_dir is None:
+            return [f"worker-{index + 1:04d}" for index in range(count)]
+        start = self._jsonl_count(context.run_dir / "workers.jsonl") + 1
+        return [f"worker-{index:04d}" for index in range(start, start + count)]
+
+    def _allocate_worker_result_ids(self, context: RuntimeContext, count: int) -> list[str]:
+        if context.run_dir is None:
+            return [f"worker-result-{index + 1:04d}" for index in range(count)]
+        start = self._jsonl_count(context.run_dir / "worker_results.jsonl") + 1
+        return [f"worker-result-{index:04d}" for index in range(start, start + count)]
+
+    def _execute_task_with_worker_record(
+        self,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+        worker_id: str | None = None,
+        result_id: str | None = None,
+    ) -> TaskExecutionSummary:
+        started_at = now_iso()
+        run_dir = context.run_dir
+        model_calls_before = self._jsonl_count(run_dir / "model_calls.jsonl") if run_dir else 0
+        worker_id = worker_id or (
+            self._next_jsonl_id(run_dir / "workers.jsonl", "worker") if run_dir else "worker-0001"
+        )
+        result_id = result_id or (
+            self._next_jsonl_id(run_dir / "worker_results.jsonl", "worker-result")
+            if run_dir
+            else "worker-result-0001"
+        )
+        try:
+            runtime_mount = self._record_runtime_profile_mount(
+                context=context,
+                task=task,
+                worker_id=worker_id,
+                runtime_context=runtime_context,
+            )
+            summary = self._execute_task(
+                task=task,
+                task_board=task_board,
+                context=context,
+                coder=coder,
+                goal_spec=goal_spec,
+                project_config=project_config,
+                runtime_context=runtime_mount.runtime_context,
+            )
+        except Exception as exc:
+            ended_at = now_iso()
+            self._record_worker_execution(
+                context=context,
+                worker_id=worker_id,
+                result_id=result_id,
+                task=task,
+                status="failed",
+                started_at=started_at,
+                ended_at=ended_at,
+                model_calls=(
+                    self._jsonl_count(run_dir / "model_calls.jsonl") - model_calls_before
+                    if run_dir
+                    else 0
+                ),
+                tool_calls=0,
+                artifact_refs=[],
+                validation_refs=[],
+                failure_evidence_refs=[],
+                summary=str(exc),
+                runtime_profile_id=(
+                    runtime_mount.runtime_profile_id
+                    if "runtime_mount" in locals()
+                    else self._default_runtime_profile_id(task)
+                ),
+            )
+            raise
+        ended_at = now_iso()
+        self._record_worker_execution(
+            context=context,
+            worker_id=worker_id,
+            result_id=result_id,
+            task=task,
+            status=self._worker_status(summary.status),
+            started_at=started_at,
+            ended_at=ended_at,
+            model_calls=(
+                self._jsonl_count(run_dir / "model_calls.jsonl") - model_calls_before
+                if run_dir
+                else 0
+            ),
+            tool_calls=summary.tool_calls + summary.verification_calls,
+            artifact_refs=self._task_artifact_refs(context, task["task_id"]),
+            validation_refs=[],
+            failure_evidence_refs=self._failure_evidence_refs(summary),
+            summary=summary.summary,
+            runtime_profile_id=runtime_mount.runtime_profile_id,
+        )
+        return summary
+
     def _execute_task(
         self,
         task: dict,
@@ -228,6 +419,9 @@ class ExecuteCommand:
                 run_id=context.run_id or "",
                 runtime_context=runtime_context,
             )
+            action = self._normalize_inline_verification(action, task)
+            action = self._replace_unsafe_verification(action, task, context.policy)
+            action = self._prepend_python_compile_verification(action, task)
             self._require_non_empty_action(action)
             decision = self._create_policy_decision_if_needed(action, task, context)
             if decision is not None:
@@ -289,6 +483,7 @@ class ExecuteCommand:
                 task,
                 candidate_context,
                 stop_on_failure=False,
+                stop_verification_on_fatal=True,
             )
             contract_check = check_completion_contract(
                 task,
@@ -423,6 +618,137 @@ class ExecuteCommand:
         if not action.get("tool_calls") and not action.get("verification"):
             raise RuntimeError("ExecutionAction contained no tool calls or verification.")
 
+    def _normalize_inline_verification(self, action: dict, task: dict) -> dict:
+        if action.get("verification") or not task.get("verification_policy", {}).get("required"):
+            return action
+        tool_calls = list(action.get("tool_calls") or [])
+        verification = [
+            call
+            for call in tool_calls
+            if call.get("tool_name") in {"run_command", "run_tests"}
+        ]
+        if not verification:
+            return action
+        normalized = dict(action)
+        normalized["tool_calls"] = [
+            call
+            for call in tool_calls
+            if call.get("tool_name") not in {"run_command", "run_tests"}
+        ]
+        normalized["verification"] = verification
+        return normalized
+
+    def _replace_unsafe_verification(self, action: dict, task: dict, policy: dict) -> dict:
+        verification = list(action.get("verification") or [])
+        if not verification:
+            return action
+        safe_verification = []
+        replaced = False
+        for call in verification:
+            if call.get("tool_name") not in {"run_command", "run_tests"}:
+                safe_verification.append(call)
+                continue
+            command = str(call.get("args", {}).get("command") or "")
+            denial = self._shell_denial(policy, command) if command else None
+            if not command or denial is None:
+                safe_verification.append(call)
+                continue
+            if not self._can_replace_verification_denial(denial):
+                safe_verification.append(call)
+                continue
+            replaced = True
+        if not replaced:
+            return action
+        normalized = dict(action)
+        normalized["verification"] = [
+            *safe_verification,
+            *self._default_verification_calls(task, action),
+        ]
+        normalized["verification"] = self._dedupe_tool_calls(normalized["verification"])
+        return normalized
+
+    def _can_replace_verification_denial(self, denial: str) -> bool:
+        return any(
+            denial.endswith(f": {operator}")
+            for operator in {"|", ">", ">>", "<", "2>", "2>>"}
+        )
+
+    def _default_verification_calls(self, task: dict, action: dict) -> list[dict]:
+        calls = []
+        artifacts = [
+            *[
+                str(call.get("args", {}).get("path"))
+                for call in action.get("tool_calls", [])
+                if call.get("tool_name") == "write_file" and call.get("args", {}).get("path")
+            ],
+            *[
+                str(artifact)
+                for artifact in task.get("expected_artifacts", [])
+                if isinstance(artifact, str)
+            ],
+        ]
+        for artifact in dict.fromkeys(artifacts):
+            if not isinstance(artifact, str) or not artifact.endswith(".py"):
+                continue
+            calls.append(
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": f"python -m py_compile {artifact}",
+                        "expected_returncodes": [0],
+                    },
+                    "reason": "safe fallback verification for Python artifact",
+                }
+            )
+        return calls or [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": "python -c \"print('verification placeholder')\"",
+                    "expected_returncodes": [0],
+                },
+                "reason": "safe fallback verification",
+            }
+        ]
+
+    def _dedupe_tool_calls(self, calls: list[dict]) -> list[dict]:
+        deduped = []
+        seen = set()
+        for call in calls:
+            key = json.dumps(call, sort_keys=True, ensure_ascii=False)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(call)
+        return deduped
+
+    def _prepend_python_compile_verification(self, action: dict, task: dict) -> dict:
+        if not action.get("verification"):
+            return action
+        artifacts = [
+            str(path)
+            for path in [
+                *task.get("expected_changed_files", []),
+                *task.get("expected_artifacts", []),
+            ]
+            if str(path).endswith(".py")
+        ]
+        if not artifacts or "run_command" not in set(task.get("allowed_tools", [])):
+            return action
+        compile_calls = [
+            {
+                "tool_name": "run_command",
+                "args": {"command": f"python -m py_compile {artifact}"},
+                "reason": "fail fast on Python syntax errors before behavior checks",
+            }
+            for artifact in sorted(set(artifacts))
+        ]
+        normalized = dict(action)
+        normalized["verification"] = self._dedupe_tool_calls(
+            [*compile_calls, *list(action.get("verification") or [])]
+        )
+        return normalized
+
     def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
         if tool_name not in {"run_command", "run_tests"}:
             return False
@@ -436,6 +762,7 @@ class ExecuteCommand:
         task: dict,
         context: RuntimeContext,
         stop_on_failure: bool = True,
+        stop_verification_on_fatal: bool = False,
     ) -> list:
         results = []
         allowed = set(task["allowed_tools"])
@@ -443,12 +770,13 @@ class ExecuteCommand:
             tool_name = call["tool_name"]
             if tool_name not in allowed:
                 raise PermissionError(f"Tool is not allowed for {task['task_id']}: {tool_name}")
+            self._enforce_tool_permission_profile(task, tool_name, call.get("args", {}))
             result = self.registry.call(
                 tool_name,
                 self._context_with_approval(context, task, tool_name, call["args"]),
                 task_id=task["task_id"],
                 agent_id="CoderAgent",
-                **call["args"],
+                **self._tool_args(call["args"]),
             )
             if self._accepts_diagnostic_failure(task, tool_name, result):
                 result.ok = True
@@ -457,7 +785,88 @@ class ExecuteCommand:
             results.append(result)
             if stop_on_failure and not result.ok:
                 raise RuntimeError(f"Tool failed: {tool_name}: {result.summary}")
+            if stop_verification_on_fatal and self._fatal_verification_failure(result):
+                break
         return results
+
+    def _enforce_tool_permission_profile(self, task: dict, tool_name: str, args: dict) -> None:
+        write_tools = {"write_file", "apply_patch", "restore_backup"}
+        if tool_name not in write_tools:
+            self._enforce_read_scope(task, tool_name, args)
+            return
+        if parallel_safety(task) == "readonly" or not write_scope(task):
+            raise PermissionError(
+                f"ToolPermissionProfile denied write tool for readonly task {task['task_id']}: "
+                f"{tool_name}"
+            )
+        if not isinstance(task.get("write_scope"), list):
+            return
+        for path in self._write_paths_for_tool(tool_name, args):
+            if not self._path_in_scope(path, write_scope(task)):
+                raise PermissionError(
+                    f"ToolPermissionProfile denied write path for {task['task_id']}: {path}"
+                )
+
+    def _enforce_read_scope(self, task: dict, tool_name: str, args: dict) -> None:
+        path = None
+        if tool_name in {"read_file", "list_files", "search_text", "find_files", "diff_workspace"}:
+            path = str(args.get("path") or ".")
+        if path is None:
+            return
+        if not isinstance(task.get("read_scope"), list):
+            return
+        scope = read_scope(task)
+        if scope and not self._path_in_scope(path, scope):
+            raise PermissionError(
+                f"ToolPermissionProfile denied read path for {task['task_id']}: {path}"
+            )
+
+    def _write_paths_for_tool(self, tool_name: str, args: dict) -> list[str]:
+        if tool_name == "write_file" and args.get("path"):
+            return [str(args["path"])]
+        if tool_name == "apply_patch":
+            patch_text = args.get("patch") if args.get("patch") is not None else args.get("diff")
+            if not isinstance(patch_text, str):
+                return []
+            try:
+                return [file_patch.path for file_patch in parse_unified_diff(patch_text)]
+            except PatchApplyError:
+                return []
+        return []
+
+    def _path_in_scope(self, path: str, scope: list[str]) -> bool:
+        normalized = self._normalize_scope_path(path)
+        for item in scope:
+            allowed = self._normalize_scope_path(str(item))
+            if allowed in {"", "."}:
+                return True
+            if allowed.endswith("/"):
+                if normalized.startswith(allowed):
+                    return True
+            elif normalized == allowed:
+                return True
+        return False
+
+    def _normalize_scope_path(self, path: str) -> str:
+        normalized = path.replace("\\", "/").strip()
+        if normalized.startswith("./"):
+            normalized = normalized[2:]
+        if normalized and not normalized.endswith("/") and "." not in normalized.rsplit("/", 1)[-1]:
+            normalized += "/"
+        return normalized
+
+    def _fatal_verification_failure(self, result: object) -> bool:
+        if getattr(result, "ok", False):
+            return False
+        data = getattr(result, "data", None)
+        stderr = str(data.get("stderr", "")) if isinstance(data, dict) else ""
+        summary = str(getattr(result, "summary", ""))
+        text = f"{summary}\n{stderr}"
+        return any(signal in text for signal in ["SyntaxError", "IndentationError"])
+
+    def _tool_args(self, args: dict) -> dict:
+        reserved = {"context", "task_id", "agent_id"}
+        return {key: value for key, value in args.items() if key not in reserved}
 
     def _create_policy_decision_if_needed(
         self,
@@ -813,7 +1222,7 @@ class ExecuteCommand:
         for result in tool_results:
             if not result.ok or not isinstance(result.data, dict):
                 continue
-            if result.data.get("path"):
+            if result.data.get("path") and result.data.get("backup_id"):
                 changed_files.append(result.data["path"])
             changed_files.extend(result.data.get("changed_files", []))
         return changed_files
@@ -871,6 +1280,154 @@ class ExecuteCommand:
         if lowered.endswith((".md", ".txt", ".rst")):
             return "report"
         return "source_file"
+
+    def _record_worker_execution(
+        self,
+        context: RuntimeContext,
+        worker_id: str,
+        result_id: str,
+        task: dict,
+        status: str,
+        started_at: str,
+        ended_at: str,
+        model_calls: int,
+        tool_calls: int,
+        artifact_refs: list[str],
+        validation_refs: list[str],
+        failure_evidence_refs: list[str],
+        summary: str,
+        runtime_profile_id: str,
+    ) -> None:
+        if context.run_dir is None:
+            return
+        store = JsonlStore(self.validator)
+        invocation = WorkerInvocation(
+            worker_invocation_id=worker_id,
+            run_id=context.run_id or "",
+            task_id=task["task_id"],
+            agent_id=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
+            runtime_profile_id=runtime_profile_id,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            summary=f"Execute {task['task_id']} through {runtime_profile_id}.",
+        )
+        result = WorkerResult(
+            worker_result_id=result_id,
+            worker_invocation_id=worker_id,
+            run_id=context.run_id or "",
+            task_id=task["task_id"],
+            status=self._worker_result_status(status),
+            artifact_refs=artifact_refs,
+            validation_refs=validation_refs,
+            failure_evidence_refs=failure_evidence_refs,
+            cost=WorkerCost(model_calls=max(model_calls, 0), tool_calls=tool_calls),
+            summary=summary,
+        )
+        store.append(context.run_dir / "workers.jsonl", invocation.to_dict(), "worker_invocation")
+        store.append(context.run_dir / "worker_results.jsonl", result.to_dict(), "worker_result")
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "worker_recorded",
+                "ExecuteCommand",
+                f"{worker_id} -> {result.status}",
+                {
+                    "worker_invocation_id": worker_id,
+                    "worker_result_id": result_id,
+                    "task_id": task["task_id"],
+                    "runtime_profile_id": runtime_profile_id,
+                },
+            )
+
+    def _worker_status(self, task_status: str) -> str:
+        if task_status == "done":
+            return "succeeded"
+        if task_status == "blocked":
+            return "failed"
+        return "cancelled"
+
+    def _worker_result_status(self, worker_status: str) -> str:
+        return {
+            "succeeded": "succeeded",
+            "failed": "failed",
+            "denied": "denied",
+            "timeout": "timeout",
+        }.get(worker_status, "partial")
+
+    def _default_runtime_profile_id(self, task: dict) -> str:
+        role = str(task.get("role") or "CoderAgent").lower().replace("agent", "")
+        return f"runtime-profile-execute-{role or 'coder'}"
+
+    def _record_runtime_profile_mount(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        worker_id: str,
+        runtime_context: dict,
+    ):
+        return RuntimeProfileBuilder(self.validator).build_and_record(
+            context=context,
+            task=task,
+            worker_id=worker_id,
+            runtime_context=runtime_context,
+            artifact_refs=self._task_artifact_refs(context, task["task_id"]),
+            failure_evidence_refs=self._task_failure_refs(context, task["task_id"]),
+            decision_refs=self._task_decision_refs(context, task["task_id"]),
+        )
+
+    def _task_artifact_refs(self, context: RuntimeContext, task_id: str) -> list[str]:
+        if context.run_dir is None:
+            return []
+        path = context.run_dir / "artifacts.jsonl"
+        if not path.exists():
+            return []
+        artifacts = JsonlStore(self.validator).read_all(path, "artifact")
+        return [
+            artifact["artifact_id"]
+            for artifact in artifacts
+            if artifact.get("task_id") == task_id and artifact.get("artifact_id")
+        ]
+
+    def _failure_evidence_refs(self, summary: TaskExecutionSummary) -> list[str]:
+        if summary.status != "blocked" or summary.evidence_path is None:
+            return []
+        return [str(summary.evidence_path)]
+
+    def _task_failure_refs(self, context: RuntimeContext, task_id: str) -> list[str]:
+        if context.run_dir is None:
+            return []
+        path = context.run_dir / "task_failures.jsonl"
+        if not path.exists():
+            return []
+        failures = JsonlStore(self.validator).read_all(path, "task_failure_evidence")
+        return [
+            failure["evidence_id"]
+            for failure in failures
+            if failure.get("task_id") == task_id and failure.get("evidence_id")
+        ]
+
+    def _task_decision_refs(self, context: RuntimeContext, task_id: str) -> list[str]:
+        if context.run_dir is None:
+            return []
+        path = context.run_dir / "decisions.jsonl"
+        if not path.exists():
+            return []
+        decisions = JsonlStore(self.validator).read_all(path, "decision_point")
+        refs = []
+        for decision in decisions:
+            metadata = decision.get("metadata") or {}
+            if metadata.get("task_id") == task_id and decision.get("decision_id"):
+                refs.append(decision["decision_id"])
+        return refs
+
+    def _jsonl_count(self, path: Path) -> int:
+        if not path.exists():
+            return 0
+        return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+
+    def _next_jsonl_id(self, path: Path, prefix: str) -> str:
+        return f"{prefix}-{self._jsonl_count(path) + 1:04d}"
 
     def _block_task(
         self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext

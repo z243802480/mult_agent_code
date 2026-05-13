@@ -6,7 +6,8 @@ It is intentionally separate from offline verification because it consumes paid 
 ## Suites
 
 - `smoke`: one minimal file-creation loop.
-- `core`: `file_smoke`, `password_cli`, and `markdown_kb`.
+- `core`: `file_smoke`, `password_cli`, `markdown_kb`, `safe_file_renamer`,
+  `multi_file_todo_cli`, and `config_driven_report`.
 - `advanced`: failing-test repair plus decision-point handling.
 - `nightly`: all real acceptance scenarios that are safe to run without user data.
 - `offline`: fake-provider runner coverage only.
@@ -109,3 +110,21 @@ A scenario should pass only when:
 - cost counters match JSONL logs.
 
 Failures should be promoted through `agent /acceptance --promote-failures` rather than ignored.
+
+## Capability Reporting
+
+Acceptance reports should carry `scenario_metadata` plus per-scenario `capability` and `tier`.
+Runtime readers backfill known metadata for older history rows, so legacy runs still contribute to
+`agent capability-report` and `agent acceptance-gate` coverage. The final
+`.agent/acceptance/acceptance_report.json` is the source of truth for latest release readiness,
+because it includes runtime trend warnings that script-level history rows may not contain.
+
+Use:
+
+```powershell
+python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 3 --min-capabilities 3
+python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 3 --min-capabilities 3 --allow-trend-warnings
+```
+
+The first command blocks on cost or stability trend regressions. The second treats those warnings as
+conditional release readiness, which is useful after a broader successful baseline run.

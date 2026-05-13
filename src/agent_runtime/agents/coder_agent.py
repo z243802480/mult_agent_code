@@ -54,6 +54,8 @@ class CoderAgent:
                     "agent_id": "CoderAgent",
                     "task_id": task["task_id"],
                     "attempt": attempt + 1,
+                    "runtime_profile_id": (runtime_context or {}).get("runtime_profile_id"),
+                    "model_profile_id": (runtime_context or {}).get("model_profile_id"),
                 },
             )
             response = self.model_client.chat(request)
@@ -84,6 +86,8 @@ class CoderAgent:
             raise CoderAgentError(
                 f"ExecutionAction task_id mismatch: {action.get('task_id')} != {task['task_id']}"
             )
+        if not action.get("tool_calls") and not action.get("verification"):
+            raise CoderAgentError("ExecutionAction must include at least one tool call or verification command")
         try:
             self.validator.validate("execution_action", action)
         except SchemaValidationError as exc:

@@ -29,6 +29,12 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert task["task_kind"] == "implementation"
     assert task["completion_contract"]["requires_changed_artifact"] is True
     assert task["verification_policy"]["required"] is True
+    assert "src/notes_tool.py" in task["read_scope"]
+    assert "src/notes_tool.py" in task["write_scope"]
+    assert "tests/test_notes_tool.py" in task["write_scope"]
+    assert task["parallel_safety"] == "serial"
+    assert task["failure_policy"] == "create_repair_task"
+    assert task["context_requirements"]["mount_type"] == "coding_context"
     assert "restore_backup" in task["allowed_tools"]
     assert "Quality:" in task["notes"]
 
@@ -165,6 +171,11 @@ def test_requirement_planner_marks_diagnostic_tasks() -> None:
     assert task["task_kind"] == "diagnostic"
     assert task["completion_contract"]["allows_expected_failure"] is True
     assert task["completion_contract"]["requires_changed_artifact"] is False
+    assert task["write_scope"] == []
+    assert task["parallel_safety"] == "readonly"
+    assert "write_file" not in task["allowed_tools"]
+    assert "apply_patch" not in task["allowed_tools"]
+    assert task["context_requirements"]["mount_type"] == "debug_context"
 
 
 def test_requirement_planner_splits_oversized_requirement_by_acceptance() -> None:

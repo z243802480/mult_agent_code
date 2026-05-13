@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import RLock
 
 from agent_runtime.models.base import ChatRequest, ChatResponse
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 from agent_runtime.utils.time import now_iso
+
+
+_MODEL_CALL_LOGGER_LOCK = RLock()
 
 
 class ModelCallLogger:
@@ -24,18 +28,19 @@ class ModelCallLogger:
         model_tier: str,
         error: str,
     ) -> dict | None:
-        record = self._base_record(request, provider, model_name, model_tier)
-        record.update(
-            {
-                "input_tokens": None,
-                "output_tokens": None,
-                "status": "failure",
-                "created_at": now_iso(),
-                "summary": error,
-            }
-        )
-        self._append(record)
-        return record
+        with _MODEL_CALL_LOGGER_LOCK:
+            record = self._base_record(request, provider, model_name, model_tier)
+            record.update(
+                {
+                    "input_tokens": None,
+                    "output_tokens": None,
+                    "status": "failure",
+                    "created_at": now_iso(),
+                    "summary": error,
+                }
+            )
+            self._append(record)
+            return record
 
     def _record(
         self,
@@ -44,23 +49,24 @@ class ModelCallLogger:
         status: str,
         summary: str,
     ) -> dict | None:
-        record = self._base_record(
-            request,
-            response.model_provider,
-            response.model_name,
-            request.model_tier,
-        )
-        record.update(
-            {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
-                "status": status,
-                "created_at": now_iso(),
-                "summary": summary,
-            }
-        )
-        self._append(record)
-        return record
+        with _MODEL_CALL_LOGGER_LOCK:
+            record = self._base_record(
+                request,
+                response.model_provider,
+                response.model_name,
+                request.model_tier,
+            )
+            record.update(
+                {
+                    "input_tokens": response.usage.input_tokens,
+                    "output_tokens": response.usage.output_tokens,
+                    "status": status,
+                    "created_at": now_iso(),
+                    "summary": summary,
+                }
+            )
+            self._append(record)
+            return record
 
     def _base_record(
         self,
@@ -79,6 +85,8 @@ class ModelCallLogger:
             "model_call_id": f"modelcall-{existing_count + 1:04d}",
             "run_id": request.metadata.get("run_id"),
             "agent_id": request.metadata.get("agent_id"),
+            "runtime_profile_id": request.metadata.get("runtime_profile_id"),
+            "model_profile_id": request.metadata.get("model_profile_id"),
             "purpose": request.purpose,
             "model_provider": provider,
             "model_name": model_name,

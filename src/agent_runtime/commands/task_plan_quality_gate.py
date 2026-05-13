@@ -5,11 +5,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agent_runtime.commands.decide_command import DecideCommand
+from agent_runtime.core.task_contract import completion_contract
 from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.run_store import RunStore
 from agent_runtime.storage.schema_validator import SchemaValidator
+from agent_runtime.utils.time import now_iso
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,16 @@ class TaskPlanQualityGate:
                 eval_path,
                 reason="active task plan revision exists",
             )
+        revised_eval = self._auto_revise_once(run_id, run_dir, eval_path, task_plan_eval)
+        if revised_eval and revised_eval["status"] != "fail":
+            return TaskPlanQualityGateResult(
+                False,
+                revised_eval,
+                eval_path,
+                reason="quality improved by automatic replan",
+            )
+        if revised_eval:
+            task_plan_eval = revised_eval
 
         pending = [decision for decision in existing if decision["status"] == "pending"]
         decision = (
@@ -61,6 +73,121 @@ class TaskPlanQualityGate:
         if pause_run:
             self._pause_run(run_id, reason)
         return TaskPlanQualityGateResult(True, task_plan_eval, eval_path, decision, reason)
+
+    def _auto_revise_once(
+        self,
+        run_id: str,
+        run_dir: Path,
+        eval_path: Path,
+        task_plan_eval: dict,
+    ) -> dict | None:
+        attempts_path = run_dir / "task_plan_revisions.jsonl"
+        attempts = self.jsonl.read_all(attempts_path, None)
+        if attempts:
+            return None
+        goal_spec_path = run_dir / "goal_spec.json"
+        task_plan_path = run_dir / "task_plan.json"
+        if not goal_spec_path.exists() or not task_plan_path.exists():
+            return None
+        goal_spec = self.store.read(goal_spec_path, "goal_spec")
+        task_plan = self.store.read(task_plan_path, "task_board")
+        revised, changes = self._revise_task_plan(task_plan, goal_spec, task_plan_eval)
+        self.jsonl.append(
+            attempts_path,
+            {
+                "schema_version": "0.1.0",
+                "run_id": run_id,
+                "created_at": now_iso(),
+                "before_status": task_plan_eval["status"],
+                "before_score": task_plan_eval["overall_score"],
+                "issue_codes": self.issue_codes(task_plan_eval),
+                "changes": changes,
+            },
+        )
+        if not changes:
+            return None
+        self.store.write(task_plan_path, revised, "task_board")
+        self.store.write(self.root / ".agent" / "tasks" / "backlog.json", revised, "task_board")
+        revised_eval = TaskPlanEvaluator().evaluate(revised, goal_spec, run_id=run_id)
+        self.store.write(eval_path, revised_eval, "task_plan_eval")
+        return revised_eval
+
+    def _revise_task_plan(
+        self,
+        task_plan: dict,
+        goal_spec: dict,
+        task_plan_eval: dict,
+    ) -> tuple[dict, list[str]]:
+        revised = json.loads(json.dumps(task_plan, ensure_ascii=False))
+        tasks = [task for task in revised.get("tasks", []) if isinstance(task, dict)]
+        changes: list[str] = []
+        if not tasks:
+            return revised, changes
+        if not any(task.get("status") == "ready" for task in tasks):
+            tasks[0]["status"] = "ready"
+            changes.append("marked first task ready")
+        known_ids = {str(task.get("task_id")) for task in tasks if task.get("task_id")}
+        for task in tasks:
+            original_depends = task.get("depends_on", [])
+            if not isinstance(original_depends, list):
+                task["depends_on"] = []
+                changes.append(f"{task.get('task_id')}: normalized dependencies")
+            else:
+                filtered = [
+                    dependency
+                    for dependency in original_depends
+                    if dependency in known_ids and dependency != task.get("task_id")
+                ]
+                if filtered != original_depends:
+                    task["depends_on"] = filtered
+                    changes.append(f"{task.get('task_id')}: removed invalid dependencies")
+            if not task.get("acceptance"):
+                task["acceptance"] = self._fallback_acceptance(task, goal_spec)
+                changes.append(f"{task.get('task_id')}: added observable acceptance")
+            if not task.get("expected_artifacts") or task.get("expected_artifacts") in [
+                ["implementation artifact"],
+                ["planning artifact"],
+            ]:
+                task["expected_artifacts"] = self._fallback_artifacts(task, goal_spec)
+                changes.append(f"{task.get('task_id')}: added concrete artifacts")
+            allowed_tools = list(task.get("allowed_tools") or [])
+            if task.get("task_kind", "implementation") in {"implementation", "ui"}:
+                for tool in ["apply_patch", "run_command"]:
+                    if tool not in allowed_tools:
+                        allowed_tools.append(tool)
+                        changes.append(f"{task.get('task_id')}: allowed {tool}")
+            if task.get("verification_policy", {}).get("required"):
+                for tool in ["run_tests", "run_command"]:
+                    if tool not in allowed_tools:
+                        allowed_tools.append(tool)
+                        changes.append(f"{task.get('task_id')}: allowed {tool}")
+            task["allowed_tools"] = allowed_tools
+            task["updated_at"] = now_iso()
+            notes = str(task.get("notes") or "")
+            issue_summary = self.issue_summary(task_plan_eval)
+            marker = f"Auto-revised by task plan quality gate: {issue_summary}."
+            if marker not in notes:
+                task["notes"] = f"{notes}\n{marker}".strip()
+            task["completion_contract"] = completion_contract(task)
+        return revised, list(dict.fromkeys(changes))
+
+    def _fallback_acceptance(self, task: dict, goal_spec: dict) -> list[str]:
+        for item in goal_spec.get("definition_of_done", []):
+            if isinstance(item, str) and item.strip():
+                return [item.strip()]
+        artifacts = self._fallback_artifacts(task, goal_spec)
+        return [f"{artifacts[0]} exists and can be reviewed"]
+
+    def _fallback_artifacts(self, task: dict, goal_spec: dict) -> list[str]:
+        for artifact in goal_spec.get("target_outputs", []):
+            if isinstance(artifact, str) and "." in artifact and artifact.strip():
+                return [artifact.strip()]
+        title = str(task.get("title") or "artifact").lower()
+        if "readme" in title or "doc" in title:
+            return ["README.md"]
+        if "test" in title:
+            return ["tests/"]
+        return ["src/"]
 
     def refresh(self, run_id: str, run_dir: Path, eval_path: Path) -> dict | None:
         goal_spec_path = run_dir / "goal_spec.json"
