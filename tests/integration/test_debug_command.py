@@ -30,7 +30,7 @@ class FakePlanClient:
                             "acceptance": ["VALUE equals 2"],
                         }
                     ],
-                    "target_outputs": ["python_module"],
+                    "target_outputs": ["repairable.py"],
                     "definition_of_done": ["VALUE equals 2"],
                     "verification_strategy": ["python command"],
                     "budget": {"max_iterations": 8, "max_model_calls": 60},
@@ -280,7 +280,7 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
-    assert cost_report["tool_calls"] == 4
+    assert cost_report["tool_calls"] == 5
     assert cost_report["repair_attempts"] == 1
     assert cost_report["estimated_input_tokens"] == 37
     assert cost_report["estimated_output_tokens"] == 63

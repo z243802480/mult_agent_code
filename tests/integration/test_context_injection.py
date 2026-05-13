@@ -57,7 +57,7 @@ class ContextPlanClient:
                         "acceptance": ["artifact exists"],
                     }
                 ],
-                "target_outputs": ["markdown_report"],
+                "target_outputs": ["CONTEXT.md"],
                 "definition_of_done": ["artifact exists"],
                 "verification_strategy": ["inspect file"],
                 "budget": {"max_iterations": 8, "max_model_calls": 60},
@@ -106,14 +106,19 @@ class BrokenExecuteClient:
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
-                        "args": {"path": "broken.py", "content": "VALUE = 1\n", "overwrite": True},
+                        "args": {"path": "CONTEXT.md", "content": "remote\n", "overwrite": True},
                         "reason": "create artifact",
                     }
                 ],
                 "verification": [
                     {
                         "tool_name": "run_command",
-                        "args": {"command": "python -c \"from broken import VALUE; assert VALUE == 2\""},
+                        "args": {
+                            "command": (
+                                "python -c \"from pathlib import Path; "
+                                "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
+                            )
+                        },
                         "reason": "verify artifact",
                     }
                 ],
@@ -134,14 +139,19 @@ class ContextDebugClient:
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
-                        "args": {"path": "broken.py", "content": "VALUE = 2\n", "overwrite": True},
+                        "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
                         "reason": "repair artifact",
                     }
                 ],
                 "verification": [
                     {
                         "tool_name": "run_command",
-                        "args": {"command": "python -c \"from broken import VALUE; assert VALUE == 2\""},
+                        "args": {
+                            "command": (
+                                "python -c \"from pathlib import Path; "
+                                "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
+                            )
+                        },
                         "reason": "verify repair",
                     }
                 ],

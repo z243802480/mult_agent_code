@@ -246,8 +246,14 @@ class RequirementPlanner:
         if isinstance(explicit, list) and explicit:
             return [str(item) for item in explicit]
         description = str(requirement.get("description", "")).lower()
-        target_outputs = {str(item).lower() for item in goal_spec.get("target_outputs", [])}
+        target_outputs_raw = [str(item).strip() for item in goal_spec.get("target_outputs", [])]
+        target_outputs = {item.lower() for item in target_outputs_raw}
         artifacts: list[str] = []
+        artifacts.extend(
+            item.replace("\\", "/")
+            for item in target_outputs_raw
+            if self._looks_like_artifact_output(item)
+        )
         if "readme" in target_outputs or "doc" in description or "documentation" in description:
             artifacts.append("README.md")
         if "test" in description or "unit_tests" in goal_spec.get("verification_strategy", []):
@@ -259,6 +265,14 @@ class RequirementPlanner:
         if not artifacts:
             artifacts.append("implementation artifact")
         return list(dict.fromkeys(artifacts))
+
+    def _looks_like_artifact_output(self, value: str) -> bool:
+        normalized = value.replace("\\", "/").strip()
+        if not normalized:
+            return False
+        if normalized.endswith("/"):
+            return True
+        return self._looks_like_file_path(normalized)
 
     def _fallback_artifacts(self, goal_spec: dict) -> list[str]:
         outputs = [str(item) for item in goal_spec.get("target_outputs", [])]
@@ -286,7 +300,7 @@ class RequirementPlanner:
             return "report"
         if any(marker in text for marker in {"ui", "web page", "interface", "dashboard"}):
             return "ui"
-        if any(marker in text for marker in {"research", "investigate", "source"}):
+        if any(marker in text for marker in {"research", "investigate"}):
             return "research"
         return "implementation"
 
@@ -297,6 +311,22 @@ class RequirementPlanner:
         requirement: dict | None = None,
     ) -> list[str]:
         requirement = requirement or {}
+        concrete_outputs = [
+            artifact
+            for artifact in expected_artifacts
+            if self._looks_like_artifact_output(artifact)
+            and artifact
+            not in {
+                "src/",
+                "tests/",
+                "README.md",
+                "report.md",
+                "implementation artifact",
+                "planning artifact",
+            }
+        ]
+        if kind in {"implementation", "report", "ui"} and concrete_outputs:
+            return concrete_outputs
         inferred = self._infer_changed_files_from_requirement(kind, expected_artifacts, requirement)
         if inferred:
             return inferred
@@ -359,6 +389,9 @@ class RequirementPlanner:
             return "notes_tool"
         if "password strength" in normalized:
             return "password_strength"
+        dotted_module = re.search(r"\b([a-z][a-z0-9_]*)\.[a-z_][a-z0-9_]*\b", normalized)
+        if dotted_module:
+            return dotted_module.group(1)
         if "answer()" in normalized or "answer function" in normalized:
             return "complete_module"
         candidates = re.findall(

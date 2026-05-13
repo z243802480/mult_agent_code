@@ -33,6 +33,7 @@ def test_acceptance_gate_passes_clean_report(tmp_path: Path) -> None:
         report_path=report_path,
         suite="core",
         min_scenarios=6,
+        require_runtime_os=False,
     ).run()
 
     assert result.ok
@@ -58,6 +59,7 @@ def test_acceptance_gate_blocks_trend_warnings_by_default(tmp_path: Path) -> Non
         report_path=report_path,
         min_capabilities=1,
         require_tiers=[],
+        require_runtime_os=False,
     ).run()
 
     assert not result.ok
@@ -89,6 +91,7 @@ def test_acceptance_gate_allows_closed_repair_with_conditional_status(tmp_path: 
         report_path=report_path,
         min_capabilities=0,
         require_tiers=[],
+        require_runtime_os=False,
     ).run()
 
     assert result.ok
@@ -127,6 +130,7 @@ def test_acceptance_gate_counts_closed_failures_toward_capability_coverage(
         min_scenarios=3,
         min_capabilities=3,
         require_tiers=["core"],
+        require_runtime_os=False,
     ).run()
 
     assert result.ok
@@ -186,6 +190,7 @@ def test_acceptance_gate_blocks_insufficient_capability_coverage(tmp_path: Path)
         report_path=report_path,
         suite="core",
         min_scenarios=2,
+        require_runtime_os=False,
     ).run()
 
     assert not result.ok
@@ -216,9 +221,67 @@ def test_acceptance_gate_backfills_legacy_scenario_capabilities(tmp_path: Path) 
         suite="core",
         min_scenarios=4,
         min_capabilities=4,
+        require_runtime_os=False,
     ).run()
 
     assert result.ok
+
+
+def test_acceptance_gate_requires_runtime_os_evidence_for_core(tmp_path: Path) -> None:
+    report_path = write_report(
+        tmp_path,
+        {
+            "suite": "core",
+            "ok": True,
+            "returncode": 0,
+            "scenarios": [scenario("password_cli", True)],
+        },
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=1,
+        min_capabilities=1,
+        require_tiers=["core"],
+    ).run()
+
+    assert not result.ok
+    assert "runtime OS acceptance evidence is incomplete" in result.failures
+    assert result.runtime_os["status"] == "fail"
+    assert "runtime_parallel_readonly" in result.runtime_os["missing_capabilities"]
+
+
+def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None:
+    report_path = write_report(
+        tmp_path,
+        {
+            "suite": "core",
+            "ok": True,
+            "returncode": 0,
+            "scenarios": [
+                runtime_scenario("runtime_parallel_readonly"),
+                runtime_scenario("runtime_disjoint_writes"),
+                runtime_scenario("runtime_worker_failure", {"failure_evidence": True, "candidate_isolated": True}),
+                runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
+                runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
+            ],
+        },
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=5,
+        min_capabilities=5,
+        require_tiers=["core"],
+    ).run()
+
+    assert result.ok
+    assert result.runtime_os["status"] == "pass"
+    assert "Runtime OS gate:" in result.to_text()
 
 
 def scenario(name: str, ok: bool) -> dict:
@@ -248,6 +311,34 @@ def legacy_scenario(name: str, ok: bool) -> dict:
     item.pop("capability")
     item.pop("tier")
     return item
+
+
+def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
+    evidence = {
+        "workers_jsonl": True,
+        "worker_results_jsonl": True,
+        "runtime_profiles_jsonl": True,
+        "context_mounts_jsonl": True,
+        "validation_results_jsonl": True,
+        "task_execution_evidence_jsonl": True,
+    }
+    evidence.update(extra_evidence or {})
+    return {
+        "scenario": name,
+        "capability": name,
+        "tier": "core",
+        "ok": True,
+        "workspace": None,
+        "failure_summary": "",
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "summary": {
+            "runtime_os": {
+                "capability": name,
+                "evidence": evidence,
+            }
+        },
+    }
 
 
 def write_report(tmp_path: Path, overrides: dict) -> Path:

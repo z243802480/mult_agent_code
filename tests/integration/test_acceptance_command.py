@@ -11,6 +11,7 @@ from agent_runtime.commands.acceptance_command import (
     AcceptanceFailurePromoter,
     AcceptanceResult,
 )
+from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.models.fake import FakeModelClient
@@ -66,6 +67,36 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
     assert len(history) == 1
     assert history[0]["suite"] == "offline"
     assert history[0]["trend"]["previous"] is None
+
+
+def test_acceptance_runtime_os_scenarios_feed_release_gate(tmp_path: Path) -> None:
+    root = tmp_path / "runtime-os"
+    scenarios = [
+        "runtime_parallel_readonly",
+        "runtime_disjoint_writes",
+        "runtime_worker_failure",
+        "runtime_merge_gate_block",
+        "runtime_request_resume",
+    ]
+
+    result = AcceptanceCommand(
+        root,
+        suite="core",
+        scenarios=scenarios,
+        allow_fake=True,
+    ).run()
+    gate = AcceptanceGateCommand(
+        root,
+        suite="core",
+        min_scenarios=5,
+        min_capabilities=5,
+        require_tiers=["core"],
+    ).run()
+
+    assert result.ok
+    assert gate.ok
+    assert gate.runtime_os["status"] == "pass"
+    assert gate.runtime_os["covered_capabilities"] == scenarios
 
 
 def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path: Path) -> None:
@@ -756,7 +787,7 @@ def test_acceptance_promotion_adds_targeted_repair_focus_for_core_capabilities(
         promote_failures=True,
     ).run()
 
-    run_dir = tmp_path / ".agent" / "runs" / "run-20260512-0001"
+    run_dir = next((tmp_path / ".agent" / "runs").iterdir())
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     todo_task = next(
         task

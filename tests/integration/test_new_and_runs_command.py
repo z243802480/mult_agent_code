@@ -32,7 +32,7 @@ class GoalEchoPlanClient:
                             "acceptance": [f"{goal} artifact exists"],
                         }
                     ],
-                    "target_outputs": ["file"],
+                    "target_outputs": [f"{goal}.txt"],
                     "definition_of_done": [f"{goal} artifact exists"],
                     "verification_strategy": ["inspect file"],
                     "budget": {"max_iterations": 8, "max_model_calls": 60},

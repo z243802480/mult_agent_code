@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.core.acceptance_catalog import (
     acceptance_metadata_index,
@@ -26,6 +27,7 @@ class AcceptanceGateResult:
     failures: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
+    runtime_os: dict[str, Any] = field(default_factory=dict)
 
     def to_text(self) -> str:
         lines = [
@@ -42,6 +44,20 @@ class AcceptanceGateResult:
         if self.warnings:
             lines.append("Warnings:")
             lines.extend(f"  - {warning}" for warning in self.warnings)
+        if self.runtime_os:
+            lines.append("Runtime OS gate:")
+            lines.append(f"  status: {self.runtime_os.get('status', 'unknown')}")
+            lines.append(
+                "  coverage: "
+                + ", ".join(self.runtime_os.get("covered_capabilities", []) or ["none"])
+            )
+            missing = self.runtime_os.get("missing_capabilities", [])
+            if missing:
+                lines.append("  missing: " + ", ".join(missing))
+            missing_evidence = self.runtime_os.get("missing_evidence", [])
+            if missing_evidence:
+                lines.append("  missing evidence:")
+                lines.extend(f"    - {item}" for item in missing_evidence)
         if self.next_actions:
             lines.append("Recommended next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
@@ -59,6 +75,7 @@ class AcceptanceGateCommand:
         require_tiers: list[str] | None = None,
         allow_trend_warnings: bool = False,
         require_repair_closure: bool = True,
+        require_runtime_os: bool | None = None,
     ) -> None:
         self.root = root.resolve()
         self.report_path = report_path
@@ -68,6 +85,7 @@ class AcceptanceGateCommand:
         self.require_tiers = require_tiers
         self.allow_trend_warnings = allow_trend_warnings
         self.require_repair_closure = require_repair_closure
+        self.require_runtime_os = require_runtime_os
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
 
@@ -168,6 +186,13 @@ class AcceptanceGateCommand:
                 "Review `agent /acceptance-history` and rerun acceptance after reducing regressions."
             )
 
+        runtime_os = self._runtime_os_gate(report, scenarios)
+        if runtime_os["required"] and runtime_os["status"] != "pass":
+            failures.append("runtime OS acceptance evidence is incomplete")
+            next_actions.append(
+                "Run core acceptance with runtime OS scenarios, then rerun `agent /acceptance-gate`."
+            )
+
         ok = not failures
         release_status = self._release_status(ok, report, warnings)
         return AcceptanceGateResult(
@@ -181,6 +206,7 @@ class AcceptanceGateCommand:
             failures=list(dict.fromkeys(failures)),
             warnings=list(dict.fromkeys(warnings)),
             next_actions=list(dict.fromkeys(next_actions)),
+            runtime_os=runtime_os,
         )
 
     def _missing_report(self, report_path: Path) -> AcceptanceGateResult:
@@ -194,6 +220,7 @@ class AcceptanceGateCommand:
             release_status="blocked",
             failures=[f"acceptance report not found: {report_path}"],
             next_actions=["Run `agent /acceptance --suite core` before release."],
+            runtime_os={"required": False, "status": "missing_report"},
         )
 
     def _dict(self, value: Any) -> dict[str, Any]:
@@ -251,3 +278,12 @@ class AcceptanceGateCommand:
         if suite == "core":
             return ["smoke", "core"]
         return []
+
+    def _runtime_os_gate(self, report: dict, scenarios: list[dict]) -> dict[str, Any]:
+        suite = str(report.get("suite") or "")
+        required = (
+            self.require_runtime_os
+            if self.require_runtime_os is not None
+            else suite in {"core", "nightly"}
+        )
+        return RuntimeOSGateEvaluator().evaluate(report, scenarios, required=required).to_dict()

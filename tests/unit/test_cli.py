@@ -69,6 +69,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--require-tier",
             "core",
             "--allow-trend-warnings",
+            "--no-require-runtime-os",
         ]
     )
     capability_report_args = parser.parse_args(
@@ -148,6 +149,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_gate_args.min_capabilities == 3
     assert acceptance_gate_args.require_tier == ["core"]
     assert acceptance_gate_args.allow_trend_warnings
+    assert acceptance_gate_args.no_require_runtime_os
     assert capability_report_args.command == "/capability-report"
     assert capability_report_args.limit == 5
     assert weekly_report_args.command == "/weekly-report"

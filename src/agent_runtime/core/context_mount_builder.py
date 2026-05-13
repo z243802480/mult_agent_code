@@ -25,12 +25,12 @@ class ContextMountBuilder:
             "root_guidance": True,
             "goal_brief": True,
             "task_brief": True,
-            "artifact_refs": artifact_refs if requirements.get("include_artifacts") else [],
+            "artifact_refs": (artifact_refs or []) if requirements.get("include_artifacts") else [],
             "failure_evidence_refs": (
-                failure_evidence_refs if requirements.get("include_failures") else []
+                (failure_evidence_refs or []) if requirements.get("include_failures") else []
             ),
-            "decision_refs": decision_refs if requirements.get("include_decisions") else [],
-            "validation_refs": validation_refs if requirements.get("include_validation") else [],
+            "decision_refs": (decision_refs or []) if requirements.get("include_decisions") else [],
+            "validation_refs": (validation_refs or []) if requirements.get("include_validation") else [],
             "recent_event_count": int(requirements.get("recent_event_count") or 20),
         }
         return ContextMount(

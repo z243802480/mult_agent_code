@@ -583,6 +583,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Do not require a successful rerun closure when the base acceptance failed",
     )
+    acceptance_gate_parser.add_argument(
+        "--no-require-runtime-os",
+        action="store_true",
+        help="Do not require Runtime OS worker/profile/merge evidence for core release gates",
+    )
     capability_report_parser = subcommands.add_parser(
         "capability-report",
         aliases=["/capability-report", "capabilities", "/capabilities"],
@@ -912,6 +917,7 @@ def main() -> None:
             require_tiers=args.require_tier,
             allow_trend_warnings=args.allow_trend_warnings,
             require_repair_closure=not args.no_require_repair_closure,
+            require_runtime_os=False if args.no_require_runtime_os else None,
         ).run()
         print(acceptance_gate_result.to_text())
         if not acceptance_gate_result.ok:

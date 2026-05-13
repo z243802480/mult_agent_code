@@ -30,7 +30,7 @@ class FakePlanClient:
                             "acceptance": ["answer() returns 42"],
                         }
                     ],
-                    "target_outputs": ["python_module"],
+                    "target_outputs": ["reviewed_module.py"],
                     "definition_of_done": ["answer() returns 42"],
                     "verification_strategy": ["python command"],
                     "budget": {"max_iterations": 8, "max_model_calls": 60},

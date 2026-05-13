@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+COMMON_RUNTIME_OS_EVIDENCE = (
+    "workers_jsonl",
+    "worker_results_jsonl",
+    "runtime_profiles_jsonl",
+    "context_mounts_jsonl",
+    "task_execution_evidence_jsonl",
+)
+AGGREGATE_RUNTIME_OS_EVIDENCE = ("validation_results_jsonl",)
+
+
+@dataclass(frozen=True)
+class RuntimeOSCapability:
+    scenario: str
+    capability: str
+    tier: str = "core"
+    kind: str = "runtime_os"
+    required_evidence: tuple[str, ...] = COMMON_RUNTIME_OS_EVIDENCE
+    suite_evidence: tuple[str, ...] = AGGREGATE_RUNTIME_OS_EVIDENCE
+    special_evidence: tuple[str, ...] = ()
+
+
+RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
+    RuntimeOSCapability(
+        scenario="runtime_parallel_readonly",
+        capability="runtime_parallel_readonly",
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_disjoint_writes",
+        capability="runtime_disjoint_writes",
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_worker_failure",
+        capability="runtime_worker_failure",
+        special_evidence=("failure_evidence", "candidate_isolated"),
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_merge_gate_block",
+        capability="runtime_merge_gate_block",
+        special_evidence=("merge_gate_blocked",),
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_request_resume",
+        capability="runtime_request_resume",
+        special_evidence=("resume_recovered",),
+    ),
+)
+
+
+def runtime_os_scenario_names() -> list[str]:
+    return [item.scenario for item in RUNTIME_OS_CAPABILITIES]
+
+
+def runtime_os_capability_names() -> list[str]:
+    return [item.capability for item in RUNTIME_OS_CAPABILITIES]
+
+
+def runtime_os_capability_map() -> dict[str, RuntimeOSCapability]:
+    return {item.capability: item for item in RUNTIME_OS_CAPABILITIES}
+
+
+def runtime_os_metadata() -> list[dict[str, str]]:
+    return [
+        {
+            "scenario": item.scenario,
+            "capability": item.capability,
+            "tier": item.tier,
+            "kind": item.kind,
+        }
+        for item in RUNTIME_OS_CAPABILITIES
+    ]
+

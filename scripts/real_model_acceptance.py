@@ -13,6 +13,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src"
+if str(SRC_ROOT) not in sys.path:
+    sys.path.insert(0, str(SRC_ROOT))
+
+from agent_runtime.acceptance.runtime_os_catalog import (  # noqa: E402
+    runtime_os_metadata,
+    runtime_os_scenario_names,
+)
+from agent_runtime.acceptance.runtime_os_scenarios import run_runtime_os_scenario  # noqa: E402
+
 
 @dataclass(frozen=True)
 class AcceptanceScenario:
@@ -158,6 +169,15 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             "sales.csv": "item,quantity,price\nnotebook,3,8\npen,5,2\nbag,1,35\n",
         },
     ),
+    **{
+        item["scenario"]: AcceptanceScenario(
+            name=item["scenario"],
+            capability=item["capability"],
+            tier=item["tier"],
+            kind=item["kind"],
+        )
+        for item in runtime_os_metadata()
+    },
     "docs_code_sync": AcceptanceScenario(
         name="docs_code_sync",
         capability="docs_code_sync",
@@ -244,6 +264,7 @@ SUITES = {
         "safe_file_renamer",
         "multi_file_todo_cli",
         "config_driven_report",
+        *runtime_os_scenario_names(),
     ],
     "advanced": [
         "failing_tests_repair",
@@ -259,6 +280,7 @@ SUITES = {
         "safe_file_renamer",
         "multi_file_todo_cli",
         "config_driven_report",
+        *runtime_os_scenario_names(),
         "failing_tests_repair",
         "docs_code_sync",
         "refactor_existing_module",
@@ -369,7 +391,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def select_scenarios(args: argparse.Namespace) -> list[AcceptanceScenario]:
     names = args.scenario or SUITES[args.suite]
-    fake_allowed = {"offline_artifact", "decision_point", "memory_lesson_reuse"}
+    fake_allowed = {
+        "offline_artifact",
+        "decision_point",
+        "memory_lesson_reuse",
+        *runtime_os_scenario_names(),
+    }
     if args.allow_fake and any(name not in fake_allowed for name in names):
         raise AcceptanceFailure(
             "Fake/offline acceptance only supports offline_artifact and decision_point. "
@@ -396,6 +423,13 @@ def run_scenario(
         return run_decision_scenario(args, workspace, scenario)
     if scenario.kind == "memory":
         return run_memory_scenario(args, workspace, scenario)
+    if scenario.kind == "runtime_os":
+        return run_runtime_os_scenario(
+            workspace=workspace,
+            scenario_name=scenario.name,
+            capability=scenario.capability,
+            tier=scenario.tier,
+        )
     started_at = time.monotonic()
     if workspace.exists() and not args.reuse_workspace:
         shutil.rmtree(workspace)

@@ -69,7 +69,7 @@ class FailingProjectPlanClient:
                     "acceptance": ["python -m pytest tests passes"],
                 }
             ],
-            "target_outputs": ["python_module", "tests"],
+            "target_outputs": ["buggy_math.py", "tests/"],
             "definition_of_done": ["pytest passes", "final report lists the repair"],
             "verification_strategy": ["python -m pytest tests"],
             "budget": {"max_iterations": 8, "max_model_calls": 60},
@@ -544,7 +544,7 @@ def _run_failing_tests_project(workspace: Path) -> BenchmarkResult:
             result,
             any(
                 item["decision"] == "discard"
-                and item["metrics_after"]["verification_pass_rate"] == 0.0
+                and item["metrics_after"]["verification_pass_rate"] < 1.0
                 for item in experiments
             ),
             "failed candidate is discarded",
