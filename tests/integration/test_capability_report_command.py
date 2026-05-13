@@ -205,6 +205,13 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     jsonl = JsonlStore(validator)
     run_dir = tmp_path / ".agent" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
+    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir.mkdir(parents=True)
+    store.write(
+        acceptance_dir / "acceptance_report.json",
+        runtime_os_report(tmp_path),
+        "acceptance_report",
+    )
     (run_dir / "run.json").write_text(
         json.dumps(
             {
@@ -234,6 +241,28 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
             "fallback_profile_ids": [],
         },
         "model_profile",
+    )
+    jsonl.append(
+        run_dir / "context_mounts.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "context_mount_id": "context-mount-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "mount_type": "coding_context",
+            "includes": {
+                "root_guidance": True,
+                "goal_brief": True,
+                "task_brief": True,
+                "artifact_refs": [],
+                "failure_evidence_refs": [],
+                "decision_refs": [],
+                "validation_refs": [],
+                "recent_event_count": 3,
+            },
+            "summary": "coding context",
+        },
+        "context_mount",
     )
     jsonl.append(
         run_dir / "runtime_profiles.jsonl",
@@ -284,6 +313,40 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
         "validation_result",
     )
     jsonl.append(
+        run_dir / "events.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "event_id": "event-0001",
+            "run_id": "run-1",
+            "timestamp": "2026-05-13T10:00:00+08:00",
+            "type": "task_graph_selection",
+            "actor": "ExecuteCommand",
+            "summary": "Selected 1 task.",
+            "data": {"reason": "serial_selection", "task_ids": ["task-0001"]},
+        },
+        "event",
+    )
+    jsonl.append(
+        run_dir / "task_execution_evidence.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "task-execution-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "status": "succeeded",
+            "summary": "candidate verified",
+            "failure_type": None,
+            "task": {},
+            "action": {},
+            "candidate": {},
+            "contract_check": {},
+            "tool_results": [],
+            "verification_results": [],
+            "created_at": "2026-05-13T10:00:25+08:00",
+        },
+        "task_execution_evidence",
+    )
+    jsonl.append(
         run_dir / "worker_results.jsonl",
         {
             "schema_version": "0.1.0",
@@ -313,6 +376,14 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     assert route["worker_success_rate"] == 1.0
     assert route["validation_total"] == 1
     assert route["validation_pass_rate"] == 1.0
+    assert result.runtime_os["status"] == "pass"
+    assert result.runtime_os["gate"]["status"] == "pass"
+    assert result.runtime_os["evidence"]["worker_invocations"] == 1
+    assert result.runtime_os["evidence"]["worker_results"] == 1
+    assert result.runtime_os["evidence"]["context_mounts"] == 1
+    assert result.runtime_os["evidence"]["task_execution_evidence"] == 1
+    assert result.runtime_os["evidence"]["task_graph_selections"] == 1
+    assert "Runtime OS release evidence" in result.to_text()
 
 
 def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path) -> None:
@@ -392,4 +463,62 @@ def legacy_scenario(name: str, ok: bool) -> dict:
         "stdout_tail": "",
         "stderr_tail": "",
         "summary": {},
+    }
+
+
+def runtime_os_report(tmp_path: Path) -> dict:
+    scenarios = [
+        runtime_scenario("runtime_parallel_readonly"),
+        runtime_scenario("runtime_disjoint_writes"),
+        runtime_scenario(
+            "runtime_worker_failure",
+            {"failure_evidence": True, "candidate_isolated": True},
+        ),
+        runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
+        runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
+    ]
+    return {
+        "schema_version": "0.1.0",
+        "suite": "core",
+        "requested_scenarios": [],
+        "root": str(tmp_path),
+        "ok": True,
+        "returncode": 0,
+        "created_at": "2026-05-13T10:00:00+08:00",
+        "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+        "aggregate": {"total": 5, "passed": 5, "failed": 0},
+        "trend_warnings": [],
+        "scenarios": scenarios,
+        "scenario_metadata": [
+            {
+                "scenario": item["scenario"],
+                "capability": item["capability"],
+                "tier": item["tier"],
+                "kind": "runtime_os",
+            }
+            for item in scenarios
+        ],
+    }
+
+
+def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
+    evidence = {
+        "workers_jsonl": True,
+        "worker_results_jsonl": True,
+        "runtime_profiles_jsonl": True,
+        "context_mounts_jsonl": True,
+        "validation_results_jsonl": True,
+        "task_execution_evidence_jsonl": True,
+    }
+    evidence.update(extra_evidence or {})
+    return {
+        "scenario": name,
+        "capability": name,
+        "tier": "core",
+        "ok": True,
+        "workspace": None,
+        "failure_summary": "",
+        "stdout_tail": "",
+        "stderr_tail": "",
+        "summary": {"runtime_os": {"capability": name, "evidence": evidence}},
     }

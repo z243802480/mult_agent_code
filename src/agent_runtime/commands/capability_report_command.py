@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
 from agent_runtime.core.acceptance_catalog import (
     acceptance_metadata_index,
     enrich_acceptance_report,
@@ -28,6 +29,7 @@ class CapabilityReportResult:
     tool_calls: int = 0
     model_profiles: list[dict[str, Any]] = field(default_factory=list)
     model_profile_path: Path | None = None
+    runtime_os: dict[str, Any] = field(default_factory=dict)
     common_blockers: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
 
@@ -78,6 +80,27 @@ class CapabilityReportResult:
                 )
         if self.model_profile_path:
             lines.append(f"Model profile: {self.model_profile_path}")
+        if self.runtime_os:
+            lines.append("Runtime OS release evidence:")
+            gate = self.runtime_os.get("gate") or {}
+            lines.append(f"  - gate: {gate.get('status', 'unknown')}")
+            evidence = self.runtime_os.get("evidence") or {}
+            lines.append(
+                "  - workers: "
+                f"{evidence.get('worker_results', 0)} result(s) from "
+                f"{evidence.get('worker_invocations', 0)} invocation(s)"
+            )
+            lines.append(
+                "  - task graph selections: "
+                f"{evidence.get('task_graph_selections', 0)}"
+            )
+            missing = gate.get("missing_capabilities") or []
+            if missing:
+                lines.append("  - missing capabilities: " + ", ".join(missing))
+            missing_evidence = gate.get("missing_evidence") or []
+            if missing_evidence:
+                lines.append("  - missing evidence:")
+                lines.extend(f"    - {item}" for item in missing_evidence[:8])
         if self.common_blockers:
             lines.append("Common blockers:")
             lines.extend(f"  - {item}" for item in self.common_blockers[:5])
@@ -104,12 +127,14 @@ class CapabilityReportCommand:
         model_calls, tool_calls = self._cost_signals(agent_dir)
         model_profiles = self._model_profiles(agent_dir)
         model_profile_path = self._write_model_profile(agent_dir, model_profiles)
+        runtime_os = self._runtime_os_summary(agent_dir, latest)
         next_actions = self._next_actions(
             latest,
             capability_summary,
             failure_types,
             blockers,
             model_profiles,
+            runtime_os,
         )
         return CapabilityReportResult(
             root=self.root,
@@ -122,6 +147,7 @@ class CapabilityReportCommand:
             tool_calls=tool_calls,
             model_profiles=model_profiles,
             model_profile_path=model_profile_path,
+            runtime_os=runtime_os,
             common_blockers=blockers,
             next_actions=next_actions,
         )
@@ -310,6 +336,67 @@ class CapabilityReportCommand:
             ),
         )
 
+    def _runtime_os_summary(
+        self,
+        agent_dir: Path,
+        latest: dict[str, Any],
+    ) -> dict[str, Any]:
+        scenarios = [item for item in latest.get("scenarios", []) if isinstance(item, dict)]
+        required = str(latest.get("suite") or "") in {"core", "nightly"}
+        gate = RuntimeOSGateEvaluator().evaluate(latest, scenarios, required=required).to_dict()
+        evidence = self._runtime_os_release_evidence(agent_dir)
+        status = gate["status"]
+        if not scenarios:
+            status = "missing_acceptance"
+        elif gate["status"] == "pass" and not evidence["worker_results"]:
+            status = "partial"
+        return {
+            "status": status,
+            "gate": gate,
+            "evidence": evidence,
+            "release_ready": gate["status"] == "pass" and bool(evidence["worker_results"]),
+        }
+
+    def _runtime_os_release_evidence(self, agent_dir: Path) -> dict[str, Any]:
+        summary = {
+            "runs_with_workers": 0,
+            "worker_invocations": 0,
+            "worker_results": 0,
+            "failed_worker_results": 0,
+            "runtime_profiles": 0,
+            "context_mounts": 0,
+            "validation_results": 0,
+            "task_execution_evidence": 0,
+            "task_graph_selections": 0,
+        }
+        for run_dir in self._run_dirs(agent_dir):
+            workers = self._read_jsonl(run_dir / "workers.jsonl", "worker_invocation")
+            worker_results = self._read_jsonl(run_dir / "worker_results.jsonl", "worker_result")
+            if workers or worker_results:
+                summary["runs_with_workers"] += 1
+            summary["worker_invocations"] += len(workers)
+            summary["worker_results"] += len(worker_results)
+            summary["failed_worker_results"] += len(
+                [item for item in worker_results if item.get("status") != "succeeded"]
+            )
+            summary["runtime_profiles"] += len(
+                self._read_jsonl(run_dir / "runtime_profiles.jsonl", "runtime_profile")
+            )
+            summary["context_mounts"] += len(
+                self._read_jsonl(run_dir / "context_mounts.jsonl", "context_mount")
+            )
+            summary["validation_results"] += len(
+                self._read_jsonl(run_dir / "validation_results.jsonl", "validation_result")
+            )
+            summary["task_execution_evidence"] += len(
+                self._read_jsonl(run_dir / "task_execution_evidence.jsonl", "task_execution_evidence")
+            )
+            events = self._read_jsonl(run_dir / "events.jsonl", "event")
+            summary["task_graph_selections"] += len(
+                [item for item in events if item.get("type") == "task_graph_selection"]
+            )
+        return summary
+
     def _ensure_model_profile(
         self,
         profiles: dict[tuple[str, str, str, str], dict[str, Any]],
@@ -478,6 +565,9 @@ class CapabilityReportCommand:
             runs_dir = agent_dir / "runs"
             return [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
 
+    def _read_jsonl(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
+        return self.jsonl.read_all(path, schema_name) if path.exists() else []
+
     def _latest_summary(self, latest: dict[str, Any]) -> dict[str, Any]:
         if not latest:
             return {}
@@ -513,6 +603,7 @@ class CapabilityReportCommand:
         failure_types: dict[str, int],
         blockers: list[str],
         model_profiles: list[dict[str, Any]],
+        runtime_os: dict[str, Any],
     ) -> list[str]:
         actions = []
         if not latest:
@@ -544,6 +635,11 @@ class CapabilityReportCommand:
                 for item in weak_models[:3]
             ]
             actions.append("Review weak model routes before scaling long-run work: " + ", ".join(labels))
+        if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
+            actions.append(
+                "Run Runtime OS core acceptance and gate before release: "
+                "`agent /acceptance --suite core` then `agent /acceptance-gate --suite core`."
+            )
         if not model_profiles:
             actions.append("Run a long-run or acceptance cycle to collect model capability data.")
         return list(dict.fromkeys(actions))

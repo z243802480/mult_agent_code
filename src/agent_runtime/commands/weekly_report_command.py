@@ -5,6 +5,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
+from agent_runtime.core.acceptance_catalog import enrich_acceptance_report
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.jsonl_store import JsonlStore
 from agent_runtime.storage.schema_validator import SchemaValidator
@@ -53,9 +55,10 @@ class WeeklyReportCommand:
         agent_dir = self.root / ".agent"
         reports = self._long_run_reports(agent_dir)
         acceptance = self._acceptance_summary(agent_dir)
+        runtime_os = self._runtime_os_summary(agent_dir)
         model_profile = self._model_profile(agent_dir)
-        risk_summary = self._risk_summary(reports, acceptance, model_profile)
-        next_actions = self._next_actions(reports, acceptance, model_profile, risk_summary)
+        risk_summary = self._risk_summary(reports, acceptance, model_profile, runtime_os)
+        next_actions = self._next_actions(reports, acceptance, model_profile, risk_summary, runtime_os)
         report = {
             "schema_version": "0.1.0",
             "week_id": self.week_id,
@@ -65,6 +68,7 @@ class WeeklyReportCommand:
             "summary": self._summary(reports, acceptance, model_profile, risk_summary),
             "long_run": self._long_run_summary(reports),
             "acceptance": acceptance,
+            "runtime_os": runtime_os,
             "model_profile": model_profile,
             "risks": risk_summary,
             "next_actions": next_actions,
@@ -100,7 +104,11 @@ class WeeklyReportCommand:
         history = self.jsonl.read_all(history_path) if history_path.exists() else []
         recent = history[-self.limit :]
         latest_path = agent_dir / "acceptance" / "acceptance_report.json"
-        latest = self.store.read(latest_path, "acceptance_report") if latest_path.exists() else {}
+        latest = (
+            enrich_acceptance_report(self.store.read(latest_path, "acceptance_report"))
+            if latest_path.exists()
+            else {}
+        )
         latest_source = latest or (recent[-1] if recent else {})
         aggregate = latest_source.get("aggregate") if isinstance(latest_source, dict) else {}
         aggregate = aggregate if isinstance(aggregate, dict) else {}
@@ -116,6 +124,67 @@ class WeeklyReportCommand:
             "latest_failed": int(aggregate.get("failed") or len(failures)),
             "failed_scenarios": failures[:10],
         }
+
+    def _runtime_os_summary(self, agent_dir: Path) -> dict[str, Any]:
+        latest_path = agent_dir / "acceptance" / "acceptance_report.json"
+        latest = (
+            enrich_acceptance_report(self.store.read(latest_path, "acceptance_report"))
+            if latest_path.exists()
+            else {}
+        )
+        scenarios = [item for item in latest.get("scenarios", []) if isinstance(item, dict)]
+        required = str(latest.get("suite") or "") in {"core", "nightly"}
+        gate = RuntimeOSGateEvaluator().evaluate(latest, scenarios, required=required).to_dict()
+        evidence = self._runtime_os_release_evidence(agent_dir)
+        status = gate["status"] if latest else "missing_acceptance"
+        if gate["status"] == "pass" and not evidence["worker_results"]:
+            status = "partial"
+        return {
+            "status": status,
+            "gate": gate,
+            "evidence": evidence,
+            "release_ready": gate["status"] == "pass" and bool(evidence["worker_results"]),
+        }
+
+    def _runtime_os_release_evidence(self, agent_dir: Path) -> dict[str, Any]:
+        summary = {
+            "runs_with_workers": 0,
+            "worker_invocations": 0,
+            "worker_results": 0,
+            "failed_worker_results": 0,
+            "runtime_profiles": 0,
+            "context_mounts": 0,
+            "validation_results": 0,
+            "task_execution_evidence": 0,
+            "task_graph_selections": 0,
+        }
+        for run_dir in self._run_dirs(agent_dir):
+            workers = self._read_jsonl(run_dir / "workers.jsonl", "worker_invocation")
+            worker_results = self._read_jsonl(run_dir / "worker_results.jsonl", "worker_result")
+            if workers or worker_results:
+                summary["runs_with_workers"] += 1
+            summary["worker_invocations"] += len(workers)
+            summary["worker_results"] += len(worker_results)
+            summary["failed_worker_results"] += len(
+                [item for item in worker_results if item.get("status") != "succeeded"]
+            )
+            summary["runtime_profiles"] += len(
+                self._read_jsonl(run_dir / "runtime_profiles.jsonl", "runtime_profile")
+            )
+            summary["context_mounts"] += len(
+                self._read_jsonl(run_dir / "context_mounts.jsonl", "context_mount")
+            )
+            summary["validation_results"] += len(
+                self._read_jsonl(run_dir / "validation_results.jsonl", "validation_result")
+            )
+            summary["task_execution_evidence"] += len(
+                self._read_jsonl(run_dir / "task_execution_evidence.jsonl", "task_execution_evidence")
+            )
+            events = self._read_jsonl(run_dir / "events.jsonl", "event")
+            summary["task_graph_selections"] += len(
+                [item for item in events if item.get("type") == "task_graph_selection"]
+            )
+        return summary
 
     def _model_profile(self, agent_dir: Path) -> dict[str, Any]:
         path = agent_dir / "model" / "capability_profile.json"
@@ -164,6 +233,7 @@ class WeeklyReportCommand:
         reports: list[dict[str, Any]],
         acceptance: dict[str, Any],
         model_profile: dict[str, Any],
+        runtime_os: dict[str, Any],
     ) -> list[str]:
         risks = []
         if not reports:
@@ -181,6 +251,8 @@ class WeeklyReportCommand:
                 for item in model_profile["weak_routes"][:3]
             ]
             risks.append("Weak model routes need review: " + ", ".join(labels))
+        if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
+            risks.append(f"Runtime OS release evidence is {runtime_os.get('status')}.")
         for report in reports:
             for risk in report.get("risks", [])[:3]:
                 risks.append(str(risk))
@@ -189,7 +261,10 @@ class WeeklyReportCommand:
     def _status(self, risks: list[str]) -> str:
         if not risks:
             return "healthy"
-        if any("Acceptance failures remain" in risk for risk in risks):
+        if any(
+            "Acceptance failures remain" in risk or "Runtime OS release evidence is fail" in risk
+            for risk in risks
+        ):
             return "blocked"
         return "needs_attention"
 
@@ -213,6 +288,7 @@ class WeeklyReportCommand:
         acceptance: dict[str, Any],
         model_profile: dict[str, Any],
         risks: list[str],
+        runtime_os: dict[str, Any],
     ) -> list[str]:
         actions = []
         if not reports:
@@ -223,6 +299,8 @@ class WeeklyReportCommand:
             actions.append("Run `agent /capability-report` to generate model capability data.")
         elif model_profile.get("weak_routes"):
             actions.append("Review weak model routes before scaling long-run execution.")
+        if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
+            actions.append("Run `agent /acceptance --suite core` and `agent /acceptance-gate --suite core`.")
         if not risks:
             actions.append("Continue with the next long-run cycle and keep acceptance gated.")
         return list(dict.fromkeys(actions))
@@ -252,6 +330,13 @@ class WeeklyReportCommand:
             f"- Status: {report['model_profile']['status']}",
             f"- Profiles: {report['model_profile']['profile_count']}",
             "",
+            "## Runtime OS",
+            "",
+            f"- Status: {report['runtime_os']['status']}",
+            f"- Gate: {report['runtime_os']['gate'].get('status')}",
+            f"- Worker results: {report['runtime_os']['evidence'].get('worker_results')}",
+            f"- Task graph selections: {report['runtime_os']['evidence'].get('task_graph_selections')}",
+            "",
             "## Risks",
             "",
         ]
@@ -259,3 +344,10 @@ class WeeklyReportCommand:
         lines.extend(["", "## Next Actions", ""])
         lines.extend(f"- {item}" for item in report["next_actions"])
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _run_dirs(self, agent_dir: Path) -> list[Path]:
+        runs_dir = agent_dir / "runs"
+        return [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
+
+    def _read_jsonl(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
+        return self.jsonl.read_all(path, schema_name) if path.exists() else []
