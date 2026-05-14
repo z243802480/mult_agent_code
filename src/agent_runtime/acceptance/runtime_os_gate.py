@@ -106,6 +106,16 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: missing merge gate block"
         if key == "resume_recovered":
             return f"{scenario_name}: missing resume recovery"
+        if key == "context_package_sliced":
+            return f"{scenario_name}: context package was not sliced by read_scope"
+        if key == "sandbox_backend_recorded":
+            return f"{scenario_name}: missing sandbox backend and selection reason"
+        if key == "planner_scope_narrowed":
+            return f"{scenario_name}: planner did not narrow broad write_scope"
+        if key == "runtime_request_created":
+            return f"{scenario_name}: worker did not create an auditable runtime request"
+        if key == "capability_feedback_recorded":
+            return f"{scenario_name}: capability profile did not record runtime feedback signals"
         return f"{scenario_name}: missing {key}"
 
 

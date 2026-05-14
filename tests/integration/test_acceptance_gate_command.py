@@ -266,6 +266,22 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
                 runtime_scenario("runtime_worker_failure", {"failure_evidence": True, "candidate_isolated": True}),
                 runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
                 runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
+                runtime_scenario(
+                    "runtime_context_package_slice",
+                    {"context_package_sliced": True},
+                ),
+                runtime_scenario(
+                    "runtime_sandbox_backend_selection",
+                    {"sandbox_backend_recorded": True},
+                ),
+                runtime_scenario(
+                    "runtime_planner_scope_quality",
+                    {"planner_scope_narrowed": True, "runtime_request_created": True},
+                ),
+                runtime_scenario(
+                    "runtime_capability_feedback",
+                    {"capability_feedback_recorded": True},
+                ),
             ],
         },
     )
@@ -274,8 +290,8 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
         tmp_path,
         report_path=report_path,
         suite="core",
-        min_scenarios=5,
-        min_capabilities=5,
+        min_scenarios=9,
+        min_capabilities=9,
         require_tiers=["core"],
     ).run()
 
@@ -314,6 +330,12 @@ def legacy_scenario(name: str, ok: bool) -> dict:
 
 
 def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
+    capability = {
+        "runtime_context_package_slice": "context_package_slice",
+        "runtime_sandbox_backend_selection": "sandbox_backend_selection",
+        "runtime_planner_scope_quality": "planner_scope_quality",
+        "runtime_capability_feedback": "capability_feedback",
+    }.get(name, name)
     evidence = {
         "workers_jsonl": True,
         "worker_results_jsonl": True,
@@ -325,7 +347,7 @@ def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
     evidence.update(extra_evidence or {})
     return {
         "scenario": name,
-        "capability": name,
+        "capability": capability,
         "tier": "core",
         "ok": True,
         "workspace": None,
@@ -334,7 +356,7 @@ def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
         "stderr_tail": "",
         "summary": {
             "runtime_os": {
-                "capability": name,
+                "capability": capability,
                 "evidence": evidence,
             }
         },

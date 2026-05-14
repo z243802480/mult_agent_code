@@ -48,6 +48,26 @@ RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
         capability="runtime_request_resume",
         special_evidence=("resume_recovered",),
     ),
+    RuntimeOSCapability(
+        scenario="runtime_context_package_slice",
+        capability="context_package_slice",
+        special_evidence=("context_package_sliced",),
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_sandbox_backend_selection",
+        capability="sandbox_backend_selection",
+        special_evidence=("sandbox_backend_recorded",),
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_planner_scope_quality",
+        capability="planner_scope_quality",
+        special_evidence=("planner_scope_narrowed", "runtime_request_created"),
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_capability_feedback",
+        capability="capability_feedback",
+        special_evidence=("capability_feedback_recorded",),
+    ),
 )
 
 

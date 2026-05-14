@@ -6,6 +6,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agent_runtime.acceptance.runtime_os_catalog import (
+    runtime_os_capability_names,
+    runtime_os_scenario_names,
+)
 from agent_runtime.commands.acceptance_command import (
     AcceptanceCommand,
     AcceptanceFailurePromoter,
@@ -71,13 +75,7 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
 
 def test_acceptance_runtime_os_scenarios_feed_release_gate(tmp_path: Path) -> None:
     root = tmp_path / "runtime-os"
-    scenarios = [
-        "runtime_parallel_readonly",
-        "runtime_disjoint_writes",
-        "runtime_worker_failure",
-        "runtime_merge_gate_block",
-        "runtime_request_resume",
-    ]
+    scenarios = runtime_os_scenario_names()
 
     result = AcceptanceCommand(
         root,
@@ -88,15 +86,15 @@ def test_acceptance_runtime_os_scenarios_feed_release_gate(tmp_path: Path) -> No
     gate = AcceptanceGateCommand(
         root,
         suite="core",
-        min_scenarios=5,
-        min_capabilities=5,
+        min_scenarios=len(scenarios),
+        min_capabilities=len(scenarios),
         require_tiers=["core"],
     ).run()
 
     assert result.ok
     assert gate.ok
     assert gate.runtime_os["status"] == "pass"
-    assert gate.runtime_os["covered_capabilities"] == scenarios
+    assert gate.runtime_os["covered_capabilities"] == runtime_os_capability_names()
 
 
 def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path: Path) -> None:

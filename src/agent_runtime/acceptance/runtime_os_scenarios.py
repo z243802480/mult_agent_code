@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 class RuntimeAcceptanceClient:
     def __init__(self, mode: str) -> None:
         self.mode = mode
+        self.seen_context_package: dict[str, Any] = {}
 
     def chat(self, request: Any) -> Any:
         from agent_runtime.models.base import ChatResponse, TokenUsage
@@ -114,6 +115,116 @@ class RuntimeAcceptanceClient:
                 "verification": [],
                 "completion_notes": "runtime request expected",
             }
+        elif self.mode == "context_package":
+            package = payload.get("runtime_context", {}).get("context_package", {})
+            read_files = package.get("read_scope_files") if isinstance(package, dict) else []
+            read_files = read_files if isinstance(read_files, list) else []
+            paths = [
+                str(item.get("path"))
+                for item in read_files
+                if isinstance(item, dict) and item.get("path")
+            ]
+            self.seen_context_package = {
+                "paths": paths,
+                "has_scoped_file": "input/scoped.txt" in paths,
+                "has_unscoped_file": "input/unscoped.txt" in paths,
+            }
+            action = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Use sliced context package input.",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "out/context.txt",
+                            "content": "sliced context observed",
+                            "overwrite": True,
+                        },
+                        "reason": "write scoped output",
+                    }
+                ],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": (
+                                "python -c \"from pathlib import Path; "
+                                "assert Path('out/context.txt').read_text(encoding='utf-8') "
+                                "== 'sliced context observed'\""
+                            )
+                        },
+                        "reason": "verify sliced context output",
+                    }
+                ],
+                "completion_notes": "context package slice verified",
+            }
+        elif self.mode == "planner_scope":
+            action = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Request the narrowed planner scope to be expanded.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [
+                    {
+                        "request_type": "scope_expansion",
+                        "risk": "medium",
+                        "reason": "Planner intentionally withheld broad write_scope.",
+                        "details": {"write_scope": ["src/runtime_scope_target.py"]},
+                    }
+                ],
+                "completion_notes": "runtime request expected",
+            }
+        elif self.mode == "feedback":
+            if task_id == "task-0001":
+                action = {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Create feedback validation artifact.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "out/feedback.txt",
+                                "content": "feedback",
+                                "overwrite": True,
+                            },
+                            "reason": "write feedback artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c \"from pathlib import Path; "
+                                    "assert Path('out/feedback.txt').read_text(encoding='utf-8') "
+                                    "== 'feedback'\""
+                                )
+                            },
+                            "reason": "verify feedback artifact",
+                        }
+                    ],
+                    "completion_notes": "feedback validation passed",
+                }
+            else:
+                action = {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Request feedback scope expansion.",
+                    "tool_calls": [],
+                    "verification": [],
+                    "runtime_requests": [
+                        {
+                            "request_type": "scope_expansion",
+                            "risk": "medium",
+                            "reason": "Collect runtime request signal for capability feedback.",
+                            "details": {"write_scope": ["out/feedback-request.txt"]},
+                        }
+                    ],
+                    "completion_notes": "runtime feedback request expected",
+                }
         else:
             raise ValueError(f"Unknown runtime acceptance mode: {self.mode}")
         return ChatResponse(
@@ -149,6 +260,14 @@ def run_runtime_os_scenario(
             ok, summary = _runtime_merge_gate_block(workspace)
         elif scenario_name == "runtime_request_resume":
             ok, summary = _runtime_request_resume(workspace)
+        elif scenario_name == "runtime_context_package_slice":
+            ok, summary = _runtime_context_package_slice(workspace)
+        elif scenario_name == "runtime_sandbox_backend_selection":
+            ok, summary = _runtime_sandbox_backend_selection(workspace)
+        elif scenario_name == "runtime_planner_scope_quality":
+            ok, summary = _runtime_planner_scope_quality(workspace)
+        elif scenario_name == "runtime_capability_feedback":
+            ok, summary = _runtime_capability_feedback(workspace)
         else:
             raise ValueError(f"Unknown runtime OS scenario: {scenario_name}")
     except Exception as exc:  # noqa: BLE001 - scenario summary should preserve diagnostics
@@ -339,6 +458,212 @@ def _runtime_request_resume(workspace: Path) -> tuple[bool, dict[str, Any]]:
         run_id,
         evidence,
         result=resumed.to_text(),
+    )
+
+
+def _runtime_context_package_slice(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from agent_runtime.commands.execute_command import ExecuteCommand
+
+    (workspace / "input").mkdir(parents=True, exist_ok=True)
+    (workspace / "input" / "scoped.txt").write_text("keep me", encoding="utf-8")
+    (workspace / "input" / "unscoped.txt").write_text("omit me", encoding="utf-8")
+    task = _runtime_task(
+        "task-0001",
+        "Use sliced context",
+        write_scope=["out/context.txt"],
+    )
+    task["read_scope"] = ["input/scoped.txt"]
+    run_id = _seed_runtime_run(workspace, [task])
+    client = RuntimeAcceptanceClient("context_package")
+    result = ExecuteCommand(workspace, run_id=run_id, model_client=client).run()
+    run_dir = workspace / ".agent" / "runs" / run_id
+    evidence = _runtime_evidence(run_dir)
+    evidence["context_package_sliced"] = bool(
+        client.seen_context_package.get("has_scoped_file")
+        and not client.seen_context_package.get("has_unscoped_file")
+    )
+    ok = (
+        result.completed == 1
+        and evidence["context_package_sliced"]
+        and (workspace / "out" / "context.txt").read_text(encoding="utf-8")
+        == "sliced context observed"
+    )
+    summary = _runtime_summary("context_package_slice", run_id, evidence, result=result.to_text())
+    summary["runtime_os"]["context_package"] = client.seen_context_package
+    return ok, summary
+
+
+def _runtime_sandbox_backend_selection(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from agent_runtime.commands.execute_command import ExecuteCommand
+
+    run_id = _seed_runtime_run(
+        workspace,
+        [_runtime_task("task-0001", "Select sandbox backend", write_scope=["out/alpha.txt"])],
+    )
+    result = ExecuteCommand(
+        workspace,
+        run_id=run_id,
+        model_client=RuntimeAcceptanceClient("disjoint"),
+    ).run()
+    run_dir = workspace / ".agent" / "runs" / run_id
+    evidence = _runtime_evidence(run_dir)
+    sandbox_profiles = _read_jsonl(run_dir / "sandbox_profiles.jsonl")
+    recorded = [
+        item
+        for item in sandbox_profiles
+        if item.get("backend") in {"git_worktree", "temp_workspace", "single_workspace"}
+        and item.get("reason")
+    ]
+    evidence["sandbox_backend_recorded"] = bool(recorded)
+    ok = result.completed == 1 and evidence["sandbox_backend_recorded"]
+    summary = _runtime_summary(
+        "sandbox_backend_selection",
+        run_id,
+        evidence,
+        result=result.to_text(),
+    )
+    summary["runtime_os"]["sandbox_profiles"] = recorded[-3:]
+    return ok, summary
+
+
+def _runtime_planner_scope_quality(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from agent_runtime.agents.planner import RequirementPlanner
+    from agent_runtime.commands.execute_command import ExecuteCommand
+
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-runtime-os",
+        "original_goal": "Improve the src package behavior.",
+        "normalized_goal": "Improve the src package behavior.",
+        "goal_type": "codebase_improvement",
+        "assumptions": [],
+        "constraints": [],
+        "non_goals": [],
+        "expanded_requirements": [
+            {
+                "id": "req-runtime-scope",
+                "priority": "must",
+                "description": "Improve behavior across src without a known concrete file.",
+                "acceptance": ["Behavior improvement is implemented and verified."],
+                "expected_artifacts": ["src/"],
+            }
+        ],
+        "target_outputs": ["src/"],
+        "definition_of_done": ["Behavior improvement is implemented and verified."],
+        "verification_strategy": ["local command"],
+        "budget": {"max_iterations": 2, "max_model_calls": 10},
+    }
+    planned_task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
+    planned_task["status"] = "ready"
+    run_id = _seed_runtime_run(workspace, [planned_task])
+    result = ExecuteCommand(
+        workspace,
+        run_id=run_id,
+        model_client=RuntimeAcceptanceClient("planner_scope"),
+    ).run()
+    run_dir = workspace / ".agent" / "runs" / run_id
+    evidence = _runtime_evidence(run_dir)
+    runtime_requests = _read_jsonl(run_dir / "runtime_requests.jsonl")
+    notes = str(planned_task.get("notes", "")).lower()
+    evidence["planner_scope_narrowed"] = (
+        planned_task.get("write_scope") == []
+        and "scope quality" in notes
+        and "scope request" in notes
+    )
+    evidence["runtime_request_created"] = any(
+        item.get("request_type") == "scope_expansion" for item in runtime_requests
+    )
+    ok = result.blocked == 1 and evidence["planner_scope_narrowed"] and evidence["runtime_request_created"]
+    summary = _runtime_summary("planner_scope_quality", run_id, evidence, result=result.to_text())
+    summary["runtime_os"]["planned_task"] = {
+        "write_scope": planned_task.get("write_scope"),
+        "parallel_safety": planned_task.get("parallel_safety"),
+        "notes": planned_task.get("notes"),
+    }
+    return ok, summary
+
+
+def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from agent_runtime.commands.capability_report_command import CapabilityReportCommand
+    from agent_runtime.commands.execute_command import ExecuteCommand
+
+    run_id = _seed_runtime_run(
+        workspace,
+        [
+            _runtime_task("task-0001", "Collect validation signal", write_scope=["out/feedback.txt"]),
+            _runtime_task(
+                "task-0002",
+                "Collect runtime request signal",
+                write_scope=["out/feedback-request.txt"],
+            ),
+        ],
+    )
+    result = ExecuteCommand(
+        workspace,
+        run_id=run_id,
+        max_tasks=2,
+        model_client=RuntimeAcceptanceClient("feedback"),
+    ).run()
+    run_dir = workspace / ".agent" / "runs" / run_id
+    _append_merge_gate_feedback(run_dir, run_id)
+    report = CapabilityReportCommand(workspace).run()
+    profiles = report.model_profiles
+    profile = next(
+        (
+            item
+            for item in profiles
+            if item.get("provider") == "runtime"
+            and item.get("model") == "medium-route"
+            and item.get("purpose") == "coding"
+        ),
+        {},
+    )
+    evidence = _runtime_evidence(run_dir)
+    evidence["capability_feedback_recorded"] = bool(
+        profile
+        and int(profile.get("runtime_request_total") or 0) >= 1
+        and int(profile.get("merge_gate_blocks") or 0) >= 1
+        and int(profile.get("validation_total") or 0) >= 1
+    )
+    ok = result.completed == 1 and result.blocked == 1 and evidence["capability_feedback_recorded"]
+    summary = _runtime_summary("capability_feedback", run_id, evidence, result=report.to_text())
+    summary["runtime_os"]["capability_profile"] = profile
+    return ok, summary
+
+
+def _append_merge_gate_feedback(run_dir: Path, run_id: str) -> None:
+    from agent_runtime.storage.jsonl_store import JsonlStore
+    from agent_runtime.storage.schema_validator import SchemaValidator
+
+    validator = SchemaValidator(REPO_ROOT / "schemas")
+    JsonlStore(validator).append(
+        run_dir / "task_execution_evidence.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "evidence-merge-feedback",
+            "run_id": run_id,
+            "task_id": "task-0001",
+            "status": "blocked",
+            "summary": "Synthetic merge gate signal for capability feedback acceptance.",
+            "failure_type": "merge_gate",
+            "task": {"task_id": "task-0001"},
+            "action": {"summary": "feedback merge gate"},
+            "candidate": {"changed_files": ["out/feedback.txt", "unsafe/feedback.txt"]},
+            "contract_check": {
+                "ok": False,
+                "changed_files": ["out/feedback.txt", "unsafe/feedback.txt"],
+                "merge_gate": {
+                    "ok": False,
+                    "summary": "unsafe/feedback.txt outside write_scope",
+                    "violations": ["unsafe/feedback.txt outside write_scope"],
+                    "promotable_files": ["out/feedback.txt"],
+                },
+            },
+            "tool_results": [],
+            "verification_results": [],
+            "created_at": now_iso(),
+        },
+        "task_execution_evidence",
     )
 
 

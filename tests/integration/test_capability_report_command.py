@@ -504,6 +504,16 @@ def runtime_os_report(tmp_path: Path) -> dict:
         ),
         runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
         runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
+        runtime_scenario("runtime_context_package_slice", {"context_package_sliced": True}),
+        runtime_scenario(
+            "runtime_sandbox_backend_selection",
+            {"sandbox_backend_recorded": True},
+        ),
+        runtime_scenario(
+            "runtime_planner_scope_quality",
+            {"planner_scope_narrowed": True, "runtime_request_created": True},
+        ),
+        runtime_scenario("runtime_capability_feedback", {"capability_feedback_recorded": True}),
     ]
     return {
         "schema_version": "0.1.0",
@@ -514,7 +524,7 @@ def runtime_os_report(tmp_path: Path) -> dict:
         "returncode": 0,
         "created_at": "2026-05-13T10:00:00+08:00",
         "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
-        "aggregate": {"total": 5, "passed": 5, "failed": 0},
+        "aggregate": {"total": len(scenarios), "passed": len(scenarios), "failed": 0},
         "trend_warnings": [],
         "scenarios": scenarios,
         "scenario_metadata": [
@@ -530,6 +540,12 @@ def runtime_os_report(tmp_path: Path) -> dict:
 
 
 def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
+    capability = {
+        "runtime_context_package_slice": "context_package_slice",
+        "runtime_sandbox_backend_selection": "sandbox_backend_selection",
+        "runtime_planner_scope_quality": "planner_scope_quality",
+        "runtime_capability_feedback": "capability_feedback",
+    }.get(name, name)
     evidence = {
         "workers_jsonl": True,
         "worker_results_jsonl": True,
@@ -541,12 +557,12 @@ def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
     evidence.update(extra_evidence or {})
     return {
         "scenario": name,
-        "capability": name,
+        "capability": capability,
         "tier": "core",
         "ok": True,
         "workspace": None,
         "failure_summary": "",
         "stdout_tail": "",
         "stderr_tail": "",
-        "summary": {"runtime_os": {"capability": name, "evidence": evidence}},
+        "summary": {"runtime_os": {"capability": capability, "evidence": evidence}},
     }
