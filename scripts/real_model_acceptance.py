@@ -83,6 +83,54 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="offline verification artifact",
         max_iterations=3,
     ),
+    "gray_file_artifact": AcceptanceScenario(
+        name="gray_file_artifact",
+        capability="gray_artifact_creation",
+        tier="gray",
+        goal=(
+            "Create a local file gray_runtime.txt containing one line: "
+            "gray route artifact ok"
+        ),
+        expected_file="gray_runtime.txt",
+        expected_text="gray route artifact ok",
+        max_iterations=3,
+    ),
+    "gray_multi_file_scope": AcceptanceScenario(
+        name="gray_multi_file_scope",
+        capability="gray_multi_file_scope",
+        tier="gray",
+        goal=(
+            "Create a small multi-file Python notes CLI. Use a package directory named notes_app "
+            "with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support "
+            "`python notes.py add \"ship gray\"` and `python notes.py list`, storing notes in "
+            "notes.json under the current directory."
+        ),
+        expected_file="notes.py",
+        expected_text="notes_app",
+        max_iterations=5,
+    ),
+    "gray_debug_repair": AcceptanceScenario(
+        name="gray_debug_repair",
+        capability="gray_debug_repair",
+        tier="gray",
+        goal=(
+            "Fix the failing tests in this project. Run the Python tests, identify the bug in "
+            "buggy_math.py, and make the tests pass with the smallest reasonable change."
+        ),
+        expected_file="buggy_math.py",
+        expected_text="return a + b",
+        max_iterations=5,
+        setup_files={
+            "buggy_math.py": "def add(a, b):\n    return a - b\n",
+            "test_buggy_math.py": (
+                "from buggy_math import add\n\n\n"
+                "def test_adds_positive_numbers():\n"
+                "    assert add(2, 3) == 5\n\n\n"
+                "def test_adds_negative_numbers():\n"
+                "    assert add(-2, -3) == -5\n"
+            ),
+        },
+    ),
     "failing_tests_repair": AcceptanceScenario(
         name="failing_tests_repair",
         capability="test_driven_repair",
@@ -266,6 +314,12 @@ SUITES = {
         "config_driven_report",
         *runtime_os_scenario_names(),
     ],
+    "gray": [
+        "gray_file_artifact",
+        "gray_multi_file_scope",
+        "gray_debug_repair",
+        "runtime_request_resume",
+    ],
     "advanced": [
         "failing_tests_repair",
         "docs_code_sync",
@@ -304,6 +358,7 @@ def main() -> None:
         for scenario in selected:
             results.append(run_scenario(args, root, scenario))
         scenario_metadata = scenario_metadata_for(selected)
+        aggregate = aggregate_results(results, scenario_metadata)
         summary = {
             "ok": all(result["ok"] for result in results),
             "root": str(root),
@@ -312,7 +367,8 @@ def main() -> None:
             "created_at": now_iso(),
             "scenario_metadata": scenario_metadata,
             "scenarios": results,
-            "aggregate": aggregate_results(results, scenario_metadata),
+            "aggregate": aggregate,
+            "gray_ready": gray_ready(args.suite, aggregate),
         }
         attach_history(args.history_jsonl, summary)
         write_summary(args.summary_json, summary)
@@ -335,6 +391,7 @@ def main() -> None:
                     "scenario_metadata": scenario_metadata_for(selected),
                     "scenarios": results,
                     "aggregate": aggregate_results(results, scenario_metadata_for(selected)),
+                    "gray_ready": False,
                     "error": str(exc),
                 },
             )
@@ -524,6 +581,8 @@ def run_scenario(
             break
     if completed is None:
         raise AcceptanceFailure(f"Scenario did not execute: {scenario.name}")
+    summary = read_json(summary_path)
+    route_evidence = route_evidence_from_smoke_summary(summary)
     return {
         "scenario": scenario.name,
         "capability": scenario.capability,
@@ -532,7 +591,8 @@ def run_scenario(
         "workspace": str(workspace),
         "duration_seconds": round(time.monotonic() - started_at, 3),
         "attempts": attempts,
-        "summary": read_json(summary_path),
+        "summary": summary,
+        "route_evidence": route_evidence,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
     }
@@ -748,6 +808,7 @@ def aggregate_results(
     }
     capability_status: dict[str, dict[str, Any]] = {}
     tier_status: dict[str, dict[str, Any]] = {}
+    route_evidence = aggregate_route_evidence(results)
     aggregate: dict[str, Any] = {
         "total": len(results),
         "passed": len([result for result in results if result.get("ok")]),
@@ -766,6 +827,7 @@ def aggregate_results(
         ],
         "capabilities": capability_status,
         "tiers": tier_status,
+        "route_evidence": route_evidence,
     }
     for result in results:
         name = str(result.get("scenario") or "")
@@ -790,6 +852,85 @@ def aggregate_results(
         ):
             aggregate[key] += int(diagnostics.get(key) or 0)
     return aggregate
+
+
+def route_evidence_from_smoke_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    workspace = summary.get("workspace")
+    run_id = summary.get("run_id")
+    if not workspace or not run_id:
+        return {"available": False, "reason": "missing workspace or run_id"}
+    run_dir = Path(str(workspace)) / ".agent" / "runs" / str(run_id)
+    model_calls = read_jsonl(run_dir / "model_calls.jsonl")
+    worker_results = read_jsonl(run_dir / "worker_results.jsonl")
+    task_evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")
+    tiers = sorted({str(call.get("model_tier") or "unknown") for call in model_calls})
+    providers_by_tier: dict[str, set[str]] = {}
+    purposes_by_tier: dict[str, set[str]] = {}
+    for call in model_calls:
+        tier = str(call.get("model_tier") or "unknown")
+        providers_by_tier.setdefault(tier, set()).add(str(call.get("model_provider") or "unknown"))
+        purposes_by_tier.setdefault(tier, set()).add(str(call.get("purpose") or "unknown"))
+    return {
+        "available": True,
+        "run_id": str(run_id),
+        "model_call_count": len(model_calls),
+        "worker_result_count": len(worker_results),
+        "task_execution_evidence_count": len(task_evidence),
+        "tiers": tiers,
+        "providers_by_tier": {
+            tier: sorted(providers) for tier, providers in sorted(providers_by_tier.items())
+        },
+        "purposes_by_tier": {
+            tier: sorted(purposes) for tier, purposes in sorted(purposes_by_tier.items())
+        },
+        "strong_used": "strong" in tiers,
+        "medium_used": "medium" in tiers,
+    }
+
+
+def aggregate_route_evidence(results: list[dict[str, Any]]) -> dict[str, Any]:
+    scenarios_with_route_evidence = []
+    scenarios_missing_strong = []
+    scenarios_missing_medium = []
+    providers_by_tier: dict[str, set[str]] = {}
+    for result in results:
+        evidence = result.get("route_evidence")
+        if not isinstance(evidence, dict) or not evidence.get("available"):
+            continue
+        scenario = str(result.get("scenario") or "unknown")
+        scenarios_with_route_evidence.append(scenario)
+        if not evidence.get("strong_used"):
+            scenarios_missing_strong.append(scenario)
+        if not evidence.get("medium_used"):
+            scenarios_missing_medium.append(scenario)
+        raw_providers = evidence.get("providers_by_tier")
+        if isinstance(raw_providers, dict):
+            for tier, providers in raw_providers.items():
+                target = providers_by_tier.setdefault(str(tier), set())
+                if isinstance(providers, list):
+                    target.update(str(provider) for provider in providers)
+    return {
+        "scenarios_with_route_evidence": scenarios_with_route_evidence,
+        "scenarios_missing_strong": scenarios_missing_strong,
+        "scenarios_missing_medium": scenarios_missing_medium,
+        "providers_by_tier": {
+            tier: sorted(providers) for tier, providers in sorted(providers_by_tier.items())
+        },
+        "strong_used": bool(scenarios_with_route_evidence) and not scenarios_missing_strong,
+        "medium_used": bool(scenarios_with_route_evidence) and not scenarios_missing_medium,
+    }
+
+
+def gray_ready(suite: str, aggregate: dict[str, Any]) -> bool:
+    if suite != "gray":
+        return False
+    route_evidence = aggregate.get("route_evidence")
+    return bool(
+        aggregate.get("failed") == 0
+        and isinstance(route_evidence, dict)
+        and route_evidence.get("strong_used")
+        and route_evidence.get("medium_used")
+    )
 
 
 def _add_status(target: dict[str, dict[str, Any]], key: str, ok: bool) -> None:
@@ -847,12 +988,10 @@ def compare_with_previous(
 ) -> dict[str, Any]:
     if previous is None:
         return {"previous": None, "deltas": {}}
-    previous_aggregate = (
-        previous.get("aggregate") if isinstance(previous.get("aggregate"), dict) else {}
-    )
-    current_aggregate = (
-        current.get("aggregate") if isinstance(current.get("aggregate"), dict) else {}
-    )
+    raw_previous_aggregate = previous.get("aggregate")
+    raw_current_aggregate = current.get("aggregate")
+    previous_aggregate = raw_previous_aggregate if isinstance(raw_previous_aggregate, dict) else {}
+    current_aggregate = raw_current_aggregate if isinstance(raw_current_aggregate, dict) else {}
     delta_keys = [
         "passed",
         "failed",
@@ -908,9 +1047,9 @@ def run_agent_command(workspace: Path, allow_fake: bool, *args: str) -> dict[str
     }
 
 
-def read_json(path: Path) -> dict[str, Any] | None:
+def read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return None
+        return {}
     return json.loads(path.read_text(encoding="utf-8"))
 
 

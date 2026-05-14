@@ -349,7 +349,9 @@ def report_path(args: argparse.Namespace, workspace: Path) -> Path:
 
 def recommended_actions(failures: list[str]) -> list[str]:
     if not failures:
-        return ["Proceed to controlled real-model acceptance scenarios."]
+        return [
+            "Run `python scripts/real_model_acceptance.py --suite gray` before core acceptance."
+        ]
     actions = ["Fix failed route checks before gray release validation."]
     if any("strong" in failure for failure in failures):
         actions.append("Check GLM/coordinator provider key, endpoint, JSON response, and tier routing.")

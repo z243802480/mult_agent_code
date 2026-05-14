@@ -9,7 +9,9 @@ from pathlib import Path
 from scripts.real_model_acceptance import (
     SCENARIOS,
     SUITES,
+    aggregate_results,
     classify_acceptance_subprocess_failure,
+    gray_ready,
 )
 
 
@@ -19,6 +21,15 @@ def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
     assert "safe_file_renamer" in SUITES["nightly"]
     assert "multi_file_todo_cli" in SUITES["core"]
     assert "config_driven_report" in SUITES["core"]
+    assert SUITES["gray"] == [
+        "gray_file_artifact",
+        "gray_multi_file_scope",
+        "gray_debug_repair",
+        "runtime_request_resume",
+    ]
+    assert SCENARIOS["gray_file_artifact"].tier == "gray"
+    assert SCENARIOS["gray_multi_file_scope"].capability == "gray_multi_file_scope"
+    assert SCENARIOS["gray_debug_repair"].setup_files
     assert "docs_code_sync" in SUITES["advanced"]
     assert SCENARIOS["multi_file_todo_cli"].capability == "multi_file_change"
 
@@ -74,6 +85,7 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     assert summary["aggregate"]["tool_calls"] > 0
     assert summary["scenario_metadata"][0]["capability"] == "offline_artifact"
     assert summary["aggregate"]["capabilities"]["offline_artifact"]["passed"] == 1
+    assert summary["gray_ready"] is False
     assert [scenario["scenario"] for scenario in summary["scenarios"]] == ["offline_artifact"]
     assert summary["scenarios"][0]["duration_seconds"] >= 0
     assert summary["scenarios"][0]["attempts"][0]["attempt"] == 1
@@ -113,7 +125,7 @@ def test_real_model_acceptance_rejects_fake_for_real_scenarios(tmp_path: Path) -
     )
 
     assert completed.returncode == 1
-    assert "Fake/offline acceptance only supports offline_artifact" in completed.stderr
+    assert "Fake/offline acceptance only supports offline_artifact and decision_point" in completed.stderr
 
 
 def test_real_model_acceptance_runs_decision_point_without_model(
@@ -203,3 +215,65 @@ def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> Non
 
     assert retryable is True
     assert failure_type == "rate_limited"
+
+
+def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:
+    results = [
+        {
+            "scenario": "gray_file_artifact",
+            "capability": "gray_artifact_creation",
+            "tier": "gray",
+            "ok": True,
+            "route_evidence": {
+                "available": True,
+                "strong_used": True,
+                "medium_used": True,
+                "providers_by_tier": {"strong": ["zai"], "medium": ["minimax"]},
+            },
+            "summary": {"diagnostics": {"model_calls": 2, "tool_calls": 1}},
+        },
+        {
+            "scenario": "gray_multi_file_scope",
+            "capability": "gray_multi_file_scope",
+            "tier": "gray",
+            "ok": True,
+            "route_evidence": {
+                "available": True,
+                "strong_used": True,
+                "medium_used": True,
+                "providers_by_tier": {"strong": ["zai"], "medium": ["minimax"]},
+            },
+            "summary": {"diagnostics": {"model_calls": 3, "tool_calls": 2}},
+        },
+    ]
+
+    aggregate = aggregate_results(results)
+
+    assert gray_ready("gray", aggregate) is True
+    assert aggregate["route_evidence"]["strong_used"] is True
+    assert aggregate["route_evidence"]["medium_used"] is True
+    assert aggregate["route_evidence"]["providers_by_tier"]["strong"] == ["zai"]
+    assert aggregate["route_evidence"]["providers_by_tier"]["medium"] == ["minimax"]
+
+
+def test_gray_ready_blocks_missing_medium_route_evidence() -> None:
+    aggregate = aggregate_results(
+        [
+            {
+                "scenario": "gray_file_artifact",
+                "capability": "gray_artifact_creation",
+                "tier": "gray",
+                "ok": True,
+                "route_evidence": {
+                    "available": True,
+                    "strong_used": True,
+                    "medium_used": False,
+                    "providers_by_tier": {"strong": ["zai"]},
+                },
+                "summary": {"diagnostics": {}},
+            }
+        ]
+    )
+
+    assert gray_ready("gray", aggregate) is False
+    assert aggregate["route_evidence"]["scenarios_missing_medium"] == ["gray_file_artifact"]
