@@ -901,7 +901,7 @@ summary_context
 
 - `ModelProfile` 与现有 model routing 对接。
 - `AccountProfile` 只保存凭据引用，不保存 secret。
-- `ToolPermissionProfile` 与 ToolRegistry 权限检查对接。
+- `RuntimeRequestPolicy` / `ToolPermissionPolicy` 承接 runtime request、policy decision、read/write scope 和 ToolRegistry 权限检查，命令层只消费策略结果。
 - `SandboxProfile` 与 workspace policy 对接。
 - capability profile 反哺 Coordinator。
 - ContextPackage 必须从“按 refs 汇总证据”升级为“按 `read_scope`、TaskContract 和 ContextMount 裁剪上下文包”，并显式包含 runtime request、worker result、validation 与 merge gate evidence。
@@ -926,6 +926,7 @@ summary_context
 4. 扩展 `TaskContract`，补齐 read/write scope 和 validation contract。
 5. 新增 `ContextMountBuilder`，先服务 debug/review 两类任务。
 6. 更新验收测试，确保 worker 记录、task contract gate、context mount 都可验证。
+7. 把 runtime request、policy decision 和工具权限从 `/execute` 下沉到 runtime policy 层，避免命令层直接承载边界规则。
 
 这条路线的好处是：先让运行时学会“记录和表达”新架构，再逐步替换执行机制。系统不会因为一次性大重构而失去现有闭环。
 

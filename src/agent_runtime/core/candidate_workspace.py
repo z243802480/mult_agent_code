@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -51,14 +52,13 @@ class CandidateWorkspace:
 
     def promote(self, changed_files: list[str]) -> list[str]:
         promoted: list[str] = []
+        candidate_root = self.root.resolve()
+        source_root = self.source_root.resolve()
         for relative_path in sorted(set(changed_files)):
-            source = (self.root / relative_path).resolve()
-            target = (self.source_root / relative_path).resolve()
-            try:
-                source.relative_to(self.root)
-                target.relative_to(self.source_root)
-            except ValueError as exc:
-                raise ValueError(f"Candidate path escapes workspace: {relative_path}") from exc
+            source = (candidate_root / relative_path).resolve()
+            target = (source_root / relative_path).resolve()
+            if not _is_within(source, candidate_root) or not _is_within(target, source_root):
+                raise ValueError(f"Candidate path escapes workspace: {relative_path}")
             if not source.exists() or not source.is_file():
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -110,6 +110,12 @@ def _run_git(source_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=True,
         timeout=30,
     )
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    normalized_path = os.path.normcase(os.path.abspath(path))
+    normalized_root = os.path.normcase(os.path.abspath(root))
+    return os.path.commonpath([normalized_path, normalized_root]) == normalized_root
 
 
 def _candidate_id() -> str:
