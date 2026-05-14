@@ -14,6 +14,15 @@ class StatusResult:
     current_context: dict = field(default_factory=dict)
     recent_sessions: list[dict] = field(default_factory=list)
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root": str(self.root),
+            "initialized": self.initialized,
+            "current_session_id": self.current_session_id,
+            "current_context": self.current_context,
+            "recent_sessions": self.recent_sessions,
+        }
+
     def to_text(self) -> str:
         lines = [
             "Agent status",

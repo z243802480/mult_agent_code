@@ -15,6 +15,14 @@ class DoctorCheck:
     summary: str
     severity: str = "info"
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "name": self.name,
+            "ok": self.ok,
+            "summary": self.summary,
+            "severity": self.severity,
+        }
+
 
 @dataclass(frozen=True)
 class DoctorResult:
@@ -24,6 +32,13 @@ class DoctorResult:
     @property
     def ok(self) -> bool:
         return not any(check.severity == "error" and not check.ok for check in self.checks)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "root": str(self.root),
+            "ok": self.ok,
+            "checks": [check.to_dict() for check in self.checks],
+        }
 
     def to_text(self) -> str:
         lines = [

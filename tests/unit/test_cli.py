@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from agent_runtime.cli import build_parser
+import json
+import sys
+from pathlib import Path
+
+from agent_runtime.cli import build_parser, main
 
 
 def test_slash_command_aliases_parse_like_regular_commands() -> None:
@@ -9,9 +13,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     plan_args = parser.parse_args(["/plan", "build a tool", "--root", "."])
     new_args = parser.parse_args(["/new", "build a tool", "--root", "."])
     sessions_args = parser.parse_args(["/sessions", "--root", ".", "--limit", "3", "--context"])
-    status_args = parser.parse_args(["/status", "--root", "."])
-    doctor_args = parser.parse_args(["/doctor", "--root", "."])
-    gate_status_args = parser.parse_args(["/gate-status", "--root", "."])
+    status_args = parser.parse_args(["/status", "--root", ".", "--json"])
+    doctor_args = parser.parse_args(["/doctor", "--root", ".", "--json"])
+    gate_status_args = parser.parse_args(["/gate-status", "--root", ".", "--json"])
     verification_args = parser.parse_args(["/verification", "--root", "."])
     model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
@@ -126,8 +130,11 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert sessions_args.limit == 3
     assert sessions_args.context
     assert status_args.command == "/status"
+    assert status_args.json
     assert doctor_args.command == "/doctor"
+    assert doctor_args.json
     assert gate_status_args.command == "/gate-status"
+    assert gate_status_args.json
     assert verification_args.command == "/verification"
     assert model_check_args.command == "/model-check"
     assert model_check_args.tier == "strong"
@@ -181,6 +188,46 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert long_run_args.execute
     assert run_parallel_args.parallel_disjoint_writes
     assert resume_parallel_args.parallel_disjoint_writes
+
+
+def test_status_json_output_is_machine_readable(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["agent", "status", "--root", str(tmp_path), "--json"],
+    )
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["root"] == str(tmp_path.resolve())
+    assert payload["initialized"] is False
+
+
+def test_gate_status_json_output_is_machine_readable(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["agent", "gate-status", "--root", str(tmp_path), "--json"],
+    )
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["stage"] == "missing_real_model_gate"
+    assert payload["next_actions"]
+
+
+def test_acceptance_repair_options_parse() -> None:
+    parser = build_parser()
 
     promote_args = parser.parse_args(["/acceptance", "--root", ".", "--promote-failures"])
     assert promote_args.promote_failures

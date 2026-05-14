@@ -12,6 +12,13 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
 
     assert result.initialized is False
     assert "Next: agent init" in result.to_text()
+    assert result.to_dict() == {
+        "root": str(tmp_path.resolve()),
+        "initialized": False,
+        "current_session_id": None,
+        "current_context": {},
+        "recent_sessions": [],
+    }
 
 
 def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -> None:
@@ -22,6 +29,7 @@ def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -
     assert result.initialized is True
     assert result.current_session_id is None
     assert "No sessions yet." in result.to_text()
+    assert result.to_dict()["initialized"] is True
 
 
 def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypatch) -> None:
@@ -37,6 +45,9 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     text = result.to_text()
     assert "model_strong: ok" in text
     assert "model_medium: ok" in text
+    payload = result.to_dict()
+    assert payload["ok"] is True
+    assert any(check["name"] == "model_strong" for check in payload["checks"])
 
 
 def test_doctor_fails_for_missing_workspace_guidance(tmp_path: Path) -> None:
@@ -44,6 +55,7 @@ def test_doctor_fails_for_missing_workspace_guidance(tmp_path: Path) -> None:
 
     assert not result.ok
     assert "workspace is not initialized" in result.to_text()
+    assert result.to_dict()["ok"] is False
 
 
 def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path) -> None:
@@ -85,3 +97,6 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path) -> None:
     )
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "ready_for_small_real_task_gray"
+    payload = result.to_dict()
+    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["gray_report"]["gray_ready"] is True

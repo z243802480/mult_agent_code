@@ -15,6 +15,16 @@ class GateStatusResult:
     core_report: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "root": str(self.root),
+            "stage": self.stage,
+            "gate_report": self.gate_report,
+            "gray_report": self.gray_report,
+            "core_report": self.core_report,
+            "next_actions": self.next_actions,
+        }
+
     def to_text(self) -> str:
         lines = [
             "Gate status",

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from agent_runtime.commands.acceptance_command import AcceptanceCommand
@@ -8,6 +9,7 @@ from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from agent_runtime.commands.brainstorm_command import BrainstormCommand
 from agent_runtime.commands.capability_report_command import CapabilityReportCommand
+from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.daily_command import (
     DailyPlanCommand,
     DailyReportCommand,
@@ -16,7 +18,6 @@ from agent_runtime.commands.daily_command import (
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.model_check_command import ModelCheckCommand
 from agent_runtime.commands.new_command import NewCommand
-from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.doctor_command import DoctorCommand
@@ -127,6 +128,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show current Runtime OS control surface status",
     )
     status_parser.add_argument("--root", default=".", help="Workspace root path")
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
 
     doctor_parser = subcommands.add_parser(
         "doctor",
@@ -134,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Check local runtime setup without running model calls",
     )
     doctor_parser.add_argument("--root", default=".", help="Workspace root path")
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
 
     gate_status_parser = subcommands.add_parser(
         "gate-status",
@@ -141,6 +152,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show real model gate, gray suite, and core acceptance readiness",
     )
     gate_status_parser.add_argument("--root", default=".", help="Workspace root path")
+    gate_status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
 
     verification_parser = subcommands.add_parser(
         "verification",
@@ -771,19 +787,28 @@ def main() -> None:
 
     if command == "status":
         status_result = StatusCommand(root=Path(args.root)).run()
-        print(status_result.to_text())
+        if args.json:
+            print(json.dumps(status_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(status_result.to_text())
         return
 
     if command == "doctor":
         doctor_result = DoctorCommand(root=Path(args.root)).run()
-        print(doctor_result.to_text())
+        if args.json:
+            print(json.dumps(doctor_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(doctor_result.to_text())
         if not doctor_result.ok:
             raise SystemExit(1)
         return
 
     if command == "gate-status":
         gate_status_result = GateStatusCommand(root=Path(args.root)).run()
-        print(gate_status_result.to_text())
+        if args.json:
+            print(json.dumps(gate_status_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(gate_status_result.to_text())
         return
 
     if command in {"verification", "verify-status"}:
