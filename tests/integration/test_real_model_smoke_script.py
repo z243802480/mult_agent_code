@@ -77,3 +77,66 @@ def test_real_model_smoke_script_rejects_fake_provider_by_default(tmp_path: Path
 
     assert completed.returncode == 1
     assert "Use --allow-fake only for script tests" in completed.stderr
+
+
+def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:
+    workspace = tmp_path / "gate-workspace"
+    summary_path = tmp_path / "gate-summary.json"
+    env = os.environ.copy()
+    env["AGENT_MODEL_PROVIDER"] = "fake"
+    env["AGENT_MODEL_STRONG_PROVIDER"] = "fake"
+    env["AGENT_MODEL_MEDIUM_PROVIDER"] = "fake"
+    env["PYTHONPATH"] = str(Path.cwd() / "src")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/real_model_gate.py",
+            "--root",
+            str(workspace),
+            "--summary-json",
+            str(summary_path),
+            "--allow-fake",
+        ],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "Real model gate passed" in completed.stdout
+    report = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert report["ok"] is True
+    assert report["checks"]["strong_model_check"] is True
+    assert report["checks"]["medium_model_check"] is True
+    assert report["checks"]["smoke"] is True
+    assert report["checks"]["strong_route_used"] is True
+    assert report["checks"]["medium_route_used"] is True
+    assert report["model_call_summary"]["total_model_calls"] > 0
+    assert report["routes"]["strong"]["provider"] == "fake"
+    assert report["routes"]["medium"]["provider"] == "fake"
+
+
+def test_real_model_gate_requires_strong_and_medium_routes(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env.pop("AGENT_MODEL_STRONG_PROVIDER", None)
+    env.pop("AGENT_MODEL_MEDIUM_PROVIDER", None)
+    env["PYTHONPATH"] = str(Path.cwd() / "src")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/real_model_gate.py",
+            "--root",
+            str(tmp_path / "gate-workspace"),
+        ],
+        cwd=Path.cwd(),
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert "AGENT_MODEL_STRONG_PROVIDER is required" in completed.stderr
