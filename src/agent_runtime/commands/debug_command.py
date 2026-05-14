@@ -8,6 +8,7 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.policy_config import load_policy_config
+from agent_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_contract import check_completion_contract
 from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
@@ -80,6 +81,7 @@ class DebugCommand:
         self.jsonl = JsonlStore(self.validator)
         self.registry = create_default_tool_registry()
         self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
+        self.runtime_evidence = RuntimeEvidenceReader(self.validator)
 
     def run(self) -> DebugResult:
         agent_dir = self.root / ".agent"
@@ -648,22 +650,21 @@ class DebugCommand:
 
     def _failure_evidence(self, run_dir: Path, task: dict) -> dict:
         task_id = task["task_id"]
+        runtime_os_evidence = self.runtime_evidence.task_evidence(run_dir, task_id)
         tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
         experiments = self._read_jsonl(run_dir / "experiments.jsonl", "experiment")
         task_failures = self._read_jsonl(run_dir / "task_failures.jsonl", "task_failure_evidence")
-        task_execution_evidence = self._read_jsonl(
-            run_dir / "task_execution_evidence.jsonl",
-            "task_execution_evidence",
-        )
         return {
             "task_id": task_id,
-            "recent_task_execution_evidence": [
-                evidence
-                for evidence in task_execution_evidence
-                if evidence.get("task_id") == task_id
+            "runtime_os_evidence": runtime_os_evidence,
+            "recent_task_execution_evidence": runtime_os_evidence[
+                "task_execution_evidence"
             ][-5:],
+            "recent_worker_results": runtime_os_evidence["worker_results"][-5:],
+            "recent_merge_gate_evidence": runtime_os_evidence["merge_gate_evidence"][-5:],
+            "recent_runtime_requests": runtime_os_evidence["runtime_requests"][-5:],
             "recent_tool_failures": [
                 call
                 for call in tool_calls

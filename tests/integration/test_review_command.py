@@ -91,6 +91,10 @@ class FakeExecuteClient:
 class FakeReviewClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
+        assert "runtime_os_evidence" in payload["trajectory"]
+        assert payload["trajectory"]["worker_results"]
+        assert "runtime_os_summary" in payload["deterministic_checks"]
+        assert payload["deterministic_checks"]["worker_result_count"] == 1
         assert payload["deterministic_checks"]["task_completion_rate"] == 1
         assert payload["deterministic_checks"]["verification_pass_rate"] == 1
         return ChatResponse(

@@ -87,6 +87,12 @@ class FakeBrokenExecuteClient:
 
 class FakeDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        failure_evidence = payload["failure_evidence"]
+        assert "runtime_os_evidence" in failure_evidence
+        assert "recent_worker_results" in failure_evidence
+        assert "recent_merge_gate_evidence" in failure_evidence
+        assert "recent_runtime_requests" in failure_evidence
         assert "recent_tool_failures" in request.messages[-1].content
         assert "recent_task_failures" in request.messages[-1].content
         assert "recent_task_execution_evidence" in request.messages[-1].content

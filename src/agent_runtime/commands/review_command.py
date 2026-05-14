@@ -10,6 +10,7 @@ from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.decision_policy import DecisionPolicy
 from agent_runtime.core.policy_config import load_policy_config
+from agent_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -61,6 +62,7 @@ class ReviewCommand:
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
+        self.runtime_evidence = RuntimeEvidenceReader(self.validator)
 
     def run(self) -> ReviewResult:
         agent_dir = self.root / ".agent"
@@ -256,10 +258,8 @@ class ReviewCommand:
         tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
-        execution_evidence = self._read_jsonl(
-            run_dir / "task_execution_evidence.jsonl",
-            "task_execution_evidence",
-        )
+        runtime_os_evidence = self.runtime_evidence.run_evidence(run_dir)
+        execution_evidence = runtime_os_evidence["task_execution_evidence"]
         return {
             "run_id": run_id,
             "project": self.store.read(agent_dir / "project.json", "project_config"),
@@ -267,16 +267,20 @@ class ReviewCommand:
             "task_plan": task_plan,
             "cost_report": cost_report,
             "trajectory": {
+                "runtime_os_evidence": runtime_os_evidence,
                 "events": events[-50:],
                 "tool_calls": tool_calls[-50:],
                 "model_calls": model_calls[-20:],
                 "task_execution_evidence": execution_evidence[-20:],
+                "worker_results": runtime_os_evidence["worker_results"][-20:],
+                "merge_gate_evidence": runtime_os_evidence["merge_gate_evidence"][-20:],
+                "runtime_requests": runtime_os_evidence["runtime_requests"][-20:],
             },
             "deterministic_checks": self._deterministic_checks(
                 task_plan,
                 tool_calls,
                 cost_report,
-                execution_evidence,
+                runtime_os_evidence,
             ),
         }
 
@@ -285,9 +289,14 @@ class ReviewCommand:
         task_plan: dict,
         tool_calls: list[dict],
         cost_report: dict,
-        execution_evidence: list[dict] | None = None,
+        runtime_os_evidence: dict | None = None,
     ) -> dict:
-        execution_evidence = execution_evidence or []
+        runtime_os_evidence = runtime_os_evidence or {}
+        execution_evidence = runtime_os_evidence.get("task_execution_evidence") or []
+        worker_results = runtime_os_evidence.get("worker_results") or []
+        merge_gate_evidence = runtime_os_evidence.get("merge_gate_evidence") or []
+        runtime_requests = runtime_os_evidence.get("runtime_requests") or []
+        runtime_summary = runtime_os_evidence.get("summary") or {}
         tasks = task_plan.get("tasks", [])
         active_tasks = [task for task in tasks if task["status"] != "discarded"]
         done = [task for task in active_tasks if task["status"] == "done"]
@@ -306,6 +315,27 @@ class ReviewCommand:
             "latest_execution_status": (
                 execution_evidence[-1].get("status") if execution_evidence else None
             ),
+            "worker_result_count": len(worker_results),
+            "failed_worker_result_count": len(
+                [item for item in worker_results if item.get("status") != "succeeded"]
+            ),
+            "merge_gate_block_count": len(
+                [
+                    item
+                    for item in merge_gate_evidence
+                    if isinstance(item.get("merge_gate"), dict)
+                    and item["merge_gate"].get("ok") is False
+                ]
+            ),
+            "runtime_request_count": len(runtime_requests),
+            "pending_runtime_request_count": len(
+                [
+                    item
+                    for item in runtime_requests
+                    if item.get("status") in {"recorded", "decision_created"}
+                ]
+            ),
+            "runtime_os_summary": runtime_summary,
             "verification_call_count": len(verification_calls),
             "verification_pass_rate": (
                 len(passed_verification) / len(verification_calls)
