@@ -10,6 +10,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     new_args = parser.parse_args(["/new", "build a tool", "--root", "."])
     sessions_args = parser.parse_args(["/sessions", "--root", ".", "--limit", "3", "--context"])
     verification_args = parser.parse_args(["/verification", "--root", "."])
+    model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(
         [
@@ -122,6 +123,8 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert sessions_args.limit == 3
     assert sessions_args.context
     assert verification_args.command == "/verification"
+    assert model_check_args.command == "/model-check"
+    assert model_check_args.tier == "strong"
     assert runs_args.command == "/runs"
     assert runs_args.session_id == "run-1"
     assert execute_args.session_id == "run-1"

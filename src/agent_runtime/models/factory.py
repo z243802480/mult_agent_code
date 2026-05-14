@@ -13,6 +13,9 @@ from agent_runtime.models.openai_compatible import OpenAICompatibleClient, OpenA
 from agent_runtime.models.routing import MODEL_TIERS, ModelRoute, RoutedModelClient
 from agent_runtime.storage.schema_validator import SchemaValidator
 
+ZHIPU_PROVIDER_ALIASES = {"zhipu", "bigmodel"}
+ZAI_PROVIDER_ALIASES = {"zai", "z-ai", "glm"}
+
 
 def create_model_client(
     run_dir: Path | None,
@@ -65,6 +68,30 @@ def _create_provider_client(
     if provider == "minimax":
         return MiniMaxOpenAICompatibleClient(
             MiniMaxSettings.from_env(env_prefix=env_prefix),
+            logger=logger,
+            budget=budget,
+        )
+    if provider in ZHIPU_PROVIDER_ALIASES:
+        return OpenAICompatibleClient(
+            OpenAICompatibleSettings.from_env(
+                provider="zhipu",
+                env_prefix=env_prefix,
+                default_base_url="https://open.bigmodel.cn/api/paas/v4",
+                default_model_name="glm-5.1",
+                api_key_env_names=("ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY"),
+            ),
+            logger=logger,
+            budget=budget,
+        )
+    if provider in ZAI_PROVIDER_ALIASES:
+        return OpenAICompatibleClient(
+            OpenAICompatibleSettings.from_env(
+                provider="zai",
+                env_prefix=env_prefix,
+                default_base_url="https://api.z.ai/api/coding/paas/v4",
+                default_model_name="glm-5.1",
+                api_key_env_names=("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY"),
+            ),
             logger=logger,
             budget=budget,
         )

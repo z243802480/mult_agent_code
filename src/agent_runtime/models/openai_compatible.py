@@ -28,21 +28,24 @@ class OpenAICompatibleSettings:
         cls,
         provider: str = "openai-compatible",
         env_prefix: str = "AGENT_MODEL",
+        default_base_url: str = "https://api.openai.com/v1",
+        default_model_name: str | None = None,
+        api_key_env_names: tuple[str, ...] = ("OPENAI_API_KEY",),
     ) -> "OpenAICompatibleSettings":
-        api_key = _env(env_prefix, "API_KEY") or os.getenv("OPENAI_API_KEY")
+        api_key = _env(env_prefix, "API_KEY") or _first_env(api_key_env_names)
         if not api_key:
             raise OpenAICompatibleProviderError(
                 f"OpenAI-compatible API key is not configured for {env_prefix}. "
-                f"Set {env_prefix}_API_KEY or OPENAI_API_KEY."
+                f"Set {env_prefix}_API_KEY or one of: {', '.join(api_key_env_names)}."
             )
-        model_name = _env(env_prefix, "NAME")
+        model_name = _env(env_prefix, "NAME") or default_model_name
         if not model_name:
             raise OpenAICompatibleProviderError(
                 f"{env_prefix}_NAME is required for OpenAI-compatible providers."
             )
         return cls(
             api_key=api_key,
-            base_url=_env(env_prefix, "BASE_URL", "https://api.openai.com/v1").rstrip("/"),
+            base_url=_env(env_prefix, "BASE_URL", default_base_url).rstrip("/"),
             model_name=model_name,
             provider=provider,
             timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "90")),
@@ -175,3 +178,11 @@ def _env(env_prefix: str, key: str, default: str | None = None) -> str:
         if value is not None:
             return value
     return default or ""
+
+
+def _first_env(names: tuple[str, ...]) -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value
+    return ""

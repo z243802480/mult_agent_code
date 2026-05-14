@@ -76,6 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only validate local configuration",
     )
+    model_parser.add_argument(
+        "--tier",
+        choices=["strong", "medium", "cheap"],
+        default="cheap",
+        help="Model tier route to validate",
+    )
 
     plan_parser = subcommands.add_parser(
         "plan",
@@ -710,7 +716,11 @@ def main() -> None:
         return
 
     if command == "model-check":
-        model_result = ModelCheckCommand(root=Path(args.root), skip_call=args.skip_call).run()
+        model_result = ModelCheckCommand(
+            root=Path(args.root),
+            skip_call=args.skip_call,
+            model_tier=args.tier,
+        ).run()
         print(model_result.to_text())
         return
 

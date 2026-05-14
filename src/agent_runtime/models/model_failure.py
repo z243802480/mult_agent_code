@@ -219,6 +219,8 @@ def _client_provider(client: object) -> str | None:
 def _default_model(provider: str) -> str | None:
     if provider == "minimax":
         return "MiniMax-M2.7"
+    if provider in {"zhipu", "bigmodel", "zai", "z-ai", "glm"}:
+        return "glm-5.1"
     if provider in {"fake", "offline"}:
         return "fake-offline"
     if provider in local_provider_names():
@@ -233,6 +235,10 @@ def _default_base_url(provider: str, env_prefix: str) -> str | None:
         return local_default_base_url(provider)
     if provider == "minimax":
         return default_minimax_base_url(_env(env_prefix, "API_KEY"))
+    if provider in {"zhipu", "bigmodel"}:
+        return "https://open.bigmodel.cn/api/paas/v4"
+    if provider in {"zai", "z-ai", "glm"}:
+        return "https://api.z.ai/api/coding/paas/v4"
     if provider in {"openai", "openai-compatible", "generic"}:
         return "https://api.openai.com/v1"
     return None

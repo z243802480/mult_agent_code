@@ -48,16 +48,18 @@ class ModelCheckCommand:
         self,
         root: Path,
         skip_call: bool = False,
+        model_tier: str = "cheap",
         model_client: ModelClient | None = None,
     ) -> None:
         self.root = root.resolve()
         self.skip_call = skip_call
+        self.model_tier = model_tier
         self.model_client = model_client
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.failure_recorder = ModelFailureRecorder(self.root, self.validator)
 
     def run(self) -> ModelCheckResult:
-        context = model_failure_context_from_env()
+        context = model_failure_context_from_env(_env_prefix_for_tier(self.model_tier))
         provider = context.provider
         model_name = context.model_name
         base_url = context.base_url
@@ -143,7 +145,7 @@ class ModelCheckCommand:
     def _request(self) -> ChatRequest:
         return ChatRequest(
             purpose="model_check",
-            model_tier="cheap",
+            model_tier=self.model_tier,
             messages=[
                 ChatMessage(
                     role="system",
@@ -158,3 +160,9 @@ class ModelCheckCommand:
             max_output_tokens=512,
             metadata={"agent_id": "ModelCheckCommand"},
         )
+
+
+def _env_prefix_for_tier(model_tier: str) -> str:
+    if model_tier in {"strong", "medium", "cheap"}:
+        return f"AGENT_MODEL_{model_tier.upper()}"
+    return "AGENT_MODEL"

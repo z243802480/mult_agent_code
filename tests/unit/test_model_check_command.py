@@ -42,6 +42,25 @@ def test_model_check_calls_model_and_accepts_valid_json(tmp_path: Path) -> None:
     assert result.model_name == "fake-model"
 
 
+def test_model_check_uses_requested_model_tier(tmp_path: Path) -> None:
+    class TierClient:
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            assert request.model_tier == "strong"
+            return ChatResponse(
+                content=json.dumps({"ok": True}),
+                finish_reason="stop",
+                usage=TokenUsage(1, 1, 2),
+                model_provider="fake",
+                model_name="fake-strong",
+                raw_response={},
+            )
+
+    result = ModelCheckCommand(tmp_path, model_tier="strong", model_client=TierClient()).run()
+
+    assert result.call_ok
+    assert result.model_name == "fake-strong"
+
+
 def test_model_check_can_skip_call_with_injected_client(tmp_path: Path) -> None:
     result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
 
@@ -122,6 +141,42 @@ def test_model_check_reports_minimax_china_base_url_for_cp_keys(
     result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
 
     assert result.base_url == "https://api.minimaxi.com/v1"
+
+
+def test_model_check_reports_glm_default_route(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "glm")
+    monkeypatch.delenv("AGENT_MODEL_NAME", raising=False)
+    monkeypatch.delenv("AGENT_MODEL_BASE_URL", raising=False)
+
+    result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
+
+    assert result.provider == "glm"
+    assert result.model_name == "glm-5.1"
+    assert result.base_url == "https://api.z.ai/api/coding/paas/v4"
+
+
+def test_model_check_reports_tier_specific_glm_route(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_API_KEY", "glm-key")
+    monkeypatch.delenv("AGENT_MODEL_STRONG_NAME", raising=False)
+    monkeypatch.delenv("AGENT_MODEL_STRONG_BASE_URL", raising=False)
+
+    result = ModelCheckCommand(
+        tmp_path,
+        skip_call=True,
+        model_tier="strong",
+        model_client=FakeHealthyClient(),
+    ).run()
+
+    assert result.provider == "glm"
+    assert result.model_name == "glm-5.1"
+    assert result.base_url == "https://api.z.ai/api/coding/paas/v4"
 
 
 def test_model_check_classifies_call_failures(tmp_path: Path) -> None:
