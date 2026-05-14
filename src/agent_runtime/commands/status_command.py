@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from agent_runtime.commands.sessions_command import SessionsCommand
+
+
+@dataclass(frozen=True)
+class StatusResult:
+    root: Path
+    initialized: bool
+    current_session_id: str | None = None
+    current_context: dict = field(default_factory=dict)
+    recent_sessions: list[dict] = field(default_factory=list)
+
+    def to_text(self) -> str:
+        lines = [
+            "Agent status",
+            f"Root: {self.root}",
+            f"Initialized: {'yes' if self.initialized else 'no'}",
+        ]
+        if not self.initialized:
+            lines.append("Next: agent init")
+            return "\n".join(lines)
+        lines.append(f"Current session: {self.current_session_id or 'none'}")
+        context = self.current_context
+        if context:
+            run_status = context.get("run_status") or {}
+            task_summary = context.get("task_summary") or {}
+            cost = context.get("cost_summary") or {}
+            if context.get("goal_summary"):
+                lines.append(f"Goal: {context['goal_summary']}")
+            if run_status:
+                lines.append(
+                    "Run: "
+                    f"{run_status.get('status', 'unknown')} / "
+                    f"{run_status.get('current_phase', 'unknown')} - "
+                    f"{run_status.get('summary') or 'no summary'}"
+                )
+            if task_summary:
+                lines.append(
+                    "Tasks: "
+                    f"{task_summary.get('remaining', 0)} remaining / "
+                    f"{task_summary.get('total', 0)} total"
+                )
+            if cost:
+                lines.append(
+                    "Cost: "
+                    f"{cost.get('status', 'unknown')} "
+                    f"({cost.get('model_calls', 0)} model, {cost.get('tool_calls', 0)} tool)"
+                )
+            pending = int(context.get("pending_decision_count", 0))
+            if pending:
+                lines.append(f"Pending decisions: {pending}")
+            blockers = context.get("blockers") or []
+            if blockers:
+                lines.append("Blockers:")
+                lines.extend(f"  - {item}" for item in blockers[:5])
+            latest_execution = context.get("latest_execution_evidence") or {}
+            if latest_execution:
+                lines.append(
+                    "Latest execution: "
+                    f"{latest_execution.get('task_id')} "
+                    f"{latest_execution.get('status')} - "
+                    f"{latest_execution.get('summary')}"
+                )
+            if context.get("recommended_next_command"):
+                lines.append(f"Next: agent {context['recommended_next_command']}")
+        elif self.recent_sessions:
+            lines.append("Recent sessions:")
+            for session in self.recent_sessions[-5:]:
+                marker = "*" if session["run_id"] == self.current_session_id else "-"
+                lines.append(
+                    f"{marker} {session['run_id']} [{session['status']}] "
+                    f"{session['current_phase']}"
+                )
+        else:
+            lines.append("No sessions yet.")
+        return "\n".join(lines)
+
+
+class StatusCommand:
+    def __init__(self, root: Path) -> None:
+        self.root = root.resolve()
+
+    def run(self) -> StatusResult:
+        agent_dir = self.root / ".agent"
+        if not agent_dir.exists():
+            return StatusResult(root=self.root, initialized=False)
+        sessions = SessionsCommand(
+            self.root,
+            limit=5,
+            include_context=True,
+        ).run()
+        current_context = (
+            sessions.context.get(sessions.current_session_id)
+            if sessions.current_session_id
+            else None
+        )
+        return StatusResult(
+            root=self.root,
+            initialized=True,
+            current_session_id=sessions.current_session_id,
+            current_context=current_context or {},
+            recent_sessions=sessions.sessions,
+        )

@@ -19,7 +19,9 @@ from agent_runtime.commands.new_command import NewCommand
 from agent_runtime.commands.compact_command import CompactCommand
 from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.decide_command import DecideCommand
+from agent_runtime.commands.doctor_command import DoctorCommand
 from agent_runtime.commands.execute_command import ExecuteCommand
+from agent_runtime.commands.gate_status_command import GateStatusCommand
 from agent_runtime.commands.handoff_command import HandoffCommand
 from agent_runtime.commands.plan_command import PlanCommand
 from agent_runtime.commands.replan_command import ReplanCommand
@@ -29,6 +31,7 @@ from agent_runtime.commands.review_command import ReviewCommand
 from agent_runtime.commands.run_command import RunCommand
 from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.sessions_command import SessionsCommand
+from agent_runtime.commands.status_command import StatusCommand
 from agent_runtime.commands.verification_command import VerificationStatusCommand
 from agent_runtime.commands.weekly_report_command import WeeklyReportCommand
 
@@ -117,6 +120,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include latest snapshot and handoff recovery context",
     )
+
+    status_parser = subcommands.add_parser(
+        "status",
+        aliases=["/status"],
+        help="Show current Runtime OS control surface status",
+    )
+    status_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    doctor_parser = subcommands.add_parser(
+        "doctor",
+        aliases=["/doctor"],
+        help="Check local runtime setup without running model calls",
+    )
+    doctor_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    gate_status_parser = subcommands.add_parser(
+        "gate-status",
+        aliases=["/gate-status"],
+        help="Show real model gate, gray suite, and core acceptance readiness",
+    )
+    gate_status_parser.add_argument("--root", default=".", help="Workspace root path")
 
     verification_parser = subcommands.add_parser(
         "verification",
@@ -743,6 +767,23 @@ def main() -> None:
             include_context=args.context,
         ).run()
         print(sessions_result.to_text())
+        return
+
+    if command == "status":
+        status_result = StatusCommand(root=Path(args.root)).run()
+        print(status_result.to_text())
+        return
+
+    if command == "doctor":
+        doctor_result = DoctorCommand(root=Path(args.root)).run()
+        print(doctor_result.to_text())
+        if not doctor_result.ok:
+            raise SystemExit(1)
+        return
+
+    if command == "gate-status":
+        gate_status_result = GateStatusCommand(root=Path(args.root)).run()
+        print(gate_status_result.to_text())
         return
 
     if command in {"verification", "verify-status"}:

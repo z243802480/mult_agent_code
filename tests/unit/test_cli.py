@@ -9,6 +9,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     plan_args = parser.parse_args(["/plan", "build a tool", "--root", "."])
     new_args = parser.parse_args(["/new", "build a tool", "--root", "."])
     sessions_args = parser.parse_args(["/sessions", "--root", ".", "--limit", "3", "--context"])
+    status_args = parser.parse_args(["/status", "--root", "."])
+    doctor_args = parser.parse_args(["/doctor", "--root", "."])
+    gate_status_args = parser.parse_args(["/gate-status", "--root", "."])
     verification_args = parser.parse_args(["/verification", "--root", "."])
     model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
@@ -122,6 +125,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert sessions_args.command == "/sessions"
     assert sessions_args.limit == 3
     assert sessions_args.context
+    assert status_args.command == "/status"
+    assert doctor_args.command == "/doctor"
+    assert gate_status_args.command == "/gate-status"
     assert verification_args.command == "/verification"
     assert model_check_args.command == "/model-check"
     assert model_check_args.tier == "strong"
