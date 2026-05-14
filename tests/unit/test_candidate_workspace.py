@@ -69,7 +69,51 @@ def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path
     assert candidate.strategy == "git_worktree"
     assert candidate.workspace_policy == "worktree"
     assert candidate.backend_reason
+    assert candidate.branch_name
+    assert candidate.branch_name.startswith("codex/candidate/task-0001-")
     assert (candidate.root / "tool.py").exists()
+
+
+def test_candidate_workspace_uses_worktree_with_untracked_process_artifacts(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "workspace"
+    source.mkdir()
+    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (source / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (source / "real_model_smoke_transcript.json").write_text("{}", encoding="utf-8")
+    try:
+        subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "agent@example.test"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Agent Test"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "commit", "-m", "seed"],
+            cwd=source,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.skip(f"git worktree unavailable: {exc}")
+
+    candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
+
+    assert candidate.strategy == "git_worktree"
+    assert candidate.branch_name
 
 
 def test_candidate_workspace_promotes_only_changed_files(tmp_path: Path) -> None:

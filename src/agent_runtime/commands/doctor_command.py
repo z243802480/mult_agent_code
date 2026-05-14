@@ -28,17 +28,37 @@ class DoctorCheck:
 class DoctorResult:
     root: Path
     checks: list[DoctorCheck] = field(default_factory=list)
+    routes: dict[str, dict[str, object]] = field(default_factory=dict)
+    sandbox: dict[str, object] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
         return not any(check.severity == "error" and not check.ok for check in self.checks)
 
     def to_dict(self) -> dict[str, object]:
+        failed = [check.name for check in self.checks if not check.ok]
         return {
+            "schema_version": "0.1.0",
             "root": str(self.root),
             "ok": self.ok,
+            "status": "pass" if self.ok else "fail",
+            "summary": "Doctor checks passed." if self.ok else "Doctor found blocking issues.",
             "checks": [check.to_dict() for check in self.checks],
+            "failed_checks": failed,
+            "routes": self.routes,
+            "sandbox": self.sandbox,
+            "next_actions": self._next_actions(failed),
         }
+
+    def _next_actions(self, failed: list[str]) -> list[str]:
+        actions = []
+        if "agent_dir" in failed:
+            actions.append("Run `agent /init --root .`.")
+        if any(name.startswith("model_") for name in failed):
+            actions.append("Set model route environment variables before gray validation.")
+        if "real_model_gate" in failed:
+            actions.append("Run `python scripts/real_model_gate.py --summary-json .agent/model/real_model_gate_report.json`.")
+        return actions
 
     def to_text(self) -> str:
         lines = [
@@ -60,6 +80,7 @@ class DoctorCommand:
         self.root = root.resolve()
 
     def run(self) -> DoctorResult:
+        route_checks = [self._model_route_check("strong"), self._model_route_check("medium")]
         return DoctorResult(
             root=self.root,
             checks=[
@@ -67,10 +88,14 @@ class DoctorCommand:
                 self._agents_guidance_check(),
                 self._policy_check(),
                 self._git_check(),
-                self._model_route_check("strong"),
-                self._model_route_check("medium"),
+                *route_checks,
                 self._gate_report_check(),
             ],
+            routes={
+                tier: self._route_summary(tier)
+                for tier in ["strong", "medium", "cheap"]
+            },
+            sandbox=self._sandbox_summary(),
         )
 
     def _agent_dir_check(self) -> DoctorCheck:
@@ -141,6 +166,61 @@ class DoctorCommand:
             f"at {context.base_url or 'base url not set'}",
             "info",
         )
+
+    def _route_summary(self, tier: str) -> dict[str, object]:
+        provider = os.getenv(f"AGENT_MODEL_{tier.upper()}_PROVIDER")
+        context = model_failure_context_from_env(f"AGENT_MODEL_{tier.upper()}")
+        return {
+            "configured": bool(provider),
+            "provider": context.provider if provider else None,
+            "model": context.model_name if provider else None,
+            "base_url": context.base_url if provider else None,
+            "api_key_present": bool(os.getenv(f"AGENT_MODEL_{tier.upper()}_API_KEY")),
+        }
+
+    def _sandbox_summary(self) -> dict[str, object]:
+        git = self._git_available()
+        tracked_clean = self._tracked_git_clean() if git else False
+        backend = "git_worktree" if git and tracked_clean else "temp_workspace"
+        return {
+            "git_available": git,
+            "tracked_worktree_clean": tracked_clean,
+            "preferred_backend": backend,
+            "fallback_backend": "temp_workspace",
+            "reason": (
+                "tracked git state supports worktree candidate branches"
+                if backend == "git_worktree"
+                else "git unavailable or tracked files are dirty; use copied temp workspace"
+            ),
+        }
+
+    def _git_available(self) -> bool:
+        try:
+            completed = subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=self.root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return completed.returncode == 0 and completed.stdout.strip() == "true"
+
+    def _tracked_git_clean(self) -> bool:
+        try:
+            completed = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=self.root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return completed.returncode == 0 and not completed.stdout.strip()
 
     def _gate_report_check(self) -> DoctorCheck:
         path = self.root / ".agent" / "model" / "real_model_gate_report.json"

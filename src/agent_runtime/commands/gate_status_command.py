@@ -16,14 +16,43 @@ class GateStatusResult:
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
+        blocking_reason = self.next_actions[0] if self.next_actions else None
         return {
+            "schema_version": "0.1.0",
             "root": str(self.root),
             "stage": self.stage,
+            "release_ready": self.stage == "ready_for_small_real_task_gray",
+            "blocking_reason": blocking_reason,
+            "gates": {
+                "real_model_gate": self._gate_summary(self.gate_report),
+                "gray_suite": self._gate_summary(self.gray_report, gray=True),
+                "core_acceptance": self._gate_summary(self.core_report),
+            },
             "gate_report": self.gate_report,
             "gray_report": self.gray_report,
             "core_report": self.core_report,
             "next_actions": self.next_actions,
         }
+
+    def _gate_summary(self, report: dict[str, Any], gray: bool = False) -> dict[str, Any]:
+        if not report:
+            return {"present": False, "ok": None, "status": "missing"}
+        summary: dict[str, Any] = {
+            "present": True,
+            "ok": bool(report.get("ok")),
+            "status": "pass" if report.get("ok") else "fail",
+        }
+        aggregate = report.get("aggregate")
+        if isinstance(aggregate, dict):
+            summary["total"] = int(aggregate.get("total") or 0)
+            summary["passed"] = int(aggregate.get("passed") or 0)
+            summary["failed"] = int(aggregate.get("failed") or 0)
+        if gray:
+            summary["gray_ready"] = report.get("gray_ready")
+            route = aggregate.get("route_evidence") if isinstance(aggregate, dict) else {}
+            if isinstance(route, dict):
+                summary["route_evidence"] = route
+        return summary
 
     def to_text(self) -> str:
         lines = [

@@ -15,13 +15,63 @@ class StatusResult:
     recent_sessions: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, object]:
+        blockers = self.current_context.get("blockers") if self.current_context else []
+        risks = self.current_context.get("risks") if self.current_context else []
+        latest_failure = (
+            self.current_context.get("latest_task_failure") if self.current_context else {}
+        ) or {}
+        recommended = (
+            self.current_context.get("recommended_next_command") if self.current_context else None
+        )
         return {
+            "schema_version": "0.1.0",
             "root": str(self.root),
             "initialized": self.initialized,
+            "status": self._status(),
+            "summary": self._summary(),
             "current_session_id": self.current_session_id,
             "current_context": self.current_context,
+            "blockers": blockers or [],
+            "risks": risks or [],
+            "pending_decision_count": int(
+                self.current_context.get("pending_decision_count", 0)
+                if self.current_context
+                else 0
+            ),
+            "latest_failure": latest_failure,
+            "recommended_next_command": recommended,
+            "next_actions": self._next_actions(recommended),
             "recent_sessions": self.recent_sessions,
         }
+
+    def _status(self) -> str:
+        if not self.initialized:
+            return "uninitialized"
+        if self.current_context.get("pending_decision_count"):
+            return "blocked"
+        blockers = self.current_context.get("blockers") or []
+        if blockers:
+            return "blocked"
+        if self.current_session_id:
+            return "active"
+        return "idle"
+
+    def _summary(self) -> str:
+        if not self.initialized:
+            return "Workspace is not initialized."
+        if not self.current_session_id:
+            return "Workspace is initialized with no current session."
+        run_status = self.current_context.get("run_status") or {}
+        return str(run_status.get("summary") or "Current session is available.")
+
+    def _next_actions(self, recommended: str | None) -> list[str]:
+        if not self.initialized:
+            return ["Run `agent /init --root .`."]
+        if recommended:
+            return [f"Run `agent {recommended}`."]
+        if not self.current_session_id:
+            return ["Run `agent /new \"<goal>\" --root .`."]
+        return ["Run `agent /sessions --context --root .` to inspect current state."]
 
     def to_text(self) -> str:
         lines = [

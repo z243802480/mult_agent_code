@@ -54,7 +54,7 @@ class GateResult:
     commands: list[GateCommand] = field(default_factory=list)
     failures: list[str] = field(default_factory=list)
     checks: dict[str, bool] = field(default_factory=dict)
-    routes: dict[str, dict[str, str | None]] = field(default_factory=dict)
+    routes: dict[str, dict[str, Any]] = field(default_factory=dict)
     smoke_summary: dict[str, Any] = field(default_factory=dict)
     model_call_summary: dict[str, Any] = field(default_factory=dict)
 
@@ -296,9 +296,10 @@ def run_command(
     return command
 
 
-def route_summary() -> dict[str, dict[str, str | None]]:
+def route_summary() -> dict[str, dict[str, Any]]:
     return {
         tier: {
+            "configured": bool(route_env(tier, "PROVIDER", fallback=False)),
             "provider": route_provider(tier),
             "model": route_env(tier, "NAME"),
             "base_url": route_env(tier, "BASE_URL"),
@@ -308,13 +309,15 @@ def route_summary() -> dict[str, dict[str, str | None]]:
 
 
 def route_provider(tier: str) -> str:
-    return route_env(tier, "PROVIDER").lower()
+    return route_env(tier, "PROVIDER", fallback=False).lower()
 
 
-def route_env(tier: str, key: str) -> str:
+def route_env(tier: str, key: str, *, fallback: bool = True) -> str:
     value = os.getenv(f"AGENT_MODEL_{tier.upper()}_{key}")
     if value is not None:
         return value
+    if not fallback:
+        return ""
     return os.getenv(f"AGENT_MODEL_{key}", "")
 
 

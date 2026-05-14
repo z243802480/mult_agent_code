@@ -41,7 +41,7 @@ class SandboxBackendSelector:
         if not (source_root / ".git").exists():
             return False
         try:
-            status = self._run_git(source_root, "status", "--porcelain")
+            status = self._run_git(source_root, "status", "--porcelain", "--untracked-files=no")
         except (OSError, subprocess.SubprocessError):
             return False
         return not status.stdout.strip()

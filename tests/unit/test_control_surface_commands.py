@@ -12,13 +12,10 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
 
     assert result.initialized is False
     assert "Next: agent init" in result.to_text()
-    assert result.to_dict() == {
-        "root": str(tmp_path.resolve()),
-        "initialized": False,
-        "current_session_id": None,
-        "current_context": {},
-        "recent_sessions": [],
-    }
+    payload = result.to_dict()
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["status"] == "uninitialized"
+    assert payload["next_actions"] == ["Run `agent /init --root .`."]
 
 
 def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -> None:
@@ -47,7 +44,10 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     assert "model_medium: ok" in text
     payload = result.to_dict()
     assert payload["ok"] is True
+    assert payload["schema_version"] == "0.1.0"
     assert any(check["name"] == "model_strong" for check in payload["checks"])
+    assert payload["routes"]["strong"]["configured"] is True
+    assert "preferred_backend" in payload["sandbox"]
 
 
 def test_doctor_fails_for_missing_workspace_guidance(tmp_path: Path) -> None:
@@ -99,4 +99,6 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path) -> None:
     assert result.stage == "ready_for_small_real_task_gray"
     payload = result.to_dict()
     assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["release_ready"] is True
+    assert payload["gates"]["gray_suite"]["gray_ready"] is True
     assert payload["gray_report"]["gray_ready"] is True

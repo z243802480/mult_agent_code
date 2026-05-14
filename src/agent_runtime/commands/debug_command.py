@@ -461,6 +461,12 @@ class DebugCommand:
                 "rollback": self._rollback_summary(rollback_results or []),
                 "workspace": str(candidate_workspace.root) if candidate_workspace else None,
                 "candidate_id": (candidate_workspace.candidate_id if candidate_workspace else None),
+                "strategy": candidate_workspace.strategy if candidate_workspace else None,
+                "workspace_policy": (
+                    candidate_workspace.workspace_policy if candidate_workspace else None
+                ),
+                "backend_reason": candidate_workspace.backend_reason if candidate_workspace else None,
+                "branch_name": candidate_workspace.branch_name if candidate_workspace else None,
                 "promoted_files": sorted(set(promoted_files or [])),
             },
             "evaluator": {

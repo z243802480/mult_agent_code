@@ -322,5 +322,9 @@ class TaskAttemptRunner:
                 "task_id": task["task_id"],
                 "candidate_id": candidate.candidate_id,
                 "workspace": str(candidate.root),
+                "strategy": candidate.strategy,
+                "workspace_policy": candidate.workspace_policy,
+                "backend_reason": candidate.backend_reason,
+                "branch_name": candidate.branch_name,
             },
         )

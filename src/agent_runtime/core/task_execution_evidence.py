@@ -65,6 +65,7 @@ class TaskExecutionEvidenceRecorder:
                     candidate_workspace.workspace_policy if candidate_workspace else None
                 ),
                 "backend_reason": candidate_workspace.backend_reason if candidate_workspace else None,
+                "branch_name": candidate_workspace.branch_name if candidate_workspace else None,
                 "changed_files": self._changed_files(tool_results),
                 "promoted_files": sorted(set(promoted_files or [])),
                 **(candidate or {}),

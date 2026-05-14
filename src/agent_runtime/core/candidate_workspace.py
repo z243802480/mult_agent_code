@@ -33,6 +33,7 @@ class CandidateWorkspace:
     strategy: str = "temp_workspace"
     workspace_policy: str = "isolated_copy"
     backend_reason: str = ""
+    branch_name: str | None = None
 
     @classmethod
     def create(cls, source_root: Path, run_dir: Path, task_id: str) -> "CandidateWorkspace":
@@ -40,7 +41,8 @@ class CandidateWorkspace:
         candidate_root = run_dir / "cw" / task_id / _path_id(candidate_id)
         candidate_root.parent.mkdir(parents=True, exist_ok=True)
         plan = SandboxBackendSelector().select_for_workspace(source_root.resolve())
-        strategy = _create_workspace(source_root.resolve(), candidate_root, plan)
+        branch_name = _candidate_branch(task_id, candidate_id) if plan.backend == "git_worktree" else None
+        strategy = _create_workspace(source_root.resolve(), candidate_root, plan, branch_name)
         return cls(
             candidate_id=candidate_id,
             root=candidate_root,
@@ -48,6 +50,7 @@ class CandidateWorkspace:
             strategy=strategy,
             workspace_policy=plan.workspace_policy if strategy == plan.backend else "isolated_copy",
             backend_reason=plan.reason,
+            branch_name=branch_name if strategy == "git_worktree" else None,
         )
 
     def promote(self, changed_files: list[str]) -> list[str]:
@@ -89,10 +92,14 @@ def _create_workspace(
     source_root: Path,
     candidate_root: Path,
     plan: SandboxBackendPlan,
+    branch_name: str | None,
 ) -> str:
     if plan.backend == "git_worktree":
         try:
-            _run_git(source_root, "worktree", "add", "--detach", str(candidate_root), "HEAD")
+            if branch_name:
+                _run_git(source_root, "worktree", "add", "-b", branch_name, str(candidate_root), "HEAD")
+            else:
+                _run_git(source_root, "worktree", "add", "--detach", str(candidate_root), "HEAD")
             return "git_worktree"
         except (OSError, subprocess.SubprocessError):
             if candidate_root.exists():
@@ -124,3 +131,8 @@ def _candidate_id() -> str:
 
 def _path_id(candidate_id: str) -> str:
     return candidate_id.removeprefix("candidate-").replace("-", "")
+
+
+def _candidate_branch(task_id: str, candidate_id: str) -> str:
+    safe_task = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in task_id)
+    return f"codex/candidate/{safe_task}-{_path_id(candidate_id)}"
