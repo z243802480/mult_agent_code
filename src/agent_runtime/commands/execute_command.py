@@ -30,6 +30,7 @@ from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.core.validation_result import ValidationResult
 from agent_runtime.core.worker_recorder import WorkerExecutionRecorder
+from agent_runtime.core.worker_runner import WorkerRunner
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -120,6 +121,12 @@ class ExecuteCommand:
         self.registry = create_default_tool_registry()
         self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
         self.worker_recorder = WorkerExecutionRecorder(self.validator)
+        self.worker_runner = WorkerRunner(
+            validator=self.validator,
+            recorder=self.worker_recorder,
+            runtime_profile_builder=RuntimeProfileBuilder(self.validator),
+            actor="ExecuteCommand",
+        )
 
     def run(self) -> ExecuteResult:
         agent_dir = self.root / ".agent"
@@ -280,9 +287,7 @@ class ExecuteCommand:
         worker_id: str | None = None,
         result_id: str | None = None,
     ) -> TaskExecutionSummary:
-        started_at = now_iso()
         run_dir = context.run_dir
-        model_calls_before = self._jsonl_count(run_dir / "model_calls.jsonl") if run_dir else 0
         worker_id = worker_id or (
             self._next_jsonl_id(run_dir / "workers.jsonl", "worker") if run_dir else "worker-0001"
         )
@@ -291,73 +296,28 @@ class ExecuteCommand:
             if run_dir
             else "worker-result-0001"
         )
-        try:
-            runtime_mount = self._record_runtime_profile_mount(
-                context=context,
-                task=task,
-                worker_id=worker_id,
-                runtime_context=runtime_context,
-            )
-            summary = self._execute_task(
+        return self.worker_runner.run(
+            task=task,
+            context=context,
+            runtime_context=runtime_context,
+            execute_task=lambda mounted_context: self._execute_task(
                 task=task,
                 task_board=task_board,
                 context=context,
                 coder=coder,
                 goal_spec=goal_spec,
                 project_config=project_config,
-                runtime_context=runtime_mount.runtime_context,
-            )
-        except Exception as exc:
-            ended_at = now_iso()
-            self.worker_recorder.record_execution(
-                context=context,
-                worker_id=worker_id,
-                result_id=result_id,
-                task=task,
-                status="failed",
-                started_at=started_at,
-                ended_at=ended_at,
-                model_calls=(
-                    self._jsonl_count(run_dir / "model_calls.jsonl") - model_calls_before
-                    if run_dir
-                    else 0
-                ),
-                tool_calls=0,
-                artifact_refs=[],
-                validation_refs=[],
-                failure_evidence_refs=[],
-                summary=str(exc),
-                runtime_profile_id=(
-                    runtime_mount.runtime_profile_id
-                    if "runtime_mount" in locals()
-                    else self.worker_recorder.default_runtime_profile_id(task)
-                ),
-                actor="ExecuteCommand",
-            )
-            raise
-        ended_at = now_iso()
-        self.worker_recorder.record_execution(
-            context=context,
+                runtime_context=mounted_context,
+            ),
+            artifact_refs=self._task_artifact_refs,
+            failure_evidence_refs=self._failure_evidence_refs,
+            task_failure_refs=self._task_failure_refs,
+            decision_refs=self._task_decision_refs,
+            validation_refs=self._task_validation_refs,
+            model_call_count=self._jsonl_count,
             worker_id=worker_id,
             result_id=result_id,
-            task=task,
-            status=self.worker_recorder.worker_status(summary.status),
-            started_at=started_at,
-            ended_at=ended_at,
-            model_calls=(
-                self._jsonl_count(run_dir / "model_calls.jsonl") - model_calls_before
-                if run_dir
-                else 0
-            ),
-            tool_calls=summary.tool_calls + summary.verification_calls,
-            artifact_refs=self._task_artifact_refs(context, task["task_id"]),
-            validation_refs=summary.validation_refs,
-            failure_evidence_refs=self._failure_evidence_refs(summary),
-            summary=summary.summary,
-            runtime_profile_id=runtime_mount.runtime_profile_id,
-            actor="ExecuteCommand",
         )
-        return summary
 
     def _execute_task(
         self,
@@ -1633,24 +1593,6 @@ class ExecuteCommand:
         if lowered.endswith((".md", ".txt", ".rst")):
             return "report"
         return "source_file"
-
-    def _record_runtime_profile_mount(
-        self,
-        context: RuntimeContext,
-        task: dict,
-        worker_id: str,
-        runtime_context: dict,
-    ):
-        return RuntimeProfileBuilder(self.validator).build_and_record(
-            context=context,
-            task=task,
-            worker_id=worker_id,
-            runtime_context=runtime_context,
-            artifact_refs=self._task_artifact_refs(context, task["task_id"]),
-            failure_evidence_refs=self._task_failure_refs(context, task["task_id"]),
-            decision_refs=self._task_decision_refs(context, task["task_id"]),
-            validation_refs=self._task_validation_refs(context, task["task_id"]),
-        )
 
     def _task_artifact_refs(self, context: RuntimeContext, task_id: str) -> list[str]:
         if context.run_dir is None:

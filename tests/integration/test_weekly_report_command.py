@@ -212,6 +212,13 @@ def runtime_os_report(tmp_path: Path) -> dict:
             {"planner_scope_narrowed": True, "runtime_request_created": True},
         ),
         runtime_scenario("runtime_capability_feedback", {"capability_feedback_recorded": True}),
+        runtime_scenario(
+            "runtime_evidence_consumption",
+            {
+                "debug_consumed_runtime_evidence": True,
+                "review_consumed_runtime_evidence": True,
+            },
+        ),
     ]
     return {
         "schema_version": "0.1.0",

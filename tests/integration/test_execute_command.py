@@ -1241,6 +1241,7 @@ def test_resume_applies_runtime_request_and_allows_follow_up_write(
     assert task["status"] == "ready"
     assert "generated/report.md" in task["write_scope"]
     assert "Runtime request approved via decision-0001" in task["notes"]
+    assert "Recovered from Runtime OS evidence" in task["notes"]
 
     second_resume = ResumeCommand(
         tmp_path,
@@ -1271,6 +1272,10 @@ def test_resume_applies_runtime_request_and_allows_follow_up_write(
     ]
     assert len(applied) == 1
     assert applied[0]["data"]["effect"] == "runtime_request_applied"
+    resume_evidence = applied[0]["data"]["runtime_os_evidence"]
+    assert resume_evidence["runtime_request_ids"] == [runtime_request["runtime_request_id"]]
+    assert resume_evidence["latest_worker_result"]["status"] == "failed"
+    assert resume_evidence["summary"]["blocked_execution_count"] == 1
     assert runtime_request["runtime_request_id"] in task["notes"]
 
 

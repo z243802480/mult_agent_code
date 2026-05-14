@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agent_runtime.commands.run_command import RunCommand, RunResult, RunStepSummary
+from agent_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from agent_runtime.models.base import ModelClient
 from agent_runtime.storage.event_logger import EventLogger
 from agent_runtime.storage.json_store import JsonStore
@@ -65,6 +66,7 @@ class ResumeCommand:
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
+        self.runtime_evidence = RuntimeEvidenceReader(self.validator)
 
     def run(self) -> ResumeResult:
         agent_dir = self.root / ".agent"
@@ -160,19 +162,21 @@ class ResumeCommand:
                 self._record_decision_applied(run_dir, run_id, decision, option, effect)
                 self._record_decision_memory(agent_dir, run_id, decision, option, effect)
                 continue
-            runtime_request_effect = self._apply_runtime_request_decision(
+            runtime_request_result = self._apply_runtime_request_decision(
                 run_dir,
                 decision,
                 option,
                 task_plan,
             )
-            if runtime_request_effect:
+            if runtime_request_result:
+                runtime_request_effect, runtime_request_evidence = runtime_request_result
                 self._record_decision_applied(
-                    run_dir,
-                    run_id,
-                    decision,
-                    option,
-                    runtime_request_effect,
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    decision=decision,
+                    option=option,
+                    effect=runtime_request_effect,
+                    evidence=runtime_request_evidence,
                 )
                 self._record_decision_memory(
                     agent_dir,
@@ -352,22 +356,23 @@ class ResumeCommand:
         decision: dict,
         option: dict | None,
         task_plan: dict,
-    ) -> str | None:
+    ) -> tuple[str, dict] | None:
         metadata = decision.get("metadata") or {}
         if metadata.get("kind") != "runtime_request":
             return None
         if not option or option["option_id"] == "reject_request":
-            return "runtime_request_rejected"
+            return "runtime_request_rejected", self._runtime_request_resume_evidence(run_dir, metadata)
         requests = self._runtime_requests_by_id(
             run_dir,
             [str(item) for item in metadata.get("runtime_request_ids", []) if item],
         )
         if not requests:
-            return "runtime_request_missing"
+            return "runtime_request_missing", self._runtime_request_resume_evidence(run_dir, metadata)
         task_id = str(metadata.get("task_id") or "")
         task = self._find_task(task_plan, task_id)
         if task is None:
-            return "runtime_request_task_missing"
+            return "runtime_request_task_missing", self._runtime_request_resume_evidence(run_dir, metadata)
+        resume_evidence = self._runtime_request_resume_evidence(run_dir, metadata)
         applied_request_ids = []
         for request in requests:
             if self._apply_runtime_request_to_task(task, request):
@@ -375,14 +380,40 @@ class ResumeCommand:
         if applied_request_ids and task["status"] == "blocked":
             task["status"] = "ready"
         if applied_request_ids:
+            evidence_summary = resume_evidence.get("summary") or {}
+            latest_worker = resume_evidence.get("latest_worker_result") or {}
             task["notes"] = (
                 f"Runtime request approved via {decision['decision_id']}: "
-                f"{', '.join(applied_request_ids)}."
+                f"{', '.join(applied_request_ids)}. "
+                "Recovered from Runtime OS evidence "
+                f"(worker={latest_worker.get('worker_result_id') or 'none'}, "
+                f"blocked={evidence_summary.get('blocked_execution_count', 0)}, "
+                f"pending_requests={evidence_summary.get('pending_runtime_request_count', 0)})."
             )
             task["updated_at"] = now_iso()
             self.validator.validate("task", task)
-            return "runtime_request_applied"
-        return "runtime_request_recorded"
+            return "runtime_request_applied", resume_evidence
+        return "runtime_request_recorded", resume_evidence
+
+    def _runtime_request_resume_evidence(self, run_dir: Path, metadata: dict) -> dict:
+        task_id = str(metadata.get("task_id") or "")
+        evidence = self.runtime_evidence.task_evidence(run_dir, task_id) if task_id else {}
+        request_ids = [str(item) for item in metadata.get("runtime_request_ids", []) if item]
+        runtime_requests = [
+            request
+            for request in evidence.get("runtime_requests", [])
+            if request.get("runtime_request_id") in request_ids
+        ]
+        worker_results = evidence.get("worker_results") or []
+        task_execution = evidence.get("task_execution_evidence") or []
+        return {
+            "task_id": task_id,
+            "runtime_request_ids": request_ids,
+            "runtime_requests": runtime_requests[-5:],
+            "latest_worker_result": worker_results[-1] if worker_results else {},
+            "latest_task_execution_evidence": task_execution[-1] if task_execution else {},
+            "summary": evidence.get("summary") or {},
+        }
 
     def _runtime_requests_by_id(self, run_dir: Path, request_ids: list[str]) -> list[dict]:
         path = run_dir / "runtime_requests.jsonl"
@@ -620,6 +651,7 @@ class ResumeCommand:
         decision: dict,
         option: dict | None,
         effect: str,
+        evidence: dict | None = None,
     ) -> None:
         selected = decision["selected_option_id"] or decision["default_option_id"]
         EventLogger(run_dir / "events.jsonl", self.validator).record(
@@ -633,6 +665,7 @@ class ResumeCommand:
                 "label": option["label"] if option else None,
                 "action": self._option_action(option) if option else None,
                 "effect": effect,
+                "runtime_os_evidence": evidence or {},
             },
         )
 

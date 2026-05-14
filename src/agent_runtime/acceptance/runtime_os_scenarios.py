@@ -237,6 +237,100 @@ class RuntimeAcceptanceClient:
         )
 
 
+class RuntimeEvidenceDebugClient:
+    def __init__(self) -> None:
+        self.consumed_runtime_evidence = False
+
+    def chat(self, request: Any) -> Any:
+        from agent_runtime.models.base import ChatResponse, TokenUsage
+
+        payload = json.loads(request.messages[-1].content)
+        task = payload["task"]
+        evidence = payload.get("failure_evidence", {})
+        runtime_evidence = evidence.get("runtime_os_evidence")
+        self.consumed_runtime_evidence = bool(
+            isinstance(runtime_evidence, dict)
+            and runtime_evidence.get("worker_results")
+            and runtime_evidence.get("task_execution_evidence")
+        )
+        action = {
+            "schema_version": "0.1.0",
+            "task_id": task["task_id"],
+            "summary": "Repair using Runtime OS evidence.",
+            "tool_calls": [
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "blocked/output.txt",
+                        "content": "expected",
+                        "overwrite": True,
+                    },
+                    "reason": "repair failed worker output",
+                }
+            ],
+            "verification": [
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            "python -c \"from pathlib import Path; "
+                            "assert Path('blocked/output.txt').read_text(encoding='utf-8') == 'expected'\""
+                        )
+                    },
+                    "reason": "verify repaired output",
+                }
+            ],
+            "completion_notes": "Runtime evidence guided repair",
+        }
+        return ChatResponse(
+            content=json.dumps(action, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="runtime-acceptance",
+            model_name="runtime-evidence-debug",
+            raw_response={},
+        )
+
+
+class RuntimeEvidenceReviewClient:
+    def __init__(self) -> None:
+        self.consumed_runtime_evidence = False
+
+    def chat(self, request: Any) -> Any:
+        from agent_runtime.models.base import ChatResponse, TokenUsage
+
+        payload = json.loads(request.messages[-1].content)
+        trajectory = payload.get("trajectory", {})
+        checks = payload.get("deterministic_checks", {})
+        self.consumed_runtime_evidence = bool(
+            isinstance(trajectory.get("runtime_os_evidence"), dict)
+            and trajectory.get("worker_results")
+            and "runtime_os_summary" in checks
+        )
+        report = {
+            "schema_version": "0.1.0",
+            "run_id": payload["run_id"],
+            "goal_eval": {"goal_clarity_score": 0.9, "requirement_coverage": 1.0},
+            "artifact_eval": {"artifacts_present": True, "logs_present": True},
+            "outcome_eval": {"verification_pass_rate": 1.0, "run_success": True},
+            "trajectory_eval": {"blocked_task_count": 0, "repair_success_rate": 1.0},
+            "cost_eval": {"status": "within_budget", "model_calls": 3, "tool_calls": 4},
+            "overall": {
+                "status": "pass",
+                "score": 0.9,
+                "reason": "Runtime OS evidence proves repair and review.",
+            },
+        }
+        return ChatResponse(
+            content=json.dumps(report, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="runtime-acceptance",
+            model_name="runtime-evidence-review",
+            raw_response={},
+        )
+
+
 def run_runtime_os_scenario(
     workspace: Path,
     scenario_name: str,
@@ -268,6 +362,8 @@ def run_runtime_os_scenario(
             ok, summary = _runtime_planner_scope_quality(workspace)
         elif scenario_name == "runtime_capability_feedback":
             ok, summary = _runtime_capability_feedback(workspace)
+        elif scenario_name == "runtime_evidence_consumption":
+            ok, summary = _runtime_evidence_consumption(workspace)
         else:
             raise ValueError(f"Unknown runtime OS scenario: {scenario_name}")
     except Exception as exc:  # noqa: BLE001 - scenario summary should preserve diagnostics
@@ -665,6 +761,44 @@ def _append_merge_gate_feedback(run_dir: Path, run_id: str) -> None:
         },
         "task_execution_evidence",
     )
+
+
+def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from agent_runtime.commands.debug_command import DebugCommand
+    from agent_runtime.commands.execute_command import ExecuteCommand
+    from agent_runtime.commands.review_command import ReviewCommand
+
+    run_id = _seed_runtime_run(
+        workspace,
+        [
+            _runtime_task(
+                "task-0001",
+                "Repair and review Runtime OS evidence",
+                write_scope=["blocked/output.txt"],
+            )
+        ],
+    )
+    ExecuteCommand(
+        workspace,
+        run_id=run_id,
+        model_client=RuntimeAcceptanceClient("failure"),
+    ).run()
+    debug_client = RuntimeEvidenceDebugClient()
+    DebugCommand(workspace, run_id=run_id, model_client=debug_client).run()
+    review_client = RuntimeEvidenceReviewClient()
+    ReviewCommand(workspace, run_id=run_id, model_client=review_client).run()
+    run_dir = workspace / ".agent" / "runs" / run_id
+    evidence = _runtime_evidence(run_dir)
+    evidence["debug_consumed_runtime_evidence"] = debug_client.consumed_runtime_evidence
+    evidence["review_consumed_runtime_evidence"] = review_client.consumed_runtime_evidence
+    ok = evidence["debug_consumed_runtime_evidence"] and evidence["review_consumed_runtime_evidence"]
+    summary = _runtime_summary(
+        "runtime_evidence_consumption",
+        run_id,
+        evidence,
+        result="debug and review consumed Runtime OS evidence",
+    )
+    return ok, summary
 
 
 def _seed_runtime_run(workspace: Path, tasks: list[dict[str, Any]]) -> str:

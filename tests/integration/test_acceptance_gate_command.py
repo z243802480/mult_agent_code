@@ -282,6 +282,13 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
                     "runtime_capability_feedback",
                     {"capability_feedback_recorded": True},
                 ),
+                runtime_scenario(
+                    "runtime_evidence_consumption",
+                    {
+                        "debug_consumed_runtime_evidence": True,
+                        "review_consumed_runtime_evidence": True,
+                    },
+                ),
             ],
         },
     )
@@ -290,8 +297,8 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
         tmp_path,
         report_path=report_path,
         suite="core",
-        min_scenarios=9,
-        min_capabilities=9,
+        min_scenarios=10,
+        min_capabilities=10,
         require_tiers=["core"],
     ).run()
 

@@ -116,6 +116,10 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: worker did not create an auditable runtime request"
         if key == "capability_feedback_recorded":
             return f"{scenario_name}: capability profile did not record runtime feedback signals"
+        if key == "debug_consumed_runtime_evidence":
+            return f"{scenario_name}: debug did not consume Runtime OS evidence"
+        if key == "review_consumed_runtime_evidence":
+            return f"{scenario_name}: review did not consume Runtime OS evidence"
         return f"{scenario_name}: missing {key}"
 
 

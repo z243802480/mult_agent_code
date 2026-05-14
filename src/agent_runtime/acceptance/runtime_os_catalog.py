@@ -68,6 +68,11 @@ RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
         capability="capability_feedback",
         special_evidence=("capability_feedback_recorded",),
     ),
+    RuntimeOSCapability(
+        scenario="runtime_evidence_consumption",
+        capability="runtime_evidence_consumption",
+        special_evidence=("debug_consumed_runtime_evidence", "review_consumed_runtime_evidence"),
+    ),
 )
 
 
