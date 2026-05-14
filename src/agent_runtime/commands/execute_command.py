@@ -1153,10 +1153,17 @@ class ExecuteCommand:
         if tool_name not in write_tools:
             self._enforce_read_scope(task, tool_name, args)
             return
-        if parallel_safety(task) == "readonly" or not write_scope(task):
+        if parallel_safety(task) == "readonly":
             raise PermissionError(
                 f"ToolPermissionProfile denied write tool for readonly task {task['task_id']}: "
                 f"{tool_name}"
+            )
+        if not write_scope(task):
+            requested_paths = self._write_paths_for_tool(tool_name, args)
+            raise ToolPermissionDenied(
+                f"ToolPermissionProfile requires write_scope for {task['task_id']}: {tool_name}",
+                request_type="scope_expansion",
+                details={"write_scope": requested_paths},
             )
         if not isinstance(task.get("write_scope"), list):
             return
@@ -1425,6 +1432,11 @@ class ExecuteCommand:
                 "rollback": self._rollback_summary(rollback_results or []),
                 "workspace": str(candidate_workspace.root) if candidate_workspace else None,
                 "candidate_id": (candidate_workspace.candidate_id if candidate_workspace else None),
+                "strategy": candidate_workspace.strategy if candidate_workspace else None,
+                "workspace_policy": (
+                    candidate_workspace.workspace_policy if candidate_workspace else None
+                ),
+                "backend_reason": candidate_workspace.backend_reason if candidate_workspace else None,
                 "promoted_files": sorted(set(promoted_files or [])),
             },
             "evaluator": {

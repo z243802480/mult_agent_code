@@ -339,12 +339,35 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
             "task": {},
             "action": {},
             "candidate": {},
-            "contract_check": {},
+            "contract_check": {
+                "merge_gate": {
+                    "ok": False,
+                    "promotable_files": [],
+                    "violations": ["changed files outside write_scope: docs/notes.md"],
+                }
+            },
             "tool_results": [],
             "verification_results": [],
             "created_at": "2026-05-13T10:00:25+08:00",
         },
         "task_execution_evidence",
+    )
+    jsonl.append(
+        run_dir / "runtime_requests.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "runtime_request_id": "runtime-request-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "request_type": "scope_expansion",
+            "risk": "medium",
+            "reason": "Need docs/notes.md",
+            "details": {"write_scope": ["docs/notes.md"]},
+            "status": "decision_created",
+            "decision_id": "decision-0001",
+            "created_at": "2026-05-13T10:00:26+08:00",
+        },
+        "runtime_request",
     )
     jsonl.append(
         run_dir / "worker_results.jsonl",
@@ -376,6 +399,11 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     assert route["worker_success_rate"] == 1.0
     assert route["validation_total"] == 1
     assert route["validation_pass_rate"] == 1.0
+    assert route["runtime_request_total"] == 1
+    assert route["runtime_request_rate"] == 1.0
+    assert route["runtime_request_types"]["scope_expansion"] == 1
+    assert route["merge_gate_blocks"] == 1
+    assert route["failure_types"]["merge_gate"] == 1
     assert result.runtime_os["status"] == "pass"
     assert result.runtime_os["gate"]["status"] == "pass"
     assert result.runtime_os["evidence"]["worker_invocations"] == 1

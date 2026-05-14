@@ -701,6 +701,9 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert experiments[0]["decision"] == "keep"
     assert experiments[0]["candidate"]["backup_ids"]
     assert experiments[0]["candidate"]["workspace"]
+    assert experiments[0]["candidate"]["strategy"] in {"git_worktree", "temp_workspace"}
+    assert experiments[0]["candidate"]["workspace_policy"] in {"worktree", "isolated_copy"}
+    assert experiments[0]["candidate"]["backend_reason"]
     assert experiments[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
     artifacts = [
@@ -718,6 +721,8 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert evidence[0]["status"] == "done"
     assert evidence[0]["task"]["acceptance"]
     assert evidence[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
+    assert evidence[0]["candidate"]["strategy"] in {"git_worktree", "temp_workspace"}
+    assert evidence[0]["candidate"]["backend_reason"]
     assert evidence[0]["contract_check"]["merge_gate"]["ok"] is True
     assert evidence[0]["contract_check"]["merge_gate"]["promotable_files"] == [
         "src/notes_tool.py"

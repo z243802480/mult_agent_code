@@ -225,6 +225,8 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) 
 
     assert mount.runtime_context["model_profile_id"] == "model-profile-worker-0001"
     assert mount.runtime_context["runtime_profile_id"] == "runtime-profile-worker-0001"
-    assert "strong-route" in (tmp_path / ".agent" / "runs" / "run-0001" / "model_profiles.jsonl").read_text(
-        encoding="utf-8"
-    )
+    run_dir = tmp_path / ".agent" / "runs" / "run-0001"
+    assert "strong-route" in (run_dir / "model_profiles.jsonl").read_text(encoding="utf-8")
+    sandbox_profile = (run_dir / "sandbox_profiles.jsonl").read_text(encoding="utf-8")
+    assert "temp_workspace" in sandbox_profile
+    assert "use copied temp workspace" in sandbox_profile

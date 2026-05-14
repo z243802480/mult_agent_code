@@ -13,6 +13,7 @@ from agent_runtime.core.runtime_profile import (
     SandboxProfile,
     ToolPermissionProfile,
 )
+from agent_runtime.core.sandbox_backend import SandboxBackendSelector
 from agent_runtime.core.task_contract import (
     context_requirements,
     failure_policy,
@@ -91,12 +92,14 @@ class RuntimeProfileBuilder:
             credential_ref="AGENT_MODEL_API_KEY",
             permission_tier="standard",
         )
+        sandbox_plan = SandboxBackendSelector().select_for_task(context.root, task)
         sandbox_profile = SandboxProfile(
             sandbox_profile_id=f"sandbox-{profile_base_id}",
-            backend="single_workspace",
-            workspace_policy="controlled_patch",
+            backend=sandbox_plan.backend,
+            workspace_policy=sandbox_plan.workspace_policy,
             cleanup_policy="keep_evidence",
             export_required=["artifact_index", "diff", "failure_evidence"],
+            reason=sandbox_plan.reason,
         )
         context_mount = scoped.get("context_mount") or {}
         runtime_profile = RuntimeProfile(

@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from agent_runtime.core.sandbox_backend import SandboxBackendPlan, SandboxBackendSelector
+
 
 EXCLUDED_NAMES = {
     ".agent",
@@ -27,19 +29,24 @@ class CandidateWorkspace:
     candidate_id: str
     root: Path
     source_root: Path
-    strategy: str = "copy"
+    strategy: str = "temp_workspace"
+    workspace_policy: str = "isolated_copy"
+    backend_reason: str = ""
 
     @classmethod
     def create(cls, source_root: Path, run_dir: Path, task_id: str) -> "CandidateWorkspace":
         candidate_id = _candidate_id()
         candidate_root = run_dir / "cw" / task_id / _path_id(candidate_id)
         candidate_root.parent.mkdir(parents=True, exist_ok=True)
-        strategy = _create_workspace(source_root.resolve(), candidate_root)
+        plan = SandboxBackendSelector().select_for_workspace(source_root.resolve())
+        strategy = _create_workspace(source_root.resolve(), candidate_root, plan)
         return cls(
             candidate_id=candidate_id,
             root=candidate_root,
             source_root=source_root.resolve(),
             strategy=strategy,
+            workspace_policy=plan.workspace_policy if strategy == plan.backend else "isolated_copy",
+            backend_reason=plan.reason,
         )
 
     def promote(self, changed_files: list[str]) -> list[str]:
@@ -78,8 +85,12 @@ def _ignore_names(directory: str, names: list[str]) -> set[str]:
     return {name for name in names if name in EXCLUDED_NAMES}
 
 
-def _create_workspace(source_root: Path, candidate_root: Path) -> str:
-    if _can_use_worktree(source_root):
+def _create_workspace(
+    source_root: Path,
+    candidate_root: Path,
+    plan: SandboxBackendPlan,
+) -> str:
+    if plan.backend == "git_worktree":
         try:
             _run_git(source_root, "worktree", "add", "--detach", str(candidate_root), "HEAD")
             return "git_worktree"
@@ -87,18 +98,7 @@ def _create_workspace(source_root: Path, candidate_root: Path) -> str:
             if candidate_root.exists():
                 shutil.rmtree(candidate_root, ignore_errors=True)
     _copy_workspace(source_root, candidate_root)
-    return "copy"
-
-
-def _can_use_worktree(source_root: Path) -> bool:
-    if not (source_root / ".git").exists():
-        return False
-    try:
-        status = _run_git(source_root, "status", "--porcelain")
-    except (OSError, subprocess.SubprocessError):
-        return False
-    # A dirty tree may include user edits that are not in HEAD, so copy preserves intent better.
-    return not status.stdout.strip()
+    return "temp_workspace"
 
 
 def _run_git(source_root: Path, *args: str) -> subprocess.CompletedProcess[str]:

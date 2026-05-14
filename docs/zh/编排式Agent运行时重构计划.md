@@ -904,6 +904,10 @@ summary_context
 - `ToolPermissionProfile` 与 ToolRegistry 权限检查对接。
 - `SandboxProfile` 与 workspace policy 对接。
 - capability profile 反哺 Coordinator。
+- ContextPackage 必须从“按 refs 汇总证据”升级为“按 `read_scope`、TaskContract 和 ContextMount 裁剪上下文包”，并显式包含 runtime request、worker result、validation 与 merge gate evidence。
+- Sandbox backend 必须抽成统一 selector：干净 Git 仓库优先 `git_worktree`，否则回退 `temp_workspace` copy；RuntimeProfile 和 CandidateWorkspace 使用同一选择结果。
+- Planner 生成宽泛 `write_scope` 时必须触发 scope quality 检查。能推断具体文件就收窄，不能推断则要求 worker 通过 runtime request 申请扩边界，而不是默认放大权限。
+- 能力画像必须吸收 worker 成功率、validation pass rate、merge gate block 和 runtime request 类型，作为模型路由和后续 Planner/Coordinator 调整的反馈信号。
 
 验收：
 

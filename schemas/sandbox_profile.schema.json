@@ -25,6 +25,7 @@
       "type": "string",
       "enum": ["keep_evidence", "keep_workspace", "delete_on_success"]
     },
-    "export_required": { "type": "array", "items": { "type": "string" } }
+    "export_required": { "type": "array", "items": { "type": "string" } },
+    "reason": { "type": "string" }
   }
 }

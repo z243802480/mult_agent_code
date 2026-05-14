@@ -50,6 +50,10 @@
           "validation_total": { "type": "integer" },
           "validation_passed": { "type": "integer" },
           "validation_pass_rate": { "type": "number" },
+          "runtime_request_total": { "type": "integer" },
+          "runtime_request_rate": { "type": "number" },
+          "runtime_request_types": { "type": "object" },
+          "merge_gate_blocks": { "type": "integer" },
           "failure_types": { "type": "object" },
           "recommended_action": { "type": "string" },
           "recent_failures": { "type": "array", "items": { "type": "string" } }

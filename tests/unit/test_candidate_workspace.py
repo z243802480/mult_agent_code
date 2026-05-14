@@ -22,7 +22,9 @@ def test_candidate_workspace_copies_safe_files_and_excludes_agent_state(tmp_path
 
     candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
 
-    assert candidate.strategy == "copy"
+    assert candidate.strategy == "temp_workspace"
+    assert candidate.workspace_policy == "isolated_copy"
+    assert candidate.backend_reason
     assert (candidate.root / "src" / "tool.py").exists()
     assert not (candidate.root / ".agent").exists()
     assert not (candidate.root / ".git").exists()
@@ -65,6 +67,8 @@ def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path
     candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
 
     assert candidate.strategy == "git_worktree"
+    assert candidate.workspace_policy == "worktree"
+    assert candidate.backend_reason
     assert (candidate.root / "tool.py").exists()
 
 

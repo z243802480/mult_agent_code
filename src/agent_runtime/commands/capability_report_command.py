@@ -76,7 +76,11 @@ class CapabilityReportResult:
                     f"purpose={profile['purpose']} tier={profile['model_tier']}: "
                     f"{profile['success_rate']:.2f} success "
                     f"({profile['success_calls']}/{profile['total_calls']} calls, "
-                    f"{profile['input_tokens']} in/{profile['output_tokens']} out tokens)"
+                    f"{profile['input_tokens']} in/{profile['output_tokens']} out tokens, "
+                    f"worker={profile.get('worker_success_rate', 0.0):.2f}, "
+                    f"validation={profile.get('validation_pass_rate', 0.0):.2f}, "
+                    f"runtime_requests={profile.get('runtime_request_total', 0)}, "
+                    f"merge_blocks={profile.get('merge_gate_blocks', 0)})"
                 )
         if self.model_profile_path:
             lines.append(f"Model profile: {self.model_profile_path}")
@@ -324,6 +328,11 @@ class CapabilityReportCommand:
                 if validation_total
                 else 0.0
             )
+            runtime_request_total = int(profile.get("runtime_request_total") or 0)
+            profile["runtime_request_rate"] = round(
+                runtime_request_total / max(1, total_workers),
+                4,
+            )
             profile["recommended_action"] = self._model_route_action(profile)
             normalized.append(profile)
         return sorted(
@@ -419,6 +428,9 @@ class CapabilityReportCommand:
                 "failed_workers": 0,
                 "validation_total": 0,
                 "validation_passed": 0,
+                "runtime_request_total": 0,
+                "runtime_request_types": {},
+                "merge_gate_blocks": 0,
                 "failure_types": {},
                 "recent_failures": [],
             },
@@ -495,6 +507,61 @@ class CapabilityReportCommand:
                 profile["validation_total"] += 1
                 if validation.get("status") == "passed":
                     profile["validation_passed"] += 1
+        profile_by_task = self._latest_profile_by_task(
+            workers,
+            runtime_profiles,
+            model_profiles,
+            profiles,
+        )
+        runtime_requests_path = run_dir / "runtime_requests.jsonl"
+        if runtime_requests_path.exists():
+            for request in self.jsonl.read_all(runtime_requests_path, "runtime_request"):
+                request_profile = profile_by_task.get(str(request.get("task_id") or ""))
+                if not request_profile:
+                    continue
+                request_profile["runtime_request_total"] += 1
+                request_type = str(request.get("request_type") or "unknown")
+                request_profile["runtime_request_types"][request_type] = (
+                    request_profile["runtime_request_types"].get(request_type, 0) + 1
+                )
+        evidence_path = run_dir / "task_execution_evidence.jsonl"
+        if evidence_path.exists():
+            for evidence in self.jsonl.read_all(evidence_path, "task_execution_evidence"):
+                evidence_profile = profile_by_task.get(str(evidence.get("task_id") or ""))
+                if not evidence_profile:
+                    continue
+                contract = evidence.get("contract_check")
+                contract = contract if isinstance(contract, dict) else {}
+                merge_gate = contract.get("merge_gate")
+                if isinstance(merge_gate, dict) and merge_gate.get("ok") is False:
+                    evidence_profile["merge_gate_blocks"] += 1
+                    evidence_profile["failure_types"]["merge_gate"] = (
+                        evidence_profile["failure_types"].get("merge_gate", 0) + 1
+                    )
+
+    def _latest_profile_by_task(
+        self,
+        workers: dict[str, dict[str, Any]],
+        runtime_profiles: dict[str, dict[str, Any]],
+        model_profiles: dict[str, dict[str, Any]],
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        by_task: dict[str, dict[str, Any]] = {}
+        for worker in workers.values():
+            runtime_profile = runtime_profiles.get(str(worker.get("runtime_profile_id") or ""))
+            if not runtime_profile:
+                continue
+            model_profile = model_profiles.get(str(runtime_profile.get("model_profile_id") or ""))
+            if not model_profile:
+                continue
+            key = (
+                str(model_profile.get("provider") or "unknown"),
+                str(model_profile.get("model_name") or "unknown"),
+                str(model_profile.get("purpose") or "unknown"),
+                str(model_profile.get("model_tier") or "unknown"),
+            )
+            by_task[str(worker.get("task_id") or "")] = self._ensure_model_profile(profiles, key)
+        return by_task
 
     def _write_model_profile(
         self,
@@ -539,6 +606,10 @@ class CapabilityReportCommand:
         failure_types = profile.get("failure_types") or {}
         if validation_total >= 2 and validation_pass_rate < 0.8:
             return "review_validation_or_route_before_scaling"
+        if int(profile.get("merge_gate_blocks") or 0) >= 2:
+            return "review_merge_quality_before_scaling"
+        if float(profile.get("runtime_request_rate") or 0.0) >= 1.0 and total_workers >= 2:
+            return "improve_planner_scope_before_scaling"
         if total_workers >= 2 and worker_success_rate < 0.8:
             return "review_worker_route_before_scaling"
         if total < 2 and total_workers < 2:

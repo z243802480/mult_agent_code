@@ -102,6 +102,79 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
             "created_at": "2026-05-13T10:04:00+08:00",
         },
     )
+    _append_jsonl(
+        run_dir / "runtime_requests.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "runtime_request_id": "runtime-request-0001",
+            "run_id": "run-0001",
+            "task_id": "task-0001",
+            "request_type": "scope_expansion",
+            "risk": "medium",
+            "reason": "Need docs/notes.md",
+            "details": {"write_scope": ["docs/notes.md"]},
+            "status": "decision_created",
+            "decision_id": "decision-0001",
+            "created_at": "2026-05-13T10:05:00+08:00",
+        },
+    )
+    _append_jsonl(
+        run_dir / "workers.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_invocation_id": "worker-0001",
+            "run_id": "run-0001",
+            "task_id": "task-0001",
+            "agent_id": "CoderAgent",
+            "runtime_profile_id": "runtime-profile-0001",
+            "status": "failed",
+            "started_at": "2026-05-13T10:06:00+08:00",
+            "ended_at": "2026-05-13T10:07:00+08:00",
+            "summary": "Worker failed merge gate.",
+        },
+    )
+    _append_jsonl(
+        run_dir / "worker_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_result_id": "worker-result-0001",
+            "worker_invocation_id": "worker-0001",
+            "run_id": "run-0001",
+            "task_id": "task-0001",
+            "status": "failed",
+            "artifact_refs": ["artifact-0001"],
+            "validation_refs": ["validation-0001"],
+            "failure_evidence_refs": ["failure-0001"],
+            "cost": {"model_calls": 1, "tool_calls": 2},
+            "summary": "Merge gate blocked promotion.",
+        },
+    )
+    _append_jsonl(
+        run_dir / "task_execution_evidence.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "task-execution-0001",
+            "run_id": "run-0001",
+            "task_id": "task-0001",
+            "status": "blocked",
+            "summary": "Merge gate blocked promotion.",
+            "failure_type": "merge_gate",
+            "task": {},
+            "action": {},
+            "candidate": {},
+            "contract_check": {
+                "ok": True,
+                "merge_gate": {
+                    "ok": False,
+                    "promotable_files": [],
+                    "violations": ["changed files outside write_scope: docs/notes.md"],
+                },
+            },
+            "tool_results": [],
+            "verification_results": [],
+            "created_at": "2026-05-13T10:08:00+08:00",
+        },
+    )
     task = {
         "task_id": "task-0001",
         "title": "Implement notes",
@@ -139,11 +212,17 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
     assert package["root_guidance"]["content"] == "root guidance"
     assert package["goal_brief"]["normalized_goal"] == "Build notes"
     assert package["task_brief"]["task_id"] == "task-0001"
+    assert package["read_scope_files"][0]["path"] == "src/notes.py"
+    assert package["read_scope_files"][0]["content"]["text"] == "VALUE = 1\n"
     assert package["artifacts"][0]["content"]["text"] == "VALUE = 1\n"
     assert package["failures"][0]["summary"] == "pytest failed"
     assert package["decisions"][0]["selected_option_id"] == "option-1"
     assert package["validations"][0]["validation_result_id"] == "validation-0001"
     assert package["validations"][0]["error"] == "nonzero_exit"
+    assert package["runtime_requests"][0]["runtime_request_id"] == "runtime-request-0001"
+    assert package["worker_results"][0]["runtime_profile_id"] == "runtime-profile-0001"
+    assert package["worker_results"][0]["failure_evidence_refs"] == ["failure-0001"]
+    assert package["merge_gate_evidence"][0]["merge_gate"]["ok"] is False
 
 
 def _append_jsonl(path: Path, payload: dict) -> None:

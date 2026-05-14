@@ -101,6 +101,7 @@ class SandboxProfile:
     workspace_policy: str
     cleanup_policy: str = "keep_evidence"
     export_required: list[str] = field(default_factory=lambda: ["artifact_index", "diff"])
+    reason: str = ""
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
@@ -111,6 +112,7 @@ class SandboxProfile:
             "workspace_policy": self.workspace_policy,
             "cleanup_policy": self.cleanup_policy,
             "export_required": self.export_required,
+            "reason": self.reason,
         }
 
 

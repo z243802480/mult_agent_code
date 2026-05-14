@@ -462,6 +462,21 @@ class RequirementPlanner:
         task["failure_policy"] = failure_policy(task)
         task["parallel_safety"] = parallel_safety(task)
         task["merge_strategy"] = "none"
+        self._harden_broad_write_scope(task)
+
+    def _harden_broad_write_scope(self, task: dict) -> None:
+        broad = {"src/", "tests/", "docs/", "docs/zh/"}
+        scope = [str(item) for item in task.get("write_scope", []) if item]
+        if not scope or any(item not in broad for item in scope):
+            return
+        if task.get("expected_changed_files"):
+            return
+        task["write_scope"] = []
+        task["parallel_safety"] = "serial"
+        task["notes"] = (
+            f"{task.get('notes', '')} Scope quality: write_scope was broad "
+            f"({', '.join(scope)}), so it was narrowed to require a runtime scope request."
+        ).strip()
 
     def _refine_requirement(self, requirement: dict, goal_spec: dict) -> dict:
         expected_artifacts = self._expected_artifacts(requirement, goal_spec)

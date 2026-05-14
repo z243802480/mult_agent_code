@@ -107,6 +107,34 @@ def test_requirement_planner_infers_answer_module_contract() -> None:
     assert "complete_module.py" in task["read_scope"]
 
 
+def test_requirement_planner_requires_runtime_request_for_broad_write_scope() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Improve the application",
+        "target_outputs": ["python_module"],
+        "definition_of_done": ["implementation is improved"],
+        "verification_strategy": ["pytest"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Improve the application behavior",
+                "acceptance": ["behavior is improved"],
+            }
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+    task = task_plan["tasks"][0]
+
+    assert task["expected_artifacts"] == ["src/"]
+    assert task["expected_changed_files"] == []
+    assert task["write_scope"] == []
+    assert task["parallel_safety"] == "serial"
+    assert "runtime scope request" in task["notes"]
+
+
 def test_requirement_planner_refines_low_quality_requirements() -> None:
     goal_spec = {
         "schema_version": "0.1.0",
