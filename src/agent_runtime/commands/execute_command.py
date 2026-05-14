@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,6 +12,7 @@ from agent_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
+from agent_runtime.core.execution_coordinator import ExecutionCoordinator
 from agent_runtime.core.merge_gate import MergeGate
 from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.runtime_request import RuntimeRequest
@@ -25,12 +25,11 @@ from agent_runtime.core.task_contract import (
     read_scope,
     write_scope,
 )
-from agent_runtime.core.task_graph import TaskGraphScheduler
 from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
 from agent_runtime.core.validation_result import ValidationResult
-from agent_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
+from agent_runtime.core.worker_recorder import WorkerExecutionRecorder
 from agent_runtime.models.base import ModelClient
 from agent_runtime.models.factory import create_model_client
 from agent_runtime.models.metered import MeteredModelClient
@@ -120,6 +119,7 @@ class ExecuteCommand:
         self.store = JsonStore(self.validator)
         self.registry = create_default_tool_registry()
         self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
+        self.worker_recorder = WorkerExecutionRecorder(self.validator)
 
     def run(self) -> ExecuteResult:
         agent_dir = self.root / ".agent"
@@ -188,42 +188,40 @@ class ExecuteCommand:
         run_store.update_run(run)
         event_logger.record(run_id, "phase_changed", "ExecuteCommand", "PLAN -> EXECUTE")
 
-        executed: list[TaskExecutionSummary] = []
-        selection = self._select_tasks(task_board)
-        if context.event_logger:
-            context.event_logger.record(
-                run_id,
-                "task_graph_selection",
-                "ExecuteCommand",
-                f"Selected {len(selection.selected)} task(s) for {selection.reason}.",
-                {"reason": selection.reason, "task_ids": [task["task_id"] for task in selection.selected]},
+        coordinator = ExecutionCoordinator(
+            max_tasks=self.max_tasks,
+            parallel_readonly=self.parallel_readonly,
+            parallel_writes=self.parallel_writes,
+            actor="ExecuteCommand",
+        )
+        selection = coordinator.select_tasks(task_board)
+        coordinator.record_selection(context, selection)
+
+        def execute_worker(
+            task: dict,
+            worker_id: str | None,
+            result_id: str | None,
+        ) -> TaskExecutionSummary:
+            return self._execute_task_with_worker_record(
+                task=task,
+                task_board=task_board,
+                context=context,
+                coder=coder,
+                goal_spec=goal_spec,
+                project_config=project_config,
+                runtime_context=runtime_context,
+                worker_id=worker_id,
+                result_id=result_id,
             )
-        if selection.reason in {"readonly_batch_selection", "parallel_safe_batch_selection"}:
-            executed.extend(
-                self._execute_parallel_batch(
-                    tasks=selection.selected,
-                    task_board=task_board,
-                    context=context,
-                    coder=coder,
-                    goal_spec=goal_spec,
-                    project_config=project_config,
-                    runtime_context=runtime_context,
-                )
-            )
-        else:
-            for task in selection.selected:
-                executed.append(
-                    self._execute_task_with_worker_record(
-                        task=task,
-                        task_board=task_board,
-                        context=context,
-                        coder=coder,
-                        goal_spec=goal_spec,
-                        project_config=project_config,
-                        runtime_context=runtime_context,
-                    )
-                )
-            task_board.promote_unblocked()
+
+        executed = coordinator.execute_selection(
+            selection=selection,
+            task_board=task_board,
+            context=context,
+            execute_task=execute_worker,
+            allocate_worker_ids=lambda count: self._allocate_worker_ids(context, count),
+            allocate_worker_result_ids=lambda count: self._allocate_worker_result_ids(context, count),
+        )
 
         self._mirror_backlog(agent_dir, task_board)
         self.store.write(cost_report_path, budget.cost_report(), "cost_report")
@@ -260,79 +258,15 @@ class ExecuteCommand:
             cost_report_path=cost_report_path,
         )
 
-    def _select_tasks(self, task_board: TaskBoard):
-        scheduler = TaskGraphScheduler(task_board.list_tasks())
-        if self.parallel_writes:
-            selection = scheduler.select_parallel_safe_batch(self.max_tasks)
-            if selection.selected:
-                return selection
-        if self.parallel_readonly:
-            selection = scheduler.select_readonly_batch(self.max_tasks)
-            if selection.selected:
-                return selection
-        return scheduler.select_serial(self.max_tasks)
-
-    def _execute_parallel_batch(
-        self,
-        tasks: list[dict],
-        task_board: TaskBoard,
-        context: RuntimeContext,
-        coder: CoderAgent,
-        goal_spec: dict,
-        project_config: dict,
-        runtime_context: dict,
-    ) -> list[TaskExecutionSummary]:
-        if not tasks:
-            return []
-        if len(tasks) == 1:
-            result = self._execute_task_with_worker_record(
-                task=tasks[0],
-                task_board=task_board,
-                context=context,
-                coder=coder,
-                goal_spec=goal_spec,
-                project_config=project_config,
-                runtime_context=runtime_context,
-            )
-            task_board.promote_unblocked()
-            return [result]
-
-        worker_ids = self._allocate_worker_ids(context, len(tasks))
-        result_ids = self._allocate_worker_result_ids(context, len(tasks))
-        results_by_task_id: dict[str, TaskExecutionSummary] = {}
-        with ThreadPoolExecutor(max_workers=len(tasks), thread_name_prefix="agent-readonly") as pool:
-            futures = {
-                pool.submit(
-                    self._execute_task_with_worker_record,
-                    task,
-                    task_board,
-                    context,
-                    coder,
-                    goal_spec,
-                    project_config,
-                    runtime_context,
-                    worker_ids[index],
-                    result_ids[index],
-                ): task["task_id"]
-                for index, task in enumerate(tasks)
-            }
-            for future in as_completed(futures):
-                task_id = futures[future]
-                results_by_task_id[task_id] = future.result()
-        task_board.promote_unblocked()
-        return [results_by_task_id[task["task_id"]] for task in tasks]
-
     def _allocate_worker_ids(self, context: RuntimeContext, count: int) -> list[str]:
         if context.run_dir is None:
             return [f"worker-{index + 1:04d}" for index in range(count)]
-        start = self._jsonl_count(context.run_dir / "workers.jsonl") + 1
-        return [f"worker-{index:04d}" for index in range(start, start + count)]
+        return self.worker_recorder.allocate_worker_ids(context, count)
 
     def _allocate_worker_result_ids(self, context: RuntimeContext, count: int) -> list[str]:
         if context.run_dir is None:
             return [f"worker-result-{index + 1:04d}" for index in range(count)]
-        start = self._jsonl_count(context.run_dir / "worker_results.jsonl") + 1
-        return [f"worker-result-{index:04d}" for index in range(start, start + count)]
+        return self.worker_recorder.allocate_worker_result_ids(context, count)
 
     def _execute_task_with_worker_record(
         self,
@@ -375,7 +309,7 @@ class ExecuteCommand:
             )
         except Exception as exc:
             ended_at = now_iso()
-            self._record_worker_execution(
+            self.worker_recorder.record_execution(
                 context=context,
                 worker_id=worker_id,
                 result_id=result_id,
@@ -396,17 +330,18 @@ class ExecuteCommand:
                 runtime_profile_id=(
                     runtime_mount.runtime_profile_id
                     if "runtime_mount" in locals()
-                    else self._default_runtime_profile_id(task)
+                    else self.worker_recorder.default_runtime_profile_id(task)
                 ),
+                actor="ExecuteCommand",
             )
             raise
         ended_at = now_iso()
-        self._record_worker_execution(
+        self.worker_recorder.record_execution(
             context=context,
             worker_id=worker_id,
             result_id=result_id,
             task=task,
-            status=self._worker_status(summary.status),
+            status=self.worker_recorder.worker_status(summary.status),
             started_at=started_at,
             ended_at=ended_at,
             model_calls=(
@@ -420,6 +355,7 @@ class ExecuteCommand:
             failure_evidence_refs=self._failure_evidence_refs(summary),
             summary=summary.summary,
             runtime_profile_id=runtime_mount.runtime_profile_id,
+            actor="ExecuteCommand",
         )
         return summary
 
@@ -1697,84 +1633,6 @@ class ExecuteCommand:
         if lowered.endswith((".md", ".txt", ".rst")):
             return "report"
         return "source_file"
-
-    def _record_worker_execution(
-        self,
-        context: RuntimeContext,
-        worker_id: str,
-        result_id: str,
-        task: dict,
-        status: str,
-        started_at: str,
-        ended_at: str,
-        model_calls: int,
-        tool_calls: int,
-        artifact_refs: list[str],
-        validation_refs: list[str],
-        failure_evidence_refs: list[str],
-        summary: str,
-        runtime_profile_id: str,
-    ) -> None:
-        if context.run_dir is None:
-            return
-        store = JsonlStore(self.validator)
-        invocation = WorkerInvocation(
-            worker_invocation_id=worker_id,
-            run_id=context.run_id or "",
-            task_id=task["task_id"],
-            agent_id=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
-            runtime_profile_id=runtime_profile_id,
-            status=status,
-            started_at=started_at,
-            ended_at=ended_at,
-            summary=f"Execute {task['task_id']} through {runtime_profile_id}.",
-        )
-        result = WorkerResult(
-            worker_result_id=result_id,
-            worker_invocation_id=worker_id,
-            run_id=context.run_id or "",
-            task_id=task["task_id"],
-            status=self._worker_result_status(status),
-            artifact_refs=artifact_refs,
-            validation_refs=validation_refs,
-            failure_evidence_refs=failure_evidence_refs,
-            cost=WorkerCost(model_calls=max(model_calls, 0), tool_calls=tool_calls),
-            summary=summary,
-        )
-        store.append(context.run_dir / "workers.jsonl", invocation.to_dict(), "worker_invocation")
-        store.append(context.run_dir / "worker_results.jsonl", result.to_dict(), "worker_result")
-        if context.event_logger:
-            context.event_logger.record(
-                context.run_id,
-                "worker_recorded",
-                "ExecuteCommand",
-                f"{worker_id} -> {result.status}",
-                {
-                    "worker_invocation_id": worker_id,
-                    "worker_result_id": result_id,
-                    "task_id": task["task_id"],
-                    "runtime_profile_id": runtime_profile_id,
-                },
-            )
-
-    def _worker_status(self, task_status: str) -> str:
-        if task_status == "done":
-            return "succeeded"
-        if task_status == "blocked":
-            return "failed"
-        return "cancelled"
-
-    def _worker_result_status(self, worker_status: str) -> str:
-        return {
-            "succeeded": "succeeded",
-            "failed": "failed",
-            "denied": "denied",
-            "timeout": "timeout",
-        }.get(worker_status, "partial")
-
-    def _default_runtime_profile_id(self, task: dict) -> str:
-        role = str(task.get("role") or "CoderAgent").lower().replace("agent", "")
-        return f"runtime-profile-execute-{role or 'coder'}"
 
     def _record_runtime_profile_mount(
         self,
