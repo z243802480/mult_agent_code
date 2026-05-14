@@ -13,18 +13,17 @@ from agent_runtime.core.budget import BudgetController
 from agent_runtime.core.candidate_workspace import CandidateWorkspace
 from agent_runtime.core.context_loader import ContextLoader
 from agent_runtime.core.execution_coordinator import ExecutionCoordinator
-from agent_runtime.core.merge_gate import MergeGate
 from agent_runtime.core.policy_config import load_policy_config
 from agent_runtime.core.runtime_request import RuntimeRequest
 from agent_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from agent_runtime.core.runtime_context import RuntimeContext
 from agent_runtime.core.task_contract import (
     allows_expected_failure,
-    check_completion_contract,
     parallel_safety,
     read_scope,
     write_scope,
 )
+from agent_runtime.core.task_attempt_runner import TaskAttemptRunner
 from agent_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from agent_runtime.core.task_failure import TaskFailureRecorder
 from agent_runtime.core.task_board import TaskBoard, TaskStateError
@@ -120,6 +119,10 @@ class ExecuteCommand:
         self.store = JsonStore(self.validator)
         self.registry = create_default_tool_registry()
         self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
+        self.task_attempt_runner = TaskAttemptRunner(
+            self.execution_evidence,
+            actor="ExecuteCommand",
+        )
         self.worker_recorder = WorkerExecutionRecorder(self.validator)
         self.worker_runner = WorkerRunner(
             validator=self.validator,
@@ -390,221 +393,29 @@ class ExecuteCommand:
                     verification_calls=0,
                     evidence_path=evidence_path,
                 )
-            candidate = self._create_candidate_workspace(context, task)
-            candidate_context = self._candidate_context(context, candidate)
-            if context.event_logger:
-                context.event_logger.record(
-                    context.run_id,
-                    "candidate_workspace_created",
-                    "ExecuteCommand",
-                    f"Created candidate workspace for {task_id}",
-                    {
-                        "task_id": task_id,
-                        "candidate_id": candidate.candidate_id,
-                        "workspace": str(candidate.root),
-                    },
-                )
-            tool_results = self._run_tool_calls(action["tool_calls"], task, candidate_context)
-            task_board.update_status(task_id, "testing")
-            verification_results = self._run_tool_calls(
-                action["verification"],
-                task,
-                candidate_context,
-                stop_on_failure=False,
-                stop_verification_on_fatal=True,
+            attempt = self.task_attempt_runner.run(
+                task=task,
+                task_board=task_board,
+                context=context,
+                action=action,
+                create_candidate_workspace=self._create_candidate_workspace,
+                candidate_context=self._candidate_context,
+                run_tool_calls=self._run_tool_calls,
+                record_validation_results=self._record_validation_results,
+                changed_files=self._changed_files,
+                promote_candidate_changes=self._promote_candidate_changes,
+                record_experiment=self._record_experiment,
+                complete_task_after_candidate_promotion=self._complete_task_after_candidate_promotion,
+                record_task_failure=self._record_task_failure,
             )
-            validation_refs = self._record_validation_results(
-                context,
-                task,
-                action.get("verification") or [],
-                verification_results,
-            )
-            contract_check = check_completion_contract(
-                task,
-                self._changed_files(tool_results),
-                verification_results,
-            )
-            if contract_check.ok:
-                merge_gate = MergeGate().evaluate(
-                    task,
-                    contract_check.changed_files,
-                    verification_results,
-                )
-                if not merge_gate.ok:
-                    reason = merge_gate.summary()
-                    evidence_path = self.execution_evidence.record(
-                        context,
-                        task,
-                        action,
-                        tool_results,
-                        verification_results,
-                        "blocked",
-                        reason,
-                        actor="ExecuteCommand",
-                        contract_check={
-                            **contract_check.to_dict(),
-                            "merge_gate": merge_gate.to_dict(),
-                        },
-                        candidate_workspace=candidate,
-                        failure_type="merge_gate",
-                    )
-                    self._record_experiment(
-                        context,
-                        task,
-                        action,
-                        tool_results,
-                        verification_results,
-                        "discard",
-                        reason,
-                        contract_check={
-                            **contract_check.to_dict(),
-                            "merge_gate": merge_gate.to_dict(),
-                        },
-                        candidate_workspace=candidate,
-                    )
-                    task_board.update_status(task_id, "blocked")
-                    task_board.update_notes(
-                        task_id,
-                        f"{reason}; candidate kept isolated at {candidate.root}.",
-                    )
-                    self._record_task_failure(
-                        context,
-                        task,
-                        "merge_gate",
-                        reason,
-                        contract_check={
-                            **contract_check.to_dict(),
-                            "merge_gate": merge_gate.to_dict(),
-                        },
-                        tool_results=tool_results,
-                        verification_results=verification_results,
-                        candidate={
-                            "summary": action["summary"],
-                            "changed_files": contract_check.changed_files,
-                            "promotable_files": merge_gate.promotable_files,
-                        },
-                    )
-                    if context.event_logger:
-                        context.event_logger.record(
-                            context.run_id,
-                            "merge_gate_blocked",
-                            "ExecuteCommand",
-                            reason,
-                            {
-                                "task_id": task_id,
-                                "violations": merge_gate.violations,
-                            },
-                        )
-                    return TaskExecutionSummary(
-                        task_id=task_id,
-                        status="blocked",
-                        summary=reason,
-                        tool_calls=len(action["tool_calls"]),
-                        verification_calls=len(action["verification"]),
-                        evidence_path=evidence_path,
-                        validation_refs=validation_refs,
-                    )
-                promoted_files = self._promote_candidate_changes(
-                    context, candidate, merge_gate.promotable_files
-                )
-                evidence_path = self.execution_evidence.record(
-                    context,
-                    task,
-                    action,
-                    tool_results,
-                    verification_results,
-                    "done",
-                    "Verification passed.",
-                    actor="ExecuteCommand",
-                    contract_check={**contract_check.to_dict(), "merge_gate": merge_gate.to_dict()},
-                    candidate_workspace=candidate,
-                    promoted_files=promoted_files,
-                )
-                self._record_experiment(
-                    context,
-                    task,
-                    action,
-                    tool_results,
-                    verification_results,
-                    "keep",
-                    "Verification passed.",
-                    contract_check={**contract_check.to_dict(), "merge_gate": merge_gate.to_dict()},
-                    candidate_workspace=candidate,
-                    promoted_files=promoted_files,
-                )
-                self._complete_task_after_candidate_promotion(
-                    task_board,
-                    task_id,
-                    action.get("completion_notes") or action["summary"],
-                )
-                if context.event_logger:
-                    context.event_logger.record(
-                        context.run_id, "task_completed", "ExecuteCommand", f"Completed {task_id}"
-                    )
-                return TaskExecutionSummary(
-                    task_id=task_id,
-                    status="done",
-                    summary=action["summary"],
-                    tool_calls=len(action["tool_calls"]),
-                    verification_calls=len(action["verification"]),
-                    evidence_path=evidence_path,
-                    validation_refs=validation_refs,
-                )
-            reason = contract_check.summary()
-            evidence_path = self.execution_evidence.record(
-                context,
-                task,
-                action,
-                tool_results,
-                verification_results,
-                "blocked",
-                reason,
-                actor="ExecuteCommand",
-                contract_check=contract_check.to_dict(),
-                candidate_workspace=candidate,
-                failure_type="contract_violation",
-            )
-            self._record_experiment(
-                context,
-                task,
-                action,
-                tool_results,
-                verification_results,
-                "discard",
-                reason,
-                contract_check=contract_check.to_dict(),
-                candidate_workspace=candidate,
-            )
-            task_board.update_status(task_id, "blocked")
-            task_board.update_notes(
-                task_id,
-                f"{reason}; candidate kept isolated at {candidate.root}.",
-            )
-            self._record_task_failure(
-                context,
-                task,
-                "contract_violation",
-                reason,
-                contract_check=contract_check.to_dict(),
-                tool_results=tool_results,
-                verification_results=verification_results,
-                candidate={
-                    "summary": action["summary"],
-                    "changed_files": contract_check.changed_files,
-                },
-            )
-            if context.event_logger:
-                context.event_logger.record(
-                    context.run_id, "task_blocked", "ExecuteCommand", f"Blocked {task_id}"
-                )
             return TaskExecutionSummary(
-                task_id=task_id,
-                status="blocked",
-                summary=reason,
-                tool_calls=len(action["tool_calls"]),
-                verification_calls=len(action["verification"]),
-                evidence_path=evidence_path,
-                validation_refs=validation_refs,
+                task_id=attempt.task_id,
+                status=attempt.status,
+                summary=attempt.summary,
+                tool_calls=attempt.tool_calls,
+                verification_calls=attempt.verification_calls,
+                evidence_path=attempt.evidence_path,
+                validation_refs=attempt.validation_refs,
             )
         except ToolPermissionDenied as exc:
             fallback_action = locals().get("action")
