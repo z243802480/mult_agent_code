@@ -5,6 +5,19 @@ from agent_runtime.commands.doctor_command import DoctorCommand
 from agent_runtime.commands.gate_status_command import GateStatusCommand
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.status_command import StatusCommand
+from agent_runtime.commands.version_command import VersionCommand
+
+
+def test_version_command_reports_runtime_diagnostics() -> None:
+    result = VersionCommand().run()
+
+    assert "agent-runtime" in result.to_text()
+    payload = result.to_dict()
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["package"] == "agent-runtime"
+    assert payload["version"]
+    assert payload["python_version"]
+    assert payload["executable"]
 
 
 def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:

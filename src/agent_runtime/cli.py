@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from agent_runtime import __version__
 from agent_runtime.commands.acceptance_command import AcceptanceCommand
 from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
@@ -34,6 +35,7 @@ from agent_runtime.commands.resume_command import ResumeCommand
 from agent_runtime.commands.sessions_command import SessionsCommand
 from agent_runtime.commands.status_command import StatusCommand
 from agent_runtime.commands.verification_command import VerificationStatusCommand
+from agent_runtime.commands.version_command import VersionCommand
 from agent_runtime.commands.weekly_report_command import WeeklyReportCommand
 
 
@@ -49,7 +51,24 @@ def add_session_id_argument(parser: argparse.ArgumentParser, help_text: str) -> 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agent", description="Agent runtime CLI")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"agent-runtime {__version__}",
+        help="Show runtime version and exit",
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    version_parser = subcommands.add_parser(
+        "version",
+        aliases=["/version"],
+        help="Show runtime version and packaging diagnostics",
+    )
+    version_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
 
     init_parser = subcommands.add_parser(
         "init",
@@ -745,6 +764,14 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
     command = args.command.lstrip("/")
+
+    if command == "version":
+        version_result = VersionCommand().run()
+        if args.json:
+            print(json.dumps(version_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(version_result.to_text())
+        return
 
     if command == "init":
         init_result = InitCommand(
