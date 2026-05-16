@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 import shutil
@@ -36,11 +36,12 @@ class CandidateWorkspace:
     branch_name: str | None = None
 
     @classmethod
-    def create(cls, source_root: Path, run_dir: Path, task_id: str) -> "CandidateWorkspace":
+    def create(cls, source_root: Path, run_dir: Path, task_id: str, task: dict | None = None) -> "CandidateWorkspace":
         candidate_id = _candidate_id()
         candidate_root = run_dir / "cw" / task_id / _path_id(candidate_id)
         candidate_root.parent.mkdir(parents=True, exist_ok=True)
-        plan = SandboxBackendSelector().select_for_workspace(source_root.resolve())
+        selector = SandboxBackendSelector()
+        plan = selector.select_for_task(source_root.resolve(), task) if task else selector.select_for_workspace(source_root.resolve())
         branch_name = _candidate_branch(task_id, candidate_id) if plan.backend == "git_worktree" else None
         strategy = _create_workspace(source_root.resolve(), candidate_root, plan, branch_name)
         return cls(
@@ -68,6 +69,20 @@ class CandidateWorkspace:
             shutil.copy2(source, target)
             promoted.append(relative_path)
         return promoted
+
+    def discard(self) -> None:
+        root = self.root.resolve()
+        if self.strategy == 'git_worktree' and root.exists():
+            try:
+                shutil.rmtree(root, ignore_errors=True)
+                _run_git(self.source_root, 'worktree', 'prune')
+                if self.branch_name:
+                    _run_git(self.source_root, 'branch', '-D', self.branch_name)
+                return
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if root.exists():
+            shutil.rmtree(root, ignore_errors=True)
 
 
 def _copy_workspace(source_root: Path, candidate_root: Path) -> None:

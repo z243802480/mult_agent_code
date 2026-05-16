@@ -125,7 +125,7 @@ def test_real_model_acceptance_rejects_fake_for_real_scenarios(tmp_path: Path) -
     )
 
     assert completed.returncode == 1
-    assert "Fake/offline acceptance only supports offline_artifact and decision_point" in completed.stderr
+    assert "Fake/offline acceptance only supports offline_artifact, decision_point" in completed.stderr
 
 
 def test_real_model_acceptance_runs_decision_point_without_model(

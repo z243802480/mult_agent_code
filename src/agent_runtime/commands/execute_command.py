@@ -444,12 +444,23 @@ class ExecuteCommand:
             )
             if runtime_request_result is not None:
                 return self._runtime_request_task_summary(runtime_request_result)
+            self._block_task(task_board, task_id, str(exc), context)
+            self._record_task_failure(
+                context, task, "tool_permission_denied", str(exc),
+            )
+            evidence_path = self.execution_evidence.record(
+                context, task,
+                fallback_action if isinstance(fallback_action, dict) else None,
+                [], [], "blocked", str(exc),
+                actor="ExecuteCommand", failure_type="tool_permission_denied",
+            )
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",
                 summary=str(exc),
                 tool_calls=0,
                 verification_calls=0,
+                evidence_path=evidence_path,
             )
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
@@ -952,7 +963,7 @@ class ExecuteCommand:
     ) -> CandidateWorkspace:
         if context.run_dir is None:
             raise RuntimeError("Cannot isolate candidate without a run directory.")
-        return CandidateWorkspace.create(context.root, context.run_dir, task["task_id"])
+        return CandidateWorkspace.create(context.root, context.run_dir, task["task_id"], task=task)
 
     def _candidate_context(
         self,

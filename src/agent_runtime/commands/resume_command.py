@@ -88,6 +88,10 @@ class ResumeCommand:
             run_id,
         )
         run = run_store.load_run(run_id)
+        task_plan_path = run_dir / "task_plan.json"
+        task_plan = self.store.read(task_plan_path, "task_board") if task_plan_path.exists() else {"tasks": []}
+        self._reconcile_with_runtime_evidence(run_dir, task_plan)
+
         if run["status"] == "completed" and applied_decisions == 0:
             return ResumeResult(
                 RunResult(
@@ -702,6 +706,39 @@ class ResumeCommand:
             "created_at": now_iso(),
         }
         self.jsonl.append(path, memory, "memory_entry")
+
+    def _reconcile_with_runtime_evidence(self, run_dir: Path, task_plan: dict) -> dict:
+        evidence = self.runtime_evidence.run_evidence(run_dir)
+        worker_results = evidence.get("worker_results") or []
+        task_execution_evidence = evidence.get("task_execution_evidence") or []
+        if not worker_results and not task_execution_evidence:
+            return {"reconciled": False, "reason": "no_runtime_os_evidence"}
+        succeeded_workers = {
+            item["task_id"]: item
+            for item in worker_results
+            if item.get("status") == "succeeded"
+        }
+        blocked_evidence = {
+            item["task_id"]: item
+            for item in task_execution_evidence
+            if item.get("status") == "blocked"
+        }
+        tasks = task_plan.get("tasks") or []
+        discrepancies = []
+        for task in tasks:
+            task_id = task["task_id"]
+            plan_status = task.get("status")
+            if task_id in succeeded_workers and plan_status != "done":
+                discrepancies.append({"task_id": task_id, "plan_status": plan_status, "evidence_status": "done"})
+            elif task_id in blocked_evidence and plan_status not in ("blocked", "discarded"):
+                discrepancies.append({"task_id": task_id, "plan_status": plan_status, "evidence_status": "blocked"})
+        return {
+            "reconciled": True,
+            "succeeded_worker_count": len(succeeded_workers),
+            "blocked_evidence_count": len(blocked_evidence),
+            "discrepancies": discrepancies,
+            "summary": evidence.get("summary") or {},
+        }
 
     def _pending_decisions(self, run_dir: Path) -> list[dict]:
         return [

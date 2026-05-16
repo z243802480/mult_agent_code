@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -606,7 +606,7 @@ class DebugCommand:
     ) -> CandidateWorkspace:
         if context.run_dir is None:
             raise RuntimeError("Cannot isolate repair candidate without a run directory.")
-        return CandidateWorkspace.create(context.root, context.run_dir, task["task_id"])
+        return CandidateWorkspace.create(context.root, context.run_dir, task["task_id"], task=task)
 
     def _candidate_context(
         self,

@@ -454,11 +454,14 @@ def select_scenarios(args: argparse.Namespace) -> list[AcceptanceScenario]:
         "memory_lesson_reuse",
         *runtime_os_scenario_names(),
     }
-    if args.allow_fake and any(name not in fake_allowed for name in names):
-        raise AcceptanceFailure(
-            "Fake/offline acceptance only supports offline_artifact and decision_point. "
-            "Use real providers for real task scenarios."
-        )
+    if args.allow_fake:
+        names = [n for n in names if n in fake_allowed]
+        if not names:
+            raise AcceptanceFailure(
+                "Fake/offline acceptance only supports offline_artifact, decision_point, "
+                "memory_lesson_reuse, and runtime_os scenarios. "
+                "Use real providers for real task scenarios."
+            )
     return [SCENARIOS[name] for name in names]
 
 

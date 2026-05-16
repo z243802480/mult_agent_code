@@ -1,10 +1,13 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
+from agent_runtime.commands._runtime_os_helpers import (
+    runtime_os_full_summary,
+    runtime_os_release_evidence,
+)
 from agent_runtime.core.acceptance_catalog import (
     acceptance_metadata_index,
     enrich_acceptance_report,
@@ -352,59 +355,8 @@ class CapabilityReportCommand:
     ) -> dict[str, Any]:
         scenarios = [item for item in latest.get("scenarios", []) if isinstance(item, dict)]
         required = str(latest.get("suite") or "") in {"core", "nightly"}
-        gate = RuntimeOSGateEvaluator().evaluate(latest, scenarios, required=required).to_dict()
-        evidence = self._runtime_os_release_evidence(agent_dir)
-        status = gate["status"]
-        if not scenarios:
-            status = "missing_acceptance"
-        elif gate["status"] == "pass" and not evidence["worker_results"]:
-            status = "partial"
-        return {
-            "status": status,
-            "gate": gate,
-            "evidence": evidence,
-            "release_ready": gate["status"] == "pass" and bool(evidence["worker_results"]),
-        }
-
-    def _runtime_os_release_evidence(self, agent_dir: Path) -> dict[str, Any]:
-        summary = {
-            "runs_with_workers": 0,
-            "worker_invocations": 0,
-            "worker_results": 0,
-            "failed_worker_results": 0,
-            "runtime_profiles": 0,
-            "context_mounts": 0,
-            "validation_results": 0,
-            "task_execution_evidence": 0,
-            "task_graph_selections": 0,
-        }
-        for run_dir in self._run_dirs(agent_dir):
-            workers = self._read_jsonl(run_dir / "workers.jsonl", "worker_invocation")
-            worker_results = self._read_jsonl(run_dir / "worker_results.jsonl", "worker_result")
-            if workers or worker_results:
-                summary["runs_with_workers"] += 1
-            summary["worker_invocations"] += len(workers)
-            summary["worker_results"] += len(worker_results)
-            summary["failed_worker_results"] += len(
-                [item for item in worker_results if item.get("status") != "succeeded"]
-            )
-            summary["runtime_profiles"] += len(
-                self._read_jsonl(run_dir / "runtime_profiles.jsonl", "runtime_profile")
-            )
-            summary["context_mounts"] += len(
-                self._read_jsonl(run_dir / "context_mounts.jsonl", "context_mount")
-            )
-            summary["validation_results"] += len(
-                self._read_jsonl(run_dir / "validation_results.jsonl", "validation_result")
-            )
-            summary["task_execution_evidence"] += len(
-                self._read_jsonl(run_dir / "task_execution_evidence.jsonl", "task_execution_evidence")
-            )
-            events = self._read_jsonl(run_dir / "events.jsonl", "event")
-            summary["task_graph_selections"] += len(
-                [item for item in events if item.get("type") == "task_graph_selection"]
-            )
-        return summary
+        evidence = runtime_os_release_evidence(self._run_dirs(agent_dir), self._read_jsonl)
+        return runtime_os_full_summary(latest, scenarios, evidence, required=required)
 
     def _ensure_model_profile(
         self,
