@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FileBackupManifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "backup_id",
+    "run_id",
+    "created_at",
+    "reason",
+    "files"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "backup_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "reason": { "type": "string" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "existed", "backup_path", "size"],
+        "properties": {
+          "path": { "type": "string" },
+          "existed": { "type": "boolean" },
+          "backup_path": { "type": ["string", "null"] },
+          "size": { "type": ["integer", "null"] }
+        }
+      }
+    }
+  }
+}

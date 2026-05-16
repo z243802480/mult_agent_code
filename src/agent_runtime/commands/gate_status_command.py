@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from agent_runtime.models.model_failure import model_failure_context_from_env
 
 
 @dataclass(frozen=True)
@@ -13,6 +16,7 @@ class GateStatusResult:
     gate_report: dict[str, Any] = field(default_factory=dict)
     gray_report: dict[str, Any] = field(default_factory=dict)
     core_report: dict[str, Any] = field(default_factory=dict)
+    route_environment: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -25,13 +29,15 @@ class GateStatusResult:
             "root": str(self.root),
             "stage": self.stage,
             "rollout_state": rollout_state,
-            "release_ready": self.stage == "ready_for_small_real_task_gray",
+            "release_ready": rollout_state == "release_ready",
             "blocking_reason": blocking_reason,
             "gates": {
                 "real_model_gate": self._gate_summary(self.gate_report),
                 "gray_suite": self._gate_summary(self.gray_report, gray=True),
                 "core_acceptance": self._gate_summary(self.core_report),
             },
+            "route_environment": self.route_environment,
+            "gray_task_limits": _gray_task_limits(),
             "gate_report": self.gate_report,
             "gray_report": self.gray_report,
             "core_report": self.core_report,
@@ -39,6 +45,8 @@ class GateStatusResult:
         }
 
     def _rollout_state(self) -> str:
+        if self.stage == "current_environment_incomplete":
+            return "blocked"
         if self.stage == "ready_for_small_real_task_gray":
             return "release_ready"
         if self.stage in {"ready_for_gray_suite", "ready_for_core_acceptance"}:
@@ -72,12 +80,23 @@ class GateStatusResult:
             f"Stage: {self.stage}",
             f"Rollout state: {self._rollout_state()}",
         ]
+        if self.route_environment:
+            lines.append(
+                "Current routes: "
+                f"strong={self.route_environment.get('strong', {}).get('configured', False)}, "
+                f"medium={self.route_environment.get('medium', {}).get('configured', False)}"
+            )
         lines.extend(self._report_lines("Real model gate", self.gate_report))
         lines.extend(self._report_lines("Gray suite", self.gray_report, gray=True))
         lines.extend(self._report_lines("Core acceptance", self.core_report))
         if self.next_actions:
             lines.append("Recommended next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
+        limits = _gray_task_limits()
+        lines.append("Small gray task limits:")
+        lines.append(f"  - max_iterations: {limits['max_iterations']}")
+        lines.append(f"  - max_tasks_per_iteration: {limits['max_tasks_per_iteration']}")
+        lines.append(f"  - max_repairs: {limits['max_repairs']}")
         return "\n".join(lines)
 
     def _report_lines(self, label: str, report: dict[str, Any], gray: bool = False) -> list[str]:
@@ -119,12 +138,21 @@ class GateStatusCommand:
             self.root / ".agent" / "verification" / "real_model_acceptance_core.json"
         ) or self._read_json(self.root / ".agent" / "acceptance" / "acceptance_report.json")
         stage, actions = self._stage(gate, gray, core)
+        route_environment = _route_environment()
+        if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
+            stage = "current_environment_incomplete"
+            missing = ", ".join(route_environment["missing_required"])
+            actions = [
+                f"Set current model route environment variables before gray validation: {missing}.",
+                *actions,
+            ]
         return GateStatusResult(
             root=self.root,
             stage=stage,
             gate_report=gate,
             gray_report=gray,
             core_report=core,
+            route_environment=route_environment,
             next_actions=actions,
         )
 
@@ -158,7 +186,13 @@ class GateStatusCommand:
             )
         if not core.get("ok"):
             return ("core_acceptance_failed", ["Repair core acceptance failures before release."])
-        return ("ready_for_small_real_task_gray", ["Start small real-task gray validation."])
+        return (
+            "ready_for_small_real_task_gray",
+            [
+                "Start small real-task gray validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
+                "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears.",
+            ],
+        )
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -167,3 +201,59 @@ class GateStatusCommand:
             return json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return {}
+
+
+def _gray_task_limits() -> dict[str, object]:
+    return {
+        "max_iterations": 3,
+        "max_tasks_per_iteration": 1,
+        "max_repairs": 1,
+        "max_replans": 1,
+        "recommended_run_flags": [
+            "--max-iterations 3",
+            "--max-tasks-per-iteration 1",
+            "--no-research",
+        ],
+        "stop_conditions": [
+            "cost_status near_limit or hard_stop",
+            "merge gate promotion risk",
+            "protected path risk",
+            "session cannot resume",
+        ],
+    }
+
+
+def _route_environment() -> dict[str, Any]:
+    requirements = {
+        "strong": [
+            "AGENT_MODEL_STRONG_PROVIDER",
+            "AGENT_MODEL_STRONG_NAME",
+            "AGENT_MODEL_STRONG_API_KEY",
+        ],
+        "medium": [
+            "AGENT_MODEL_MEDIUM_PROVIDER",
+            "AGENT_MODEL_MEDIUM_NAME",
+            "AGENT_MODEL_MEDIUM_API_KEY",
+        ],
+    }
+    routes: dict[str, Any] = {}
+    missing_required: list[str] = []
+    for tier, names in requirements.items():
+        missing = [name for name in names if not os.getenv(name)]
+        context = model_failure_context_from_env(f"AGENT_MODEL_{tier.upper()}")
+        if tier == "strong" and not context.base_url:
+            missing.append("AGENT_MODEL_STRONG_BASE_URL")
+        missing_required.extend(missing)
+        routes[tier] = {
+            "configured": not missing,
+            "missing": missing,
+            "provider": context.provider,
+            "model": context.model_name,
+            "base_url": context.base_url,
+            "api_key_present": bool(os.getenv(f"AGENT_MODEL_{tier.upper()}_API_KEY")),
+        }
+    return {
+        "ready": not missing_required,
+        "missing_required": missing_required,
+        **routes,
+    }

@@ -34,6 +34,12 @@ agent = "agent_runtime.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+agent_runtime = [
+  "schemas/*.json",
+  "templates/*"
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]

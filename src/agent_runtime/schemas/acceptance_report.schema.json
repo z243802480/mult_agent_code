@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AcceptanceReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "suite",
+    "requested_scenarios",
+    "root",
+    "ok",
+    "returncode",
+    "created_at",
+    "summary_json",
+    "scenarios"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "suite": { "type": "string" },
+    "requested_scenarios": { "type": "array", "items": { "type": "string" } },
+    "root": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "returncode": { "type": "integer" },
+    "created_at": { "type": "string" },
+    "summary_json": { "type": ["string", "null"] },
+    "scenario_metadata": { "type": "array", "items": { "type": "object" } },
+    "aggregate": { "type": "object" },
+    "trend_warnings": { "type": "array", "items": { "type": "string" } },
+    "repair_closure": {
+      "type": "object",
+      "required": [
+        "repair_run_id",
+        "rerun_summary_json",
+        "rerun_ok",
+        "closed_failures",
+        "remaining_failures"
+      ],
+      "properties": {
+        "repair_run_id": { "type": ["string", "null"] },
+        "rerun_summary_json": { "type": "string" },
+        "rerun_ok": { "type": "boolean" },
+        "closed_failures": { "type": "array", "items": { "type": "string" } },
+        "remaining_failures": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario", "ok", "workspace", "failure_summary"],
+        "properties": {
+          "scenario": { "type": "string" },
+          "capability": { "type": ["string", "null"] },
+          "tier": { "type": ["string", "null"] },
+          "ok": { "type": "boolean" },
+          "workspace": { "type": ["string", "null"] },
+          "failure_summary": { "type": "string" },
+          "failure_attribution": { "type": "object" },
+          "attempts": { "type": "array", "items": { "type": "object" } },
+          "stdout_tail": { "type": "string" },
+          "stderr_tail": { "type": "string" },
+          "summary": { "type": ["object", "null"] }
+        }
+      }
+    },
+    "repair_workflow": {
+      "type": "object",
+      "properties": {
+        "promoted_tasks": { "type": "array", "items": { "type": "string" } },
+        "promoted_scenarios": { "type": "array", "items": { "type": "string" } },
+        "promotion_error": { "type": ["string", "null"] },
+        "repair_run_id": { "type": ["string", "null"] },
+        "rerun_summary_json": { "type": ["string", "null"] },
+        "rerun_ok": { "type": ["boolean", "null"] },
+        "closed_failures": { "type": "array", "items": { "type": "string" } },
+        "remaining_failures": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string" }
+      }
+    }
+  }
+}

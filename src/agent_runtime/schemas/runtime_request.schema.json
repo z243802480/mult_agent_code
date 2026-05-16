@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RuntimeRequest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "runtime_request_id",
+    "run_id",
+    "task_id",
+    "request_type",
+    "risk",
+    "reason",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "runtime_request_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "request_type": {
+      "type": "string",
+      "enum": [
+        "scope_expansion",
+        "context_request",
+        "tool_request",
+        "budget_request",
+        "model_upgrade_request",
+        "decision_request"
+      ]
+    },
+    "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+    "reason": { "type": "string" },
+    "details": { "type": "object" },
+    "status": { "type": "string", "enum": ["recorded", "decision_created", "denied"] },
+    "decision_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" }
+  }
+}

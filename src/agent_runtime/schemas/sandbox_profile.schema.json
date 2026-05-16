@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SandboxProfile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "sandbox_profile_id",
+    "backend",
+    "workspace_policy",
+    "cleanup_policy",
+    "export_required"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "sandbox_profile_id": { "type": "string" },
+    "backend": {
+      "type": "string",
+      "enum": ["single_workspace", "temp_workspace", "git_worktree", "container", "remote_worker"]
+    },
+    "workspace_policy": {
+      "type": "string",
+      "enum": ["controlled_patch", "isolated_copy", "worktree", "container_mount", "remote"]
+    },
+    "cleanup_policy": {
+      "type": "string",
+      "enum": ["keep_evidence", "keep_workspace", "delete_on_success"]
+    },
+    "export_required": { "type": "array", "items": { "type": "string" } },
+    "reason": { "type": "string" }
+  }
+}

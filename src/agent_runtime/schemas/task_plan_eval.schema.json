@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskPlanEval",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "created_at",
+    "status",
+    "overall_score",
+    "scores",
+    "summary",
+    "issues",
+    "recommendations",
+    "task_count"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+    "overall_score": { "type": "number" },
+    "scores": {
+      "type": "object",
+      "required": [
+        "granularity_score",
+        "dependency_score",
+        "acceptance_score",
+        "artifact_score",
+        "tooling_score"
+      ],
+      "properties": {
+        "granularity_score": { "type": "number" },
+        "dependency_score": { "type": "number" },
+        "acceptance_score": { "type": "number" },
+        "artifact_score": { "type": "number" },
+        "tooling_score": { "type": "number" }
+      }
+    },
+    "summary": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "severity", "code", "message", "recommendation"],
+        "properties": {
+          "task_id": { "type": ["string", "null"] },
+          "severity": { "type": "string", "enum": ["warning", "error"] },
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    },
+    "recommendations": { "type": "array", "items": { "type": "string" } },
+    "task_count": { "type": "integer" }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvalReport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "goal_eval",
+    "artifact_eval",
+    "outcome_eval",
+    "trajectory_eval",
+    "cost_eval",
+    "overall"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "goal_eval": { "type": "object" },
+    "artifact_eval": { "type": "object" },
+    "outcome_eval": { "type": "object" },
+    "trajectory_eval": { "type": "object" },
+    "cost_eval": { "type": "object" },
+    "overall": {
+      "type": "object",
+      "required": ["status", "score", "reason"],
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "partial", "fail"] },
+        "score": { "type": "number" },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

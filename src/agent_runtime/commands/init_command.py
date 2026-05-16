@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from agent_runtime.resources import schema_dir, template_path
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.schema_validator import SchemaValidator
 
@@ -43,7 +44,7 @@ class InitCommand:
         self.root = root.resolve()
         self.profile = profile
         self.force = force
-        self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+        self.validator = SchemaValidator(schema_dir())
         self.store = JsonStore(self.validator)
 
     def run(self) -> InitResult:
@@ -138,8 +139,7 @@ class InitCommand:
         }
 
     def _load_default_policies(self) -> dict:
-        template = Path(__file__).resolve().parents[3] / "templates" / "policies.default.json"
-        return json.loads(template.read_text(encoding="utf-8"))
+        return json.loads(template_path("policies.default.json").read_text(encoding="utf-8"))
 
     def _build_root_snapshot(self, project_config: dict) -> dict:
         return {
@@ -175,9 +175,7 @@ class InitCommand:
         }
 
     def _render_agents_template(self, project_config: dict, policies: dict) -> str:
-        template = (Path(__file__).resolve().parents[3] / "templates" / "AGENTS.md").read_text(
-            encoding="utf-8"
-        )
+        template = template_path("AGENTS.md").read_text(encoding="utf-8")
         replacements = {
             "{{PROJECT_PURPOSE}}": "Initialized workspace. Update this section with the project goal.",
             "{{NON_GOALS}}": "Not specified yet.",

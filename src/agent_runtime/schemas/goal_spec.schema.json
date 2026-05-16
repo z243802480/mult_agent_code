@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GoalSpec",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "goal_id",
+    "original_goal",
+    "normalized_goal",
+    "goal_type",
+    "assumptions",
+    "constraints",
+    "non_goals",
+    "expanded_requirements",
+    "target_outputs",
+    "definition_of_done",
+    "verification_strategy",
+    "budget"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "goal_id": { "type": "string" },
+    "original_goal": { "type": "string" },
+    "normalized_goal": { "type": "string" },
+    "goal_type": {
+      "type": "string",
+      "enum": [
+        "software_tool",
+        "codebase_improvement",
+        "research",
+        "report",
+        "knowledge_base",
+        "automation",
+        "unknown"
+      ]
+    },
+    "assumptions": { "type": "array", "items": { "type": "string" } },
+    "constraints": { "type": "array", "items": { "type": "string" } },
+    "non_goals": { "type": "array", "items": { "type": "string" } },
+    "expanded_requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "priority", "description", "source", "acceptance"],
+        "properties": {
+          "id": { "type": "string" },
+          "priority": { "type": "string", "enum": ["must", "should", "could", "wont"] },
+          "description": { "type": "string" },
+          "source": { "type": "string", "enum": ["user", "inferred", "research", "memory", "decision"] },
+          "acceptance": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "target_outputs": { "type": "array", "items": { "type": "string" } },
+    "definition_of_done": { "type": "array", "items": { "type": "string" } },
+    "verification_strategy": { "type": "array", "items": { "type": "string" } },
+    "budget": { "type": "object" }
+  }
+}

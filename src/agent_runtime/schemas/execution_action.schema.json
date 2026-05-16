@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExecutionAction",
+  "type": "object",
+  "required": ["schema_version", "task_id", "summary", "tool_calls", "verification"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "task_id": { "type": "string" },
+    "summary": { "type": "string" },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool_name", "args"],
+        "properties": {
+          "tool_name": { "type": "string" },
+          "args": { "type": "object" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tool_name", "args"],
+        "properties": {
+          "tool_name": { "type": "string" },
+          "args": { "type": "object" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "runtime_requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["request_type", "reason"],
+        "properties": {
+          "request_type": {
+            "type": "string",
+            "enum": [
+              "scope_expansion",
+              "context_request",
+              "tool_request",
+              "budget_request",
+              "model_upgrade_request",
+              "decision_request"
+            ]
+          },
+          "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+          "reason": { "type": "string" },
+          "details": { "type": "object" }
+        }
+      }
+    },
+    "completion_notes": { "type": "string" }
+  }
+}

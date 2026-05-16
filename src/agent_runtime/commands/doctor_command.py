@@ -30,6 +30,8 @@ class DoctorResult:
     checks: list[DoctorCheck] = field(default_factory=list)
     routes: dict[str, dict[str, object]] = field(default_factory=dict)
     sandbox: dict[str, object] = field(default_factory=dict)
+    route_requirements: dict[str, list[str]] = field(default_factory=dict)
+    gray_task_limits: dict[str, object] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -46,7 +48,9 @@ class DoctorResult:
             "checks": [check.to_dict() for check in self.checks],
             "failed_checks": failed,
             "routes": self.routes,
+            "route_requirements": self.route_requirements,
             "sandbox": self.sandbox,
+            "gray_task_limits": self.gray_task_limits,
             "next_actions": self._next_actions(failed),
         }
 
@@ -54,8 +58,16 @@ class DoctorResult:
         actions = []
         if "agent_dir" in failed:
             actions.append("Run `agent /init --root .`.")
-        if any(name.startswith("model_") for name in failed):
-            actions.append("Set model route environment variables before gray validation.")
+        missing_routes = [
+            name.replace("model_", "")
+            for name in failed
+            if name.startswith("model_")
+        ]
+        for tier in missing_routes:
+            required = ", ".join(self.route_requirements.get(tier, []))
+            actions.append(
+                f"Set {tier} route environment variables before gray validation: {required}."
+            )
         if "real_model_gate" in failed:
             actions.append("Run `python scripts/real_model_gate.py --summary-json .agent/model/real_model_gate_report.json`.")
         return actions
@@ -95,7 +107,12 @@ class DoctorCommand:
                 tier: self._route_summary(tier)
                 for tier in ["strong", "medium", "cheap"]
             },
+            route_requirements={
+                tier: self._route_requirement_names(tier)
+                for tier in ["strong", "medium", "cheap"]
+            },
             sandbox=self._sandbox_summary(),
+            gray_task_limits=_gray_task_limits(),
         )
 
     def _agent_dir_check(self) -> DoctorCheck:
@@ -178,6 +195,17 @@ class DoctorCommand:
             "api_key_present": bool(os.getenv(f"AGENT_MODEL_{tier.upper()}_API_KEY")),
         }
 
+    def _route_requirement_names(self, tier: str) -> list[str]:
+        prefix = f"AGENT_MODEL_{tier.upper()}"
+        if tier == "cheap":
+            return [f"{prefix}_PROVIDER"]
+        required = [f"{prefix}_PROVIDER", f"{prefix}_NAME"]
+        if tier in {"strong", "medium"}:
+            required.append(f"{prefix}_API_KEY")
+        if tier == "strong":
+            required.append(f"{prefix}_BASE_URL")
+        return required
+
     def _sandbox_summary(self) -> dict[str, object]:
         git = self._git_available()
         tracked_clean = self._tracked_git_clean() if git else False
@@ -230,3 +258,32 @@ class DoctorCommand:
             str(path) if path.exists() else "real model gate report missing",
             "warning",
         )
+
+
+def _gray_task_limits() -> dict[str, object]:
+    return {
+        "max_iterations": 3,
+        "max_tasks_per_iteration": 1,
+        "max_repairs": 1,
+        "max_replans": 1,
+        "recommended_run_flags": [
+            "--max-iterations 3",
+            "--max-tasks-per-iteration 1",
+            "--no-research",
+        ],
+        "allowed_task_types": [
+            "file_artifact",
+            "small_cli_or_script",
+            "multi_file_small_tool",
+            "test_repair",
+            "controlled_refactor",
+            "documentation_update",
+        ],
+        "stop_conditions": [
+            "cost_status near_limit or hard_stop",
+            "repeated schema-invalid provider responses",
+            "merge gate promotion risk",
+            "protected path risk",
+            "session cannot resume",
+        ],
+    }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,7 @@ class SchemaValidator:
     """
 
     def __init__(self, schema_dir: Path) -> None:
-        self.schema_dir = schema_dir
+        self.schema_dir = schema_dir if schema_dir.exists() else Path(str(files("agent_runtime") / "schemas"))
         self._cache: dict[str, dict[str, Any]] = {}
 
     def validate(self, schema_name: str, data: Any) -> None:

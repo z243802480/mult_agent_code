@@ -16,6 +16,11 @@ def main() -> None:
         action="store_true",
         help="Remove existing wheel artifacts from the output directory before building",
     )
+    parser.add_argument(
+        "--no-deps",
+        action="store_true",
+        help="Build only the agent-runtime wheel and skip runtime dependency wheels",
+    )
     args = parser.parse_args()
 
     root = args.root.resolve()
@@ -32,11 +37,12 @@ def main() -> None:
         "-m",
         "pip",
         "wheel",
-        "--no-deps",
         "--wheel-dir",
         str(dist_dir),
         str(root),
     ]
+    if args.no_deps:
+        command.insert(4, "--no-deps")
     completed = subprocess.run(command, cwd=root, text=True, check=False)
     if completed.returncode != 0:
         raise SystemExit(completed.returncode)

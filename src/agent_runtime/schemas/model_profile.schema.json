@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ModelProfile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "model_profile_id",
+    "purpose",
+    "provider",
+    "model_name",
+    "model_tier"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "model_profile_id": { "type": "string" },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "goal_spec",
+        "planning",
+        "architecture",
+        "brainstorming",
+        "research",
+        "coding",
+        "review",
+        "debugging",
+        "summarization",
+        "classification",
+        "evaluation"
+      ]
+    },
+    "provider": { "type": "string" },
+    "model_name": { "type": "string" },
+    "model_tier": {
+      "type": "string",
+      "enum": ["cheap", "medium", "strong"]
+    },
+    "fallback_profile_ids": { "type": "array", "items": { "type": "string" } },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "max_input_tokens": { "type": "integer" },
+        "max_output_tokens": { "type": "integer" }
+      }
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TaskExecutionEvidence",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "run_id",
+    "task_id",
+    "status",
+    "summary",
+    "task",
+    "action",
+    "candidate",
+    "contract_check",
+    "tool_results",
+    "verification_results",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "evidence_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "failure_type": { "type": ["string", "null"] },
+    "task": { "type": "object" },
+    "action": { "type": "object" },
+    "candidate": { "type": "object" },
+    "contract_check": { "type": "object" },
+    "tool_results": { "type": "array", "items": { "type": "object" } },
+    "verification_results": { "type": "array", "items": { "type": "object" } },
+    "created_at": { "type": "string" }
+  }
+}

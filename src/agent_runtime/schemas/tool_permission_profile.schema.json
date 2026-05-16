@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ToolPermissionProfile",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "tool_permission_profile_id",
+    "allowed_tools",
+    "read_scope",
+    "write_scope",
+    "allow_network",
+    "allow_shell",
+    "allow_destructive_shell"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "tool_permission_profile_id": { "type": "string" },
+    "allowed_tools": { "type": "array", "items": { "type": "string" } },
+    "read_scope": { "type": "array", "items": { "type": "string" } },
+    "write_scope": { "type": "array", "items": { "type": "string" } },
+    "allow_network": { "type": "boolean" },
+    "allow_shell": { "type": "boolean" },
+    "allow_destructive_shell": { "type": "boolean" }
+  }
+}

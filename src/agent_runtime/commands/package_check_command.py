@@ -55,8 +55,11 @@ class PackageCheckResult:
         actions: list[str] = []
         if failed:
             actions.append("Fix package metadata and version checks before building a gray package.")
+        if "gray_route_template" in failed:
+            actions.append("Add `templates/model.routes.gray.example.ps1` before gray rollout.")
         if not self.artifacts:
             actions.append("Build a local wheel with `python -m build` when the build dependency is available.")
+        actions.append("Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.")
         actions.append("Run `agent version --json` from the installed package before gray rollout.")
         return actions
 
@@ -91,6 +94,7 @@ class PackageCheckCommand:
             self._build_backend_check(pyproject),
             self._console_script_check(pyproject),
             self._version_sync_check(pyproject),
+            self._route_template_check(),
             self._runbook_docs_check(),
         ]
         return PackageCheckResult(
@@ -150,6 +154,14 @@ class PackageCheckCommand:
             "version_sync",
             ok,
             f"pyproject={package_version or 'missing'}, runtime={__version__}",
+        )
+
+    def _route_template_check(self) -> PackageCheck:
+        path = self.root / "templates" / "model.routes.gray.example.ps1"
+        return PackageCheck(
+            "gray_route_template",
+            path.exists(),
+            str(path.relative_to(self.root)) if path.exists() else "missing gray route template",
         )
 
     def _runbook_docs_check(self) -> PackageCheck:

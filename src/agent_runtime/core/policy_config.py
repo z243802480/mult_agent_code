@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from agent_runtime.resources import template_path
 from agent_runtime.storage.json_store import JsonStore
 from agent_runtime.storage.schema_validator import SchemaValidator, SchemaValidationError
 
@@ -38,4 +39,4 @@ def _deep_merge(default: dict[str, Any], current: dict[str, Any]) -> dict[str, A
 
 
 def _default_policy_path() -> Path:
-    return Path(__file__).resolve().parents[3] / "templates" / "policies.default.json"
+    return template_path("policies.default.json")
