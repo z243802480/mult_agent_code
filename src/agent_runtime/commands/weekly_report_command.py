@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_runtime.commands._runtime_os_helpers import (
+    runtime_os_acceptance_evidence,
     runtime_os_full_summary,
     runtime_os_release_evidence,
 )
@@ -138,6 +139,7 @@ class WeeklyReportCommand:
         scenarios = [item for item in latest.get("scenarios", []) if isinstance(item, dict)]
         required = str(latest.get("suite") or "") in {"core", "nightly"}
         evidence = runtime_os_release_evidence(self._run_dirs(agent_dir), self._read_jsonl)
+        evidence.update(runtime_os_acceptance_evidence(scenarios))
         return runtime_os_full_summary(latest, scenarios, evidence, required=required)
 
     def _model_profile(self, agent_dir: Path) -> dict[str, Any]:
@@ -289,6 +291,7 @@ class WeeklyReportCommand:
             f"- Status: {report['runtime_os']['status']}",
             f"- Gate: {report['runtime_os']['gate'].get('status')}",
             f"- Worker results: {report['runtime_os']['evidence'].get('worker_results')}",
+            f"- Acceptance worker evidence: {report['runtime_os']['evidence'].get('acceptance_worker_results_jsonl')}",
             f"- Task graph selections: {report['runtime_os']['evidence'].get('task_graph_selections')}",
             "",
             "## Risks",

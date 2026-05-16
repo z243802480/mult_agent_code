@@ -6,6 +6,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.real_model_smoke import (
+    _accept_budget_paused_success,
+    pending_decision_ids,
+    recovery_option_id,
+)
+
 
 def test_real_model_smoke_script_validates_offline_flow_when_explicitly_allowed(
     tmp_path: Path,
@@ -77,6 +83,85 @@ def test_real_model_smoke_script_rejects_fake_provider_by_default(tmp_path: Path
 
     assert completed.returncode == 1
     assert "Use --allow-fake only for script tests" in completed.stderr
+
+
+def test_real_model_smoke_finds_pending_decisions_for_recovery(tmp_path: Path) -> None:
+    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "decisions.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps({"decision_id": "decision-0001", "status": "pending"}),
+                json.dumps({"decision_id": "decision-0002", "status": "resolved"}),
+                json.dumps({"decision_id": "decision-0003", "status": "pending"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert pending_decision_ids(tmp_path, "run-1") == ["decision-0001", "decision-0003"]
+
+
+def test_real_model_smoke_continues_budget_guard_during_bounded_recovery() -> None:
+    decision = {
+        "decision_id": "decision-0001",
+        "metadata": {"kind": "budget_guard"},
+        "options": [
+            {"option_id": "continue_once"},
+            {"option_id": "stop_and_review"},
+        ],
+    }
+
+    assert recovery_option_id(decision) == "continue_once"
+
+
+def test_real_model_smoke_defaults_non_budget_recovery_decisions() -> None:
+    decision = {
+        "decision_id": "decision-0001",
+        "metadata": {"kind": "runtime_request"},
+        "options": [
+            {"option_id": "review_contract"},
+            {"option_id": "reject_request"},
+        ],
+    }
+
+    assert recovery_option_id(decision) is None
+
+
+def test_real_model_smoke_approves_one_time_policy_recovery() -> None:
+    decision = {
+        "decision_id": "decision-0001",
+        "metadata": {"kind": "execution_policy_approval"},
+        "options": [
+            {"option_id": "approve_once"},
+            {"option_id": "skip"},
+        ],
+    }
+
+    assert recovery_option_id(decision) == "approve_once"
+
+
+def test_real_model_smoke_accepts_review_pass_with_pending_budget_guard(tmp_path: Path) -> None:
+    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "decisions.jsonl").write_text(
+        json.dumps(
+            {
+                "decision_id": "decision-0001",
+                "status": "pending",
+                "metadata": {"kind": "budget_guard"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert _accept_budget_paused_success(
+        run_dir,
+        {"run_id": "run-1", "status": "paused"},
+        {"overall": {"status": "pass"}},
+    )
 
 
 def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:

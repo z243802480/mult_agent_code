@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_runtime.commands._runtime_os_helpers import (
+    runtime_os_acceptance_evidence,
     runtime_os_full_summary,
     runtime_os_release_evidence,
 )
@@ -97,6 +98,8 @@ class CapabilityReportResult:
                 f"{evidence.get('worker_results', 0)} result(s) from "
                 f"{evidence.get('worker_invocations', 0)} invocation(s)"
             )
+            if evidence.get("acceptance_worker_results_jsonl"):
+                lines.append("  - acceptance worker evidence: present")
             lines.append(
                 "  - task graph selections: "
                 f"{evidence.get('task_graph_selections', 0)}"
@@ -356,6 +359,7 @@ class CapabilityReportCommand:
         scenarios = [item for item in latest.get("scenarios", []) if isinstance(item, dict)]
         required = str(latest.get("suite") or "") in {"core", "nightly"}
         evidence = runtime_os_release_evidence(self._run_dirs(agent_dir), self._read_jsonl)
+        evidence.update(runtime_os_acceptance_evidence(scenarios))
         return runtime_os_full_summary(latest, scenarios, evidence, required=required)
 
     def _ensure_model_profile(

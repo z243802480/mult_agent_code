@@ -275,6 +275,7 @@ class ReplanCommand:
             description = description + "\nProduct repair constraints:\n" + "\n".join(
                 f"- {note}" for note in product_notes
             )
+        expected_changed_files = self._expected_changed_files(source_task, contract_check)
         task = {
             "schema_version": "0.1.0",
             "task_id": task_id,
@@ -285,10 +286,10 @@ class ReplanCommand:
             "role": "CoderAgent",
             "depends_on": self._done_dependencies(task_board),
             "acceptance": self._acceptance(evidence, violations, product_notes),
-            "allowed_tools": source_task["allowed_tools"],
+            "allowed_tools": self._repair_allowed_tools(source_task),
             "expected_artifacts": expected_artifacts,
             "task_kind": "implementation",
-            "expected_changed_files": contract_check.get("expected_changed_files", []),
+            "expected_changed_files": expected_changed_files,
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -382,6 +383,26 @@ class ReplanCommand:
         if expected_files:
             return expected_files
         return [str(item) for item in source_task.get("expected_artifacts", [])]
+
+    def _expected_changed_files(self, source_task: dict, contract_check: dict) -> list[str]:
+        expected_files = [
+            str(item)
+            for item in contract_check.get("expected_changed_files", [])
+            if str(item).strip()
+        ]
+        if expected_files:
+            return expected_files
+        return [
+            str(item)
+            for item in source_task.get("expected_changed_files", [])
+            if str(item).strip()
+        ]
+
+    def _repair_allowed_tools(self, source_task: dict) -> list[str]:
+        tools = [str(item) for item in source_task.get("allowed_tools", []) if item]
+        if "list_files" not in tools:
+            tools.insert(0, "list_files")
+        return tools
 
     def _acceptance(
         self,

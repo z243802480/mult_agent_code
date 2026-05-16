@@ -50,7 +50,7 @@ class GoalSpecAgent:
         normalized = dict(data)
         normalized["schema_version"] = str(normalized.get("schema_version") or "0.1.0")
         normalized["goal_id"] = str(normalized.get("goal_id") or "goal-0001")
-        normalized["original_goal"] = str(normalized.get("original_goal") or original_goal)
+        normalized["original_goal"] = original_goal
         normalized["normalized_goal"] = str(normalized.get("normalized_goal") or original_goal)
         normalized["goal_type"] = self._goal_type(str(normalized.get("goal_type") or "unknown"))
         for key in [

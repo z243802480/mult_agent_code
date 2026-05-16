@@ -19,10 +19,20 @@ class RequirementPlanner:
 
     def build_task_plan(self, goal_spec: dict, runtime_context: dict | None = None) -> dict:
         runtime_context = runtime_context or {}
+        if self._is_targeted_repair_goal(goal_spec):
+            return {
+                "schema_version": "0.1.0",
+                "tasks": [self._targeted_repair_task(goal_spec, runtime_context)],
+            }
         if self._is_single_file_tool(goal_spec):
             return {
                 "schema_version": "0.1.0",
                 "tasks": [self._single_file_task(goal_spec, runtime_context)],
+            }
+        if self._is_atomic_multifile_tool(goal_spec):
+            return {
+                "schema_version": "0.1.0",
+                "tasks": [self._atomic_multifile_task(goal_spec, runtime_context)],
             }
 
         requirements: list[dict] = []
@@ -149,6 +159,241 @@ class RequirementPlanner:
             return False
         name = value.replace("\\", "/").rsplit("/", 1)[-1]
         return bool(re.match(r"^[\w.-]+\.[A-Za-z0-9]{1,8}$", name))
+
+    def _is_atomic_multifile_tool(self, goal_spec: dict) -> bool:
+        text = self._goal_text(goal_spec).lower()
+        explicit_files = self._explicit_goal_files(goal_spec)
+        if len([item for item in explicit_files if item.endswith(".py")]) < 2:
+            return False
+        has_tool_shape = any(marker in text for marker in {" cli", "command", "entrypoint", "package"})
+        has_runtime_checks = bool(self._command_examples(goal_spec)) or "support `" in text
+        return has_tool_shape and has_runtime_checks
+
+    def _is_targeted_repair_goal(self, goal_spec: dict) -> bool:
+        text = self._goal_text(goal_spec).lower()
+        explicit_files = [
+            item for item in self._explicit_goal_files(goal_spec) if not self._is_runtime_data_artifact(item)
+        ]
+        has_repair_intent = any(
+            marker in text
+            for marker in {
+                "fix the failing tests",
+                "fix failing tests",
+                "repair failing tests",
+                "identify the bug",
+                "bug in",
+            }
+        )
+        return has_repair_intent and bool(explicit_files)
+
+    def _targeted_repair_task(self, goal_spec: dict, runtime_context: dict) -> dict:
+        artifacts = [
+            item
+            for item in self._explicit_goal_files(goal_spec)
+            if not self._is_runtime_data_artifact(item)
+        ]
+        acceptance = self._targeted_repair_acceptance(goal_spec, artifacts)
+        requirement = {
+            "id": "req-targeted-repair",
+            "priority": "must",
+            "description": str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""),
+            "acceptance": acceptance,
+            "expected_artifacts": artifacts,
+        }
+        quality = self._quality_assessment(requirement, artifacts)
+        task = {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": "Repair targeted failing behavior and verify",
+            "description": self._targeted_repair_description(goal_spec),
+            "status": "ready",
+            "priority": "high",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": acceptance,
+            "allowed_tools": self._allowed_tools("implementation"),
+            "expected_artifacts": artifacts,
+            "task_kind": "implementation",
+            "expected_changed_files": artifacts,
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "quality": quality,
+            "notes": (
+                "Grouped into one targeted repair slice because the goal names the failing "
+                "behavior and concrete file boundary. "
+                + self._notes("req-targeted-repair", requirement, artifacts, runtime_context, quality)
+            ),
+        }
+        task["completion_contract"] = completion_contract(task)
+        task["verification_policy"] = self._verification_policy(task, goal_spec)
+        self._apply_runtime_contract(task)
+        return task
+
+    def _targeted_repair_description(self, goal_spec: dict) -> str:
+        lines = [
+            str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or "").strip()
+        ]
+        for requirement in goal_spec.get("expanded_requirements", [])[:8]:
+            if requirement.get("priority") != "wont":
+                lines.append(f"- {requirement.get('description', '')}")
+        return "\n".join(line for line in lines if line.strip())
+
+    def _targeted_repair_acceptance(self, goal_spec: dict, artifacts: list[str]) -> list[str]:
+        acceptance: list[str] = []
+        for item in goal_spec.get("definition_of_done", []):
+            if isinstance(item, str) and item.strip():
+                acceptance.append(item.strip())
+        for requirement in goal_spec.get("expanded_requirements", []):
+            if requirement.get("priority") == "wont":
+                continue
+            for item in requirement.get("acceptance", []):
+                if isinstance(item, str) and item.strip():
+                    acceptance.append(item.strip())
+        for artifact in artifacts:
+            acceptance.append(f"{artifact} is updated only as needed for the repair")
+        for command in self._command_examples(goal_spec):
+            acceptance.append(f"`{command}` exits successfully")
+        if not self._command_examples(goal_spec):
+            acceptance.append("The relevant test command passes")
+        return list(dict.fromkeys(acceptance))[:12]
+
+    def _atomic_multifile_task(self, goal_spec: dict, runtime_context: dict) -> dict:
+        artifacts = self._explicit_goal_files(goal_spec)
+        source_artifacts = [
+            artifact
+            for artifact in artifacts
+            if not self._is_runtime_data_artifact(artifact)
+        ]
+        acceptance = self._atomic_multifile_acceptance(goal_spec, artifacts)
+        description_lines = [
+            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or "").strip()
+        ]
+        for requirement in goal_spec.get("expanded_requirements", [])[:12]:
+            if requirement.get("priority") != "wont":
+                description_lines.append(f"- {requirement.get('description', '')}")
+        requirement = {
+            "id": "req-atomic-multifile",
+            "priority": "must",
+            "description": "\n".join(line for line in description_lines if line.strip()),
+            "acceptance": acceptance,
+            "expected_artifacts": artifacts,
+        }
+        quality = self._quality_assessment(requirement, artifacts)
+        task = {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": "Implement complete multi-file CLI artifact set",
+            "description": requirement["description"],
+            "status": "ready",
+            "priority": "high",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": acceptance,
+            "allowed_tools": self._allowed_tools("implementation"),
+            "expected_artifacts": artifacts,
+            "task_kind": "implementation",
+            "expected_changed_files": source_artifacts,
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "quality": quality,
+            "notes": (
+                "Grouped into one complete multi-file tool slice because the goal names a "
+                "coupled artifact set that must work together. Runtime data artifacts are "
+                "verified through commands, not required as source edits. "
+                + self._notes("req-atomic-multifile", requirement, artifacts, runtime_context, quality)
+            ),
+        }
+        task["completion_contract"] = completion_contract(task)
+        task["verification_policy"] = self._verification_policy(task, goal_spec)
+        self._apply_runtime_contract(task)
+        return task
+
+    def _atomic_multifile_acceptance(self, goal_spec: dict, artifacts: list[str]) -> list[str]:
+        acceptance: list[str] = []
+        for item in goal_spec.get("definition_of_done", []):
+            if isinstance(item, str) and item.strip():
+                acceptance.append(item.strip())
+        for requirement in goal_spec.get("expanded_requirements", []):
+            if requirement.get("priority") == "wont":
+                continue
+            for item in requirement.get("acceptance", []):
+                if isinstance(item, str) and item.strip():
+                    acceptance.append(item.strip())
+        for command in self._command_examples(goal_spec):
+            acceptance.append(f"`{command}` exits successfully")
+        for artifact in artifacts:
+            if self._is_runtime_data_artifact(artifact):
+                acceptance.append(f"Runtime commands create or update {artifact} as specified")
+            else:
+                acceptance.append(f"{artifact} is created or updated")
+        return list(dict.fromkeys(acceptance))[:12] or [
+            "The named multi-file tool artifacts are created and verified together"
+        ]
+
+    def _explicit_goal_files(self, goal_spec: dict) -> list[str]:
+        text = self._goal_text(goal_spec)
+        files = self._explicit_file_paths(text)
+        package_dir = self._package_dir(text)
+        normalized: list[str] = []
+        for file_path in files:
+            path = file_path.replace("\\", "/")
+            if package_dir and "/" not in path and self._looks_like_package_module(path, text):
+                path = f"{package_dir}/{path}"
+            normalized.append(path)
+        if package_dir and any(item.startswith(f"{package_dir}/") for item in normalized):
+            normalized.append(f"{package_dir}/__init__.py")
+        return list(dict.fromkeys(normalized))
+
+    def _goal_text(self, goal_spec: dict) -> str:
+        return " ".join(
+            [
+                str(goal_spec.get("original_goal") or ""),
+                str(goal_spec.get("normalized_goal") or ""),
+                " ".join(str(item) for item in goal_spec.get("target_outputs", []) if item),
+                " ".join(str(item) for item in goal_spec.get("constraints", []) if item),
+                " ".join(str(item) for item in goal_spec.get("definition_of_done", []) if item),
+                " ".join(
+                    str(requirement.get("description") or "")
+                    for requirement in goal_spec.get("expanded_requirements", [])
+                    if isinstance(requirement, dict)
+                ),
+                " ".join(
+                    " ".join(str(item) for item in requirement.get("acceptance", []) if item)
+                    for requirement in goal_spec.get("expanded_requirements", [])
+                    if isinstance(requirement, dict)
+                ),
+            ]
+        )
+
+    def _package_dir(self, text: str) -> str | None:
+        match = re.search(
+            r"\bpackage\s+directory\s+(?:named|called)\s+([A-Za-z_][\w-]*)",
+            text,
+            flags=re.I,
+        )
+        return match.group(1) if match else None
+
+    def _looks_like_package_module(self, path: str, text: str) -> bool:
+        stem = path.rsplit("/", 1)[-1]
+        if stem == "__init__.py":
+            return True
+        if re.search(rf"\brunnable\s+{re.escape(stem)}\s+entrypoint\b", text, flags=re.I):
+            return False
+        return stem in {"cli.py", "storage.py", "models.py", "model.py", "core.py", "utils.py"}
+
+    def _is_runtime_data_artifact(self, path: str) -> bool:
+        return path.endswith(".json") and "/" not in path
+
+    def _command_examples(self, goal_spec: dict) -> list[str]:
+        text = self._goal_text(goal_spec)
+        commands = re.findall(r"`([^`]+)`", text)
+        return [
+            command.strip()
+            for command in commands
+            if command.strip().startswith(("python ", "pytest", "ruff ", "mypy "))
+        ][:5]
 
     def _single_file_task(self, goal_spec: dict, runtime_context: dict) -> dict:
         artifact = self._single_file_artifact(goal_spec)

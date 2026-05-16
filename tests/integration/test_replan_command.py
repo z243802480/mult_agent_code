@@ -103,6 +103,8 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     repair_task = task_plan["tasks"][1]
     assert repair_task["task_id"] == "task-0002"
     assert repair_task["replan"]["source_evidence_id"] == "task-execution-0001"
+    assert repair_task["expected_changed_files"] == ["complete_module.py"]
+    assert "list_files" in repair_task["allowed_tools"]
     assert "Primary evidence: task-execution-0001" in repair_task["description"]
     assert "Candidate workspace:" in repair_task["description"]
     assert "verification did not pass" in repair_task["description"]

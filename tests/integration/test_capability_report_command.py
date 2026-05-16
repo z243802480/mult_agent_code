@@ -414,6 +414,28 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     assert "Runtime OS release evidence" in result.to_text()
 
 
+def test_capability_report_uses_acceptance_runtime_evidence_without_run_jsonl(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir.mkdir(parents=True)
+    store.write(
+        acceptance_dir / "acceptance_report.json",
+        runtime_os_report(tmp_path),
+        "acceptance_report",
+    )
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    assert result.runtime_os["status"] == "pass"
+    assert result.runtime_os["release_ready"] is True
+    assert result.runtime_os["evidence"]["worker_results"] == 0
+    assert result.runtime_os["evidence"]["acceptance_worker_results_jsonl"] is True
+    assert "acceptance worker evidence: present" in result.to_text()
+
+
 def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)

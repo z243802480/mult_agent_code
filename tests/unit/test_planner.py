@@ -202,6 +202,105 @@ def test_requirement_planner_groups_single_file_tool_into_one_slice() -> None:
     assert "single-file tool" in task["notes"]
 
 
+def test_requirement_planner_groups_atomic_multifile_cli_artifacts() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": (
+            "Create a small multi-file Python notes CLI. Use a package directory named "
+            "notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. "
+            "It must support `python notes.py add \"ship gray\"` and `python notes.py list`, "
+            "storing notes in notes.json under the current directory."
+        ),
+        "normalized_goal": "Create a multi-file Python notes CLI",
+        "target_outputs": ["local_cli", "python_module"],
+        "definition_of_done": [
+            "python notes.py add \"ship gray\" exits successfully",
+            "python notes.py list prints ship gray",
+            "notes are stored in notes.json",
+        ],
+        "verification_strategy": [
+            "python notes.py add \"ship gray\"",
+            "python notes.py list",
+        ],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create notes_app storage and CLI modules",
+                "acceptance": ["storage.py and cli.py exist"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Create notes.py entrypoint and notes.json storage behavior",
+                "acceptance": ["notes.py delegates to notes_app", "notes.json stores notes"],
+            },
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+
+    assert len(task_plan["tasks"]) == 1
+    task = task_plan["tasks"][0]
+    assert task["expected_artifacts"] == [
+        "notes_app/storage.py",
+        "notes_app/cli.py",
+        "notes.py",
+        "notes.json",
+        "notes_app/__init__.py",
+    ]
+    assert task["expected_changed_files"] == [
+        "notes_app/storage.py",
+        "notes_app/cli.py",
+        "notes.py",
+        "notes_app/__init__.py",
+    ]
+    assert "notes.json" not in task["write_scope"]
+    assert "Runtime commands create or update notes.json as specified" in task["acceptance"]
+    assert "`python notes.py list` exits successfully" in task["acceptance"]
+    assert "complete multi-file tool slice" in task["notes"]
+
+
+def test_requirement_planner_groups_targeted_failing_test_repair() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": (
+            "Fix the failing tests in this project. Run the Python tests, identify the bug "
+            "in buggy_math.py, and make the tests pass with the smallest reasonable change."
+        ),
+        "normalized_goal": "Fix failing tests by repairing buggy_math.py",
+        "target_outputs": ["buggy_math.py"],
+        "definition_of_done": ["pytest passes", "buggy_math.py contains the minimal fix"],
+        "verification_strategy": ["pytest"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Run tests and inspect buggy_math.py",
+                "acceptance": ["failing assertion is understood"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Apply the smallest fix in buggy_math.py",
+                "acceptance": ["tests pass after the change"],
+            },
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+
+    assert len(task_plan["tasks"]) == 1
+    task = task_plan["tasks"][0]
+    assert task["expected_artifacts"] == ["buggy_math.py"]
+    assert task["expected_changed_files"] == ["buggy_math.py"]
+    assert task["write_scope"] == ["buggy_math.py"]
+    assert "pytest passes" in task["acceptance"]
+    assert "targeted repair slice" in task["notes"]
+
+
 def test_requirement_planner_marks_diagnostic_tasks() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

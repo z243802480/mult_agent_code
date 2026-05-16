@@ -98,3 +98,27 @@ def test_goal_spec_agent_normalizes_common_model_shape_drift() -> None:
     assert result["expanded_requirements"][0]["priority"] == "must"
     assert result["expanded_requirements"][0]["source"] == "inferred"
     assert result["expanded_requirements"][0]["acceptance"] == ["file exists"]
+
+
+def test_goal_spec_agent_preserves_exact_user_goal_over_model_rewrite() -> None:
+    content = """{
+      "goal_id": "goal-0001",
+      "original_goal": "Create notes stored in notes.",
+      "normalized_goal": "Create notes stored in a JSON file",
+      "goal_type": "software_tool",
+      "assumptions": [],
+      "constraints": [],
+      "non_goals": [],
+      "expanded_requirements": [
+        {"description": "Create notes CLI", "acceptance": ["CLI works"]}
+      ],
+      "target_outputs": ["notes.py"],
+      "definition_of_done": ["notes.json is used"],
+      "verification_strategy": ["python notes.py list"],
+      "budget": {}
+    }"""
+    agent = GoalSpecAgent(FakeClient(content), SchemaValidator(Path("schemas")))
+
+    result = agent.generate("Create notes stored in notes.json.", {}, "run-1")
+
+    assert result["original_goal"] == "Create notes stored in notes.json."

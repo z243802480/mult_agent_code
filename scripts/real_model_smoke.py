@@ -193,6 +193,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not attempt review/resume recovery after a failed /run.",
     )
     parser.add_argument(
+        "--recovery-rounds",
+        type=int,
+        default=2,
+        help="Maximum bounded review/decision/resume recovery rounds.",
+    )
+    parser.add_argument(
         "--no-research",
         action="store_true",
         help="Skip /run pre-planning research for clear smoke goals.",
@@ -264,20 +270,7 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
             result.run_id,
             name="recovery-review",
         )
-        run_command(
-            result,
-            args.python,
-            "/resume",
-            "--root",
-            str(workspace),
-            "--session-id",
-            result.run_id,
-            "--max-iterations",
-            str(args.max_iterations),
-            "--max-tasks-per-iteration",
-            str(args.max_tasks_per_iteration),
-            name="recovery-resume",
-        )
+        recover_run(args, result)
 
     result.run_id = result.run_id or current_run_id(workspace)
     result.final_report = validate_artifacts(
@@ -321,6 +314,109 @@ def run_agent_run_with_retries(args: argparse.Namespace, result: SmokeResult) ->
     if last_record is None:
         raise SmokeFailure("agent /run did not execute.")
     return last_record
+
+
+def resolve_pending_decisions(args: argparse.Namespace, result: SmokeResult) -> None:
+    if not result.run_id:
+        return
+    for decision in pending_decisions(result.workspace, result.run_id):
+        decision_id = str(decision["decision_id"])
+        option_id = recovery_option_id(decision)
+        option_args = (
+            ["--select-option-id", option_id]
+            if option_id
+            else ["--use-default"]
+        )
+        record = run_command(
+            result,
+            args.python,
+            "/decide",
+            "--root",
+            str(result.workspace),
+            "--session-id",
+            result.run_id,
+            "--decision-id",
+            decision_id,
+            *option_args,
+            name=f"recovery-decide-{decision_id}",
+            check=False,
+        )
+        if record.returncode != 0:
+            if is_budget_guard_decision(decision) and "user_decisions exceeded budget" in record.stderr:
+                return
+            raise SmokeFailure(f"{record.name} failed with exit code {record.returncode}.")
+
+
+def recover_run(args: argparse.Namespace, result: SmokeResult) -> None:
+    if not result.run_id:
+        return
+    for round_index in range(1, max(1, int(args.recovery_rounds)) + 1):
+        resolve_pending_decisions(args, result)
+        record = run_command(
+            result,
+            args.python,
+            "/resume",
+            "--root",
+            str(result.workspace),
+            "--session-id",
+            result.run_id,
+            "--max-iterations",
+            str(args.max_iterations),
+            "--max-tasks-per-iteration",
+            str(args.max_tasks_per_iteration),
+            name="recovery-resume" if round_index == 1 else f"recovery-resume-{round_index}",
+        )
+        if "Status: completed" in record.stdout:
+            return
+        if not pending_decision_ids(result.workspace, result.run_id):
+            break
+    run_command(
+        result,
+        args.python,
+        "/review",
+        "--root",
+        str(result.workspace),
+        "--session-id",
+        result.run_id,
+        name="recovery-review-final",
+    )
+
+
+def recovery_option_id(decision: dict[str, Any]) -> str | None:
+    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    option_ids = {
+        str(option.get("option_id"))
+        for option in decision.get("options", [])
+        if isinstance(option, dict) and option.get("option_id")
+    }
+    if metadata.get("kind") == "budget_guard" and "continue_once" in option_ids:
+        return "continue_once"
+    if metadata.get("kind") == "execution_policy_approval" and "approve_once" in option_ids:
+        return "approve_once"
+    return None
+
+
+def is_budget_guard_decision(decision: dict[str, Any]) -> bool:
+    metadata = decision.get("metadata") if isinstance(decision.get("metadata"), dict) else {}
+    return metadata.get("kind") == "budget_guard"
+
+
+def pending_decision_ids(workspace: Path, run_id: str) -> list[str]:
+    return [str(decision["decision_id"]) for decision in pending_decisions(workspace, run_id)]
+
+
+def pending_decisions(workspace: Path, run_id: str) -> list[dict[str, Any]]:
+    path = workspace / ".agent" / "runs" / run_id / "decisions.jsonl"
+    if not path.exists():
+        return []
+    decisions: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        decision = json.loads(line)
+        if decision.get("status") == "pending" and decision.get("decision_id"):
+            decisions.append(decision)
+    return decisions
 
 
 def is_transient_provider_failure(record: CommandRecord) -> bool:
@@ -448,7 +544,9 @@ def validate_artifacts(
         cost_report=cost_report,
     )
     if run.get("status") != "completed":
-        raise SmokeFailure(f"Run status is {run.get('status')!r}, expected 'completed'.")
+        if not _accept_budget_paused_success(run_dir, run, eval_report):
+            raise SmokeFailure(f"Run status is {run.get('status')!r}, expected 'completed'.")
+        result.diagnostics["accepted_budget_pause"] = True
     unfinished = [
         f"{task['task_id']}:{task['status']}"
         for task in task_plan.get("tasks", [])
@@ -476,6 +574,15 @@ def validate_artifacts(
     if int(cost_report.get("tool_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record tool calls.")
     return run_dir / "final_report.md"
+
+
+def _accept_budget_paused_success(run_dir: Path, run: dict[str, Any], eval_report: dict[str, Any]) -> bool:
+    if run.get("status") != "paused":
+        return False
+    if eval_report.get("overall", {}).get("status") != "pass":
+        return False
+    pending = pending_decisions(run_dir.parents[2], str(run.get("run_id") or ""))
+    return bool(pending) and all(is_budget_guard_decision(decision) for decision in pending)
 
 
 def build_diagnostics(

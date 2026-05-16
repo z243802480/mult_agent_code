@@ -21,9 +21,14 @@ def runtime_os_full_summary(
     Status values: "pass", "fail", "partial", "missing_acceptance".
     """
     gate = RuntimeOSGateEvaluator().evaluate(report, scenarios, required=required).to_dict()
+    has_worker_evidence = bool(
+        evidence.get("worker_results")
+        or evidence.get("acceptance_worker_results_jsonl")
+        or evidence.get("workers_jsonl")
+    )
     if not scenarios:
         status = "missing_acceptance"
-    elif gate["status"] == "pass" and not evidence.get("worker_results"):
+    elif gate["status"] == "pass" and not has_worker_evidence:
         status = "partial"
     else:
         status = gate["status"]
@@ -31,8 +36,50 @@ def runtime_os_full_summary(
         "status": status,
         "gate": gate,
         "evidence": evidence,
-        "release_ready": gate["status"] == "pass" and bool(evidence.get("worker_results")),
+        "release_ready": gate["status"] == "pass" and has_worker_evidence,
     }
+
+
+def runtime_os_acceptance_evidence(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize Runtime OS evidence embedded in acceptance scenario results."""
+    evidence_keys = [
+        "workers_jsonl",
+        "worker_results_jsonl",
+        "runtime_profiles_jsonl",
+        "context_mounts_jsonl",
+        "validation_results_jsonl",
+        "task_execution_evidence_jsonl",
+        "runtime_request_created",
+        "merge_gate_blocked",
+        "resume_recovered",
+        "context_package_sliced",
+        "sandbox_backend_recorded",
+        "capability_feedback_recorded",
+        "debug_consumed_runtime_evidence",
+        "review_consumed_runtime_evidence",
+    ]
+    summary: dict[str, Any] = {
+        "acceptance_runtime_os_scenarios": 0,
+    }
+    for key in evidence_keys:
+        summary[f"acceptance_{key}"] = False
+
+    for scenario in scenarios:
+        if not scenario.get("ok"):
+            continue
+        runtime = scenario.get("summary")
+        runtime = runtime if isinstance(runtime, dict) else {}
+        runtime_os = runtime.get("runtime_os")
+        runtime_os = runtime_os if isinstance(runtime_os, dict) else {}
+        scenario_evidence = runtime_os.get("evidence")
+        scenario_evidence = scenario_evidence if isinstance(scenario_evidence, dict) else {}
+        if not scenario_evidence:
+            continue
+        summary["acceptance_runtime_os_scenarios"] += 1
+        for key in evidence_keys:
+            if scenario_evidence.get(key):
+                summary[f"acceptance_{key}"] = True
+    return summary
 
 
 def runtime_os_release_evidence(

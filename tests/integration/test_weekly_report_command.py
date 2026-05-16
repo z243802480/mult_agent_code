@@ -170,6 +170,7 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
     assert report["acceptance"]["latest_failed"] == 1
     assert report["runtime_os"]["gate"]["status"] == "pass"
     assert report["runtime_os"]["evidence"]["worker_results"] == 1
+    assert report["runtime_os"]["evidence"]["acceptance_worker_results_jsonl"] is True
     assert report["runtime_os"]["evidence"]["task_graph_selections"] == 1
     assert report["model_profile"]["weak_routes"][0]["purpose"] == "task_execution"
     assert any("Acceptance failures remain" in risk for risk in report["risks"])
@@ -177,6 +178,26 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
     assert "Weekly Production Report" in markdown
     assert "## Runtime OS" in markdown
     assert "config_driven_report" in markdown
+
+
+def test_weekly_report_uses_acceptance_runtime_evidence_without_run_jsonl(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    store = JsonStore(SchemaValidator(Path.cwd() / "schemas"))
+    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir.mkdir(parents=True)
+    store.write(
+        acceptance_dir / "acceptance_report.json",
+        runtime_os_report(tmp_path),
+        "acceptance_report",
+    )
+
+    result = WeeklyReportCommand(tmp_path, week_id="2026-W20").run()
+
+    report = store.read(result.report_path, "weekly_report")
+    assert report["runtime_os"]["status"] == "pass"
+    assert report["runtime_os"]["release_ready"] is True
+    assert report["runtime_os"]["evidence"]["worker_results"] == 0
+    assert report["runtime_os"]["evidence"]["acceptance_worker_results_jsonl"] is True
 
 
 def test_weekly_report_handles_missing_inputs(tmp_path: Path) -> None:
