@@ -155,7 +155,7 @@ def test_model_check_reports_glm_default_route(
 
     assert result.provider == "glm"
     assert result.model_name == "glm-5.1"
-    assert result.base_url == "https://api.z.ai/api/coding/paas/v4"
+    assert result.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
 
 
 def test_model_check_reports_tier_specific_glm_route(
@@ -176,7 +176,7 @@ def test_model_check_reports_tier_specific_glm_route(
 
     assert result.provider == "glm"
     assert result.model_name == "glm-5.1"
-    assert result.base_url == "https://api.z.ai/api/coding/paas/v4"
+    assert result.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
 
 
 def test_model_check_classifies_call_failures(tmp_path: Path) -> None:

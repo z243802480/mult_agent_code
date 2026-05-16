@@ -88,7 +88,7 @@ def _create_provider_client(
             OpenAICompatibleSettings.from_env(
                 provider="zai",
                 env_prefix=env_prefix,
-                default_base_url="https://api.z.ai/api/coding/paas/v4",
+                default_base_url="https://open.bigmodel.cn/api/coding/paas/v4",
                 default_model_name="glm-5.1",
                 api_key_env_names=("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY"),
             ),

@@ -238,7 +238,7 @@ def _default_base_url(provider: str, env_prefix: str) -> str | None:
     if provider in {"zhipu", "bigmodel"}:
         return "https://open.bigmodel.cn/api/paas/v4"
     if provider in {"zai", "z-ai", "glm"}:
-        return "https://api.z.ai/api/coding/paas/v4"
+        return "https://open.bigmodel.cn/api/coding/paas/v4"
     if provider in {"openai", "openai-compatible", "generic"}:
         return "https://api.openai.com/v1"
     return None

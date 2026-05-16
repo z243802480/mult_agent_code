@@ -114,7 +114,7 @@ def test_factory_routes_glm_as_strong_and_minimax_as_worker_medium(
     medium_client = client.client_for_tier("medium")
     assert isinstance(strong_client, OpenAICompatibleClient)
     assert strong_client.provider == "zai"
-    assert strong_client.settings.base_url == "https://api.z.ai/api/coding/paas/v4"
+    assert strong_client.settings.base_url == "https://open.bigmodel.cn/api/coding/paas/v4"
     assert strong_client.settings.model_name == "glm-5.1"
     assert client.route_for_tier("strong").provider == "zai"  # type: ignore[union-attr]
     assert getattr(medium_client, "provider", None) == "minimax"
