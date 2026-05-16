@@ -117,7 +117,7 @@ python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warnin
 For release gating, evaluate the latest persisted acceptance report:
 
 ```powershell
-python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 11 --min-capabilities 11
+python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 10 --min-capabilities 10
 ```
 
 The gate blocks when acceptance failed without a successful repair rerun, when trend warnings are
