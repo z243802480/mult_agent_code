@@ -16,11 +16,15 @@ class GateStatusResult:
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        blocking_reason = self.next_actions[0] if self.next_actions else None
+        rollout_state = self._rollout_state()
+        blocking_reason = None if rollout_state == "release_ready" else (
+            self.next_actions[0] if self.next_actions else None
+        )
         return {
             "schema_version": "0.1.0",
             "root": str(self.root),
             "stage": self.stage,
+            "rollout_state": rollout_state,
             "release_ready": self.stage == "ready_for_small_real_task_gray",
             "blocking_reason": blocking_reason,
             "gates": {
@@ -33,6 +37,13 @@ class GateStatusResult:
             "core_report": self.core_report,
             "next_actions": self.next_actions,
         }
+
+    def _rollout_state(self) -> str:
+        if self.stage == "ready_for_small_real_task_gray":
+            return "release_ready"
+        if self.stage in {"ready_for_gray_suite", "ready_for_core_acceptance"}:
+            return "conditional"
+        return "blocked"
 
     def _gate_summary(self, report: dict[str, Any], gray: bool = False) -> dict[str, Any]:
         if not report:
@@ -59,6 +70,7 @@ class GateStatusResult:
             "Gate status",
             f"Root: {self.root}",
             f"Stage: {self.stage}",
+            f"Rollout state: {self._rollout_state()}",
         ]
         lines.extend(self._report_lines("Real model gate", self.gate_report))
         lines.extend(self._report_lines("Gray suite", self.gray_report, gray=True))

@@ -19,6 +19,7 @@ from agent_runtime.commands.daily_command import (
 from agent_runtime.commands.init_command import InitCommand
 from agent_runtime.commands.model_check_command import ModelCheckCommand
 from agent_runtime.commands.new_command import NewCommand
+from agent_runtime.commands.package_check_command import PackageCheckCommand
 from agent_runtime.commands.debug_command import DebugCommand
 from agent_runtime.commands.decide_command import DecideCommand
 from agent_runtime.commands.doctor_command import DoctorCommand
@@ -183,6 +184,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show the latest local verification summary",
     )
     verification_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    package_check_parser = subcommands.add_parser(
+        "package-check",
+        aliases=["/package-check", "packaging", "/packaging"],
+        help="Check local packaging metadata before gray rollout",
+    )
+    package_check_parser.add_argument("--root", default=".", help="Workspace root path")
+    package_check_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
 
     research_parser = subcommands.add_parser(
         "research",
@@ -841,6 +854,16 @@ def main() -> None:
     if command in {"verification", "verify-status"}:
         verification_result = VerificationStatusCommand(root=Path(args.root)).run()
         print(verification_result.to_text())
+        return
+
+    if command in {"package-check", "packaging"}:
+        package_result = PackageCheckCommand(root=Path(args.root)).run()
+        if args.json:
+            print(json.dumps(package_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(package_result.to_text())
+        if not package_result.ok:
+            raise SystemExit(1)
         return
 
     if command == "research":

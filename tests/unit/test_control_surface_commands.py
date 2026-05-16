@@ -4,6 +4,7 @@ from pathlib import Path
 from agent_runtime.commands.doctor_command import DoctorCommand
 from agent_runtime.commands.gate_status_command import GateStatusCommand
 from agent_runtime.commands.init_command import InitCommand
+from agent_runtime.commands.package_check_command import PackageCheckCommand
 from agent_runtime.commands.status_command import StatusCommand
 from agent_runtime.commands.version_command import VersionCommand
 
@@ -18,6 +19,19 @@ def test_version_command_reports_runtime_diagnostics() -> None:
     assert payload["version"]
     assert payload["python_version"]
     assert payload["executable"]
+
+
+def test_package_check_reports_packaging_preflight() -> None:
+    result = PackageCheckCommand(Path.cwd()).run()
+
+    assert result.ok
+    text = result.to_text()
+    assert "Package check" in text
+    payload = result.to_dict()
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["status"] == "pass"
+    assert any(check["name"] == "version_sync" for check in payload["checks"])
+    assert "Run `agent version --json`" in payload["next_actions"][-1]
 
 
 def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
@@ -83,6 +97,7 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path) -> None:
     )
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "ready_for_gray_suite"
+    assert result.to_dict()["rollout_state"] == "conditional"
 
     verification_dir = tmp_path / ".agent" / "verification"
     verification_dir.mkdir(parents=True)
@@ -112,6 +127,8 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path) -> None:
     assert result.stage == "ready_for_small_real_task_gray"
     payload = result.to_dict()
     assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["rollout_state"] == "release_ready"
     assert payload["release_ready"] is True
+    assert payload["blocking_reason"] is None
     assert payload["gates"]["gray_suite"]["gray_ready"] is True
     assert payload["gray_report"]["gray_ready"] is True

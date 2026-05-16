@@ -17,6 +17,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     doctor_args = parser.parse_args(["/doctor", "--root", ".", "--json"])
     gate_status_args = parser.parse_args(["/gate-status", "--root", ".", "--json"])
     verification_args = parser.parse_args(["/verification", "--root", "."])
+    package_check_args = parser.parse_args(["/package-check", "--root", ".", "--json"])
     model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(
@@ -136,6 +137,8 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert gate_status_args.command == "/gate-status"
     assert gate_status_args.json
     assert verification_args.command == "/verification"
+    assert package_check_args.command == "/package-check"
+    assert package_check_args.json
     assert model_check_args.command == "/model-check"
     assert model_check_args.tier == "strong"
     assert runs_args.command == "/runs"
@@ -223,7 +226,22 @@ def test_gate_status_json_output_is_machine_readable(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["stage"] == "missing_real_model_gate"
+    assert payload["rollout_state"] == "blocked"
     assert payload["next_actions"]
+
+
+def test_package_check_json_output_is_machine_readable(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(sys, "argv", ["agent", "package-check", "--root", ".", "--json"])
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["status"] == "pass"
+    assert any(check["name"] == "console_script" for check in payload["checks"])
 
 
 def test_acceptance_repair_options_parse() -> None:
