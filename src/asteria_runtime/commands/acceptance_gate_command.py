@@ -17,6 +17,15 @@ from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
+RELEASE_BLOCKING_PROMOTION_STATUSES = [
+    "queued",
+    "pending_manual_approval",
+    "approved",
+    "blocked",
+    "promotion_failed",
+]
+
+
 @dataclass(frozen=True)
 class AcceptanceGateResult:
     ok: bool
@@ -197,7 +206,10 @@ class AcceptanceGateCommand:
         if promotion_risks["pending"] or promotion_risks["blocked"]:
             failures.append("candidate promotion queue has unresolved release risks")
             next_actions.append(
-                "Resolve `asteria promotions list` pending or blocked items before release."
+                "Resolve release-blocking candidate promotions before release: "
+                "`asteria promotions list --status pending_manual_approval`, "
+                "`asteria promotions approve --all-pending`, `asteria promotions retry`, "
+                "or `asteria promotions discard`."
             )
 
         ok = not failures
@@ -295,13 +307,15 @@ class AcceptanceGateCommand:
         )
         return RuntimeOSGateEvaluator().evaluate(report, scenarios, required=required).to_dict()
 
-    def _promotion_release_risks(self) -> dict[str, int]:
+    def _promotion_release_risks(self) -> dict[str, Any]:
         evidence = runtime_os_release_evidence(self._run_dirs(), self._read_jsonl)
         return {
             "total": int(evidence.get("candidate_promotions") or 0),
             "pending": int(evidence.get("candidate_promotions_pending") or 0),
             "blocked": int(evidence.get("candidate_promotions_blocked") or 0),
             "promoted": int(evidence.get("candidate_promotions_promoted") or 0),
+            "release_blocking_threshold": 0,
+            "release_blocking_statuses": RELEASE_BLOCKING_PROMOTION_STATUSES,
         }
 
     def _run_dirs(self) -> list[Path]:

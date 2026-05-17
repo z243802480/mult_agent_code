@@ -46,6 +46,16 @@ class PromotionsResult:
         if not self.promotions:
             lines.append("No candidate promotions.")
             return "\n".join(lines)
+        release_blocking = [
+            promotion
+            for promotion in self.promotions
+            if str(promotion.get("status")) in PROMOTABLE_PENDING_STATUSES
+        ]
+        if release_blocking:
+            lines.append(
+                "Release blocking: "
+                f"{len(release_blocking)} promotion(s) need approve/retry/reject/discard."
+            )
         for promotion in self.promotions:
             line = (
                 f"- {promotion['promotion_id']} [{promotion['status']}]: "

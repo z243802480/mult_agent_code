@@ -460,6 +460,17 @@ def test_acceptance_command_failed_only_uses_latest_failed_scenarios(
     assert workspace_root.is_relative_to(tmp_path / ".asteria" / "acceptance" / "workspaces")
 
 
+def test_acceptance_command_uses_module_runner_when_repo_script_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    command = AcceptanceCommand(tmp_path, suite="core", allow_fake=True)
+    monkeypatch.setattr(command, "_repo_root", lambda: tmp_path / "installed-site-packages")
+
+    runner = command._acceptance_runner_command()  # noqa: SLF001
+
+    assert runner == [sys.executable, "-m", "asteria_runtime.real_model_acceptance"]
+
+
 def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
     result = AcceptanceResult(
         suite="core",

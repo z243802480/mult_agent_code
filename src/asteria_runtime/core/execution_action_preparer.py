@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import dataclass
 from typing import Callable
@@ -18,6 +19,7 @@ class ExecutionActionPreparer:
         prepared = self._normalize_inline_verification(action, task)
         prepared = self._ensure_planned_verification(prepared, task)
         prepared = self._replace_unsafe_verification(prepared, task, policy)
+        prepared = self._stabilize_text_artifact_verification(prepared, task)
         prepared = self._prepend_python_compile_verification(prepared, task)
         self.require_non_empty(prepared)
         return prepared
@@ -162,6 +164,77 @@ class ExecutionActionPreparer:
                 "reason": "safe fallback verification",
             }
         ]
+
+    def _stabilize_text_artifact_verification(self, action: dict, task: dict) -> dict:
+        artifacts = self._text_only_artifacts(task)
+        if not artifacts or "run_command" not in set(task.get("allowed_tools", [])):
+            return action
+        if action.get("verification") and not self._has_broken_text_verification(action):
+            return action
+        normalized = dict(action)
+        normalized["verification"] = [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": self._text_artifact_verification_command(artifacts),
+                    "expected_returncodes": [0],
+                },
+                "reason": "stable verification for text-only artifact task",
+            }
+        ]
+        return normalized
+
+    def _has_broken_text_verification(self, action: dict) -> bool:
+        for call in action.get("verification") or []:
+            if call.get("tool_name") != "run_command":
+                continue
+            command = str(call.get("args", {}).get("command") or "")
+            code = self._python_c_code(command)
+            if code is None:
+                continue
+            if '"' in code:
+                return True
+            try:
+                ast.parse(code)
+            except SyntaxError:
+                return True
+        return False
+
+    def _python_c_code(self, command: str) -> str | None:
+        stripped = command.strip()
+        marker = ' -c "'
+        if not stripped.lower().startswith(("python -c ", "python3 -c ")) or marker not in stripped:
+            return None
+        if not stripped.endswith('"'):
+            return None
+        return stripped.split(marker, 1)[1][:-1]
+
+    def _text_only_artifacts(self, task: dict) -> list[str]:
+        artifacts = [
+            str(path).replace("\\", "/")
+            for path in [
+                *task.get("expected_changed_files", []),
+                *task.get("expected_artifacts", []),
+            ]
+            if isinstance(path, str) and str(path).strip()
+        ]
+        artifacts = list(dict.fromkeys(artifacts))
+        if not artifacts:
+            return []
+        text_suffixes = {".md", ".txt", ".rst"}
+        if not all(any(path.lower().endswith(suffix) for suffix in text_suffixes) for path in artifacts):
+            return []
+        return artifacts
+
+    def _text_artifact_verification_command(self, artifacts: list[str]) -> str:
+        encoded = repr(artifacts)
+        code = (
+            "from pathlib import Path; "
+            f"paths={encoded}; "
+            "missing=[p for p in paths if not Path(p).exists() or not Path(p).read_text(encoding='utf-8').strip()]; "
+            "raise SystemExit(('missing or empty: '+', '.join(missing)) if missing else 0)"
+        )
+        return f'python -c "{code}"'
 
     def _prepend_python_compile_verification(self, action: dict, task: dict) -> dict:
         if not action.get("verification"):

@@ -384,6 +384,9 @@ def test_acceptance_gate_blocks_unresolved_candidate_promotions(tmp_path: Path) 
     assert not result.ok
     assert "candidate promotion queue has unresolved release risks" in result.failures
     assert result.runtime_os["promotion_release_risks"]["pending"] == 1
+    assert result.runtime_os["promotion_release_risks"]["release_blocking_threshold"] == 0
+    assert "promotion_failed" in result.runtime_os["promotion_release_risks"]["release_blocking_statuses"]
+    assert any("approve --all-pending" in action for action in result.next_actions)
 
 
 def scenario(name: str, ok: bool) -> dict:

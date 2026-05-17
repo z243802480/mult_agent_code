@@ -111,6 +111,8 @@ You must:
 - Do not use destructive cleanup commands like rm -rf; use a Python command for temporary test cleanup.
 - If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
 - Avoid destructive commands, network calls, deployment, or secret access.
+- For a documentation or text-only artifact repair, write the expected file directly when it is in scope. Do not request more context just to create a standalone checklist, note, README, markdown, or text file.
+- For documentation/text-only verification, prefer a simple Python existence-and-nonempty check for the expected file. Do not generate complex Python one-liners that inspect unrelated files.
 """
 
     def _user_prompt(

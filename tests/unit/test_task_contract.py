@@ -94,7 +94,11 @@ def test_task_contract_exposes_runtime_scopes_and_policies() -> None:
         "verification_policy": {"commands": ["pytest tests/unit/test_example.py"]},
     }
 
-    assert read_scope(task) == ["AGENTS.md", "src/asteria_runtime/example.py"]
+    assert read_scope(task) == [
+        "AGENTS.md",
+        "src/asteria_runtime/example.py",
+        "src/asteria_runtime",
+    ]
     assert write_scope(task) == ["src/asteria_runtime/example.py"]
     assert validation_commands(task) == ["pytest tests/unit/test_example.py"]
     assert failure_policy(task) == "create_repair_task"

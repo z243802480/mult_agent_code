@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_mount_builder import ContextMountBuilder
 from asteria_runtime.core.context_package_builder import ContextPackageBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -23,7 +24,6 @@ from asteria_runtime.core.task_contract import (
     validation_commands,
     write_scope,
 )
-from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -176,6 +176,7 @@ class RuntimeProfileBuilder:
             "failure_policy": failure_policy(task),
             "parallel_safety": parallel_safety(task),
         }
+        scoped["route_guidance"] = self._route_guidance_for_task(context, self._model_purpose(task))
         return scoped
 
     def _record_profiles(
@@ -251,7 +252,15 @@ class RuntimeProfileBuilder:
         return self._capability_adjusted_tier(context, purpose, default)
 
     def _capability_adjusted_tier(self, context: RuntimeContext, purpose: str, default: str) -> str:
-        hints = self._route_hints(context)
+        guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(context.asteria_dir)
+        hints = [
+            item
+            for item in [
+                *list(guidance.get("blocking") or []),
+                *list(guidance.get("review") or []),
+            ]
+            if isinstance(item, dict)
+        ]
         if not hints or default == "strong":
             return default
         route = self._matching_route_hint(hints, purpose, default)
@@ -270,16 +279,22 @@ class RuntimeProfileBuilder:
             return default
         return "medium" if default == "cheap" else "strong"
 
-    def _route_hints(self, context: RuntimeContext) -> list[dict]:
-        path = context.asteria_dir / "model" / "capability_profile.json"
-        if not path.exists():
-            return []
-        try:
-            profile = JsonStore(self.validator).read(path, "model_capability_profile")
-        except (OSError, ValueError):
-            return []
-        profiles = profile.get("profiles")
-        return profiles if isinstance(profiles, list) else []
+    def _route_guidance_for_task(self, context: RuntimeContext, purpose: str) -> dict:
+        guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(context.asteria_dir)
+        relevant = [
+            item
+            for item in [
+                *list(guidance.get("blocking") or []),
+                *list(guidance.get("review") or []),
+            ]
+            if isinstance(item, dict) and item.get("purpose") == purpose
+        ]
+        return {
+            "status": guidance.get("status", "healthy"),
+            "purpose": purpose,
+            "relevant": relevant[:3],
+            "recommended_actions": list(guidance.get("recommended_actions") or [])[:3],
+        }
 
     def _matching_route_hint(self, routes: list[dict], purpose: str, tier: str) -> dict | None:
         for route in routes:

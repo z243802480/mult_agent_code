@@ -76,8 +76,11 @@ class DoctorResult:
             )
         if "real_model_gate" in failed:
             actions.append(
-                "Run `python scripts/real_model_gate.py --summary-json .asteria/model/real_model_gate_report.json`."
+                "Run `asteria real-model-gate --summary-json .asteria/model/real_model_gate_report.json`."
             )
+        actions.append(
+            "Use `docs/zh/灰度试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
+        )
         return actions
 
     def to_text(self) -> str:

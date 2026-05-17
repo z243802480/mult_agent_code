@@ -23,6 +23,7 @@ def test_promotions_command_lists_and_approves_pending_candidate(tmp_path: Path)
     ).run()
 
     assert listed.promotions[0]["status"] == "pending_manual_approval"
+    assert "Release blocking: 1 promotion(s)" in listed.to_text()
     assert approved.promotions[0]["status"] == "promoted"
     assert (root / "tool.py").read_text(encoding="utf-8") == "VALUE = 2\n"
     rows = [

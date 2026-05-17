@@ -79,6 +79,81 @@ def test_preparer_replaces_safe_unsafe_verification_with_planned_command() -> No
     ]
 
 
+def test_preparer_replaces_doc_only_verification_with_stable_file_check() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "docs/gray_batch_note.md", "content": "# Gray\n"},
+            },
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": (
+                        'python -c "from pathlib import Path; '
+                        'paths=["docs/gray_batch_note.md"]; print(paths)"'
+                    )
+                },
+            },
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            expected_artifacts=["docs/gray_batch_note.md"],
+            expected_changed_files=["docs/gray_batch_note.md"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    commands = [call["args"]["command"] for call in prepared["verification"]]
+    assert len(commands) == 1
+    assert "docs/gray_batch_note.md" in commands[0]
+    assert "missing or empty" in commands[0]
+    assert "bad" not in commands[0]
+
+
+def test_preparer_preserves_valid_doc_content_verification() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "CONTEXT.md", "content": "remote\n"},
+            },
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": (
+                        'python -c "from pathlib import Path; '
+                        "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
+                    )
+                },
+            },
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            expected_artifacts=["CONTEXT.md"],
+            expected_changed_files=["CONTEXT.md"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    commands = [call["args"]["command"] for call in prepared["verification"]]
+    assert len(commands) == 1
+    assert "read_text" in commands[0]
+    assert "missing or empty" not in commands[0]
+
+
 def test_preparer_rejects_empty_action() -> None:
     with pytest.raises(RuntimeError, match="contained no tool calls"):
         _preparer().prepare(

@@ -48,6 +48,7 @@ class PackageCheckResult:
             "checks": [check.to_dict() for check in self.checks],
             "failed_checks": failed,
             "artifacts": self.artifacts,
+            "runbook": self._runbook(),
             "next_actions": self._next_actions(failed),
         }
 
@@ -59,11 +60,28 @@ class PackageCheckResult:
             actions.append("Add `templates/model.routes.gray.example.ps1` before gray rollout.")
         if "gray_command_modules" in failed:
             actions.append("Package real-model gate and acceptance modules before gray rollout.")
+        if "gray_runbook" in failed:
+            actions.append("Add `docs/zh/灰度试运行手册.md` before gray rollout.")
         if not self.artifacts:
             actions.append("Build a local wheel with `python -m build` when the build dependency is available.")
+        actions.append("Follow `docs/zh/灰度试运行手册.md` for install, route config, self-check, rollback, and failure collection.")
         actions.append("Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.")
         actions.append("Run `asteria version --json` from the installed package before gray rollout.")
         return actions
+
+    def _runbook(self) -> dict[str, object]:
+        return {
+            "path": "docs/zh/灰度试运行手册.md",
+            "required_sections": [
+                "install",
+                "route_config",
+                "self_check",
+                "upgrade",
+                "rollback",
+                "failure_collection",
+                "pause_resume",
+            ],
+        }
 
     def to_text(self) -> str:
         lines = [
@@ -99,6 +117,7 @@ class PackageCheckCommand:
             self._gray_command_modules_check(),
             self._route_template_check(),
             self._runbook_docs_check(),
+            self._gray_runbook_check(),
         ]
         return PackageCheckResult(
             root=self.root,
@@ -165,6 +184,12 @@ class PackageCheckCommand:
             "src/asteria_runtime/real_model_gate.py",
             "src/asteria_runtime/real_model_acceptance.py",
         ]
+        required = [
+            "docs/zh/开发指南.md",
+            "docs/zh/运行命令.md",
+            "docs/zh/真实模型验收.md",
+            "docs/zh/交付计划.md",
+        ]
         missing = [item for item in required if not (self.root / item).exists()]
         return PackageCheck(
             "gray_command_modules",
@@ -196,6 +221,14 @@ class PackageCheckCommand:
             "gray_docs",
             not missing,
             "gray rollout docs present" if not missing else "missing: " + ", ".join(missing),
+        )
+
+    def _gray_runbook_check(self) -> PackageCheck:
+        path = self.root / "docs" / "zh" / "灰度试运行手册.md"
+        return PackageCheck(
+            "gray_runbook",
+            path.exists(),
+            str(path.relative_to(self.root)) if path.exists() else "missing gray runbook",
         )
 
     def _dist_artifacts(self) -> list[str]:

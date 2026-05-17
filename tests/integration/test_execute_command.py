@@ -469,6 +469,48 @@ class FakeFailingVerificationClient:
         )
 
 
+class FakeBadDocVerificationClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Write a markdown note but provide a brittle verification command.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "docs/gray_batch_note.md",
+                                "content": "# Gray Batch\n\n- Verify document-only tasks.\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create the requested documentation artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    'python -c "from pathlib import Path; '
+                                    'paths=["docs/gray_batch_note.md"]; print(paths)"'
+                                )
+                            },
+                            "reason": "this malformed command should be replaced",
+                        }
+                    ],
+                    "completion_notes": "docs/gray_batch_note.md contains the gray batch note",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-bad-doc-verification",
+            raw_response={},
+        )
+
+
 class FakeNoopImplementationClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -860,6 +902,54 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
     assert execute_profile_ids == {worker["runtime_profile_id"] for worker in workers}
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 3
+
+
+def test_execute_command_stabilizes_doc_only_verification(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a gray batch note", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "title": "Write gray batch note",
+            "description": "Create docs/gray_batch_note.md with a short checklist.",
+            "allowed_tools": ["write_file", "run_command"],
+            "expected_artifacts": ["docs/gray_batch_note.md"],
+            "expected_changed_files": ["docs/gray_batch_note.md"],
+            "write_scope": ["docs/gray_batch_note.md"],
+            "read_scope": ["AGENTS.md"],
+            "task_kind": "documentation",
+            "parallel_safety": "serial",
+            "completion_contract": {
+                "requires_changed_artifact": True,
+                "requires_verification": True,
+                "allows_expected_failure": False,
+            },
+            "verification_policy": {"required": True, "commands": []},
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeBadDocVerificationClient(),
+    ).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert (tmp_path / "docs" / "gray_batch_note.md").read_text(encoding="utf-8").startswith(
+        "# Gray Batch"
+    )
+    validation_results = [
+        json.loads(line)
+        for line in (run_dir / "validation_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(validation_results) == 1
+    assert "missing or empty" in validation_results[0]["command"]
+    assert "docs/gray_batch_note.md" in validation_results[0]["command"]
+    assert "bad" not in validation_results[0]["command"]
 
 
 def test_execute_command_parallel_disjoint_writes_promotes_isolated_outputs(tmp_path: Path) -> None:

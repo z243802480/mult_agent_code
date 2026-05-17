@@ -124,6 +124,8 @@ You must:
 - Avoid destructive commands, global installs, deployment, or network calls unless explicitly allowed.
 - Keep the implementation practical and production-oriented; do not create placeholder-only files.
 - If the task contract is too narrow, request a runtime change with runtime_requests instead of attempting an out-of-scope tool call.
+- For a new documentation or text-only artifact with an explicit expected_artifacts/write_scope path, write the file directly. Do not request more context merely to create a standalone checklist, note, README, markdown, or text file.
+- For documentation/text-only verification, prefer a simple Python existence-and-nonempty check for the expected file. Do not generate complex Python one-liners that inspect unrelated files.
 """
 
     def _user_prompt(

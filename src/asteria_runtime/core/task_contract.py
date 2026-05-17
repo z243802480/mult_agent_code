@@ -246,7 +246,19 @@ def _default_read_scope(task: dict) -> list[str]:
     for item in [*artifacts, *expected_changes]:
         if item not in scope:
             scope.append(item)
+        parent = _parent_scope(item)
+        if parent and parent not in scope:
+            scope.append(parent)
     return scope
+
+
+def _parent_scope(path: str) -> str | None:
+    normalized = str(path).replace("\\", "/").strip().strip("/")
+    if not normalized or normalized.endswith("/"):
+        return None
+    if "/" not in normalized:
+        return None
+    return normalized.rsplit("/", 1)[0]
 
 
 def _string_list(values: object) -> list[str]:

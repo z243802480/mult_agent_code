@@ -38,7 +38,11 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert payload["status"] == "pass"
     assert any(check["name"] == "version_sync" for check in payload["checks"])
     assert any(check["name"] == "gray_route_template" for check in payload["checks"])
+    assert any(check["name"] == "gray_runbook" for check in payload["checks"])
+    assert payload["runbook"]["path"] == "docs/zh/灰度试运行手册.md"
+    assert "rollback" in payload["runbook"]["required_sections"]
     assert any("model.routes.gray.example.ps1" in action for action in payload["next_actions"])
+    assert any("灰度试运行手册.md" in action for action in payload["next_actions"])
     assert "Run `asteria version --json`" in payload["next_actions"][-1]
 
 
@@ -152,6 +156,7 @@ def test_doctor_reports_exact_missing_medium_route_variables(tmp_path: Path, mon
     assert any(
         "AGENT_MODEL_API_KEY or OPENAI_API_KEY" in action for action in payload["next_actions"]
     )
+    assert any("灰度试运行手册.md" in action for action in payload["next_actions"])
 
 
 def test_doctor_accepts_global_minimax_as_effective_medium_route(

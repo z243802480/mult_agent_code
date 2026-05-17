@@ -254,8 +254,7 @@ class AcceptanceCommand:
     ) -> subprocess.CompletedProcess[str]:
         workspace_root = self._workspace_root(summary_json)
         command = [
-            sys.executable,
-            str(self._script_path()),
+            *self._acceptance_runner_command(),
             "--suite",
             self.suite,
             "--root",
@@ -473,8 +472,11 @@ class AcceptanceCommand:
             "nightly": 11,
         }.get(self.suite, 1)
 
-    def _script_path(self) -> Path:
-        return self._repo_root() / "scripts" / "real_model_acceptance.py"
+    def _acceptance_runner_command(self) -> list[str]:
+        script_path = self._repo_root() / "scripts" / "real_model_acceptance.py"
+        if script_path.exists():
+            return [sys.executable, str(script_path)]
+        return [sys.executable, "-m", "asteria_runtime.real_model_acceptance"]
 
     def _repo_root(self) -> Path:
         return Path(__file__).resolve().parents[3]
