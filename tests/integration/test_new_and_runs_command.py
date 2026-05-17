@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.execute_command import ExecuteCommand
-from agent_runtime.commands.new_command import NewCommand
-from agent_runtime.commands.runs_command import RunsCommand
-from agent_runtime.commands.sessions_command import SessionsCommand
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.commands.execute_command import ExecuteCommand
+from asteria_runtime.commands.new_command import NewCommand
+from asteria_runtime.commands.runs_command import RunsCommand
+from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
 class GoalEchoPlanClient:

@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from agent_runtime.cli import build_parser, main
+from asteria_runtime.cli import build_parser, main
 
 
 def test_slash_command_aliases_parse_like_regular_commands() -> None:
@@ -16,6 +16,21 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     status_args = parser.parse_args(["/status", "--root", ".", "--json"])
     doctor_args = parser.parse_args(["/doctor", "--root", ".", "--json"])
     gate_status_args = parser.parse_args(["/gate-status", "--root", ".", "--json"])
+    real_model_gate_args = parser.parse_args(
+        ["/real-model-gate", "--root", ".", "--summary-json", "gate.json", "--allow-fake"]
+    )
+    real_model_acceptance_args = parser.parse_args(
+        [
+            "/real-model-acceptance",
+            "--suite",
+            "offline",
+            "--root",
+            ".",
+            "--summary-json",
+            "acceptance.json",
+            "--allow-fake",
+        ]
+    )
     verification_args = parser.parse_args(["/verification", "--root", "."])
     package_check_args = parser.parse_args(["/package-check", "--root", ".", "--json"])
     model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
@@ -136,6 +151,11 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert doctor_args.json
     assert gate_status_args.command == "/gate-status"
     assert gate_status_args.json
+    assert real_model_gate_args.command == "/real-model-gate"
+    assert real_model_gate_args.allow_fake
+    assert real_model_acceptance_args.command == "/real-model-acceptance"
+    assert real_model_acceptance_args.suite == "offline"
+    assert real_model_acceptance_args.allow_fake
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json
@@ -201,7 +221,7 @@ def test_status_json_output_is_machine_readable(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent", "status", "--root", str(tmp_path), "--json"],
+        ["asteria", "status", "--root", str(tmp_path), "--json"],
     )
 
     main()
@@ -219,7 +239,7 @@ def test_gate_status_json_output_is_machine_readable(
     monkeypatch.setattr(
         sys,
         "argv",
-        ["agent", "gate-status", "--root", str(tmp_path), "--json"],
+        ["asteria", "gate-status", "--root", str(tmp_path), "--json"],
     )
 
     main()
@@ -234,7 +254,7 @@ def test_package_check_json_output_is_machine_readable(
     monkeypatch,
     capsys,
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["agent", "package-check", "--root", ".", "--json"])
+    monkeypatch.setattr(sys, "argv", ["asteria", "package-check", "--root", ".", "--json"])
 
     main()
 
@@ -242,6 +262,7 @@ def test_package_check_json_output_is_machine_readable(
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "pass"
     assert any(check["name"] == "console_script" for check in payload["checks"])
+    assert any(check["name"] == "gray_command_modules" for check in payload["checks"])
 
 
 def test_acceptance_repair_options_parse() -> None:

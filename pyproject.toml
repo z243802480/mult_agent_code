@@ -3,7 +3,7 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-runtime"
+name = "asteria-runtime"
 version = "0.1.0"
 description = "Local-first multi-agent autonomous development runtime"
 requires-python = ">=3.11"
@@ -29,13 +29,13 @@ future = [
 ]
 
 [project.scripts]
-agent = "agent_runtime.cli:main"
+asteria = "asteria_runtime.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_runtime = [
+asteria_runtime = [
   "schemas/*.json",
   "templates/*"
 ]

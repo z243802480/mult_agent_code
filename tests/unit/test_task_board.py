@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.core.task_board import TaskBoard, TaskStateError
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.task_board import TaskBoard, TaskStateError
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def sample_task(

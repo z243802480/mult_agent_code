@@ -205,7 +205,7 @@ def test_real_model_acceptance_runs_memory_lesson_reuse_without_model(
 
 def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> None:
     completed = subprocess.CompletedProcess(
-        ["agent"],
+        ["asteria"],
         1,
         stdout="",
         stderr="provider returned 429 too many requests",
@@ -215,6 +215,20 @@ def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> Non
 
     assert retryable is True
     assert failure_type == "rate_limited"
+
+
+def test_real_model_acceptance_classifies_remote_close_as_retryable() -> None:
+    completed = subprocess.CompletedProcess(
+        ["asteria"],
+        1,
+        stdout="",
+        stderr="Remote end closed connection without response",
+    )
+
+    retryable, failure_type = classify_acceptance_subprocess_failure(completed)
+
+    assert retryable is True
+    assert failure_type == "network"
 
 
 def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:

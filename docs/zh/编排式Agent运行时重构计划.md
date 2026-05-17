@@ -7,7 +7,7 @@
 它不是对某个厂商实现的复刻，也不是为了追求“更多 Agent 同时聊天”。它定义的是本项目接下来要逐步逼近的运行时形态：
 
 ```text
-一个本地优先、可编排、可恢复、可验证、可审计、可控成本的 Agent Runtime OS。
+一个本地优先、可编排、可恢复、可验证、可审计、可控成本的 Asteria Runtime OS。
 ```
 
 从产品意义上看，这类架构很可能是通用智能能力落地到真实生产系统的一种重要形态：模型负责规划、判断和协调，运行时负责状态、权限、预算、沙盒、验证、恢复和报告。
@@ -611,7 +611,7 @@ Store 平面负责可恢复和可审计。
 
 目标：
 
-- 把编排式 Agent Runtime OS 作为长期方向写入主文档。
+- 把编排式 Asteria Runtime OS 作为长期方向写入主文档。
 - 明确 AgentSpec、Session、TaskGraph、Worker、Store 的边界。
 - 确认当前 Phase 1B 不追求大规模并发，先追求结构正确。
 
@@ -775,9 +775,9 @@ schemas/model_profile.schema.json
 schemas/worker_invocation.schema.json
 schemas/worker_result.schema.json
 schemas/context_mount.schema.json
-src/agent_runtime/core/worker.py
-src/agent_runtime/core/runtime_profile.py
-src/agent_runtime/storage/worker_store.py
+src/asteria_runtime/core/worker.py
+src/asteria_runtime/core/runtime_profile.py
+src/asteria_runtime/storage/worker_store.py
 ```
 
 验收：

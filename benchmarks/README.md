@@ -1,4 +1,4 @@
-# Agent Runtime Benchmarks
+# Asteria Benchmarks
 
 This directory contains stable MVP scenario definitions. They are intentionally
 small and local-first so they can be used for regression checks without API keys

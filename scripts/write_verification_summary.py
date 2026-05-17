@@ -4,9 +4,9 @@ import argparse
 import platform
 from pathlib import Path
 
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.schema_validator import SchemaValidator
-from agent_runtime.utils.time import now_iso
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
 
 
 def build_parser() -> argparse.ArgumentParser:

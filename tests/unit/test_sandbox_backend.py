@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.core.sandbox_backend import SandboxBackendSelector
+from asteria_runtime.core.sandbox_backend import SandboxBackendSelector
 
 
 def test_sandbox_backend_selector_uses_temp_workspace_without_git(tmp_path: Path) -> None:

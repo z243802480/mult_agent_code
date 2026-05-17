@@ -7,7 +7,9 @@ import sys
 from pathlib import Path
 
 from scripts.real_model_smoke import (
+    CommandRecord,
     _accept_budget_paused_success,
+    is_transient_provider_failure,
     pending_decision_ids,
     recovery_option_id,
 )
@@ -201,6 +203,18 @@ def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) ->
     assert report["model_call_summary"]["total_model_calls"] > 0
     assert report["routes"]["strong"]["provider"] == "fake"
     assert report["routes"]["medium"]["provider"] == "fake"
+
+
+def test_real_model_smoke_treats_remote_close_as_transient() -> None:
+    record = CommandRecord(
+        name="run",
+        command=["asteria", "/run"],
+        returncode=1,
+        stdout="",
+        stderr="Remote end closed connection without response",
+    )
+
+    assert is_transient_provider_failure(record)
 
 
 def test_real_model_gate_requires_strong_and_medium_routes(tmp_path: Path) -> None:

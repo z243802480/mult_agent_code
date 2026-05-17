@@ -1,17 +1,17 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.compact_command import CompactCommand
-from agent_runtime.commands.handoff_command import HandoffCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.plan_command import PlanCommand
-from agent_runtime.commands.sessions_command import SessionsCommand
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.run_store import RunStore
-from agent_runtime.storage.schema_validator import SchemaValidator
-from agent_runtime.utils.time import now_iso
+from asteria_runtime.commands.compact_command import CompactCommand
+from asteria_runtime.commands.handoff_command import HandoffCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
 
 
 class FakePlanClient:
@@ -127,7 +127,7 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
             "stdout_tail": "",
             "stderr_tail": "missing markdown_kb.py",
             "reproduce": {
-                "cli": "python -m agent_runtime /acceptance --suite core --scenario markdown_kb",
+                "cli": "python -m asteria_runtime /acceptance --suite core --scenario markdown_kb",
                 "script": (
                     "python scripts/real_model_acceptance.py --suite core --scenario markdown_kb"
                 ),
@@ -503,7 +503,7 @@ def test_sessions_context_shows_acceptance_failure_recovery_pointer(tmp_path: Pa
             "stdout_tail": "",
             "stderr_tail": "missing markdown_kb.py",
             "reproduce": {
-                "cli": "python -m agent_runtime /acceptance --suite core --scenario markdown_kb",
+                "cli": "python -m asteria_runtime /acceptance --suite core --scenario markdown_kb",
                 "script": (
                     "python scripts/real_model_acceptance.py --suite core --scenario markdown_kb"
                 ),

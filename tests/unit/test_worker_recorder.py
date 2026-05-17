@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.core.worker_recorder import WorkerExecutionRecorder
-from agent_runtime.storage.event_logger import EventLogger
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
+from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_worker_recorder_persists_invocation_result_and_event(tmp_path: Path) -> None:

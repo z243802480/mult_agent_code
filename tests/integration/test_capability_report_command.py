@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_runtime.commands.capability_report_command import CapabilityReportCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_capability_report_summarizes_acceptance_and_execution_evidence(
@@ -29,7 +29,7 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
                 "status": "blocked",
                 "started_at": "2026-05-07T10:00:00+08:00",
                 "ended_at": None,
-                "entry_command": "agent /run",
+                "entry_command": "asteria /run",
                 "current_phase": "EXECUTE",
                 "workspace": {"mode": "single_workspace", "path": "."},
                 "summary": "blocked",
@@ -221,7 +221,7 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
                 "status": "completed",
                 "started_at": "2026-05-13T10:00:00+08:00",
                 "ended_at": "2026-05-13T10:01:00+08:00",
-                "entry_command": "agent /execute",
+                "entry_command": "asteria /execute",
                 "current_phase": "DONE",
                 "workspace": {"mode": "single_workspace", "path": "."},
                 "summary": "done",

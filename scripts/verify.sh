@@ -21,14 +21,14 @@ trap 'rm -rf "$tmp_root"' EXIT
 
 export AGENT_MODEL_PROVIDER=fake
 
-"$python_bin" -m agent_runtime /init --root "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /model-check --root "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /new "create offline artifact" --root "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /sessions --root "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /run --root "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /compact --root "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /handoff --root "$tmp_root/workspace" --to FutureRun
-sessions_context="$("$python_bin" -m agent_runtime /sessions --root "$tmp_root/workspace" --context)"
+"$python_bin" -m asteria_runtime /init --root "$tmp_root/workspace"
+"$python_bin" -m asteria_runtime /model-check --root "$tmp_root/workspace"
+"$python_bin" -m asteria_runtime /new "create offline artifact" --root "$tmp_root/workspace"
+"$python_bin" -m asteria_runtime /sessions --root "$tmp_root/workspace"
+"$python_bin" -m asteria_runtime /run --root "$tmp_root/workspace"
+"$python_bin" -m asteria_runtime /compact --root "$tmp_root/workspace"
+"$python_bin" -m asteria_runtime /handoff --root "$tmp_root/workspace" --to FutureRun
+sessions_context="$("$python_bin" -m asteria_runtime /sessions --root "$tmp_root/workspace" --context)"
 grep -q "snapshot:" <<<"$sessions_context"
 grep -q "handoff:" <<<"$sessions_context"
 grep -q "next:" <<<"$sessions_context"
@@ -36,6 +36,6 @@ find "$tmp_root/workspace/.agent/context/snapshots" -maxdepth 1 -name "*.json" -
 find "$tmp_root/workspace/.agent/context/handoffs" -maxdepth 1 -name "*.json" -print -quit | grep -q .
 test -f "$tmp_root/workspace/offline_artifact.txt"
 "$python_bin" scripts/write_verification_summary.py --root . --platform linux --cli-workspace "$tmp_root/workspace"
-"$python_bin" -m agent_runtime /verification --root .
-"$python_bin" -m agent_runtime /acceptance --root "$tmp_root/acceptance" --suite offline --allow-fake
-"$python_bin" -m agent_runtime /acceptance-gate --root "$tmp_root/acceptance" --suite offline --min-scenarios 1
+"$python_bin" -m asteria_runtime /verification --root .
+"$python_bin" -m asteria_runtime /acceptance --root "$tmp_root/acceptance" --suite offline --allow-fake
+"$python_bin" -m asteria_runtime /acceptance-gate --root "$tmp_root/acceptance" --suite offline --min-scenarios 1

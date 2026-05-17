@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.run_store import RunStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_task_plan_quality_gate_auto_revises_simple_plan_failures(tmp_path: Path) -> None:
@@ -14,7 +14,7 @@ def test_task_plan_quality_gate_auto_revises_simple_plan_failures(tmp_path: Path
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     run_store = RunStore(tmp_path / ".agent", validator)
-    run = run_store.create_run("agent plan weak goal")
+    run = run_store.create_run("asteria plan weak goal")
     run_dir = run_store.run_dir(run["run_id"])
     goal_spec = {
         "schema_version": "0.1.0",

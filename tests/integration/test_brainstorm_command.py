@@ -1,9 +1,9 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.brainstorm_command import BrainstormCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.models.fake import FakeModelClient
+from asteria_runtime.commands.brainstorm_command import BrainstormCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.models.fake import FakeModelClient
 
 
 def test_brainstorm_command_writes_report_without_applying(tmp_path: Path) -> None:

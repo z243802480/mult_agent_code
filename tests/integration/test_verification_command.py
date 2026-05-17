@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_runtime.commands.verification_command import VerificationStatusCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.verification_command import VerificationStatusCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_verification_status_reports_missing_summary(tmp_path: Path) -> None:

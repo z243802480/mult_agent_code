@@ -1,6 +1,6 @@
 import pytest
 
-from agent_runtime.models.http_transport import HttpTransport, HttpTransportError
+from asteria_runtime.models.http_transport import HttpTransport, HttpTransportError
 
 
 class FakeResponse:

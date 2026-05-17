@@ -30,5 +30,5 @@
     "Final report lists produced artifacts and cost summary.",
     "No network access is required by default."
   ],
-  "recommended_command": "agent /run \"做一个本地优先的密码测试工具\" --root <workspace>"
+  "recommended_command": "asteria /run \"做一个本地优先的密码测试工具\" --root <workspace>"
 }

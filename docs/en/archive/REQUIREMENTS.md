@@ -503,7 +503,7 @@ Future versions may add:
 
 - Multi-agent parallel execution.
 - Research paper ingestion and citation tracking.
-- Visual dashboard for agent runs.
+- Visual dashboard for asteria runs.
 - PDF report generation.
 - Browser-based UI inspection.
 - Long-term vector memory.

@@ -2,18 +2,18 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.models.factory import create_model_client
-from agent_runtime.models.local import (
+from asteria_runtime.models.factory import create_model_client
+from asteria_runtime.models.local import (
     local_default_base_url,
     local_default_model,
     local_provider_names,
     local_settings_from_env,
 )
-from agent_runtime.models.openai_compatible import (
+from asteria_runtime.models.openai_compatible import (
     OpenAICompatibleClient,
     OpenAICompatibleProviderError,
 )
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_local_provider_defaults_cover_common_openai_compatible_servers() -> None:
@@ -26,6 +26,9 @@ def test_local_provider_defaults_cover_common_openai_compatible_servers() -> Non
 
 def test_ollama_provider_can_use_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "ollama")
+    monkeypatch.delenv("AGENT_MODEL_STRONG_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_MODEL_MEDIUM_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_MODEL_CHEAP_PROVIDER", raising=False)
     monkeypatch.delenv("AGENT_MODEL_BASE_URL", raising=False)
     monkeypatch.delenv("AGENT_MODEL_API_KEY", raising=False)
     monkeypatch.delenv("AGENT_MODEL_NAME", raising=False)

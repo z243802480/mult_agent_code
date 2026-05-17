@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from agent_runtime.core.merge_gate import MergeGate
+from asteria_runtime.core.merge_gate import MergeGate
 
 
 @dataclass(frozen=True)

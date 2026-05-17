@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from agent_runtime.core.runtime_evidence import RuntimeEvidenceReader
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_runtime_evidence_reader_groups_task_worker_merge_and_request_evidence(

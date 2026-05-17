@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.agents.goal_spec_agent import GoalSpecAgent, GoalSpecError
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent, GoalSpecError
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 class FakeClient:

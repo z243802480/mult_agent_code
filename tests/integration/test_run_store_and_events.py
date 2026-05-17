@@ -1,15 +1,15 @@
 from pathlib import Path
 
-from agent_runtime.storage.event_logger import EventLogger
-from agent_runtime.storage.run_store import RunStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_run_store_creates_loads_and_updates_run(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
     store = RunStore(tmp_path / ".agent", validator)
 
-    run = store.create_run('agent run "hello"', goal_id="goal-0001")
+    run = store.create_run('asteria run "hello"', goal_id="goal-0001")
     assert run["status"] == "running"
     assert (tmp_path / ".agent" / "runs" / run["run_id"] / "run.json").exists()
 
@@ -23,7 +23,7 @@ def test_run_store_creates_loads_and_updates_run(tmp_path: Path) -> None:
 def test_run_store_tracks_current_session_and_reads_legacy_pointer(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
     store = RunStore(tmp_path / ".agent", validator)
-    run = store.create_run('agent new "hello"', goal_id="goal-0001")
+    run = store.create_run('asteria new "hello"', goal_id="goal-0001")
 
     store.set_current_session(run["run_id"], "test")
 

@@ -40,7 +40,7 @@ async: synchronous first, asyncio later
 Recommended:
 
 ```text
-src/agent_runtime/
+src/asteria_runtime/
   commands/
   core/
   tools/

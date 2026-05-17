@@ -36,5 +36,5 @@
     "Final report lists the repaired artifact."
   ],
   "verification_command": "python -m pytest tests",
-  "recommended_command": "agent /run \"修复已有项目中失败的测试，并生成修复报告\" --root <workspace>"
+  "recommended_command": "asteria /run \"修复已有项目中失败的测试，并生成修复报告\" --root <workspace>"
 }

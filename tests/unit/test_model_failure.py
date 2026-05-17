@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_runtime.models.model_failure import (
+from asteria_runtime.models.model_failure import (
     ModelFailureRecorder,
     build_model_failure_report,
     classify_model_failure,

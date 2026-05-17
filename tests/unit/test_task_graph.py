@@ -1,4 +1,4 @@
-from agent_runtime.core.task_graph import TaskGraphScheduler
+from asteria_runtime.core.task_graph import TaskGraphScheduler
 
 
 def test_task_graph_scheduler_selects_ready_nodes_serially() -> None:
@@ -80,10 +80,10 @@ def test_task_graph_scheduler_detects_write_scope_conflict() -> None:
     scheduler = TaskGraphScheduler([])
 
     assert scheduler.has_write_conflict(
-        {"expected_changed_files": ["src/agent_runtime/"]},
-        {"expected_changed_files": ["src/agent_runtime/commands/execute_command.py"]},
+        {"expected_changed_files": ["src/asteria_runtime/"]},
+        {"expected_changed_files": ["src/asteria_runtime/commands/execute_command.py"]},
     )
     assert not scheduler.has_write_conflict(
-        {"expected_changed_files": ["src/agent_runtime/core/"]},
+        {"expected_changed_files": ["src/asteria_runtime/core/"]},
         {"expected_changed_files": ["docs/zh/"]},
     )

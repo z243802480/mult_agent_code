@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-The goal of testing is not to prove that a single model answer looks good. It is to prove that the agent runtime can reliably complete long-running tasks.
+The goal of testing is not to prove that a single model answer looks good. It is to prove that the Asteria runtime can reliably complete long-running tasks.
 
 ## 2. Test Pyramid
 

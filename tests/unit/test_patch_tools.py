@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.storage.schema_validator import SchemaValidator
-from agent_runtime.tools.backup_tools import RestoreBackupTool
-from agent_runtime.tools.patch_tools import ApplyPatchTool, DiffWorkspaceTool
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.tools.backup_tools import RestoreBackupTool
+from asteria_runtime.tools.patch_tools import ApplyPatchTool, DiffWorkspaceTool
 
 
 def context(tmp_path: Path) -> RuntimeContext:

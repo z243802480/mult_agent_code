@@ -28,4 +28,4 @@ def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path) -> None:
     assert not (tmp_path / "file_renamer" / "photo-0001.txt").exists()
     assert (tmp_path / "markdown_kb" / "markdown_kb.py").exists()
     assert (tmp_path / "markdown_kb" / "kb_index.json").exists()
-    assert (tmp_path / "markdown_kb" / "notes" / "agent_runtime.md").exists()
+    assert (tmp_path / "markdown_kb" / "notes" / "asteria_runtime.md").exists()

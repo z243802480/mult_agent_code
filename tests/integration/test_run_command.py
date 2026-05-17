@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.decide_command import DecideCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.new_command import NewCommand
-from agent_runtime.commands.resume_command import ResumeCommand
-from agent_runtime.commands.run_command import RunCommand
-from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.commands.decide_command import DecideCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.new_command import NewCommand
+from asteria_runtime.commands.resume_command import ResumeCommand
+from asteria_runtime.commands.run_command import RunCommand
+from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
 class FakePlanClient:
@@ -359,6 +359,16 @@ class FakeApprovalExecuteClient:
                     "summary": "Create artifact and verify with a shell operator.",
                     "tool_calls": [
                         {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    'python -c "print(\'approval required\')" '
+                                    "&& python -c \"print('approved')\""
+                                )
+                            },
+                            "reason": "exercise execution policy approval before changing files",
+                        },
+                        {
                             "tool_name": "write_file",
                             "args": {
                                 "path": "complete_module.py",
@@ -374,11 +384,10 @@ class FakeApprovalExecuteClient:
                             "args": {
                                 "command": (
                                     'python -c "from complete_module import answer; '
-                                    'assert answer() == 42" '
-                                    "&& python -c \"print('approved')\""
+                                    'assert answer() == 42"'
                                 )
                             },
-                            "reason": "verify with an operator that needs approval",
+                            "reason": "verify behavior after approval",
                         }
                     ],
                     "completion_notes": "complete_module.py exists",
@@ -656,7 +665,7 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert "strategy=" in final_report
     assert "promoted=complete_module.py" in final_report
     assert "task_execution_evidence.jsonl" in final_report
-    assert "Run `agent /acceptance --suite core` before release." in final_report
+    assert "Run `asteria /acceptance --suite core` before release." in final_report
 
 
 def test_run_command_pauses_before_execute_when_task_plan_quality_fails(

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from agent_runtime.core.policy_config import load_policy_config
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> None:

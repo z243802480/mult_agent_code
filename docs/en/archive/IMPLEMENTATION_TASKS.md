@@ -13,7 +13,7 @@ Goal: create the base Python project.
 Artifacts:
 
 - `pyproject.toml`
-- `src/agent_runtime/__init__.py`
+- `src/asteria_runtime/__init__.py`
 - `tests/`
 
 Acceptance:
@@ -26,13 +26,13 @@ Acceptance:
 
 Artifacts:
 
-- `src/agent_runtime/commands/`
-- `src/agent_runtime/core/`
-- `src/agent_runtime/tools/`
-- `src/agent_runtime/models/`
-- `src/agent_runtime/storage/`
-- `src/agent_runtime/evaluation/`
-- `src/agent_runtime/security/`
+- `src/asteria_runtime/commands/`
+- `src/asteria_runtime/core/`
+- `src/asteria_runtime/tools/`
+- `src/asteria_runtime/models/`
+- `src/asteria_runtime/storage/`
+- `src/asteria_runtime/evaluation/`
+- `src/asteria_runtime/security/`
 
 Acceptance:
 
@@ -159,7 +159,7 @@ Tasks:
 
 - T-0701 Implement `/compact`.
 - T-0702 Implement ReporterAgent.
-- T-0703 Implement `agent run`.
+- T-0703 Implement `asteria run`.
 
 Acceptance:
 
@@ -181,7 +181,7 @@ MVP is complete when:
 
 - `/init` works.
 - `/plan` works.
-- `agent run` completes a minimal loop.
+- `asteria run` completes a minimal loop.
 - `/compact` works.
 - At least two benchmarks pass.
 - Cost reports are generated.

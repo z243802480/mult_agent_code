@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from agent_runtime.core.context_loader import ContextLoader
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.context_loader import ContextLoader
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def validator() -> SchemaValidator:
@@ -52,7 +52,7 @@ def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: P
                 "stdout_tail": "",
                 "stderr_tail": "missing artifact",
                 "reproduce": {
-                    "cli": f"python -m agent_runtime /acceptance --scenario {scenario}",
+                    "cli": f"python -m asteria_runtime /acceptance --scenario {scenario}",
                     "script": f"python scripts/real_model_acceptance.py --scenario {scenario}",
                 },
                 "promoted_task_id": f"task-000{index}",

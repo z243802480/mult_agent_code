@@ -1,4 +1,4 @@
-from agent_runtime.tools.defaults import create_default_tool_registry
+from asteria_runtime.tools.defaults import create_default_tool_registry
 
 
 def test_default_tool_registry_contains_mvp_tools() -> None:

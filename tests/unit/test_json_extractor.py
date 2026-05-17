@@ -1,6 +1,6 @@
 import pytest
 
-from agent_runtime.models.json_extractor import JsonExtractionError, parse_json_object
+from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 
 
 def test_parse_json_object_accepts_plain_json() -> None:

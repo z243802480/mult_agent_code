@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.core.candidate_workspace import CandidateWorkspace
-from agent_runtime.core.merge_gate import MergeGate
+from asteria_runtime.core.candidate_workspace import CandidateWorkspace
+from asteria_runtime.core.merge_gate import MergeGate
 
 
 @dataclass

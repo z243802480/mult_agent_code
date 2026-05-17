@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
 
-from agent_runtime.core.budget import BudgetController
-from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.storage.event_logger import EventLogger
-from agent_runtime.storage.schema_validator import SchemaValidator
-from agent_runtime.tools.command_tools import RunCommandTool, RunTestsTool
-from agent_runtime.tools.file_tools import ReadFileTool, WriteFileTool
-from agent_runtime.tools.registry import ToolRegistry
-from agent_runtime.tools.search_tools import SearchTextTool
+from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.tools.command_tools import RunCommandTool, RunTestsTool
+from asteria_runtime.tools.file_tools import ReadFileTool, WriteFileTool
+from asteria_runtime.tools.registry import ToolRegistry
+from asteria_runtime.tools.search_tools import SearchTextTool
 
 
 def policy(max_tool_calls: int = 20) -> dict:

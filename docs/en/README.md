@@ -1,4 +1,4 @@
-﻿# Multi-Agent Autonomous Development System - English Documentation
+# Multi-Agent Autonomous Development System - English Documentation
 
 This directory contains the English reference document set for the project.
 
@@ -18,7 +18,7 @@ Recommended order:
 Current phase:
 
 ```text
-Orchestrated Agent Runtime OS stage
+Orchestrated Asteria Runtime OS stage
 ```
 
 For the current status and near-term roadmap, read `docs/zh/当前状态与路线.md` first.
@@ -26,12 +26,12 @@ For the current status and near-term roadmap, read `docs/zh/当前状态与路�
 Verification:
 
 - Local: `python -m pip install -e ".[dev]"`, then `bash scripts/verify.sh`.
-- Docker: `docker build -t agent-runtime:verify .`, then `docker run --rm agent-runtime:verify`.
+- Docker: `docker build -t asteria-runtime:verify .`, then `docker run --rm asteria-runtime:verify`.
 - Offline model smoke: set `AGENT_MODEL_PROVIDER=fake` before running CLI workflows.
 - Local model smoke: set `AGENT_MODEL_PROVIDER=ollama` and `AGENT_MODEL_NAME=qwen2.5-coder:7b`.
 - Tiered routing: set `AGENT_MODEL_STRONG_PROVIDER`, `AGENT_MODEL_MEDIUM_PROVIDER`, or
   `AGENT_MODEL_CHEAP_PROVIDER` to route strong, medium, and cheap model calls independently.
-- Real model smoke: run `agent /model-check --root .`, then run a minimal `agent /run` in a temporary
+- Real model smoke: run `asteria /model-check --root .`, then run a minimal `asteria /run` in a temporary
   workspace. MiniMax `sk-cp-` keys are routed to the China endpoint automatically. Never commit real
   API keys; keep them in environment variables or secret storage only.
 - Real model acceptance: run `python scripts/real_model_acceptance.py --suite core`, or

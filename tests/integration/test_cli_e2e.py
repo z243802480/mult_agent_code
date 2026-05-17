@@ -9,9 +9,12 @@ from pathlib import Path
 def run_agent(tmp_path: Path, *args: str) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["AGENT_MODEL_PROVIDER"] = "fake"
+    env["AGENT_MODEL_STRONG_PROVIDER"] = "fake"
+    env["AGENT_MODEL_MEDIUM_PROVIDER"] = "fake"
+    env["AGENT_MODEL_CHEAP_PROVIDER"] = "fake"
     env["PYTHONPATH"] = str(Path.cwd() / "src")
     return subprocess.run(
-        [sys.executable, "-m", "agent_runtime", *args],
+        [sys.executable, "-m", "asteria_runtime", *args],
         cwd=Path.cwd(),
         env=env,
         text=True,

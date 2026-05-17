@@ -1,4 +1,4 @@
-﻿# Multi-Agent Autonomous Development System - Runtime Commands
+# Multi-Agent Autonomous Development System - Runtime Commands
 
 ## Initial Commands
 
@@ -82,20 +82,20 @@ The runtime still stores the execution record as a run under `.agent/runs/<run_i
 
 `/sessions` helps recover or switch context:
 
-- `agent sessions`: list recent sessions and mark the current session.
-- `agent sessions --session-id <id>`: show one session.
-- `agent sessions --session-id <id> --set-current`: make a session current.
+- `asteria sessions`: list recent sessions and mark the current session.
+- `asteria sessions --session-id <id>`: show one session.
+- `asteria sessions --session-id <id> --set-current`: make a session current.
 
 `/runs`, `/history`, and `--run-id` remain compatibility aliases. New documentation and user
 flows should use `/sessions` and `--session-id`.
-`agent acceptance-history` / `agent acceptance-trend` shows persisted acceptance history and trend
+`asteria acceptance-history` / `asteria acceptance-trend` shows persisted acceptance history and trend
 deltas from `.agent/acceptance/history.jsonl`.
 Use `--fail-on-warning` to turn trend warnings into a non-zero exit code for local gates.
-Use `agent acceptance --fail-on-trend-warning` when the acceptance run itself should fail on
+Use `asteria acceptance --fail-on-trend-warning` when the acceptance run itself should fail on
 trend regressions.
-`agent acceptance-gate` / `agent release-gate` also enforces capability and tier coverage, not just
+`asteria acceptance-gate` / `asteria release-gate` also enforces capability and tier coverage, not just
 raw scenario count.
-`agent capability-report` summarizes acceptance trends, capability coverage, failure types, repair
+`asteria capability-report` summarizes acceptance trends, capability coverage, failure types, repair
 rounds, cost signals, common blockers, and recommended next actions.
 Known scenario metadata is backfilled for older acceptance history rows, so missing
 `capability`/`tier` fields do not collapse reports into `unknown`.
@@ -108,9 +108,9 @@ accidentally sharing context.
 
 `/run` is the user-facing MVP command for a complete local-first execution loop.
 
-- `agent run "goal"` or `agent /run "goal"` creates a new session and runs it.
-- `agent run` or `agent /run` continues the current session.
-- `agent run --session-id <id>` continues the selected historical session.
+- `asteria run "goal"` or `asteria /run "goal"` creates a new session and runs it.
+- `asteria run` or `asteria /run` continues the current session.
+- `asteria run --session-id <id>` continues the selected historical session.
 
 ```text
 init if needed
@@ -195,16 +195,16 @@ The report includes goal, artifact, outcome, trajectory, and cost evaluation. `o
 
 Supported modes:
 
-- create: `agent decide --question ... --options-json ...`
-- list: `agent decide --list-pending`
-- resolve: `agent decide --decision-id ... --select-option-id ...`
-- default: `agent decide --decision-id ... --use-default`
+- create: `asteria decide --question ... --options-json ...`
+- list: `asteria decide --list-pending`
+- resolve: `asteria decide --decision-id ... --select-option-id ...`
+- default: `asteria decide --decision-id ... --use-default`
 
 Decisions are written to `decisions.jsonl`, emit `decision_created` / `decision_resolved` events, and increment `user_decisions` in `cost_report.json`.
 
 New decisions should include option actions so `/resume` does not need to infer intent from labels.
 
-After resolving decisions, use `agent resume --session-id ...` to continue the session.
+After resolving decisions, use `asteria resume --session-id ...` to continue the session.
 
 ## `/research` Source-Grounded Research
 

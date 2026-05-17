@@ -5,9 +5,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_acceptance_gate_passes_clean_report(tmp_path: Path) -> None:
@@ -65,7 +65,7 @@ def test_acceptance_gate_blocks_trend_warnings_by_default(tmp_path: Path) -> Non
     assert not result.ok
     assert result.release_status == "blocked"
     assert "acceptance trend warnings are present" in result.failures
-    assert "agent /acceptance-history" in result.next_actions[0]
+    assert "asteria /acceptance-history" in result.next_actions[0]
 
 
 def test_acceptance_gate_allows_closed_repair_with_conditional_status(tmp_path: Path) -> None:
@@ -155,7 +155,7 @@ def test_acceptance_gate_cli_exits_nonzero_for_blocked_release(tmp_path: Path) -
         [
             sys.executable,
             "-m",
-            "agent_runtime",
+            "asteria_runtime",
             "/acceptance-gate",
             "--root",
             str(tmp_path),

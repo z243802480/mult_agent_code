@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.core.candidate_workspace import CandidateWorkspace
+from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 
 
 def test_candidate_workspace_copies_safe_files_and_excludes_agent_state(tmp_path: Path) -> None:

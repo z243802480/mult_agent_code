@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.roadmap_command import RoadmapCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.roadmap_command import RoadmapCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_roadmap_update_generates_json_and_markdown_from_weekly_report(

@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_init_creates_agent_workspace(tmp_path: Path) -> None:

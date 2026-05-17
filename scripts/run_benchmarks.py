@@ -15,18 +15,18 @@ SRC_ROOT = REPO_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from agent_runtime.commands.debug_command import DebugCommand
-from agent_runtime.commands.compact_command import CompactCommand
-from agent_runtime.commands.handoff_command import HandoffCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.plan_command import PlanCommand
-from agent_runtime.commands.run_command import RunCommand
-from agent_runtime.commands.execute_command import ExecuteCommand
-from agent_runtime.commands.sessions_command import SessionsCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.schema_validator import SchemaValidator
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
-from agent_runtime.models.fake import FakeModelClient
+from asteria_runtime.commands.debug_command import DebugCommand
+from asteria_runtime.commands.compact_command import CompactCommand
+from asteria_runtime.commands.handoff_command import HandoffCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.run_command import RunCommand
+from asteria_runtime.commands.execute_command import ExecuteCommand
+from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.models.fake import FakeModelClient
 
 
 @dataclass
@@ -283,7 +283,7 @@ class MarkdownKbClient:
                     "acceptance": [
                         "markdown_kb.py accepts a directory and keyword",
                         "kb_index.json includes fixture markdown files",
-                        "searching for runtime returns agent_runtime.md",
+                        "searching for runtime returns asteria_runtime.md",
                     ],
                 }
             ],
@@ -351,11 +351,11 @@ if __name__ == "__main__":
 """
         seed_index = [
             {
-                "path": "notes/agent_runtime.md",
-                "title": "Agent Runtime",
+                "path": "notes/asteria_runtime.md",
+                "title": "Asteria Runtime",
                 "line_count": 3,
                 "lines": [
-                    "# Agent Runtime",
+                    "# Asteria Runtime",
                     "",
                     (
                         "The local runtime turns goals into verified artifacts through planning, "
@@ -669,11 +669,11 @@ def _run_markdown_kb(workspace: Path) -> BenchmarkResult:
         items = index.get("items", []) if isinstance(index, dict) else index
         paths = {item["path"] for item in items}
         _check(result, (workspace / "markdown_kb.py").exists(), "markdown search CLI exists")
-        _check(result, "notes/agent_runtime.md" in paths, "index includes runtime note")
+        _check(result, "notes/asteria_runtime.md" in paths, "index includes runtime note")
         _check(result, "notes/security.md" in paths, "index includes security note")
         _check(
             result,
-            any("Agent Runtime" == item.get("title") for item in items),
+            any("Asteria Runtime" == item.get("title") for item in items),
             "index captures markdown titles",
         )
         _check_report_mentions(
@@ -779,7 +779,7 @@ def _extract_goal(prompt: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run deterministic agent runtime benchmarks.")
+    parser = argparse.ArgumentParser(description="Run deterministic Asteria runtime benchmarks.")
     parser.add_argument(
         "benchmarks",
         nargs="*",

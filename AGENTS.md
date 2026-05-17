@@ -38,7 +38,7 @@ MVP uses filesystem + JSON/JSONL before SQLite.
 ```text
 Runtime layers: CLI, command router, orchestrator, context layer, agent layer, tool layer, evaluation layer, persistence layer.
 MVP implementation uses Python standard library where possible, with optional future dependencies documented in pyproject.toml.
-Current working commands: python -m agent_runtime init --root <path>, python -m agent_runtime /run "<goal>" --root <path>, and python -m agent_runtime /acceptance --suite offline --allow-fake --root <path>
+Current working commands: python -m asteria_runtime init --root <path>, python -m asteria_runtime /run "<goal>" --root <path>, and python -m asteria_runtime /acceptance --suite offline --allow-fake --root <path>
 Current Runtime OS objects include TaskGraph, WorkerInvocation, WorkerResult, RuntimeProfile, ContextMount, TaskExecutionEvidence, and MergeGate.
 Root runtime state lives in .agent/.
 ```

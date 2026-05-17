@@ -6,22 +6,22 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_runtime.acceptance.runtime_os_catalog import (
+from asteria_runtime.acceptance.runtime_os_catalog import (
     runtime_os_capability_names,
     runtime_os_scenario_names,
 )
-from agent_runtime.commands.acceptance_command import (
+from asteria_runtime.commands.acceptance_command import (
     AcceptanceCommand,
     AcceptanceFailurePromoter,
     AcceptanceResult,
 )
-from agent_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.plan_command import PlanCommand
-from agent_runtime.models.fake import FakeModelClient
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.run_store import RunStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.models.fake import FakeModelClient
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path) -> None:
@@ -34,7 +34,7 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
         [
             sys.executable,
             "-m",
-            "agent_runtime",
+            "asteria_runtime",
             "/acceptance",
             "--suite",
             "offline",
@@ -167,7 +167,7 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert "Failure evidence:" in task["description"]
     assert str(tmp_path / "summary.json") in task["description"]
     assert (
-        "python -m agent_runtime /acceptance --suite core --scenario markdown_kb"
+        "python -m asteria_runtime /acceptance --suite core --scenario markdown_kb"
         in task["description"]
     )
     assert (
@@ -188,7 +188,7 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert evidence["transcript"].endswith("real_model_smoke_transcript.json")
     assert evidence["expected_file"].endswith("markdown_kb.py")
     assert evidence["reproduce"]["cli"] == (
-        "python -m agent_runtime /acceptance --suite core --scenario markdown_kb"
+        "python -m asteria_runtime /acceptance --suite core --scenario markdown_kb"
     )
     validator.validate("acceptance_failure_evidence", evidence)
     backlog = json.loads(
@@ -209,7 +209,7 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert memories[0]["source"]["task_id"] == "task-0002"
     assert memories[0]["source"]["evidence"] == str(evidence_path)
     assert (
-        "python -m agent_runtime /acceptance --suite core --scenario markdown_kb"
+        "python -m asteria_runtime /acceptance --suite core --scenario markdown_kb"
         in memories[0]["content"]
     )
     validator.validate("memory_entry", memories[0])

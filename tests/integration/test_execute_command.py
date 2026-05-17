@@ -1,13 +1,13 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.decide_command import DecideCommand
-from agent_runtime.commands.execute_command import ExecuteCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.plan_command import PlanCommand
-from agent_runtime.commands.resume_command import ResumeCommand
-from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.commands.decide_command import DecideCommand
+from asteria_runtime.commands.execute_command import ExecuteCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.resume_command import ResumeCommand
+from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
 class FakePlanClient:
@@ -1466,6 +1466,47 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
     assert evidence[0]["contract_check"]["verification_total"] == 0
 
 
+def test_execute_command_uses_planned_verification_when_model_omits_it(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    command = (
+        "python -c \"import sys; sys.path.insert(0, 'src'); "
+        "from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+    )
+    task_plan["tasks"][0]["validation_commands"] = [
+        f"Execute `{command}` and assert exit code is 0."
+    ]
+    task_plan["tasks"][0]["verification_policy"] = {
+        "required": True,
+        "allow_expected_failure": False,
+        "commands": task_plan["tasks"][0]["validation_commands"],
+    }
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeNoVerificationClient()
+    ).run()
+
+    assert result.completed == 1
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert evidence[0]["contract_check"]["verification_total"] >= 1
+    validations = [
+        json.loads(line)
+        for line in (run_dir / "validation_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(command in item.get("command", "") for item in validations)
+
+
 def test_execute_command_treats_inline_run_command_as_verification(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
@@ -1505,13 +1546,21 @@ def test_execute_command_filters_reserved_model_tool_args(tmp_path: Path) -> Non
 def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    command = (
+        "python -c \"import sys; sys.path.insert(0, 'src'); "
+        "from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+    )
+    task_plan["tasks"][0]["validation_commands"] = [f"Execute `{command}`."]
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
 
     result = ExecuteCommand(
         tmp_path, run_id=plan.run_id, model_client=FakeUnsafeVerificationClient()
     ).run()
 
     assert result.completed == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
     assert not (tmp_path / "out.txt").exists()
     assert not (run_dir / "decisions.jsonl").exists()
     evidence = [
@@ -1520,7 +1569,7 @@ def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert "py_compile" in evidence[0]["verification_results"][0]["summary"]
+    assert any(command in result["summary"] for result in evidence[0]["verification_results"])
 
 
 def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:

@@ -21,19 +21,19 @@ python -m pip install -e ".[dev]"
 Inspect the CLI:
 
 ```powershell
-python -m agent_runtime --help
+python -m asteria_runtime --help
 ```
 
 Initialize a workspace:
 
 ```powershell
-python -m agent_runtime init --root .
+python -m asteria_runtime init --root .
 ```
 
 Run the minimal autonomous loop:
 
 ```powershell
-python -m agent_runtime run "Build a local notes module" --root .
+python -m asteria_runtime run "Build a local notes module" --root .
 ```
 
 Run tests and static checks:
@@ -168,7 +168,7 @@ Acceptance normally requires a real provider. Fake providers are only allowed fo
 python scripts/real_model_acceptance.py --suite offline --allow-fake
 ```
 
-`agent acceptance` writes results under `.agent/acceptance/`:
+`asteria acceptance` writes results under `.agent/acceptance/`:
 
 - `latest_summary.json`: raw machine-readable script summary.
 - `acceptance_report.json`: schema-validated runtime report with suite, scenarios, result status, failure summaries, and output tails.
@@ -176,7 +176,7 @@ python scripts/real_model_acceptance.py --suite offline --allow-fake
 To feed failed scenarios back into the development loop:
 
 ```bash
-python -m agent_runtime /acceptance --suite core --promote-failures
+python -m asteria_runtime /acceptance --suite core --promote-failures
 ```
 
 This creates ready repair tasks in the current session `task_plan.json`, syncs `.agent/tasks/backlog.json`, records `failure_lesson` entries under `.agent/memory/failures.jsonl`, and writes structured evidence under `.agent/acceptance/failures/<scenario>.json`.
@@ -197,7 +197,7 @@ Tolerance is not a relaxed persistence model. Persisted runtime objects still mu
 
 ## 7. Verification Artifacts
 
-`agent run` writes session artifacts under `.agent/sessions/<session_id>/`:
+`asteria run` writes session artifacts under `.agent/sessions/<session_id>/`:
 
 - `goal_spec.json`
 - `task_plan.json`
@@ -220,8 +220,8 @@ Before committing code, verify:
 Before long pauses, handoff, context compression, or user-decision stages:
 
 ```powershell
-python -m agent_runtime /compact --root .
-python -m agent_runtime /handoff --root . --to-role FutureRun
+python -m asteria_runtime /compact --root .
+python -m asteria_runtime /handoff --root . --to-role FutureRun
 ```
 
 `ContextSnapshot` must preserve recoverable state, not just a chat summary:

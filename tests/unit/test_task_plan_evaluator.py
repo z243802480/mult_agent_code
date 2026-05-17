@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
+from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 
 
 def test_task_plan_evaluator_passes_well_formed_plan() -> None:

@@ -1,4 +1,4 @@
-from agent_runtime.agents.planner import FollowUpTaskPlanner, RequirementPlanner
+from asteria_runtime.agents.planner import FollowUpTaskPlanner, RequirementPlanner
 
 
 def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None:

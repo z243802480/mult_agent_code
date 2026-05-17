@@ -1,4 +1,4 @@
-from agent_runtime.core.task_contract import (
+from asteria_runtime.core.task_contract import (
     allows_expected_failure,
     check_completion_contract,
     context_requirements,
@@ -89,13 +89,13 @@ def test_completion_contract_can_allow_verified_noop_for_repair_closure() -> Non
 def test_task_contract_exposes_runtime_scopes_and_policies() -> None:
     task = {
         "task_kind": "implementation",
-        "expected_artifacts": ["src/agent_runtime/example.py"],
-        "expected_changed_files": ["src/agent_runtime/example.py"],
+        "expected_artifacts": ["src/asteria_runtime/example.py"],
+        "expected_changed_files": ["src/asteria_runtime/example.py"],
         "verification_policy": {"commands": ["pytest tests/unit/test_example.py"]},
     }
 
-    assert read_scope(task) == ["AGENTS.md", "src/agent_runtime/example.py"]
-    assert write_scope(task) == ["src/agent_runtime/example.py"]
+    assert read_scope(task) == ["AGENTS.md", "src/asteria_runtime/example.py"]
+    assert write_scope(task) == ["src/asteria_runtime/example.py"]
     assert validation_commands(task) == ["pytest tests/unit/test_example.py"]
     assert failure_policy(task) == "create_repair_task"
     assert parallel_safety(task) == "serial"

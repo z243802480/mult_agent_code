@@ -1,4 +1,4 @@
-from agent_runtime.agents.execution_action import normalize_execution_action
+from asteria_runtime.agents.execution_action import normalize_execution_action
 
 
 def test_normalize_execution_action_fills_required_context_fields() -> None:

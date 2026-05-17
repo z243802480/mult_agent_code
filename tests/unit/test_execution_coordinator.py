@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from agent_runtime.core.execution_coordinator import ExecutionCoordinator
-from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.core.task_board import TaskBoard
-from agent_runtime.storage.event_logger import EventLogger
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.task_board import TaskBoard
+from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_execution_coordinator_records_selection_event(tmp_path: Path) -> None:

@@ -34,5 +34,5 @@
     "Original fixture files still exist after execution.",
     "Final report lists preview artifacts and cost summary."
   ],
-  "recommended_command": "agent /run \"build a safe batch file renamer that previews changes before applying them\" --root <workspace>"
+  "recommended_command": "asteria /run \"build a safe batch file renamer that previews changes before applying them\" --root <workspace>"
 }

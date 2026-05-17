@@ -4,7 +4,7 @@
 
 Build a local-first autonomous development workbench that can take a small human goal and continuously turn it into usable software, research outputs, reports, or interactive systems through a controlled multi-agent loop.
 
-The system is not a chatroom for agents. It is an agent runtime that converts model calls into verified work artifacts: plans, tasks, code patches, experiments, UI outputs, reports, tests, reviews, and reusable memory.
+The system is not a chatroom for agents. It is an Asteria runtime that converts model calls into verified work artifacts: plans, tasks, code patches, experiments, UI outputs, reports, tests, reviews, and reusable memory.
 
 ## 2. Core Goal
 
@@ -42,7 +42,7 @@ Example:
 
 If the user says "build a password testing tool", the system should not only create a text box and a score. A competent ProductAgent and ResearchAgent should discover that common tools may include password strength scoring, entropy estimation, common password detection, breach-list checking when allowed, hashing examples, encoding and decoding helpers, random password generation, passphrase generation, policy checks, local-only privacy guarantees, and clear security warnings. The system should then decide which of these are appropriate for the user's context, implement a coherent subset, and evaluate whether the final tool is actually usable.
 
-This self-iteration is driven by model judgment, research evidence, product heuristics, automated checks, and agent review. The target is not infinite perfection. The target is a reasonable stopping point where the result is usable, coherent, documented, tested, and noticeably better than a literal one-step implementation.
+This self-iteration is driven by model judgment, research evidence, product heuristics, automated checks, and asteria review. The target is not infinite perfection. The target is a reasonable stopping point where the result is usable, coherent, documented, tested, and noticeably better than a literal one-step implementation.
 
 ## 4. Product Positioning
 
@@ -175,7 +175,7 @@ The first versions should not try to:
 
 - Replace a full engineering team.
 - Run unrestricted shell access without policy controls.
-- Build a huge no-code platform before the agent runtime is stable.
+- Build a huge no-code platform before the Asteria runtime is stable.
 - Depend on one proprietary model provider.
 - Optimize for beautiful dashboards before the core loop works.
 - Let many agents freely chat without task, artifact, and evaluation discipline.

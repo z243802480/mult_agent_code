@@ -384,7 +384,7 @@ The MVP model adapter is complete when:
 - Chat works through an OpenAI-compatible interface.
 - `ModelCall` records are written.
 - Timeout and retry behavior works.
-- `agent model-check` failures write `.agent/model/latest_failure.json`, classify configuration, authentication, rate limit, timeout, network, server error, budget, and provider-response failures, and record lessons under `.agent/memory/failures.jsonl`.
+- `asteria model-check` failures write `.agent/model/latest_failure.json`, classify configuration, authentication, rate limit, timeout, network, server error, budget, and provider-response failures, and record lessons under `.agent/memory/failures.jsonl`.
 - Model tier is routed by purpose.
 - Structured JSON can be extracted and normalized from real model output, with schema validation blocking or repair flow on failure.
 - The MVP does not depend on provider-native tool calling.

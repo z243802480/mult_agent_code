@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agent_runtime.core.runtime_context import RuntimeContext
-from agent_runtime.core.runtime_profile import (
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.runtime_profile import (
     AccountProfile,
     BudgetProfile,
     ContextMount,
@@ -10,11 +10,11 @@ from agent_runtime.core.runtime_profile import (
     SandboxProfile,
     ToolPermissionProfile,
 )
-from agent_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
-from agent_runtime.core.runtime_request import RuntimeRequest
-from agent_runtime.core.validation_result import ValidationResult
-from agent_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
+from asteria_runtime.core.runtime_request import RuntimeRequest
+from asteria_runtime.core.validation_result import ValidationResult
+from asteria_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"
@@ -39,7 +39,7 @@ def test_runtime_profiles_validate_against_schemas() -> None:
             tool_permission_profile_id="tool-profile-0001",
             allowed_tools=["read_file", "apply_patch", "run_tests"],
             read_scope=["src/", "tests/"],
-            write_scope=["src/agent_runtime/", "tests/"],
+            write_scope=["src/asteria_runtime/", "tests/"],
         ).to_dict(),
     )
     validator.validate(

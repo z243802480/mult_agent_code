@@ -17,7 +17,7 @@ It is intentionally separate from offline verification because it consumes paid 
 Run a cheap provider health check first:
 
 ```powershell
-python -m agent_runtime /model-check --root .
+python -m asteria_runtime /model-check --root .
 ```
 
 Run the minimum real-model loop:
@@ -63,38 +63,38 @@ python scripts/real_model_acceptance.py --suite core --summary-json .agent/verif
 `real_model_acceptance.py` aggregates the same cost and stability counters across scenarios.
 When `--history-jsonl` is provided, the script appends each summary to a JSONL history and adds
 `trend.previous` plus numeric deltas for pass/fail counts, duration, model/tool calls, token estimates,
-repair attempts, and context compactions. Runtime `agent /acceptance` writes this history by default
+repair attempts, and context compactions. Runtime `asteria /acceptance` writes this history by default
 to `.agent/acceptance/history.jsonl`.
 
 Inspect runtime workspace history:
 
 ```powershell
-python -m agent_runtime /acceptance-history --root . --limit 5
+python -m asteria_runtime /acceptance-history --root . --limit 5
 ```
 
 Inspect a custom script-level history file:
 
 ```powershell
-python -m agent_runtime /acceptance-history --root . --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
+python -m asteria_runtime /acceptance-history --root . --history-jsonl .agent/verification/real_model_acceptance_history.jsonl
 ```
 
 Use trend warnings as a local gate:
 
 ```powershell
-python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
+python -m asteria_runtime /acceptance-history --root . --suite nightly --fail-on-warning
 ```
 
 Run acceptance and fail the same command on trend warnings:
 
 ```powershell
-python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warning
+python -m asteria_runtime /acceptance --root . --suite core --fail-on-trend-warning
 ```
 
 The warning thresholds are configurable:
 
 ```powershell
-python -m agent_runtime /acceptance-history --root . --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-warning
-python -m agent_runtime /acceptance --root . --suite core --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-trend-warning
+python -m asteria_runtime /acceptance-history --root . --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-warning
+python -m asteria_runtime /acceptance --root . --suite core --warn-model-call-delta 5 --warn-duration-delta 120 --warn-repair-delta 1 --fail-on-trend-warning
 ```
 
 ## Pass Criteria
@@ -109,21 +109,21 @@ A scenario should pass only when:
 - active tasks are done; discarded tasks are allowed only as superseded repair history.
 - cost counters match JSONL logs.
 
-Failures should be promoted through `agent /acceptance --promote-failures` rather than ignored.
+Failures should be promoted through `asteria /acceptance --promote-failures` rather than ignored.
 
 ## Capability Reporting
 
 Acceptance reports should carry `scenario_metadata` plus per-scenario `capability` and `tier`.
 Runtime readers backfill known metadata for older history rows, so legacy runs still contribute to
-`agent capability-report` and `agent acceptance-gate` coverage. The final
+`asteria capability-report` and `asteria acceptance-gate` coverage. The final
 `.agent/acceptance/acceptance_report.json` is the source of truth for latest release readiness,
 because it includes runtime trend warnings that script-level history rows may not contain.
 
 Use:
 
 ```powershell
-python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 3 --min-capabilities 3
-python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 3 --min-capabilities 3 --allow-trend-warnings
+python -m asteria_runtime /acceptance-gate --root . --suite core --min-scenarios 3 --min-capabilities 3
+python -m asteria_runtime /acceptance-gate --root . --suite core --min-scenarios 3 --min-capabilities 3 --allow-trend-warnings
 ```
 
 The first command blocks on cost or stability trend regressions. The second treats those warnings as

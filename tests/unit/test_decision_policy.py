@@ -1,4 +1,4 @@
-from agent_runtime.core.decision_policy import DecisionPolicy
+from asteria_runtime.core.decision_policy import DecisionPolicy
 
 
 def policy(granularity: str = "balanced") -> dict:

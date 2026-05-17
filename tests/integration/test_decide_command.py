@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.decide_command import DecideCommand
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.plan_command import PlanCommand
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.commands.decide_command import DecideCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
 class FakePlanClient:

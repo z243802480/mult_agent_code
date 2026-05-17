@@ -4,7 +4,7 @@
   "goal": "build a local markdown knowledge base search tool",
   "purpose": "Validate local document indexing, search artifact creation, verification, and final reporting.",
   "fixtures": [
-    "fixtures/notes/agent_runtime.md",
+    "fixtures/notes/asteria_runtime.md",
     "fixtures/notes/security.md"
   ],
   "budget": {
@@ -31,8 +31,8 @@
   "acceptance": [
     "markdown_kb.py exists and supports directory plus keyword arguments.",
     "kb_index.json contains both fixture markdown files.",
-    "Searching for runtime returns agent_runtime.md.",
+    "Searching for runtime returns asteria_runtime.md.",
     "Final report lists search artifacts and cost summary."
   ],
-  "recommended_command": "agent /run \"build a local markdown knowledge base search tool\" --root <workspace>"
+  "recommended_command": "asteria /run \"build a local markdown knowledge base search tool\" --root <workspace>"
 }

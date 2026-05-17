@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from agent_runtime.commands.model_check_command import ModelCheckCommand
-from agent_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.commands.model_check_command import ModelCheckCommand
+from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
 class FakeHealthyClient:

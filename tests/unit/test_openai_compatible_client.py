@@ -2,16 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.core.budget import BudgetController
-from agent_runtime.models.base import ChatMessage, ChatRequest
-from agent_runtime.models.http_transport import HttpResponse
-from agent_runtime.models.model_call_logger import ModelCallLogger
-from agent_runtime.models.openai_compatible import (
+from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.models.base import ChatMessage, ChatRequest
+from asteria_runtime.models.http_transport import HttpResponse
+from asteria_runtime.models.model_call_logger import ModelCallLogger
+from asteria_runtime.models.openai_compatible import (
     OpenAICompatibleClient,
     OpenAICompatibleProviderError,
     OpenAICompatibleSettings,
 )
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 class FakeTransport:

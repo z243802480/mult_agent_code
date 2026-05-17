@@ -1,7 +1,7 @@
 import json
 
-from agent_runtime.models.base import ChatMessage, ChatRequest
-from agent_runtime.models.fake import FakeModelClient
+from asteria_runtime.models.base import ChatMessage, ChatRequest
+from asteria_runtime.models.fake import FakeModelClient
 
 
 def test_fake_model_returns_goal_spec_json() -> None:

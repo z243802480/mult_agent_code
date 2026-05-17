@@ -1,6 +1,6 @@
 import pytest
 
-from agent_runtime.core.budget import BudgetController, BudgetExceededError
+from asteria_runtime.core.budget import BudgetController, BudgetExceededError
 
 
 def policy(max_model_calls: int = 3, max_tool_calls: int = 3) -> dict:

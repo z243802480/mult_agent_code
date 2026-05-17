@@ -4,15 +4,15 @@ import json
 import subprocess
 from pathlib import Path
 
-from agent_runtime.commands.daily_command import (
+from asteria_runtime.commands.daily_command import (
     DailyPlanCommand,
     DailyReportCommand,
     DailyRunCommand,
 )
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.run_store import RunStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def _cost_report(model_calls: int = 0, tool_calls: int = 0, repair_attempts: int = 0) -> dict:

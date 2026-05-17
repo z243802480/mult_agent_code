@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from agent_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
+from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 
 
 def append_history(path: Path, entry: dict) -> None:
@@ -139,7 +139,7 @@ def test_acceptance_history_fail_on_warning_exits_nonzero(tmp_path: Path) -> Non
         [
             sys.executable,
             "-m",
-            "agent_runtime",
+            "asteria_runtime",
             "/acceptance-history",
             "--root",
             str(tmp_path),

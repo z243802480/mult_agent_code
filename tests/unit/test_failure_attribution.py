@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agent_runtime.core.failure_attribution import classify_failure_attribution
+from asteria_runtime.core.failure_attribution import classify_failure_attribution
 
 
 def test_classifies_provider_transient_attempt() -> None:

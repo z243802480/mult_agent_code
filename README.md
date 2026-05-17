@@ -1,10 +1,10 @@
-# Agent Runtime
+# Asteria
 
 Local-first multi-agent autonomous development runtime. The current MVP path is a CLI that
 turns a goal into a GoalSpec, task plan, controlled tool execution, repair, review, context
 snapshot, and final report.
 
-The active product direction is an orchestrated Agent Runtime OS for long-task autonomous
+The active product direction is Asteria Runtime OS for long-task autonomous
 development: task contracts, worker invocation evidence, isolated candidates, merge gates,
 resume/handoff, acceptance gates, and cost controls. The Chinese documents are the current
 source of truth; start with `docs/zh/当前状态与路线.md`.
@@ -13,12 +13,12 @@ source of truth; start with `docs/zh/当前状态与路线.md`.
 
 ```powershell
 python -m pip install -e ".[dev]"
-agent --help
-agent /init --root .
-agent /sessions --root .
+asteria --help
+asteria /init --root .
+asteria /sessions --root .
 ```
 
-`agent /run "goal"` writes run artifacts under `.agent/runs/<run_id>/`, including
+`asteria /run "goal"` writes run artifacts under `.agent/runs/<run_id>/`, including
 `goal_spec.json`, `task_plan.json`, `task_plan_eval.json`, logs, `review_report.md`, and
 `final_report.md`.
 Execute and debug attempts run in isolated candidate workspaces under the active run directory.
@@ -73,7 +73,7 @@ $env:AGENT_MODEL_API_KEY = "<your key>"
 Use a temporary workspace for real-provider checks so repository state stays clean:
 
 ```powershell
-python scripts/real_model_smoke.py
+asteria real-model-smoke
 ```
 
 The script runs `/init`, `/model-check`, and a minimal `/run`, then verifies the expected file,
@@ -85,7 +85,7 @@ Never commit real API keys; keep them in process environment variables or secret
 For a broader manual acceptance pass, run curated real-task scenarios:
 
 ```powershell
-python scripts/real_model_acceptance.py --suite core
+asteria real-model-acceptance --suite core
 ```
 
 The `core` suite covers file smoke, single-file CLI work, markdown search, safe dry-run rename,
@@ -96,28 +96,28 @@ When budget allows, use `--suite nightly` for the broader stability pass. Accept
 duration, run status, review status, task status counts, model/tool calls, token estimates, repair
 attempts, and context compactions so real-provider quality and cost can be compared over time.
 Pass `--history-jsonl <path>` to append comparable summaries and include trend deltas. The runtime
-`agent /acceptance` command writes `.agent/acceptance/history.jsonl` automatically.
+`asteria /acceptance` command writes `.agent/acceptance/history.jsonl` automatically.
 Inspect persisted history with:
 
 ```powershell
-python -m agent_runtime /acceptance-history --root . --limit 5
+python -m asteria_runtime /acceptance-history --root . --limit 5
 ```
 Use it as a local gate with:
 
 ```powershell
-python -m agent_runtime /acceptance-history --root . --suite nightly --fail-on-warning
+python -m asteria_runtime /acceptance-history --root . --suite nightly --fail-on-warning
 ```
 
 Or make `/acceptance` fail immediately when the latest run introduces trend regressions:
 
 ```powershell
-python -m agent_runtime /acceptance --root . --suite core --fail-on-trend-warning
+python -m asteria_runtime /acceptance --root . --suite core --fail-on-trend-warning
 ```
 
 For release gating, evaluate the latest persisted acceptance report:
 
 ```powershell
-python -m agent_runtime /acceptance-gate --root . --suite core --min-scenarios 10 --min-capabilities 10
+python -m asteria_runtime /acceptance-gate --root . --suite core --min-scenarios 10 --min-capabilities 10
 ```
 
 The gate blocks when acceptance failed without a successful repair rerun, when trend warnings are
@@ -127,13 +127,13 @@ cover the required suite/scenario/capability/tier count.
 Summarize recent real-task capability health with:
 
 ```powershell
-python -m agent_runtime /capability-report --root .
+python -m asteria_runtime /capability-report --root .
 ```
 
 The report combines acceptance history, capability coverage, failure type distribution, repair
 rounds, model/tool cost signals, common blockers, and recommended next actions.
 
-`agent /acceptance` also persists machine-readable output under
+`asteria /acceptance` also persists machine-readable output under
 `.agent/acceptance/latest_summary.json` and `.agent/acceptance/acceptance_report.json`.
 Pass `--promote-failures` to turn failed scenarios into ready tasks on the current session.
 Promoted tasks include report, summary, workspace, transcript, expected artifact, and reproduction commands.
@@ -160,8 +160,8 @@ bash scripts/verify.sh
 Docker:
 
 ```bash
-docker build -t agent-runtime:verify .
-docker run --rm agent-runtime:verify
+docker build -t asteria-runtime:verify .
+docker run --rm asteria-runtime:verify
 ```
 
 The verification command compiles sources, runs tests, runs ruff, runs mypy, and checks basic CLI commands in a temporary workspace.
@@ -182,9 +182,9 @@ For deterministic local smoke tests without API keys:
 
 ```powershell
 $env:AGENT_MODEL_PROVIDER = "fake"
-agent /model-check --root .
-agent /new "create offline artifact" --root .
-agent /run --root .
+asteria /model-check --root .
+asteria /new "create offline artifact" --root .
+asteria /run --root .
 ```
 
 The fake provider is for reproducible validation only. It does not evaluate real model quality.
@@ -196,7 +196,7 @@ Local OpenAI-compatible servers are supported through provider aliases:
 ```powershell
 $env:AGENT_MODEL_PROVIDER = "ollama"
 $env:AGENT_MODEL_NAME = "qwen2.5-coder:7b"
-agent /model-check --root .
+asteria /model-check --root .
 ```
 
 Default local endpoints:

@@ -34,20 +34,20 @@ Invoke-Checked $python -m ruff check .
 Invoke-Checked $python -m mypy src
 Invoke-Checked $python scripts/run_benchmarks.py
 
-$tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("agent-runtime-" + [System.Guid]::NewGuid())
+$tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("asteria-runtime-" + [System.Guid]::NewGuid())
 $env:AGENT_MODEL_PROVIDER = "fake"
 try {
     New-Item -ItemType Directory -Path $tmpRoot | Out-Null
-    Invoke-Checked $python -m agent_runtime /init --root (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /model-check --root (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /new "create offline artifact" --root (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /sessions --root (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /run --root (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /compact --root (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /handoff --root (Join-Path $tmpRoot "workspace") --to FutureRun
-    $sessionsContext = & $python -m agent_runtime /sessions --root (Join-Path $tmpRoot "workspace") --context
+    Invoke-Checked $python -m asteria_runtime /init --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m asteria_runtime /model-check --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m asteria_runtime /new "create offline artifact" --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m asteria_runtime /sessions --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m asteria_runtime /run --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m asteria_runtime /compact --root (Join-Path $tmpRoot "workspace")
+    Invoke-Checked $python -m asteria_runtime /handoff --root (Join-Path $tmpRoot "workspace") --to FutureRun
+    $sessionsContext = & $python -m asteria_runtime /sessions --root (Join-Path $tmpRoot "workspace") --context
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code ${LASTEXITCODE}: $python -m agent_runtime /sessions --context"
+        throw "Command failed with exit code ${LASTEXITCODE}: $python -m asteria_runtime /sessions --context"
     }
     $sessionsContextText = $sessionsContext -join "`n"
     if ($sessionsContextText -notmatch "snapshot:" -or $sessionsContextText -notmatch "handoff:" -or $sessionsContextText -notmatch "next:") {
@@ -66,7 +66,7 @@ try {
         throw "Expected offline artifact was not created: $artifact"
     }
     Invoke-Checked $python scripts/write_verification_summary.py --root . --platform windows --cli-workspace (Join-Path $tmpRoot "workspace")
-    Invoke-Checked $python -m agent_runtime /verification --root .
+    Invoke-Checked $python -m asteria_runtime /verification --root .
 }
 finally {
     if (Test-Path $tmpRoot) {

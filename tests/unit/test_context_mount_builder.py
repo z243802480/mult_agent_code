@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from agent_runtime.core.context_mount_builder import ContextMountBuilder
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.core.context_mount_builder import ContextMountBuilder
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"

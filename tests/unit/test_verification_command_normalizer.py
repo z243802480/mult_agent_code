@@ -1,4 +1,4 @@
-from agent_runtime.agents.verification_command_normalizer import normalize_verification_command
+from asteria_runtime.agents.verification_command_normalizer import normalize_verification_command
 
 
 def test_normalize_verification_command_removes_nonportable_success_suffix() -> None:

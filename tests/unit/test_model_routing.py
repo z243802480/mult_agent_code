@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.models.base import ChatMessage, ChatRequest
-from agent_runtime.models.factory import create_model_client
-from agent_runtime.models.fake import FakeModelClient
-from agent_runtime.models.openai_compatible import OpenAICompatibleClient
-from agent_runtime.models.routing import RoutedModelClient
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.models.base import ChatMessage, ChatRequest
+from asteria_runtime.models.factory import create_model_client
+from asteria_runtime.models.fake import FakeModelClient
+from asteria_runtime.models.openai_compatible import OpenAICompatibleClient
+from asteria_runtime.models.routing import RoutedModelClient
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def request(model_tier: str) -> ChatRequest:

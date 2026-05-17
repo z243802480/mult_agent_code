@@ -30,5 +30,5 @@
     "Snapshot and handoff include verification summary.",
     "sessions --context shows snapshot, handoff, and verification status."
   ],
-  "recommended_command": "agent /run \"create an offline artifact and produce a recoverable handoff\" --root <workspace>"
+  "recommended_command": "asteria /run \"create an offline artifact and produce a recoverable handoff\" --root <workspace>"
 }

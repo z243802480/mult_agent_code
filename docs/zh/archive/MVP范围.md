@@ -1,4 +1,4 @@
-﻿# 多智能体自主开发系统 - MVP 范围与阶段路线图
+# 多智能体自主开发系统 - MVP 范围与阶段路线图
 
 ## 1. 文档目的
 
@@ -45,11 +45,11 @@ MVP 成功后，系统应证明：
 
 必须支持：
 
-- `agent run "<goal>"`
-- `agent init`
-- `agent plan`
-- `agent compact`
-- `agent review`
+- `asteria run "<goal>"`
+- `asteria init`
+- `asteria plan`
+- `asteria compact`
+- `asteria review`
 
 MVP 可以先不做完整本地 Web 控制台。
 

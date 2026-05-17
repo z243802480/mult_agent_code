@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_runtime.commands.init_command import InitCommand
-from agent_runtime.commands.weekly_report_command import WeeklyReportCommand
-from agent_runtime.storage.json_store import JsonStore
-from agent_runtime.storage.jsonl_store import JsonlStore
-from agent_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
@@ -174,7 +174,7 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
     assert report["runtime_os"]["evidence"]["task_graph_selections"] == 1
     assert report["model_profile"]["weak_routes"][0]["purpose"] == "task_execution"
     assert any("Acceptance failures remain" in risk for risk in report["risks"])
-    assert "agent /acceptance --failed-only --promote-failures" in report["next_actions"][0]
+    assert "asteria /acceptance --failed-only --promote-failures" in report["next_actions"][0]
     assert "Weekly Production Report" in markdown
     assert "## Runtime OS" in markdown
     assert "config_driven_report" in markdown
@@ -210,7 +210,7 @@ def test_weekly_report_handles_missing_inputs(tmp_path: Path) -> None:
     assert report["long_run"]["cycles"] == 0
     assert report["runtime_os"]["status"] == "missing_acceptance"
     assert "No long-run cycle reports were found" in report["risks"][0]
-    assert "agent /long-run-plan" in report["next_actions"][0]
+    assert "asteria /long-run-plan" in report["next_actions"][0]
 
 
 def runtime_os_report(tmp_path: Path) -> dict:

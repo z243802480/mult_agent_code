@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from asteria_runtime.core.sandbox_backend import SandboxBackendPlan, SandboxBackendSelector
+
+
+EXCLUDED_NAMES = {
+    ".agent",
+    ".git",
+    ".hg",
+    ".svn",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+}
+
+
+@dataclass(frozen=True)
+class CandidateWorkspace:
+    candidate_id: str
+    root: Path
+    source_root: Path
+    strategy: str = "temp_workspace"
+    workspace_policy: str = "isolated_copy"
+    backend_reason: str = ""
+    branch_name: str | None = None
+
+    @classmethod
+    def create(cls, source_root: Path, run_dir: Path, task_id: str, task: dict | None = None) -> "CandidateWorkspace":
+        candidate_id = _candidate_id()
+        candidate_root = run_dir / "cw" / task_id / _path_id(candidate_id)
+        candidate_root.parent.mkdir(parents=True, exist_ok=True)
+        selector = SandboxBackendSelector()
+        plan = selector.select_for_task(source_root.resolve(), task) if task else selector.select_for_workspace(source_root.resolve())
+        branch_name = _candidate_branch(task_id, candidate_id) if plan.backend == "git_worktree" else None
+        strategy = _create_workspace(source_root.resolve(), candidate_root, plan, branch_name)
+        return cls(
+            candidate_id=candidate_id,
+            root=candidate_root,
+            source_root=source_root.resolve(),
+            strategy=strategy,
+            workspace_policy=plan.workspace_policy if strategy == plan.backend else "isolated_copy",
+            backend_reason=plan.reason,
+            branch_name=branch_name if strategy == "git_worktree" else None,
+        )
+
+    def promote(self, changed_files: list[str]) -> list[str]:
+        promoted: list[str] = []
+        candidate_root = self.root.resolve()
+        source_root = self.source_root.resolve()
+        for relative_path in sorted(set(changed_files)):
+            source = (candidate_root / relative_path).resolve()
+            target = (source_root / relative_path).resolve()
+            if not _is_within(source, candidate_root) or not _is_within(target, source_root):
+                raise ValueError(f"Candidate path escapes workspace: {relative_path}")
+            if not source.exists() or not source.is_file():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+            promoted.append(relative_path)
+        return promoted
+
+    def discard(self) -> None:
+        root = self.root.resolve()
+        if self.strategy == 'git_worktree' and root.exists():
+            try:
+                shutil.rmtree(root, ignore_errors=True)
+                _run_git(self.source_root, 'worktree', 'prune')
+                if self.branch_name:
+                    _run_git(self.source_root, 'branch', '-D', self.branch_name)
+                return
+            except (OSError, subprocess.SubprocessError):
+                pass
+        if root.exists():
+            shutil.rmtree(root, ignore_errors=True)
+
+
+def _copy_workspace(source_root: Path, candidate_root: Path) -> None:
+    candidate_root.mkdir(parents=True, exist_ok=True)
+    for item in source_root.iterdir():
+        if item.name in EXCLUDED_NAMES:
+            continue
+        target = candidate_root / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, ignore=_ignore_names)
+        elif item.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, target)
+
+
+def _ignore_names(directory: str, names: list[str]) -> set[str]:
+    del directory
+    return {name for name in names if name in EXCLUDED_NAMES}
+
+
+def _create_workspace(
+    source_root: Path,
+    candidate_root: Path,
+    plan: SandboxBackendPlan,
+    branch_name: str | None,
+) -> str:
+    if plan.backend == "git_worktree":
+        try:
+            if branch_name:
+                _run_git(source_root, "worktree", "add", "-b", branch_name, str(candidate_root), "HEAD")
+            else:
+                _run_git(source_root, "worktree", "add", "--detach", str(candidate_root), "HEAD")
+            return "git_worktree"
+        except (OSError, subprocess.SubprocessError):
+            if candidate_root.exists():
+                shutil.rmtree(candidate_root, ignore_errors=True)
+    _copy_workspace(source_root, candidate_root)
+    return "temp_workspace"
+
+
+def _run_git(source_root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=source_root,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    normalized_path = os.path.normcase(os.path.abspath(path))
+    normalized_root = os.path.normcase(os.path.abspath(root))
+    return os.path.commonpath([normalized_path, normalized_root]) == normalized_root
+
+
+def _candidate_id() -> str:
+    return "candidate-" + datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d-%H%M%S-%f")
+
+
+def _path_id(candidate_id: str) -> str:
+    return candidate_id.removeprefix("candidate-").replace("-", "")
+
+
+def _candidate_branch(task_id: str, candidate_id: str) -> str:
+    safe_task = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in task_id)
+    return f"codex/candidate/{safe_task}-{_path_id(candidate_id)}"

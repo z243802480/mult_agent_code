@@ -1,8 +1,8 @@
-﻿# Multi-Agent Autonomous Development System - Product Spec
+# Multi-Agent Autonomous Development System - Product Spec
 
 ## Vision
 
-Build a local-first autonomous development workbench that turns a compact human goal into usable software, reports, research artifacts, UI outputs, or automation through a controlled agent runtime.
+Build a local-first autonomous development workbench that turns a compact human goal into usable software, reports, research artifacts, UI outputs, or automation through a controlled Asteria runtime.
 
 The system is not an agent chatroom. It converts model calls into durable and verifiable artifacts: goals, tasks, patches, experiments, UI, reports, tests, reviews, decisions, and memory.
 

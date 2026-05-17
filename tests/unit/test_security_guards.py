@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.security.path_guard import PathGuard, PathPolicyError
-from agent_runtime.security.shell_guard import ShellGuard, ShellPolicyError
+from asteria_runtime.security.path_guard import PathGuard, PathPolicyError
+from asteria_runtime.security.shell_guard import ShellGuard, ShellPolicyError
 
 
 def test_path_guard_blocks_escaping_root(tmp_path: Path) -> None:

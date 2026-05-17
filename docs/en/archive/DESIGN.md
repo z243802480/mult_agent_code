@@ -2,7 +2,7 @@
 
 ## 1. System Architecture
 
-The system is organized around an agent runtime. Agents are replaceable workers. The runtime is the stable control plane.
+The system is organized around an Asteria runtime. Agents are replaceable workers. The runtime is the stable control plane.
 
 ```text
 User Goal

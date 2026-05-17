@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
+from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
 
 def test_schema_validator_accepts_valid_task() -> None:

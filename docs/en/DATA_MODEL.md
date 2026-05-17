@@ -1,4 +1,4 @@
-﻿# Multi-Agent Autonomous Development System - Data Model
+# Multi-Agent Autonomous Development System - Data Model
 
 The detailed Chinese source of truth lives in the Chinese documentation tree. This file is the English summary for review.
 
@@ -60,7 +60,7 @@ AGENTS.md
   memory/
 ```
 
-`agent acceptance` also writes `.agent/acceptance/acceptance_report.json`,
+`asteria acceptance` also writes `.agent/acceptance/acceptance_report.json`,
 `.agent/acceptance/latest_summary.json`, `.agent/acceptance/history.jsonl`, and optional
 `.agent/acceptance/failures/*.json` evidence records.
 

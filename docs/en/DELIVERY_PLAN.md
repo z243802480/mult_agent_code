@@ -1,4 +1,4 @@
-﻿# Multi-Agent Autonomous Development System - Delivery Plan
+# Multi-Agent Autonomous Development System - Delivery Plan
 
 ## MVP Focus
 
@@ -57,7 +57,7 @@ init project
 
 - `/init` works.
 - `/plan` works.
-- `agent run` completes a minimal loop.
+- `asteria run` completes a minimal loop.
 - `/compact` works.
 - At least two benchmarks pass.
 - Cost report is generated.
