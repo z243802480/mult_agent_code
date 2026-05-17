@@ -48,6 +48,8 @@ class RequirementPlanner:
 
         tasks: list[dict] = []
         for index, requirement in enumerate(requirements, start=1):
+            requirement = self._attach_workspace_file_context(requirement, runtime_context)
+            requirement = self._attach_existing_artifact_context(requirement, runtime_context)
             task_id = f"task-{index:04d}"
             expected_artifacts = self._expected_artifacts(requirement, goal_spec)
             kind = self._task_kind(requirement, expected_artifacts, goal_spec)
@@ -502,6 +504,9 @@ class RequirementPlanner:
         explicit = requirement.get("expected_artifacts")
         if isinstance(explicit, list) and explicit:
             return [str(item) for item in explicit]
+        existing = requirement.get("context_existing_artifacts")
+        if isinstance(existing, list) and existing:
+            return [str(item) for item in existing]
         description = str(requirement.get("description", "")).lower()
         target_outputs_raw = [str(item).strip() for item in goal_spec.get("target_outputs", [])]
         target_outputs = {item.lower() for item in target_outputs_raw}
@@ -606,6 +611,15 @@ class RequirementPlanner:
             return []
         text = self._requirement_text(requirement)
         explicit_paths = self._explicit_file_paths(text)
+        if explicit_paths and not self._is_existing_artifact_update(requirement):
+            context_inputs = {
+                str(path).replace("\\", "/").lower()
+                for path in requirement.get("context_workspace_paths", [])
+                if path
+            }
+            explicit_paths = [
+                path for path in explicit_paths if path.lower() not in context_inputs
+            ]
         if explicit_paths:
             return explicit_paths
 
@@ -644,6 +658,8 @@ class RequirementPlanner:
         normalized = text.lower()
         if "notes" in normalized or "note" in normalized:
             return "notes_tool"
+        if "markdown" in normalized and ("knowledge base" in normalized or "search" in normalized):
+            return "markdown_kb"
         if "password strength" in normalized:
             return "password_strength"
         dotted_module = re.search(r"\b([a-z][a-z0-9_]*)\.[a-z_][a-z0-9_]*\b", normalized)
@@ -754,6 +770,112 @@ class RequirementPlanner:
             return
         if all(self._looks_like_file_path(item) for item in scope) and len(set(scope)) == len(scope):
             task["parallel_safety"] = "disjoint_writes"
+
+    def _attach_workspace_file_context(self, requirement: dict, runtime_context: dict) -> dict:
+        paths = self._existing_workspace_paths(runtime_context)
+        if not paths:
+            return requirement
+        refined = dict(requirement)
+        refined["context_workspace_paths"] = paths
+        return refined
+
+    def _attach_existing_artifact_context(
+        self, requirement: dict, runtime_context: dict
+    ) -> dict:
+        if isinstance(requirement.get("expected_artifacts"), list) and requirement.get(
+            "expected_artifacts"
+        ):
+            return requirement
+        if not self._is_existing_artifact_update(requirement):
+            return requirement
+        paths = self._existing_workspace_paths(runtime_context)
+        if not paths:
+            return requirement
+        matches = self._matching_existing_paths(requirement, paths)
+        if not matches:
+            return requirement
+        refined = dict(requirement)
+        refined["context_existing_artifacts"] = matches
+        return refined
+
+    def _is_existing_artifact_update(self, requirement: dict) -> bool:
+        text = self._requirement_text(requirement).lower()
+        update_markers = {
+            "update",
+            "modify",
+            "edit",
+            "fix",
+            "repair",
+            "improve",
+            "extend",
+            "refactor",
+        }
+        create_markers = {"create", "build", "generate", "write a new", "add a new"}
+        if not any(self._contains_phrase(text, marker) for marker in update_markers):
+            return False
+        if any(self._contains_phrase(text, marker) for marker in create_markers) and (
+            not self._contains_phrase(text, "existing")
+        ):
+            return False
+        return True
+
+    def _contains_phrase(self, text: str, phrase: str) -> bool:
+        escaped = re.escape(phrase).replace(r"\ ", r"\s+")
+        return re.search(rf"(?<![a-z0-9_]){escaped}(?![a-z0-9_])", text) is not None
+
+    def _existing_workspace_paths(self, runtime_context: dict) -> list[str]:
+        paths: list[str] = []
+        workspace_files = runtime_context.get("workspace_files", [])
+        if isinstance(workspace_files, list):
+            for item in workspace_files:
+                if isinstance(item, dict) and item.get("path"):
+                    paths.append(str(item["path"]))
+        for key in ("latest_handoff", "latest_snapshot"):
+            value = runtime_context.get(key)
+            if not isinstance(value, dict):
+                continue
+            for collection_key in ("recent_artifacts", "modified_files"):
+                collection = value.get(collection_key)
+                if not isinstance(collection, list):
+                    continue
+                for item in collection:
+                    if isinstance(item, str):
+                        paths.append(item)
+                    elif isinstance(item, dict):
+                        path = item.get("path") or item.get("file") or item.get("artifact")
+                        if path:
+                            paths.append(str(path))
+        return [
+            path
+            for path in dict.fromkeys(item.replace("\\", "/").strip() for item in paths if item)
+            if self._looks_like_file_path(path) and not path.startswith(".asteria/")
+        ]
+
+    def _matching_existing_paths(self, requirement: dict, paths: list[str]) -> list[str]:
+        text = self._requirement_text(requirement).lower()
+        explicit = set(self._explicit_file_paths(text))
+        matches = [path for path in paths if path.lower() in explicit]
+        if matches:
+            return matches
+
+        text_tokens = set(re.findall(r"[a-z0-9_]+", text))
+        selected: list[str] = []
+        for path in paths:
+            basename = path.rsplit("/", 1)[-1]
+            stem = basename.rsplit(".", 1)[0].lower()
+            candidates = {stem, stem.replace("_", "-")}
+            if stem.startswith("test_"):
+                candidates.add(stem[5:])
+            if stem.endswith("_test"):
+                candidates.add(stem[:-5])
+            split_tokens = {token for token in re.split(r"[_-]+", stem) if token}
+            if (
+                stem in text
+                or candidates & text_tokens
+                or (split_tokens and split_tokens <= text_tokens)
+            ):
+                selected.append(path)
+        return selected[:6]
 
     def _refine_requirement(self, requirement: dict, goal_spec: dict) -> dict:
         expected_artifacts = self._expected_artifacts(requirement, goal_spec)

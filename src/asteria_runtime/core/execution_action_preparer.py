@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -119,6 +120,14 @@ class ExecutionActionPreparer:
         if "`" in text:
             parts = text.split("`")
             candidates.extend(parts[index] for index in range(1, len(parts), 2))
+        candidates.extend(
+            match.group(1)
+            for match in re.finditer(
+                r"['\"]((?:python|pytest|ruff|mypy)\s+[^'\"]+)['\"]",
+                text,
+                flags=re.I,
+            )
+        )
         stripped = text.strip()
         candidates.append(stripped)
         for candidate in candidates:

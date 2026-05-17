@@ -15,6 +15,7 @@ from asteria_runtime.utils.time import now_iso
 
 
 _VALIDATION_RESULT_LOCK = RLock()
+_ARTIFACT_LOCK = RLock()
 
 
 @dataclass(frozen=True)
@@ -210,26 +211,36 @@ class ExecutionEvidenceSink:
 
         path = context.run_dir / "artifacts.jsonl"
         store = JsonlStore(self.validator)
-        existing = store.read_all(path, "artifact") if path.exists() else []
-        known = {artifact["path"] for artifact in existing}
-        next_index = len(existing) + 1
-        for artifact_path in sorted(set(changed_files)):
-            if artifact_path in known:
-                continue
-            artifact = {
-                "schema_version": "0.1.0",
-                "artifact_id": f"artifact-{next_index:04d}",
-                "run_id": context.run_id,
-                "task_id": task["task_id"],
-                "type": self.artifact_type(artifact_path),
-                "path": artifact_path,
-                "created_by": "CoderAgent",
-                "summary": f"Created or modified by {task['task_id']}: {task['title']}",
-                "created_at": now_iso(),
-            }
-            store.append(path, artifact, "artifact")
-            known.add(artifact_path)
-            next_index += 1
+        with _ARTIFACT_LOCK:
+            existing = store.read_all(path, "artifact") if path.exists() else []
+            known = {artifact["path"] for artifact in existing}
+            next_index = self._next_artifact_index(existing)
+            for artifact_path in sorted(set(changed_files)):
+                if artifact_path in known:
+                    continue
+                artifact = {
+                    "schema_version": "0.1.0",
+                    "artifact_id": f"artifact-{next_index:04d}",
+                    "run_id": context.run_id,
+                    "task_id": task["task_id"],
+                    "type": self.artifact_type(artifact_path),
+                    "path": artifact_path,
+                    "created_by": "CoderAgent",
+                    "summary": f"Created or modified by {task['task_id']}: {task['title']}",
+                    "created_at": now_iso(),
+                }
+                store.append(path, artifact, "artifact")
+                known.add(artifact_path)
+                next_index += 1
+
+    def _next_artifact_index(self, existing: list[dict]) -> int:
+        highest = 0
+        for artifact in existing:
+            raw_id = str(artifact.get("artifact_id") or "")
+            prefix, _, suffix = raw_id.partition("-")
+            if prefix == "artifact" and suffix.isdigit():
+                highest = max(highest, int(suffix))
+        return highest + 1
 
     def changed_files(self, tool_results: list[Any]) -> list[str]:
         changed_files = []

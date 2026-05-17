@@ -108,6 +108,86 @@ def test_requirement_planner_infers_answer_module_contract() -> None:
     assert "complete_module.py" in task["read_scope"]
 
 
+def test_requirement_planner_prefers_existing_artifact_scope_from_context() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-existing",
+        "normalized_goal": "Improve calculator behavior",
+        "target_outputs": ["python_module"],
+        "definition_of_done": ["calculator handles subtraction", "unit tests pass"],
+        "verification_strategy": ["pytest"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Update calculator behavior and its unit test.",
+                "acceptance": ["calculator handles subtraction", "unit test passes"],
+            }
+        ],
+    }
+    runtime_context = {
+        "workspace_files": [
+            {"path": "src/calculator.py"},
+            {"path": "tests/test_calculator.py"},
+            {"path": "src/unrelated.py"},
+        ]
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec, runtime_context)["tasks"][0]
+
+    assert task["expected_artifacts"] == [
+        "src/calculator.py",
+        "tests/test_calculator.py",
+    ]
+    assert task["expected_changed_files"] == [
+        "src/calculator.py",
+        "tests/test_calculator.py",
+    ]
+    assert task["write_scope"] == [
+        "src/calculator.py",
+        "tests/test_calculator.py",
+    ]
+    assert "src/" not in task["write_scope"]
+    assert "tests/" not in task["write_scope"]
+
+
+def test_requirement_planner_does_not_treat_fixture_mentions_as_write_scope() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-kb",
+        "normalized_goal": "Build a local markdown knowledge base search tool",
+        "target_outputs": ["python_module"],
+        "definition_of_done": ["search returns fixture file"],
+        "verification_strategy": ["python markdown_kb.py notes runtime"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Index local markdown files and search by keyword",
+                "acceptance": [
+                    "markdown_kb.py accepts a directory and keyword",
+                    "kb_index.json includes fixture markdown files",
+                    "searching for runtime returns asteria_runtime.md",
+                ],
+            }
+        ],
+    }
+    runtime_context = {
+        "workspace_files": [
+            {"path": "notes/asteria_runtime.md"},
+            {"path": "notes/security.md"},
+        ]
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec, runtime_context)["tasks"][0]
+
+    assert "notes/asteria_runtime.md" not in task["write_scope"]
+    assert "notes/security.md" not in task["write_scope"]
+    assert "markdown_kb.py" in task["expected_changed_files"]
+    assert "kb_index.json" in task["expected_changed_files"]
+    assert "notes/asteria_runtime.md" not in task["expected_changed_files"]
+
+
 def test_requirement_planner_requires_runtime_request_for_broad_write_scope() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

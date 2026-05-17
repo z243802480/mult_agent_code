@@ -79,6 +79,7 @@ class DebugAgent:
 
     def _validated_action(self, content: str, task: dict) -> dict:
         action = self._parse_json(content)
+        action = self._unwrap_action(action)
         action = normalize_execution_action(action, task)
         if action.get("task_id") != task["task_id"]:
             raise DebugAgentError(f"Repair task_id mismatch: {action.get('task_id')} != {task['task_id']}")
@@ -94,6 +95,39 @@ class DebugAgent:
         except JsonExtractionError as exc:
             raise DebugAgentError(f"Repair response was not valid JSON: {exc}") from exc
         return parsed
+
+    def _unwrap_action(self, parsed: dict) -> dict:
+        if self._looks_like_action(parsed):
+            return parsed
+        for key in (
+            "execution_action",
+            "repair_action",
+            "action",
+            "repair",
+            "result",
+            "response",
+        ):
+            value = parsed.get(key)
+            if isinstance(value, dict) and self._looks_like_action(value):
+                return value
+        actions = parsed.get("actions")
+        if isinstance(actions, list):
+            for item in actions:
+                if isinstance(item, dict) and self._looks_like_action(item):
+                    return item
+        return parsed
+
+    def _looks_like_action(self, value: dict) -> bool:
+        return any(
+            key in value
+            for key in (
+                "tool_calls",
+                "verification",
+                "runtime_requests",
+                "completion_notes",
+                "summary",
+            )
+        )
 
     def _system_prompt(self) -> str:
         return """You are DebugAgent in a local-first autonomous development runtime.

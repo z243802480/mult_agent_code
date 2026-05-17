@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -74,6 +75,46 @@ def test_evidence_sink_records_keep_experiment_and_artifact(tmp_path: Path) -> N
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
     assert artifacts[0]["path"] == "src/tool.py"
     assert artifacts[0]["type"] == "source_file"
+
+
+def test_evidence_sink_allocates_artifact_ids_safely_for_parallel_writes(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = _context(tmp_path, validator)
+    sink = ExecutionEvidenceSink(validator, actor="SinkTest")
+
+    def record(index: int) -> None:
+        sink.record_artifacts(
+            context,
+            {
+                "task_id": f"task-{index:04d}",
+                "title": f"Implement file {index}",
+            },
+            [
+                FakeToolResult(
+                    ok=True,
+                    summary="wrote file",
+                    data={
+                        "path": f"src/file_{index}.py",
+                        "backup_id": f"backup-{index:04d}",
+                    },
+                )
+            ],
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(record, [1, 2]))
+
+    artifacts = JsonlStore(validator).read_all(tmp_path / "artifacts.jsonl", "artifact")
+    assert sorted(artifact["artifact_id"] for artifact in artifacts) == [
+        "artifact-0001",
+        "artifact-0002",
+    ]
+    assert sorted(artifact["path"] for artifact in artifacts) == [
+        "src/file_1.py",
+        "src/file_2.py",
+    ]
 
 
 def test_evidence_sink_records_task_failure(tmp_path: Path) -> None:

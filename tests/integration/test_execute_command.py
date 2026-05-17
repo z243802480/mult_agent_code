@@ -1620,6 +1620,37 @@ def test_execute_command_uses_planned_verification_when_model_omits_it(
     assert any(command in item.get("command", "") for item in validations)
 
 
+def test_execute_command_extracts_single_quoted_planned_verification(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    command = "python -m py_compile src/notes_tool.py"
+    task_plan["tasks"][0]["validation_commands"] = [
+        f"Execute '{command}' and assert exit code is 0."
+    ]
+    task_plan["tasks"][0]["verification_policy"] = {
+        "required": True,
+        "allow_expected_failure": False,
+        "commands": task_plan["tasks"][0]["validation_commands"],
+    }
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeNoVerificationClient()
+    ).run()
+
+    assert result.completed == 1
+    validations = [
+        json.loads(line)
+        for line in (run_dir / "validation_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(command in item.get("command", "") for item in validations)
+
+
 def test_execute_command_treats_inline_run_command_as_verification(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
