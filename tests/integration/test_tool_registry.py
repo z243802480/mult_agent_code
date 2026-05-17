@@ -39,7 +39,7 @@ def policy(max_tool_calls: int = 20) -> dict:
 
 def context(tmp_path: Path, max_tool_calls: int = 20) -> RuntimeContext:
     run_id = "run-20260427-0001"
-    run_dir = tmp_path / ".agent" / "runs" / run_id
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
     run_dir.mkdir(parents=True)
     validator = SchemaValidator(Path("schemas"))
     return RuntimeContext(

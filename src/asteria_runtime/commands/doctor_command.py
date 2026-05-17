@@ -61,21 +61,23 @@ class DoctorResult:
         if "agent_dir" in failed:
             actions.append("Run `asteria /init --root .`.")
         missing_routes = [
-            name.replace("model_", "")
-            for name in failed
-            if name.startswith("model_")
+            name.replace("model_", "") for name in failed if name.startswith("model_")
         ]
         for tier in missing_routes:
             route = self.routes.get(tier, {})
             raw_missing = route.get("missing")
             missing = raw_missing if isinstance(raw_missing, list) else []
-            required_names = [str(name) for name in missing] or self.route_requirements.get(tier, [])
+            required_names = [str(name) for name in missing] or self.route_requirements.get(
+                tier, []
+            )
             required = ", ".join(required_names)
             actions.append(
                 f"Set {tier} route environment variables before gray validation: {required}."
             )
         if "real_model_gate" in failed:
-            actions.append("Run `python scripts/real_model_gate.py --summary-json .agent/model/real_model_gate_report.json`.")
+            actions.append(
+                "Run `python scripts/real_model_gate.py --summary-json .asteria/model/real_model_gate_report.json`."
+            )
         return actions
 
     def to_text(self) -> str:
@@ -109,24 +111,20 @@ class DoctorCommand:
                 *route_checks,
                 self._gate_report_check(),
             ],
-            routes={
-                tier: self._route_summary(tier)
-                for tier in ["strong", "medium", "cheap"]
-            },
+            routes={tier: self._route_summary(tier) for tier in ["strong", "medium", "cheap"]},
             route_requirements={
-                tier: self._route_requirement_names(tier)
-                for tier in ["strong", "medium", "cheap"]
+                tier: self._route_requirement_names(tier) for tier in ["strong", "medium", "cheap"]
             },
             sandbox=self._sandbox_summary(),
             gray_task_limits=_gray_task_limits(),
         )
 
     def _agent_dir_check(self) -> DoctorCheck:
-        path = self.root / ".agent"
+        path = self.root / ".asteria"
         return DoctorCheck(
             "agent_dir",
             path.exists(),
-            ".agent exists" if path.exists() else "workspace is not initialized",
+            ".asteria exists" if path.exists() else "workspace is not initialized",
             "error",
         )
 
@@ -141,14 +139,16 @@ class DoctorCommand:
 
     def _policy_check(self) -> DoctorCheck:
         required = [
-            self.root / ".agent" / "project.json",
-            self.root / ".agent" / "policies.json",
+            self.root / ".asteria" / "project.json",
+            self.root / ".asteria" / "policies.json",
         ]
         missing = [path.name for path in required if not path.exists()]
         return DoctorCheck(
             "runtime_config",
             not missing,
-            "project and policy config present" if not missing else "missing: " + ", ".join(missing),
+            "project and policy config present"
+            if not missing
+            else "missing: " + ", ".join(missing),
             "error",
         )
 
@@ -241,7 +241,7 @@ class DoctorCommand:
         return completed.returncode == 0 and not completed.stdout.strip()
 
     def _gate_report_check(self) -> DoctorCheck:
-        path = self.root / ".agent" / "model" / "real_model_gate_report.json"
+        path = self.root / ".asteria" / "model" / "real_model_gate_report.json"
         return DoctorCheck(
             "real_model_gate",
             path.exists(),

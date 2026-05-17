@@ -56,7 +56,7 @@ class ReplanCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> ReplanResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
         run_store = RunStore(agent_dir, self.validator)
@@ -272,8 +272,10 @@ class ReplanCommand:
         expected_artifacts = self._expected_artifacts(source_task, contract_check)
         product_notes = self._product_manager_notes(source_task, evidence, expected_artifacts)
         if product_notes:
-            description = description + "\nProduct repair constraints:\n" + "\n".join(
-                f"- {note}" for note in product_notes
+            description = (
+                description
+                + "\nProduct repair constraints:\n"
+                + "\n".join(f"- {note}" for note in product_notes)
             )
         expected_changed_files = self._expected_changed_files(source_task, contract_check)
         task = {
@@ -366,12 +368,16 @@ class ReplanCommand:
             notes.append("Declare at least one expected artifact or changed file for the repair.")
         if len(allowed_tools) > 6:
             notes.append("Narrow allowed tools to the minimum needed for this repair iteration.")
-        if any(marker in title_and_description for marker in [" and ", " plus ", "multiple", "all "]):
+        if any(
+            marker in title_and_description for marker in [" and ", " plus ", "multiple", "all "]
+        ):
             notes.append(
                 "Split broad work into the smallest repair slice that closes the primary evidence first."
             )
         if evidence.get("failure_type") in {"scenario_validation_failure", "execution_blocked"}:
-            notes.append("Include a reproduction command and rerun it before marking the task done.")
+            notes.append(
+                "Include a reproduction command and rerun it before marking the task done."
+            )
         return list(dict.fromkeys(notes))
 
     def _expected_artifacts(self, source_task: dict, contract_check: dict) -> list[str]:
@@ -393,9 +399,7 @@ class ReplanCommand:
         if expected_files:
             return expected_files
         return [
-            str(item)
-            for item in source_task.get("expected_changed_files", [])
-            if str(item).strip()
+            str(item) for item in source_task.get("expected_changed_files", []) if str(item).strip()
         ]
 
     def _repair_allowed_tools(self, source_task: dict) -> list[str]:

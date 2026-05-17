@@ -70,7 +70,7 @@ class FakeExecuteClient:
                             "args": {
                                 "command": (
                                     "python -c "
-                                    "\"from reviewed_module import answer; assert answer() == 42\""
+                                    '"from reviewed_module import answer; assert answer() == 42"'
                                 )
                             },
                             "reason": "verify behavior",
@@ -218,7 +218,7 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
 
     assert result.status == "pass"
     assert result.score == 0.92
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["overall"]["status"] == "pass"
     assert (run_dir / "review_report.md").read_text(encoding="utf-8").startswith("# Review Report")
@@ -246,7 +246,7 @@ def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path
     assert result.status == "partial"
     assert result.follow_up_count == 0
     assert result.decision_count == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     decisions = [
         json.loads(line)
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
@@ -270,10 +270,12 @@ def test_review_command_normalizes_sparse_eval_report(tmp_path: Path) -> None:
     execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
     assert execute.completed == 1
 
-    result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeSparseReviewClient()).run()
+    result = ReviewCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeSparseReviewClient()
+    ).run()
 
     assert result.status == "pass"
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["schema_version"] == "0.1.0"
     assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
@@ -288,7 +290,7 @@ def test_review_command_excludes_discarded_replan_history_from_completion_rate(
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
     execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
     assert execute.completed == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     original = dict(task_plan["tasks"][0])

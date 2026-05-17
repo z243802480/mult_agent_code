@@ -7,11 +7,11 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 def test_run_store_creates_loads_and_updates_run(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
-    store = RunStore(tmp_path / ".agent", validator)
+    store = RunStore(tmp_path / ".asteria", validator)
 
     run = store.create_run('asteria run "hello"', goal_id="goal-0001")
     assert run["status"] == "running"
-    assert (tmp_path / ".agent" / "runs" / run["run_id"] / "run.json").exists()
+    assert (tmp_path / ".asteria" / "runs" / run["run_id"] / "run.json").exists()
 
     loaded = store.load_run(run["run_id"])
     loaded["current_phase"] = "PLAN"
@@ -22,16 +22,16 @@ def test_run_store_creates_loads_and_updates_run(tmp_path: Path) -> None:
 
 def test_run_store_tracks_current_session_and_reads_legacy_pointer(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
-    store = RunStore(tmp_path / ".agent", validator)
+    store = RunStore(tmp_path / ".asteria", validator)
     run = store.create_run('asteria new "hello"', goal_id="goal-0001")
 
     store.set_current_session(run["run_id"], "test")
 
     assert store.current_session_id() == run["run_id"]
-    assert (tmp_path / ".agent" / "current_session.json").exists()
+    assert (tmp_path / ".asteria" / "current_session.json").exists()
 
-    (tmp_path / ".agent" / "current_session.json").unlink()
-    (tmp_path / ".agent" / "current_run.json").write_text(
+    (tmp_path / ".asteria" / "current_session.json").unlink()
+    (tmp_path / ".asteria" / "current_run.json").write_text(
         (
             '{"schema_version":"0.1.0","run_id":"'
             + run["run_id"]

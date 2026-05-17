@@ -29,7 +29,7 @@ def test_verification_status_reads_schema_validated_summary(tmp_path: Path) -> N
         "artifacts": {"snapshot_count": 1, "handoff_count": 1},
     }
     JsonStore(validator).write(
-        tmp_path / ".agent" / "verification" / "latest.json",
+        tmp_path / ".asteria" / "verification" / "latest.json",
         summary,
         "verification_summary",
     )

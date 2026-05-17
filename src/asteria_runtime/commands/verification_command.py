@@ -43,7 +43,7 @@ class VerificationStatusCommand:
         self.store = JsonStore(self.validator)
 
     def run(self) -> VerificationStatusResult:
-        summary_path = self.root / ".agent" / "verification" / "latest.json"
+        summary_path = self.root / ".asteria" / "verification" / "latest.json"
         if not summary_path.exists():
             return VerificationStatusResult(summary_path, None)
         return VerificationStatusResult(

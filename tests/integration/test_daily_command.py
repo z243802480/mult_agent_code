@@ -44,7 +44,7 @@ def test_daily_plan_selects_failed_only_acceptance_action(tmp_path: Path) -> Non
         "ok": False,
         "returncode": 1,
         "created_at": "2026-05-12T00:00:00+08:00",
-        "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+        "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
         "scenarios": [
             {
                 "scenario": "config_driven_report",
@@ -55,7 +55,7 @@ def test_daily_plan_selects_failed_only_acceptance_action(tmp_path: Path) -> Non
         ],
     }
     JsonStore(validator).write(
-        tmp_path / ".agent" / "acceptance" / "acceptance_report.json",
+        tmp_path / ".asteria" / "acceptance" / "acceptance_report.json",
         report,
         "acceptance_report",
     )
@@ -107,7 +107,7 @@ def test_daily_plan_reads_model_profile_weak_routes(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    profile_path = tmp_path / ".agent" / "model" / "capability_profile.json"
+    profile_path = tmp_path / ".asteria" / "model" / "capability_profile.json"
     store.write(
         profile_path,
         {
@@ -169,10 +169,10 @@ def test_daily_run_execute_records_evidence_and_budget_delta(
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    run_store = RunStore(tmp_path / ".agent", validator)
+    run_store = RunStore(tmp_path / ".asteria", validator)
     run = run_store.create_run("test")
     run_store.set_current_run(run["run_id"], "daily test")
-    run_dir = tmp_path / ".agent" / "runs" / run["run_id"]
+    run_dir = tmp_path / ".asteria" / "runs" / run["run_id"]
     store.write(run_dir / "cost_report.json", _cost_report(), "cost_report")
 
     def fake_run(*args, **kwargs):
@@ -190,7 +190,9 @@ def test_daily_run_execute_records_evidence_and_budget_delta(
     assert report["budget"]["repair_attempts"] == 1
     assert report["results"][0]["evidence_path"]
     assert report["results"][0]["responsible_role"] == "Evaluator"
-    daily_evidence = tmp_path / ".agent" / "daily" / "2026-05-12" / "task_execution_evidence.jsonl"
+    daily_evidence = (
+        tmp_path / ".asteria" / "daily" / "2026-05-12" / "task_execution_evidence.jsonl"
+    )
     run_evidence = run_dir / "task_execution_evidence.jsonl"
     assert daily_evidence.exists()
     assert run_evidence.exists()

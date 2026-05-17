@@ -84,8 +84,7 @@ class DailyBudgetGuard:
             return f"tool call budget reached ({self.tool_calls}/{self.max_tool_calls})"
         if self.repair_attempts >= self.max_repair_attempts:
             return (
-                "repair attempt budget reached "
-                f"({self.repair_attempts}/{self.max_repair_attempts})"
+                f"repair attempt budget reached ({self.repair_attempts}/{self.max_repair_attempts})"
             )
         return None
 
@@ -212,9 +211,9 @@ class DailyPlanCommand:
         )
 
     def _agent_dir(self) -> Path:
-        if not (self.root / ".agent").exists():
+        if not (self.root / ".asteria").exists():
             InitCommand(self.root).run()
-        return self.root / ".agent"
+        return self.root / ".asteria"
 
     def _daily_dir(self, agent_dir: Path) -> Path:
         path = agent_dir / "daily" / self.date
@@ -353,8 +352,7 @@ class DailyPlanCommand:
         weak_routes = model_profile.get("weak_routes") or []
         if weak_routes:
             labels = [
-                f"{item['provider']}/{item['model']}:{item['purpose']}"
-                for item in weak_routes[:3]
+                f"{item['provider']}/{item['model']}:{item['purpose']}" for item in weak_routes[:3]
             ]
             actions.append(
                 {
@@ -499,7 +497,7 @@ class DailyRunCommand:
             "model_profile": (plan.get("signals") or {}).get("model_profile", {}),
             "next_actions": self._next_actions(results),
         }
-        report_path = self.root / ".agent" / "daily" / self.date / "daily_report.json"
+        report_path = self.root / ".asteria" / "daily" / self.date / "daily_report.json"
         self.store.write(report_path, report, "daily_report")
         self._write_markdown(report_path.with_suffix(".md"), report)
         return DailyRunResult(
@@ -544,7 +542,9 @@ class DailyRunCommand:
             after = self._cost_snapshot(run_id)
             guard.apply_delta(before, after)
             status = "pass" if completed.returncode == 0 else "fail"
-            failure_type = None if status == "pass" else self._failure_type(action, completed.stderr)
+            failure_type = (
+                None if status == "pass" else self._failure_type(action, completed.stderr)
+            )
             return {
                 "kind": action.get("kind"),
                 "status": status,
@@ -614,7 +614,9 @@ class DailyRunCommand:
 
     def _next_actions(self, results: list[dict[str, Any]]) -> list[str]:
         if not self.execute:
-            return ["Review the daily plan, then run `asteria /daily-run --execute` if appropriate."]
+            return [
+                "Review the daily plan, then run `asteria /daily-run --execute` if appropriate."
+            ]
         if any(item["status"] == "fail" for item in results):
             return [
                 "Inspect daily_report.md and the failing task_execution_evidence before retrying.",
@@ -710,8 +712,7 @@ class DailyRunCommand:
         weak_routes = model_profile.get("weak_routes") or []
         if weak_routes:
             labels = [
-                f"{item['provider']}/{item['model']}:{item['purpose']}"
-                for item in weak_routes[:3]
+                f"{item['provider']}/{item['model']}:{item['purpose']}" for item in weak_routes[:3]
             ]
             risks.append("Weak model routes need review: " + ", ".join(labels))
         return risks or ["No immediate daily automation risk was detected."]
@@ -723,13 +724,13 @@ class DailyRunCommand:
         plan: dict[str, Any],
     ) -> None:
         evidence = self._action_evidence(action, result, plan)
-        daily_path = self.root / ".agent" / "daily" / self.date / "task_execution_evidence.jsonl"
+        daily_path = self.root / ".asteria" / "daily" / self.date / "task_execution_evidence.jsonl"
         self.jsonl.append(daily_path, evidence, "task_execution_evidence")
         result["evidence_path"] = str(daily_path)
         run_id = self._current_run_id()
         if not run_id:
             return
-        run_path = self.root / ".agent" / "runs" / run_id / "task_execution_evidence.jsonl"
+        run_path = self.root / ".asteria" / "runs" / run_id / "task_execution_evidence.jsonl"
         self.jsonl.append(run_path, evidence, "task_execution_evidence")
         result["run_evidence_path"] = str(run_path)
 
@@ -741,7 +742,7 @@ class DailyRunCommand:
     ) -> dict[str, Any]:
         run_id = self._current_run_id()
         existing = self.jsonl.read_all(
-            self.root / ".agent" / "daily" / self.date / "task_execution_evidence.jsonl",
+            self.root / ".asteria" / "daily" / self.date / "task_execution_evidence.jsonl",
             "task_execution_evidence",
         )
         task_id = f"daily-{self.date}-{action.get('kind') or 'action'}"
@@ -761,7 +762,7 @@ class DailyRunCommand:
                     "Daily report contains evidence and next action",
                 ],
                 "expected_artifacts": [
-                    str(self.root / ".agent" / "daily" / self.date / "daily_report.json")
+                    str(self.root / ".asteria" / "daily" / self.date / "daily_report.json")
                 ],
                 "expected_changed_files": [],
                 "allowed_tools": ["run_command"],
@@ -781,7 +782,9 @@ class DailyRunCommand:
                 "strategy": "daily_control_loop",
                 "changed_files": [],
                 "promoted_files": [],
-                "daily_report": str(self.root / ".agent" / "daily" / self.date / "daily_report.json"),
+                "daily_report": str(
+                    self.root / ".asteria" / "daily" / self.date / "daily_report.json"
+                ),
             },
             "contract_check": {
                 "ok": result.get("status") in {"pass", "planned"},
@@ -807,14 +810,14 @@ class DailyRunCommand:
 
     def _current_run_id(self) -> str | None:
         try:
-            return RunStore(self.root / ".agent", self.validator).current_session_id()
+            return RunStore(self.root / ".asteria", self.validator).current_session_id()
         except RuntimeError:
             return None
 
     def _cost_snapshot(self, run_id: str | None) -> dict[str, int]:
         if not run_id:
             return {"model_calls": 0, "tool_calls": 0, "repair_attempts": 0}
-        path = self.root / ".agent" / "runs" / run_id / "cost_report.json"
+        path = self.root / ".asteria" / "runs" / run_id / "cost_report.json"
         if not path.exists():
             return {"model_calls": 0, "tool_calls": 0, "repair_attempts": 0}
         report = self.store.read(path, "cost_report")
@@ -863,7 +866,7 @@ class DailyReportCommand:
         self.store = JsonStore(self.validator)
 
     def run(self) -> DailyReportResult:
-        report_path = self.root / ".agent" / "daily" / self.date / "daily_report.json"
+        report_path = self.root / ".asteria" / "daily" / self.date / "daily_report.json"
         if not report_path.exists():
             result = DailyRunCommand(
                 self.root,

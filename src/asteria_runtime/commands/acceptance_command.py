@@ -139,7 +139,7 @@ class AcceptanceCommand:
         self.store = JsonStore(self.validator)
 
     def run(self) -> AcceptanceResult:
-        acceptance_dir = self.root / ".agent" / "acceptance"
+        acceptance_dir = self.root / ".asteria" / "acceptance"
         acceptance_dir.mkdir(parents=True, exist_ok=True)
         scenarios = self._effective_scenarios()
         summary_json = self.summary_json or acceptance_dir / "latest_summary.json"
@@ -269,7 +269,7 @@ class AcceptanceCommand:
             "--summary-json",
             str(summary_json.resolve()),
             "--history-jsonl",
-            str((self.root / ".agent" / "acceptance" / "history.jsonl").resolve()),
+            str((self.root / ".asteria" / "acceptance" / "history.jsonl").resolve()),
         ]
         for scenario in scenarios:
             command.extend(["--scenario", scenario])
@@ -303,7 +303,7 @@ class AcceptanceCommand:
             return self.scenarios
         if not self.failed_only:
             return []
-        report_path = self.root / ".agent" / "acceptance" / "acceptance_report.json"
+        report_path = self.root / ".asteria" / "acceptance" / "acceptance_report.json"
         if not report_path.exists():
             raise RuntimeError("Cannot use --failed-only before an acceptance report exists.")
         report = self.store.read(report_path, "acceptance_report")
@@ -324,11 +324,7 @@ class AcceptanceCommand:
             workspace_root = self.workspace_root.resolve()
         else:
             workspace_root = (
-                self.root
-                / ".agent"
-                / "acceptance"
-                / "workspaces"
-                / summary_json.stem
+                self.root / ".asteria" / "acceptance" / "workspaces" / summary_json.stem
             ).resolve()
         workspace_root.mkdir(parents=True, exist_ok=True)
         return workspace_root
@@ -484,7 +480,7 @@ class AcceptanceCommand:
         return Path(__file__).resolve().parents[3]
 
     def _run_promoted_tasks(self) -> str:
-        run_store = RunStore(self.root / ".agent", self.validator)
+        run_store = RunStore(self.root / ".asteria", self.validator)
         run_id = run_store.current_session_id()
         if not run_id:
             raise RuntimeError("Cannot run promoted tasks: no current session found.")
@@ -497,21 +493,25 @@ class AcceptanceCommand:
         return result.to_text()
 
     def _current_run_id(self) -> str | None:
-        run_store = RunStore(self.root / ".agent", self.validator)
+        run_store = RunStore(self.root / ".asteria", self.validator)
         return run_store.current_session_id()
 
     def _trend_warnings(self) -> list[str]:
-        history_path = self.root / ".agent" / "acceptance" / "history.jsonl"
-        return AcceptanceHistoryCommand(
-            self.root,
-            limit=1,
-            suite=self.suite,
-            history_jsonl=history_path,
-            warn_model_call_delta=self.warn_model_call_delta,
-            warn_duration_delta=self.warn_duration_delta,
-            warn_repair_delta=self.warn_repair_delta,
-            warn_context_compaction_delta=self.warn_context_compaction_delta,
-        ).run().warnings
+        history_path = self.root / ".asteria" / "acceptance" / "history.jsonl"
+        return (
+            AcceptanceHistoryCommand(
+                self.root,
+                limit=1,
+                suite=self.suite,
+                history_jsonl=history_path,
+                warn_model_call_delta=self.warn_model_call_delta,
+                warn_duration_delta=self.warn_duration_delta,
+                warn_repair_delta=self.warn_repair_delta,
+                warn_context_compaction_delta=self.warn_context_compaction_delta,
+            )
+            .run()
+            .warnings
+        )
 
 
 class AcceptanceFailurePromoter:
@@ -535,10 +535,10 @@ class AcceptanceFailurePromoter:
         ]
         if not failed_scenarios:
             return []
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             InitCommand(self.root).run()
-            agent_dir = self.root / ".agent"
+            agent_dir = self.root / ".asteria"
         run_store = RunStore(agent_dir, self.validator)
         run_id = self._ensure_repair_session(run_store, report)
         run_dir = run_store.run_dir(run_id)
@@ -589,10 +589,9 @@ class AcceptanceFailurePromoter:
         run_id = run_store.current_session_id()
         if run_id and (run_store.run_dir(run_id) / "task_plan.json").exists():
             run = run_store.load_run(run_id)
-            stale_repair_session = (
-                run.get("goal_id") == "goal-acceptance-repair"
-                and run.get("status") in {"completed", "paused", "cancelled"}
-            )
+            stale_repair_session = run.get("goal_id") == "goal-acceptance-repair" and run.get(
+                "status"
+            ) in {"completed", "paused", "cancelled"}
             if not stale_repair_session:
                 return run_id
         run = run_store.create_run(
@@ -635,7 +634,9 @@ class AcceptanceFailurePromoter:
                 }
             ],
             "target_outputs": ["repair_tasks", "acceptance_report"],
-            "definition_of_done": ["Promoted scenario reruns pass or remaining failures are recorded."],
+            "definition_of_done": [
+                "Promoted scenario reruns pass or remaining failures are recorded."
+            ],
             "verification_strategy": ["Run /acceptance with --rerun-promoted."],
             "budget": {"max_iterations": 3, "max_model_calls": 20},
         }
@@ -684,7 +685,7 @@ class AcceptanceFailurePromoter:
             "Repair focus:",
             *[f"- {item}" for item in repair_focus["guidance"]],
             "Diagnostics:",
-            f"- Acceptance report: {self.root / '.agent' / 'acceptance' / 'acceptance_report.json'}",
+            f"- Acceptance report: {self.root / '.asteria' / 'acceptance' / 'acceptance_report.json'}",
             f"- Failure evidence: {evidence_path}",
             f"- Summary JSON: {report.get('summary_json')}",
             f"- Reproduce via CLI: {self._acceptance_cli_command(report, scenario_name)}",
@@ -755,7 +756,7 @@ class AcceptanceFailurePromoter:
         scenario_name = str(scenario.get("scenario") or "unknown")
         repair_focus = self._repair_focus(scenario, str(report.get("suite") or "smoke"))
         evidence_path = (
-            self.root / ".agent" / "acceptance" / "failures" / f"{self._slug(scenario_name)}.json"
+            self.root / ".asteria" / "acceptance" / "failures" / f"{self._slug(scenario_name)}.json"
         )
         evidence = {
             "schema_version": "0.1.0",
@@ -767,7 +768,7 @@ class AcceptanceFailurePromoter:
             "failure_attribution": scenario.get("failure_attribution") or {},
             "repair_focus": repair_focus,
             "acceptance_report": str(
-                self.root / ".agent" / "acceptance" / "acceptance_report.json"
+                self.root / ".asteria" / "acceptance" / "acceptance_report.json"
             ),
             "summary_json": report.get("summary_json"),
             "workspace": scenario.get("workspace"),
@@ -789,7 +790,9 @@ class AcceptanceFailurePromoter:
         scenario_name = str(scenario.get("scenario") or "unknown")
         capability = str(scenario.get("capability") or "unknown")
         expected_file = self._expected_file(scenario)
-        base_command = f"python -m asteria_runtime /acceptance --suite {suite} --scenario {scenario_name}"
+        base_command = (
+            f"python -m asteria_runtime /acceptance --suite {suite} --scenario {scenario_name}"
+        )
         focus: dict[str, Any] = {
             "capability": capability,
             "guidance": [
@@ -815,7 +818,7 @@ class AcceptanceFailurePromoter:
             focus["acceptance"].extend(
                 [
                     "The entrypoint and package modules are both present.",
-                    "`python todo.py add \"buy milk\"` and `python todo.py list` work in the scenario workspace.",
+                    '`python todo.py add "buy milk"` and `python todo.py list` work in the scenario workspace.',
                 ]
             )
             focus["expected_changed_files"].extend(
@@ -823,7 +826,7 @@ class AcceptanceFailurePromoter:
             )
             focus["verification_commands"].insert(
                 0,
-                "python todo.py add \"buy milk\" && python todo.py list",
+                'python todo.py add "buy milk" && python todo.py list',
             )
         elif capability == "configuration_change" or scenario_name == "config_driven_report":
             if expected_file:
@@ -853,7 +856,7 @@ class AcceptanceFailurePromoter:
 
     def _acceptance_script_command(self, report: dict, scenario_name: str) -> str:
         suite = str(report.get("suite") or "smoke")
-        summary_json = str(report.get("summary_json") or ".agent/acceptance/latest_summary.json")
+        summary_json = str(report.get("summary_json") or ".asteria/acceptance/latest_summary.json")
         return (
             "python scripts/real_model_acceptance.py "
             f"--suite {suite} --scenario {scenario_name} --summary-json {summary_json}"

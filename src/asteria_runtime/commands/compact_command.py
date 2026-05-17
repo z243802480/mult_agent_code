@@ -39,7 +39,7 @@ class CompactCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> CompactResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
 
@@ -357,9 +357,7 @@ class CompactCommand:
         for worker in workers:
             status = str(worker.get("status") or "unknown")
             by_status[status] = by_status.get(status, 0) + 1
-        result_by_invocation = {
-            result["worker_invocation_id"]: result for result in worker_results
-        }
+        result_by_invocation = {result["worker_invocation_id"]: result for result in worker_results}
         recent = []
         for worker in workers[-10:]:
             result = result_by_invocation.get(worker["worker_invocation_id"], {})
@@ -489,9 +487,7 @@ class CompactCommand:
             if item.get("status") in {"recorded", "decision_created"}
         ]
         if pending_runtime_requests:
-            risks.append(
-                f"{len(pending_runtime_requests)} runtime request(s) need contract review"
-            )
+            risks.append(f"{len(pending_runtime_requests)} runtime request(s) need contract review")
         if cost_report and cost_report.get("status") in {"near_limit", "exceeded", "stopped"}:
             risks.append(f"Cost status is {cost_report['status']}")
         return risks

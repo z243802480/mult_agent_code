@@ -63,7 +63,7 @@ class PlanCommand:
         self.model_client = model_client
 
     def run(self) -> PlanResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
 

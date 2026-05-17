@@ -24,7 +24,11 @@ class RuntimeContext:
     def agent_dir(self) -> Path:
         if self.agent_dir_override is not None:
             return self.agent_dir_override
-        return self.root / ".agent"
+        return self.root / ".asteria"
+
+    @property
+    def asteria_dir(self) -> Path:
+        return self.agent_dir
 
     @property
     def run_dir(self) -> Path | None:

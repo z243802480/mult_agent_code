@@ -1,4 +1,4 @@
-# 多智能体自主开发系统 - MVP 范围与阶段路线图
+﻿# 多智能体自主开发系统 - MVP 范围与阶段路线图
 
 ## 1. 文档目的
 
@@ -58,12 +58,12 @@ MVP 可以先不做完整本地 Web 控制台。
 必须创建：
 
 - `AGENTS.md`
-- `.agent/project.json`
-- `.agent/policies.json`
-- `.agent/context/root_snapshot.json`
-- `.agent/tasks/backlog.json`
-- `.agent/runs/`
-- `.agent/memory/`
+- `.asteria/project.json`
+- `.asteria/policies.json`
+- `.asteria/context/root_snapshot.json`
+- `.asteria/tasks/backlog.json`
+- `.asteria/runs/`
+- `.asteria/memory/`
 
 必须具备幂等性，重复运行不能覆盖用户手写内容。
 
@@ -322,4 +322,4 @@ allow_destructive_shell: false
 allow_global_install: false
 ```
 
-这些默认值后续可以由 `.agent/policies.json` 覆盖。
+这些默认值后续可以由 `.asteria/policies.json` 覆盖。

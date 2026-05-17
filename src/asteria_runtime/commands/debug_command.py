@@ -84,7 +84,7 @@ class DebugCommand:
         self.runtime_evidence = RuntimeEvidenceReader(self.validator)
 
     def run(self) -> DebugResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
 
@@ -465,7 +465,9 @@ class DebugCommand:
                 "workspace_policy": (
                     candidate_workspace.workspace_policy if candidate_workspace else None
                 ),
-                "backend_reason": candidate_workspace.backend_reason if candidate_workspace else None,
+                "backend_reason": candidate_workspace.backend_reason
+                if candidate_workspace
+                else None,
                 "branch_name": candidate_workspace.branch_name if candidate_workspace else None,
                 "promoted_files": sorted(set(promoted_files or [])),
             },
@@ -620,7 +622,7 @@ class DebugCommand:
             validator=context.validator,
             event_logger=context.event_logger,
             budget=context.budget,
-            agent_dir_override=context.agent_dir,
+            agent_dir_override=context.asteria_dir,
             run_dir_override=context.run_dir,
         )
 
@@ -631,6 +633,8 @@ class DebugCommand:
         changed_files: list[str],
     ) -> list[str]:
         del context
+        if not changed_files:
+            return []
         return candidate.promote(changed_files)
 
     def _complete_task_after_candidate_promotion(
@@ -665,9 +669,7 @@ class DebugCommand:
         return {
             "task_id": task_id,
             "runtime_os_evidence": runtime_os_evidence,
-            "recent_task_execution_evidence": runtime_os_evidence[
-                "task_execution_evidence"
-            ][-5:],
+            "recent_task_execution_evidence": runtime_os_evidence["task_execution_evidence"][-5:],
             "recent_worker_results": runtime_os_evidence["worker_results"][-5:],
             "recent_merge_gate_evidence": runtime_os_evidence["merge_gate_evidence"][-5:],
             "recent_runtime_requests": runtime_os_evidence["runtime_requests"][-5:],
@@ -705,7 +707,9 @@ class DebugCommand:
         if promoted_files:
             return None
         verification_results = latest.get("verification_results")
-        verification_results = verification_results if isinstance(verification_results, list) else []
+        verification_results = (
+            verification_results if isinstance(verification_results, list) else []
+        )
         if not any(self._fatal_verification_failure(result) for result in verification_results):
             return None
         return (

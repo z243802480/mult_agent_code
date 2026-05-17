@@ -20,6 +20,9 @@ class StatusResult:
         latest_failure = (
             self.current_context.get("latest_task_failure") if self.current_context else {}
         ) or {}
+        candidate_promotions = (
+            self.current_context.get("candidate_promotions") if self.current_context else {}
+        ) or {}
         recommended = (
             self.current_context.get("recommended_next_command") if self.current_context else None
         )
@@ -34,10 +37,9 @@ class StatusResult:
             "blockers": blockers or [],
             "risks": risks or [],
             "pending_decision_count": int(
-                self.current_context.get("pending_decision_count", 0)
-                if self.current_context
-                else 0
+                self.current_context.get("pending_decision_count", 0) if self.current_context else 0
             ),
+            "candidate_promotions": candidate_promotions,
             "latest_failure": latest_failure,
             "recommended_next_command": recommended,
             "next_actions": self._next_actions(recommended),
@@ -70,7 +72,7 @@ class StatusResult:
         if recommended:
             return [f"Run `asteria {recommended}`."]
         if not self.current_session_id:
-            return ["Run `asteria /new \"<goal>\" --root .`."]
+            return ['Run `asteria /new "<goal>" --root .`.']
         return ["Run `asteria /sessions --context --root .` to inspect current state."]
 
     def to_text(self) -> str:
@@ -112,6 +114,16 @@ class StatusResult:
             pending = int(context.get("pending_decision_count", 0))
             if pending:
                 lines.append(f"Pending decisions: {pending}")
+            candidate_promotions = context.get("candidate_promotions") or {}
+            if candidate_promotions.get("total"):
+                counts = candidate_promotions.get("status_counts") or {}
+                lines.append(
+                    "Candidate promotions: "
+                    f"{candidate_promotions.get('total', 0)} total "
+                    f"(pending={len(candidate_promotions.get('pending') or [])}, "
+                    f"blocked={len(candidate_promotions.get('blocked') or [])}, "
+                    f"promoted={counts.get('promoted', 0)})"
+                )
             blockers = context.get("blockers") or []
             if blockers:
                 lines.append("Blockers:")
@@ -131,8 +143,7 @@ class StatusResult:
             for session in self.recent_sessions[-5:]:
                 marker = "*" if session["run_id"] == self.current_session_id else "-"
                 lines.append(
-                    f"{marker} {session['run_id']} [{session['status']}] "
-                    f"{session['current_phase']}"
+                    f"{marker} {session['run_id']} [{session['status']}] {session['current_phase']}"
                 )
         else:
             lines.append("No sessions yet.")
@@ -144,7 +155,7 @@ class StatusCommand:
         self.root = root.resolve()
 
     def run(self) -> StatusResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             return StatusResult(root=self.root, initialized=False)
         sessions = SessionsCommand(

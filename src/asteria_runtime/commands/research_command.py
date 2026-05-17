@@ -10,7 +10,12 @@ from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
-from asteria_runtime.research.sources import LocalDocumentSource, ResearchSourceRecord, SerperSearchSource, UrlSource
+from asteria_runtime.research.sources import (
+    LocalDocumentSource,
+    ResearchSourceRecord,
+    SerperSearchSource,
+    UrlSource,
+)
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
@@ -62,17 +67,23 @@ class ResearchCommand:
         self.store = JsonStore(self.validator)
 
     def run(self) -> ResearchResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
         policy = load_policy_config(agent_dir, self.validator)
         run_store = RunStore(agent_dir, self.validator)
-        run = run_store.load_run(self.run_id) if self.run_id else run_store.create_run(f'asteria research "{self.query}"')
+        run = (
+            run_store.load_run(self.run_id)
+            if self.run_id
+            else run_store.create_run(f'asteria research "{self.query}"')
+        )
         run_id = run["run_id"]
         run_dir = run_store.run_dir(run_id)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         cost_report_path = run_dir / "cost_report.json"
-        budget = BudgetController.from_report(policy, self._read_cost(cost_report_path, run_id), run_id=run_id)
+        budget = BudgetController.from_report(
+            policy, self._read_cost(cost_report_path, run_id), run_id=run_id
+        )
         budget.record_research_call()
 
         run["status"] = "running"
@@ -81,9 +92,13 @@ class ResearchCommand:
         event_logger.record(run_id, "phase_changed", "ResearchCommand", "INIT -> RESEARCH")
 
         source_records = self._collect_sources(policy)
-        source_payload = [self._source_payload(record) for record in source_records[: self.max_sources]]
+        source_payload = [
+            self._source_payload(record) for record in source_records[: self.max_sources]
+        ]
         if not source_payload:
-            raise RuntimeError("No research sources were collected. Provide local docs, URLs, or SERPER_API_KEY.")
+            raise RuntimeError(
+                "No research sources were collected. Provide local docs, URLs, or SERPER_API_KEY."
+            )
 
         agent = ResearchAgent(self._model_client(run_dir, budget), self.validator)
         report = agent.synthesize(self.query, source_payload, run_id)
@@ -145,7 +160,9 @@ class ResearchCommand:
 
     def _model_client(self, run_dir: Path, budget: BudgetController) -> ModelClient:
         if self.model_client:
-            return MeteredModelClient(self.model_client, budget, ModelCallLogger(run_dir, self.validator))
+            return MeteredModelClient(
+                self.model_client, budget, ModelCallLogger(run_dir, self.validator)
+            )
         return create_model_client(run_dir, self.validator, budget)
 
     def _read_cost(self, path: Path, run_id: str) -> dict:

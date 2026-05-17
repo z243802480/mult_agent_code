@@ -81,7 +81,7 @@ def test_model_check_reports_invalid_json_response(tmp_path: Path) -> None:
     assert report["failure_type"] == "provider_response"
     memories = [
         json.loads(line)
-        for line in (tmp_path / ".agent" / "memory" / "failures.jsonl")
+        for line in (tmp_path / ".asteria" / "memory" / "failures.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]

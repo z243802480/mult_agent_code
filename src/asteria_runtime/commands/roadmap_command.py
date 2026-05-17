@@ -38,7 +38,7 @@ class RoadmapCommand:
         self.store = JsonStore(self.validator)
 
     def run(self) -> RoadmapResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         roadmap = self._roadmap(agent_dir)
         roadmap_path = agent_dir / "product" / "project_roadmap.json"
         markdown_path = self.output or self.root / "docs" / "zh" / "自动路线图.md"
@@ -63,7 +63,9 @@ class RoadmapCommand:
         capabilities = self._capabilities(acceptance, model_profile)
         milestones = self._milestones(acceptance, model_profile, risks)
         if not weekly:
-            next_actions.append("Run `asteria /long-run-plan --objective <goal>` to start evidence collection.")
+            next_actions.append(
+                "Run `asteria /long-run-plan --objective <goal>` to start evidence collection."
+            )
             next_actions.append("Run `asteria /weekly-report` before the next roadmap update.")
         if not next_actions:
             next_actions = [item["goal"] for item in milestones if item["status"] != "done"][:3]

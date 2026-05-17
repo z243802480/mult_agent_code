@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,7 @@ class InitResult:
     warnings: list[str]
 
     def to_text(self) -> str:
-        lines = [f"Initialized agent workspace: {self.root}"]
+        lines = [f"Initialized Asteria workspace: {self.root}"]
         if self.created:
             lines.append("Created:")
             lines.extend(f"  - {item}" for item in self.created)
@@ -49,7 +50,8 @@ class InitCommand:
 
     def run(self) -> InitResult:
         self.root.mkdir(parents=True, exist_ok=True)
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
+        legacy_agent_dir = self.root / ".agent"
         context_dir = agent_dir / "context"
         tasks_dir = agent_dir / "tasks"
         runs_dir = agent_dir / "runs"
@@ -59,6 +61,13 @@ class InitCommand:
         updated: list[str] = []
         preserved: list[str] = []
         warnings: list[str] = []
+
+        if legacy_agent_dir.exists() and not agent_dir.exists():
+            shutil.copytree(legacy_agent_dir, agent_dir)
+            created.append(self._rel(agent_dir))
+            warnings.append(
+                "Migrated legacy .agent/ runtime state to .asteria/; .agent/ is no longer written."
+            )
 
         for directory in [agent_dir, context_dir, tasks_dir, runs_dir, memory_dir]:
             if not directory.exists():
@@ -70,7 +79,9 @@ class InitCommand:
         root_snapshot = self._build_root_snapshot(project_config)
         backlog = self._build_backlog()
 
-        self._write_json(agent_dir / "project.json", "project_config", project_config, created, updated)
+        self._write_json(
+            agent_dir / "project.json", "project_config", project_config, created, updated
+        )
         self._write_json(agent_dir / "policies.json", "policy_config", policies, created, updated)
         self._write_json(
             context_dir / "root_snapshot.json",
@@ -85,11 +96,15 @@ class InitCommand:
         if agents_path.exists():
             preserved.append(self._rel(agents_path))
         else:
-            agents_path.write_text(self._render_agents_template(project_config, policies), encoding="utf-8")
+            agents_path.write_text(
+                self._render_agents_template(project_config, policies), encoding="utf-8"
+            )
             created.append(self._rel(agents_path))
 
         if not (self.root / ".git").exists():
-            warnings.append("No .git directory found; workspace isolation will use controlled writes for now.")
+            warnings.append(
+                "No .git directory found; workspace isolation will use controlled writes for now."
+            )
 
         return InitResult(self.root, created, updated, preserved, warnings)
 
@@ -135,7 +150,7 @@ class InitCommand:
                 "id_ed25519",
             ],
             "root_guidance_path": "AGENTS.md",
-            "default_policy_path": ".agent/policies.json",
+            "default_policy_path": ".asteria/policies.json",
         }
 
     def _load_default_policies(self) -> dict:
@@ -159,7 +174,7 @@ class InitCommand:
             "open_risks": [],
             "next_actions": [
                 "Run `asteria plan` with a concrete goal.",
-                "Review AGENTS.md and .agent/policies.json.",
+                "Review AGENTS.md and .asteria/policies.json.",
             ],
             "project": {
                 "name": project_config["name"],
@@ -198,9 +213,7 @@ class InitCommand:
             "{{MAX_REPAIR_ATTEMPTS_PER_TASK}}": str(
                 policies["budgets"]["max_repair_attempts_per_task"]
             ),
-            "{{CONTEXT_COMPACTION_THRESHOLD}}": str(
-                policies["context"]["compaction_threshold"]
-            ),
+            "{{CONTEXT_COMPACTION_THRESHOLD}}": str(policies["context"]["compaction_threshold"]),
         }
         for key, value in replacements.items():
             template = template.replace(key, value)
@@ -213,10 +226,12 @@ class InitCommand:
                 "codebase": "codebase",
                 "empty": "empty_workspace",
             }[self.profile]
-        entries = [path for path in self.root.iterdir() if path.name != ".agent"]
+        entries = [path for path in self.root.iterdir() if path.name != ".asteria"]
         if not entries:
             return "empty_workspace"
-        if any((self.root / name).exists() for name in ["pyproject.toml", "package.json", "Cargo.toml"]):
+        if any(
+            (self.root / name).exists() for name in ["pyproject.toml", "package.json", "Cargo.toml"]
+        ):
             return "codebase"
         if (self.root / "docs").exists():
             return "planning_workspace"

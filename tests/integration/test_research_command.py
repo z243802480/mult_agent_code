@@ -91,7 +91,7 @@ def test_research_command_collects_local_sources_and_writes_reports(tmp_path: Pa
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert report["claims"][0]["source_ids"] == ["local-0001"]
     assert "character diversity" in result.markdown_path.read_text(encoding="utf-8")
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "Research report created" in events
     cost = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))

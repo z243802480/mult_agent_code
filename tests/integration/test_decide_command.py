@@ -93,7 +93,7 @@ def test_decide_command_creates_lists_and_resolves_decision(tmp_path: Path) -> N
     assert resolved.decisions[0]["status"] == "resolved"
     assert resolved.decisions[0]["selected_option_id"] == "web"
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     decisions = (run_dir / "decisions.jsonl").read_text(encoding="utf-8")
     assert "decision-0001" in decisions
     assert "resolved" in decisions

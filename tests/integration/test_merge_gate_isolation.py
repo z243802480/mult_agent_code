@@ -38,7 +38,7 @@ class TestMergeGateIsolation:
 
     def test_failed_candidate_not_promoted(self, tmp_path: Path) -> None:
         source = tmp_path / "workspace"
-        run_dir = source / ".agent" / "runs" / "run-1"
+        run_dir = source / ".asteria" / "runs" / "run-1"
         run_dir.mkdir(parents=True)
         (source / "src").mkdir()
         (source / "src" / "mod.py").write_text("old", encoding="utf-8")
@@ -63,7 +63,7 @@ class TestMergeGateIsolation:
 
     def test_changed_files_outside_write_scope_blocked(self, tmp_path: Path) -> None:
         source = tmp_path / "workspace"
-        run_dir = source / ".agent" / "runs" / "run-1"
+        run_dir = source / ".asteria" / "runs" / "run-1"
         run_dir.mkdir(parents=True)
         (source / "secrets.yaml").write_text("key: value", encoding="utf-8")
         (source / "src").mkdir()
@@ -87,7 +87,7 @@ class TestMergeGateIsolation:
 
     def test_successful_candidate_within_scope_promoted(self, tmp_path: Path) -> None:
         source = tmp_path / "workspace"
-        run_dir = source / ".agent" / "runs" / "run-1"
+        run_dir = source / ".asteria" / "runs" / "run-1"
         run_dir.mkdir(parents=True)
         (source / "src").mkdir()
         (source / "src" / "mod.py").write_text("old", encoding="utf-8")
@@ -112,7 +112,7 @@ class TestMergeGateIsolation:
 
     def test_candidate_cleanup_removes_temp_workspace(self, tmp_path: Path) -> None:
         source = tmp_path / "workspace"
-        run_dir = source / ".agent" / "runs" / "run-1"
+        run_dir = source / ".asteria" / "runs" / "run-1"
         run_dir.mkdir(parents=True)
         (source / "tool.py").write_text("v1", encoding="utf-8")
 
@@ -127,23 +127,34 @@ class TestMergeGateIsolation:
     def test_git_worktree_no_merge_on_failure(self, tmp_path: Path) -> None:
         source = tmp_path / "workspace"
         source.mkdir()
-        run_dir = source / ".agent" / "runs" / "run-1"
+        run_dir = source / ".asteria" / "runs" / "run-1"
         run_dir.mkdir(parents=True)
         (source / "tool.py").write_text("v1", encoding="utf-8")
         try:
             subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True, text=True)
             subprocess.run(
                 ["git", "config", "user.email", "agent@example.test"],
-                cwd=source, check=True, capture_output=True, text=True,
+                cwd=source,
+                check=True,
+                capture_output=True,
+                text=True,
             )
             subprocess.run(
                 ["git", "config", "user.name", "Agent Test"],
-                cwd=source, check=True, capture_output=True, text=True,
+                cwd=source,
+                check=True,
+                capture_output=True,
+                text=True,
             )
-            subprocess.run(["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True
+            )
             subprocess.run(
                 ["git", "commit", "-m", "seed"],
-                cwd=source, check=True, capture_output=True, text=True,
+                cwd=source,
+                check=True,
+                capture_output=True,
+                text=True,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             pytest.skip(f"git worktree unavailable: {exc}")
@@ -171,7 +182,10 @@ class TestMergeGateIsolation:
         # Verify the candidate branch exists on the source repo before discard
         branches_before = subprocess.run(
             ["git", "branch", "--list", branch],
-            cwd=source, capture_output=True, text=True, check=True,
+            cwd=source,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         assert branch in branches_before
 
@@ -183,7 +197,10 @@ class TestMergeGateIsolation:
         # Branch should be cleaned up
         branches_after = subprocess.run(
             ["git", "branch", "--list", branch],
-            cwd=source, capture_output=True, text=True, check=True,
+            cwd=source,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         assert branch not in branches_after
 

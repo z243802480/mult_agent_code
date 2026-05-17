@@ -69,7 +69,7 @@ class ResumeCommand:
         self.runtime_evidence = RuntimeEvidenceReader(self.validator)
 
     def run(self) -> ResumeResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
         run_store = RunStore(agent_dir, self.validator)
@@ -89,7 +89,11 @@ class ResumeCommand:
         )
         run = run_store.load_run(run_id)
         task_plan_path = run_dir / "task_plan.json"
-        task_plan = self.store.read(task_plan_path, "task_board") if task_plan_path.exists() else {"tasks": []}
+        task_plan = (
+            self.store.read(task_plan_path, "task_board")
+            if task_plan_path.exists()
+            else {"tasks": []}
+        )
         self._reconcile_with_runtime_evidence(run_dir, task_plan)
 
         if run["status"] == "completed" and applied_decisions == 0:
@@ -263,8 +267,8 @@ class ResumeCommand:
         run_id: str,
     ) -> dict:
         next_index = self._next_task_index(existing_tasks)
-        task_plan_path = f".agent/runs/{run_id}/task_plan.json"
-        task_plan_eval_path = f".agent/runs/{run_id}/task_plan_eval.json"
+        task_plan_path = f".asteria/runs/{run_id}/task_plan.json"
+        task_plan_eval_path = f".asteria/runs/{run_id}/task_plan_eval.json"
         issue_codes = ", ".join(
             str(code) for code in (decision.get("metadata") or {}).get("issue_codes", [])
         )
@@ -365,17 +369,23 @@ class ResumeCommand:
         if metadata.get("kind") != "runtime_request":
             return None
         if not option or option["option_id"] == "reject_request":
-            return "runtime_request_rejected", self._runtime_request_resume_evidence(run_dir, metadata)
+            return "runtime_request_rejected", self._runtime_request_resume_evidence(
+                run_dir, metadata
+            )
         requests = self._runtime_requests_by_id(
             run_dir,
             [str(item) for item in metadata.get("runtime_request_ids", []) if item],
         )
         if not requests:
-            return "runtime_request_missing", self._runtime_request_resume_evidence(run_dir, metadata)
+            return "runtime_request_missing", self._runtime_request_resume_evidence(
+                run_dir, metadata
+            )
         task_id = str(metadata.get("task_id") or "")
         task = self._find_task(task_plan, task_id)
         if task is None:
-            return "runtime_request_task_missing", self._runtime_request_resume_evidence(run_dir, metadata)
+            return "runtime_request_task_missing", self._runtime_request_resume_evidence(
+                run_dir, metadata
+            )
         resume_evidence = self._runtime_request_resume_evidence(run_dir, metadata)
         applied_request_ids = []
         for request in requests:
@@ -527,9 +537,11 @@ class ResumeCommand:
         expected_changed_files = [
             artifact
             for artifact in expected_artifacts
-            if artifact and not artifact.startswith(".agent/")
+            if artifact and not artifact.startswith(".asteria/")
         ]
-        task_kind = "decision" if self._option_action(option) == "require_replan" else "implementation"
+        task_kind = (
+            "decision" if self._option_action(option) == "require_replan" else "implementation"
+        )
         return {
             "schema_version": "0.1.0",
             "task_id": f"task-{next_index:04d}",
@@ -586,7 +598,7 @@ class ResumeCommand:
 
     def _decision_expected_artifacts(self, decision: dict, option: dict, run_id: str) -> list[str]:
         if self._option_action(option) == "require_replan":
-            return [f".agent/runs/{run_id}/task_plan.json"]
+            return [f".asteria/runs/{run_id}/task_plan.json"]
         explicit = option.get("expected_artifacts")
         if isinstance(explicit, list):
             artifacts = [str(item) for item in explicit if item]
@@ -714,9 +726,7 @@ class ResumeCommand:
         if not worker_results and not task_execution_evidence:
             return {"reconciled": False, "reason": "no_runtime_os_evidence"}
         succeeded_workers = {
-            item["task_id"]: item
-            for item in worker_results
-            if item.get("status") == "succeeded"
+            item["task_id"]: item for item in worker_results if item.get("status") == "succeeded"
         }
         blocked_evidence = {
             item["task_id"]: item
@@ -729,9 +739,13 @@ class ResumeCommand:
             task_id = task["task_id"]
             plan_status = task.get("status")
             if task_id in succeeded_workers and plan_status != "done":
-                discrepancies.append({"task_id": task_id, "plan_status": plan_status, "evidence_status": "done"})
+                discrepancies.append(
+                    {"task_id": task_id, "plan_status": plan_status, "evidence_status": "done"}
+                )
             elif task_id in blocked_evidence and plan_status not in ("blocked", "discarded"):
-                discrepancies.append({"task_id": task_id, "plan_status": plan_status, "evidence_status": "blocked"})
+                discrepancies.append(
+                    {"task_id": task_id, "plan_status": plan_status, "evidence_status": "blocked"}
+                )
         return {
             "reconciled": True,
             "succeeded_worker_count": len(succeeded_workers),

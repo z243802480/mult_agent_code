@@ -56,13 +56,15 @@ class WeeklyReportCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> WeeklyReportResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         reports = self._long_run_reports(agent_dir)
         acceptance = self._acceptance_summary(agent_dir)
         runtime_os = self._runtime_os_summary(agent_dir)
         model_profile = self._model_profile(agent_dir)
         risk_summary = self._risk_summary(reports, acceptance, model_profile, runtime_os)
-        next_actions = self._next_actions(reports, acceptance, model_profile, risk_summary, runtime_os)
+        next_actions = self._next_actions(
+            reports, acceptance, model_profile, risk_summary, runtime_os
+        )
         report = {
             "schema_version": "0.1.0",
             "week_id": self.week_id,
@@ -124,7 +126,11 @@ class WeeklyReportCommand:
             "runs": len(recent),
             "latest_ok": bool(latest_source.get("ok")) if latest_source else None,
             "latest_suite": latest_source.get("suite") if latest_source else None,
-            "latest_total": int(aggregate.get("total") or len(latest_source.get("scenarios", [])) if latest_source else 0),
+            "latest_total": int(
+                aggregate.get("total") or len(latest_source.get("scenarios", []))
+                if latest_source
+                else 0
+            ),
             "latest_failed": int(aggregate.get("failed") or len(failures)),
             "failed_scenarios": failures[:10],
         }
@@ -172,10 +178,20 @@ class WeeklyReportCommand:
         }
 
     def _long_run_summary(self, reports: list[dict[str, Any]]) -> dict[str, Any]:
-        attempted = sum(int((report.get("progress") or {}).get("attempted_actions") or 0) for report in reports)
-        completed = sum(int((report.get("progress") or {}).get("completed_actions") or 0) for report in reports)
-        failed = sum(int((report.get("progress") or {}).get("failed_actions") or 0) for report in reports)
-        stopped = [str(report.get("stop_reason")) for report in reports if report.get("stop_reason") not in {None, "plan_only"}]
+        attempted = sum(
+            int((report.get("progress") or {}).get("attempted_actions") or 0) for report in reports
+        )
+        completed = sum(
+            int((report.get("progress") or {}).get("completed_actions") or 0) for report in reports
+        )
+        failed = sum(
+            int((report.get("progress") or {}).get("failed_actions") or 0) for report in reports
+        )
+        stopped = [
+            str(report.get("stop_reason"))
+            for report in reports
+            if report.get("stop_reason") not in {None, "plan_only"}
+        ]
         return {
             "cycles": len(reports),
             "attempted_actions": attempted,
@@ -248,7 +264,9 @@ class WeeklyReportCommand:
     ) -> list[str]:
         actions = []
         if not reports:
-            actions.append("Run `asteria /long-run-plan --objective <goal>` to start a bounded cycle.")
+            actions.append(
+                "Run `asteria /long-run-plan --objective <goal>` to start a bounded cycle."
+            )
         if acceptance.get("latest_failed", 0):
             actions.append("Run `asteria /acceptance --failed-only --promote-failures`.")
         if model_profile.get("status") == "missing":
@@ -256,7 +274,9 @@ class WeeklyReportCommand:
         elif model_profile.get("weak_routes"):
             actions.append("Review weak model routes before scaling long-run execution.")
         if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
-            actions.append("Run `asteria /acceptance --suite core` and `asteria /acceptance-gate --suite core`.")
+            actions.append(
+                "Run `asteria /acceptance --suite core` and `asteria /acceptance-gate --suite core`."
+            )
         if not risks:
             actions.append("Continue with the next long-run cycle and keep acceptance gated.")
         return list(dict.fromkeys(actions))
@@ -293,6 +313,10 @@ class WeeklyReportCommand:
             f"- Worker results: {report['runtime_os']['evidence'].get('worker_results')}",
             f"- Acceptance worker evidence: {report['runtime_os']['evidence'].get('acceptance_worker_results_jsonl')}",
             f"- Task graph selections: {report['runtime_os']['evidence'].get('task_graph_selections')}",
+            f"- Candidate promotions: {report['runtime_os']['evidence'].get('candidate_promotions')} "
+            f"(pending={report['runtime_os']['evidence'].get('candidate_promotions_pending')}, "
+            f"blocked={report['runtime_os']['evidence'].get('candidate_promotions_blocked')}, "
+            f"promoted={report['runtime_os']['evidence'].get('candidate_promotions_promoted')})",
             "",
             "## Risks",
             "",

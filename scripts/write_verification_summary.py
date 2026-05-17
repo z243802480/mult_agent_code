@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import platform
@@ -25,8 +25,8 @@ def main() -> None:
     args = build_parser().parse_args()
     root = args.root.resolve()
     cli_workspace = args.cli_workspace.resolve()
-    snapshots = list((cli_workspace / ".agent" / "context" / "snapshots").glob("*.json"))
-    handoffs = list((cli_workspace / ".agent" / "context" / "handoffs").glob("*.json"))
+    snapshots = list((cli_workspace / ".asteria" / "context" / "snapshots").glob("*.json"))
+    handoffs = list((cli_workspace / ".asteria" / "context" / "handoffs").glob("*.json"))
     summary = {
         "schema_version": "0.1.0",
         "created_at": now_iso(),
@@ -60,8 +60,8 @@ def main() -> None:
         },
     }
     store = JsonStore(SchemaValidator(root / "schemas"))
-    store.write(root / ".agent" / "verification" / "latest.json", summary, "verification_summary")
-    print(f"Wrote verification summary: {root / '.agent' / 'verification' / 'latest.json'}")
+    store.write(root / ".asteria" / "verification" / "latest.json", summary, "verification_summary")
+    print(f"Wrote verification summary: {root / '.asteria' / 'verification' / 'latest.json'}")
 
 
 if __name__ == "__main__":

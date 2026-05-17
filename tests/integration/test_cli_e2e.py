@@ -34,7 +34,7 @@ def test_cli_e2e_offline_session_run(tmp_path: Path) -> None:
     run = run_agent(tmp_path, "/run", "--root", str(workspace))
     handoff = run_agent(tmp_path, "/handoff", "--root", str(workspace), "--to", "ReviewerAgent")
 
-    assert "Initialized agent workspace" in init.stdout
+    assert "Initialized Asteria workspace" in init.stdout
     assert "Call: ok" in check.stdout
     assert "Created new isolated session" in new.stdout
     assert "Brainstorm run:" in brainstorm.stdout

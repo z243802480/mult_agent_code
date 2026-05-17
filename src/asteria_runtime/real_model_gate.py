@@ -140,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--summary-json",
         type=Path,
         default=None,
-        help="Machine-readable gate report. Defaults to <root>/.agent/model/real_model_gate_report.json.",
+        help="Machine-readable gate report. Defaults to <root>/.asteria/model/real_model_gate_report.json.",
     )
     parser.add_argument("--python", default=sys.executable, help="Python executable.")
     parser.add_argument(
@@ -176,7 +176,9 @@ def validate_environment(*, allow_fake: bool) -> None:
     if not medium:
         raise GateFailure("AGENT_MODEL_MEDIUM_PROVIDER is required for gray gate.")
     if not allow_fake and (strong in OFFLINE_PROVIDERS or medium in OFFLINE_PROVIDERS):
-        raise GateFailure("fake/offline routes require --allow-fake and are not gray-release evidence.")
+        raise GateFailure(
+            "fake/offline routes require --allow-fake and are not gray-release evidence."
+        )
     if not allow_fake:
         _require_route_key("strong")
         _require_route_key("medium")
@@ -192,31 +194,37 @@ def prepare_workspace(root: Path | None) -> tuple[Path, bool]:
 
 def run_gate(args: argparse.Namespace, result: GateResult) -> None:
     os.environ["AGENT_MODEL_GATE_COMMAND_TIMEOUT_SECONDS"] = str(args.command_timeout_seconds)
-    result.checks["strong_model_check"] = run_command(
-        result,
-        args.python,
-        "-m",
-        "asteria_runtime",
-        "/model-check",
-        "--root",
-        str(result.workspace),
-        "--tier",
-        "strong",
-        name="model-check-strong",
-    ).returncode == 0
-    result.checks["medium_model_check"] = run_command(
-        result,
-        args.python,
-        "-m",
-        "asteria_runtime",
-        "/model-check",
-        "--root",
-        str(result.workspace),
-        "--tier",
-        "medium",
-        name="model-check-medium",
-    ).returncode == 0
-    smoke_summary = result.workspace / ".agent" / "model" / "real_model_smoke_summary.json"
+    result.checks["strong_model_check"] = (
+        run_command(
+            result,
+            args.python,
+            "-m",
+            "asteria_runtime",
+            "/model-check",
+            "--root",
+            str(result.workspace),
+            "--tier",
+            "strong",
+            name="model-check-strong",
+        ).returncode
+        == 0
+    )
+    result.checks["medium_model_check"] = (
+        run_command(
+            result,
+            args.python,
+            "-m",
+            "asteria_runtime",
+            "/model-check",
+            "--root",
+            str(result.workspace),
+            "--tier",
+            "medium",
+            name="model-check-medium",
+        ).returncode
+        == 0
+    )
+    smoke_summary = result.workspace / ".asteria" / "model" / "real_model_smoke_summary.json"
     smoke_args = [
         "-m",
         "asteria_runtime.real_model_smoke",
@@ -228,7 +236,10 @@ def run_gate(args: argparse.Namespace, result: GateResult) -> None:
         str(args.smoke_run_attempts),
         "--no-research",
     ]
-    if route_provider("strong") in OFFLINE_PROVIDERS or route_provider("medium") in OFFLINE_PROVIDERS:
+    if (
+        route_provider("strong") in OFFLINE_PROVIDERS
+        or route_provider("medium") in OFFLINE_PROVIDERS
+    ):
         smoke_args.extend(
             [
                 "--allow-fake",
@@ -240,12 +251,15 @@ def run_gate(args: argparse.Namespace, result: GateResult) -> None:
                 "offline verification artifact",
             ]
         )
-    result.checks["smoke"] = run_command(
-        result,
-        args.python,
-        *smoke_args,
-        name="real-model-smoke",
-    ).returncode == 0
+    result.checks["smoke"] = (
+        run_command(
+            result,
+            args.python,
+            *smoke_args,
+            name="real-model-smoke",
+        ).returncode
+        == 0
+    )
     result.smoke_summary = read_json(smoke_summary)
     inspect_smoke_evidence(result)
 
@@ -255,7 +269,7 @@ def inspect_smoke_evidence(result: GateResult) -> None:
     if not run_id:
         result.failures.append("smoke summary did not include a run_id")
         return
-    run_dir = result.workspace / ".agent" / "runs" / str(run_id)
+    run_dir = result.workspace / ".asteria" / "runs" / str(run_id)
     model_calls = read_jsonl(run_dir / "model_calls.jsonl")
     worker_results = read_jsonl(run_dir / "worker_results.jsonl")
     task_evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")
@@ -281,7 +295,9 @@ def inspect_smoke_evidence(result: GateResult) -> None:
     result.checks["medium_route_used"] = "medium" in tiers
     result.checks["worker_results_recorded"] = len(worker_results) > 0
     result.checks["task_execution_evidence_recorded"] = len(task_evidence) > 0
-    result.checks["cost_report_consistent"] = int(cost_report.get("model_calls", -1)) == len(model_calls)
+    result.checks["cost_report_consistent"] = int(cost_report.get("model_calls", -1)) == len(
+        model_calls
+    )
     for check, ok in result.checks.items():
         if not ok:
             result.failures.append(f"check failed: {check}")
@@ -361,25 +377,29 @@ def _require_route_key(tier: str) -> None:
 def write_report(args: argparse.Namespace, result: GateResult) -> None:
     path = report_path(args, result.workspace)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(result.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(result.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
 
 
 def report_path(args: argparse.Namespace, workspace: Path) -> Path:
     if args.summary_json:
         return args.summary_json.resolve()
-    return workspace / ".agent" / "model" / "real_model_gate_report.json"
+    return workspace / ".asteria" / "model" / "real_model_gate_report.json"
 
 
 def recommended_actions(failures: list[str]) -> list[str]:
     if not failures:
-        return [
-            "Run `asteria real-model-acceptance --suite gray` before core acceptance."
-        ]
+        return ["Run `asteria real-model-acceptance --suite gray` before core acceptance."]
     actions = ["Fix failed route checks before gray release validation."]
     if any("strong" in failure for failure in failures):
-        actions.append("Check GLM/coordinator provider key, endpoint, JSON response, and tier routing.")
+        actions.append(
+            "Check GLM/coordinator provider key, endpoint, JSON response, and tier routing."
+        )
     if any("medium" in failure for failure in failures):
-        actions.append("Check MiniMax/worker provider key, endpoint, JSON response, and tier routing.")
+        actions.append(
+            "Check MiniMax/worker provider key, endpoint, JSON response, and tier routing."
+        )
     if any("smoke" in failure for failure in failures):
         actions.append("Inspect real_model_smoke transcript before widening scenario coverage.")
     return actions
@@ -394,7 +414,9 @@ def read_json(path: Path) -> dict[str, Any]:
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def redact(value: str) -> str:

@@ -60,8 +60,7 @@ class CapabilityReportResult:
             lines.append("Capabilities:")
             for capability, summary in sorted(self.capability_summary.items()):
                 lines.append(
-                    f"  - {capability}: {summary.get('passed', 0)}/"
-                    f"{summary.get('total', 0)} passed"
+                    f"  - {capability}: {summary.get('passed', 0)}/{summary.get('total', 0)} passed"
                 )
         if self.failure_types:
             lines.append("Failure types:")
@@ -100,10 +99,7 @@ class CapabilityReportResult:
             )
             if evidence.get("acceptance_worker_results_jsonl"):
                 lines.append("  - acceptance worker evidence: present")
-            lines.append(
-                "  - task graph selections: "
-                f"{evidence.get('task_graph_selections', 0)}"
-            )
+            lines.append(f"  - task graph selections: {evidence.get('task_graph_selections', 0)}")
             missing = gate.get("missing_capabilities") or []
             if missing:
                 lines.append("  - missing capabilities: " + ", ".join(missing))
@@ -129,9 +125,11 @@ class CapabilityReportCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> CapabilityReportResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         acceptance_runs = self._acceptance_history(agent_dir)[-self.limit :]
-        latest = self._latest_acceptance(agent_dir) or (acceptance_runs[-1] if acceptance_runs else {})
+        latest = self._latest_acceptance(agent_dir) or (
+            acceptance_runs[-1] if acceptance_runs else {}
+        )
         capability_summary = self._capability_summary(acceptance_runs, latest)
         failure_types, blockers, repair_rounds = self._execution_evidence_summary(agent_dir)
         model_calls, tool_calls = self._cost_signals(agent_dir)
@@ -232,9 +230,7 @@ class CapabilityReportCommand:
                 blocker_counts[summary] = blocker_counts.get(summary, 0) + 1
         blockers = [
             item
-            for item, _count in sorted(
-                blocker_counts.items(), key=lambda pair: (-pair[1], pair[0])
-            )
+            for item, _count in sorted(blocker_counts.items(), key=lambda pair: (-pair[1], pair[0]))
         ]
         average = sum(repair_counts) / len(repair_counts) if repair_counts else 0.0
         return failure_types, blockers, average
@@ -423,11 +419,17 @@ class CapabilityReportCommand:
             for item in self.jsonl.read_all(workers_path, "worker_invocation")
             if item.get("worker_invocation_id")
         }
-        validations = {
-            item["validation_result_id"]: item
-            for item in self.jsonl.read_all(run_dir / "validation_results.jsonl", "validation_result")
-            if item.get("validation_result_id")
-        } if (run_dir / "validation_results.jsonl").exists() else {}
+        validations = (
+            {
+                item["validation_result_id"]: item
+                for item in self.jsonl.read_all(
+                    run_dir / "validation_results.jsonl", "validation_result"
+                )
+                if item.get("validation_result_id")
+            }
+            if (run_dir / "validation_results.jsonl").exists()
+            else {}
+        )
         for result in self.jsonl.read_all(worker_results_path, "worker_result"):
             worker = workers.get(result.get("worker_invocation_id"))
             if not worker:
@@ -451,7 +453,9 @@ class CapabilityReportCommand:
             else:
                 profile["failed_workers"] += 1
                 failure_type = str(result.get("status") or "worker_failed")
-                profile["failure_types"][failure_type] = profile["failure_types"].get(failure_type, 0) + 1
+                profile["failure_types"][failure_type] = (
+                    profile["failure_types"].get(failure_type, 0) + 1
+                )
                 if len(profile["recent_failures"]) < 5:
                     profile["recent_failures"].append(str(result.get("summary") or failure_type))
             raw_validation_refs = result.get("validation_refs")
@@ -576,7 +580,11 @@ class CapabilityReportCommand:
             return "keep_route"
         if failure_types.get("authentication") or failure_types.get("budget"):
             return "pause_route_until_config_fixed"
-        if failure_types.get("rate_limited") or failure_types.get("timeout") or failure_types.get("network"):
+        if (
+            failure_types.get("rate_limited")
+            or failure_types.get("timeout")
+            or failure_types.get("network")
+        ):
             return "fallback_or_retry_later"
         if failure_types.get("provider_response"):
             return "use_json_stricter_or_switch_model"
@@ -590,7 +598,9 @@ class CapabilityReportCommand:
             return [run_store.run_dir(str(run["run_id"])) for run in run_store.list_sessions()]
         except (FileNotFoundError, RuntimeError, KeyError):
             runs_dir = agent_dir / "runs"
-            return [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
+            return (
+                [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
+            )
 
     def _read_jsonl(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
         return self.jsonl.read_all(path, schema_name) if path.exists() else []
@@ -658,10 +668,11 @@ class CapabilityReportCommand:
         ]
         if weak_models:
             labels = [
-                f"{item['provider']}/{item['model']}:{item['purpose']}"
-                for item in weak_models[:3]
+                f"{item['provider']}/{item['model']}:{item['purpose']}" for item in weak_models[:3]
             ]
-            actions.append("Review weak model routes before scaling long-run work: " + ", ".join(labels))
+            actions.append(
+                "Review weak model routes before scaling long-run work: " + ", ".join(labels)
+            )
         if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
             actions.append(
                 "Run Runtime OS core acceptance and gate before release: "

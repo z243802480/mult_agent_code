@@ -51,7 +51,7 @@ class HandoffCommand:
         self.store = JsonStore(self.validator)
 
     def run(self) -> HandoffResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
 

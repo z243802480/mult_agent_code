@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CandidatePromotion",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "promotion_id",
+    "run_id",
+    "task_id",
+    "candidate_id",
+    "workspace",
+    "strategy",
+    "workspace_policy",
+    "backend_reason",
+    "promotable_files",
+    "promoted_files",
+    "status",
+    "approval_mode",
+    "merge_gate",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "promotion_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "candidate_id": { "type": "string" },
+    "workspace": { "type": "string" },
+    "strategy": { "type": "string" },
+    "workspace_policy": { "type": "string" },
+    "backend_reason": { "type": "string" },
+    "branch_name": { "type": ["string", "null"] },
+    "promotable_files": { "type": "array", "items": { "type": "string" } },
+    "promoted_files": { "type": "array", "items": { "type": "string" } },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "pending_manual_approval",
+        "auto_approved",
+        "approved",
+        "promoted",
+        "blocked",
+        "promotion_failed",
+        "rejected",
+        "discarded"
+      ]
+    },
+    "approval_mode": { "type": "string", "enum": ["auto", "manual"] },
+    "merge_gate": { "type": "object" },
+    "failure": { "type": ["object", "null"] },
+    "decision": { "type": ["object", "null"] },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

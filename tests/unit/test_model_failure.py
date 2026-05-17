@@ -43,7 +43,7 @@ def test_model_failure_recorder_writes_report_and_memory(tmp_path: Path) -> None
         error="HTTP 503 unavailable",
     )
 
-    assert report_path == tmp_path / ".agent" / "model" / "latest_failure.json"
+    assert report_path == tmp_path / ".asteria" / "model" / "latest_failure.json"
     assert report_path.exists()
     assert report["failure_type"] == "server_error"
 
@@ -52,7 +52,7 @@ def test_model_failure_recorder_writes_report_and_memory(tmp_path: Path) -> None
 
     memories = [
         json.loads(line)
-        for line in (tmp_path / ".agent" / "memory" / "failures.jsonl")
+        for line in (tmp_path / ".asteria" / "memory" / "failures.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]

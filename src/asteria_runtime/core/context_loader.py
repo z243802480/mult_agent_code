@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -31,13 +32,16 @@ class ContextLoader:
         self.jsonl = JsonlStore(validator)
 
     def load(self, run_id: str | None = None) -> dict:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         return {
             "memory": self._memory(agent_dir),
             "latest_snapshot": self._latest_snapshot(agent_dir, run_id),
             "latest_handoff": self._latest_handoff(agent_dir),
             "acceptance_failures": self._acceptance_failures(agent_dir),
             "task_failures": self._task_failures(agent_dir, run_id),
+            "capability_feedback": CapabilityFeedbackAdvisor(self.validator).planner_hints(
+                agent_dir
+            ),
             "workspace_files": self._workspace_files(),
         }
 
@@ -206,7 +210,7 @@ class ContextLoader:
         except ValueError:
             return True
         parts = set(relative.parts)
-        if parts & {".agent", ".git", "secrets", "__pycache__", ".pytest_cache"}:
+        if parts & {".asteria", ".git", "secrets", "__pycache__", ".pytest_cache"}:
             return True
         name = path.name.lower()
         if name == ".env" or name.startswith(".env.") or name.endswith((".pem", ".key")):

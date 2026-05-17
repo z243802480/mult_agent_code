@@ -6,7 +6,7 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> None:
-    agent_dir = tmp_path / ".agent"
+    agent_dir = tmp_path / ".asteria"
     agent_dir.mkdir()
     policy_path = agent_dir / "policies.json"
     policy_path.write_text(

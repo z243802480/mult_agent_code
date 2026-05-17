@@ -64,7 +64,7 @@ def test_compact_command_creates_snapshot_from_latest_run(tmp_path: Path) -> Non
     assert snapshot["definition_of_done"] == ["can run locally"]
     assert snapshot["active_tasks"] == ["task-0001"]
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "context_compacted" in events
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
@@ -86,7 +86,7 @@ def test_handoff_command_creates_package_from_snapshot(tmp_path: Path) -> None:
     assert package["recommended_next_command"] == "execute"
     assert package["snapshot_id"].startswith("snapshot-")
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "Created handoff package for ReviewerAgent" in events
 
@@ -97,10 +97,10 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
-    run_store = RunStore(tmp_path / ".agent", validator)
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     store.write(
-        tmp_path / ".agent" / "verification" / "latest.json",
+        tmp_path / ".asteria" / "verification" / "latest.json",
         {
             "schema_version": "0.1.0",
             "created_at": "2026-04-30T10:00:00+08:00",
@@ -112,15 +112,17 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
         "verification_summary",
     )
     store.write(
-        tmp_path / ".agent" / "acceptance" / "failures" / "markdown_kb.json",
+        tmp_path / ".asteria" / "acceptance" / "failures" / "markdown_kb.json",
         {
             "schema_version": "0.1.0",
             "evidence_id": "acceptance-failure-markdown_kb",
             "suite": "core",
             "scenario": "markdown_kb",
             "failure_summary": "Expected markdown_kb.py was not created",
-            "acceptance_report": str(tmp_path / ".agent" / "acceptance" / "acceptance_report.json"),
-            "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+            "acceptance_report": str(
+                tmp_path / ".asteria" / "acceptance" / "acceptance_report.json"
+            ),
+            "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
             "workspace": str(tmp_path / "acceptance" / "markdown_kb"),
             "transcript": str(tmp_path / "acceptance" / "markdown_kb" / "transcript.json"),
             "expected_file": str(tmp_path / "acceptance" / "markdown_kb" / "markdown_kb.py"),
@@ -160,7 +162,7 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
         ]
     )
     store.write(task_plan_path, task_plan, "task_board")
-    store.write(tmp_path / ".agent" / "tasks" / "backlog.json", task_plan, "task_board")
+    store.write(tmp_path / ".asteria" / "tasks" / "backlog.json", task_plan, "task_board")
     run = run_store.load_run(plan.run_id)
     run["status"] = "paused"
     run["current_phase"] = "DECISION"
@@ -351,12 +353,10 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert snapshot["runtime_requests"][0]["runtime_request_id"] == "runtime-request-0001"
     assert snapshot["runtime_requests"][0]["details"]["write_scope"] == ["WEB_UI.md"]
     assert snapshot["worker_summary"]["by_status"]["failed"] == 1
-    assert snapshot["worker_summary"]["recent"][0]["failure_evidence_refs"] == [
-        "task-failure-0001"
-    ]
+    assert snapshot["worker_summary"]["recent"][0]["failure_evidence_refs"] == ["task-failure-0001"]
     assert snapshot["acceptance_failures"][0]["scenario"] == "markdown_kb"
     assert snapshot["acceptance_failures"][0]["evidence_path"] == (
-        ".agent/acceptance/failures/markdown_kb.json"
+        ".asteria/acceptance/failures/markdown_kb.json"
     )
     assert "task failure evidence" in snapshot["open_risks"][1]
     assert "acceptance failure evidence" in snapshot["open_risks"][2]
@@ -375,8 +375,8 @@ def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     assert package["acceptance_failures"][0]["failure_summary"] == (
         "Expected markdown_kb.py was not created"
     )
-    assert ".agent/runs/" + plan.run_id + "/task_failures.jsonl" in package["recent_artifacts"]
-    assert ".agent/acceptance/failures/markdown_kb.json" in package["recent_artifacts"]
+    assert ".asteria/runs/" + plan.run_id + "/task_failures.jsonl" in package["recent_artifacts"]
+    assert ".asteria/acceptance/failures/markdown_kb.json" in package["recent_artifacts"]
     assert "password_tool.py" in package["recent_artifacts"]
     assert "Need user decision" in package["report_summaries"]["review_report"]
 
@@ -386,7 +386,7 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
     plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
     HandoffCommand(tmp_path, to_role="FutureRun").run()
     JsonStore(SchemaValidator(Path.cwd() / "schemas")).write(
-        tmp_path / ".agent" / "verification" / "latest.json",
+        tmp_path / ".asteria" / "verification" / "latest.json",
         {
             "schema_version": "0.1.0",
             "created_at": "2026-04-30T10:00:00+08:00",
@@ -402,8 +402,8 @@ def test_sessions_command_can_show_latest_recovery_context(tmp_path: Path) -> No
     text = result.to_text()
     context = result.context[plan.run_id]
 
-    assert context["snapshot_path"].startswith(".agent/context/snapshots/")
-    assert context["handoff_path"].startswith(".agent/context/handoffs/")
+    assert context["snapshot_path"].startswith(".asteria/context/snapshots/")
+    assert context["handoff_path"].startswith(".asteria/context/handoffs/")
     assert context["recommended_next_command"] == "execute"
     assert context["verification"]["status"] == "passed"
     assert context["task_summary"]["remaining"] == 1
@@ -421,7 +421,7 @@ def test_sessions_context_summarizes_blockers_cost_and_failure_evidence(
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     task_plan["tasks"][0]["status"] = "blocked"
     task_plan["tasks"][0]["notes"] = "verification failed"
@@ -488,15 +488,17 @@ def test_sessions_context_shows_acceptance_failure_recovery_pointer(tmp_path: Pa
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
     JsonStore(SchemaValidator(Path.cwd() / "schemas")).write(
-        tmp_path / ".agent" / "acceptance" / "failures" / "markdown_kb.json",
+        tmp_path / ".asteria" / "acceptance" / "failures" / "markdown_kb.json",
         {
             "schema_version": "0.1.0",
             "evidence_id": "acceptance-failure-markdown_kb",
             "suite": "core",
             "scenario": "markdown_kb",
             "failure_summary": "Expected markdown_kb.py was not created",
-            "acceptance_report": str(tmp_path / ".agent" / "acceptance" / "acceptance_report.json"),
-            "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+            "acceptance_report": str(
+                tmp_path / ".asteria" / "acceptance" / "acceptance_report.json"
+            ),
+            "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
             "workspace": str(tmp_path / "acceptance" / "markdown_kb"),
             "transcript": str(tmp_path / "acceptance" / "markdown_kb" / "transcript.json"),
             "expected_file": str(tmp_path / "acceptance" / "markdown_kb" / "markdown_kb.py"),
@@ -523,7 +525,7 @@ def test_sessions_context_shows_acceptance_failure_recovery_pointer(tmp_path: Pa
     assert context["acceptance_failure_count"] == 1
     assert context["latest_acceptance_failure"]["scenario"] == "markdown_kb"
     assert context["acceptance_failures"][0]["evidence_path"] == (
-        ".agent/acceptance/failures/markdown_kb.json"
+        ".asteria/acceptance/failures/markdown_kb.json"
     )
     assert "next: debug" in text
     assert "acceptance failures: 1 (latest: markdown_kb)" in text

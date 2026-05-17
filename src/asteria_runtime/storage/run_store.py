@@ -11,8 +11,8 @@ from asteria_runtime.utils.time import now_iso
 
 class RunStore:
     def __init__(self, agent_dir: Path, validator: SchemaValidator | None = None) -> None:
-        self.agent_dir = agent_dir
-        self.runs_dir = self.agent_dir / "runs"
+        self.asteria_dir = agent_dir
+        self.runs_dir = self.asteria_dir / "runs"
         self.runs_dir.mkdir(parents=True, exist_ok=True)
         self.store = JsonStore(validator)
 
@@ -29,10 +29,7 @@ class RunStore:
             "ended_at": None,
             "entry_command": entry_command,
             "current_phase": "INIT",
-            "workspace": {
-                "mode": "single_workspace",
-                "path": "."
-            },
+            "workspace": {"mode": "single_workspace", "path": "."},
             "summary": "",
         }
         self.store.write(run_dir / "run.json", run, "run")
@@ -51,21 +48,21 @@ class RunStore:
             "set_at": now_iso(),
             "reason": reason,
         }
-        self.store.write(self.agent_dir / "current_session.json", current, "current_session")
+        self.store.write(self.asteria_dir / "current_session.json", current, "current_session")
         return current
 
     def set_current_run(self, run_id: str, reason: str) -> dict:
         return self.set_current_session(run_id, reason)
 
     def current_session_id(self) -> str | None:
-        path = self.agent_dir / "current_session.json"
+        path = self.asteria_dir / "current_session.json"
         if path.exists():
             current = self.store.read(path, "current_session")
             session_id = str(current["session_id"])
             if (self.run_dir(session_id) / "run.json").exists():
                 return session_id
             return self.latest_run_id()
-        legacy_path = self.agent_dir / "current_run.json"
+        legacy_path = self.asteria_dir / "current_run.json"
         if legacy_path.exists():
             current = self.store.read(legacy_path, "current_run")
             run_id = str(current["run_id"])
@@ -78,7 +75,7 @@ class RunStore:
         return self.current_session_id()
 
     def current_session_path(self) -> Path:
-        return self.agent_dir / "current_session.json"
+        return self.asteria_dir / "current_session.json"
 
     def current_run_path(self) -> Path:
         return self.current_session_path()

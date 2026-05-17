@@ -57,12 +57,12 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["ok"] is True
     assert summary["scenarios"][0]["scenario"] == "offline_artifact"
-    report_path = tmp_path / "acceptance" / ".agent" / "acceptance" / "acceptance_report.json"
+    report_path = tmp_path / "acceptance" / ".asteria" / "acceptance" / "acceptance_report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["ok"] is True
     assert report["summary_json"] == str(summary_path)
     assert report["scenarios"][0]["scenario"] == "offline_artifact"
-    history_path = tmp_path / "acceptance" / ".agent" / "acceptance" / "history.jsonl"
+    history_path = tmp_path / "acceptance" / ".asteria" / "acceptance" / "history.jsonl"
     history = [
         json.loads(line)
         for line in history_path.read_text(encoding="utf-8").splitlines()
@@ -101,10 +101,10 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    run_store = RunStore(tmp_path / ".agent", validator)
+    run_store = RunStore(tmp_path / ".asteria", validator)
     run = run_store.create_run("test")
     run_store.set_current_session(run["run_id"], "test setup")
-    run_dir = tmp_path / ".agent" / "runs" / run["run_id"]
+    run_dir = tmp_path / ".asteria" / "runs" / run["run_id"]
     task_plan = {
         "schema_version": "0.1.0",
         "tasks": [
@@ -178,7 +178,7 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     assert "markdown_kb.py" in task["description"]
     assert "reproduce with:" in task["notes"]
     assert "The reproduction command succeeds" in task["acceptance"][1]
-    assert task["expected_artifacts"] == [".agent/acceptance/failures/markdown_kb.json"]
+    assert task["expected_artifacts"] == [".asteria/acceptance/failures/markdown_kb.json"]
     evidence_path = tmp_path / task["expected_artifacts"][0]
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert evidence["scenario"] == "markdown_kb"
@@ -192,12 +192,12 @@ def test_acceptance_failure_promoter_adds_ready_task_to_current_session(tmp_path
     )
     validator.validate("acceptance_failure_evidence", evidence)
     backlog = json.loads(
-        (tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8")
+        (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")
     )
     assert backlog["tasks"][1]["task_id"] == "task-0002"
     updated_run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert updated_run["status"] == "running"
-    memory_path = tmp_path / ".agent" / "memory" / "failures.jsonl"
+    memory_path = tmp_path / ".asteria" / "memory" / "failures.jsonl"
     memories = [
         json.loads(line)
         for line in memory_path.read_text(encoding="utf-8").splitlines()
@@ -250,16 +250,16 @@ def test_acceptance_failure_promoter_creates_repair_session_without_current_sess
 
     promoted = AcceptanceFailurePromoter(tmp_path, validator).promote(report)
 
-    run_store = RunStore(tmp_path / ".agent", validator)
+    run_store = RunStore(tmp_path / ".asteria", validator)
     run_id = run_store.current_session_id()
     assert promoted == ["task-0001"]
     assert run_id is not None
-    run_dir = tmp_path / ".agent" / "runs" / run_id
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
     assert (run_dir / "goal_spec.json").exists()
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["title"] == "Repair acceptance scenario: password_cli"
     evidence = json.loads(
-        (tmp_path / ".agent" / "acceptance" / "failures" / "password_cli.json").read_text(
+        (tmp_path / ".asteria" / "acceptance" / "failures" / "password_cli.json").read_text(
             encoding="utf-8"
         )
     )
@@ -273,7 +273,7 @@ def test_acceptance_failure_promoter_does_not_reuse_paused_repair_session(
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    run_store = RunStore(tmp_path / ".agent", validator)
+    run_store = RunStore(tmp_path / ".asteria", validator)
     stale = run_store.create_run("old acceptance repair", goal_id="goal-acceptance-repair")
     stale_dir = run_store.run_dir(stale["run_id"])
     store.write(
@@ -332,9 +332,7 @@ def test_acceptance_failure_promoter_does_not_reuse_paused_repair_session(
     stale_plan = json.loads((stale_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(stale_plan["tasks"]) == 1
     new_plan = json.loads(
-        (tmp_path / ".agent" / "runs" / new_run_id / "task_plan.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_path / ".asteria" / "runs" / new_run_id / "task_plan.json").read_text(encoding="utf-8")
     )
     assert new_plan["tasks"][0]["title"] == "Repair acceptance scenario: safe_file_renamer"
 
@@ -388,7 +386,7 @@ def test_acceptance_command_failed_only_uses_latest_failed_scenarios(
     monkeypatch,
 ) -> None:
     InitCommand(tmp_path).run()
-    report_path = tmp_path / ".agent" / "acceptance" / "acceptance_report.json"
+    report_path = tmp_path / ".asteria" / "acceptance" / "acceptance_report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(
         json.dumps(
@@ -459,7 +457,7 @@ def test_acceptance_command_failed_only_uses_latest_failed_scenarios(
     assert captured["command"].count("--scenario") == 1
     assert "multi_file_todo_cli" in captured["command"]
     workspace_root = Path(captured["command"][captured["command"].index("--root") + 1])
-    assert workspace_root.is_relative_to(tmp_path / ".agent" / "acceptance" / "workspaces")
+    assert workspace_root.is_relative_to(tmp_path / ".asteria" / "acceptance" / "workspaces")
 
 
 def test_acceptance_result_prints_promoted_run_text(tmp_path: Path) -> None:
@@ -561,7 +559,7 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
         promoted_run_max_iterations=1,
     ).run()
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     promoted_task = next(
         task
@@ -576,7 +574,7 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     assert promoted_task["status"] == "done"
     assert (run_dir / "final_report.md").exists()
     assert (tmp_path / "offline_artifact.txt").exists()
-    memory_path = tmp_path / ".agent" / "memory" / "failures.jsonl"
+    memory_path = tmp_path / ".asteria" / "memory" / "failures.jsonl"
     memories = [
         json.loads(line)
         for line in memory_path.read_text(encoding="utf-8").splitlines()
@@ -649,7 +647,9 @@ def test_acceptance_command_can_fail_on_trend_warning(
     ).run()
 
     report = json.loads(
-        (tmp_path / ".agent" / "acceptance" / "acceptance_report.json").read_text(encoding="utf-8")
+        (tmp_path / ".asteria" / "acceptance" / "acceptance_report.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert not result.ok
@@ -716,7 +716,9 @@ def test_acceptance_report_records_failure_attribution_and_repair_workflow(
     ).run()
 
     report = json.loads(
-        (tmp_path / ".agent" / "acceptance" / "acceptance_report.json").read_text(encoding="utf-8")
+        (tmp_path / ".asteria" / "acceptance" / "acceptance_report.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert not result.ok
@@ -785,7 +787,7 @@ def test_acceptance_promotion_adds_targeted_repair_focus_for_core_capabilities(
         promote_failures=True,
     ).run()
 
-    run_dir = next((tmp_path / ".agent" / "runs").iterdir())
+    run_dir = next((tmp_path / ".asteria" / "runs").iterdir())
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     todo_task = next(
         task
@@ -798,11 +800,11 @@ def test_acceptance_promotion_adds_targeted_repair_focus_for_core_capabilities(
         if task["title"] == "Repair acceptance scenario: config_driven_report"
     )
     todo_evidence = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(
-        tmp_path / ".agent" / "acceptance" / "failures" / "multi_file_todo_cli.json",
+        tmp_path / ".asteria" / "acceptance" / "failures" / "multi_file_todo_cli.json",
         "acceptance_failure_evidence",
     )
     report_evidence = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(
-        tmp_path / ".agent" / "acceptance" / "failures" / "config_driven_report.json",
+        tmp_path / ".asteria" / "acceptance" / "failures" / "config_driven_report.json",
         "acceptance_failure_evidence",
     )
 
@@ -817,8 +819,9 @@ def test_acceptance_promotion_adds_targeted_repair_focus_for_core_capabilities(
     assert "python todo.py add" in todo_task["verification_policy"]["commands"][0]
     assert report_task["expected_changed_files"] == ["report_from_config.py", "report.md"]
     assert "report_config.json as the source of truth" in report_task["description"]
-    assert "python report_from_config.py report_config.json" in (
-        report_task["verification_policy"]["commands"][0]
+    assert (
+        "python report_from_config.py report_config.json"
+        in (report_task["verification_policy"]["commands"][0])
     )
     assert todo_evidence["repair_focus"]["capability"] == "multi_file_change"
     assert report_evidence["repair_focus"]["capability"] == "configuration_change"
@@ -889,9 +892,11 @@ def test_acceptance_failure_can_be_rerun_after_promoted_repair(
         promoted_run_max_iterations=1,
     ).run()
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     report = json.loads(
-        (tmp_path / ".agent" / "acceptance" / "acceptance_report.json").read_text(encoding="utf-8")
+        (tmp_path / ".asteria" / "acceptance" / "acceptance_report.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert acceptance_calls == 2

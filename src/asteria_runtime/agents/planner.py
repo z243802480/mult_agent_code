@@ -165,14 +165,18 @@ class RequirementPlanner:
         explicit_files = self._explicit_goal_files(goal_spec)
         if len([item for item in explicit_files if item.endswith(".py")]) < 2:
             return False
-        has_tool_shape = any(marker in text for marker in {" cli", "command", "entrypoint", "package"})
+        has_tool_shape = any(
+            marker in text for marker in {" cli", "command", "entrypoint", "package"}
+        )
         has_runtime_checks = bool(self._command_examples(goal_spec)) or "support `" in text
         return has_tool_shape and has_runtime_checks
 
     def _is_targeted_repair_goal(self, goal_spec: dict) -> bool:
         text = self._goal_text(goal_spec).lower()
         explicit_files = [
-            item for item in self._explicit_goal_files(goal_spec) if not self._is_runtime_data_artifact(item)
+            item
+            for item in self._explicit_goal_files(goal_spec)
+            if not self._is_runtime_data_artifact(item)
         ]
         has_repair_intent = any(
             marker in text
@@ -196,7 +200,9 @@ class RequirementPlanner:
         requirement = {
             "id": "req-targeted-repair",
             "priority": "must",
-            "description": str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""),
+            "description": str(
+                goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""
+            ),
             "acceptance": acceptance,
             "expected_artifacts": artifacts,
         }
@@ -222,7 +228,9 @@ class RequirementPlanner:
             "notes": (
                 "Grouped into one targeted repair slice because the goal names the failing "
                 "behavior and concrete file boundary. "
-                + self._notes("req-targeted-repair", requirement, artifacts, runtime_context, quality)
+                + self._notes(
+                    "req-targeted-repair", requirement, artifacts, runtime_context, quality
+                )
             ),
         }
         task["completion_contract"] = completion_contract(task)
@@ -261,9 +269,7 @@ class RequirementPlanner:
     def _atomic_multifile_task(self, goal_spec: dict, runtime_context: dict) -> dict:
         artifacts = self._explicit_goal_files(goal_spec)
         source_artifacts = [
-            artifact
-            for artifact in artifacts
-            if not self._is_runtime_data_artifact(artifact)
+            artifact for artifact in artifacts if not self._is_runtime_data_artifact(artifact)
         ]
         acceptance = self._atomic_multifile_acceptance(goal_spec, artifacts)
         description_lines = [
@@ -302,7 +308,9 @@ class RequirementPlanner:
                 "Grouped into one complete multi-file tool slice because the goal names a "
                 "coupled artifact set that must work together. Runtime data artifacts are "
                 "verified through commands, not required as source edits. "
-                + self._notes("req-atomic-multifile", requirement, artifacts, runtime_context, quality)
+                + self._notes(
+                    "req-atomic-multifile", requirement, artifacts, runtime_context, quality
+                )
             ),
         }
         task["completion_contract"] = completion_contract(task)
@@ -664,11 +672,12 @@ class RequirementPlanner:
         return None
 
     def _allowed_tools(self, kind: str) -> list[str]:
-        readonly = ["read_file", "search_text", "run_command", "run_tests"]
+        readonly = ["list_files", "read_file", "search_text", "run_command", "run_tests"]
         if kind in {"diagnostic", "verification", "research", "decision"}:
             return readonly
         if kind == "report":
             return [
+                "list_files",
                 "read_file",
                 "search_text",
                 "write_file",
@@ -677,6 +686,7 @@ class RequirementPlanner:
                 "run_command",
             ]
         return [
+            "list_files",
             "read_file",
             "search_text",
             "write_file",
@@ -865,6 +875,7 @@ class RequirementPlanner:
         memory_count = len(runtime_context.get("memory", []))
         snapshot_id = runtime_context.get("latest_snapshot", {}).get("snapshot_id")
         handoff_id = runtime_context.get("latest_handoff", {}).get("handoff_id")
+        capability_feedback = runtime_context.get("capability_feedback", [])
         parts = []
         if memory_count:
             parts.append(f"{memory_count} memory entr{'y' if memory_count == 1 else 'ies'}")
@@ -872,6 +883,10 @@ class RequirementPlanner:
             parts.append(f"snapshot {snapshot_id}")
         if handoff_id:
             parts.append(f"handoff {handoff_id}")
+        if isinstance(capability_feedback, list) and capability_feedback:
+            hint = capability_feedback[0]
+            if isinstance(hint, dict) and hint.get("message"):
+                parts.append(f"capability feedback: {hint['message']}")
         return f" Context: {', '.join(parts)}." if parts else ""
 
 

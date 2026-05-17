@@ -14,7 +14,7 @@ def test_roadmap_update_generates_json_and_markdown_from_weekly_report(
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    reports_dir = tmp_path / ".agent" / "reports"
+    reports_dir = tmp_path / ".asteria" / "reports"
     reports_dir.mkdir(parents=True)
     store.write(
         reports_dir / "weekly_report_2026-W20.json",

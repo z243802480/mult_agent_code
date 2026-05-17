@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 function Invoke-Checked {
     param(
@@ -53,11 +53,11 @@ try {
     if ($sessionsContextText -notmatch "snapshot:" -or $sessionsContextText -notmatch "handoff:" -or $sessionsContextText -notmatch "next:") {
         throw "Expected sessions --context output to include snapshot, handoff, and next command. Output: $sessionsContextText"
     }
-    $snapshots = Get-ChildItem -Path (Join-Path $tmpRoot "workspace\.agent\context\snapshots") -Filter *.json
+    $snapshots = Get-ChildItem -Path (Join-Path $tmpRoot "workspace\.asteria\context\snapshots") -Filter *.json
     if ($snapshots.Count -lt 1) {
         throw "Expected at least one context snapshot to be created."
     }
-    $handoffs = Get-ChildItem -Path (Join-Path $tmpRoot "workspace\.agent\context\handoffs") -Filter *.json
+    $handoffs = Get-ChildItem -Path (Join-Path $tmpRoot "workspace\.asteria\context\handoffs") -Filter *.json
     if ($handoffs.Count -lt 1) {
         throw "Expected at least one handoff package to be created."
     }

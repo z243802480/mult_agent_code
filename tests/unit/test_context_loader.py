@@ -11,7 +11,7 @@ def validator() -> SchemaValidator:
 
 
 def test_context_loader_includes_small_workspace_files_and_skips_secrets(tmp_path: Path) -> None:
-    (tmp_path / ".agent" / "context").mkdir(parents=True)
+    (tmp_path / ".asteria" / "context").mkdir(parents=True)
     (tmp_path / "buggy_math.py").write_text("def add(a, b):\n    return a - b\n", encoding="utf-8")
     (tmp_path / "notes.md").write_text("# Notes\n", encoding="utf-8")
     (tmp_path / "secrets").mkdir()
@@ -29,7 +29,7 @@ def test_context_loader_includes_small_workspace_files_and_skips_secrets(tmp_pat
 
 def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: Path) -> None:
     schema_validator = validator()
-    failures_dir = tmp_path / ".agent" / "acceptance" / "failures"
+    failures_dir = tmp_path / ".asteria" / "acceptance" / "failures"
     failures_dir.mkdir(parents=True)
     store = JsonStore(schema_validator)
     for index in range(3):
@@ -43,7 +43,7 @@ def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: P
                 "scenario": scenario,
                 "failure_summary": f"failure {index}",
                 "acceptance_report": str(
-                    tmp_path / ".agent" / "acceptance" / "acceptance_report.json"
+                    tmp_path / ".asteria" / "acceptance" / "acceptance_report.json"
                 ),
                 "summary_json": str(tmp_path / "summary.json"),
                 "workspace": str(tmp_path / scenario),
@@ -69,14 +69,14 @@ def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: P
 
     failures = context["acceptance_failures"]
     assert [failure["scenario"] for failure in failures] == ["scenario_1", "scenario_2"]
-    assert failures[0]["evidence_path"] == ".agent/acceptance/failures/scenario_1.json"
+    assert failures[0]["evidence_path"] == ".asteria/acceptance/failures/scenario_1.json"
     assert failures[1]["failure_summary"] == "failure 2"
     assert failures[1]["reproduce"]["cli"].endswith("--scenario scenario_2")
 
 
 def test_context_loader_includes_bounded_task_failure_evidence(tmp_path: Path) -> None:
     schema_validator = validator()
-    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     store = JsonlStore(schema_validator)
     for index in range(3):

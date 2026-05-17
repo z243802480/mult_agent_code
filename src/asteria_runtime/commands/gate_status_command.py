@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -16,12 +17,15 @@ class GateStatusResult:
     gray_report: dict[str, Any] = field(default_factory=dict)
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
+    validation_recommendation: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         rollout_state = self._rollout_state()
-        blocking_reason = None if rollout_state == "release_ready" else (
-            self.next_actions[0] if self.next_actions else None
+        blocking_reason = (
+            None
+            if rollout_state == "release_ready"
+            else (self.next_actions[0] if self.next_actions else None)
         )
         return {
             "schema_version": "0.1.0",
@@ -37,6 +41,7 @@ class GateStatusResult:
             },
             "route_environment": self.route_environment,
             "gray_task_limits": _gray_task_limits(),
+            "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
             "gray_report": self.gray_report,
             "core_report": self.core_report,
@@ -91,6 +96,10 @@ class GateStatusResult:
         if self.next_actions:
             lines.append("Recommended next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
+        if self.validation_recommendation:
+            lines.append("Recommended validation:")
+            lines.append(f"  - level: {self.validation_recommendation.get('level')}")
+            lines.append(f"  - command: {self.validation_recommendation.get('command')}")
         limits = _gray_task_limits()
         lines.append("Small gray task limits:")
         lines.append(f"  - max_iterations: {limits['max_iterations']}")
@@ -108,8 +117,7 @@ class GateStatusResult:
         aggregate = report.get("aggregate")
         if isinstance(aggregate, dict):
             lines.append(
-                "  scenarios: "
-                f"{aggregate.get('passed', 0)}/{aggregate.get('total', 0)} passed"
+                f"  scenarios: {aggregate.get('passed', 0)}/{aggregate.get('total', 0)} passed"
             )
             route = aggregate.get("route_evidence")
             if isinstance(route, dict):
@@ -129,13 +137,13 @@ class GateStatusCommand:
         self.root = root.resolve()
 
     def run(self) -> GateStatusResult:
-        gate = self._read_json(self.root / ".agent" / "model" / "real_model_gate_report.json")
+        gate = self._read_json(self.root / ".asteria" / "model" / "real_model_gate_report.json")
         gray = self._read_json(
-            self.root / ".agent" / "verification" / "real_model_acceptance_gray.json"
+            self.root / ".asteria" / "verification" / "real_model_acceptance_gray.json"
         )
         core = self._read_json(
-            self.root / ".agent" / "verification" / "real_model_acceptance_core.json"
-        ) or self._read_json(self.root / ".agent" / "acceptance" / "acceptance_report.json")
+            self.root / ".asteria" / "verification" / "real_model_acceptance_core.json"
+        ) or self._read_json(self.root / ".asteria" / "acceptance" / "acceptance_report.json")
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
@@ -152,6 +160,7 @@ class GateStatusCommand:
             gray_report=gray,
             core_report=core,
             route_environment=route_environment,
+            validation_recommendation=_validation_recommendation(self.root),
             next_actions=actions,
         )
 
@@ -164,14 +173,18 @@ class GateStatusCommand:
         if not gate:
             return (
                 "missing_real_model_gate",
-                ["Run `python scripts/real_model_gate.py --summary-json .agent/model/real_model_gate_report.json`."],
+                [
+                    "Run `python scripts/real_model_gate.py --summary-json .asteria/model/real_model_gate_report.json`."
+                ],
             )
         if not gate.get("ok"):
             return ("real_model_gate_failed", list(gate.get("recommended_actions") or []))
         if not gray:
             return (
                 "ready_for_gray_suite",
-                ["Run `python scripts/real_model_acceptance.py --suite gray --summary-json .agent/verification/real_model_acceptance_gray.json`."],
+                [
+                    "Run `python scripts/real_model_acceptance.py --suite gray --summary-json .asteria/verification/real_model_acceptance_gray.json`."
+                ],
             )
         if not gray.get("ok") or gray.get("gray_ready") is not True:
             return (
@@ -181,7 +194,9 @@ class GateStatusCommand:
         if not core:
             return (
                 "ready_for_core_acceptance",
-                ["Run `python scripts/real_model_acceptance.py --suite core --summary-json .agent/verification/real_model_acceptance_core.json`."],
+                [
+                    "Run `python scripts/real_model_acceptance.py --suite core --summary-json .asteria/verification/real_model_acceptance_core.json`."
+                ],
             )
         if not core.get("ok"):
             return ("core_acceptance_failed", ["Repair core acceptance failures before release."])
@@ -224,3 +239,92 @@ def _gray_task_limits() -> dict[str, object]:
 
 def _route_environment() -> dict[str, Any]:
     return route_environment_for_tiers(("strong", "medium"))
+
+
+def _validation_recommendation(root: Path) -> dict[str, Any]:
+    changed_files = _changed_files(root)
+    return _validation_recommendation_for_changed_files(changed_files)
+
+
+def _changed_files(root: Path) -> list[str]:
+    try:
+        completed = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if completed.returncode != 0:
+        return []
+    files = []
+    for line in completed.stdout.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.rsplit(" -> ", 1)[-1]
+        files.append(path.replace("\\", "/"))
+    return files
+
+
+def _validation_recommendation_for_changed_files(changed_files: list[str]) -> dict[str, Any]:
+    if not changed_files:
+        return {
+            "level": "none",
+            "reason": "No git changes detected or git status unavailable.",
+            "changed_file_count": 0,
+            "command": "asteria gate-status --json",
+        }
+    source_changes = [
+        path
+        for path in changed_files
+        if path.startswith(("src/", "tests/", "schemas/", "scripts/"))
+    ]
+    runtime_changes = [
+        path
+        for path in changed_files
+        if path.startswith(
+            (
+                "src/asteria_runtime/core/",
+                "src/asteria_runtime/commands/",
+                "src/asteria_runtime/acceptance/",
+                "src/asteria_runtime/models/",
+            )
+        )
+    ]
+    docs_only = all(path.startswith("docs/") or path.endswith(".md") for path in changed_files)
+    if docs_only:
+        return {
+            "level": "targeted",
+            "reason": "Only documentation changed.",
+            "changed_file_count": len(changed_files),
+            "command": "ruff check .",
+        }
+    if len(changed_files) >= 12 or len(runtime_changes) >= 4:
+        return {
+            "level": "full_gray_core",
+            "reason": "Broad Runtime OS changes detected.",
+            "changed_file_count": len(changed_files),
+            "command": (
+                "ruff check . && mypy src && pytest -q && "
+                "asteria real-model-gate && asteria real-model-acceptance --suite gray && "
+                "asteria /acceptance-gate --suite core"
+            ),
+        }
+    if source_changes:
+        return {
+            "level": "core_subset",
+            "reason": "Runtime source or test files changed.",
+            "changed_file_count": len(changed_files),
+            "command": "ruff check . && mypy src && pytest -q && asteria /acceptance-gate --suite core --min-scenarios 6",
+        }
+    return {
+        "level": "targeted",
+        "reason": "Small non-runtime change detected.",
+        "changed_file_count": len(changed_files),
+        "command": "ruff check . && pytest -q",
+    }

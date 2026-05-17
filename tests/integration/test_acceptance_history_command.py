@@ -67,7 +67,7 @@ def test_acceptance_history_reports_missing_history(tmp_path: Path) -> None:
 
 
 def test_acceptance_history_filters_by_suite_and_limit(tmp_path: Path) -> None:
-    path = tmp_path / ".agent" / "acceptance" / "history.jsonl"
+    path = tmp_path / ".asteria" / "acceptance" / "history.jsonl"
     append_history(path, history_entry("smoke", created_at="2026-05-06T10:00:00+08:00"))
     append_history(path, history_entry("core", created_at="2026-05-06T11:00:00+08:00"))
     append_history(
@@ -95,7 +95,7 @@ def test_acceptance_history_filters_by_suite_and_limit(tmp_path: Path) -> None:
 
 
 def test_acceptance_history_warns_on_regressions(tmp_path: Path) -> None:
-    path = tmp_path / ".agent" / "acceptance" / "history.jsonl"
+    path = tmp_path / ".asteria" / "acceptance" / "history.jsonl"
     append_history(path, history_entry("smoke", created_at="2026-05-06T10:00:00+08:00"))
     append_history(
         path,

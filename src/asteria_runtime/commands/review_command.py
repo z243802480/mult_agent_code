@@ -65,7 +65,7 @@ class ReviewCommand:
         self.runtime_evidence = RuntimeEvidenceReader(self.validator)
 
     def run(self) -> ReviewResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
 
@@ -171,7 +171,7 @@ class ReviewCommand:
         task_plan["tasks"].extend(new_tasks)
         self._promote_ready_follow_ups(task_plan)
         self.store.write(task_plan_path, task_plan, "task_board")
-        self.store.write(self.root / ".agent" / "tasks" / "backlog.json", task_plan, "task_board")
+        self.store.write(self.root / ".asteria" / "tasks" / "backlog.json", task_plan, "task_board")
         return len(new_tasks), decision_count
 
     def _split_follow_ups(
@@ -304,9 +304,7 @@ class ReviewCommand:
         verification_calls = [
             call for call in tool_calls if call["tool_name"] in {"run_tests", "run_command"}
         ]
-        passed_verification = [
-            call for call in verification_calls if call["status"] == "success"
-        ]
+        passed_verification = [call for call in verification_calls if call["status"] == "success"]
         return {
             "task_completion_rate": len(done) / len(active_tasks) if active_tasks else 0,
             "blocked_task_count": len(blocked),
@@ -338,9 +336,7 @@ class ReviewCommand:
             "runtime_os_summary": runtime_summary,
             "verification_call_count": len(verification_calls),
             "verification_pass_rate": (
-                len(passed_verification) / len(verification_calls)
-                if verification_calls
-                else 0
+                len(passed_verification) / len(verification_calls) if verification_calls else 0
             ),
             "cost_status": cost_report.get("status", "within_budget"),
         }

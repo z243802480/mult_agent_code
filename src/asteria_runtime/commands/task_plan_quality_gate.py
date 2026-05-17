@@ -31,7 +31,7 @@ class TaskPlanQualityGate:
         self.jsonl = JsonlStore(validator)
 
     def check(self, run_id: str, *, pause_run: bool = True) -> TaskPlanQualityGateResult:
-        run_dir = self.root / ".agent" / "runs" / run_id
+        run_dir = self.root / ".asteria" / "runs" / run_id
         eval_path = run_dir / "task_plan_eval.json"
         task_plan_eval = self.refresh(run_id, run_dir, eval_path)
         if task_plan_eval is None:
@@ -107,7 +107,7 @@ class TaskPlanQualityGate:
         if not changes:
             return None
         self.store.write(task_plan_path, revised, "task_board")
-        self.store.write(self.root / ".agent" / "tasks" / "backlog.json", revised, "task_board")
+        self.store.write(self.root / ".asteria" / "tasks" / "backlog.json", revised, "task_board")
         revised_eval = TaskPlanEvaluator().evaluate(revised, goal_spec, run_id=run_id)
         self.store.write(eval_path, revised_eval, "task_plan_eval")
         return revised_eval
@@ -220,7 +220,7 @@ class TaskPlanQualityGate:
         return ", ".join(issues) + suffix
 
     def _quality_decisions(self, run_id: str) -> list[dict]:
-        run_dir = self.root / ".agent" / "runs" / run_id
+        run_dir = self.root / ".asteria" / "runs" / run_id
         return [
             decision
             for decision in self._decisions(run_dir)
@@ -252,7 +252,7 @@ class TaskPlanQualityGate:
         }
         if not revision_decision_ids:
             return False
-        task_plan_path = self.root / ".agent" / "runs" / run_id / "task_plan.json"
+        task_plan_path = self.root / ".asteria" / "runs" / run_id / "task_plan.json"
         if not task_plan_path.exists():
             return False
         task_plan = self.store.read(task_plan_path, "task_board")
@@ -314,7 +314,7 @@ class TaskPlanQualityGate:
         return result.decisions[0]
 
     def _pause_run(self, run_id: str, summary: str) -> None:
-        run_store = RunStore(self.root / ".agent", self.validator)
+        run_store = RunStore(self.root / ".asteria", self.validator)
         run = run_store.load_run(run_id)
         run["status"] = "paused"
         run["current_phase"] = "DECISION"

@@ -35,7 +35,7 @@ def test_brainstorm_command_apply_creates_tasks_and_decisions(tmp_path: Path) ->
 
     assert result.created_tasks == 1
     assert result.created_decisions == 1
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     decisions = [
         json.loads(line)

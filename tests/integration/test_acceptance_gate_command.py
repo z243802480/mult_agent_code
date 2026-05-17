@@ -263,12 +263,22 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
             "scenarios": [
                 runtime_scenario("runtime_parallel_readonly"),
                 runtime_scenario("runtime_disjoint_writes"),
-                runtime_scenario("runtime_worker_failure", {"failure_evidence": True, "candidate_isolated": True}),
+                runtime_scenario(
+                    "runtime_worker_failure",
+                    {
+                        "failure_evidence": True,
+                        "candidate_isolated": True,
+                        "promotion_failure_recorded": True,
+                    },
+                ),
                 runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
                 runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
                 runtime_scenario(
                     "runtime_context_package_slice",
-                    {"context_package_sliced": True},
+                    {
+                        "context_package_sliced": True,
+                        "context_package_scope_partitioned": True,
+                    },
                 ),
                 runtime_scenario(
                     "runtime_sandbox_backend_selection",
@@ -379,7 +389,7 @@ def write_report(tmp_path: Path, overrides: dict) -> Path:
         "ok": True,
         "returncode": 0,
         "created_at": "2026-05-06T12:00:00+08:00",
-        "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+        "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
         "aggregate": {},
         "trend": {},
         "trend_warnings": [],
@@ -400,7 +410,7 @@ def write_report(tmp_path: Path, overrides: dict) -> Path:
     report.setdefault("aggregate", {})
     report.setdefault("trend", {})
     report.setdefault("trend_warnings", [])
-    report_path = tmp_path / ".agent" / "acceptance" / "acceptance_report.json"
+    report_path = tmp_path / ".asteria" / "acceptance" / "acceptance_report.json"
     JsonStore(SchemaValidator(Path.cwd() / "schemas")).write(
         report_path,
         report,

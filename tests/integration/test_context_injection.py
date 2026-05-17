@@ -20,7 +20,7 @@ def _response(payload: dict) -> ChatResponse:
 
 
 def _write_memory(root: Path, content: str) -> None:
-    memory_path = root / ".agent" / "memory" / "decisions.jsonl"
+    memory_path = root / ".asteria" / "memory" / "decisions.jsonl"
     memory_path.parent.mkdir(parents=True, exist_ok=True)
     memory = {
         "schema_version": "0.1.0",
@@ -115,7 +115,7 @@ class BrokenExecuteClient:
                         "tool_name": "run_command",
                         "args": {
                             "command": (
-                                "python -c \"from pathlib import Path; "
+                                'python -c "from pathlib import Path; '
                                 "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
                             )
                         },
@@ -148,7 +148,7 @@ class ContextDebugClient:
                         "tool_name": "run_command",
                         "args": {
                             "command": (
-                                "python -c \"from pathlib import Path; "
+                                'python -c "from pathlib import Path; '
                                 "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
                             )
                         },
@@ -169,7 +169,7 @@ def test_runtime_context_reaches_plan_execute_and_debug_agents(tmp_path: Path) -
         "create context aware artifact",
         model_client=ContextPlanClient(),
     ).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert "1 memory entry" in task_plan["tasks"][0]["notes"]
 

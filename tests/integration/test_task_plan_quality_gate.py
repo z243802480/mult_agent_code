@@ -13,7 +13,7 @@ def test_task_plan_quality_gate_auto_revises_simple_plan_failures(tmp_path: Path
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    run_store = RunStore(tmp_path / ".agent", validator)
+    run_store = RunStore(tmp_path / ".asteria", validator)
     run = run_store.create_run("asteria plan weak goal")
     run_dir = run_store.run_dir(run["run_id"])
     goal_spec = {

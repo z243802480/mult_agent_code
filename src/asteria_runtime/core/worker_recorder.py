@@ -10,6 +10,12 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @dataclass(frozen=True)
+class WorkerExecutionSlot:
+    worker_id: str
+    result_id: str
+
+
+@dataclass(frozen=True)
 class WorkerExecutionRecorder:
     validator: SchemaValidator
 
@@ -24,6 +30,18 @@ class WorkerExecutionRecorder:
             return [f"worker-result-{index + 1:04d}" for index in range(count)]
         start = self._jsonl_count(context.run_dir / "worker_results.jsonl") + 1
         return [f"worker-result-{index:04d}" for index in range(start, start + count)]
+
+    def allocate_execution_slots(
+        self,
+        context: RuntimeContext,
+        count: int,
+    ) -> list[WorkerExecutionSlot]:
+        worker_ids = self.allocate_worker_ids(context, count)
+        result_ids = self.allocate_worker_result_ids(context, count)
+        return [
+            WorkerExecutionSlot(worker_id=worker_id, result_id=result_id)
+            for worker_id, result_id in zip(worker_ids, result_ids, strict=True)
+        ]
 
     def record_execution(
         self,

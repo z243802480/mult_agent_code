@@ -109,7 +109,9 @@ class RuntimeProfileBuilder:
             tool_permission_profile_id=tool_profile.tool_permission_profile_id,
             account_profile_id=account_profile.account_profile_id,
             sandbox_profile_id=sandbox_profile.sandbox_profile_id,
-            context_mount_id=str(context_mount.get("context_mount_id") or f"context-{profile_base_id}"),
+            context_mount_id=str(
+                context_mount.get("context_mount_id") or f"context-{profile_base_id}"
+            ),
             budget=BudgetProfile(
                 max_model_calls=1,
                 max_tool_calls=max(1, len(task.get("allowed_tools", []))),
@@ -150,13 +152,17 @@ class RuntimeProfileBuilder:
     ) -> dict:
         scoped = dict(runtime_context)
         if context.run_id:
-            scoped["context_mount"] = ContextMountBuilder(context.run_id).build(
-                task,
-                artifact_refs=artifact_refs,
-                failure_evidence_refs=failure_evidence_refs,
-                decision_refs=decision_refs,
-                validation_refs=validation_refs,
-            ).to_dict()
+            scoped["context_mount"] = (
+                ContextMountBuilder(context.run_id)
+                .build(
+                    task,
+                    artifact_refs=artifact_refs,
+                    failure_evidence_refs=failure_evidence_refs,
+                    decision_refs=decision_refs,
+                    validation_refs=validation_refs,
+                )
+                .to_dict()
+            )
             scoped["context_package"] = ContextPackageBuilder(self.validator).build(
                 context,
                 task,
@@ -188,7 +194,9 @@ class RuntimeProfileBuilder:
         if context.run_dir is None:
             return
         store = JsonlStore(self.validator)
-        store.append(context.run_dir / "model_profiles.jsonl", model_profile.to_dict(), "model_profile")
+        store.append(
+            context.run_dir / "model_profiles.jsonl", model_profile.to_dict(), "model_profile"
+        )
         store.append(
             context.run_dir / "tool_permission_profiles.jsonl",
             tool_profile.to_dict(),
@@ -233,7 +241,10 @@ class RuntimeProfileBuilder:
             default = "strong"
         elif kind in {"report", "decision"}:
             default = "cheap"
-        elif kind in {"research", "diagnostic", "verification"} and parallel_safety(task) == "readonly":
+        elif (
+            kind in {"research", "diagnostic", "verification"}
+            and parallel_safety(task) == "readonly"
+        ):
             default = "cheap"
         else:
             default = "medium"
@@ -260,7 +271,7 @@ class RuntimeProfileBuilder:
         return "medium" if default == "cheap" else "strong"
 
     def _route_hints(self, context: RuntimeContext) -> list[dict]:
-        path = context.agent_dir / "model" / "capability_profile.json"
+        path = context.asteria_dir / "model" / "capability_profile.json"
         if not path.exists():
             return []
         try:

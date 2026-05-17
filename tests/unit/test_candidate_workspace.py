@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -10,13 +11,13 @@ from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 
 def test_candidate_workspace_copies_safe_files_and_excludes_agent_state(tmp_path: Path) -> None:
     source = tmp_path / "workspace"
-    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir = source / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (source / "src").mkdir()
     (source / "src" / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
     (source / "src" / "__pycache__").mkdir()
     (source / "src" / "__pycache__" / "tool.pyc").write_text("cache\n", encoding="utf-8")
-    (source / ".agent" / "secret.json").write_text("state\n", encoding="utf-8")
+    (source / ".asteria" / "secret.json").write_text("state\n", encoding="utf-8")
     (source / ".git").mkdir()
     (source / ".git" / "HEAD").write_text("ref\n", encoding="utf-8")
 
@@ -25,7 +26,10 @@ def test_candidate_workspace_copies_safe_files_and_excludes_agent_state(tmp_path
     assert candidate.strategy == "temp_workspace"
     assert candidate.workspace_policy == "isolated_copy"
     assert candidate.backend_reason
+    assert candidate.manifest_path
+    assert candidate.manifest_path.exists()
     assert (candidate.root / "src" / "tool.py").exists()
+    assert not (candidate.root / ".asteria").exists()
     assert not (candidate.root / ".agent").exists()
     assert not (candidate.root / ".git").exists()
     assert not (candidate.root / "src" / "__pycache__").exists()
@@ -34,7 +38,7 @@ def test_candidate_workspace_copies_safe_files_and_excludes_agent_state(tmp_path
 def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path) -> None:
     source = tmp_path / "workspace"
     source.mkdir()
-    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir = source / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (source / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
     try:
@@ -53,7 +57,9 @@ def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path
             capture_output=True,
             text=True,
         )
-        subprocess.run(["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "seed"],
             cwd=source,
@@ -70,8 +76,12 @@ def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path
     assert candidate.workspace_policy == "worktree"
     assert candidate.backend_reason
     assert candidate.branch_name
-    assert candidate.branch_name.startswith("codex/candidate/task-0001-")
+    assert candidate.branch_name.startswith("asteria/candidate/task-0001-")
+    assert "wt" in candidate.root.parts
     assert (candidate.root / "tool.py").exists()
+    manifest = json.loads(candidate.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["strategy"] == "git_worktree"
+    assert manifest["branch_name"] == candidate.branch_name
 
 
 def test_candidate_workspace_uses_worktree_with_untracked_process_artifacts(
@@ -79,7 +89,7 @@ def test_candidate_workspace_uses_worktree_with_untracked_process_artifacts(
 ) -> None:
     source = tmp_path / "workspace"
     source.mkdir()
-    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir = source / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (source / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
     (source / "real_model_smoke_transcript.json").write_text("{}", encoding="utf-8")
@@ -99,7 +109,9 @@ def test_candidate_workspace_uses_worktree_with_untracked_process_artifacts(
             capture_output=True,
             text=True,
         )
-        subprocess.run(["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "add", "tool.py"], cwd=source, check=True, capture_output=True, text=True
+        )
         subprocess.run(
             ["git", "commit", "-m", "seed"],
             cwd=source,
@@ -114,11 +126,15 @@ def test_candidate_workspace_uses_worktree_with_untracked_process_artifacts(
 
     assert candidate.strategy == "git_worktree"
     assert candidate.branch_name
+    candidate.discard()
+    assert not candidate.root.exists()
+    manifest = json.loads(candidate.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "discarded"
 
 
 def test_candidate_workspace_promotes_only_changed_files(tmp_path: Path) -> None:
     source = tmp_path / "workspace"
-    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir = source / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (source / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
     candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
@@ -134,7 +150,7 @@ def test_candidate_workspace_promotes_only_changed_files(tmp_path: Path) -> None
 
 def test_candidate_workspace_rejects_promote_paths_outside_workspace(tmp_path: Path) -> None:
     source = tmp_path / "workspace"
-    run_dir = source / ".agent" / "runs" / "run-1"
+    run_dir = source / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (source / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
     candidate = CandidateWorkspace.create(source, run_dir, "task-0001")

@@ -88,7 +88,9 @@ class ToolPermissionPolicy:
             if not command:
                 continue
             denial = self.shell_denial(context.policy, command)
-            if denial is None or self.has_execution_approval(context, task, tool_name, call["args"]):
+            if denial is None or self.has_execution_approval(
+                context, task, tool_name, call["args"]
+            ):
                 continue
             return self._create_execution_decision(context, task, tool_name, call["args"], denial)
         return None
@@ -119,7 +121,7 @@ class ToolPermissionPolicy:
             validator=context.validator,
             event_logger=context.event_logger,
             budget=context.budget,
-            agent_dir_override=context.agent_dir,
+            agent_dir_override=context.asteria_dir,
             run_dir_override=context.run_dir,
         )
 
@@ -343,7 +345,9 @@ class RuntimeRequestPolicy:
             "runtime_request",
             reason,
             candidate={
-                "runtime_request_ids": [request["runtime_request_id"] for request in final_requests],
+                "runtime_request_ids": [
+                    request["runtime_request_id"] for request in final_requests
+                ],
                 "decision_id": decision["decision_id"] if decision else None,
             },
         )
@@ -371,7 +375,9 @@ class RuntimeRequestPolicy:
             reason,
             actor="RuntimeRequestPolicy",
             candidate={
-                "runtime_request_ids": [request["runtime_request_id"] for request in final_requests],
+                "runtime_request_ids": [
+                    request["runtime_request_id"] for request in final_requests
+                ],
                 "decision_id": decision["decision_id"] if decision else None,
             },
             failure_type="runtime_request",

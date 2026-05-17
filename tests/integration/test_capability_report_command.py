@@ -15,7 +15,7 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
-    agent_dir = tmp_path / ".agent"
+    agent_dir = tmp_path / ".asteria"
     acceptance_dir = agent_dir / "acceptance"
     run_dir = agent_dir / "runs" / "run-1"
     run_dir.mkdir(parents=True)
@@ -142,7 +142,7 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
     assert result.model_profiles[0]["success_rate"] == 0.5
     assert result.model_profiles[0]["failure_types"]["provider_response"] == 1
     assert result.model_profiles[0]["recommended_action"] == "use_json_stricter_or_switch_model"
-    assert result.model_profile_path == tmp_path / ".agent" / "model" / "capability_profile.json"
+    assert result.model_profile_path == tmp_path / ".asteria" / "model" / "capability_profile.json"
     profile = store.read(result.model_profile_path, "model_capability_profile")
     assert profile["profile_count"] == 1
     assert profile["profiles"][0]["recommended_action"] == "use_json_stricter_or_switch_model"
@@ -153,7 +153,7 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
 
 def test_capability_report_backfills_legacy_acceptance_capabilities(tmp_path: Path) -> None:
     jsonl = JsonlStore(SchemaValidator(Path.cwd() / "schemas"))
-    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir = tmp_path / ".asteria" / "acceptance"
     acceptance_dir.mkdir(parents=True)
     jsonl.append(
         acceptance_dir / "history.jsonl",
@@ -203,9 +203,9 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
-    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
-    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir = tmp_path / ".asteria" / "acceptance"
     acceptance_dir.mkdir(parents=True)
     store.write(
         acceptance_dir / "acceptance_report.json",
@@ -419,7 +419,7 @@ def test_capability_report_uses_acceptance_runtime_evidence_without_run_jsonl(
 ) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir = tmp_path / ".asteria" / "acceptance"
     acceptance_dir.mkdir(parents=True)
     store.write(
         acceptance_dir / "acceptance_report.json",
@@ -440,7 +440,7 @@ def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
-    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir = tmp_path / ".asteria" / "acceptance"
     acceptance_dir.mkdir(parents=True)
     history_report = {
         "schema_version": "0.1.0",
@@ -468,7 +468,7 @@ def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path
 def test_capability_report_marks_closed_repair_as_conditional(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
-    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir = tmp_path / ".asteria" / "acceptance"
     acceptance_dir.mkdir(parents=True)
     report = {
         "schema_version": "0.1.0",
@@ -522,11 +522,21 @@ def runtime_os_report(tmp_path: Path) -> dict:
         runtime_scenario("runtime_disjoint_writes"),
         runtime_scenario(
             "runtime_worker_failure",
-            {"failure_evidence": True, "candidate_isolated": True},
+            {
+                "failure_evidence": True,
+                "candidate_isolated": True,
+                "promotion_failure_recorded": True,
+            },
         ),
         runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
         runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
-        runtime_scenario("runtime_context_package_slice", {"context_package_sliced": True}),
+        runtime_scenario(
+            "runtime_context_package_slice",
+            {
+                "context_package_sliced": True,
+                "context_package_scope_partitioned": True,
+            },
+        ),
         runtime_scenario(
             "runtime_sandbox_backend_selection",
             {"sandbox_backend_recorded": True},
@@ -552,7 +562,7 @@ def runtime_os_report(tmp_path: Path) -> dict:
         "ok": True,
         "returncode": 0,
         "created_at": "2026-05-13T10:00:00+08:00",
-        "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+        "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
         "aggregate": {"total": len(scenarios), "passed": len(scenarios), "failed": 0},
         "trend_warnings": [],
         "scenarios": scenarios,

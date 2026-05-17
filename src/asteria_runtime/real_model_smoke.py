@@ -13,9 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_GOAL = (
-    "Create a local file hello_runtime.txt containing one line: real model smoke ok"
-)
+DEFAULT_GOAL = "Create a local file hello_runtime.txt containing one line: real model smoke ok"
 DEFAULT_EXPECTED_FILE = "hello_runtime.txt"
 DEFAULT_EXPECTED_TEXT = "real model smoke ok"
 SECRET_ENV_NAMES = {
@@ -277,8 +275,8 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
     if (
         not args.no_recovery
         and result.run_id
-        and (workspace / ".agent" / "runs" / result.run_id / "goal_spec.json").exists()
-        and not (workspace / ".agent" / "runs" / result.run_id / "eval_report.json").exists()
+        and (workspace / ".asteria" / "runs" / result.run_id / "goal_spec.json").exists()
+        and not (workspace / ".asteria" / "runs" / result.run_id / "eval_report.json").exists()
     ):
         run_command(
             result,
@@ -342,11 +340,7 @@ def resolve_pending_decisions(args: argparse.Namespace, result: SmokeResult) -> 
     for decision in pending_decisions(result.workspace, result.run_id):
         decision_id = str(decision["decision_id"])
         option_id = recovery_option_id(decision)
-        option_args = (
-            ["--select-option-id", option_id]
-            if option_id
-            else ["--use-default"]
-        )
+        option_args = ["--select-option-id", option_id] if option_id else ["--use-default"]
         record = run_command(
             result,
             args.python,
@@ -362,7 +356,10 @@ def resolve_pending_decisions(args: argparse.Namespace, result: SmokeResult) -> 
             check=False,
         )
         if record.returncode != 0:
-            if is_budget_guard_decision(decision) and "user_decisions exceeded budget" in record.stderr:
+            if (
+                is_budget_guard_decision(decision)
+                and "user_decisions exceeded budget" in record.stderr
+            ):
                 return
             raise SmokeFailure(f"{record.name} failed with exit code {record.returncode}.")
 
@@ -428,7 +425,7 @@ def pending_decision_ids(workspace: Path, run_id: str) -> list[str]:
 
 
 def pending_decisions(workspace: Path, run_id: str) -> list[dict[str, Any]]:
-    path = workspace / ".agent" / "runs" / run_id / "decisions.jsonl"
+    path = workspace / ".asteria" / "runs" / run_id / "decisions.jsonl"
     if not path.exists():
         return []
     decisions: list[dict[str, Any]] = []
@@ -509,11 +506,11 @@ def merge_pythonpath(src_path: str, current: str | None) -> str:
 
 
 def current_run_id(workspace: Path) -> str | None:
-    current_path = workspace / ".agent" / "current_session.json"
+    current_path = workspace / ".asteria" / "current_session.json"
     if current_path.exists():
         current = json.loads(current_path.read_text(encoding="utf-8"))
         return str(current["session_id"])
-    runs_dir = workspace / ".agent" / "runs"
+    runs_dir = workspace / ".asteria" / "runs"
     if not runs_dir.exists():
         return None
     runs = sorted(path.name for path in runs_dir.iterdir() if path.is_dir())
@@ -530,7 +527,7 @@ def validate_artifacts(
 ) -> Path:
     if not run_id:
         raise SmokeFailure("No current session was created.")
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     required_files = [
         run_dir / "run.json",
         run_dir / "goal_spec.json",
@@ -599,7 +596,9 @@ def validate_artifacts(
     return run_dir / "final_report.md"
 
 
-def _accept_budget_paused_success(run_dir: Path, run: dict[str, Any], eval_report: dict[str, Any]) -> bool:
+def _accept_budget_paused_success(
+    run_dir: Path, run: dict[str, Any], eval_report: dict[str, Any]
+) -> bool:
     if run.get("status") != "paused":
         return False
     if eval_report.get("overall", {}).get("status") != "pass":

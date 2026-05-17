@@ -68,7 +68,11 @@ class FileBackupStore:
                 "file_backup_created",
                 "FileBackupStore",
                 f"Created backup {backup_id} for {len(records)} file(s)",
-                {"backup_id": backup_id, "reason": reason, "files": [item["path"] for item in records]},
+                {
+                    "backup_id": backup_id,
+                    "reason": reason,
+                    "files": [item["path"] for item in records],
+                },
             )
         return manifest
 
@@ -109,19 +113,31 @@ class FileBackupStore:
                 "file_backup_restored",
                 "FileBackupStore",
                 f"Restored backup {backup_id}",
-                {"backup_id": backup_id, "restored": restored, "skipped": skipped, "warnings": warnings},
+                {
+                    "backup_id": backup_id,
+                    "restored": restored,
+                    "skipped": skipped,
+                    "warnings": warnings,
+                },
             )
-        return {"backup_id": backup_id, "restored": restored, "skipped": skipped, "warnings": warnings}
+        return {
+            "backup_id": backup_id,
+            "restored": restored,
+            "skipped": skipped,
+            "warnings": warnings,
+        }
 
     def _backup_dir(self, backup_id: str) -> Path:
         run_segment = self.context.run_id or "no-run"
-        return self.context.agent_dir / "backups" / run_segment / backup_id
+        return self.context.asteria_dir / "backups" / run_segment / backup_id
 
     def _find_manifest(self, backup_id: str) -> Path:
         if any(part in backup_id for part in ["/", "\\", ".."]):
             raise ValueError(f"Invalid backup_id: {backup_id}")
-        backups_root = self.context.agent_dir / "backups"
-        matches = list(backups_root.glob(f"*/{backup_id}/manifest.json")) if backups_root.exists() else []
+        backups_root = self.context.asteria_dir / "backups"
+        matches = (
+            list(backups_root.glob(f"*/{backup_id}/manifest.json")) if backups_root.exists() else []
+        )
         if not matches:
             raise FileNotFoundError(f"Backup not found: {backup_id}")
         if len(matches) > 1:

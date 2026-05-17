@@ -36,7 +36,7 @@ RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
     RuntimeOSCapability(
         scenario="runtime_worker_failure",
         capability="runtime_worker_failure",
-        special_evidence=("failure_evidence", "candidate_isolated"),
+        special_evidence=("failure_evidence", "candidate_isolated", "promotion_failure_recorded"),
     ),
     RuntimeOSCapability(
         scenario="runtime_merge_gate_block",
@@ -51,7 +51,7 @@ RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
     RuntimeOSCapability(
         scenario="runtime_context_package_slice",
         capability="context_package_slice",
-        special_evidence=("context_package_sliced",),
+        special_evidence=("context_package_sliced", "context_package_scope_partitioned"),
     ),
     RuntimeOSCapability(
         scenario="runtime_sandbox_backend_selection",

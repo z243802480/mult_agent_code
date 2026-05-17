@@ -12,7 +12,7 @@ SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"
 
 def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) -> None:
     validator = SchemaValidator(SCHEMA_DIR)
-    run_dir = tmp_path / ".agent" / "runs" / "run-0001"
+    run_dir = tmp_path / ".asteria" / "runs" / "run-0001"
     run_dir.mkdir(parents=True)
     (tmp_path / "AGENTS.md").write_text("root guidance", encoding="utf-8")
     (tmp_path / "src").mkdir()
@@ -212,10 +212,17 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
     assert package["root_guidance"]["content"] == "root guidance"
     assert package["goal_brief"]["normalized_goal"] == "Build notes"
     assert package["task_brief"]["task_id"] == "task-0001"
+    assert package["scope_summary"]["read_scope"] == ["src/"]
+    assert package["scope_summary"]["read_scope_file_count"] == 1
+    assert package["scope_summary"]["evidence_counts"]["recent_failures"] == 1
+    assert package["write_scope_files"] == []
+    assert package["evidence_scope"]["requested_refs"]["failures"] == ["failure-0001"]
+    assert package["evidence_scope"]["included_counts"]["validations"] == 1
     assert package["read_scope_files"][0]["path"] == "src/notes.py"
     assert package["read_scope_files"][0]["content"]["text"] == "VALUE = 1\n"
     assert package["artifacts"][0]["content"]["text"] == "VALUE = 1\n"
     assert package["failures"][0]["summary"] == "pytest failed"
+    assert package["recent_failures"][0]["summary"] == "pytest failed"
     assert package["decisions"][0]["selected_option_id"] == "option-1"
     assert package["validations"][0]["validation_result_id"] == "validation-0001"
     assert package["validations"][0]["error"] == "nonzero_exit"

@@ -93,7 +93,7 @@ class AcceptanceGateCommand:
         report_path = (
             self.report_path.resolve()
             if self.report_path
-            else self.root / ".agent" / "acceptance" / "acceptance_report.json"
+            else self.root / ".asteria" / "acceptance" / "acceptance_report.json"
         )
         if not report_path.exists():
             return self._missing_report(report_path)
@@ -167,7 +167,7 @@ class AcceptanceGateCommand:
                 self.root,
                 limit=1,
                 suite=suite,
-                history_jsonl=self.root / ".agent" / "acceptance" / "history.jsonl",
+                history_jsonl=self.root / ".asteria" / "acceptance" / "history.jsonl",
             )
             .run()
             .warnings
@@ -175,9 +175,7 @@ class AcceptanceGateCommand:
         blocking_trend_warnings = list(dict.fromkeys([*trend_warnings, *history_warnings]))
         if closed_failures:
             blocking_trend_warnings = [
-                warning
-                for warning in blocking_trend_warnings
-                if "failed scenario" not in warning
+                warning for warning in blocking_trend_warnings if "failed scenario" not in warning
             ]
         warnings.extend(blocking_trend_warnings)
         if blocking_trend_warnings and not self.allow_trend_warnings:

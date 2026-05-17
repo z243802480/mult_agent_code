@@ -28,6 +28,7 @@ from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.commands.research_command import ResearchCommand
 from asteria_runtime.commands.roadmap_command import RoadmapCommand
@@ -444,6 +445,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="Execute readonly and disjoint write-scope tasks concurrently through isolated candidate workspaces",
     )
 
+    promotions_parser = subcommands.add_parser(
+        "promotions",
+        aliases=["/promotions", "candidates", "/candidates"],
+        help="Inspect and operate candidate promotion queue entries",
+    )
+    promotions_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(
+        promotions_parser,
+        "Session id whose candidate promotion queue should be used; defaults to current session",
+    )
+    promotions_parser.add_argument(
+        "promotion_action",
+        nargs="?",
+        choices=["list", "approve", "reject", "retry", "discard"],
+        default="list",
+        help="Promotion queue action",
+    )
+    promotions_parser.add_argument("--promotion-id", default=None, help="Promotion id to operate on")
+    promotions_parser.add_argument(
+        "--status",
+        default=None,
+        help="Filter list output by status",
+    )
+    promotions_parser.add_argument(
+        "--all-pending",
+        action="store_true",
+        help="Approve every pending or retryable promotion in the queue",
+    )
+    promotions_parser.add_argument(
+        "--reason",
+        default=None,
+        help="Reason for reject or discard actions",
+    )
+    promotions_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
+
     debug_parser = subcommands.add_parser(
         "debug",
         aliases=["/debug"],
@@ -547,7 +587,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--workspace-root",
         type=Path,
         default=None,
-        help="Directory for scenario workspaces; defaults to .agent/acceptance/workspaces/<run>",
+        help="Directory for scenario workspaces; defaults to .asteria/acceptance/workspaces/<run>",
     )
     acceptance_parser.add_argument(
         "--summary-json", type=Path, default=None, help="Write JSON summary"
@@ -695,7 +735,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--report",
         type=Path,
         default=None,
-        help="Acceptance report path; defaults to .agent/acceptance/acceptance_report.json",
+        help="Acceptance report path; defaults to .asteria/acceptance/acceptance_report.json",
     )
     acceptance_gate_parser.add_argument(
         "--suite",
@@ -828,7 +868,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show or create a long-run production cycle report",
     )
     daily_report_parser.add_argument("--root", default=".", help="Workspace root path")
-    daily_report_parser.add_argument("--date", default=None, help="Legacy report date, default today")
+    daily_report_parser.add_argument(
+        "--date", default=None, help="Legacy report date, default today"
+    )
     daily_report_parser.add_argument(
         "--cycle-id",
         default=None,
@@ -1025,6 +1067,23 @@ def main() -> None:
             parallel_writes=args.parallel_disjoint_writes,
         ).run()
         print(execute_result.to_text())
+        return
+
+    if command in {"promotions", "candidates"}:
+        promotions_command = PromotionsCommand(
+            root=Path(args.root),
+            run_id=args.session_id,
+            action=args.promotion_action,
+            promotion_id=args.promotion_id,
+            status=args.status,
+            all_pending=args.all_pending,
+            reason=args.reason,
+        )
+        promotions_result = promotions_command.run()
+        if args.json:
+            print(promotions_command.to_json(promotions_result))
+        else:
+            print(promotions_result.to_text())
         return
 
     if command == "debug":

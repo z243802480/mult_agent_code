@@ -3,10 +3,15 @@ from pathlib import Path
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.gate_status_command import _validation_recommendation_for_changed_files
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
 
 
 def test_version_command_reports_runtime_diagnostics() -> None:
@@ -58,6 +63,47 @@ def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -
     assert result.to_dict()["initialized"] is True
 
 
+def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "candidate_id": "candidate-0001",
+            "workspace": str(run_dir / "cw" / "0001"),
+            "strategy": "temp_workspace",
+            "workspace_policy": "isolated_copy",
+            "backend_reason": "test",
+            "branch_name": None,
+            "promotable_files": ["tool.py"],
+            "promoted_files": [],
+            "status": "pending_manual_approval",
+            "approval_mode": "manual",
+            "merge_gate": {"ok": True},
+            "failure": None,
+            "decision": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        },
+        "candidate_promotion",
+    )
+
+    result = StatusCommand(tmp_path).run()
+
+    payload = result.to_dict()
+    assert payload["candidate_promotions"]["total"] == 1
+    assert payload["candidate_promotions"]["status_counts"] == {"pending_manual_approval": 1}
+    assert "Candidate promotions: 1 total" in result.to_text()
+
+
 def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
@@ -85,9 +131,7 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     assert payload["gray_task_limits"]["max_iterations"] == 3
 
 
-def test_doctor_reports_exact_missing_medium_route_variables(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_doctor_reports_exact_missing_medium_route_variables(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
     monkeypatch.setenv("AGENT_MODEL_STRONG_NAME", "glm-4.7")
@@ -105,9 +149,7 @@ def test_doctor_reports_exact_missing_medium_route_variables(
     assert payload["routes"]["medium"]["configured"] is False
     assert payload["failed_checks"] == ["git", "model_medium", "real_model_gate"]
     assert any(
-        "AGENT_MODEL_API_KEY or OPENAI_API_KEY"
-        in action
-        for action in payload["next_actions"]
+        "AGENT_MODEL_API_KEY or OPENAI_API_KEY" in action for action in payload["next_actions"]
     )
 
 
@@ -159,7 +201,7 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "missing_real_model_gate"
 
-    gate_dir = tmp_path / ".agent" / "model"
+    gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
     (gate_dir / "real_model_gate_report.json").write_text(
         json.dumps({"ok": True, "recommended_actions": ["run gray"]}),
@@ -169,7 +211,7 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     assert result.stage == "ready_for_gray_suite"
     assert result.to_dict()["rollout_state"] == "conditional"
 
-    verification_dir = tmp_path / ".agent" / "verification"
+    verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
     (verification_dir / "real_model_acceptance_gray.json").write_text(
         json.dumps(
@@ -205,22 +247,30 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     assert payload["route_environment"]["ready"] is True
     assert payload["gray_task_limits"]["max_tasks_per_iteration"] == 1
     assert "--no-research" in payload["next_actions"][0]
+    assert payload["validation_recommendation"]["level"] in {
+        "none",
+        "targeted",
+        "core_subset",
+        "full_gray_core",
+    }
 
 
-def test_gate_status_blocks_release_when_current_routes_are_missing(tmp_path: Path, monkeypatch) -> None:
+def test_gate_status_blocks_release_when_current_routes_are_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
     _configure_release_routes(monkeypatch)
     monkeypatch.delenv("AGENT_MODEL_MEDIUM_PROVIDER", raising=False)
     monkeypatch.delenv("AGENT_MODEL_PROVIDER", raising=False)
     monkeypatch.delenv("AGENT_MODEL_API_KEY", raising=False)
     monkeypatch.delenv("MINIMAX_API_KEY", raising=False)
     monkeypatch.delenv("MINIMAX_CN_API_KEY", raising=False)
-    gate_dir = tmp_path / ".agent" / "model"
+    gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
     (gate_dir / "real_model_gate_report.json").write_text(
         json.dumps({"ok": True}),
         encoding="utf-8",
     )
-    verification_dir = tmp_path / ".agent" / "verification"
+    verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
     (verification_dir / "real_model_acceptance_gray.json").write_text(
         json.dumps(
@@ -252,20 +302,22 @@ def test_gate_status_blocks_release_when_current_routes_are_missing(tmp_path: Pa
     )
 
 
-def test_gate_status_accepts_global_minimax_fallback_for_medium(tmp_path: Path, monkeypatch) -> None:
+def test_gate_status_accepts_global_minimax_fallback_for_medium(
+    tmp_path: Path, monkeypatch
+) -> None:
     _configure_release_routes(monkeypatch)
     monkeypatch.delenv("AGENT_MODEL_MEDIUM_PROVIDER", raising=False)
     monkeypatch.delenv("AGENT_MODEL_MEDIUM_NAME", raising=False)
     monkeypatch.delenv("AGENT_MODEL_MEDIUM_API_KEY", raising=False)
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "minimax")
     monkeypatch.setenv("MINIMAX_API_KEY", "minimax-key")
-    gate_dir = tmp_path / ".agent" / "model"
+    gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
     (gate_dir / "real_model_gate_report.json").write_text(
         json.dumps({"ok": True}),
         encoding="utf-8",
     )
-    verification_dir = tmp_path / ".agent" / "verification"
+    verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
     (verification_dir / "real_model_acceptance_gray.json").write_text(
         json.dumps(
@@ -302,3 +354,20 @@ def _configure_release_routes(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_NAME", "MiniMax-M2.7")
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "minimax-key")
+
+
+def test_gate_status_recommends_validation_by_change_shape() -> None:
+    docs = _validation_recommendation_for_changed_files(["docs/zh/运行命令.md"])
+    source = _validation_recommendation_for_changed_files(["src/asteria_runtime/cli.py"])
+    broad = _validation_recommendation_for_changed_files(
+        [
+            "src/asteria_runtime/core/a.py",
+            "src/asteria_runtime/core/b.py",
+            "src/asteria_runtime/commands/c.py",
+            "src/asteria_runtime/acceptance/d.py",
+        ]
+    )
+
+    assert docs["level"] == "targeted"
+    assert source["level"] == "core_subset"
+    assert broad["level"] == "full_gray_core"

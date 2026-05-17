@@ -15,6 +15,7 @@ from asteria_runtime.commands.research_command import ResearchCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.json_store import JsonStore
@@ -83,12 +84,12 @@ class RunCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> RunResult:
-        if not (self.root / ".agent").exists():
+        if not (self.root / ".asteria").exists():
             InitCommand(self.root).run()
         if self.goal and self.run_id:
             raise ValueError("Pass either a new goal or an existing session id, not both.")
         if not self.goal:
-            run_store = RunStore(self.root / ".agent", self.validator)
+            run_store = RunStore(self.root / ".asteria", self.validator)
             run_id = self.run_id or run_store.current_session_id()
             if not run_id:
                 raise RuntimeError('No current session found. Run `asteria new "goal"` first.')
@@ -369,7 +370,7 @@ class RunCommand:
         }
         if not revision_decision_ids:
             return False
-        task_plan_path = self.root / ".agent" / "runs" / run_id / "task_plan.json"
+        task_plan_path = self.root / ".asteria" / "runs" / run_id / "task_plan.json"
         if not task_plan_path.exists():
             return False
         task_plan = self.store.read(task_plan_path, "task_board")
@@ -397,7 +398,7 @@ class RunCommand:
         ]
 
     def _task_plan_quality_decisions(self, run_id: str) -> list[dict]:
-        run_dir = self.root / ".agent" / "runs" / run_id
+        run_dir = self.root / ".asteria" / "runs" / run_id
         return [
             decision
             for decision in self._decisions(run_dir)
@@ -464,7 +465,7 @@ class RunCommand:
         return ", ".join(issues) + suffix
 
     def _pause_run_for_task_plan_quality(self, run_id: str, summary: str) -> None:
-        run_store = RunStore(self.root / ".agent", self.validator)
+        run_store = RunStore(self.root / ".asteria", self.validator)
         run = run_store.load_run(run_id)
         run["status"] = "paused"
         run["current_phase"] = "DECISION"
@@ -473,7 +474,7 @@ class RunCommand:
 
     def _ready_count(self, run_id: str) -> int:
         task_plan = self.store.read(
-            self.root / ".agent" / "runs" / run_id / "task_plan.json",
+            self.root / ".asteria" / "runs" / run_id / "task_plan.json",
             "task_board",
         )
         done = {task["task_id"] for task in task_plan["tasks"] if task["status"] == "done"}
@@ -495,22 +496,22 @@ class RunCommand:
         return "\n".join(lines)
 
     def _policy_iterations(self) -> int:
-        if not (self.root / ".agent" / "policies.json").exists():
+        if not (self.root / ".asteria" / "policies.json").exists():
             return 8
         policy = self._policy()
         return int(policy["budgets"]["max_iterations_per_goal"])
 
     def _policy_replans_per_task(self) -> int:
-        if not (self.root / ".agent" / "policies.json").exists():
+        if not (self.root / ".asteria" / "policies.json").exists():
             return 2
         policy = self._policy()
         return int(policy["budgets"].get("max_replans_per_task", 2))
 
     def _policy(self) -> dict:
-        return load_policy_config(self.root / ".agent", self.validator)
+        return load_policy_config(self.root / ".asteria", self.validator)
 
     def _cost_report(self, run_id: str) -> dict:
-        path = self.root / ".agent" / "runs" / run_id / "cost_report.json"
+        path = self.root / ".asteria" / "runs" / run_id / "cost_report.json"
         if path.exists():
             return self.store.read(path, "cost_report")
         return {
@@ -531,7 +532,7 @@ class RunCommand:
         }
 
     def _pending_budget_decision(self, run_id: str) -> bool:
-        run_dir = self.root / ".agent" / "runs" / run_id
+        run_dir = self.root / ".asteria" / "runs" / run_id
         return any(
             decision["status"] == "pending"
             and (decision.get("metadata") or {}).get("kind") == "budget_guard"
@@ -577,7 +578,7 @@ class RunCommand:
         return result.decisions[0]
 
     def _pause_run_for_budget(self, run_id: str, summary: str) -> None:
-        run_store = RunStore(self.root / ".agent", self.validator)
+        run_store = RunStore(self.root / ".asteria", self.validator)
         run = run_store.load_run(run_id)
         run["status"] = "paused"
         run["current_phase"] = "DECISION"
@@ -585,12 +586,12 @@ class RunCommand:
         run_store.update_run(run)
 
     def _run_status(self, run_id: str) -> str:
-        run = RunStore(self.root / ".agent", self.validator).load_run(run_id)
+        run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)
         return run["status"]
 
     def _task_counts(self, run_id: str) -> dict[str, int]:
         task_plan = self.store.read(
-            self.root / ".agent" / "runs" / run_id / "task_plan.json",
+            self.root / ".asteria" / "runs" / run_id / "task_plan.json",
             "task_board",
         )
         counts: dict[str, int] = {}
@@ -599,7 +600,7 @@ class RunCommand:
         return counts
 
     def _latest_review_status(self, run_id: str) -> str:
-        path = self.root / ".agent" / "runs" / run_id / "eval_report.json"
+        path = self.root / ".asteria" / "runs" / run_id / "eval_report.json"
         if not path.exists():
             return "unknown"
         report = self.store.read(path, "eval_report")
@@ -611,7 +612,7 @@ class RunCommand:
         review_status: str,
         steps: list[RunStepSummary],
     ) -> Path:
-        run_dir = self.root / ".agent" / "runs" / run_id
+        run_dir = self.root / ".asteria" / "runs" / run_id
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         task_plan = self.store.read(run_dir / "task_plan.json", "task_board")
         cost_report = self.store.read(run_dir / "cost_report.json", "cost_report")
@@ -622,6 +623,7 @@ class RunCommand:
         accepted_decisions = self._accepted_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
         execution_evidence = self._execution_evidence(run_dir)
+        promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         acceptance = self._latest_acceptance_report()
         completion = self._completion_state(
             done=done,
@@ -667,6 +669,22 @@ class RunCommand:
                 )
                 for item in execution_evidence[-10:]
             )
+        if promotion_summary["total"]:
+            lines.extend(["", "## Promotion Queue", ""])
+            counts = promotion_summary["status_counts"]
+            lines.append(
+                "- Status: "
+                + ", ".join(f"{status}={count}" for status, count in sorted(counts.items()))
+            )
+            for item in promotion_summary["promoted"][-5:]:
+                lines.append(
+                    f"- {item['promotion_id']}: {item['task_id']} promoted "
+                    f"{', '.join(item.get('promoted_files') or []) or 'no files'}"
+                )
+            for item in promotion_summary["pending"][-5:]:
+                lines.append(
+                    f"- {item['promotion_id']}: {item['task_id']} pending {item['status']}"
+                )
         if blockers:
             lines.extend(["", "## Blockers", ""])
             lines.extend(f"- {item}" for item in blockers)
@@ -784,14 +802,15 @@ class RunCommand:
                     "summary": evidence["summary"],
                     "failure_type": evidence.get("failure_type") or "none",
                     "candidate_strategy": candidate.get("strategy") or "unknown",
-                    "promoted_files": ", ".join(candidate.get("promoted_files", []) or []) or "none",
+                    "promoted_files": ", ".join(candidate.get("promoted_files", []) or [])
+                    or "none",
                     "evidence_path": relative,
                 }
             )
         return items
 
     def _latest_acceptance_report(self) -> dict:
-        path = self.root / ".agent" / "acceptance" / "acceptance_report.json"
+        path = self.root / ".asteria" / "acceptance" / "acceptance_report.json"
         if not path.exists():
             return {}
         return self.store.read(path, "acceptance_report")

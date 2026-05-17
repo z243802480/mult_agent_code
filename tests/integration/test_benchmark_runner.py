@@ -21,8 +21,10 @@ def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path) -> None:
         .strip()
         .endswith("a + b")
     )
-    assert list((tmp_path / "compact_handoff" / ".agent" / "context" / "snapshots").glob("*.json"))
-    assert list((tmp_path / "compact_handoff" / ".agent" / "context" / "handoffs").glob("*.json"))
+    assert list(
+        (tmp_path / "compact_handoff" / ".asteria" / "context" / "snapshots").glob("*.json")
+    )
+    assert list((tmp_path / "compact_handoff" / ".asteria" / "context" / "handoffs").glob("*.json"))
     assert (tmp_path / "file_renamer" / "rename_plan.json").exists()
     assert (tmp_path / "file_renamer" / "IMG_0001.txt").exists()
     assert not (tmp_path / "file_renamer" / "photo-0001.txt").exists()

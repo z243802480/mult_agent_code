@@ -61,7 +61,7 @@ class BrainstormCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> BrainstormResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
 
@@ -73,7 +73,9 @@ class BrainstormCommand:
         run_dir = run_store.run_dir(run_id)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         cost_report_path = run_dir / "cost_report.json"
-        budget = BudgetController.from_report(policy, self._read_cost(cost_report_path, run_id), run_id=run_id)
+        budget = BudgetController.from_report(
+            policy, self._read_cost(cost_report_path, run_id), run_id=run_id
+        )
 
         goal = self._goal_text(run_dir)
         run["status"] = "running"
@@ -85,8 +87,12 @@ class BrainstormCommand:
             goal,
             project_context={
                 "project": project_config,
-                "existing_goal_spec": self._read_optional_json(run_dir / "goal_spec.json", "goal_spec"),
-                "existing_task_plan": self._read_optional_json(run_dir / "task_plan.json", "task_board"),
+                "existing_goal_spec": self._read_optional_json(
+                    run_dir / "goal_spec.json", "goal_spec"
+                ),
+                "existing_task_plan": self._read_optional_json(
+                    run_dir / "task_plan.json", "task_board"
+                ),
                 "policy": {
                     "decision_granularity": policy["decision_granularity"],
                     "budgets": policy["budgets"],
@@ -155,7 +161,9 @@ class BrainstormCommand:
         if current:
             return run_store.load_run(current)
         if not self.goal:
-            raise RuntimeError("No current session found. Provide a goal or run `asteria new \"goal\"` first.")
+            raise RuntimeError(
+                'No current session found. Provide a goal or run `asteria new "goal"` first.'
+            )
         return run_store.create_run(f'asteria brainstorm "{self.goal}"')
 
     def _goal_text(self, run_dir: Path) -> str:
@@ -246,7 +254,9 @@ class BrainstormCommand:
 
     def _model_client(self, run_dir: Path, budget: BudgetController) -> ModelClient:
         if self.model_client:
-            return MeteredModelClient(self.model_client, budget, ModelCallLogger(run_dir, self.validator))
+            return MeteredModelClient(
+                self.model_client, budget, ModelCallLogger(run_dir, self.validator)
+            )
         return create_model_client(run_dir, self.validator, budget)
 
     def _read_cost(self, path: Path, run_id: str) -> dict:

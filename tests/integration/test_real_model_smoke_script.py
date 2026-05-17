@@ -88,7 +88,7 @@ def test_real_model_smoke_script_rejects_fake_provider_by_default(tmp_path: Path
 
 
 def test_real_model_smoke_finds_pending_decisions_for_recovery(tmp_path: Path) -> None:
-    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (run_dir / "decisions.jsonl").write_text(
         "\n".join(
@@ -145,7 +145,7 @@ def test_real_model_smoke_approves_one_time_policy_recovery() -> None:
 
 
 def test_real_model_smoke_accepts_review_pass_with_pending_budget_guard(tmp_path: Path) -> None:
-    run_dir = tmp_path / ".agent" / "runs" / "run-1"
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (run_dir / "decisions.jsonl").write_text(
         json.dumps(

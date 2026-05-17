@@ -7,11 +7,12 @@ from typing import Callable, TypeVar
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.task_graph import ReadySelection, TaskGraphScheduler
+from asteria_runtime.core.worker_recorder import WorkerExecutionSlot
 
 
 T = TypeVar("T")
-WorkerTaskExecutor = Callable[[dict, str | None, str | None], T]
-WorkerIdAllocator = Callable[[int], list[str]]
+WorkerTaskExecutor = Callable[[dict, WorkerExecutionSlot], T]
+WorkerSlotAllocator = Callable[[RuntimeContext, int], list[WorkerExecutionSlot]]
 
 
 @dataclass(frozen=True)
@@ -54,8 +55,7 @@ class ExecutionCoordinator:
         task_board: TaskBoard,
         context: RuntimeContext,
         execute_task: WorkerTaskExecutor[T],
-        allocate_worker_ids: WorkerIdAllocator,
-        allocate_worker_result_ids: WorkerIdAllocator,
+        allocate_worker_slots: WorkerSlotAllocator,
     ) -> list[T]:
         if selection.reason in {"readonly_batch_selection", "parallel_safe_batch_selection"}:
             return self._execute_parallel_batch(
@@ -63,10 +63,12 @@ class ExecutionCoordinator:
                 task_board=task_board,
                 context=context,
                 execute_task=execute_task,
-                allocate_worker_ids=allocate_worker_ids,
-                allocate_worker_result_ids=allocate_worker_result_ids,
+                allocate_worker_slots=allocate_worker_slots,
             )
-        results = [execute_task(task, None, None) for task in selection.selected]
+        slots = allocate_worker_slots(context, len(selection.selected))
+        results = [
+            execute_task(task, slots[index]) for index, task in enumerate(selection.selected)
+        ]
         task_board.promote_unblocked()
         return results
 
@@ -77,23 +79,20 @@ class ExecutionCoordinator:
         task_board: TaskBoard,
         context: RuntimeContext,
         execute_task: WorkerTaskExecutor[T],
-        allocate_worker_ids: WorkerIdAllocator,
-        allocate_worker_result_ids: WorkerIdAllocator,
+        allocate_worker_slots: WorkerSlotAllocator,
     ) -> list[T]:
-        del context
         if not tasks:
             return []
+        slots = allocate_worker_slots(context, len(tasks))
         if len(tasks) == 1:
-            result = execute_task(tasks[0], None, None)
+            result = execute_task(tasks[0], slots[0])
             task_board.promote_unblocked()
             return [result]
 
-        worker_ids = allocate_worker_ids(len(tasks))
-        result_ids = allocate_worker_result_ids(len(tasks))
         results_by_task_id: dict[str, T] = {}
         with ThreadPoolExecutor(max_workers=len(tasks), thread_name_prefix="agent-worker") as pool:
             futures = {
-                pool.submit(execute_task, task, worker_ids[index], result_ids[index]): task["task_id"]
+                pool.submit(execute_task, task, slots[index]): task["task_id"]
                 for index, task in enumerate(tasks)
             }
             for future in as_completed(futures):

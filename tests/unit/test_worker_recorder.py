@@ -68,3 +68,9 @@ def test_worker_recorder_allocates_ids_from_existing_jsonl(tmp_path: Path) -> No
         "worker-result-0002",
         "worker-result-0003",
     ]
+
+    slots = recorder.allocate_execution_slots(context, 2)
+    assert [(slot.worker_id, slot.result_id) for slot in slots] == [
+        ("worker-0003", "worker-result-0002"),
+        ("worker-0004", "worker-result-0003"),
+    ]

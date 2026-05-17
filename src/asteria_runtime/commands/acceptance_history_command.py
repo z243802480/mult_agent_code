@@ -45,7 +45,9 @@ class AcceptanceHistoryResult:
                 lines.append(f"  delta: {delta_line}")
             failed_scenarios = aggregate.get("failed_scenarios") or []
             if failed_scenarios:
-                lines.append(f"  failed scenarios: {', '.join(str(item) for item in failed_scenarios)}")
+                lines.append(
+                    f"  failed scenarios: {', '.join(str(item) for item in failed_scenarios)}"
+                )
         return "\n".join(lines)
 
     def _dict(self, value: Any) -> dict[str, Any]:
@@ -102,7 +104,7 @@ class AcceptanceHistoryCommand:
         self.warn_context_compaction_delta = warn_context_compaction_delta
 
     def run(self) -> AcceptanceHistoryResult:
-        history_path = self.history_jsonl or self.root / ".agent" / "acceptance" / "history.jsonl"
+        history_path = self.history_jsonl or self.root / ".asteria" / "acceptance" / "history.jsonl"
         entries = self._read_history(history_path)
         if self.suite:
             entries = [entry for entry in entries if entry.get("suite") == self.suite]
@@ -138,7 +140,9 @@ class AcceptanceHistoryCommand:
             warnings.append(f"latest run has {int(failed)} failed scenario(s)")
         failed_delta = self._number(deltas.get("failed"))
         if failed_delta > 0:
-            warnings.append(f"failed scenario count increased by {self._format_number(failed_delta)}")
+            warnings.append(
+                f"failed scenario count increased by {self._format_number(failed_delta)}"
+            )
         model_delta = self._number(deltas.get("model_calls"))
         if model_delta >= self.warn_model_call_delta:
             warnings.append(

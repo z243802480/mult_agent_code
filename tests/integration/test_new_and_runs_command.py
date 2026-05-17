@@ -68,7 +68,7 @@ class CurrentRunExecuteClient:
                             "tool_name": "run_command",
                             "args": {
                                 "command": (
-                                    "python -c \"from pathlib import Path; "
+                                    'python -c "from pathlib import Path; '
                                     f"assert Path('{path}').exists()\""
                                 )
                             },
@@ -92,7 +92,7 @@ def test_new_command_creates_isolated_current_session(tmp_path: Path) -> None:
 
     assert first.run_id != second.run_id
     current = json.loads(
-        (tmp_path / ".agent" / "current_session.json").read_text(encoding="utf-8")
+        (tmp_path / ".asteria" / "current_session.json").read_text(encoding="utf-8")
     )
     assert current["session_id"] == second.run_id
     sessions = SessionsCommand(tmp_path).run()

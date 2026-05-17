@@ -57,7 +57,7 @@ class RuntimeAcceptanceClient:
                         "tool_name": "run_command",
                         "args": {
                             "command": (
-                                "python -c \"from pathlib import Path; "
+                                'python -c "from pathlib import Path; '
                                 f"assert Path('{path}').read_text(encoding='utf-8') == '{task_id}'\""
                             )
                         },
@@ -87,7 +87,7 @@ class RuntimeAcceptanceClient:
                         "tool_name": "run_command",
                         "args": {
                             "command": (
-                                "python -c \"from pathlib import Path; "
+                                'python -c "from pathlib import Path; '
                                 "assert Path('blocked/output.txt').read_text(encoding='utf-8') == 'expected'\""
                             )
                         },
@@ -128,6 +128,10 @@ class RuntimeAcceptanceClient:
                 "paths": paths,
                 "has_scoped_file": "input/scoped.txt" in paths,
                 "has_unscoped_file": "input/unscoped.txt" in paths,
+                "has_scope_summary": bool(package.get("scope_summary")),
+                "has_evidence_scope": bool(package.get("evidence_scope")),
+                "has_write_scope_files": isinstance(package.get("write_scope_files"), list),
+                "has_recent_failures": isinstance(package.get("recent_failures"), list),
             }
             action = {
                 "schema_version": "0.1.0",
@@ -149,7 +153,7 @@ class RuntimeAcceptanceClient:
                         "tool_name": "run_command",
                         "args": {
                             "command": (
-                                "python -c \"from pathlib import Path; "
+                                'python -c "from pathlib import Path; '
                                 "assert Path('out/context.txt').read_text(encoding='utf-8') "
                                 "== 'sliced context observed'\""
                             )
@@ -198,7 +202,7 @@ class RuntimeAcceptanceClient:
                             "tool_name": "run_command",
                             "args": {
                                 "command": (
-                                    "python -c \"from pathlib import Path; "
+                                    'python -c "from pathlib import Path; '
                                     "assert Path('out/feedback.txt').read_text(encoding='utf-8') "
                                     "== 'feedback'\""
                                 )
@@ -273,7 +277,7 @@ class RuntimeEvidenceDebugClient:
                     "tool_name": "run_command",
                     "args": {
                         "command": (
-                            "python -c \"from pathlib import Path; "
+                            'python -c "from pathlib import Path; '
                             "assert Path('blocked/output.txt').read_text(encoding='utf-8') == 'expected'\""
                         )
                     },
@@ -411,13 +415,17 @@ def _runtime_parallel_readonly(workspace: Path) -> tuple[bool, dict[str, Any]]:
         model_client=RuntimeAcceptanceClient("readonly"),
         parallel_readonly=True,
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     worker_results = _read_jsonl(run_dir / "worker_results.jsonl")
-    ok = result.completed == 2 and len(worker_results) == 2 and all(
-        item.get("status") == "succeeded" for item in worker_results
+    ok = (
+        result.completed == 2
+        and len(worker_results) == 2
+        and all(item.get("status") == "succeeded" for item in worker_results)
     )
-    return ok, _runtime_summary("runtime_parallel_readonly", run_id, evidence, result=result.to_text())
+    return ok, _runtime_summary(
+        "runtime_parallel_readonly", run_id, evidence, result=result.to_text()
+    )
 
 
 def _runtime_disjoint_writes(workspace: Path) -> tuple[bool, dict[str, Any]]:
@@ -437,14 +445,16 @@ def _runtime_disjoint_writes(workspace: Path) -> tuple[bool, dict[str, Any]]:
         model_client=RuntimeAcceptanceClient("disjoint"),
         parallel_writes=True,
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     ok = (
         result.completed == 2
         and (workspace / "out" / "alpha.txt").read_text(encoding="utf-8") == "task-0001"
         and (workspace / "out" / "beta.txt").read_text(encoding="utf-8") == "task-0002"
     )
-    return ok, _runtime_summary("runtime_disjoint_writes", run_id, evidence, result=result.to_text())
+    return ok, _runtime_summary(
+        "runtime_disjoint_writes", run_id, evidence, result=result.to_text()
+    )
 
 
 def _runtime_worker_failure(workspace: Path) -> tuple[bool, dict[str, Any]]:
@@ -465,19 +475,75 @@ def _runtime_worker_failure(workspace: Path) -> tuple[bool, dict[str, Any]]:
         run_id=run_id,
         model_client=RuntimeAcceptanceClient("failure"),
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     evidence["candidate_isolated"] = not (workspace / "blocked" / "output.txt").exists()
     evidence["failure_evidence"] = bool(_read_jsonl(run_dir / "task_failures.jsonl"))
+    evidence["promotion_failure_recorded"] = _exercise_failed_promotion_queue(
+        workspace, run_dir, run_id
+    )
     worker_results = _read_jsonl(run_dir / "worker_results.jsonl")
     ok = (
         result.blocked == 1
         and evidence["candidate_isolated"]
         and evidence["failure_evidence"]
+        and evidence["promotion_failure_recorded"]
         and bool(worker_results)
         and worker_results[-1].get("status") == "failed"
     )
     return ok, _runtime_summary("runtime_worker_failure", run_id, evidence, result=result.to_text())
+
+
+def _exercise_failed_promotion_queue(workspace: Path, run_dir: Path, run_id: str) -> bool:
+    from asteria_runtime.commands.promotions_command import PromotionsCommand
+    from asteria_runtime.core.candidate_workspace import CandidateWorkspace
+    from asteria_runtime.storage.jsonl_store import JsonlStore
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    validator = SchemaValidator(REPO_ROOT / "schemas")
+    source_file = workspace / "promotion-source.txt"
+    source_file.write_text("source stays stable\n", encoding="utf-8")
+    candidate = CandidateWorkspace.create(workspace, run_dir, "task-promotion-failure")
+    candidate_file = candidate.root / "promotion-source.txt"
+    if candidate_file.exists():
+        candidate_file.unlink()
+    JsonlStore(validator).append(
+        run_dir / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-runtime-failure",
+            "run_id": run_id,
+            "task_id": "task-promotion-failure",
+            "candidate_id": candidate.candidate_id,
+            "workspace": str(candidate.root),
+            "strategy": candidate.strategy,
+            "workspace_policy": candidate.workspace_policy,
+            "backend_reason": candidate.backend_reason,
+            "branch_name": candidate.branch_name,
+            "promotable_files": ["promotion-source.txt"],
+            "promoted_files": [],
+            "status": "pending_manual_approval",
+            "approval_mode": "manual",
+            "merge_gate": {"ok": True},
+            "failure": None,
+            "decision": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        },
+        "candidate_promotion",
+    )
+    result = PromotionsCommand(
+        workspace,
+        run_id=run_id,
+        action="approve",
+        promotion_id="promotion-runtime-failure",
+    ).run()
+    latest = result.promotions[-1] if result.promotions else {}
+    return (
+        latest.get("status") == "promotion_failed"
+        and bool(latest.get("failure"))
+        and source_file.read_text(encoding="utf-8") == "source stays stable\n"
+    )
 
 
 def _runtime_merge_gate_block(workspace: Path) -> tuple[bool, dict[str, Any]]:
@@ -493,7 +559,7 @@ def _runtime_merge_gate_block(workspace: Path) -> tuple[bool, dict[str, Any]]:
         run_id=run_id,
         model_client=RuntimeAcceptanceClient("readonly"),
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
 
     class Result:
@@ -501,11 +567,16 @@ def _runtime_merge_gate_block(workspace: Path) -> tuple[bool, dict[str, Any]]:
         summary = "passed"
 
     gate = MergeGate().evaluate(
-        {"write_scope": ["safe/output.txt"], "completion_contract": {"requires_changed_artifact": True}},
+        {
+            "write_scope": ["safe/output.txt"],
+            "completion_contract": {"requires_changed_artifact": True},
+        },
         ["safe/output.txt", "unsafe/output.txt"],
         [Result()],
     )
-    evidence["merge_gate_blocked"] = not gate.ok and "unsafe/output.txt" in "; ".join(gate.violations)
+    evidence["merge_gate_blocked"] = not gate.ok and "unsafe/output.txt" in "; ".join(
+        gate.violations
+    )
     ok = bool(evidence["merge_gate_blocked"])
     summary = _runtime_summary("runtime_merge_gate_block", run_id, evidence)
     summary["runtime_os"]["merge_gate"] = gate.to_dict()
@@ -544,7 +615,7 @@ def _runtime_request_resume(workspace: Path) -> tuple[bool, dict[str, Any]]:
         max_iterations=1,
         execute_model_client=RuntimeAcceptanceClient("runtime_request"),
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     evidence["resume_recovered"] = resumed.applied_decisions == 1
     evidence["failure_evidence"] = bool(_read_jsonl(run_dir / "task_failures.jsonl"))
@@ -572,15 +643,22 @@ def _runtime_context_package_slice(workspace: Path) -> tuple[bool, dict[str, Any
     run_id = _seed_runtime_run(workspace, [task])
     client = RuntimeAcceptanceClient("context_package")
     result = ExecuteCommand(workspace, run_id=run_id, model_client=client).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     evidence["context_package_sliced"] = bool(
         client.seen_context_package.get("has_scoped_file")
         and not client.seen_context_package.get("has_unscoped_file")
     )
+    evidence["context_package_scope_partitioned"] = bool(
+        client.seen_context_package.get("has_scope_summary")
+        and client.seen_context_package.get("has_evidence_scope")
+        and client.seen_context_package.get("has_write_scope_files")
+        and client.seen_context_package.get("has_recent_failures")
+    )
     ok = (
         result.completed == 1
         and evidence["context_package_sliced"]
+        and evidence["context_package_scope_partitioned"]
         and (workspace / "out" / "context.txt").read_text(encoding="utf-8")
         == "sliced context observed"
     )
@@ -601,7 +679,7 @@ def _runtime_sandbox_backend_selection(workspace: Path) -> tuple[bool, dict[str,
         run_id=run_id,
         model_client=RuntimeAcceptanceClient("disjoint"),
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     sandbox_profiles = _read_jsonl(run_dir / "sandbox_profiles.jsonl")
     recorded = [
@@ -657,7 +735,7 @@ def _runtime_planner_scope_quality(workspace: Path) -> tuple[bool, dict[str, Any
         run_id=run_id,
         model_client=RuntimeAcceptanceClient("planner_scope"),
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     runtime_requests = _read_jsonl(run_dir / "runtime_requests.jsonl")
     notes = str(planned_task.get("notes", "")).lower()
@@ -669,7 +747,11 @@ def _runtime_planner_scope_quality(workspace: Path) -> tuple[bool, dict[str, Any
     evidence["runtime_request_created"] = any(
         item.get("request_type") == "scope_expansion" for item in runtime_requests
     )
-    ok = result.blocked == 1 and evidence["planner_scope_narrowed"] and evidence["runtime_request_created"]
+    ok = (
+        result.blocked == 1
+        and evidence["planner_scope_narrowed"]
+        and evidence["runtime_request_created"]
+    )
     summary = _runtime_summary("planner_scope_quality", run_id, evidence, result=result.to_text())
     summary["runtime_os"]["planned_task"] = {
         "write_scope": planned_task.get("write_scope"),
@@ -686,7 +768,9 @@ def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]
     run_id = _seed_runtime_run(
         workspace,
         [
-            _runtime_task("task-0001", "Collect validation signal", write_scope=["out/feedback.txt"]),
+            _runtime_task(
+                "task-0001", "Collect validation signal", write_scope=["out/feedback.txt"]
+            ),
             _runtime_task(
                 "task-0002",
                 "Collect runtime request signal",
@@ -700,7 +784,7 @@ def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]
         max_tasks=2,
         model_client=RuntimeAcceptanceClient("feedback"),
     ).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     _append_merge_gate_feedback(run_dir, run_id)
     report = CapabilityReportCommand(workspace).run()
     profiles = report.model_profiles
@@ -787,11 +871,13 @@ def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]
     DebugCommand(workspace, run_id=run_id, model_client=debug_client).run()
     review_client = RuntimeEvidenceReviewClient()
     ReviewCommand(workspace, run_id=run_id, model_client=review_client).run()
-    run_dir = workspace / ".agent" / "runs" / run_id
+    run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
     evidence["debug_consumed_runtime_evidence"] = debug_client.consumed_runtime_evidence
     evidence["review_consumed_runtime_evidence"] = review_client.consumed_runtime_evidence
-    ok = evidence["debug_consumed_runtime_evidence"] and evidence["review_consumed_runtime_evidence"]
+    ok = (
+        evidence["debug_consumed_runtime_evidence"] and evidence["review_consumed_runtime_evidence"]
+    )
     summary = _runtime_summary(
         "runtime_evidence_consumption",
         run_id,
@@ -810,7 +896,7 @@ def _seed_runtime_run(workspace: Path, tasks: list[dict[str, Any]]) -> str:
     InitCommand(workspace).run()
     validator = SchemaValidator(REPO_ROOT / "schemas")
     store = JsonStore(validator)
-    run_store = RunStore(workspace / ".agent", validator)
+    run_store = RunStore(workspace / ".asteria", validator)
     run = run_store.create_run("Runtime OS acceptance scenario", goal_id="goal-runtime-os")
     run_id = str(run["run_id"])
     run_store.set_current_session(run_id, "runtime_os_acceptance")
@@ -834,7 +920,9 @@ def _seed_runtime_run(workspace: Path, tasks: list[dict[str, Any]]) -> str:
         },
         "goal_spec",
     )
-    store.write(run_dir / "task_plan.json", {"schema_version": "0.1.0", "tasks": tasks}, "task_board")
+    store.write(
+        run_dir / "task_plan.json", {"schema_version": "0.1.0", "tasks": tasks}, "task_board"
+    )
     store.write(
         run_dir / "cost_report.json",
         {
@@ -910,7 +998,9 @@ def _runtime_task(
         },
         "validation_commands": ["local command"],
         "failure_policy": "create_repair_task",
-        "parallel_safety": "disjoint_writes" if disjoint else ("readonly" if readonly else "serial"),
+        "parallel_safety": "disjoint_writes"
+        if disjoint
+        else ("readonly" if readonly else "serial"),
         "merge_strategy": "none",
     }
 
@@ -944,7 +1034,9 @@ def _runtime_summary(
 
 
 def _has_jsonl(path: Path) -> bool:
-    return path.exists() and any(line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+    return path.exists() and any(
+        line.strip() for line in path.read_text(encoding="utf-8").splitlines()
+    )
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

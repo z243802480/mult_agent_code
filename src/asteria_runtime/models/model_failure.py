@@ -47,13 +47,13 @@ class ModelFailureRecorder:
             base_url=base_url,
             error=error,
         )
-        path = self.root / ".agent" / "model" / "latest_failure.json"
+        path = self.root / ".asteria" / "model" / "latest_failure.json"
         self.store.write(path, report, "model_failure_report")
         self._record_memory(report)
         return path, report
 
     def _record_memory(self, report: dict) -> None:
-        path = self.root / ".agent" / "memory" / "failures.jsonl"
+        path = self.root / ".asteria" / "memory" / "failures.jsonl"
         existing = self.jsonl.read_all(path, "memory_entry")
         memory = {
             "schema_version": "0.1.0",

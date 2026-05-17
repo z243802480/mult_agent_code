@@ -17,7 +17,7 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
-    agent_dir = tmp_path / ".agent"
+    agent_dir = tmp_path / ".asteria"
     daily_dir = agent_dir / "daily" / "release-hardening"
     daily_dir.mkdir(parents=True)
     store.write(
@@ -183,7 +183,7 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
 def test_weekly_report_uses_acceptance_runtime_evidence_without_run_jsonl(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     store = JsonStore(SchemaValidator(Path.cwd() / "schemas"))
-    acceptance_dir = tmp_path / ".agent" / "acceptance"
+    acceptance_dir = tmp_path / ".asteria" / "acceptance"
     acceptance_dir.mkdir(parents=True)
     store.write(
         acceptance_dir / "acceptance_report.json",
@@ -219,11 +219,21 @@ def runtime_os_report(tmp_path: Path) -> dict:
         runtime_scenario("runtime_disjoint_writes"),
         runtime_scenario(
             "runtime_worker_failure",
-            {"failure_evidence": True, "candidate_isolated": True},
+            {
+                "failure_evidence": True,
+                "candidate_isolated": True,
+                "promotion_failure_recorded": True,
+            },
         ),
         runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
         runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
-        runtime_scenario("runtime_context_package_slice", {"context_package_sliced": True}),
+        runtime_scenario(
+            "runtime_context_package_slice",
+            {
+                "context_package_sliced": True,
+                "context_package_scope_partitioned": True,
+            },
+        ),
         runtime_scenario(
             "runtime_sandbox_backend_selection",
             {"sandbox_backend_recorded": True},
@@ -249,7 +259,7 @@ def runtime_os_report(tmp_path: Path) -> dict:
         "ok": True,
         "returncode": 0,
         "created_at": "2026-05-12T10:01:00+08:00",
-        "summary_json": str(tmp_path / ".agent" / "acceptance" / "latest_summary.json"),
+        "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
         "aggregate": {"total": len(scenarios), "passed": len(scenarios), "failed": 0},
         "trend_warnings": [],
         "scenarios": scenarios,

@@ -165,7 +165,7 @@ def test_validation_result_validates_against_schema() -> None:
 
 def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) -> None:
     validator = SchemaValidator(SCHEMA_DIR)
-    model_dir = tmp_path / ".agent" / "model"
+    model_dir = tmp_path / ".asteria" / "model"
     model_dir.mkdir(parents=True)
     (model_dir / "capability_profile.json").write_text(
         """
@@ -225,7 +225,7 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) 
 
     assert mount.runtime_context["model_profile_id"] == "model-profile-worker-0001"
     assert mount.runtime_context["runtime_profile_id"] == "runtime-profile-worker-0001"
-    run_dir = tmp_path / ".agent" / "runs" / "run-0001"
+    run_dir = tmp_path / ".asteria" / "runs" / "run-0001"
     assert "strong-route" in (run_dir / "model_profiles.jsonl").read_text(encoding="utf-8")
     sandbox_profile = (run_dir / "sandbox_profiles.jsonl").read_text(encoding="utf-8")
     assert "temp_workspace" in sandbox_profile

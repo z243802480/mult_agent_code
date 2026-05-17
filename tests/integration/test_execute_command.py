@@ -100,7 +100,7 @@ class FakeReadonlyExecuteClient:
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"assert True\""},
+                            "args": {"command": 'python -c "assert True"'},
                             "reason": "readonly verification",
                         }
                     ],
@@ -142,7 +142,7 @@ class FakeDisjointWriteExecuteClient:
                             "tool_name": "run_command",
                             "args": {
                                 "command": (
-                                    "python -c \"from pathlib import Path; "
+                                    'python -c "from pathlib import Path; '
                                     f"assert Path('{path}').read_text() == '{task_id}'\""
                                 )
                             },
@@ -269,12 +269,7 @@ class FakeOutOfScopePatchClient:
                         {
                             "tool_name": "apply_patch",
                             "args": {
-                                "patch": (
-                                    "--- a/blocked.py\n"
-                                    "+++ b/blocked.py\n"
-                                    "@@\n"
-                                    "+VALUE = 1\n"
-                                )
+                                "patch": ("--- a/blocked.py\n+++ b/blocked.py\n@@\n+VALUE = 1\n")
                             },
                             "reason": "should be denied by write_scope",
                         }
@@ -683,7 +678,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
         "def add_note(notes, text):\n    return [*notes, text]\n"
     )
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"
     assert "working add_note" in task_plan["tasks"][0]["notes"]
@@ -705,6 +700,14 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert experiments[0]["candidate"]["workspace_policy"] in {"worktree", "isolated_copy"}
     assert experiments[0]["candidate"]["backend_reason"]
     assert experiments[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
+    promotions = [
+        json.loads(line)
+        for line in (run_dir / "candidate_promotions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert [item["status"] for item in promotions] == ["auto_approved", "promoted"]
+    assert promotions[-1]["promoted_files"] == ["src/notes_tool.py"]
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
     artifacts = [
         json.loads(line)
@@ -724,9 +727,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert evidence[0]["candidate"]["strategy"] in {"git_worktree", "temp_workspace"}
     assert evidence[0]["candidate"]["backend_reason"]
     assert evidence[0]["contract_check"]["merge_gate"]["ok"] is True
-    assert evidence[0]["contract_check"]["merge_gate"]["promotable_files"] == [
-        "src/notes_tool.py"
-    ]
+    assert evidence[0]["contract_check"]["merge_gate"]["promotable_files"] == ["src/notes_tool.py"]
     assert evidence[0]["verification_results"][0]["ok"] is True
     validation_results = [
         json.loads(line)
@@ -740,7 +741,8 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert validation_results[0]["command"] == "python -m py_compile src/notes_tool.py"
     assert "notes_tool import add_note" in validation_results[1]["command"]
     workers = [
-        json.loads(line) for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+        json.loads(line)
+        for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert workers[0]["task_id"] == "task-0001"
     assert workers[0]["status"] == "succeeded"
@@ -784,7 +786,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
 def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "research two local checks", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     base = {
@@ -830,7 +832,8 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "readonly_batch_selection" in events
     workers = [
-        json.loads(line) for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+        json.loads(line)
+        for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert {worker["task_id"] for worker in workers} == {"task-0001", "task-0002"}
     assert len({worker["runtime_profile_id"] for worker in workers}) == 2
@@ -852,9 +855,7 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
     ]
     assert len({call["model_call_id"] for call in model_calls}) == len(model_calls)
     execute_profile_ids = {
-        call["runtime_profile_id"]
-        for call in model_calls
-        if call["purpose"] == "task_execution"
+        call["runtime_profile_id"] for call in model_calls if call["purpose"] == "task_execution"
     }
     assert execute_profile_ids == {worker["runtime_profile_id"] for worker in workers}
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
@@ -863,8 +864,10 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
 
 def test_execute_command_parallel_disjoint_writes_promotes_isolated_outputs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "write two independent outputs", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    plan = PlanCommand(
+        tmp_path, "write two independent outputs", model_client=FakePlanClient()
+    ).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     base = {
@@ -943,7 +946,7 @@ def test_execute_command_parallel_disjoint_writes_promotes_isolated_outputs(tmp_
 def test_execute_command_denies_write_tool_for_readonly_task(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "research one local check", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"] = [
@@ -994,7 +997,7 @@ def test_execute_command_denies_write_tool_for_readonly_task(tmp_path: Path) -> 
 def test_execute_command_denies_write_file_outside_write_scope(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"][0].update(
@@ -1037,7 +1040,7 @@ def test_execute_command_denies_write_file_outside_write_scope(tmp_path: Path) -
 def test_execute_command_denies_read_file_outside_read_scope(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "research one local check", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"] = [
@@ -1095,7 +1098,7 @@ def test_execute_command_denies_read_file_outside_read_scope(tmp_path: Path) -> 
 def test_execute_command_denies_apply_patch_outside_write_scope(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"][0].update(
@@ -1140,7 +1143,7 @@ def test_execute_command_records_runtime_request_without_writing_outside_scope(
 ) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"][0].update(
@@ -1196,7 +1199,7 @@ def test_resume_applies_runtime_request_and_allows_follow_up_write(
 ) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a generated report", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"][0].update(
@@ -1267,8 +1270,7 @@ def test_resume_applies_runtime_request_and_allows_follow_up_write(
     applied = [
         event
         for event in events
-        if event["type"] == "decision_applied"
-        and event["data"]["decision_id"] == "decision-0001"
+        if event["type"] == "decision_applied" and event["data"]["decision_id"] == "decision-0001"
     ]
     assert len(applied) == 1
     assert applied[0]["data"]["effect"] == "runtime_request_applied"
@@ -1284,7 +1286,7 @@ def test_resume_applies_context_request_read_scope(
 ) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "research one local check", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"] = [
@@ -1358,7 +1360,10 @@ def test_execute_command_injects_context_mount_and_task_contract(tmp_path: Path)
     assert runtime_context["context_mount"]["mount_type"] == "coding_context"
     assert runtime_context["context_mount"]["task_id"] == "task-0001"
     assert runtime_context["context_package"]["task_brief"]["task_id"] == "task-0001"
-    assert runtime_context["context_package"]["goal_brief"]["normalized_goal"] == "Create a tiny notes tool"
+    assert (
+        runtime_context["context_package"]["goal_brief"]["normalized_goal"]
+        == "Create a tiny notes tool"
+    )
     assert runtime_context["task_contract"]["read_scope"]
     assert runtime_context["task_contract"]["parallel_safety"] == "serial"
 
@@ -1373,7 +1378,7 @@ def test_execute_command_blocks_disallowed_tool_without_tool_call(tmp_path: Path
 
     assert result.completed == 0
     assert result.blocked == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
     assert "not allowed" in task_plan["tasks"][0]["notes"]
@@ -1391,7 +1396,7 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
     assert result.completed == 0
     assert result.blocked == 1
     assert not (tmp_path / "src" / "notes_tool.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
     tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
@@ -1422,7 +1427,7 @@ def test_execute_command_blocks_implementation_task_without_changed_artifacts(
 
     assert result.completed == 0
     assert result.blocked == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "blocked"
     assert "required changed artifact was not produced" in task_plan["tasks"][0]["notes"]
@@ -1438,7 +1443,7 @@ def test_execute_command_blocks_required_task_without_verification(tmp_path: Pat
 
     assert result.completed == 0
     assert result.blocked == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert "required verification was not provided" in task_plan["tasks"][0]["notes"]
     assert not (tmp_path / "src" / "notes_tool.py").exists()
@@ -1471,7 +1476,7 @@ def test_execute_command_uses_planned_verification_when_model_omits_it(
 ) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     command = (
@@ -1516,7 +1521,7 @@ def test_execute_command_treats_inline_run_command_as_verification(tmp_path: Pat
     ).run()
 
     assert result.completed == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     evidence = [
         json.loads(line)
         for line in (run_dir / "task_execution_evidence.jsonl")
@@ -1536,7 +1541,7 @@ def test_execute_command_filters_reserved_model_tool_args(tmp_path: Path) -> Non
     ).run()
 
     assert result.completed == 1
-    tool_calls = (tmp_path / ".agent" / "runs" / plan.run_id / "tool_calls.jsonl").read_text(
+    tool_calls = (tmp_path / ".asteria" / "runs" / plan.run_id / "tool_calls.jsonl").read_text(
         encoding="utf-8"
     )
     assert "model should not pass this" not in tool_calls
@@ -1546,7 +1551,7 @@ def test_execute_command_filters_reserved_model_tool_args(tmp_path: Path) -> Non
 def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     command = (
@@ -1627,7 +1632,7 @@ def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
     assert result.executed_tasks[0].status == "paused"
     assert result.executed_tasks[0].evidence_path is not None
     assert not (tmp_path / "src" / "notes_tool.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert run["status"] == "paused"
     decisions = [

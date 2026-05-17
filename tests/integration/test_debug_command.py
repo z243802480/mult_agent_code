@@ -260,7 +260,7 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
     assert result.still_blocked == 0
     assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
 
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"
     assert "VALUE = 2" in task_plan["tasks"][0]["notes"]
@@ -306,7 +306,7 @@ def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
 
     assert result.repaired == 1
     assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
     assert "apply_patch" in tool_calls
 
@@ -326,7 +326,7 @@ def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
     assert result.repaired == 0
     assert result.still_blocked == 1
     assert not (tmp_path / "repairable.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     experiments = [
         json.loads(line)
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
@@ -356,7 +356,7 @@ def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
 def test_debug_command_can_mark_already_satisfied_task_done(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     task_plan["tasks"][0]["status"] = "blocked"
     task_plan["tasks"][0]["notes"] = (

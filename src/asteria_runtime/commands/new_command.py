@@ -39,7 +39,7 @@ class NewCommand:
         self.model_client = model_client
 
     def run(self) -> NewResult:
-        if not (self.root / ".agent").exists():
+        if not (self.root / ".asteria").exists():
             InitCommand(self.root).run()
         plan = PlanCommand(self.root, self.goal, model_client=self.model_client).run()
         return NewResult(plan)

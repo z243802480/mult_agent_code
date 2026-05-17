@@ -100,6 +100,8 @@ class RuntimeOSGateEvaluator:
     def _special_missing_message(self, scenario_name: str, key: str) -> str:
         if key == "candidate_isolated":
             return f"{scenario_name}: failed candidate polluted main workspace"
+        if key == "promotion_failure_recorded":
+            return f"{scenario_name}: candidate promotion failure was not recorded"
         if key == "failure_evidence":
             return f"{scenario_name}: missing failure evidence"
         if key == "merge_gate_blocked":
@@ -108,6 +110,8 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: missing resume recovery"
         if key == "context_package_sliced":
             return f"{scenario_name}: context package was not sliced by read_scope"
+        if key == "context_package_scope_partitioned":
+            return f"{scenario_name}: context package did not separate read/write/evidence scopes"
         if key == "sandbox_backend_recorded":
             return f"{scenario_name}: missing sandbox backend and selection reason"
         if key == "planner_scope_narrowed":

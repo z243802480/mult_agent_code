@@ -35,6 +35,7 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert task["parallel_safety"] == "serial"
     assert task["failure_policy"] == "create_repair_task"
     assert task["context_requirements"]["mount_type"] == "coding_context"
+    assert "list_files" in task["allowed_tools"]
     assert "restore_backup" in task["allowed_tools"]
     assert "Quality:" in task["notes"]
 
@@ -209,18 +210,18 @@ def test_requirement_planner_groups_atomic_multifile_cli_artifacts() -> None:
         "original_goal": (
             "Create a small multi-file Python notes CLI. Use a package directory named "
             "notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. "
-            "It must support `python notes.py add \"ship gray\"` and `python notes.py list`, "
+            'It must support `python notes.py add "ship gray"` and `python notes.py list`, '
             "storing notes in notes.json under the current directory."
         ),
         "normalized_goal": "Create a multi-file Python notes CLI",
         "target_outputs": ["local_cli", "python_module"],
         "definition_of_done": [
-            "python notes.py add \"ship gray\" exits successfully",
+            'python notes.py add "ship gray" exits successfully',
             "python notes.py list prints ship gray",
             "notes are stored in notes.json",
         ],
         "verification_strategy": [
-            "python notes.py add \"ship gray\"",
+            'python notes.py add "ship gray"',
             "python notes.py list",
         ],
         "expanded_requirements": [
@@ -457,3 +458,38 @@ def test_follow_up_planner_chains_new_tasks_after_existing_work() -> None:
     assert [task["task_id"] for task in tasks] == ["task-0002", "task-0003"]
     assert tasks[0]["depends_on"] == ["task-0001"]
     assert tasks[1]["depends_on"] == ["task-0002"]
+
+
+def test_planner_notes_include_capability_feedback_hint() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-feedback",
+        "original_goal": "Create feedback.txt",
+        "normalized_goal": "Create feedback.txt",
+        "goal_type": "software_tool",
+        "assumptions": [],
+        "constraints": [],
+        "non_goals": [],
+        "expanded_requirements": [
+            {
+                "id": "req-feedback",
+                "priority": "must",
+                "description": "Create feedback.txt with one line.",
+                "acceptance": ["feedback.txt exists"],
+                "expected_artifacts": ["feedback.txt"],
+            }
+        ],
+        "target_outputs": ["feedback.txt"],
+        "definition_of_done": ["feedback.txt exists"],
+        "verification_strategy": [],
+        "budget": {},
+    }
+    runtime_context = {
+        "capability_feedback": [
+            {"message": "prefer narrower read/write scope before scaling similar tasks"}
+        ]
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec, runtime_context)["tasks"][0]
+
+    assert "capability feedback: prefer narrower read/write scope" in task["notes"]

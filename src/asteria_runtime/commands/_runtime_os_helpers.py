@@ -89,7 +89,7 @@ def runtime_os_release_evidence(
     """Collect Runtime OS release evidence from run directories.
 
     Args:
-        run_dirs: List of run directory paths under .agent/runs/.
+        run_dirs: List of run directory paths under .asteria/runs/.
         read_jsonl: Callable(path, schema_name) -> list[dict].
     """
     summary: dict[str, Any] = {
@@ -102,6 +102,10 @@ def runtime_os_release_evidence(
         "validation_results": 0,
         "task_execution_evidence": 0,
         "task_graph_selections": 0,
+        "candidate_promotions": 0,
+        "candidate_promotions_pending": 0,
+        "candidate_promotions_blocked": 0,
+        "candidate_promotions_promoted": 0,
     }
     for run_dir in run_dirs:
         workers = read_jsonl(run_dir / "workers.jsonl", "worker_invocation")
@@ -129,4 +133,30 @@ def runtime_os_release_evidence(
         summary["task_graph_selections"] += len(
             [item for item in events if item.get("type") == "task_graph_selection"]
         )
+        promotions = _latest_promotions(
+            read_jsonl(run_dir / "candidate_promotions.jsonl", "candidate_promotion")
+        )
+        summary["candidate_promotions"] += len(promotions)
+        summary["candidate_promotions_pending"] += len(
+            [
+                item
+                for item in promotions
+                if item.get("status") in {"queued", "pending_manual_approval", "approved"}
+            ]
+        )
+        summary["candidate_promotions_blocked"] += len(
+            [item for item in promotions if item.get("status") in {"blocked", "promotion_failed"}]
+        )
+        summary["candidate_promotions_promoted"] += len(
+            [item for item in promotions if item.get("status") == "promoted"]
+        )
     return summary
+
+
+def _latest_promotions(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    for promotion in promotions:
+        promotion_id = promotion.get("promotion_id")
+        if promotion_id:
+            latest[str(promotion_id)] = promotion
+    return list(latest.values())

@@ -1,4 +1,4 @@
-__pycache__/
+﻿__pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
@@ -8,6 +8,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+.asteria/
 .agent/
 .tools/
 .venv/

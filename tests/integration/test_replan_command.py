@@ -97,7 +97,7 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert result.created_tasks == 1
     assert result.created_decisions == 0
     assert result.superseded_tasks == ["task-0001"]
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "ready"]
     repair_task = task_plan["tasks"][1]
@@ -109,7 +109,7 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert "Candidate workspace:" in repair_task["description"]
     assert "verification did not pass" in repair_task["description"]
     backlog = json.loads(
-        (tmp_path / ".agent" / "tasks" / "backlog.json").read_text(encoding="utf-8")
+        (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")
     )
     assert backlog["tasks"][1]["task_id"] == "task-0002"
 
@@ -127,7 +127,7 @@ def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> N
 
     assert result.created_tasks == 0
     assert result.created_decisions == 1
-    run_dir = tmp_path / ".agent" / "runs" / plan.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     decisions = [
         json.loads(line)
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()

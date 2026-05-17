@@ -38,9 +38,11 @@ class TaskAttemptRunner:
         create_candidate_workspace: Callable[[RuntimeContext, dict], CandidateWorkspace],
         candidate_context: Callable[[RuntimeContext, CandidateWorkspace], RuntimeContext],
         run_tool_calls: Callable[..., list[Any]],
-        record_validation_results: Callable[[RuntimeContext, dict, list[dict], list[Any]], list[str]],
+        record_validation_results: Callable[
+            [RuntimeContext, dict, list[dict], list[Any]], list[str]
+        ],
         changed_files: Callable[[list[Any]], list[str]],
-        promote_candidate_changes: Callable[[RuntimeContext, CandidateWorkspace, list[str]], list[str]],
+        promote_candidate_changes: Callable[..., list[str]],
         record_experiment: Callable[..., None],
         complete_task_after_candidate_promotion: Callable[[TaskBoard, str, str], None],
         record_task_failure: Callable[..., None],
@@ -95,6 +97,8 @@ class TaskAttemptRunner:
                 context,
                 candidate,
                 merge_gate.promotable_files,
+                task_id=task_id,
+                merge_gate=merge_gate.to_dict(),
             )
             evidence_path = self.evidence_recorder.record(
                 context,

@@ -69,7 +69,7 @@ class DecideCommand:
         self.jsonl = JsonlStore(self.validator)
 
     def run(self) -> DecideResult:
-        agent_dir = self.root / ".agent"
+        agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
             raise RuntimeError("Workspace is not initialized. Run `asteria init` first.")
         run_store = RunStore(agent_dir, self.validator)

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 # ruff: noqa: E402
 
@@ -449,7 +449,7 @@ def run_benchmarks(
             workspace.mkdir(parents=True)
             results.append(_run_one(benchmark_id, workspace))
         if keep_workspaces:
-            kept = REPO_ROOT / ".agent" / "benchmark-workspaces"
+            kept = REPO_ROOT / ".asteria" / "benchmark-workspaces"
             kept.mkdir(parents=True, exist_ok=True)
             for result in results:
                 target = kept / result.benchmark_id
@@ -485,7 +485,7 @@ def _run_password_tool(workspace: Path) -> BenchmarkResult:
             enable_research=False,
         ).run()
         result.run_id = run.run_id
-        run_dir = workspace / ".agent" / "runs" / run.run_id
+        run_dir = workspace / ".asteria" / "runs" / run.run_id
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
         goal_spec = _read_json(run_dir / "goal_spec.json")
         constraints = set(goal_spec.get("constraints", []))
@@ -537,7 +537,7 @@ def _run_failing_tests_project(workspace: Path) -> BenchmarkResult:
         ).run()
         result.run_id = final.run_id
 
-        run_dir = workspace / ".agent" / "runs" / plan.run_id
+        run_dir = workspace / ".asteria" / "runs" / plan.run_id
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
         experiments = _read_jsonl(run_dir / "experiments.jsonl")
         _check(
@@ -556,7 +556,7 @@ def _run_failing_tests_project(workspace: Path) -> BenchmarkResult:
         )
         _check(
             result,
-            bool(list((workspace / ".agent" / "backups").glob("*/*/manifest.json"))),
+            bool(list((workspace / ".asteria" / "backups").glob("*/*/manifest.json"))),
             "backup manifest exists",
         )
         _check_report_mentions(result, run_dir / "final_report.md", ["Artifacts", "buggy_math.py"])
@@ -582,7 +582,7 @@ def _run_compact_handoff(workspace: Path) -> BenchmarkResult:
         handoff = HandoffCommand(workspace, run_id=run.run_id, to_role="FutureRun").run()
         sessions = SessionsCommand(workspace, session_id=run.run_id, include_context=True).run()
         sessions_text = sessions.to_text()
-        run_dir = workspace / ".agent" / "runs" / run.run_id
+        run_dir = workspace / ".asteria" / "runs" / run.run_id
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
         snapshot = _read_json(compact.snapshot_path)
         package = _read_json(handoff.handoff_path)
@@ -628,7 +628,7 @@ def _run_file_renamer(workspace: Path) -> BenchmarkResult:
             enable_research=False,
         ).run()
         result.run_id = run.run_id
-        run_dir = workspace / ".agent" / "runs" / run.run_id
+        run_dir = workspace / ".asteria" / "runs" / run.run_id
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
 
         plan = _read_json(workspace / "rename_plan.json")
@@ -662,7 +662,7 @@ def _run_markdown_kb(workspace: Path) -> BenchmarkResult:
             enable_research=False,
         ).run()
         result.run_id = run.run_id
-        run_dir = workspace / ".agent" / "runs" / run.run_id
+        run_dir = workspace / ".asteria" / "runs" / run.run_id
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
 
         index = _read_json(workspace / "kb_index.json")
@@ -705,7 +705,7 @@ def _write_benchmark_verification_summary(workspace: Path) -> None:
         "artifacts": {},
     }
     JsonStore(SchemaValidator(REPO_ROOT / "schemas")).write(
-        workspace / ".agent" / "verification" / "latest.json",
+        workspace / ".asteria" / "verification" / "latest.json",
         summary,
         "verification_summary",
     )
@@ -789,7 +789,7 @@ def main() -> int:
         "--work-dir", type=Path, default=None, help="Directory for benchmark workspaces"
     )
     parser.add_argument(
-        "--keep-workspaces", action="store_true", help="Copy temp workspaces under .agent"
+        "--keep-workspaces", action="store_true", help="Copy temp workspaces under .asteria"
     )
     parser.add_argument("--list", action="store_true", help="List available benchmark ids and exit")
     args = parser.parse_args()

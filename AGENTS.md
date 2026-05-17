@@ -1,4 +1,4 @@
-# Agent Project Guidance
+﻿# Agent Project Guidance
 
 ## 1. Project Purpose
 
@@ -40,7 +40,7 @@ Runtime layers: CLI, command router, orchestrator, context layer, agent layer, t
 MVP implementation uses Python standard library where possible, with optional future dependencies documented in pyproject.toml.
 Current working commands: python -m asteria_runtime init --root <path>, python -m asteria_runtime /run "<goal>" --root <path>, and python -m asteria_runtime /acceptance --suite offline --allow-fake --root <path>
 Current Runtime OS objects include TaskGraph, WorkerInvocation, WorkerResult, RuntimeProfile, ContextMount, TaskExecutionEvidence, and MergeGate.
-Root runtime state lives in .agent/.
+Root runtime state lives in .asteria/.
 ```
 
 ## 5. Commands

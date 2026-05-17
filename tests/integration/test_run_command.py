@@ -362,7 +362,7 @@ class FakeApprovalExecuteClient:
                             "tool_name": "run_command",
                             "args": {
                                 "command": (
-                                    'python -c "print(\'approval required\')" '
+                                    "python -c \"print('approval required')\" "
                                     "&& python -c \"print('approved')\""
                                 )
                             },
@@ -376,7 +376,7 @@ class FakeApprovalExecuteClient:
                                 "overwrite": True,
                             },
                             "reason": "create artifact",
-                        }
+                        },
                     ],
                     "verification": [
                         {
@@ -492,7 +492,7 @@ def set_budget_policy(
     compaction_threshold: float,
     hard_stop_threshold: float,
 ) -> None:
-    path = root / ".agent" / "policies.json"
+    path = root / ".asteria" / "policies.json"
     policy = json.loads(path.read_text(encoding="utf-8"))
     policy["budgets"]["max_model_calls_per_goal"] = max_model_calls
     policy["context"]["compaction_threshold"] = compaction_threshold
@@ -653,7 +653,7 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert result.status == "completed"
     assert result.final_report_path.exists()
     assert (tmp_path / "complete_module.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     assert (run_dir / "review_report.md").exists()
     assert (run_dir / "final_report.md").exists()
     final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
@@ -664,6 +664,8 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert "## Execution Evidence" in final_report
     assert "strategy=" in final_report
     assert "promoted=complete_module.py" in final_report
+    assert "## Promotion Queue" in final_report
+    assert "promoted=1" in final_report
     assert "task_execution_evidence.jsonl" in final_report
     assert "Run `asteria /acceptance --suite core` before release." in final_report
 
@@ -723,7 +725,7 @@ def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
 
     assert result.status == "paused"
     assert not (tmp_path / "complete_module.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     decisions = [
         json.loads(line)
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
@@ -802,7 +804,7 @@ def test_resume_prioritizes_task_plan_revision_after_quality_gate(
         review_model_client=FakeReviewClient(),
     ).run()
 
-    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / paused.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     original_task = task_plan["tasks"][0]
     revision_task = task_plan["tasks"][1]
@@ -814,8 +816,8 @@ def test_resume_prioritizes_task_plan_revision_after_quality_gate(
     assert revision_task["status"] == "ready"
     assert revision_task["role"] == "PlannerAgent"
     assert revision_task["expected_artifacts"] == [
-        f".agent/runs/{paused.run_id}/task_plan.json",
-        f".agent/runs/{paused.run_id}/task_plan_eval.json",
+        f".asteria/runs/{paused.run_id}/task_plan.json",
+        f".asteria/runs/{paused.run_id}/task_plan_eval.json",
     ]
     assert revision_task["completion_contract"]["requires_changed_artifact"] is True
     assert "missing_artifact" in revision_task["description"]
@@ -887,7 +889,7 @@ def test_resume_rechecks_quality_after_plan_revision_task(
         review_model_client=FakeReviewClient(),
     ).run()
 
-    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / paused.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     decisions = [
         json.loads(line)
@@ -962,7 +964,7 @@ def test_resume_proceed_once_bypasses_current_task_plan_quality_failure(
         review_model_client=FakeReviewClient(),
     ).run()
 
-    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / paused.run_id
     events = [
         json.loads(line)
         for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1031,7 +1033,7 @@ def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
     assert (tmp_path / "complete_module.py").read_text(encoding="utf-8") == (
         "def answer():\n    return 42\n"
     )
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "done"]
     final_report = result.final_report_path.read_text(encoding="utf-8")
@@ -1058,7 +1060,7 @@ def test_run_command_compacts_once_when_near_budget(tmp_path: Path) -> None:
 
     assert result.status == "completed"
     assert any(step.name == "compact" and step.status == "budget_guard" for step in result.steps)
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     cost = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost["context_compactions"] >= 1
 
@@ -1083,7 +1085,7 @@ def test_run_command_pauses_at_budget_hard_stop(tmp_path: Path) -> None:
 
     assert result.status == "paused"
     assert not (tmp_path / "complete_module.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     decisions = [
         json.loads(line)
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1117,7 +1119,7 @@ def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path)
     assert (tmp_path / "complete_module.py").exists()
     assert (tmp_path / "README_HELPER.md").exists()
     assert review_client.calls == 2
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(task_plan["tasks"]) == 2
     assert all(task["status"] == "done" for task in task_plan["tasks"])
@@ -1138,7 +1140,7 @@ def test_run_command_pauses_when_review_creates_decision_point(tmp_path: Path) -
     ).run()
 
     assert result.status == "paused"
-    run_dir = tmp_path / ".agent" / "runs" / result.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     decisions = (run_dir / "decisions.jsonl").read_text(encoding="utf-8")
     assert "Should the first product surface be a web UI?" in decisions
     final_report = result.final_report_path.read_text(encoding="utf-8")
@@ -1177,7 +1179,7 @@ def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Pa
     assert resumed.applied_decisions == 1
     assert resumed.created_tasks == 1
     assert (tmp_path / "WEB_UI.md").exists()
-    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / paused.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(task_plan["tasks"]) == 2
     assert all(task["status"] == "done" for task in task_plan["tasks"])
@@ -1215,7 +1217,7 @@ def test_resume_command_records_constraint_action_without_creating_task(tmp_path
 
     assert resumed.applied_decisions == 1
     assert resumed.created_tasks == 0
-    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / paused.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(task_plan["tasks"]) == 1
     events = [
@@ -1227,7 +1229,7 @@ def test_resume_command_records_constraint_action_without_creating_task(tmp_path
     assert applied[0]["data"]["effect"] == "constraint_recorded"
     memory = [
         json.loads(line)
-        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl")
+        for line in (tmp_path / ".asteria" / "memory" / "decisions.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -1291,11 +1293,11 @@ def test_resume_command_applies_cancel_and_replan_decision_effects(tmp_path: Pat
 
     assert resumed.applied_decisions == 2
     assert resumed.created_tasks == 1
-    run_dir = tmp_path / ".agent" / "runs" / planned.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / planned.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     replan_task = task_plan["tasks"][-1]
     assert replan_task["role"] == "PlannerAgent"
-    assert replan_task["expected_artifacts"] == [f".agent/runs/{planned.run_id}/task_plan.json"]
+    assert replan_task["expected_artifacts"] == [f".asteria/runs/{planned.run_id}/task_plan.json"]
     events = [
         json.loads(line)
         for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1305,7 +1307,7 @@ def test_resume_command_applies_cancel_and_replan_decision_effects(tmp_path: Pat
     assert "replan_task_created" in effects
     memories = [
         json.loads(line)
-        for line in (tmp_path / ".agent" / "memory" / "decisions.jsonl")
+        for line in (tmp_path / ".asteria" / "memory" / "decisions.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -1328,7 +1330,7 @@ def test_run_command_pauses_for_execution_policy_approval_and_resumes(tmp_path: 
 
     assert paused.status == "paused"
     assert not (tmp_path / "complete_module.py").exists()
-    run_dir = tmp_path / ".agent" / "runs" / paused.run_id
+    run_dir = tmp_path / ".asteria" / "runs" / paused.run_id
     decisions = [
         json.loads(line)
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()

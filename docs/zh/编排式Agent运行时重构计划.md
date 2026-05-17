@@ -1,4 +1,4 @@
-# 编排式 Agent 运行时重构计划
+﻿# 编排式 Agent 运行时重构计划
 
 ## 1. 文档定位
 
@@ -150,7 +150,7 @@ Worker 不应是记忆的唯一载体。真正的长期状态应在 Store 中。
 本项目的本地优先版本先使用文件系统和 JSON/JSONL：
 
 ```text
-.agent/
+.asteria/
   sessions/
   runs/
   context/snapshots/
@@ -666,8 +666,8 @@ SandboxPolicy
 建议落盘：
 
 ```text
-.agent/runs/<run_id>/workers.jsonl
-.agent/runs/<run_id>/worker_results.jsonl
+.asteria/runs/<run_id>/workers.jsonl
+.asteria/runs/<run_id>/worker_results.jsonl
 ```
 
 验收：
@@ -685,7 +685,7 @@ SandboxPolicy
 
 建议改动：
 
-- 明确 `.agent/current_session.json` 与 `.agent/runs/<run_id>/` 的关系。
+- 明确 `.asteria/current_session.json` 与 `.asteria/runs/<run_id>/` 的关系。
 - 增加 session-level artifact index。
 - ContextSnapshot 引用 artifact、decision、task、validation，而不是只写自然语言。
 - `/resume` 基于 snapshot 恢复下一步 action。

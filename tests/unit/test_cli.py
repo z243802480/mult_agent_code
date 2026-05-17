@@ -46,6 +46,19 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--parallel-disjoint-writes",
         ]
     )
+    promotions_args = parser.parse_args(
+        [
+            "/promotions",
+            "--root",
+            ".",
+            "--session-id",
+            "run-1",
+            "approve",
+            "--promotion-id",
+            "promotion-0001",
+            "--json",
+        ]
+    )
     replan_args = parser.parse_args(
         ["/replan", "--root", ".", "--session-id", "run-1", "--max-items", "3"]
     )
@@ -166,6 +179,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert execute_args.session_id == "run-1"
     assert execute_args.parallel_readonly
     assert execute_args.parallel_disjoint_writes
+    assert promotions_args.command == "/promotions"
+    assert promotions_args.promotion_action == "approve"
+    assert promotions_args.promotion_id == "promotion-0001"
+    assert promotions_args.json
     assert replan_args.command == "/replan"
     assert replan_args.max_items == 3
     assert brainstorm_args.command == "/brainstorm"

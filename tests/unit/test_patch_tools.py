@@ -33,7 +33,9 @@ def test_apply_patch_changes_file(tmp_path: Path) -> None:
     assert result.ok
     assert result.data["backup_id"].startswith("backup-")
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "hello\nagent\n"
-    assert next((tmp_path / ".agent" / "backups" / "no-run").glob("backup-*/manifest.json")).exists()
+    assert next(
+        (tmp_path / ".asteria" / "backups" / "no-run").glob("backup-*/manifest.json")
+    ).exists()
 
     restored = RestoreBackupTool().run(context(tmp_path), result.data["backup_id"])
 
@@ -124,7 +126,7 @@ def test_apply_patch_is_all_or_nothing_when_later_file_mismatches(tmp_path: Path
     assert result.error == "patch_context_mismatch"
     assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "old\n"
     assert (tmp_path / "b.txt").read_text(encoding="utf-8") == "different\n"
-    assert not (tmp_path / ".agent" / "backups").exists()
+    assert not (tmp_path / ".asteria" / "backups").exists()
 
 
 def test_apply_patch_denies_protected_path(tmp_path: Path) -> None:

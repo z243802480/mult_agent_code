@@ -82,10 +82,7 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         name="gray_file_artifact",
         capability="gray_artifact_creation",
         tier="gray",
-        goal=(
-            "Create a local file gray_runtime.txt containing one line: "
-            "gray route artifact ok"
-        ),
+        goal=("Create a local file gray_runtime.txt containing one line: gray route artifact ok"),
         expected_file="gray_runtime.txt",
         expected_text="gray route artifact ok",
         max_iterations=3,
@@ -97,7 +94,7 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         goal=(
             "Create a small multi-file Python notes CLI. Use a package directory named notes_app "
             "with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support "
-            "`python notes.py add \"ship gray\"` and `python notes.py list`, storing notes in "
+            '`python notes.py add "ship gray"` and `python notes.py list`, storing notes in '
             "notes.json under the current directory."
         ),
         expected_file="notes.py",
@@ -180,7 +177,7 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         goal=(
             "Create a small multi-file Python todo CLI. Use a package directory named todo_app "
             "with storage and CLI modules, plus a runnable todo.py entrypoint. It must support "
-            "`python todo.py add \"buy milk\"` and `python todo.py list`, storing tasks in a JSON "
+            '`python todo.py add "buy milk"` and `python todo.py list`, storing tasks in a JSON '
             "file under the current directory."
         ),
         expected_file="todo.py",
@@ -717,7 +714,7 @@ def run_decision_scenario(
     )
     commands.append({"name": "resolve-decision", **resolve})
     ok = all(command["returncode"] == 0 for command in commands)
-    agent_dir = workspace / ".agent"
+    agent_dir = workspace / ".asteria"
     decision_logs = list(agent_dir.glob("runs/*/decisions.jsonl"))
     memory_path = agent_dir / "memory" / "decisions.jsonl"
     decisions = [decision for path in decision_logs for decision in read_jsonl(path)]
@@ -766,7 +763,7 @@ def run_memory_scenario(
     del scenario
     started_at = time.monotonic()
     workspace.mkdir(parents=True, exist_ok=True)
-    agent_dir = workspace / ".agent"
+    agent_dir = workspace / ".asteria"
     memory_dir = agent_dir / "memory"
     memory_dir.mkdir(parents=True, exist_ok=True)
     memory_path = memory_dir / "failures.jsonl"
@@ -775,7 +772,10 @@ def run_memory_scenario(
         "memory_id": "memory-lesson-0001",
         "kind": "failure_lesson",
         "summary": "Prefer explicit reproduction commands when repairing similar CLI failures.",
-        "source": {"scenario": "memory_lesson_reuse", "failure_type": "scenario_validation_failure"},
+        "source": {
+            "scenario": "memory_lesson_reuse",
+            "failure_type": "scenario_validation_failure",
+        },
         "tags": ["acceptance", "repair", "cli"],
         "created_at": now_iso(),
     }
@@ -876,7 +876,7 @@ def route_evidence_from_smoke_summary(summary: dict[str, Any]) -> dict[str, Any]
     run_id = summary.get("run_id")
     if not workspace or not run_id:
         return {"available": False, "reason": "missing workspace or run_id"}
-    run_dir = Path(str(workspace)) / ".agent" / "runs" / str(run_id)
+    run_dir = Path(str(workspace)) / ".asteria" / "runs" / str(run_id)
     model_calls = read_jsonl(run_dir / "model_calls.jsonl")
     worker_results = read_jsonl(run_dir / "worker_results.jsonl")
     task_evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")

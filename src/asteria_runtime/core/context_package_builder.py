@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.task_contract import read_scope
+from asteria_runtime.core.task_contract import read_scope, write_scope
 from asteria_runtime.security.path_guard import PathGuard
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -21,22 +21,52 @@ class ContextPackageBuilder:
         includes = context_mount.get("includes") if isinstance(context_mount, dict) else {}
         if not isinstance(includes, dict):
             includes = {}
+        read_scope_files = self._read_scope_files(context, task)
+        artifacts = self._artifacts(context, includes.get("artifact_refs", []))
+        failures = self._failures(context, includes.get("failure_evidence_refs", []))
+        decisions = self._decisions(context, includes.get("decision_refs", []))
+        validations = self._validations(context, includes.get("validation_refs", []))
+        runtime_requests = self._runtime_requests(context, task["task_id"])
+        worker_results = self._worker_results(context, task["task_id"])
+        merge_gate_evidence = self._merge_gate_evidence(context, task["task_id"])
+        recent_failures = self._recent_failures(context, task["task_id"])
         return {
             "package_id": f"context-package-{task['task_id']}",
             "run_id": context.run_id,
             "task_id": task["task_id"],
             "mount_type": context_mount.get("mount_type") if isinstance(context_mount, dict) else None,
+            "scope_summary": self._scope_summary(
+                task,
+                read_scope_files=read_scope_files,
+                artifacts=artifacts,
+                failures=failures,
+                decisions=decisions,
+                validations=validations,
+                runtime_requests=runtime_requests,
+                worker_results=worker_results,
+                merge_gate_evidence=merge_gate_evidence,
+                recent_failures=recent_failures,
+            ),
             "root_guidance": self._root_guidance(context) if includes.get("root_guidance") else {},
             "goal_brief": self._goal_brief(context) if includes.get("goal_brief") else {},
             "task_brief": self._task_brief(task) if includes.get("task_brief") else {},
-            "read_scope_files": self._read_scope_files(context, task),
-            "artifacts": self._artifacts(context, includes.get("artifact_refs", [])),
-            "failures": self._failures(context, includes.get("failure_evidence_refs", [])),
-            "decisions": self._decisions(context, includes.get("decision_refs", [])),
-            "validations": self._validations(context, includes.get("validation_refs", [])),
-            "runtime_requests": self._runtime_requests(context, task["task_id"]),
-            "worker_results": self._worker_results(context, task["task_id"]),
-            "merge_gate_evidence": self._merge_gate_evidence(context, task["task_id"]),
+            "read_scope_files": read_scope_files,
+            "write_scope_files": self._write_scope_files(context, task),
+            "evidence_scope": self._evidence_scope(
+                includes,
+                artifacts=artifacts,
+                failures=failures,
+                decisions=decisions,
+                validations=validations,
+            ),
+            "artifacts": artifacts,
+            "failures": failures,
+            "recent_failures": recent_failures,
+            "decisions": decisions,
+            "validations": validations,
+            "runtime_requests": runtime_requests,
+            "worker_results": worker_results,
+            "merge_gate_evidence": merge_gate_evidence,
             "recent_events": self._recent_events(context, int(includes.get("recent_event_count") or 0)),
         }
 
@@ -177,6 +207,73 @@ class ContextPackageBuilder:
                     return files
         return files
 
+    def _write_scope_files(self, context: RuntimeContext, task: dict) -> list[dict]:
+        files: list[dict] = []
+        for scope_item in write_scope(task)[: self.max_scope_files]:
+            try:
+                resolved = PathGuard(context.root, context.policy["protected_paths"]).resolve_for_read(
+                    scope_item
+                )
+                exists = resolved.exists()
+            except (OSError, PermissionError):
+                exists = False
+            files.append({"path": scope_item, "exists": exists})
+        return files
+
+    def _evidence_scope(
+        self,
+        includes: dict,
+        *,
+        artifacts: list[dict],
+        failures: list[dict],
+        decisions: list[dict],
+        validations: list[dict],
+    ) -> dict:
+        return {
+            "requested_refs": {
+                "artifacts": self._string_refs(includes.get("artifact_refs", [])),
+                "failures": self._string_refs(includes.get("failure_evidence_refs", [])),
+                "decisions": self._string_refs(includes.get("decision_refs", [])),
+                "validations": self._string_refs(includes.get("validation_refs", [])),
+            },
+            "included_counts": {
+                "artifacts": len(artifacts),
+                "failures": len(failures),
+                "decisions": len(decisions),
+                "validations": len(validations),
+            },
+        }
+
+    def _scope_summary(
+        self,
+        task: dict,
+        *,
+        read_scope_files: list[dict],
+        artifacts: list[dict],
+        failures: list[dict],
+        decisions: list[dict],
+        validations: list[dict],
+        runtime_requests: list[dict],
+        worker_results: list[dict],
+        merge_gate_evidence: list[dict],
+        recent_failures: list[dict],
+    ) -> dict:
+        return {
+            "read_scope": read_scope(task),
+            "read_scope_file_count": len(read_scope_files),
+            "write_scope": write_scope(task),
+            "evidence_counts": {
+                "artifacts": len(artifacts),
+                "failures": len(failures),
+                "decisions": len(decisions),
+                "validations": len(validations),
+                "runtime_requests": len(runtime_requests),
+                "worker_results": len(worker_results),
+                "merge_gate_evidence": len(merge_gate_evidence),
+                "recent_failures": len(recent_failures),
+            },
+        }
+
     def _scope_paths(self, context: RuntimeContext, scope_item: str) -> list[Path]:
         try:
             resolved = PathGuard(context.root, context.policy["protected_paths"]).resolve_for_read(
@@ -280,6 +377,25 @@ class ContextPackageBuilder:
             )
         return items[-5:]
 
+    def _recent_failures(self, context: RuntimeContext, task_id: str) -> list[dict]:
+        if context.run_dir is None:
+            return []
+        failures = self._items_by_task(
+            context.run_dir / "task_failures.jsonl",
+            "task_failure_evidence",
+            task_id,
+        )
+        return [
+            {
+                "evidence_id": item.get("evidence_id"),
+                "phase": item.get("phase"),
+                "failure_type": item.get("failure_type"),
+                "summary": item.get("summary"),
+                "created_at": item.get("created_at"),
+            }
+            for item in failures[-3:]
+        ]
+
     def _recent_events(self, context: RuntimeContext, limit: int) -> list[dict]:
         if context.run_dir is None or limit <= 0:
             return []
@@ -315,6 +431,11 @@ class ContextPackageBuilder:
             for item in JsonlStore(self.validator).read_all(path, schema_name)
             if item.get("task_id") == task_id
         ]
+
+    def _string_refs(self, refs: object) -> list[str]:
+        if not isinstance(refs, list):
+            return []
+        return [item for item in refs if isinstance(item, str)]
 
     def _workspace_file_content(self, context: RuntimeContext, path: str) -> dict:
         try:

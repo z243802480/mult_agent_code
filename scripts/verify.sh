@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 python_bin="python"
@@ -32,8 +32,8 @@ sessions_context="$("$python_bin" -m asteria_runtime /sessions --root "$tmp_root
 grep -q "snapshot:" <<<"$sessions_context"
 grep -q "handoff:" <<<"$sessions_context"
 grep -q "next:" <<<"$sessions_context"
-find "$tmp_root/workspace/.agent/context/snapshots" -maxdepth 1 -name "*.json" -print -quit | grep -q .
-find "$tmp_root/workspace/.agent/context/handoffs" -maxdepth 1 -name "*.json" -print -quit | grep -q .
+find "$tmp_root/workspace/.asteria/context/snapshots" -maxdepth 1 -name "*.json" -print -quit | grep -q .
+find "$tmp_root/workspace/.asteria/context/handoffs" -maxdepth 1 -name "*.json" -print -quit | grep -q .
 test -f "$tmp_root/workspace/offline_artifact.txt"
 "$python_bin" scripts/write_verification_summary.py --root . --platform linux --cli-workspace "$tmp_root/workspace"
 "$python_bin" -m asteria_runtime /verification --root .
