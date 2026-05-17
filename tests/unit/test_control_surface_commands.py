@@ -109,6 +109,80 @@ def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:
     assert "Candidate promotions: 1 total" in result.to_text()
 
 
+def test_status_reports_worker_tree_summary(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    jsonl = JsonlStore(validator)
+    for index, status in enumerate(["succeeded", "failed"], start=1):
+        worker_id = f"worker-{index:04d}"
+        jsonl.append(
+            run_dir / "workers.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "worker_invocation_id": worker_id,
+                "run_id": run["run_id"],
+                "task_id": f"task-{index:04d}",
+                "agent_id": "CoderAgent",
+                "runtime_profile_id": f"runtime-profile-worker-{index:04d}",
+                "status": status,
+                "started_at": now_iso(),
+                "ended_at": now_iso(),
+                "summary": "test worker",
+            },
+            "worker_invocation",
+        )
+        jsonl.append(
+            run_dir / "worker_results.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "worker_result_id": f"worker-result-{index:04d}",
+                "worker_invocation_id": worker_id,
+                "run_id": run["run_id"],
+                "task_id": f"task-{index:04d}",
+                "status": status,
+                "artifact_refs": [],
+                "validation_refs": [],
+                "failure_evidence_refs": [] if status == "succeeded" else ["task-failure-0001"],
+                "cost": {"model_calls": 1, "tool_calls": 2},
+                "summary": "worker result",
+            },
+            "worker_result",
+        )
+    jsonl.append(
+        run_dir / "events.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "event_id": "event-0001",
+            "run_id": run["run_id"],
+            "timestamp": now_iso(),
+            "type": "task_graph_selection",
+            "actor": "ExecutionCoordinator",
+            "summary": "Selected workers",
+            "data": {"reason": "parallel_safe_batch_selection", "task_ids": ["task-0001", "task-0002"]},
+        },
+        "event",
+    )
+
+    result = StatusCommand(tmp_path).run()
+
+    worker_tree = result.to_dict()["current_context"]["worker_tree"]
+    assert worker_tree["total_workers"] == 2
+    assert worker_tree["successful_workers"] == 1
+    assert worker_tree["failed_workers"] == 1
+    assert worker_tree["parallel_batches"] == 1
+    assert worker_tree["total_model_calls"] == 2
+    assert worker_tree["agent_run_graph"]["status"] == "blocked"
+    assert worker_tree["agent_run_graph"]["max_concurrency_observed"] == 2
+    assert worker_tree["collaboration_summary"]["failure_evidence_refs"] == [
+        "task-failure-0001"
+    ]
+    assert "Workers: 1 succeeded / 2 total" in result.to_text()
+
+
 def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")

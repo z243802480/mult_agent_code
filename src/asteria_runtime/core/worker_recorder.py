@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -90,6 +91,7 @@ class WorkerExecutionRecorder:
         )
         store.append(context.run_dir / "workers.jsonl", invocation.to_dict(), "worker_invocation")
         store.append(context.run_dir / "worker_results.jsonl", result.to_dict(), "worker_result")
+        AgentRunGraphBuilder(self.validator).write(context.run_dir, run_id=context.run_id)
         if context.event_logger:
             context.event_logger.record(
                 context.run_id,

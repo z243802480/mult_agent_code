@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
+from asteria_runtime.core.worker_tree import WorkerTreeBuilder
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
@@ -193,6 +194,7 @@ class SessionsCommand:
         )
         task_failures = (snapshot or {}).get("task_failures") or self._task_failures(run_dir)
         execution_evidence = self._task_execution_evidence(run_dir)
+        worker_tree = WorkerTreeBuilder(self.validator).build(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         blockers = self._blockers(run_dir, pending_decisions, task_failures, acceptance_failures)
         risks = (snapshot or {}).get("open_risks") or self._risks(
@@ -218,6 +220,7 @@ class SessionsCommand:
             "task_failures": task_failures[-3:],
             "latest_execution_evidence": execution_evidence[-1] if execution_evidence else None,
             "task_execution_evidence": execution_evidence[-3:],
+            "worker_tree": worker_tree,
             "candidate_promotions": promotion_summary,
             "blockers": blockers,
             "risks": risks,

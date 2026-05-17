@@ -399,6 +399,34 @@ def test_requirement_planner_splits_oversized_requirement_by_artifact() -> None:
     assert "Split from req-0001" in tasks[0]["notes"]
 
 
+def test_requirement_planner_adds_multi_agent_strategy_for_disjoint_artifacts() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "normalized_goal": "Create independent documentation artifacts",
+        "target_outputs": ["docs/a.md", "docs/b.md", "docs/c.md"],
+        "definition_of_done": ["docs exist"],
+        "verification_strategy": [],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create independent docs/a.md docs/b.md docs/c.md files.",
+                "acceptance": ["a exists", "b exists", "c exists"],
+                "expected_artifacts": ["docs/a.md", "docs/b.md", "docs/c.md"],
+            }
+        ],
+    }
+
+    tasks = RequirementPlanner().build_task_plan(goal_spec)["tasks"]
+
+    assert len(tasks) == 1
+    assert tasks[0]["parallel_safety"] == "disjoint_writes"
+    assert tasks[0]["multi_agent_strategy"]["mode"] == "disjoint_write_workers"
+    assert tasks[0]["multi_agent_strategy"]["max_child_workers"] == 3
+    assert "Multi-agent strategy: disjoint_write_workers" in tasks[0]["notes"]
+
+
 def test_follow_up_planner_skips_duplicate_tasks() -> None:
     existing_tasks = [
         {

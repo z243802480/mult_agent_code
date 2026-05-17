@@ -3,6 +3,7 @@ from pathlib import Path
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
 from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -46,6 +47,13 @@ def test_worker_recorder_persists_invocation_result_and_event(tmp_path: Path) ->
     assert results[0]["worker_result_id"] == "worker-result-0001"
     assert results[0]["status"] == "succeeded"
     assert results[0]["cost"] == {"model_calls": 1, "tool_calls": 2}
+    graph = JsonStore(validator).read(tmp_path / "agent_run_graph.json", "agent_run_graph")
+    assert graph["collaboration_summary"]["total_workers"] == 1
+    assert graph["collaboration_summary"]["strategy_modes"] == []
+    assert graph["child_worker_plans"][0]["budget"] == {
+        "max_model_calls": 1,
+        "max_tool_calls": 1,
+    }
     assert events[-1]["type"] == "worker_recorded"
     assert events[-1]["actor"] == "WorkerRecorderTest"
 

@@ -891,6 +891,14 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
         for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert [item["status"] for item in worker_results] == ["succeeded", "succeeded"]
+    agent_graph = json.loads((run_dir / "agent_run_graph.json").read_text(encoding="utf-8"))
+    assert agent_graph["max_concurrency_observed"] == 2
+    assert agent_graph["coordination_modes"] == ["readonly_batch_selection"]
+    assert agent_graph["collaboration_summary"]["successful_workers"] == 2
+    assert [plan["collaboration_role"] for plan in agent_graph["child_worker_plans"]] == [
+        "research_child",
+        "research_child",
+    ]
     model_calls = [
         json.loads(line)
         for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1031,6 +1039,16 @@ def test_execute_command_parallel_disjoint_writes_promotes_isolated_outputs(tmp_
         for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert [item["status"] for item in worker_results] == ["succeeded", "succeeded"]
+    agent_graph = json.loads((run_dir / "agent_run_graph.json").read_text(encoding="utf-8"))
+    assert agent_graph["coordination_modes"] == ["parallel_safe_batch_selection"]
+    assert agent_graph["collaboration_summary"]["total_workers"] == 2
+    assert agent_graph["collaboration_summary"]["successful_workers"] == 2
+    assert agent_graph["collaboration_summary"]["validation_refs"]
+    assert all(plan["artifact_refs"] for plan in agent_graph["child_worker_plans"])
+    assert [plan["collaboration_role"] for plan in agent_graph["child_worker_plans"]] == [
+        "implementation_child",
+        "implementation_child",
+    ]
 
 
 def test_execute_command_denies_write_tool_for_readonly_task(tmp_path: Path) -> None:

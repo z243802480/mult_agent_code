@@ -8,6 +8,7 @@ from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
+from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
@@ -229,6 +230,7 @@ class ExecuteCommand:
             execute_task=execute_worker,
             allocate_worker_slots=self.worker_recorder.allocate_execution_slots,
         )
+        AgentRunGraphBuilder(self.validator).write(run_dir, run_id=run_id)
 
         final_state = self.run_state_finalizer.finalize(
             agent_dir=agent_dir,

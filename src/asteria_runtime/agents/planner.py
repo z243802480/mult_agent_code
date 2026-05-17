@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.task_contract import (
     completion_contract,
     context_requirements,
@@ -16,6 +17,9 @@ from asteria_runtime.utils.time import now_iso
 
 class RequirementPlanner:
     """Deterministic MVP planner that turns GoalSpec requirements into reviewable tasks."""
+
+    def __init__(self) -> None:
+        self.multi_agent_strategy = MultiAgentStrategyAdvisor()
 
     def build_task_plan(self, goal_spec: dict, runtime_context: dict | None = None) -> dict:
         runtime_context = runtime_context or {}
@@ -718,6 +722,13 @@ class RequirementPlanner:
         task["parallel_safety"] = parallel_safety(task)
         task["merge_strategy"] = "none"
         self._harden_broad_write_scope(task)
+        self._mark_disjoint_write_scope(task)
+        strategy = self.multi_agent_strategy.for_task(task).to_dict()
+        task["multi_agent_strategy"] = strategy
+        task["notes"] = (
+            f"{task.get('notes', '')} Multi-agent strategy: {strategy['mode']} "
+            f"(max_child_workers={strategy['max_child_workers']}; {strategy['reason']})."
+        ).strip()
 
     def _harden_broad_write_scope(self, task: dict) -> None:
         broad = {"src/", "tests/", "docs/", "docs/zh/"}
@@ -732,6 +743,17 @@ class RequirementPlanner:
             f"{task.get('notes', '')} Scope quality: write_scope was broad "
             f"({', '.join(scope)}), so it was narrowed to require a runtime scope request."
         ).strip()
+
+    def _mark_disjoint_write_scope(self, task: dict) -> None:
+        scope = [str(item) for item in task.get("write_scope", []) if item]
+        if len(scope) <= 1 or task.get("parallel_safety") != "serial":
+            return
+        if any(item.startswith("src/") for item in scope) and any(
+            item.startswith("tests/") for item in scope
+        ):
+            return
+        if all(self._looks_like_file_path(item) for item in scope) and len(set(scope)) == len(scope):
+            task["parallel_safety"] = "disjoint_writes"
 
     def _refine_requirement(self, requirement: dict, goal_spec: dict) -> dict:
         expected_artifacts = self._expected_artifacts(requirement, goal_spec)

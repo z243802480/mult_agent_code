@@ -111,6 +111,20 @@ class StatusResult:
                     f"{cost.get('status', 'unknown')} "
                     f"({cost.get('model_calls', 0)} model, {cost.get('tool_calls', 0)} tool)"
                 )
+            worker_tree = context.get("worker_tree") or {}
+            if worker_tree.get("total_workers"):
+                graph = worker_tree.get("agent_run_graph") or {}
+                collaboration = worker_tree.get("collaboration_summary") or {}
+                modes = collaboration.get("strategy_modes") or []
+                lines.append(
+                    "Workers: "
+                    f"{worker_tree.get('successful_workers', 0)} succeeded / "
+                    f"{worker_tree.get('total_workers', 0)} total "
+                    f"({worker_tree.get('parallel_batches', 0)} parallel batch, "
+                    f"graph={graph.get('status', 'unknown')})"
+                )
+                if modes:
+                    lines.append(f"Worker strategy: {', '.join(str(mode) for mode in modes)}")
             pending = int(context.get("pending_decision_count", 0))
             if pending:
                 lines.append(f"Pending decisions: {pending}")

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentRunGraph",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "agent_run_graph_id",
+    "run_id",
+    "status",
+    "coordination_modes",
+    "max_concurrency_observed",
+    "child_worker_plans",
+    "collaboration_summary",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "agent_run_graph_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["empty", "running", "succeeded", "blocked", "partial"]
+    },
+    "coordination_modes": { "type": "array", "items": { "type": "string" } },
+    "max_concurrency_observed": { "type": "integer" },
+    "child_worker_plans": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "child_worker_plan_id",
+          "worker_invocation_id",
+          "parent_worker_invocation_id",
+          "task_id",
+          "agent_id",
+          "status",
+          "runtime_profile_id",
+          "context_mount_id",
+          "model_profile_id",
+          "tool_permission_profile_id",
+          "model_tier",
+          "budget",
+          "read_scope",
+          "write_scope",
+          "depends_on",
+          "coordination_mode",
+          "collaboration_role",
+          "summary"
+        ],
+        "properties": {
+          "child_worker_plan_id": { "type": "string" },
+          "worker_invocation_id": { "type": "string" },
+          "worker_result_id": { "type": ["string", "null"] },
+          "parent_worker_invocation_id": { "type": ["string", "null"] },
+          "task_id": { "type": "string" },
+          "agent_id": { "type": "string" },
+          "status": { "type": "string" },
+          "result_status": { "type": ["string", "null"] },
+          "runtime_profile_id": { "type": "string" },
+          "context_mount_id": { "type": "string" },
+          "model_profile_id": { "type": "string" },
+          "tool_permission_profile_id": { "type": "string" },
+          "model_tier": { "type": "string" },
+          "budget": {
+            "type": "object",
+            "required": ["max_model_calls", "max_tool_calls"],
+            "properties": {
+              "max_model_calls": { "type": "integer" },
+              "max_tool_calls": { "type": "integer" },
+              "max_runtime_minutes": { "type": "integer" }
+            }
+          },
+          "strategy_mode": { "type": "string" },
+          "strategy_max_child_workers": { "type": "integer" },
+          "read_scope": { "type": "array", "items": { "type": "string" } },
+          "write_scope": { "type": "array", "items": { "type": "string" } },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "coordination_mode": { "type": "string" },
+          "collaboration_role": { "type": "string" },
+          "artifact_refs": { "type": "array", "items": { "type": "string" } },
+          "validation_refs": { "type": "array", "items": { "type": "string" } },
+          "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "cost": {
+            "type": "object",
+            "required": ["model_calls", "tool_calls"],
+            "properties": {
+              "model_calls": { "type": "integer" },
+              "tool_calls": { "type": "integer" }
+            }
+          },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "collaboration_summary": {
+      "type": "object",
+      "required": [
+        "total_workers",
+        "successful_workers",
+        "failed_workers",
+        "blocked_workers",
+        "total_model_calls",
+        "total_tool_calls",
+        "artifact_refs",
+        "validation_refs",
+        "failure_evidence_refs",
+        "merge_strategy",
+        "strategy_modes",
+        "next_actions"
+      ],
+      "properties": {
+        "total_workers": { "type": "integer" },
+        "successful_workers": { "type": "integer" },
+        "failed_workers": { "type": "integer" },
+        "blocked_workers": { "type": "integer" },
+        "total_model_calls": { "type": "integer" },
+        "total_tool_calls": { "type": "integer" },
+        "artifact_refs": { "type": "array", "items": { "type": "string" } },
+        "validation_refs": { "type": "array", "items": { "type": "string" } },
+        "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "merge_strategy": { "type": "string" },
+        "strategy_modes": { "type": "array", "items": { "type": "string" } },
+        "next_actions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "updated_at": { "type": "string" }
+  }
+}
