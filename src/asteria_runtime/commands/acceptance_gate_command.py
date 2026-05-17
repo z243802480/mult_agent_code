@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
+from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from asteria_runtime.core.acceptance_catalog import (
     acceptance_metadata_index,
@@ -12,6 +13,7 @@ from asteria_runtime.core.acceptance_catalog import (
     enrich_acceptance_scenario,
 )
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -190,6 +192,13 @@ class AcceptanceGateCommand:
             next_actions.append(
                 "Run core acceptance with runtime OS scenarios, then rerun `asteria /acceptance-gate`."
             )
+        promotion_risks = self._promotion_release_risks()
+        runtime_os["promotion_release_risks"] = promotion_risks
+        if promotion_risks["pending"] or promotion_risks["blocked"]:
+            failures.append("candidate promotion queue has unresolved release risks")
+            next_actions.append(
+                "Resolve `asteria promotions list` pending or blocked items before release."
+            )
 
         ok = not failures
         release_status = self._release_status(ok, report, warnings)
@@ -285,3 +294,19 @@ class AcceptanceGateCommand:
             else suite in {"core", "nightly"}
         )
         return RuntimeOSGateEvaluator().evaluate(report, scenarios, required=required).to_dict()
+
+    def _promotion_release_risks(self) -> dict[str, int]:
+        evidence = runtime_os_release_evidence(self._run_dirs(), self._read_jsonl)
+        return {
+            "total": int(evidence.get("candidate_promotions") or 0),
+            "pending": int(evidence.get("candidate_promotions_pending") or 0),
+            "blocked": int(evidence.get("candidate_promotions_blocked") or 0),
+            "promoted": int(evidence.get("candidate_promotions_promoted") or 0),
+        }
+
+    def _run_dirs(self) -> list[Path]:
+        runs_dir = self.root / ".asteria" / "runs"
+        return [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
+
+    def _read_jsonl(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
+        return JsonlStore(self.validator).read_all(path, schema_name) if path.exists() else []

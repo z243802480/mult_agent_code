@@ -75,7 +75,11 @@ def test_capability_feedback_advisor_returns_actionable_planner_hints(tmp_path: 
     )
 
     hints = CapabilityFeedbackAdvisor(validator).planner_hints(agent_dir)
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
 
     assert len(hints) == 1
     assert hints[0]["purpose"] == "coding"
     assert "narrower read/write scope" in hints[0]["message"]
+    assert guidance["status"] == "review"
+    assert guidance["review"][0]["purpose"] == "coding"
+    assert "smaller scoped tasks" in guidance["recommended_actions"][1]

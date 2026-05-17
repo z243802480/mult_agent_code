@@ -14,6 +14,7 @@ from asteria_runtime.core.acceptance_catalog import (
     enrich_acceptance_report,
     enrich_acceptance_scenario,
 )
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.failure_attribution import classify_failure_attribution
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -33,6 +34,7 @@ class CapabilityReportResult:
     tool_calls: int = 0
     model_profiles: list[dict[str, Any]] = field(default_factory=list)
     model_profile_path: Path | None = None
+    route_guidance: dict[str, Any] = field(default_factory=dict)
     runtime_os: dict[str, Any] = field(default_factory=dict)
     common_blockers: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
@@ -87,6 +89,10 @@ class CapabilityReportResult:
                 )
         if self.model_profile_path:
             lines.append(f"Model profile: {self.model_profile_path}")
+        if self.route_guidance:
+            lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
+            for action in self.route_guidance.get("recommended_actions", [])[:3]:
+                lines.append(f"  - {action}")
         if self.runtime_os:
             lines.append("Runtime OS release evidence:")
             gate = self.runtime_os.get("gate") or {}
@@ -135,6 +141,7 @@ class CapabilityReportCommand:
         model_calls, tool_calls = self._cost_signals(agent_dir)
         model_profiles = self._model_profiles(agent_dir)
         model_profile_path = self._write_model_profile(agent_dir, model_profiles)
+        route_guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(agent_dir)
         runtime_os = self._runtime_os_summary(agent_dir, latest)
         next_actions = self._next_actions(
             latest,
@@ -142,6 +149,7 @@ class CapabilityReportCommand:
             failure_types,
             blockers,
             model_profiles,
+            route_guidance,
             runtime_os,
         )
         return CapabilityReportResult(
@@ -155,6 +163,7 @@ class CapabilityReportCommand:
             tool_calls=tool_calls,
             model_profiles=model_profiles,
             model_profile_path=model_profile_path,
+            route_guidance=route_guidance,
             runtime_os=runtime_os,
             common_blockers=blockers,
             next_actions=next_actions,
@@ -640,6 +649,7 @@ class CapabilityReportCommand:
         failure_types: dict[str, int],
         blockers: list[str],
         model_profiles: list[dict[str, Any]],
+        route_guidance: dict[str, Any],
         runtime_os: dict[str, Any],
     ) -> list[str]:
         actions = []
@@ -673,6 +683,8 @@ class CapabilityReportCommand:
             actions.append(
                 "Review weak model routes before scaling long-run work: " + ", ".join(labels)
             )
+        if route_guidance.get("status") in {"blocked", "review"}:
+            actions.extend(str(item) for item in route_guidance.get("recommended_actions", []))
         if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
             actions.append(
                 "Run Runtime OS core acceptance and gate before release: "

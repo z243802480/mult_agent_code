@@ -8,6 +8,7 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -247,6 +248,7 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     assert payload["route_environment"]["ready"] is True
     assert payload["gray_task_limits"]["max_tasks_per_iteration"] == 1
     assert "--no-research" in payload["next_actions"][0]
+    assert payload["route_guidance"]["status"] == "healthy"
     assert payload["validation_recommendation"]["level"] in {
         "none",
         "targeted",
@@ -346,6 +348,57 @@ def test_gate_status_accepts_global_minimax_fallback_for_medium(
     assert payload["route_environment"]["medium"]["provider"] == "minimax"
 
 
+def test_gate_status_blocks_gray_when_capability_route_guidance_is_blocked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    JsonStore(validator).write(
+        tmp_path / ".asteria" / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "runtime",
+                    "model": "medium-route",
+                    "purpose": "coding",
+                    "model_tier": "medium",
+                    "total_calls": 2,
+                    "success_calls": 0,
+                    "failure_calls": 2,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "route_guidance_blocked"
+    assert payload["rollout_state"] == "blocked"
+    assert payload["route_guidance"]["status"] == "blocked"
+
+
 def _configure_release_routes(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
     monkeypatch.setenv("AGENT_MODEL_STRONG_NAME", "glm-4.7")
@@ -354,6 +407,32 @@ def _configure_release_routes(monkeypatch) -> None:
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_NAME", "MiniMax-M2.7")
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "minimax-key")
+
+
+def _write_release_ready_gate_files(tmp_path: Path) -> None:
+    gate_dir = tmp_path / ".asteria" / "model"
+    gate_dir.mkdir(parents=True)
+    (gate_dir / "real_model_gate_report.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
+    verification_dir = tmp_path / ".asteria" / "verification"
+    verification_dir.mkdir(parents=True)
+    (verification_dir / "real_model_acceptance_gray.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "gray_ready": True,
+                "aggregate": {
+                    "total": 4,
+                    "passed": 4,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps({"ok": True, "aggregate": {"total": 10, "passed": 10}}),
+        encoding="utf-8",
+    )
 
 
 def test_gate_status_recommends_validation_by_change_shape() -> None:

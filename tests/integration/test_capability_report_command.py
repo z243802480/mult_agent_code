@@ -146,8 +146,11 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
     profile = store.read(result.model_profile_path, "model_capability_profile")
     assert profile["profile_count"] == 1
     assert profile["profiles"][0]["recommended_action"] == "use_json_stricter_or_switch_model"
+    assert result.route_guidance["status"] == "review"
+    assert "Review affected route purposes" in result.route_guidance["recommended_actions"][0]
     assert "verification command failed" in result.common_blockers
     assert "Model capability profiles" in result.to_text()
+    assert "Route guidance: review" in result.to_text()
     assert "Capability report" in result.to_text()
 
 

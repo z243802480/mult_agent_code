@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,7 @@ class GateStatusResult:
     gray_report: dict[str, Any] = field(default_factory=dict)
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
+    route_guidance: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
@@ -40,6 +43,7 @@ class GateStatusResult:
                 "core_acceptance": self._gate_summary(self.core_report),
             },
             "route_environment": self.route_environment,
+            "route_guidance": self.route_guidance,
             "gray_task_limits": _gray_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
@@ -49,7 +53,7 @@ class GateStatusResult:
         }
 
     def _rollout_state(self) -> str:
-        if self.stage == "current_environment_incomplete":
+        if self.stage in {"current_environment_incomplete", "route_guidance_blocked"}:
             return "blocked"
         if self.stage == "ready_for_small_real_task_gray":
             return "release_ready"
@@ -90,6 +94,8 @@ class GateStatusResult:
                 f"strong={self.route_environment.get('strong', {}).get('configured', False)}, "
                 f"medium={self.route_environment.get('medium', {}).get('configured', False)}"
             )
+        if self.route_guidance:
+            lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
         lines.extend(self._report_lines("Real model gate", self.gate_report))
         lines.extend(self._report_lines("Gray suite", self.gray_report, gray=True))
         lines.extend(self._report_lines("Core acceptance", self.core_report))
@@ -146,11 +152,22 @@ class GateStatusCommand:
         ) or self._read_json(self.root / ".asteria" / "acceptance" / "acceptance_report.json")
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
+        route_guidance = _route_guidance(self.root)
         if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
             stage = "current_environment_incomplete"
             missing = ", ".join(route_environment["missing_required"])
             actions = [
                 f"Set current model route environment variables before gray validation: {missing}.",
+                *actions,
+            ]
+        if (
+            stage == "ready_for_small_real_task_gray"
+            and route_guidance.get("status") == "blocked"
+        ):
+            stage = "route_guidance_blocked"
+            actions = [
+                "Resolve blocked model route guidance before widening gray validation.",
+                *[str(item) for item in route_guidance.get("recommended_actions", [])],
                 *actions,
             ]
         return GateStatusResult(
@@ -160,6 +177,7 @@ class GateStatusCommand:
             gray_report=gray,
             core_report=core,
             route_environment=route_environment,
+            route_guidance=route_guidance,
             validation_recommendation=_validation_recommendation(self.root),
             next_actions=actions,
         )
@@ -239,6 +257,11 @@ def _gray_task_limits() -> dict[str, object]:
 
 def _route_environment() -> dict[str, Any]:
     return route_environment_for_tiers(("strong", "medium"))
+
+
+def _route_guidance(root: Path) -> dict[str, Any]:
+    validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+    return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
 
 
 def _validation_recommendation(root: Path) -> dict[str, Any]:

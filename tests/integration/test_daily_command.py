@@ -11,8 +11,10 @@ from asteria_runtime.commands.daily_command import (
 )
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
 
 
 def _cost_report(model_calls: int = 0, tool_calls: int = 0, repair_attempts: int = 0) -> dict:
@@ -152,6 +154,72 @@ def test_daily_plan_reads_model_profile_weak_routes(tmp_path: Path) -> None:
     assert plan["actions"][0]["responsible_role"] == "Product"
 
 
+def test_daily_plan_prioritizes_unresolved_candidate_promotions(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run_store.set_current_session(run["run_id"], "test")
+    _append_candidate_promotion(run_store.run_dir(run["run_id"]), run["run_id"])
+
+    result = DailyPlanCommand(tmp_path, date="release-hardening").run()
+
+    plan = json.loads(result.plan_path.read_text(encoding="utf-8"))
+    assert plan["signals"]["candidate_promotions"]["pending"] == 1
+    assert plan["actions"][0]["kind"] == "promotion_review"
+    assert plan["actions"][0]["risk"] == "promotion_release_risk"
+    assert plan["actions"][0]["responsible_role"] == "Release"
+
+
+def test_daily_plan_prioritizes_blocked_route_guidance(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    JsonStore(validator).write(
+        tmp_path / ".asteria" / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "runtime",
+                    "model": "medium-route",
+                    "purpose": "coding",
+                    "model_tier": "medium",
+                    "total_calls": 2,
+                    "success_calls": 0,
+                    "failure_calls": 2,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    result = DailyPlanCommand(tmp_path, date="release-hardening").run()
+
+    plan = json.loads(result.plan_path.read_text(encoding="utf-8"))
+    assert plan["signals"]["route_guidance"]["status"] == "blocked"
+    assert plan["actions"][0]["kind"] == "route_guidance_review"
+    assert plan["actions"][0]["risk"] == "model_route_blocked"
+
+
 def test_daily_report_creates_plan_only_report_when_missing(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 
@@ -160,6 +228,34 @@ def test_daily_report_creates_plan_only_report_when_missing(tmp_path: Path) -> N
     assert result.report_path.exists()
     assert result.status == "planned"
     assert "planned but not executed" in result.summary
+
+
+def _append_candidate_promotion(run_dir: Path, run_id: str) -> None:
+    JsonlStore(SchemaValidator(Path.cwd() / "schemas")).append(
+        run_dir / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-0001",
+            "run_id": run_id,
+            "task_id": "task-0001",
+            "candidate_id": "candidate-0001",
+            "workspace": str(run_dir / "cw" / "0001"),
+            "strategy": "temp_workspace",
+            "workspace_policy": "isolated_copy",
+            "backend_reason": "test",
+            "branch_name": None,
+            "promotable_files": ["tool.py"],
+            "promoted_files": [],
+            "status": "pending_manual_approval",
+            "approval_mode": "manual",
+            "merge_gate": {"ok": True},
+            "failure": None,
+            "decision": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        },
+        "candidate_promotion",
+    )
 
 
 def test_daily_run_execute_records_evidence_and_budget_delta(

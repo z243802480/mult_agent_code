@@ -7,7 +7,9 @@ from pathlib import Path
 
 from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
 
 
 def test_acceptance_gate_passes_clean_report(tmp_path: Path) -> None:
@@ -317,6 +319,73 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
     assert "Runtime OS gate:" in result.to_text()
 
 
+def test_acceptance_gate_blocks_unresolved_candidate_promotions(tmp_path: Path) -> None:
+    report_path = write_report(
+        tmp_path,
+        {
+            "suite": "core",
+            "ok": True,
+            "returncode": 0,
+            "scenarios": [
+                runtime_scenario("runtime_parallel_readonly"),
+                runtime_scenario("runtime_disjoint_writes"),
+                runtime_scenario(
+                    "runtime_worker_failure",
+                    {
+                        "failure_evidence": True,
+                        "candidate_isolated": True,
+                        "promotion_failure_recorded": True,
+                    },
+                ),
+                runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
+                runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
+                runtime_scenario(
+                    "runtime_context_package_slice",
+                    {
+                        "context_package_sliced": True,
+                        "context_package_scope_partitioned": True,
+                    },
+                ),
+                runtime_scenario(
+                    "runtime_sandbox_backend_selection",
+                    {"sandbox_backend_recorded": True},
+                ),
+                runtime_scenario(
+                    "runtime_planner_scope_quality",
+                    {"planner_scope_narrowed": True, "runtime_request_created": True},
+                ),
+                runtime_scenario(
+                    "runtime_capability_feedback",
+                    {"capability_feedback_recorded": True},
+                ),
+                runtime_scenario(
+                    "runtime_evidence_consumption",
+                    {
+                        "debug_consumed_runtime_evidence": True,
+                        "review_consumed_runtime_evidence": True,
+                    },
+                ),
+            ],
+        },
+    )
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    _append_candidate_promotion(run_dir, "pending_manual_approval")
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=10,
+        min_capabilities=10,
+        require_tiers=["core"],
+    ).run()
+
+    assert not result.ok
+    assert "candidate promotion queue has unresolved release risks" in result.failures
+    assert result.runtime_os["promotion_release_risks"]["pending"] == 1
+
+
 def scenario(name: str, ok: bool) -> dict:
     capability = {
         "file_smoke": "artifact_creation",
@@ -417,3 +486,31 @@ def write_report(tmp_path: Path, overrides: dict) -> Path:
         "acceptance_report",
     )
     return report_path
+
+
+def _append_candidate_promotion(run_dir: Path, status: str) -> None:
+    JsonlStore(SchemaValidator(Path.cwd() / "schemas")).append(
+        run_dir / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "candidate_id": "candidate-0001",
+            "workspace": str(run_dir / "cw" / "0001"),
+            "strategy": "temp_workspace",
+            "workspace_policy": "isolated_copy",
+            "backend_reason": "test",
+            "branch_name": None,
+            "promotable_files": ["tool.py"],
+            "promoted_files": [],
+            "status": status,
+            "approval_mode": "manual",
+            "merge_gate": {"ok": True},
+            "failure": None,
+            "decision": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        },
+        "candidate_promotion",
+    )

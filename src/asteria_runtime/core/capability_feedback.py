@@ -13,6 +13,25 @@ class CapabilityFeedbackAdvisor:
     max_hints: int = 5
 
     def planner_hints(self, agent_dir: Path) -> list[dict]:
+        return self._actionable_hints(agent_dir)[: self.max_hints]
+
+    def route_guidance(self, agent_dir: Path) -> dict:
+        hints = self._actionable_hints(agent_dir)
+        blocking = [item for item in hints if int(item.get("severity") or 0) >= 3]
+        review = [item for item in hints if int(item.get("severity") or 0) == 2]
+        status = "healthy"
+        if blocking:
+            status = "blocked"
+        elif review:
+            status = "review"
+        return {
+            "status": status,
+            "blocking": blocking,
+            "review": review,
+            "recommended_actions": self._route_actions(blocking, review),
+        }
+
+    def _actionable_hints(self, agent_dir: Path) -> list[dict]:
         profile_path = agent_dir / "model" / "capability_profile.json"
         if not profile_path.exists():
             return []
@@ -20,7 +39,7 @@ class CapabilityFeedbackAdvisor:
         hints = [self._hint(item) for item in profile.get("profiles", []) if isinstance(item, dict)]
         actionable = [hint for hint in hints if hint]
         actionable.sort(key=lambda item: (item["severity"], item["purpose"]), reverse=True)
-        return actionable[: self.max_hints]
+        return actionable
 
     def _hint(self, profile: dict) -> dict:
         action = str(profile.get("recommended_action") or "")
@@ -50,3 +69,16 @@ class CapabilityFeedbackAdvisor:
             "message": message,
             "severity": severity,
         }
+
+    def _route_actions(self, blocking: list[dict], review: list[dict]) -> list[str]:
+        if blocking:
+            return [
+                "Pause scaling affected routes until provider, worker, or budget issues are resolved.",
+                "Run `asteria capability-report` after collecting fresh evidence.",
+            ]
+        if review:
+            return [
+                "Review affected route purposes before increasing long-run budget.",
+                "Prefer smaller scoped tasks or stronger verification for matching work.",
+            ]
+        return ["Keep current model routes and continue collecting capability evidence."]

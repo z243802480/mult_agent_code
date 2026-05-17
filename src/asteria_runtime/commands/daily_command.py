@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -231,6 +233,8 @@ class DailyPlanCommand:
             "task_summary": task_summary,
             "pending_decisions": pending_decisions,
             "model_profile": self._model_profile_signal(agent_dir),
+            "route_guidance": CapabilityFeedbackAdvisor(self.validator).route_guidance(agent_dir),
+            "candidate_promotions": self._candidate_promotion_signal(agent_dir, current_run),
         }
 
     def _latest_acceptance(self, agent_dir: Path) -> dict[str, Any]:
@@ -321,6 +325,18 @@ class DailyPlanCommand:
             "profile_path": str(path),
         }
 
+    def _candidate_promotion_signal(self, agent_dir: Path, run_id: str | None) -> dict[str, Any]:
+        if not run_id:
+            return {"total": 0, "pending": 0, "blocked": 0, "promoted": 0}
+        run_dir = agent_dir / "runs" / run_id
+        summary = CandidatePromotionQueue(self.validator).summary(run_dir)
+        return {
+            "total": int(summary.get("total") or 0),
+            "pending": len(summary.get("pending") or []),
+            "blocked": len(summary.get("blocked") or []),
+            "promoted": len(summary.get("promoted") or []),
+        }
+
     def _actions(self, signals: dict[str, Any]) -> list[dict[str, Any]]:
         actions = []
         pending = signals.get("pending_decisions", [])
@@ -332,6 +348,22 @@ class DailyPlanCommand:
                     "summary": f"Resolve pending decision {pending[0]['decision_id']}.",
                     "risk": "manual_input_required",
                     "responsible_role": "Product",
+                }
+            )
+            return actions
+        promotions = signals.get("candidate_promotions", {})
+        if int(promotions.get("pending", 0)) or int(promotions.get("blocked", 0)):
+            actions.append(
+                {
+                    "kind": "promotion_review",
+                    "command": "python -m asteria_runtime /promotions --root .",
+                    "summary": (
+                        "Resolve candidate promotion queue before spending long-run budget "
+                        f"(pending={promotions.get('pending', 0)}, "
+                        f"blocked={promotions.get('blocked', 0)})."
+                    ),
+                    "risk": "promotion_release_risk",
+                    "responsible_role": "Release",
                 }
             )
             return actions
@@ -349,6 +381,18 @@ class DailyPlanCommand:
             )
             return actions
         model_profile = signals.get("model_profile", {})
+        route_guidance = signals.get("route_guidance", {})
+        if route_guidance.get("status") == "blocked":
+            actions.append(
+                {
+                    "kind": "route_guidance_review",
+                    "command": "python -m asteria_runtime /capability-report --root .",
+                    "summary": "Resolve blocked model route guidance before autonomous execution.",
+                    "risk": "model_route_blocked",
+                    "responsible_role": "Product",
+                }
+            )
+            return actions
         weak_routes = model_profile.get("weak_routes") or []
         if weak_routes:
             labels = [
@@ -591,6 +635,10 @@ class DailyRunCommand:
             return ["/decide", "--root", str(self.root), "--list-pending"]
         if kind == "model_route_review":
             return ["/capability-report", "--root", str(self.root)]
+        if kind == "route_guidance_review":
+            return ["/capability-report", "--root", str(self.root)]
+        if kind == "promotion_review":
+            return ["/promotions", "--root", str(self.root)]
         return ["/capability-report", "--root", str(self.root)]
 
     def _status(self, results: list[dict[str, Any]], stop_reason: str | None) -> str:
@@ -707,6 +755,15 @@ class DailyRunCommand:
         if failed:
             risks.append("Acceptance still has failing scenarios: " + ", ".join(failed[:5]))
         model_profile = (plan.get("signals") or {}).get("model_profile") or {}
+        promotions = (plan.get("signals") or {}).get("candidate_promotions") or {}
+        if int(promotions.get("pending", 0)) or int(promotions.get("blocked", 0)):
+            risks.append(
+                "Candidate promotions need release review: "
+                f"pending={promotions.get('pending', 0)}, blocked={promotions.get('blocked', 0)}"
+            )
+        route_guidance = (plan.get("signals") or {}).get("route_guidance") or {}
+        if route_guidance.get("status") == "blocked":
+            risks.append("Model route guidance is blocked; do not widen long-run execution.")
         if model_profile.get("status") == "missing":
             risks.append("Model capability profile is missing; routing decisions lack history.")
         weak_routes = model_profile.get("weak_routes") or []
