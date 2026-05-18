@@ -157,6 +157,13 @@ class AgentRunGraphBuilder:
             "validation_refs": self._flatten(child_plans, "validation_refs"),
             "failure_evidence_refs": failure_refs,
             "merge_strategy": "merge_gate_then_promotion_queue",
+            "collaboration_protocol": {
+                "isolation_model": "candidate_workspace_per_write_worker",
+                "review_agent_role": "summarize_child_diffs_conflicts_and_release_risks",
+                "debug_agent_role": "retry_or_replace_failed_child_worker_from_evidence",
+                "merge_gate_role": "block_scope_conflicts_and_failed_validation_before_promotion",
+                "promotion_queue_role": "centralize_manual_approval_retry_reject_or_discard",
+            },
             "strategy_modes": strategy_modes,
             "next_actions": next_actions,
         }

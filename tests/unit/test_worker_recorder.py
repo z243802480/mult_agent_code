@@ -50,6 +50,13 @@ def test_worker_recorder_persists_invocation_result_and_event(tmp_path: Path) ->
     graph = JsonStore(validator).read(tmp_path / "agent_run_graph.json", "agent_run_graph")
     assert graph["collaboration_summary"]["total_workers"] == 1
     assert graph["collaboration_summary"]["strategy_modes"] == []
+    assert graph["collaboration_summary"]["collaboration_protocol"] == {
+        "isolation_model": "candidate_workspace_per_write_worker",
+        "review_agent_role": "summarize_child_diffs_conflicts_and_release_risks",
+        "debug_agent_role": "retry_or_replace_failed_child_worker_from_evidence",
+        "merge_gate_role": "block_scope_conflicts_and_failed_validation_before_promotion",
+        "promotion_queue_role": "centralize_manual_approval_retry_reject_or_discard",
+    }
     assert graph["child_worker_plans"][0]["budget"] == {
         "max_model_calls": 1,
         "max_tool_calls": 1,

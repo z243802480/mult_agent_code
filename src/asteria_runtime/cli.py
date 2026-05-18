@@ -26,6 +26,7 @@ from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.gray_run_command import GrayRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.promotions_command import PromotionsCommand
@@ -247,6 +248,47 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_acceptance_parser.add_argument("--scenario-timeout-seconds", type=int, default=1200)
     real_model_acceptance_parser.add_argument("--cleanup", action="store_true")
     real_model_acceptance_parser.add_argument("--reuse-workspace", action="store_true")
+
+    gray_run_parser = subcommands.add_parser(
+        "gray-run",
+        aliases=["/gray-run"],
+        help="Run a controlled small real-task gray validation after release gates pass",
+    )
+    gray_run_parser.add_argument(
+        "goal",
+        nargs="?",
+        default=None,
+        help="Small real-task goal; defaults to a tiny file artifact probe",
+    )
+    gray_run_parser.add_argument("--root", default=".", help="Workspace root path")
+    gray_run_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only check preflight and write a gray-run plan summary",
+    )
+    gray_run_parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=3,
+        help="Maximum run-loop iterations for the gray task",
+    )
+    gray_run_parser.add_argument(
+        "--max-tasks-per-iteration",
+        type=int,
+        default=1,
+        help="Maximum tasks executed per iteration",
+    )
+    gray_run_parser.add_argument(
+        "--summary-json",
+        type=Path,
+        default=None,
+        help="Write the gray-run summary to this JSON path",
+    )
+    gray_run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
 
     verification_parser = subcommands.add_parser(
         "verification",
@@ -972,6 +1014,23 @@ def main() -> None:
 
     if command == "real-model-acceptance":
         run_real_model_acceptance(args)
+        return
+
+    if command == "gray-run":
+        gray_run_result = GrayRunCommand(
+            root=Path(args.root),
+            goal=args.goal,
+            dry_run=args.dry_run,
+            max_iterations=args.max_iterations,
+            max_tasks_per_iteration=args.max_tasks_per_iteration,
+            summary_json=args.summary_json,
+        ).run()
+        if args.json:
+            print(json.dumps(gray_run_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(gray_run_result.to_text())
+        if gray_run_result.status in {"blocked", "failed"}:
+            raise SystemExit(1)
         return
 
     if command in {"verification", "verify-status"}:

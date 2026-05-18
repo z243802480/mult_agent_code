@@ -75,6 +75,7 @@ def test_candidate_workspace_uses_git_worktree_for_clean_git_repo(tmp_path: Path
     assert candidate.strategy == "git_worktree"
     assert candidate.workspace_policy == "worktree"
     assert candidate.backend_reason
+    assert "candidate branch" in candidate.backend_reason
     assert candidate.branch_name
     assert candidate.branch_name.startswith("asteria/candidate/task-0001-")
     assert "wt" in candidate.root.parts

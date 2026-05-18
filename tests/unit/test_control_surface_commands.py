@@ -37,6 +37,8 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "pass"
     assert any(check["name"] == "version_sync" for check in payload["checks"])
+    gray_modules = next(check for check in payload["checks"] if check["name"] == "gray_command_modules")
+    assert "gray-run" in gray_modules["summary"]
     assert any(check["name"] == "gray_route_template" for check in payload["checks"])
     assert any(check["name"] == "gray_runbook" for check in payload["checks"])
     assert payload["runbook"]["path"] == "docs/zh/灰度试运行手册.md"
@@ -325,6 +327,7 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     assert payload["gates"]["gray_suite"]["gray_ready"] is True
     assert payload["gray_report"]["gray_ready"] is True
     assert payload["route_environment"]["ready"] is True
+    assert payload["promotion_release_risks"]["pending"] == 0
     assert payload["gray_task_limits"]["max_tasks_per_iteration"] == 1
     assert "--no-research" in payload["next_actions"][0]
     assert payload["route_guidance"]["status"] == "healthy"
@@ -476,6 +479,49 @@ def test_gate_status_blocks_gray_when_capability_route_guidance_is_blocked(
     assert payload["stage"] == "route_guidance_blocked"
     assert payload["rollout_state"] == "blocked"
     assert payload["route_guidance"]["status"] == "blocked"
+
+
+def test_gate_status_blocks_gray_when_candidate_promotions_are_unresolved(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    JsonlStore(validator).append(
+        run_store.run_dir(run["run_id"]) / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "candidate_id": "candidate-0001",
+            "workspace": str(tmp_path / ".asteria" / "runs" / run["run_id"] / "cw" / "0001"),
+            "strategy": "temp_workspace",
+            "workspace_policy": "isolated_copy",
+            "backend_reason": "test",
+            "branch_name": None,
+            "promotable_files": ["tool.py"],
+            "promoted_files": [],
+            "status": "pending_manual_approval",
+            "approval_mode": "manual",
+            "merge_gate": {"ok": True},
+            "failure": None,
+            "decision": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        },
+        "candidate_promotion",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "candidate_promotion_risk_blocked"
+    assert payload["rollout_state"] == "blocked"
+    assert payload["release_ready"] is False
+    assert payload["promotion_release_risks"]["pending"] == 1
+    assert "Resolve release-blocking candidate promotions" in payload["blocking_reason"]
 
 
 def _configure_release_routes(monkeypatch) -> None:

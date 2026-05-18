@@ -81,3 +81,35 @@ def test_sandbox_backend_selector_allows_untracked_process_artifacts(tmp_path: P
     plan = SandboxBackendSelector().select_for_workspace(tmp_path)
 
     assert plan.backend == "git_worktree"
+
+
+def test_sandbox_backend_selector_downgrades_when_tracked_files_are_dirty(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "tool.py").write_text("VALUE = 1\n", encoding="utf-8")
+    try:
+        subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "config", "user.email", "agent@example.test"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Agent Test"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(["git", "add", "tool.py"], cwd=tmp_path, check=True, capture_output=True, text=True)
+        subprocess.run(["git", "commit", "-m", "seed"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        pytest.skip(f"git unavailable: {exc}")
+    (tmp_path / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    plan = SandboxBackendSelector().select_for_workspace(tmp_path)
+
+    assert plan.backend == "temp_workspace"
+    assert plan.workspace_policy == "isolated_copy"

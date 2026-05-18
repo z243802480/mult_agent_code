@@ -183,12 +183,8 @@ class PackageCheckCommand:
             "src/asteria_runtime/real_model_smoke.py",
             "src/asteria_runtime/real_model_gate.py",
             "src/asteria_runtime/real_model_acceptance.py",
-        ]
-        required = [
-            "docs/zh/开发指南.md",
-            "docs/zh/运行命令.md",
-            "docs/zh/真实模型验收.md",
-            "docs/zh/交付计划.md",
+            "src/asteria_runtime/commands/gray_run_command.py",
+            "src/asteria_runtime/schemas/gray_run.schema.json",
         ]
         missing = [item for item in required if not (self.root / item).exists()]
         return PackageCheck(
@@ -196,6 +192,7 @@ class PackageCheckCommand:
             not missing,
             (
                 "real-model smoke/gate/acceptance package modules present"
+                " and gray-run module/schema present"
                 if not missing
                 else "missing: " + ", ".join(missing)
             ),

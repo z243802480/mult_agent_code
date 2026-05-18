@@ -105,6 +105,7 @@
         "validation_refs",
         "failure_evidence_refs",
         "merge_strategy",
+        "collaboration_protocol",
         "strategy_modes",
         "next_actions"
       ],
@@ -119,6 +120,23 @@
         "validation_refs": { "type": "array", "items": { "type": "string" } },
         "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
         "merge_strategy": { "type": "string" },
+        "collaboration_protocol": {
+          "type": "object",
+          "required": [
+            "isolation_model",
+            "review_agent_role",
+            "debug_agent_role",
+            "merge_gate_role",
+            "promotion_queue_role"
+          ],
+          "properties": {
+            "isolation_model": { "type": "string" },
+            "review_agent_role": { "type": "string" },
+            "debug_agent_role": { "type": "string" },
+            "merge_gate_role": { "type": "string" },
+            "promotion_queue_role": { "type": "string" }
+          }
+        },
         "strategy_modes": { "type": "array", "items": { "type": "string" } },
         "next_actions": { "type": "array", "items": { "type": "string" } }
       }

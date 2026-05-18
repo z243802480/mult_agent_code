@@ -6,8 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -20,6 +22,7 @@ class GateStatusResult:
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
+    promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
@@ -44,6 +47,7 @@ class GateStatusResult:
             },
             "route_environment": self.route_environment,
             "route_guidance": self.route_guidance,
+            "promotion_release_risks": self.promotion_release_risks,
             "gray_task_limits": _gray_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
@@ -53,7 +57,11 @@ class GateStatusResult:
         }
 
     def _rollout_state(self) -> str:
-        if self.stage in {"current_environment_incomplete", "route_guidance_blocked"}:
+        if self.stage in {
+            "current_environment_incomplete",
+            "route_guidance_blocked",
+            "candidate_promotion_risk_blocked",
+        }:
             return "blocked"
         if self.stage == "ready_for_small_real_task_gray":
             return "release_ready"
@@ -96,6 +104,12 @@ class GateStatusResult:
             )
         if self.route_guidance:
             lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
+        if self.promotion_release_risks:
+            lines.append(
+                "Promotion risks: "
+                f"pending={self.promotion_release_risks.get('pending', 0)}, "
+                f"blocked={self.promotion_release_risks.get('blocked', 0)}"
+            )
         lines.extend(self._report_lines("Real model gate", self.gate_report))
         lines.extend(self._report_lines("Gray suite", self.gray_report, gray=True))
         lines.extend(self._report_lines("Core acceptance", self.core_report))
@@ -153,6 +167,7 @@ class GateStatusCommand:
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
+        promotion_release_risks = _promotion_release_risks(self.root)
         if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
             stage = "current_environment_incomplete"
             missing = ", ".join(route_environment["missing_required"])
@@ -170,6 +185,19 @@ class GateStatusCommand:
                 *[str(item) for item in route_guidance.get("recommended_actions", [])],
                 *actions,
             ]
+        if (
+            stage == "ready_for_small_real_task_gray"
+            and (
+                promotion_release_risks.get("pending", 0)
+                or promotion_release_risks.get("blocked", 0)
+            )
+        ):
+            stage = "candidate_promotion_risk_blocked"
+            actions = [
+                "Resolve release-blocking candidate promotions before gray validation.",
+                "Use `asteria promotions list`, then approve, retry, reject, or discard unresolved candidates.",
+                *actions,
+            ]
         return GateStatusResult(
             root=self.root,
             stage=stage,
@@ -178,6 +206,7 @@ class GateStatusCommand:
             core_report=core,
             route_environment=route_environment,
             route_guidance=route_guidance,
+            promotion_release_risks=promotion_release_risks,
             validation_recommendation=_validation_recommendation(self.root),
             next_actions=actions,
         )
@@ -262,6 +291,30 @@ def _route_environment() -> dict[str, Any]:
 def _route_guidance(root: Path) -> dict[str, Any]:
     validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
     return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
+
+
+def _promotion_release_risks(root: Path) -> dict[str, Any]:
+    validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+    evidence = runtime_os_release_evidence(_run_dirs(root), JsonlStore(validator).read_all)
+    return {
+        "total": int(evidence.get("candidate_promotions") or 0),
+        "pending": int(evidence.get("candidate_promotions_pending") or 0),
+        "blocked": int(evidence.get("candidate_promotions_blocked") or 0),
+        "promoted": int(evidence.get("candidate_promotions_promoted") or 0),
+        "release_blocking_threshold": 0,
+        "release_blocking_statuses": [
+            "queued",
+            "pending_manual_approval",
+            "approved",
+            "blocked",
+            "promotion_failed",
+        ],
+    }
+
+
+def _run_dirs(root: Path) -> list[Path]:
+    runs_dir = root / ".asteria" / "runs"
+    return [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
 
 
 def _validation_recommendation(root: Path) -> dict[str, Any]:

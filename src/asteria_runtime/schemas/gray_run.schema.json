@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GrayRun",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "gray_run_id",
+    "created_at",
+    "root",
+    "status",
+    "dry_run",
+    "goal",
+    "preflight",
+    "budgets",
+    "route_expectations",
+    "run_id",
+    "run_result",
+    "evidence",
+    "summary_path",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "gray_run_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "root": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["blocked", "dry_run", "running", "completed", "failed"]
+    },
+    "dry_run": { "type": "boolean" },
+    "goal": { "type": "string" },
+    "preflight": { "type": "object" },
+    "budgets": { "type": "object" },
+    "route_expectations": { "type": "object" },
+    "run_id": { "type": ["string", "null"] },
+    "run_result": { "type": ["object", "null"] },
+    "evidence": { "type": "object" },
+    "summary_path": { "type": "string" },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

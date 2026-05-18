@@ -31,6 +31,20 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--allow-fake",
         ]
     )
+    gray_run_args = parser.parse_args(
+        [
+            "/gray-run",
+            "Create a small probe",
+            "--root",
+            ".",
+            "--dry-run",
+            "--max-iterations",
+            "2",
+            "--summary-json",
+            "gray.json",
+            "--json",
+        ]
+    )
     verification_args = parser.parse_args(["/verification", "--root", "."])
     package_check_args = parser.parse_args(["/package-check", "--root", ".", "--json"])
     model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
@@ -169,6 +183,12 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert real_model_acceptance_args.command == "/real-model-acceptance"
     assert real_model_acceptance_args.suite == "offline"
     assert real_model_acceptance_args.allow_fake
+    assert gray_run_args.command == "/gray-run"
+    assert gray_run_args.goal == "Create a small probe"
+    assert gray_run_args.dry_run
+    assert gray_run_args.max_iterations == 2
+    assert gray_run_args.summary_json.as_posix() == "gray.json"
+    assert gray_run_args.json
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json

@@ -29,7 +29,10 @@ class SandboxBackendSelector:
             return SandboxBackendPlan(
                 backend="git_worktree",
                 workspace_policy="worktree",
-                reason="clean git workspace supports detached worktree isolation",
+                reason=(
+                    "tracked files are clean; git worktree candidate branch can isolate writes "
+                    "while ignoring untracked process artifacts"
+                ),
             )
         return SandboxBackendPlan(
             backend="temp_workspace",
