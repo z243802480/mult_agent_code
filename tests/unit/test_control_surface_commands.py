@@ -650,3 +650,41 @@ def _write_plugin_manifest(
         ),
         encoding="utf-8",
     )
+
+
+def test_validation_recommendation_treats_governance_changes_as_full_gray_core() -> None:
+    schema = _validation_recommendation_for_changed_files(["schemas/plugin_manifest.schema.json"])
+    policy = _validation_recommendation_for_changed_files(["templates/policies.default.json"])
+    hook = _validation_recommendation_for_changed_files(
+        ["src/asteria_runtime/core/runtime_hooks.py"]
+    )
+    assert schema["level"] == "full_gray_core"
+    assert "governance" in schema["reason"].lower() or "schema" in schema["reason"].lower()
+    assert policy["level"] == "full_gray_core"
+    assert hook["level"] == "full_gray_core"
+
+
+def test_gate_status_blocks_release_when_plugin_manifests_are_blocked(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    (tmp_path / ".asteria" / "policies.json").write_text(
+        json.dumps({
+            "schema_version": "0.1.0",
+            "hooks": {
+                "enabled": True,
+                "plugins_enabled": False,
+                "allowed_hook_names": ["before_tool_call", "after_tool_call"],
+            },
+        }),
+        encoding="utf-8",
+    )
+    _write_plugin_manifest(tmp_path, hook_subscriptions=["unknown_hook"])
+    result = GateStatusCommand(tmp_path).run()
+    assert result.stage == "plugin_manifests_blocked"
+    payload = result.to_dict()
+    assert payload["rollout_state"] == "blocked"
+    assert payload["plugin_risks"]["blocked"] is True
+    assert len(payload["plugin_risks"]["blocked_manifests"]) > 0

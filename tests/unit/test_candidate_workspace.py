@@ -158,3 +158,26 @@ def test_candidate_workspace_rejects_promote_paths_outside_workspace(tmp_path: P
 
     with pytest.raises(ValueError, match="escapes workspace"):
         candidate.promote(["../escape.py"])
+
+
+def test_failed_candidate_does_not_pollute_main_workspace(tmp_path: Path) -> None:
+    """Golden trace: a candidate that writes and then discards leaves no artifacts in source."""
+    source = tmp_path / "workspace"
+    source.mkdir()
+    run_dir = source / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (source / "main.py").write_text("VALUE = 1\n", encoding="utf-8")
+    snapshot_before = set(p.name for p in source.iterdir())
+
+    candidate = CandidateWorkspace.create(source, run_dir, "task-0001")
+    (candidate.root / "main.py").write_text("VALUE = 999\n", encoding="utf-8")
+    (candidate.root / "side_effect.py").write_text("BAD = True\n", encoding="utf-8")
+    candidate.discard()
+
+    assert not candidate.root.exists()
+    snapshot_after = set(p.name for p in source.iterdir())
+    assert snapshot_before == snapshot_after
+    assert (source / "main.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+    assert not (source / "side_effect.py").exists()
+    manifest = json.loads(candidate.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == "discarded"

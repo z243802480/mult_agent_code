@@ -8,6 +8,7 @@ from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -24,6 +25,7 @@ class GateStatusResult:
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
+    plugin_risks: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
@@ -49,6 +51,7 @@ class GateStatusResult:
             "route_environment": self.route_environment,
             "route_guidance": self.route_guidance,
             "promotion_release_risks": self.promotion_release_risks,
+            "plugin_risks": self.plugin_risks,
             "gray_task_limits": _gray_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
@@ -62,6 +65,7 @@ class GateStatusResult:
             "current_environment_incomplete",
             "route_guidance_blocked",
             "candidate_promotion_risk_blocked",
+            "plugin_manifests_blocked",
         }:
             return "blocked"
         if self.stage == "ready_for_small_real_task_gray":
@@ -197,6 +201,16 @@ class GateStatusCommand:
                 "Use `asteria promotions list`, then approve, retry, reject, or discard unresolved candidates.",
                 *actions,
             ]
+        plugin_risks = _plugin_risks(self.root, self.validator)
+        if (
+            stage == "ready_for_small_real_task_gray"
+            and plugin_risks["blocked"]
+        ):
+            stage = "plugin_manifests_blocked"
+            actions = [
+                *plugin_risks["actions"],
+                *actions,
+            ]
         return GateStatusResult(
             root=self.root,
             stage=stage,
@@ -206,6 +220,7 @@ class GateStatusCommand:
             route_environment=route_environment,
             route_guidance=route_guidance,
             promotion_release_risks=promotion_release_risks,
+            plugin_risks=plugin_risks,
             validation_recommendation=_validation_recommendation(self.root),
             next_actions=actions,
         )
@@ -416,6 +431,27 @@ def _validation_recommendation_for_changed_files(changed_files: list[str]) -> di
             "changed_file_count": len(changed_files),
             "command": "ruff check .",
         }
+    governance_changes = [
+        path
+        for path in changed_files
+        if path.startswith(("schemas/", "templates/"))
+        or "plugin_manifest" in path
+        or "runtime_hook" in path
+        or "policy_config" in path
+        or "policies.default" in path
+    ]
+    if governance_changes:
+        return {
+            "level": "full_gray_core",
+            "reason": "Schema, policy, or hook/plugin governance files changed.",
+            "changed_file_count": len(changed_files),
+            "governance_changes": governance_changes,
+            "command": (
+                "ruff check . && mypy src && pytest -q && "
+                "asteria package-check --root . --json && "
+                "asteria /acceptance-gate --suite core"
+            ),
+        }
     if len(changed_files) >= 12 or len(runtime_changes) >= 4:
         return {
             "level": "full_gray_core",
@@ -439,4 +475,31 @@ def _validation_recommendation_for_changed_files(changed_files: list[str]) -> di
         "reason": "Small non-runtime change detected.",
         "changed_file_count": len(changed_files),
         "command": "ruff check . && pytest -q",
+    }
+
+def _plugin_risks(root: Path, validator: SchemaValidator) -> dict[str, Any]:
+    try:
+        summary = plugin_control_summary(root, validator)
+    except (FileNotFoundError, OSError, ValueError):
+        return {"blocked": False, "warnings": [], "actions": [], "plugin_control": {}}
+    if not summary.get("initialized", False):
+        return {"blocked": False, "warnings": [], "actions": [], "plugin_control": summary}
+    blocked_ids = [
+        str(p.get("plugin_id", "?"))
+        for p in summary.get("plugins", [])
+        if p.get("status") == "blocked"
+    ]
+    warnings = list(summary.get("warnings") or [])
+    actions: list[str] = []
+    if blocked_ids:
+        actions.append(f"Blocked plugin manifests prevent release: {', '.join(blocked_ids)}.")
+        actions.append("Run steria plugins doctor --json and fix or disable blocked manifests.")
+    if not summary.get("ok", True):
+        actions.append("Plugin control surface reports issues; resolve before release.")
+    return {
+        "blocked": len(blocked_ids) > 0,
+        "blocked_manifests": blocked_ids,
+        "warnings": warnings,
+        "actions": actions,
+        "plugin_control": summary,
     }
