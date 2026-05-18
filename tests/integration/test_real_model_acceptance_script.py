@@ -27,8 +27,18 @@ def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
         "gray_file_artifact",
         "gray_multi_file_scope",
         "gray_debug_repair",
+        "gray_doc_update",
+        "gray_small_cli",
+        "gray_refactor",
         "runtime_request_resume",
     ]
+    assert SCENARIOS["gray_doc_update"].tier == "gray"
+    assert SCENARIOS["gray_doc_update"].expected_file == "docs/README.md"
+    assert SCENARIOS["gray_small_cli"].tier == "gray"
+    assert SCENARIOS["gray_small_cli"].expected_file == "greet.py"
+    assert SCENARIOS["gray_refactor"].tier == "gray"
+    assert SCENARIOS["gray_refactor"].setup_files
+    assert "shapes.py" in SCENARIOS["gray_refactor"].setup_files
     assert SCENARIOS["gray_file_artifact"].tier == "gray"
     assert SCENARIOS["gray_multi_file_scope"].capability == "gray_multi_file_scope"
     assert SCENARIOS["gray_debug_repair"].setup_files

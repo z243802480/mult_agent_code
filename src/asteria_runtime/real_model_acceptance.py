@@ -123,6 +123,62 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             ),
         },
     ),
+    "gray_doc_update": AcceptanceScenario(
+        name="gray_doc_update",
+        capability="gray_doc_only_task",
+        tier="gray",
+        goal=(
+            "Create a README.md in the docs/ directory with three sections: "
+            "'Overview' (one paragraph about this tool), 'Quick Start' (3 numbered steps), "
+            "and 'License' (placeholder MIT). The file must be valid Markdown."
+        ),
+        expected_file="docs/README.md",
+        expected_text="Overview",
+        max_iterations=3,
+    ),
+    "gray_small_cli": AcceptanceScenario(
+        name="gray_small_cli",
+        capability="gray_small_cli",
+        tier="gray",
+        goal=(
+            "Create a single-file Python CLI named greet.py that takes a name as a "
+            "command-line argument and prints 'Hello, <name>!' to stdout. "
+            "It must run with `python greet.py World` and print 'Hello, World!'."
+        ),
+        expected_file="greet.py",
+        expected_text="Hello",
+        max_iterations=3,
+    ),
+    "gray_refactor": AcceptanceScenario(
+        name="gray_refactor",
+        capability="gray_controlled_refactor",
+        tier="gray",
+        goal=(
+            "Refactor the file shapes.py by extracting a base class Shape with an abstract "
+            "area() method, then make Circle and Rectangle inherit from it. Keep all existing "
+            "tests passing with the smallest reasonable change."
+        ),
+        expected_file="shapes.py",
+        expected_text="Shape",
+        max_iterations=4,
+        setup_files={
+            "shapes.py": (
+                "import math\n\n\n"
+                "def circle_area(radius):\n"
+                "    return math.pi * radius ** 2\n\n\n"
+                "def rectangle_area(width, height):\n"
+                "    return width * height\n\n"
+            ),
+            "test_shapes.py": (
+                "from shapes import circle_area, rectangle_area\n"
+                "import math\n\n\n"
+                "def test_circle_area():\n"
+                "    assert abs(circle_area(1) - math.pi) < 0.01\n\n\n"
+                "def test_rectangle_area():\n"
+                "    assert rectangle_area(3, 4) == 12\n"
+            ),
+        },
+    ),
     "failing_tests_repair": AcceptanceScenario(
         name="failing_tests_repair",
         capability="test_driven_repair",
@@ -310,6 +366,9 @@ SUITES = {
         "gray_file_artifact",
         "gray_multi_file_scope",
         "gray_debug_repair",
+        "gray_doc_update",
+        "gray_small_cli",
+        "gray_refactor",
         "runtime_request_resume",
     ],
     "advanced": [
