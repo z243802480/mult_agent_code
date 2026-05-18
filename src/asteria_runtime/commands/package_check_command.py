@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime import __version__
+from asteria_runtime.core.error_taxonomy import classify_check, taxonomy_summary
 
 
 @dataclass(frozen=True)
@@ -13,6 +14,7 @@ class PackageCheck:
     ok: bool
     summary: str
     severity: str = "error"
+    error_type: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -20,6 +22,7 @@ class PackageCheck:
             "ok": self.ok,
             "summary": self.summary,
             "severity": self.severity,
+            "error_type": self.error_type or classify_check(self.name),
         }
 
 
@@ -49,6 +52,7 @@ class PackageCheckResult:
             "failed_checks": failed,
             "artifacts": self.artifacts,
             "runbook": self._runbook(),
+            "error_taxonomy": taxonomy_summary(),
             "next_actions": self._next_actions(failed),
         }
 
@@ -60,6 +64,8 @@ class PackageCheckResult:
             actions.append("Add `templates/model.routes.gray.example.ps1` before gray rollout.")
         if "gray_command_modules" in failed:
             actions.append("Package real-model gate and acceptance modules before gray rollout.")
+        if "hook_plugin_control_surface" in failed:
+            actions.append("Package hook/plugin schemas, command modules, defaults, and docs.")
         if "gray_runbook" in failed:
             actions.append("Add `docs/zh/灰度试运行手册.md` before gray rollout.")
         if not self.artifacts:
@@ -115,6 +121,7 @@ class PackageCheckCommand:
             self._console_script_check(pyproject),
             self._version_sync_check(pyproject),
             self._gray_command_modules_check(),
+            self._hook_plugin_control_surface_check(),
             self._route_template_check(),
             self._runbook_docs_check(),
             self._gray_runbook_check(),
@@ -193,6 +200,32 @@ class PackageCheckCommand:
             (
                 "real-model smoke/gate/acceptance package modules present"
                 " and gray-run module/schema present"
+                if not missing
+                else "missing: " + ", ".join(missing)
+            ),
+        )
+
+    def _hook_plugin_control_surface_check(self) -> PackageCheck:
+        required = [
+            "schemas/runtime_hook_event.schema.json",
+            "schemas/plugin_manifest.schema.json",
+            "src/asteria_runtime/schemas/runtime_hook_event.schema.json",
+            "src/asteria_runtime/schemas/plugin_manifest.schema.json",
+            "src/asteria_runtime/core/runtime_hooks.py",
+            "src/asteria_runtime/core/plugin_manifest.py",
+            "src/asteria_runtime/core/plugin_diagnostics.py",
+            "src/asteria_runtime/commands/plugins_command.py",
+            "templates/policies.default.json",
+            "src/asteria_runtime/templates/policies.default.json",
+            "docs/zh/工程化体系.md",
+            "docs/zh/工程治理体系.md",
+        ]
+        missing = [item for item in required if not (self.root / item).exists()]
+        return PackageCheck(
+            "hook_plugin_control_surface",
+            not missing,
+            (
+                "hook/plugin schemas, control command, defaults, and docs present"
                 if not missing
                 else "missing: " + ", ".join(missing)
             ),

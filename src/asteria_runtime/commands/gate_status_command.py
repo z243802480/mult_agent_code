@@ -8,6 +8,7 @@ from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -155,6 +156,7 @@ class GateStatusResult:
 class GateStatusCommand:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> GateStatusResult:
         gate = self._read_json(self.root / ".asteria" / "model" / "real_model_gate_report.json")
@@ -167,7 +169,7 @@ class GateStatusCommand:
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
-        promotion_release_risks = _promotion_release_risks(self.root)
+        promotion_release_risks = _promotion_release_risks(self.root, self._policy())
         if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
             stage = "current_environment_incomplete"
             missing = ", ".join(route_environment["missing_required"])
@@ -187,10 +189,7 @@ class GateStatusCommand:
             ]
         if (
             stage == "ready_for_small_real_task_gray"
-            and (
-                promotion_release_risks.get("pending", 0)
-                or promotion_release_risks.get("blocked", 0)
-            )
+            and _promotion_risks_exceed_threshold(promotion_release_risks)
         ):
             stage = "candidate_promotion_risk_blocked"
             actions = [
@@ -210,6 +209,12 @@ class GateStatusCommand:
             validation_recommendation=_validation_recommendation(self.root),
             next_actions=actions,
         )
+
+    def _policy(self) -> dict[str, Any]:
+        agent_dir = self.root / ".asteria"
+        if not (agent_dir / "policies.json").exists():
+            return {}
+        return load_policy_config(agent_dir, self.validator)
 
     def _stage(
         self,
@@ -293,23 +298,54 @@ def _route_guidance(root: Path) -> dict[str, Any]:
     return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
 
 
-def _promotion_release_risks(root: Path) -> dict[str, Any]:
+def _promotion_release_risks(root: Path, policy: dict[str, Any] | None = None) -> dict[str, Any]:
     validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
     evidence = runtime_os_release_evidence(_run_dirs(root), JsonlStore(validator).read_all)
+    risk_policy = _promotion_risk_policy(policy or {})
     return {
         "total": int(evidence.get("candidate_promotions") or 0),
         "pending": int(evidence.get("candidate_promotions_pending") or 0),
         "blocked": int(evidence.get("candidate_promotions_blocked") or 0),
         "promoted": int(evidence.get("candidate_promotions_promoted") or 0),
-        "release_blocking_threshold": 0,
-        "release_blocking_statuses": [
-            "queued",
-            "pending_manual_approval",
-            "approved",
-            "blocked",
-            "promotion_failed",
-        ],
+        "risk_policy": risk_policy,
+        "release_blocking_threshold": max(
+            int(risk_policy["max_pending_release_promotions"]),
+            int(risk_policy["max_blocked_release_promotions"]),
+        ),
+        "release_blocking_statuses": list(risk_policy["release_blocking_statuses"]),
     }
+
+
+def _promotion_risk_policy(policy: dict[str, Any]) -> dict[str, Any]:
+    raw = policy.get("promotion")
+    promotion = raw if isinstance(raw, dict) else {}
+    return {
+        "manual_approval_default": bool(promotion.get("manual_approval_default", False)),
+        "release_blocking_statuses": list(
+            promotion.get("release_blocking_statuses")
+            or [
+                "queued",
+                "pending_manual_approval",
+                "approved",
+                "blocked",
+                "promotion_failed",
+            ]
+        ),
+        "max_pending_release_promotions": int(
+            promotion.get("max_pending_release_promotions", 0)
+        ),
+        "max_blocked_release_promotions": int(
+            promotion.get("max_blocked_release_promotions", 0)
+        ),
+    }
+
+
+def _promotion_risks_exceed_threshold(risks: dict[str, Any]) -> bool:
+    raw_policy = risks.get("risk_policy")
+    policy = raw_policy if isinstance(raw_policy, dict) else {}
+    max_pending = int(policy.get("max_pending_release_promotions", 0))
+    max_blocked = int(policy.get("max_blocked_release_promotions", 0))
+    return int(risks.get("pending", 0)) > max_pending or int(risks.get("blocked", 0)) > max_blocked
 
 
 def _run_dirs(root: Path) -> list[Path]:

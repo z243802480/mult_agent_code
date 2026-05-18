@@ -12,10 +12,12 @@ from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
+from asteria_runtime.core.plugin_manifest import PluginManifestLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.run_state_finalizer import RunStateFinalizer
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import (
     RuntimeRequestPolicy,
     RuntimeRequestPolicyResult,
@@ -102,6 +104,7 @@ class ExecuteCommand:
             record_task_failure=self._record_task_failure,
         )
         self.tool_permission_policy = ToolPermissionPolicy(self.root, self.validator)
+        self.hook_manager = RuntimeHookManager(self.validator)
         self.action_preparer = ExecutionActionPreparer(self.tool_permission_policy.shell_denial)
         self.task_attempt_runner = TaskAttemptRunner(
             self.execution_evidence,
@@ -118,6 +121,7 @@ class ExecuteCommand:
         self.tool_gateway = ToolExecutionGateway(
             self.registry,
             self.tool_permission_policy,
+            hook_manager=self.hook_manager,
             actor="ExecuteCommand",
         )
         self.run_state_finalizer = RunStateFinalizer(
@@ -129,6 +133,7 @@ class ExecuteCommand:
             validator=self.validator,
             recorder=self.worker_recorder,
             runtime_profile_builder=RuntimeProfileBuilder(self.validator),
+            hook_manager=self.hook_manager,
             actor="ExecuteCommand",
         )
 
@@ -144,6 +149,7 @@ class ExecuteCommand:
         run_dir = run_store.run_dir(run_id)
         run = run_store.load_run(run_id)
         policy = load_policy_config(agent_dir, self.validator)
+        self.hook_manager.configure(policy)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
         cost_report_path = run_dir / "cost_report.json"
@@ -158,6 +164,7 @@ class ExecuteCommand:
             event_logger=event_logger,
             budget=budget,
         )
+        self._record_plugin_manifests(agent_dir, policy, context)
         model_client = self._model_client(run_dir, budget)
         coder = CoderAgent(model_client, self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
@@ -452,6 +459,33 @@ class ExecuteCommand:
             tool_results=tool_results,
             verification_results=verification_results,
             candidate=candidate,
+        )
+
+    def _record_plugin_manifests(
+        self,
+        agent_dir: Path,
+        policy: dict,
+        context: RuntimeContext,
+    ) -> None:
+        manifests = PluginManifestLoader(self.validator).load(agent_dir, policy)
+        if not manifests or context.event_logger is None:
+            return
+        context.event_logger.record(
+            context.run_id,
+            "plugin_manifests_loaded",
+            "ExecuteCommand",
+            f"Loaded {len(manifests)} plugin manifest(s).",
+            {
+                "plugins": [
+                    {
+                        "plugin_id": item.plugin_id,
+                        "status": item.status,
+                        "reason": item.reason,
+                        "hook_subscriptions": item.manifest.get("hook_subscriptions", []),
+                    }
+                    for item in manifests
+                ]
+            },
         )
 
     def _failure_type(self, exc: Exception) -> str:

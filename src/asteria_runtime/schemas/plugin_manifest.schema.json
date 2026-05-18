@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PluginManifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plugin_id",
+    "name",
+    "version",
+    "enabled",
+    "entrypoint",
+    "hook_subscriptions",
+    "permissions",
+    "capabilities",
+    "description"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "plugin_id": { "type": "string" },
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "enabled": { "type": "boolean" },
+    "entrypoint": { "type": "string" },
+    "hook_subscriptions": { "type": "array", "items": { "type": "string" } },
+    "permissions": {
+      "type": "object",
+      "required": ["network", "shell", "write_workspace", "read_secrets"],
+      "properties": {
+        "network": { "type": "boolean" },
+        "shell": { "type": "boolean" },
+        "write_workspace": { "type": "boolean" },
+        "read_secrets": { "type": "boolean" }
+      }
+    },
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "description": { "type": "string" }
+  }
+}

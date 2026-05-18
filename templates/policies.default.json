@@ -38,6 +38,41 @@
     "id_rsa",
     "id_ed25519"
   ],
+  "hooks": {
+    "enabled": true,
+    "plugins_enabled": false,
+    "allowed_hook_names": [
+      "before_worker",
+      "after_worker",
+      "worker_error",
+      "before_tool_call",
+      "after_tool_call",
+      "tool_call_error"
+    ],
+    "redacted_data_keys": [
+      "secret",
+      "token",
+      "api_key",
+      "apikey",
+      "authorization",
+      "password",
+      "credential",
+      "raw_context"
+    ],
+    "handler_timeout_ms": 1000
+  },
+  "promotion": {
+    "manual_approval_default": false,
+    "release_blocking_statuses": [
+      "queued",
+      "pending_manual_approval",
+      "approved",
+      "blocked",
+      "promotion_failed"
+    ],
+    "max_pending_release_promotions": 0,
+    "max_blocked_release_promotions": 0
+  },
   "model_routing": {
     "goal_spec": "strong",
     "planning": "strong",

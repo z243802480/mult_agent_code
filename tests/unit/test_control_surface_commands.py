@@ -41,6 +41,12 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert "gray-run" in gray_modules["summary"]
     assert any(check["name"] == "gray_route_template" for check in payload["checks"])
     assert any(check["name"] == "gray_runbook" for check in payload["checks"])
+    hook_plugins = next(
+        check for check in payload["checks"] if check["name"] == "hook_plugin_control_surface"
+    )
+    assert hook_plugins["ok"] is True
+    assert hook_plugins["error_type"] == "plugin"
+    assert "plugin" in payload["error_taxonomy"]["categories"]
     assert payload["runbook"]["path"] == "docs/zh/灰度试运行手册.md"
     assert "rollback" in payload["runbook"]["required_sections"]
     assert any("model.routes.gray.example.ps1" in action for action in payload["next_actions"])
@@ -67,7 +73,9 @@ def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -
     assert result.initialized is True
     assert result.current_session_id is None
     assert "No sessions yet." in result.to_text()
-    assert result.to_dict()["initialized"] is True
+    payload = result.to_dict()
+    assert payload["initialized"] is True
+    assert payload["plugin_control"]["hook_policy"]["plugins_enabled"] is False
 
 
 def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:
@@ -210,6 +218,40 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     ]
     assert "preferred_backend" in payload["sandbox"]
     assert payload["gray_task_limits"]["max_iterations"] == 3
+    assert payload["plugin_control"]["hook_policy"]["plugins_enabled"] is False
+    assert "plugin" in payload["error_taxonomy"]["categories"]
+    assert next(check for check in payload["checks"] if check["name"] == "plugins")[
+        "error_type"
+    ] == "plugin"
+
+
+def test_doctor_reports_blocked_plugin_manifest(tmp_path: Path, monkeypatch) -> None:
+    InitCommand(tmp_path).run()
+    _write_plugin_manifest(tmp_path, hook_subscriptions=["unknown_hook"])
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_API_KEY", "glm-key")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "minimax-key")
+
+    payload = DoctorCommand(tmp_path).run().to_dict()
+
+    plugin_check = next(check for check in payload["checks"] if check["name"] == "plugins")
+    assert plugin_check["ok"] is False
+    assert plugin_check["severity"] == "warning"
+    assert plugin_check["error_type"] == "plugin"
+    assert payload["plugin_control"]["status_counts"]["blocked"] == 1
+
+
+def test_status_reports_plugin_control_risk(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    _write_plugin_manifest(tmp_path, hook_subscriptions=["unknown_hook"])
+
+    result = StatusCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    assert payload["status"] == "blocked"
+    assert payload["plugin_control"]["ok"] is False
+    assert "Blocked plugin manifests" in " ".join(payload["plugin_control"]["warnings"])
 
 
 def test_doctor_reports_exact_missing_medium_route_variables(tmp_path: Path, monkeypatch) -> None:
@@ -521,6 +563,8 @@ def test_gate_status_blocks_gray_when_candidate_promotions_are_unresolved(
     assert payload["rollout_state"] == "blocked"
     assert payload["release_ready"] is False
     assert payload["promotion_release_risks"]["pending"] == 1
+    assert payload["promotion_release_risks"]["risk_policy"]["max_pending_release_promotions"] == 0
+    assert "promotion_failed" in payload["promotion_release_risks"]["release_blocking_statuses"]
     assert "Resolve release-blocking candidate promotions" in payload["blocking_reason"]
 
 
@@ -575,3 +619,34 @@ def test_gate_status_recommends_validation_by_change_shape() -> None:
     assert docs["level"] == "targeted"
     assert source["level"] == "core_subset"
     assert broad["level"] == "full_gray_core"
+
+
+def _write_plugin_manifest(
+    root: Path,
+    *,
+    hook_subscriptions: list[str] | None = None,
+) -> None:
+    plugin_dir = root / ".asteria" / "plugins"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    (plugin_dir / "audit.plugin.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "plugin_id": "example.audit",
+                "name": "Example Audit Plugin",
+                "version": "0.1.0",
+                "enabled": True,
+                "entrypoint": "plugins/example_audit.py",
+                "hook_subscriptions": hook_subscriptions or ["after_tool_call"],
+                "permissions": {
+                    "network": False,
+                    "shell": False,
+                    "write_workspace": False,
+                    "read_secrets": False,
+                },
+                "capabilities": ["audit-log"],
+                "description": "Records audit metadata.",
+            }
+        ),
+        encoding="utf-8",
+    )

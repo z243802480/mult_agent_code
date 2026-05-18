@@ -29,6 +29,7 @@ from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gray_run_command import GrayRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.plugins_command import PluginsCommand
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.commands.research_command import ResearchCommand
@@ -304,6 +305,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     package_check_parser.add_argument("--root", default=".", help="Workspace root path")
     package_check_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
+
+    plugins_parser = subcommands.add_parser(
+        "plugins",
+        aliases=["/plugins"],
+        help="Inspect and operate plugin manifests without executing plugin code",
+    )
+    plugins_parser.add_argument("--root", default=".", help="Workspace root path")
+    plugins_parser.add_argument(
+        "plugin_action",
+        nargs="?",
+        choices=["list", "doctor", "enable", "disable"],
+        default="list",
+        help="Plugin manifest action",
+    )
+    plugins_parser.add_argument("--plugin-id", default=None, help="Plugin id to operate on")
+    plugins_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
@@ -1045,6 +1066,21 @@ def main() -> None:
         else:
             print(package_result.to_text())
         if not package_result.ok:
+            raise SystemExit(1)
+        return
+
+    if command == "plugins":
+        plugins_command = PluginsCommand(
+            root=Path(args.root),
+            action=args.plugin_action,
+            plugin_id=args.plugin_id,
+        )
+        plugins_result = plugins_command.run()
+        if args.json:
+            print(plugins_command.to_json(plugins_result))
+        else:
+            print(plugins_result.to_text())
+        if args.plugin_action == "doctor" and not plugins_result.ok:
             raise SystemExit(1)
         return
 

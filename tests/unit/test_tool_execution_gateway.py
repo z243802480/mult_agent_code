@@ -3,8 +3,10 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -60,6 +62,34 @@ def test_tool_gateway_accepts_expected_diagnostic_failure(tmp_path: Path) -> Non
 
     assert results[0].ok is True
     assert results[0].summary.startswith("Diagnostic failure accepted")
+
+
+def test_tool_gateway_records_runtime_hooks(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={"protected_paths": []},
+        validator=validator,
+        run_dir_override=tmp_path,
+    )
+    gateway = ToolExecutionGateway(
+        FakeRegistry(),
+        ToolPermissionPolicy(tmp_path, validator),
+        hook_manager=RuntimeHookManager(validator),
+    )
+
+    gateway.run_tool_calls(
+        [{"tool_name": "read_file", "args": {"path": "README.md"}}],
+        {"task_id": "task-0001", "allowed_tools": ["read_file"]},
+        context,
+    )
+
+    hooks = JsonlStore(validator).read_all(tmp_path / "runtime_hooks.jsonl", "runtime_hook_event")
+    assert [hook["hook_name"] for hook in hooks] == ["before_tool_call", "after_tool_call"]
+    assert hooks[0]["tool_name"] == "read_file"
+    assert hooks[0]["data"] == {"arg_keys": ["path"]}
+    assert hooks[1]["data"]["ok"] is True
 
 
 def _gateway(tmp_path: Path) -> tuple[ToolExecutionGateway, RuntimeContext]:

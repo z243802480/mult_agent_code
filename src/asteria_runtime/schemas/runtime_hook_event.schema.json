@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RuntimeHookEvent",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "hook_event_id",
+    "run_id",
+    "hook_name",
+    "phase",
+    "actor",
+    "task_id",
+    "worker_invocation_id",
+    "tool_name",
+    "summary",
+    "data",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "hook_event_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "hook_name": { "type": "string" },
+    "phase": { "type": "string" },
+    "actor": { "type": "string" },
+    "task_id": { "type": ["string", "null"] },
+    "worker_invocation_id": { "type": ["string", "null"] },
+    "tool_name": { "type": ["string", "null"] },
+    "summary": { "type": "string" },
+    "data": { "type": "object" },
+    "created_at": { "type": "string" }
+  }
+}

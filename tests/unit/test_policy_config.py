@@ -51,5 +51,12 @@ def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> Non
 
     assert policy["permissions"]["allow_restore_delete_created_files"] is True
     assert policy["budgets"]["max_replans_per_task"] == 2
+    assert policy["hooks"]["enabled"] is True
+    assert policy["hooks"]["plugins_enabled"] is False
+    assert "after_tool_call" in policy["hooks"]["allowed_hook_names"]
+    assert policy["promotion"]["manual_approval_default"] is False
+    assert policy["promotion"]["max_pending_release_promotions"] == 0
     persisted = json.loads(policy_path.read_text(encoding="utf-8"))
     assert persisted["permissions"]["allow_restore_delete_created_files"] is True
+    assert persisted["hooks"]["handler_timeout_ms"] == 1000
+    assert "promotion_failed" in persisted["promotion"]["release_blocking_statuses"]

@@ -47,6 +47,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     )
     verification_args = parser.parse_args(["/verification", "--root", "."])
     package_check_args = parser.parse_args(["/package-check", "--root", ".", "--json"])
+    plugins_args = parser.parse_args(
+        ["/plugins", "--root", ".", "enable", "--plugin-id", "example.audit", "--json"]
+    )
     model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(
@@ -192,6 +195,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json
+    assert plugins_args.command == "/plugins"
+    assert plugins_args.plugin_action == "enable"
+    assert plugins_args.plugin_id == "example.audit"
+    assert plugins_args.json
     assert model_check_args.command == "/model-check"
     assert model_check_args.tier == "strong"
     assert runs_args.command == "/runs"
@@ -300,6 +307,20 @@ def test_package_check_json_output_is_machine_readable(
     assert payload["status"] == "pass"
     assert any(check["name"] == "console_script" for check in payload["checks"])
     assert any(check["name"] == "gray_command_modules" for check in payload["checks"])
+
+
+def test_plugins_json_output_is_machine_readable(tmp_path: Path, monkeypatch, capsys) -> None:
+    from asteria_runtime.commands.init_command import InitCommand
+
+    InitCommand(tmp_path).run()
+    monkeypatch.setattr(sys, "argv", ["asteria", "plugins", "--root", str(tmp_path), "--json"])
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["hook_policy"]["plugins_enabled"] is False
+    assert payload["plugins"] == []
 
 
 def test_acceptance_repair_options_parse() -> None:

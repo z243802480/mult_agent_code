@@ -4,10 +4,13 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from asteria_runtime.core.error_taxonomy import classify_check, taxonomy_summary
+from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.models.route_diagnostics import (
     route_diagnostic_for_tier,
     route_requirement_names,
 )
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @dataclass(frozen=True)
@@ -16,6 +19,7 @@ class DoctorCheck:
     ok: bool
     summary: str
     severity: str = "info"
+    error_type: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -23,6 +27,7 @@ class DoctorCheck:
             "ok": self.ok,
             "summary": self.summary,
             "severity": self.severity,
+            "error_type": self.error_type or classify_check(self.name),
         }
 
 
@@ -34,6 +39,7 @@ class DoctorResult:
     sandbox: dict[str, object] = field(default_factory=dict)
     route_requirements: dict[str, list[str]] = field(default_factory=dict)
     gray_task_limits: dict[str, object] = field(default_factory=dict)
+    plugin_control: dict[str, object] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -53,6 +59,8 @@ class DoctorResult:
             "route_requirements": self.route_requirements,
             "sandbox": self.sandbox,
             "gray_task_limits": self.gray_task_limits,
+            "plugin_control": self.plugin_control,
+            "error_taxonomy": taxonomy_summary(),
             "next_actions": self._next_actions(failed),
         }
 
@@ -78,6 +86,8 @@ class DoctorResult:
             actions.append(
                 "Run `asteria real-model-gate --summary-json .asteria/model/real_model_gate_report.json`."
             )
+        if "plugins" in failed:
+            actions.append("Run `asteria plugins doctor --root . --json` and fix blocked manifests.")
         actions.append(
             "Use `docs/zh/灰度试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
         )
@@ -101,15 +111,18 @@ class DoctorResult:
 class DoctorCommand:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> DoctorResult:
         route_checks = [self._model_route_check("strong"), self._model_route_check("medium")]
+        plugin_control = plugin_control_summary(self.root, self.validator)
         return DoctorResult(
             root=self.root,
             checks=[
                 self._agent_dir_check(),
                 self._agents_guidance_check(),
                 self._policy_check(),
+                self._plugins_check(plugin_control),
                 self._git_check(),
                 *route_checks,
                 self._gate_report_check(),
@@ -120,6 +133,7 @@ class DoctorCommand:
             },
             sandbox=self._sandbox_summary(),
             gray_task_limits=_gray_task_limits(),
+            plugin_control=plugin_control,
         )
 
     def _agent_dir_check(self) -> DoctorCheck:
@@ -174,6 +188,16 @@ class DoctorCommand:
             "git worktree detected" if ok else "no git worktree; sandbox falls back to temp copy",
             "warning",
         )
+
+    def _plugins_check(self, plugin_control: dict[str, object]) -> DoctorCheck:
+        if plugin_control.get("initialized") is False:
+            return DoctorCheck("plugins", True, "workspace is not initialized", "info")
+        ok = bool(plugin_control.get("ok", True))
+        summary = str(plugin_control.get("summary") or "plugin control surface unavailable")
+        warnings = plugin_control.get("warnings")
+        if isinstance(warnings, list) and warnings:
+            summary += "; " + "; ".join(str(item) for item in warnings)
+        return DoctorCheck("plugins", ok, summary, "warning")
 
     def _model_route_check(self, tier: str) -> DoctorCheck:
         diagnostic = route_diagnostic_for_tier(tier)

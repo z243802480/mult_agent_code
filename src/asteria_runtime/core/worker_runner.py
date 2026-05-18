@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder, RuntimeProfileMount
 from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -22,6 +23,7 @@ class WorkerRunner:
     validator: SchemaValidator
     recorder: WorkerExecutionRecorder
     runtime_profile_builder: RuntimeProfileBuilder
+    hook_manager: RuntimeHookManager | None = None
     actor: str = "WorkerRunner"
 
     def run(
@@ -43,6 +45,14 @@ class WorkerRunner:
         started_at = now_iso()
         run_dir = context.run_dir
         model_calls_before = model_call_count(run_dir / "model_calls.jsonl") if run_dir else 0
+        self._emit(
+            context,
+            "before_worker",
+            "worker",
+            f"Starting worker {worker_id} for {task['task_id']}",
+            task=task,
+            worker_invocation_id=worker_id,
+        )
         try:
             runtime_mount = self.runtime_profile_builder.build_and_record(
                 context=context,
@@ -78,6 +88,15 @@ class WorkerRunner:
                 runtime_profile_id=self._runtime_profile_id(task, locals().get("runtime_mount")),
                 actor=self.actor,
             )
+            self._emit(
+                context,
+                "worker_error",
+                "worker",
+                f"Worker {worker_id} failed for {task['task_id']}: {exc}",
+                task=task,
+                worker_invocation_id=worker_id,
+                data={"error": str(exc), "error_type": exc.__class__.__name__},
+            )
             raise
         ended_at = now_iso()
         self.recorder.record_execution(
@@ -101,9 +120,47 @@ class WorkerRunner:
             runtime_profile_id=self._runtime_profile_id(task, runtime_mount),
             actor=self.actor,
         )
+        self._emit(
+            context,
+            "after_worker",
+            "worker",
+            f"Finished worker {worker_id} for {task['task_id']}",
+            task=task,
+            worker_invocation_id=worker_id,
+            data={
+                "status": self.recorder.worker_status(summary.status),
+                "summary": summary.summary,
+                "tool_calls": summary.tool_calls,
+                "verification_calls": summary.verification_calls,
+            },
+        )
         return summary
 
     def _runtime_profile_id(self, task: dict, mount: object) -> str:
         if isinstance(mount, RuntimeProfileMount):
             return mount.runtime_profile_id
         return self.recorder.default_runtime_profile_id(task)
+
+    def _emit(
+        self,
+        context: RuntimeContext,
+        hook_name: str,
+        phase: str,
+        summary: str,
+        *,
+        task: dict,
+        worker_invocation_id: str,
+        data: dict | None = None,
+    ) -> None:
+        if self.hook_manager is None:
+            return
+        self.hook_manager.emit(
+            context,
+            hook_name,
+            phase,
+            self.actor,
+            summary,
+            task=task,
+            worker_invocation_id=worker_invocation_id,
+            data=data,
+        )

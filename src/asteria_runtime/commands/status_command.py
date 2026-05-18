@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @dataclass(frozen=True)
@@ -13,6 +15,7 @@ class StatusResult:
     current_session_id: str | None = None
     current_context: dict = field(default_factory=dict)
     recent_sessions: list[dict] = field(default_factory=list)
+    plugin_control: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         blockers = self.current_context.get("blockers") if self.current_context else []
@@ -40,6 +43,7 @@ class StatusResult:
                 self.current_context.get("pending_decision_count", 0) if self.current_context else 0
             ),
             "candidate_promotions": candidate_promotions,
+            "plugin_control": self.plugin_control,
             "latest_failure": latest_failure,
             "recommended_next_command": recommended,
             "next_actions": self._next_actions(recommended),
@@ -49,6 +53,8 @@ class StatusResult:
     def _status(self) -> str:
         if not self.initialized:
             return "uninitialized"
+        if self.plugin_control.get("ok") is False:
+            return "blocked"
         if self.current_context.get("pending_decision_count"):
             return "blocked"
         blockers = self.current_context.get("blockers") or []
@@ -85,6 +91,11 @@ class StatusResult:
             lines.append("Next: asteria init")
             return "\n".join(lines)
         lines.append(f"Current session: {self.current_session_id or 'none'}")
+        if self.plugin_control:
+            lines.append(f"Plugin control: {self.plugin_control.get('summary')}")
+            warnings = self.plugin_control.get("warnings") or []
+            for warning in list(warnings)[:3]:
+                lines.append(f"  - {warning}")
         context = self.current_context
         if context:
             run_status = context.get("run_status") or {}
@@ -167,11 +178,16 @@ class StatusResult:
 class StatusCommand:
     def __init__(self, root: Path) -> None:
         self.root = root.resolve()
+        self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> StatusResult:
         agent_dir = self.root / ".asteria"
         if not agent_dir.exists():
-            return StatusResult(root=self.root, initialized=False)
+            return StatusResult(
+                root=self.root,
+                initialized=False,
+                plugin_control=plugin_control_summary(self.root, self.validator),
+            )
         sessions = SessionsCommand(
             self.root,
             limit=5,
@@ -188,4 +204,5 @@ class StatusCommand:
             current_session_id=sessions.current_session_id,
             current_context=current_context or {},
             recent_sessions=sessions.sessions,
+            plugin_control=plugin_control_summary(self.root, self.validator),
         )

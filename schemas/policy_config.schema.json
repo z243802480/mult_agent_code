@@ -9,6 +9,8 @@
     "context",
     "permissions",
     "protected_paths",
+    "hooks",
+    "promotion",
     "model_routing",
     "commands"
   ],
@@ -81,6 +83,38 @@
       }
     },
     "protected_paths": { "type": "array", "items": { "type": "string" } },
+    "hooks": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "plugins_enabled",
+        "allowed_hook_names",
+        "redacted_data_keys",
+        "handler_timeout_ms"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "plugins_enabled": { "type": "boolean" },
+        "allowed_hook_names": { "type": "array", "items": { "type": "string" } },
+        "redacted_data_keys": { "type": "array", "items": { "type": "string" } },
+        "handler_timeout_ms": { "type": "integer" }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "required": [
+        "manual_approval_default",
+        "release_blocking_statuses",
+        "max_pending_release_promotions",
+        "max_blocked_release_promotions"
+      ],
+      "properties": {
+        "manual_approval_default": { "type": "boolean" },
+        "release_blocking_statuses": { "type": "array", "items": { "type": "string" } },
+        "max_pending_release_promotions": { "type": "integer" },
+        "max_blocked_release_promotions": { "type": "integer" }
+      }
+    },
     "model_routing": { "type": "object" },
     "commands": { "type": "object" }
   }
