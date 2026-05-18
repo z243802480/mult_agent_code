@@ -190,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model-max-retries",
         type=int,
-        default=5,
+        default=1,
         help="AGENT_MODEL_MAX_RETRIES value used inside smoke subprocesses when unset.",
     )
     parser.add_argument(
@@ -518,7 +518,7 @@ def run_command(
 
 
 def args_model_max_retries() -> int:
-    return int(os.getenv("AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES", "5"))
+    return int(os.getenv("AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES", "1"))
 
 
 def review_timeout_seconds() -> int:

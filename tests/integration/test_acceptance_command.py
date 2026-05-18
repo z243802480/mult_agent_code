@@ -374,11 +374,11 @@ def test_acceptance_command_timeout_accounts_for_suite_defaults(tmp_path: Path) 
     command = AcceptanceCommand(
         tmp_path,
         suite="core",
-        scenario_timeout_seconds=1200,
+        scenario_timeout_seconds=600,
     )
 
-    assert command._command_timeout_seconds([]) == 7260  # noqa: SLF001
-    assert command._command_timeout_seconds(["markdown_kb"]) == 1260  # noqa: SLF001
+    assert command._command_timeout_seconds([]) == 3660  # noqa: SLF001
+    assert command._command_timeout_seconds(["markdown_kb"]) == 660  # noqa: SLF001
 
 
 def test_acceptance_command_failed_only_uses_latest_failed_scenarios(
@@ -521,6 +521,9 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_CHEAP_PROVIDER", "fake")
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "seed current session", model_client=FakeModelClient()).run()
     original_run = subprocess.run

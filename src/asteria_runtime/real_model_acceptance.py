@@ -341,6 +341,61 @@ class AcceptanceFailure(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class TimeoutBudget:
+    scenario_seconds: int
+    subprocess_grace_seconds: int = 30
+
+    @property
+    def smoke_command_seconds(self) -> int:
+        return max(60, self.scenario_seconds - self.subprocess_grace_seconds)
+
+    @property
+    def subprocess_seconds(self) -> int:
+        return self.scenario_seconds
+
+    @property
+    def review_seconds(self) -> int:
+        return min(90, max(30, self.scenario_seconds // 6))
+
+    @property
+    def provider_call_seconds(self) -> int:
+        return min(90, max(30, self.scenario_seconds // 4))
+
+    @property
+    def cheap_provider_call_seconds(self) -> int:
+        return min(45, self.provider_call_seconds)
+
+    def as_dict(self) -> dict[str, int]:
+        return {
+            "scenario_seconds": self.scenario_seconds,
+            "subprocess_seconds": self.subprocess_seconds,
+            "smoke_command_seconds": self.smoke_command_seconds,
+            "review_seconds": self.review_seconds,
+            "provider_call_seconds": self.provider_call_seconds,
+            "cheap_provider_call_seconds": self.cheap_provider_call_seconds,
+        }
+
+
+def apply_timeout_budget_env(env: dict[str, str], budget: TimeoutBudget) -> None:
+    provider_timeout = str(budget.provider_call_seconds)
+    cheap_timeout = str(budget.cheap_provider_call_seconds)
+    for name in (
+        "AGENT_MODEL_TIMEOUT_SECONDS",
+        "AGENT_MODEL_STRONG_TIMEOUT_SECONDS",
+        "AGENT_MODEL_MEDIUM_TIMEOUT_SECONDS",
+    ):
+        env.setdefault(name, provider_timeout)
+    env.setdefault("AGENT_MODEL_CHEAP_TIMEOUT_SECONDS", cheap_timeout)
+    for name in (
+        "AGENT_MODEL_MAX_RETRIES",
+        "AGENT_MODEL_STRONG_MAX_RETRIES",
+        "AGENT_MODEL_MEDIUM_MAX_RETRIES",
+        "AGENT_MODEL_CHEAP_MAX_RETRIES",
+    ):
+        env.setdefault(name, "1")
+
+
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     run_from_args(args)
@@ -425,12 +480,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow fake/offline providers. Intended for script tests.",
     )
-    parser.add_argument("--run-attempts", type=int, default=2)
-    parser.add_argument("--model-max-retries", type=int, default=5)
+    parser.add_argument("--run-attempts", type=int, default=1)
+    parser.add_argument("--model-max-retries", type=int, default=1)
     parser.add_argument(
         "--scenario-timeout-seconds",
         type=int,
-        default=1200,
+        default=600,
         help="Maximum seconds per scenario subprocess.",
     )
     parser.add_argument("--cleanup", action="store_true")
@@ -492,6 +547,7 @@ def run_scenario(
     workspace.mkdir(parents=True, exist_ok=True)
     write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
+    timeout_budget = TimeoutBudget(int(args.scenario_timeout_seconds))
     command = [
         args.python,
         "-m",
@@ -513,7 +569,7 @@ def run_scenario(
         "--model-max-retries",
         str(args.model_max_retries),
         "--command-timeout-seconds",
-        str(args.scenario_timeout_seconds),
+        str(timeout_budget.smoke_command_seconds),
         "--no-research",
         "--summary-json",
         str(summary_path),
@@ -522,7 +578,9 @@ def run_scenario(
         command.append("--allow-fake")
     env = os.environ.copy()
     env["AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES"] = str(args.model_max_retries)
-    env["AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS"] = str(args.scenario_timeout_seconds)
+    env["AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS"] = str(timeout_budget.smoke_command_seconds)
+    env["AGENT_MODEL_SMOKE_REVIEW_TIMEOUT_SECONDS"] = str(timeout_budget.review_seconds)
+    apply_timeout_budget_env(env, timeout_budget)
     if args.allow_fake:
         env["AGENT_MODEL_PROVIDER"] = "fake"
         env["AGENT_MODEL_STRONG_PROVIDER"] = "fake"
@@ -540,13 +598,13 @@ def run_scenario(
                 text=True,
                 capture_output=True,
                 check=False,
-                timeout=args.scenario_timeout_seconds + 30,
+                timeout=timeout_budget.subprocess_seconds,
             )
         except subprocess.TimeoutExpired as exc:
             stdout = text_or_empty(exc.stdout)
             stderr = (
                 text_or_empty(exc.stderr)
-                + f"\nScenario timed out after {args.scenario_timeout_seconds + 30}s."
+                + f"\nScenario timed out after {timeout_budget.subprocess_seconds}s."
             )
             salvaged = salvage_timed_out_smoke_summary(
                 workspace=workspace,
@@ -562,6 +620,7 @@ def run_scenario(
                     "failure_type": "timeout_salvaged" if salvaged else "timeout",
                     "stdout_tail": stdout[-2000:],
                     "stderr_tail": stderr[-2000:],
+                    "timeout_budget": timeout_budget.as_dict(),
                 }
             )
             if salvaged:
@@ -578,6 +637,7 @@ def run_scenario(
                     "route_evidence": route_evidence,
                     "stdout": stdout,
                     "stderr": stderr,
+                    "timeout_budget": timeout_budget.as_dict(),
                 }
             if attempt >= max_attempts:
                 return {
@@ -591,6 +651,7 @@ def run_scenario(
                     "summary": read_json(summary_path),
                     "stdout": stdout,
                     "stderr": stderr,
+                    "timeout_budget": timeout_budget.as_dict(),
                 }
             continue
         retryable, failure_type = classify_acceptance_subprocess_failure(completed)
@@ -602,6 +663,7 @@ def run_scenario(
                 "failure_type": failure_type,
                 "stdout_tail": completed.stdout[-2000:],
                 "stderr_tail": completed.stderr[-2000:],
+                "timeout_budget": timeout_budget.as_dict(),
             }
         )
         if completed.returncode == 0 or attempt >= max_attempts or not retryable:
@@ -621,8 +683,9 @@ def run_scenario(
         "summary": summary,
         "route_evidence": route_evidence,
         "stdout": completed.stdout,
-        "stderr": completed.stderr,
-    }
+            "stderr": completed.stderr,
+            "timeout_budget": timeout_budget.as_dict(),
+        }
 
 
 def classify_acceptance_subprocess_failure(

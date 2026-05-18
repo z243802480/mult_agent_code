@@ -200,8 +200,8 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_smoke_parser.add_argument("--expected-text", default="real model smoke ok")
     real_model_smoke_parser.add_argument("--max-iterations", type=int, default=3)
     real_model_smoke_parser.add_argument("--max-tasks-per-iteration", type=int, default=1)
-    real_model_smoke_parser.add_argument("--run-attempts", type=int, default=2)
-    real_model_smoke_parser.add_argument("--model-max-retries", type=int, default=5)
+    real_model_smoke_parser.add_argument("--run-attempts", type=int, default=1)
+    real_model_smoke_parser.add_argument("--model-max-retries", type=int, default=1)
     real_model_smoke_parser.add_argument("--command-timeout-seconds", type=int, default=900)
     real_model_smoke_parser.add_argument("--python", default=sys.executable)
     real_model_smoke_parser.add_argument("--summary-json", type=Path, default=None)
@@ -221,7 +221,7 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_gate_parser.add_argument("--python", default=sys.executable)
     real_model_gate_parser.add_argument("--allow-fake", action="store_true")
     real_model_gate_parser.add_argument("--cleanup", action="store_true")
-    real_model_gate_parser.add_argument("--smoke-run-attempts", type=int, default=2)
+    real_model_gate_parser.add_argument("--smoke-run-attempts", type=int, default=1)
     real_model_gate_parser.add_argument("--command-timeout-seconds", type=int, default=900)
 
     real_model_acceptance_parser = subcommands.add_parser(
@@ -243,9 +243,9 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_acceptance_parser.add_argument("--history-jsonl", type=Path, default=None)
     real_model_acceptance_parser.add_argument("--python", default=sys.executable)
     real_model_acceptance_parser.add_argument("--allow-fake", action="store_true")
-    real_model_acceptance_parser.add_argument("--run-attempts", type=int, default=2)
-    real_model_acceptance_parser.add_argument("--model-max-retries", type=int, default=5)
-    real_model_acceptance_parser.add_argument("--scenario-timeout-seconds", type=int, default=1200)
+    real_model_acceptance_parser.add_argument("--run-attempts", type=int, default=1)
+    real_model_acceptance_parser.add_argument("--model-max-retries", type=int, default=1)
+    real_model_acceptance_parser.add_argument("--scenario-timeout-seconds", type=int, default=600)
     real_model_acceptance_parser.add_argument("--cleanup", action="store_true")
     real_model_acceptance_parser.add_argument("--reuse-workspace", action="store_true")
 
@@ -643,18 +643,18 @@ def build_parser() -> argparse.ArgumentParser:
         "--cleanup", action="store_true", help="Remove generated workspace on success"
     )
     acceptance_parser.add_argument(
-        "--run-attempts", type=int, default=2, help="Run attempts per scenario"
+        "--run-attempts", type=int, default=1, help="Run attempts per scenario"
     )
     acceptance_parser.add_argument(
         "--model-max-retries",
         type=int,
-        default=5,
+        default=1,
         help="Model retry attempts inside smoke scenarios",
     )
     acceptance_parser.add_argument(
         "--scenario-timeout-seconds",
         type=int,
-        default=1200,
+        default=600,
         help="Maximum seconds per scenario",
     )
     acceptance_parser.add_argument(

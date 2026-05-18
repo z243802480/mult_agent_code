@@ -9,7 +9,9 @@ from pathlib import Path
 from scripts.real_model_acceptance import (
     SCENARIOS,
     SUITES,
+    TimeoutBudget,
     aggregate_results,
+    apply_timeout_budget_env,
     classify_acceptance_subprocess_failure,
     gray_ready,
 )
@@ -229,6 +231,26 @@ def test_real_model_acceptance_classifies_remote_close_as_retryable() -> None:
 
     assert retryable is True
     assert failure_type == "network"
+
+
+def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
+    budget = TimeoutBudget(600)
+    env = {"AGENT_MODEL_STRONG_TIMEOUT_SECONDS": "180"}
+
+    apply_timeout_budget_env(env, budget)
+
+    assert budget.as_dict() == {
+        "scenario_seconds": 600,
+        "subprocess_seconds": 600,
+        "smoke_command_seconds": 570,
+        "review_seconds": 90,
+        "provider_call_seconds": 90,
+        "cheap_provider_call_seconds": 45,
+    }
+    assert env["AGENT_MODEL_STRONG_TIMEOUT_SECONDS"] == "180"
+    assert env["AGENT_MODEL_MEDIUM_TIMEOUT_SECONDS"] == "90"
+    assert env["AGENT_MODEL_CHEAP_TIMEOUT_SECONDS"] == "45"
+    assert env["AGENT_MODEL_MAX_RETRIES"] == "1"
 
 
 def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:

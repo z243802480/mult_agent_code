@@ -156,7 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--smoke-run-attempts",
         type=int,
-        default=2,
+        default=1,
         help="Attempts passed through to real_model_smoke.py.",
     )
     parser.add_argument(
