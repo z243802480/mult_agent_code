@@ -18,6 +18,7 @@ class GoalSpecAgent:
     validator: SchemaValidator
 
     def generate(self, goal: str, project_context: dict, run_id: str) -> dict:
+        parse_error: GoalSpecError | None = None
         request = ChatRequest(
             purpose="goal_spec",
             model_tier="strong",
@@ -31,8 +32,16 @@ class GoalSpecAgent:
             metadata={"run_id": run_id, "agent_id": "GoalSpecAgent"},
         )
         response = self.model_client.chat(request)
-        data = self._parse_json(response.content)
+        try:
+            data = self._parse_json(response.content)
+        except GoalSpecError as exc:
+            parse_error = exc
+            data = self._fallback_goal_spec(goal, str(exc))
         data = self._normalize(data, goal)
+        if parse_error:
+            data["assumptions"].append(
+                "Model returned non-JSON for GoalSpec; deterministic goal specification fallback was used."
+            )
         try:
             self.validator.validate("goal_spec", data)
         except SchemaValidationError as exc:
@@ -45,6 +54,46 @@ class GoalSpecAgent:
         except JsonExtractionError as exc:
             raise GoalSpecError(f"GoalSpec response was not valid JSON: {exc}") from exc
         return parsed
+
+    def _fallback_goal_spec(self, goal: str, reason: str) -> dict:
+        return {
+            "schema_version": "0.1.0",
+            "goal_id": "goal-0001",
+            "original_goal": goal,
+            "normalized_goal": goal,
+            "goal_type": "software_tool",
+            "assumptions": [
+                "The goal should be handled as a small local-first implementation slice.",
+                f"Fallback reason: {reason}",
+            ],
+            "constraints": [
+                "Keep the implementation local.",
+                "Avoid protected paths and destructive shell actions.",
+            ],
+            "non_goals": [],
+            "expanded_requirements": [
+                {
+                    "id": "req-0001",
+                    "priority": "must",
+                    "description": goal,
+                    "source": "user",
+                    "acceptance": [
+                        "The requested local artifact or behavior is created.",
+                        "A local verification command or observable file check passes.",
+                    ],
+                }
+            ],
+            "target_outputs": [],
+            "definition_of_done": [
+                "Requested local artifact or behavior exists.",
+                "Verification evidence is recorded.",
+            ],
+            "verification_strategy": ["Run the smallest local verification for the requested output."],
+            "budget": {
+                "max_iterations": 3,
+                "max_model_calls": 12,
+            },
+        }
 
     def _normalize(self, data: dict, original_goal: str) -> dict:
         normalized = dict(data)

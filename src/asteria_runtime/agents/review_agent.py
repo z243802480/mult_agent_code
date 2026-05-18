@@ -18,6 +18,7 @@ class ReviewAgent:
     validator: SchemaValidator
 
     def evaluate(self, review_context: dict, run_id: str) -> dict:
+        parse_error: ReviewAgentError | None = None
         request = ChatRequest(
             purpose="run_review",
             model_tier="strong",
@@ -31,8 +32,18 @@ class ReviewAgent:
             metadata={"run_id": run_id, "agent_id": "ReviewAgent"},
         )
         response = self.model_client.chat(request)
-        report = self._parse_json(response.content)
+        try:
+            report = self._parse_json(response.content)
+        except ReviewAgentError as exc:
+            parse_error = exc
+            report = {}
         report = self._normalize(report, review_context, run_id)
+        if parse_error:
+            report["overall"]["reason"] = (
+                f"{report['overall']['reason']} Model review returned non-JSON; "
+                "deterministic runtime checks were used for the structured report."
+            )
+            report["trajectory_eval"]["review_model_parse_error"] = str(parse_error)
         try:
             self.validator.validate("eval_report", report)
         except SchemaValidationError as exc:

@@ -53,9 +53,47 @@ def _repair_tool_args(tool_name: str, args: dict, task: dict) -> dict:
         repaired.setdefault("path", _infer_path(task))
         repaired.setdefault("content", _infer_content(task))
         repaired.setdefault("overwrite", True)
+        repaired = _repair_python_json_token_drift(repaired, task)
     if tool_name == "run_command" and isinstance(repaired.get("command"), str):
         repaired["command"] = normalize_verification_command(repaired["command"], task)
+        repaired = _repair_command_json_token_drift(repaired, task)
     return {key: value for key, value in repaired.items() if value not in (None, "")}
+
+
+def _repair_python_json_token_drift(args: dict, task: dict) -> dict:
+    path = str(args.get("path") or "")
+    content = args.get("content")
+    if not path.endswith(".py") or not isinstance(content, str) or not _task_mentions_json(task):
+        return args
+    repaired = content
+    if "import \n" in repaired and (".load(" in repaired or ".dump(" in repaired):
+        repaired = repaired.replace("import \n", "import json\n", 1)
+    repaired = repaired.replace("return .load(", "return json.load(")
+    repaired = repaired.replace(".dump(", "json.dump(")
+    repaired = repaired.replace("except (.JSONDecodeError", "except (json.JSONDecodeError")
+    if repaired == content:
+        return args
+    normalized = dict(args)
+    normalized["content"] = repaired
+    return normalized
+
+
+def _repair_command_json_token_drift(args: dict, task: dict) -> dict:
+    command = args.get("command")
+    if not isinstance(command, str) or not _task_mentions_json(task):
+        return args
+    repaired = command.replace("import ;", "import json;")
+    repaired = repaired.replace("data = .load(", "data = json.load(")
+    repaired = repaired.replace(".dump(", "json.dump(")
+    if repaired == command:
+        return args
+    normalized = dict(args)
+    normalized["command"] = repaired
+    return normalized
+
+
+def _task_mentions_json(task: dict) -> bool:
+    return ".json" in _task_text(task).lower() or "json" in _task_text(task).lower()
 
 
 def _infer_path(task: dict) -> str | None:

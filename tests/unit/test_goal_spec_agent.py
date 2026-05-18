@@ -1,8 +1,6 @@
 from pathlib import Path
 
-import pytest
-
-from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent, GoalSpecError
+from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -59,11 +57,14 @@ def test_goal_spec_agent_generates_valid_goal_spec() -> None:
     assert result["expanded_requirements"][0]["priority"] == "must"
 
 
-def test_goal_spec_agent_rejects_invalid_json() -> None:
+def test_goal_spec_agent_falls_back_for_invalid_json() -> None:
     agent = GoalSpecAgent(FakeClient("not json"), SchemaValidator(Path("schemas")))
 
-    with pytest.raises(GoalSpecError):
-        agent.generate("goal", {}, "run-1")
+    result = agent.generate("goal", {}, "run-1")
+
+    assert result["original_goal"] == "goal"
+    assert result["expanded_requirements"][0]["description"] == "goal"
+    assert any("deterministic goal specification fallback" in item for item in result["assumptions"])
 
 
 def test_goal_spec_agent_normalizes_common_model_shape_drift() -> None:

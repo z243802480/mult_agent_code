@@ -208,6 +208,18 @@ class FakeSparseReviewClient:
         )
 
 
+class FakeNonJsonReviewClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content="The run looks good, but this is not JSON.",
+            finish_reason="stop",
+            usage=TokenUsage(20, 30, 50),
+            model_provider="fake",
+            model_name="fake-review",
+            raw_response={},
+        )
+
+
 def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
@@ -281,6 +293,24 @@ def test_review_command_normalizes_sparse_eval_report(tmp_path: Path) -> None:
     assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
     assert eval_report["artifact_eval"]["logs_present"]
     assert eval_report["outcome_eval"]["run_success"]
+
+
+def test_review_command_falls_back_to_deterministic_report_for_non_json_response(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeNonJsonReviewClient()).run()
+
+    assert result.status == "pass"
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    assert eval_report["overall"]["status"] == "pass"
+    assert "deterministic runtime checks" in eval_report["overall"]["reason"]
+    assert "review_model_parse_error" in eval_report["trajectory_eval"]
 
 
 def test_review_command_excludes_discarded_replan_history_from_completion_rate(
