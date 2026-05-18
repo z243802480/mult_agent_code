@@ -8,6 +8,7 @@ from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.flag_resolver import FlagResolver
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
@@ -27,6 +28,8 @@ class GateStatusResult:
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
+    feature_flags: dict[str, Any] = field(default_factory=dict)
+    capability_flags: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -52,6 +55,8 @@ class GateStatusResult:
             "route_guidance": self.route_guidance,
             "promotion_release_risks": self.promotion_release_risks,
             "plugin_risks": self.plugin_risks,
+            "feature_flags": self.feature_flags,
+            "capability_flags": self.capability_flags,
             "gray_task_limits": _gray_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
@@ -109,6 +114,12 @@ class GateStatusResult:
             )
         if self.route_guidance:
             lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
+        if self.feature_flags:
+            active = [n for n, v in self.feature_flags.items() if v.get("active")]
+            lines.append(f"Feature flags: {len(active)} active of {len(self.feature_flags)}")
+        if self.capability_flags:
+            available = [n for n, v in self.capability_flags.items() if v.get("available")]
+            lines.append(f"Capabilities: {len(available)} available of {len(self.capability_flags)}")
         if self.promotion_release_risks:
             lines.append(
                 "Promotion risks: "
@@ -211,6 +222,17 @@ class GateStatusCommand:
                 *plugin_risks["actions"],
                 *actions,
             ]
+        policy = self._policy()
+        env_capabilities = {
+            "strong_model_configured": bool(route_environment.get("strong", {}).get("configured")),
+            "medium_model_configured": bool(route_environment.get("medium", {}).get("configured")),
+            "real_model_available": bool(gate.get("ok")),
+        }
+        resolver = FlagResolver.from_policy(policy, env_capabilities)
+        flag_results = resolver.resolve_all()
+        feature_flags = {n: v for n, v in flag_results.items()}
+        capability_flags = {n: c.to_dict() for n, c in resolver.capabilities.items()}
+
         return GateStatusResult(
             root=self.root,
             stage=stage,
@@ -222,6 +244,8 @@ class GateStatusCommand:
             promotion_release_risks=promotion_release_risks,
             plugin_risks=plugin_risks,
             validation_recommendation=_validation_recommendation(self.root),
+            feature_flags=feature_flags,
+            capability_flags=capability_flags,
             next_actions=actions,
         )
 

@@ -5,19 +5,26 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.schema_migration import SchemaMigrationRegistry, build_default_registry
 from asteria_runtime.resources import template_path
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator, SchemaValidationError
 
 
-def load_policy_config(agent_dir: Path, validator: SchemaValidator) -> dict:
+def load_policy_config(
+    agent_dir: Path,
+    validator: SchemaValidator,
+    migration_registry: SchemaMigrationRegistry | None = None,
+) -> dict:
     path = agent_dir / "policies.json"
     store = JsonStore(validator)
+    registry = migration_registry or build_default_registry()
     try:
-        return store.read(path, "policy_config")
+        data = store.read(path, "policy_config")
+        return registry.migrate("policy_config", data)
     except SchemaValidationError:
         current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        migrated = merge_policy_defaults(current)
+        migrated = registry.migrate("policy_config", merge_policy_defaults(current))
         store.write(path, migrated, "policy_config")
         return migrated
 
