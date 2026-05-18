@@ -614,6 +614,7 @@ def _runtime_request_resume(workspace: Path) -> tuple[bool, dict[str, Any]]:
         run_id=run_id,
         max_iterations=1,
         execute_model_client=RuntimeAcceptanceClient("runtime_request"),
+        review_model_client=RuntimeEvidenceReviewClient(),
     ).run()
     run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)

@@ -8,11 +8,14 @@ from pathlib import Path
 
 from scripts.real_model_smoke import (
     CommandRecord,
+    SmokeResult,
     _accept_budget_paused_success,
     is_transient_provider_failure,
     pending_decision_ids,
     recovery_option_id,
+    validate_artifacts,
 )
+from asteria_runtime.real_model_gate import GateCommand, model_check_ok
 
 
 def test_real_model_smoke_script_validates_offline_flow_when_explicitly_allowed(
@@ -166,6 +169,69 @@ def test_real_model_smoke_accepts_review_pass_with_pending_budget_guard(tmp_path
     )
 
 
+def test_real_model_smoke_accepts_completed_evidence_when_review_timed_out(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    expected_file = workspace / "buggy_math.py"
+    expected_file.parent.mkdir(parents=True, exist_ok=True)
+    expected_file.write_text("def add(a, b):\n    return a + b\n", encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run-1", "status": "running"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "goal_spec.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "task_plan.json").write_text(
+        json.dumps({"tasks": [{"task_id": "task-1", "status": "done"}]}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "events.jsonl").write_text(
+        json.dumps({"type": "run_completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_calls.jsonl").write_text(json.dumps({"id": "tool-1"}) + "\n", encoding="utf-8")
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps({"id": "model-1"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "cost_report.json").write_text(
+        json.dumps({"model_calls": 1, "tool_calls": 1, "status": "within_budget"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "task_execution_evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "verification_results": [{"ok": True}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = SmokeResult(
+        workspace=workspace,
+        run_id="run-1",
+        expected_file=expected_file,
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+    )
+
+    final_report = validate_artifacts(
+        workspace,
+        "run-1",
+        result=result,
+        expected_file=expected_file,
+        expected_text="return a + b",
+    )
+
+    assert final_report.exists()
+    assert (run_dir / "eval_report.json").exists()
+    assert result.diagnostics["accepted_review_timeout"]
+    assert result.diagnostics["accepted_run_completed_event"]
+
+
 def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:
     workspace = tmp_path / "gate-workspace"
     summary_path = tmp_path / "gate-summary.json"
@@ -215,6 +281,27 @@ def test_real_model_smoke_treats_remote_close_as_transient() -> None:
     )
 
     assert is_transient_provider_failure(record)
+
+
+def test_real_model_gate_requires_model_check_call_ok() -> None:
+    assert model_check_ok(
+        GateCommand(
+            name="model-check",
+            command=["python"],
+            returncode=0,
+            stdout="Config: ok\nCall: ok\n",
+            stderr="",
+        )
+    )
+    assert not model_check_ok(
+        GateCommand(
+            name="model-check",
+            command=["python"],
+            returncode=0,
+            stdout="Config: ok\nCall: skipped/failed\n",
+            stderr="",
+        )
+    )
 
 
 def test_real_model_gate_requires_strong_and_medium_routes(tmp_path: Path) -> None:
