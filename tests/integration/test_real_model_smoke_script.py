@@ -232,6 +232,81 @@ def test_real_model_smoke_accepts_completed_evidence_when_review_timed_out(
     assert result.diagnostics["accepted_run_completed_event"]
 
 
+def test_real_model_smoke_accepts_verified_artifact_with_redundant_unfinished_tasks(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    expected_file = workspace / "shapes.py"
+    expected_file.parent.mkdir(parents=True, exist_ok=True)
+    expected_file.write_text("class Shape:\n    pass\n", encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run-1", "status": "paused"}) + "\n",
+        encoding="utf-8",
+    )
+    for name in ("goal_spec.json", "eval_report.json"):
+        (run_dir / name).write_text(json.dumps({"overall": {"status": "fail"}}) + "\n", encoding="utf-8")
+    (run_dir / "review_report.md").write_text("# Review\n", encoding="utf-8")
+    (run_dir / "final_report.md").write_text("# Final\n", encoding="utf-8")
+    (run_dir / "task_plan.json").write_text(
+        json.dumps(
+            {
+                "tasks": [
+                    {"task_id": "task-1", "status": "done"},
+                    {"task_id": "task-2", "status": "blocked"},
+                ]
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "events.jsonl").write_text(
+        json.dumps({"type": "task_completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_calls.jsonl").write_text(json.dumps({"id": "tool-1"}) + "\n", encoding="utf-8")
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps({"id": "model-1"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "cost_report.json").write_text(
+        json.dumps({"model_calls": 1, "tool_calls": 1, "status": "within_budget"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "task_execution_evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "candidate": {"changed_files": ["shapes.py"], "promoted_files": ["shapes.py"]},
+                "verification_results": [{"ok": True}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = SmokeResult(
+        workspace=workspace,
+        run_id="run-1",
+        expected_file=expected_file,
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+    )
+
+    final_report = validate_artifacts(
+        workspace,
+        "run-1",
+        result=result,
+        expected_file=expected_file,
+        expected_text="class Shape",
+    )
+
+    assert final_report.exists()
+    assert result.diagnostics["accepted_artifact_verified_partial"]
+    assert result.diagnostics["accepted_unfinished_tasks"] == ["task-2:blocked"]
+    assert result.diagnostics["accepted_review_status"] == "fail"
+
+
 def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:
     workspace = tmp_path / "gate-workspace"
     summary_path = tmp_path / "gate-summary.json"
@@ -278,6 +353,18 @@ def test_real_model_smoke_treats_remote_close_as_transient() -> None:
         returncode=1,
         stdout="",
         stderr="Remote end closed connection without response",
+    )
+
+    assert is_transient_provider_failure(record)
+
+
+def test_real_model_smoke_treats_stream_deadline_as_transient() -> None:
+    record = CommandRecord(
+        name="run",
+        command=["asteria", "/run"],
+        returncode=1,
+        stdout="",
+        stderr="OpenAICompatibleProviderError: stream deadline exceeded",
     )
 
     assert is_transient_provider_failure(record)

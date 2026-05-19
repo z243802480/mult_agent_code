@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
+
 
 OFFLINE_PROVIDERS = {"fake", "offline"}
 SECRET_ENV_NAMES = {
@@ -322,7 +324,7 @@ def run_command(
     env = os.environ.copy()
     timeout = int(os.getenv("AGENT_MODEL_GATE_COMMAND_TIMEOUT_SECONDS", "900"))
     try:
-        completed = subprocess.run(
+        completed = run_with_heartbeat(
             [python, *args],
             cwd=result.workspace,
             env=env,
@@ -330,6 +332,8 @@ def run_command(
             capture_output=True,
             check=False,
             timeout=timeout,
+            label=name,
+            progress_root=result.workspace,
         )
     except subprocess.TimeoutExpired as exc:
         stdout = text_or_empty(exc.stdout)

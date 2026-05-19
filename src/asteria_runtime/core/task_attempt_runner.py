@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from asteria_runtime.core.candidate_promotion_queue import PromotionPendingManualApproval
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.merge_gate import MergeGate
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -93,13 +94,29 @@ class TaskAttemptRunner:
                     record_experiment=record_experiment,
                     record_task_failure=record_task_failure,
                 )
-            promoted_files = promote_candidate_changes(
-                context,
-                candidate,
-                merge_gate.promotable_files,
-                task_id=task_id,
-                merge_gate=merge_gate.to_dict(),
-            )
+            try:
+                promoted_files = promote_candidate_changes(
+                    context,
+                    candidate,
+                    merge_gate.promotable_files,
+                    task_id=task_id,
+                    merge_gate=merge_gate.to_dict(),
+                )
+            except PromotionPendingManualApproval as exc:
+                return self._block_for_manual_promotion(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    action=action,
+                    tool_results=tool_results,
+                    verification_results=verification_results,
+                    validation_refs=validation_refs,
+                    contract_with_merge=contract_with_merge,
+                    candidate=candidate,
+                    promotion=exc.promotion,
+                    record_experiment=record_experiment,
+                    record_task_failure=record_task_failure,
+                )
             evidence_path = self.evidence_recorder.record(
                 context,
                 task,
@@ -158,6 +175,90 @@ class TaskAttemptRunner:
             candidate=candidate,
             record_experiment=record_experiment,
             record_task_failure=record_task_failure,
+        )
+
+    def _block_for_manual_promotion(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        action: dict,
+        tool_results: list[Any],
+        verification_results: list[Any],
+        validation_refs: list[str],
+        contract_with_merge: dict,
+        candidate: CandidateWorkspace,
+        promotion: dict,
+        record_experiment: Callable[..., None],
+        record_task_failure: Callable[..., None],
+    ) -> TaskAttemptSummary:
+        task_id = task["task_id"]
+        promotion_id = str(promotion["promotion_id"])
+        reason = (
+            f"Verification passed; candidate promotion {promotion_id} is pending manual "
+            "approval. Run `asteria promotions approve --promotion-id "
+            f"{promotion_id}` or reject/discard it."
+        )
+        evidence_path = self.evidence_recorder.record(
+            context,
+            task,
+            action,
+            tool_results,
+            verification_results,
+            "blocked",
+            reason,
+            actor=self.actor,
+            contract_check=contract_with_merge,
+            candidate_workspace=candidate,
+            promoted_files=[],
+            failure_type="pending_manual_approval",
+        )
+        record_experiment(
+            context,
+            task,
+            action,
+            tool_results,
+            verification_results,
+            "blocked",
+            reason,
+            contract_check=contract_with_merge,
+            candidate_workspace=candidate,
+            promoted_files=[],
+        )
+        task_board.update_status(task_id, "blocked")
+        task_board.update_notes(task_id, reason)
+        record_task_failure(
+            context,
+            task,
+            "pending_manual_approval",
+            reason,
+            contract_check=contract_with_merge,
+            tool_results=tool_results,
+            verification_results=verification_results,
+            candidate={
+                "summary": action["summary"],
+                "changed_files": contract_with_merge.get("changed_files", []),
+                "promotable_files": promotion.get("promotable_files", []),
+                "promotion_id": promotion_id,
+            },
+        )
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "task_pending_manual_promotion",
+                self.actor,
+                f"{task_id} pending {promotion_id}",
+                {"promotion_id": promotion_id, "candidate_id": candidate.candidate_id},
+            )
+        return TaskAttemptSummary(
+            task_id=task_id,
+            status="blocked",
+            summary=reason,
+            tool_calls=len(action["tool_calls"]),
+            verification_calls=len(action["verification"]),
+            evidence_path=evidence_path,
+            validation_refs=validation_refs,
         )
 
     def _block_for_merge_gate(

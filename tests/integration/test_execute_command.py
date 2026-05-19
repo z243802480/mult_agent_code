@@ -5,6 +5,7 @@ from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
@@ -823,6 +824,45 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert cost_report["tool_calls"] == 3
     assert cost_report["estimated_input_tokens"] == 25
     assert cost_report["estimated_output_tokens"] == 45
+
+
+def test_execute_command_manual_promotion_keeps_candidate_isolated(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["promotion"]["manual_approval_default"] = True
+    policy_path.write_text(json.dumps(policy, indent=2), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "src" / "notes_tool.py").exists()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    promotions = [
+        json.loads(line)
+        for line in (run_dir / "candidate_promotions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert promotions[-1]["status"] == "pending_manual_approval"
+    assert promotions[-1]["approval_mode"] == "manual"
+    assert promotions[-1]["promotable_files"] == ["src/notes_tool.py"]
+    assert Path(promotions[-1]["workspace"]).exists()
+
+    approved = PromotionsCommand(
+        root=tmp_path,
+        action="approve",
+        promotion_id=promotions[-1]["promotion_id"],
+    ).run()
+
+    assert approved.promotions[0]["status"] == "promoted"
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8") == (
+        "def add_note(notes, text):\n    return [*notes, text]\n"
+    )
 
 
 def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Path) -> None:

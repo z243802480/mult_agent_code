@@ -3,7 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from threading import RLock
 
-from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
+from asteria_runtime.core.candidate_promotion_queue import (
+    CandidatePromotionQueue,
+    PromotionPendingManualApproval,
+)
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_board import TaskBoard, TaskStateError
@@ -50,6 +53,15 @@ class CandidateExecutionGateway:
             return []
         promotion_queue = self.promotion_queue or CandidatePromotionQueue(context.validator)
         with _PROMOTION_APPLY_LOCK:
+            if _manual_approval_default(context.policy):
+                promotion = promotion_queue.enqueue_pending_manual_approval(
+                    context,
+                    task_id=task_id or "unknown",
+                    candidate=candidate,
+                    promotable_files=changed_files,
+                    merge_gate=merge_gate or {},
+                )
+                raise PromotionPendingManualApproval(promotion)
             promotion = promotion_queue.enqueue_auto_approved(
                 context,
                 task_id=task_id or "unknown",
@@ -89,3 +101,10 @@ class CandidateExecutionGateway:
     def _ensure_merge_gate_allows_promotion(self, merge_gate: dict) -> None:
         if merge_gate and merge_gate.get("ok") is False:
             raise RuntimeError(str(merge_gate.get("summary") or "Merge gate blocked promotion."))
+
+
+def _manual_approval_default(policy: dict) -> bool:
+    promotion = policy.get("promotion") if isinstance(policy, dict) else None
+    if not isinstance(promotion, dict):
+        return False
+    return bool(promotion.get("manual_approval_default"))

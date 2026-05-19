@@ -19,6 +19,7 @@ from asteria_runtime.acceptance.runtime_os_catalog import (  # noqa: E402
 )
 from asteria_runtime.acceptance.runtime_os_scenarios import run_runtime_os_scenario  # noqa: E402
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
+from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
 
 
 @dataclass(frozen=True)
@@ -603,7 +604,7 @@ def run_scenario(
     max_attempts = max(1, int(args.run_attempts))
     for attempt in range(1, max_attempts + 1):
         try:
-            completed = subprocess.run(
+            completed = run_with_heartbeat(
                 command,
                 cwd=workspace,
                 env=env,
@@ -611,6 +612,8 @@ def run_scenario(
                 capture_output=True,
                 check=False,
                 timeout=timeout_budget.subprocess_seconds,
+                label=f"{scenario.name}:attempt-{attempt}",
+                progress_root=workspace,
             )
         except subprocess.TimeoutExpired as exc:
             stdout = text_or_empty(exc.stdout)
@@ -709,7 +712,7 @@ def classify_acceptance_subprocess_failure(
     markers = {
         "rate_limited": ["429", "rate limit", "too many requests"],
         "server_error": ["500", "502", "503", "504", "temporarily unavailable"],
-        "timeout": ["timeout", "timed out"],
+        "timeout": ["timeout", "timed out", "deadline exceeded"],
         "network": [
             "unexpected_eof",
             "tls",

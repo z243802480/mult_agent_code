@@ -15,6 +15,16 @@ from asteria_runtime.utils.time import now_iso
 _PROMOTION_QUEUE_LOCK = RLock()
 
 
+class PromotionPendingManualApproval(RuntimeError):
+    def __init__(self, promotion: dict) -> None:
+        self.promotion = promotion
+        super().__init__(
+            "Candidate promotion is pending manual approval: "
+            f"{promotion['promotion_id']}. Run `asteria promotions approve "
+            f"--promotion-id {promotion['promotion_id']}` or reject/discard it."
+        )
+
+
 @dataclass(frozen=True)
 class CandidatePromotionQueue:
     validator: SchemaValidator
@@ -58,6 +68,46 @@ class CandidatePromotionQueue:
             }
             store.append(queue_path, promotion, "candidate_promotion")
         self._record_event(context, "candidate_promotion_queued", promotion)
+        return promotion
+
+    def enqueue_pending_manual_approval(
+        self,
+        context: RuntimeContext,
+        *,
+        task_id: str,
+        candidate: CandidateWorkspace,
+        promotable_files: list[str],
+        merge_gate: dict,
+    ) -> dict:
+        if context.run_dir is None:
+            raise RuntimeError("Cannot queue candidate promotion without a run directory.")
+        queue_path = context.run_dir / "candidate_promotions.jsonl"
+        store = JsonlStore(self.validator)
+        with _PROMOTION_QUEUE_LOCK:
+            existing_count = self._jsonl_count(queue_path)
+            promotion = {
+                "schema_version": "0.1.0",
+                "promotion_id": f"promotion-{existing_count + 1:04d}",
+                "run_id": context.run_id,
+                "task_id": task_id,
+                "candidate_id": candidate.candidate_id,
+                "workspace": str(candidate.root),
+                "strategy": candidate.strategy,
+                "workspace_policy": candidate.workspace_policy,
+                "backend_reason": candidate.backend_reason,
+                "branch_name": candidate.branch_name,
+                "promotable_files": sorted(set(promotable_files)),
+                "promoted_files": [],
+                "status": "pending_manual_approval",
+                "approval_mode": "manual",
+                "merge_gate": merge_gate,
+                "failure": None,
+                "decision": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            }
+            store.append(queue_path, promotion, "candidate_promotion")
+        self._record_event(context, "candidate_promotion_manual_approval_pending", promotion)
         return promotion
 
     def mark_promoted(
