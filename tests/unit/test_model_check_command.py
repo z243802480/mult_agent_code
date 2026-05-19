@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from asteria_runtime.commands.model_check_command import ModelCheckCommand
-from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry, TokenUsage
 
 
 class FakeHealthyClient:
@@ -18,6 +18,15 @@ class FakeHealthyClient:
             model_provider="fake",
             model_name="fake-model",
             raw_response={},
+            streaming=StreamingTelemetry(
+                requested=True,
+                supported=True,
+                mode="streaming",
+                first_chunk_ms=10,
+                last_chunk_ms=15,
+                duration_ms=20,
+                chunk_count=1,
+            ),
         )
 
 
@@ -40,6 +49,8 @@ def test_model_check_calls_model_and_accepts_valid_json(tmp_path: Path) -> None:
     assert result.call_ok
     assert result.provider == "fake"
     assert result.model_name == "fake-model"
+    assert result.to_dict()["streaming"]["first_chunk_ms"] == 10
+    assert "Streaming: streaming chunks=1" in result.to_text()
 
 
 def test_model_check_uses_requested_model_tier(tmp_path: Path) -> None:

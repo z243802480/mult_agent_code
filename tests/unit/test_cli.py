@@ -50,7 +50,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     plugins_args = parser.parse_args(
         ["/plugins", "--root", ".", "enable", "--plugin-id", "example.audit", "--json"]
     )
-    model_check_args = parser.parse_args(["/model-check", "--root", ".", "--tier", "strong"])
+    model_check_args = parser.parse_args(
+        ["/model-check", "--root", ".", "--tier", "strong", "--json"]
+    )
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(
         [
@@ -200,6 +202,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert plugins_args.plugin_id == "example.audit"
     assert plugins_args.json
     assert model_check_args.command == "/model-check"
+    assert model_check_args.json
     assert model_check_args.tier == "strong"
     assert runs_args.command == "/runs"
     assert runs_args.session_id == "run-1"

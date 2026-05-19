@@ -18,6 +18,7 @@ from asteria_runtime.acceptance.runtime_os_catalog import (  # noqa: E402
     runtime_os_scenario_names,
 )
 from asteria_runtime.acceptance.runtime_os_scenarios import run_runtime_os_scenario  # noqa: E402
+from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 
 
 @dataclass(frozen=True)
@@ -400,59 +401,8 @@ class AcceptanceFailure(RuntimeError):
     pass
 
 
-@dataclass(frozen=True)
-class TimeoutBudget:
-    scenario_seconds: int
-    subprocess_grace_seconds: int = 30
-
-    @property
-    def smoke_command_seconds(self) -> int:
-        return max(60, self.scenario_seconds - self.subprocess_grace_seconds)
-
-    @property
-    def subprocess_seconds(self) -> int:
-        return self.scenario_seconds
-
-    @property
-    def review_seconds(self) -> int:
-        return min(90, max(30, self.scenario_seconds // 6))
-
-    @property
-    def provider_call_seconds(self) -> int:
-        return min(90, max(30, self.scenario_seconds // 4))
-
-    @property
-    def cheap_provider_call_seconds(self) -> int:
-        return min(45, self.provider_call_seconds)
-
-    def as_dict(self) -> dict[str, int]:
-        return {
-            "scenario_seconds": self.scenario_seconds,
-            "subprocess_seconds": self.subprocess_seconds,
-            "smoke_command_seconds": self.smoke_command_seconds,
-            "review_seconds": self.review_seconds,
-            "provider_call_seconds": self.provider_call_seconds,
-            "cheap_provider_call_seconds": self.cheap_provider_call_seconds,
-        }
-
-
-def apply_timeout_budget_env(env: dict[str, str], budget: TimeoutBudget) -> None:
-    provider_timeout = str(budget.provider_call_seconds)
-    cheap_timeout = str(budget.cheap_provider_call_seconds)
-    for name in (
-        "AGENT_MODEL_TIMEOUT_SECONDS",
-        "AGENT_MODEL_STRONG_TIMEOUT_SECONDS",
-        "AGENT_MODEL_MEDIUM_TIMEOUT_SECONDS",
-    ):
-        env.setdefault(name, provider_timeout)
-    env.setdefault("AGENT_MODEL_CHEAP_TIMEOUT_SECONDS", cheap_timeout)
-    for name in (
-        "AGENT_MODEL_MAX_RETRIES",
-        "AGENT_MODEL_STRONG_MAX_RETRIES",
-        "AGENT_MODEL_MEDIUM_MAX_RETRIES",
-        "AGENT_MODEL_CHEAP_MAX_RETRIES",
-    ):
-        env.setdefault(name, "1")
+TimeoutBudget = DeadlineBudget
+apply_timeout_budget_env = apply_deadline_budget_env
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -606,7 +556,10 @@ def run_scenario(
     workspace.mkdir(parents=True, exist_ok=True)
     write_setup_files(workspace, scenario)
     summary_path = workspace / "acceptance_summary.json"
-    timeout_budget = TimeoutBudget(int(args.scenario_timeout_seconds))
+    timeout_budget = DeadlineBudget.for_scenario(
+        int(args.scenario_timeout_seconds),
+        model_max_retries=int(args.model_max_retries),
+    )
     command = [
         args.python,
         "-m",
@@ -639,7 +592,7 @@ def run_scenario(
     env["AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES"] = str(args.model_max_retries)
     env["AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS"] = str(timeout_budget.smoke_command_seconds)
     env["AGENT_MODEL_SMOKE_REVIEW_TIMEOUT_SECONDS"] = str(timeout_budget.review_seconds)
-    apply_timeout_budget_env(env, timeout_budget)
+    apply_deadline_budget_env(env, timeout_budget)
     if args.allow_fake:
         env["AGENT_MODEL_PROVIDER"] = "fake"
         env["AGENT_MODEL_STRONG_PROVIDER"] = "fake"

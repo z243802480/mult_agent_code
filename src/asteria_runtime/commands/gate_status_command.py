@@ -227,6 +227,7 @@ class GateStatusCommand:
             "strong_model_configured": bool(route_environment.get("strong", {}).get("configured")),
             "medium_model_configured": bool(route_environment.get("medium", {}).get("configured")),
             "real_model_available": bool(gate.get("ok")),
+            "provider_streaming_available": _provider_streaming_available(route_environment),
         }
         resolver = FlagResolver.from_policy(policy, env_capabilities)
         flag_results = resolver.resolve_all()
@@ -330,6 +331,17 @@ def _gray_task_limits() -> dict[str, object]:
 
 def _route_environment() -> dict[str, Any]:
     return route_environment_for_tiers(("strong", "medium"))
+
+
+def _provider_streaming_available(route_environment: dict[str, Any]) -> bool:
+    for tier in ("strong", "medium"):
+        raw_route = route_environment.get(tier)
+        route = raw_route if isinstance(raw_route, dict) else {}
+        raw_streaming = route.get("streaming")
+        streaming = raw_streaming if isinstance(raw_streaming, dict) else {}
+        if streaming.get("enabled") is not True:
+            return False
+    return True
 
 
 def _route_guidance(root: Path) -> dict[str, Any]:

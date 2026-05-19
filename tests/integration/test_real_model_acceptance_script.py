@@ -249,7 +249,18 @@ def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
 
     apply_timeout_budget_env(env, budget)
 
-    assert budget.as_dict() == {
+    budget_dict = budget.as_dict()
+    assert {
+        key: budget_dict[key]
+        for key in [
+            "scenario_seconds",
+            "subprocess_seconds",
+            "smoke_command_seconds",
+            "review_seconds",
+            "provider_call_seconds",
+            "cheap_provider_call_seconds",
+        ]
+    } == {
         "scenario_seconds": 600,
         "subprocess_seconds": 600,
         "smoke_command_seconds": 570,
@@ -257,10 +268,14 @@ def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
         "provider_call_seconds": 90,
         "cheap_provider_call_seconds": 45,
     }
+    assert budget_dict["run_seconds"] == 570
+    assert budget_dict["recovery_seconds"] == 200
+    assert budget_dict["stream_idle_timeout_seconds"] == 30
     assert env["AGENT_MODEL_STRONG_TIMEOUT_SECONDS"] == "180"
     assert env["AGENT_MODEL_MEDIUM_TIMEOUT_SECONDS"] == "90"
     assert env["AGENT_MODEL_CHEAP_TIMEOUT_SECONDS"] == "45"
     assert env["AGENT_MODEL_MAX_RETRIES"] == "1"
+    assert env["AGENT_MODEL_SMOKE_RECOVERY_TIMEOUT_SECONDS"] == "200"
 
 
 def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:

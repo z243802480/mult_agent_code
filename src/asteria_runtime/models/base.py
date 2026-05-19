@@ -38,6 +38,36 @@ class TokenUsage:
 
 
 @dataclass(frozen=True)
+class StreamingTelemetry:
+    requested: bool = False
+    supported: bool = False
+    mode: str = "non_streaming"
+    first_chunk_ms: int | None = None
+    last_chunk_ms: int | None = None
+    duration_ms: int | None = None
+    chunk_count: int = 0
+    idle_timeout_ms: int | None = None
+    deadline_ms: int | None = None
+    finish_reason: str | None = None
+    error_type: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "requested": self.requested,
+            "supported": self.supported,
+            "mode": self.mode,
+            "first_chunk_ms": self.first_chunk_ms,
+            "last_chunk_ms": self.last_chunk_ms,
+            "duration_ms": self.duration_ms,
+            "chunk_count": self.chunk_count,
+            "idle_timeout_ms": self.idle_timeout_ms,
+            "deadline_ms": self.deadline_ms,
+            "finish_reason": self.finish_reason,
+            "error_type": self.error_type,
+        }
+
+
+@dataclass(frozen=True)
 class ChatResponse:
     content: str
     finish_reason: str | None
@@ -45,6 +75,7 @@ class ChatResponse:
     model_provider: str
     model_name: str
     raw_response: dict
+    streaming: StreamingTelemetry | None = None
 
 
 class ModelClient(Protocol):

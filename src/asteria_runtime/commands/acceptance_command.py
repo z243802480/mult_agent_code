@@ -12,6 +12,7 @@ from asteria_runtime.commands.acceptance_history_command import AcceptanceHistor
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.core.acceptance_catalog import acceptance_metadata_index
+from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.failure_attribution import classify_failure_attribution
 from asteria_runtime.core.task_contract import completion_contract
 from asteria_runtime.storage.event_logger import EventLogger
@@ -286,6 +287,14 @@ class AcceptanceCommand:
         )
         if self.allow_fake:
             env["AGENT_MODEL_PROVIDER"] = "fake"
+        apply_deadline_budget_env(
+            env,
+            DeadlineBudget.for_scenario(
+                self.scenario_timeout_seconds,
+                model_max_retries=self.model_max_retries,
+                suite_seconds=self._command_timeout_seconds(scenarios),
+            ),
+        )
 
         return subprocess.run(
             command,
@@ -385,6 +394,7 @@ class AcceptanceCommand:
             "trend": summary.get("trend", {}),
             "scenario_metadata": summary.get("scenario_metadata", []),
             "scenarios": scenarios,
+            "timeout_budget": self._timeout_budget_for_report().as_dict(),
         }
 
     def _read_json(self, path: Path) -> dict:
@@ -460,6 +470,12 @@ class AcceptanceCommand:
 
     def _command_timeout_seconds(self, scenarios: list[str]) -> int:
         return self.scenario_timeout_seconds * self._selected_scenario_count(scenarios) + 60
+
+    def _timeout_budget_for_report(self) -> DeadlineBudget:
+        return DeadlineBudget.for_scenario(
+            self.scenario_timeout_seconds,
+            model_max_retries=self.model_max_retries,
+        )
 
     def _selected_scenario_count(self, scenarios: list[str]) -> int:
         if scenarios:

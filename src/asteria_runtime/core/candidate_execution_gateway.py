@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import RLock
 
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_board import TaskBoard, TaskStateError
+
+
+_PROMOTION_APPLY_LOCK = RLock()
 
 
 @dataclass(frozen=True)
@@ -45,29 +49,30 @@ class CandidateExecutionGateway:
         if not changed_files:
             return []
         promotion_queue = self.promotion_queue or CandidatePromotionQueue(context.validator)
-        promotion = promotion_queue.enqueue_auto_approved(
-            context,
-            task_id=task_id or "unknown",
-            candidate=candidate,
-            promotable_files=changed_files,
-            merge_gate=merge_gate or {},
-        )
-        try:
-            self._ensure_merge_gate_allows_promotion(merge_gate or {})
-            promoted_files = candidate.promote(changed_files)
-        except Exception as exc:
-            promotion_queue.mark_promotion_failed(
+        with _PROMOTION_APPLY_LOCK:
+            promotion = promotion_queue.enqueue_auto_approved(
                 context,
-                promotion,
-                {
-                    "type": exc.__class__.__name__,
-                    "message": str(exc),
-                    "details": {"candidate_id": candidate.candidate_id},
-                },
+                task_id=task_id or "unknown",
+                candidate=candidate,
+                promotable_files=changed_files,
+                merge_gate=merge_gate or {},
             )
-            raise
-        promotion_queue.mark_promoted(context, promotion, promoted_files)
-        return promoted_files
+            try:
+                self._ensure_merge_gate_allows_promotion(merge_gate or {})
+                promoted_files = candidate.promote(changed_files)
+            except Exception as exc:
+                promotion_queue.mark_promotion_failed(
+                    context,
+                    promotion,
+                    {
+                        "type": exc.__class__.__name__,
+                        "message": str(exc),
+                        "details": {"candidate_id": candidate.candidate_id},
+                    },
+                )
+                raise
+            promotion_queue.mark_promoted(context, promotion, promoted_files)
+            return promoted_files
 
     def complete_after_promotion(
         self,

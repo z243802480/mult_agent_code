@@ -115,6 +115,8 @@
         "max_blocked_release_promotions": { "type": "integer" }
       }
     },
+    "feature_flags": { "type": "object" },
+    "capability_flags": { "type": "object" },
     "model_routing": { "type": "object" },
     "commands": { "type": "object" }
   }

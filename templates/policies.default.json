@@ -73,6 +73,16 @@
     "max_pending_release_promotions": 0,
     "max_blocked_release_promotions": 0
   },
+  "feature_flags": {
+    "streaming": {
+      "enabled": true,
+      "description": "Enable provider streaming requests and first-token telemetry.",
+      "requires": [
+        "provider_streaming"
+      ]
+    }
+  },
+  "capability_flags": {},
   "model_routing": {
     "goal_spec": "strong",
     "planning": "strong",

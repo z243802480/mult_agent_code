@@ -115,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="cheap",
         help="Model tier route to validate",
     )
+    model_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     plan_parser = subcommands.add_parser(
         "plan",
@@ -975,7 +976,10 @@ def main() -> None:
             skip_call=args.skip_call,
             model_tier=args.tier,
         ).run()
-        print(model_result.to_text())
+        if args.json:
+            print(json.dumps(model_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(model_result.to_text())
         return
 
     if command == "plan":

@@ -9,6 +9,7 @@ from asteria_runtime.models.local import (
     local_default_model,
     local_provider_names,
 )
+from asteria_runtime.models.local_route_config import local_route_value
 from asteria_runtime.models.minimax import default_minimax_base_url
 from asteria_runtime.models.routing import ModelRoute
 from asteria_runtime.storage.json_store import JsonStore
@@ -248,8 +249,14 @@ def _env(env_prefix: str, key: str) -> str:
     value = os.getenv(f"{env_prefix}_{key}")
     if value is not None:
         return value
+    value = local_route_value(env_prefix, key)
+    if value:
+        return value
     if env_prefix != "AGENT_MODEL":
         value = os.getenv(f"AGENT_MODEL_{key}")
         if value is not None:
+            return value
+        value = local_route_value("AGENT_MODEL", key)
+        if value:
             return value
     return ""

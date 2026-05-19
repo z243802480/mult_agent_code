@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
+
 
 DEFAULT_GOAL = "Create a local file hello_runtime.txt containing one line: real model smoke ok"
 DEFAULT_EXPECTED_FILE = "hello_runtime.txt"
@@ -94,18 +96,15 @@ def run_from_args(args: argparse.Namespace) -> None:
             for name in fake_provider_names:
                 os.environ[name] = "fake"
         validate_environment(allow_fake=args.allow_fake)
+        timeout_budget = DeadlineBudget.for_smoke(
+            args.command_timeout_seconds,
+            model_max_retries=args.model_max_retries,
+        )
         os.environ.setdefault(
             "AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES",
             str(args.model_max_retries),
         )
-        os.environ.setdefault(
-            "AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS",
-            str(args.command_timeout_seconds),
-        )
-        os.environ.setdefault(
-            "AGENT_MODEL_SMOKE_REVIEW_TIMEOUT_SECONDS",
-            str(min(180, args.command_timeout_seconds)),
-        )
+        apply_deadline_budget_env(os.environ, timeout_budget)
         workspace, cleanup = prepare_workspace(args.root)
         result = SmokeResult(
             workspace=workspace,
@@ -113,6 +112,7 @@ def run_from_args(args: argparse.Namespace) -> None:
             expected_file=workspace / args.expected_file,
             final_report=None,
             transcript=workspace / "real_model_smoke_transcript.json",
+            diagnostics={"timeout_budget": timeout_budget.as_dict()},
         )
         run_smoke(args, result)
         result.ended_at = time.monotonic()

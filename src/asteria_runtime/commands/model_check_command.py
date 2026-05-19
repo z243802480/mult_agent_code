@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
+from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient, StreamingTelemetry
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.json_extractor import parse_json_object
 from asteria_runtime.models.minimax import ModelProviderError
@@ -25,6 +25,7 @@ class ModelCheckResult:
     summary: str
     failure_report_path: Path | None = None
     failure_type: str | None = None
+    streaming: StreamingTelemetry | None = None
 
     def to_text(self) -> str:
         lines = [
@@ -34,6 +35,7 @@ class ModelCheckResult:
             f"Base URL: {self.base_url or 'not configured'}",
             f"Config: {'ok' if self.config_ok else 'failed'}",
             f"Call: {'ok' if self.call_ok else 'skipped/failed'}",
+            f"Streaming: {self._streaming_text()}",
             f"Summary: {self.summary}",
         ]
         if self.failure_type:
@@ -41,6 +43,34 @@ class ModelCheckResult:
         if self.failure_report_path:
             lines.append(f"Failure report: {self.failure_report_path}")
         return "\n".join(lines)
+
+    def _streaming_text(self) -> str:
+        if self.streaming is None:
+            return "not observed"
+        if self.streaming.requested:
+            first = (
+                f", first_chunk_ms={self.streaming.first_chunk_ms}"
+                if self.streaming.first_chunk_ms is not None
+                else ""
+            )
+            return f"{self.streaming.mode} chunks={self.streaming.chunk_count}{first}"
+        return f"{self.streaming.mode} duration_ms={self.streaming.duration_ms}"
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "schema_version": "0.1.0",
+            "provider": self.provider,
+            "model_name": self.model_name,
+            "base_url": self.base_url,
+            "config_ok": self.config_ok,
+            "call_ok": self.call_ok,
+            "summary": self.summary,
+            "failure_report_path": str(self.failure_report_path)
+            if self.failure_report_path
+            else None,
+            "failure_type": self.failure_type,
+            "streaming": self.streaming.to_dict() if self.streaming else None,
+        }
 
 
 class ModelCheckCommand:
@@ -140,6 +170,7 @@ class ModelCheckCommand:
             config_ok=True,
             call_ok=True,
             summary="Model returned valid JSON for the health check prompt.",
+            streaming=response.streaming,
         )
 
     def _request(self) -> ChatRequest:

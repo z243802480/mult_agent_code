@@ -6,6 +6,7 @@ from pathlib import Path
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.fake import FakeModelClient
+from asteria_runtime.models.local_route_config import configured_route_tiers, local_route_value
 from asteria_runtime.models.local import local_provider_names, local_settings_from_env
 from asteria_runtime.models.minimax import MiniMaxOpenAICompatibleClient, MiniMaxSettings, ModelProviderError
 from asteria_runtime.models.model_call_logger import ModelCallLogger
@@ -106,7 +107,7 @@ def _create_provider_client(
 
 def _routes_from_env() -> dict[str, ModelRoute]:
     routes = {}
-    for tier in MODEL_TIERS:
+    for tier in sorted(set(MODEL_TIERS) | configured_route_tiers()):
         env_prefix = f"AGENT_MODEL_{tier.upper()}"
         provider = _provider_from_env(env_prefix)
         if provider:
@@ -116,6 +117,10 @@ def _routes_from_env() -> dict[str, ModelRoute]:
 
 def _provider_from_env(env_prefix: str, default: str | None = None) -> str:
     provider = os.getenv(f"{env_prefix}_PROVIDER")
+    if provider is None:
+        provider = local_route_value(env_prefix, "PROVIDER")
     if provider is None and env_prefix == "AGENT_MODEL":
         provider = os.getenv("AGENT_MODEL_PROVIDER")
+    if not provider and env_prefix == "AGENT_MODEL":
+        provider = local_route_value("AGENT_MODEL", "PROVIDER")
     return (provider or default or "").lower()

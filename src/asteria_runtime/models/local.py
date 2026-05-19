@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from asteria_runtime.models.local_route_config import local_route_value
 from asteria_runtime.models.openai_compatible import (
     OpenAICompatibleProviderError,
     OpenAICompatibleSettings,
@@ -72,6 +73,8 @@ def local_settings_from_env(
         provider=provider,
         timeout_seconds=int(_env(env_prefix, "TIMEOUT_SECONDS", "180")),
         max_retries=int(_env(env_prefix, "MAX_RETRIES", "1")),
+        streaming_enabled=_env_bool(env_prefix, "STREAMING", True),
+        stream_idle_timeout_seconds=int(_env(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS", "30")),
     )
 
 
@@ -87,8 +90,21 @@ def _env(env_prefix: str, key: str, default: str | None = None) -> str:
     value = os.getenv(f"{env_prefix}_{key}")
     if value is not None:
         return value
+    value = local_route_value(env_prefix, key)
+    if value:
+        return value
     if env_prefix != "AGENT_MODEL":
         value = os.getenv(f"AGENT_MODEL_{key}")
         if value is not None:
             return value
+        value = local_route_value("AGENT_MODEL", key)
+        if value:
+            return value
     return default or ""
+
+
+def _env_bool(env_prefix: str, key: str, default: bool) -> bool:
+    value = _env(env_prefix, key)
+    if not value:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}

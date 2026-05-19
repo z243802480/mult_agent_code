@@ -194,3 +194,14 @@ def _auto_derive_capabilities(
             available=has_real,
             reason="Real model gate has passed." if has_real else "No real model gate record.",
         )
+    if "provider_streaming" not in capabilities:
+        has_streaming = environment.get("provider_streaming_available", False)
+        capabilities["provider_streaming"] = CapabilityFlag(
+            name="provider_streaming",
+            available=has_streaming,
+            reason=(
+                "Strong and medium provider routes have streaming enabled."
+                if has_streaming
+                else "Provider streaming is not enabled for all required routes."
+            ),
+        )

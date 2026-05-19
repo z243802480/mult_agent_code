@@ -124,7 +124,15 @@ def build_default_registry() -> SchemaMigrationRegistry:
 
 
 def _policy_010_to_020(data: dict[str, Any]) -> dict[str, Any]:
-    data.setdefault("feature_flags", {})
+    feature_flags = data.setdefault("feature_flags", {})
+    feature_flags.setdefault(
+        "streaming",
+        {
+            "enabled": True,
+            "description": "Enable provider streaming requests and first-token telemetry.",
+            "requires": ["provider_streaming"],
+        },
+    )
     data.setdefault("capability_flags", {})
     return data
 

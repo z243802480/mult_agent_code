@@ -1,10 +1,11 @@
 from pathlib import Path
+import json
 
 import pytest
 
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.models.base import ChatMessage, ChatRequest
-from asteria_runtime.models.http_transport import HttpResponse
+from asteria_runtime.models.http_transport import HttpResponse, HttpTransportError
 from asteria_runtime.models.minimax import (
     MiniMaxOpenAICompatibleClient,
     MiniMaxSettings,
@@ -25,6 +26,149 @@ class FakeTransport:
     ) -> HttpResponse:
         self.calls.append(
             {
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return self.response
+
+
+class FakeStreamingTransport(FakeTransport):
+    def post_json_stream(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict,
+        timeout_seconds: int,
+        idle_timeout_seconds: int,
+        deadline_seconds: int | None = None,
+    ):
+        from asteria_runtime.models.base import StreamingTelemetry
+        from asteria_runtime.models.http_transport import HttpStreamingResponse
+
+        self.calls.append(
+            {
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+                "idle_timeout_seconds": idle_timeout_seconds,
+                "deadline_seconds": deadline_seconds,
+            }
+        )
+        return HttpStreamingResponse(
+            200,
+            {
+                "model": "MiniMax-M2.7",
+                "choices": [
+                    {"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17},
+                "base_resp": {"status_code": 0, "status_msg": ""},
+            },
+            StreamingTelemetry(
+                requested=True,
+                supported=True,
+                mode="streaming",
+                first_chunk_ms=35,
+                last_chunk_ms=70,
+                duration_ms=90,
+                chunk_count=2,
+                idle_timeout_ms=30000,
+                deadline_ms=90000,
+                finish_reason="stop",
+            ),
+        )
+
+
+class FakeUnsupportedStreamingTransport(FakeTransport):
+    def __init__(self, response: HttpResponse, fallback_response: HttpResponse) -> None:
+        super().__init__(fallback_response)
+        self.stream_response = response
+
+    def post_json_stream(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict,
+        timeout_seconds: int,
+        idle_timeout_seconds: int,
+        deadline_seconds: int | None = None,
+    ):
+        from asteria_runtime.models.base import StreamingTelemetry
+        from asteria_runtime.models.http_transport import HttpStreamingResponse
+
+        self.calls.append(
+            {
+                "kind": "stream",
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+                "idle_timeout_seconds": idle_timeout_seconds,
+                "deadline_seconds": deadline_seconds,
+            }
+        )
+        return HttpStreamingResponse(
+            self.stream_response.status_code,
+            self.stream_response.body,
+            StreamingTelemetry(
+                requested=True,
+                supported=False,
+                mode="streaming_failed",
+                duration_ms=1,
+                error_type="http_error",
+            ),
+        )
+
+    def post_json(
+        self, url: str, headers: dict[str, str], payload: dict, timeout_seconds: int
+    ) -> HttpResponse:
+        self.calls.append(
+            {
+                "kind": "http",
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        return self.response
+
+
+class FakeBrokenStreamingTransport(FakeTransport):
+    def post_json_stream(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict,
+        timeout_seconds: int,
+        idle_timeout_seconds: int,
+        deadline_seconds: int | None = None,
+    ):
+        self.calls.append(
+            {
+                "kind": "stream",
+                "url": url,
+                "headers": headers,
+                "payload": payload,
+                "timeout_seconds": timeout_seconds,
+                "idle_timeout_seconds": idle_timeout_seconds,
+                "deadline_seconds": deadline_seconds,
+            }
+        )
+        raise HttpTransportError(
+            "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>"
+        )
+
+    def post_json(
+        self, url: str, headers: dict[str, str], payload: dict, timeout_seconds: int
+    ) -> HttpResponse:
+        self.calls.append(
+            {
+                "kind": "http",
                 "url": url,
                 "headers": headers,
                 "payload": payload,
@@ -87,7 +231,7 @@ def test_minimax_client_sends_openai_compatible_chat_and_logs_success(tmp_path: 
         )
     )
     client = MiniMaxOpenAICompatibleClient(
-        MiniMaxSettings(api_key="test-key", model_name="MiniMax-M2.7"),
+        MiniMaxSettings(api_key="test-key", model_name="MiniMax-M2.7", streaming_enabled=False),
         transport=transport,
         logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
         budget=BudgetController(policy(), run_id="run-1"),
@@ -101,12 +245,104 @@ def test_minimax_client_sends_openai_compatible_chat_and_logs_success(tmp_path: 
     assert transport.calls[0]["headers"]["Authorization"] == "Bearer test-key"
     assert transport.calls[0]["payload"]["response_format"] == {"type": "json_object"}
     assert (tmp_path / "model_calls.jsonl").exists()
+    logged = json.loads((tmp_path / "model_calls.jsonl").read_text(encoding="utf-8"))
+    assert logged["streaming"]["mode"] == "non_streaming"
+
+
+def test_minimax_client_streams_by_default_and_logs_first_chunk(tmp_path: Path) -> None:
+    transport = FakeStreamingTransport(HttpResponse(200, {}))
+    client = MiniMaxOpenAICompatibleClient(
+        MiniMaxSettings(api_key="test-key"),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+    )
+
+    response = client.chat(request())
+
+    assert response.content == '{"ok": true}'
+    assert response.streaming is not None
+    assert response.streaming.first_chunk_ms == 35
+    assert transport.calls[0]["payload"]["stream"] is True
+    assert transport.calls[0]["payload"]["stream_options"] == {"include_usage": True}
+    logged = json.loads((tmp_path / "model_calls.jsonl").read_text(encoding="utf-8"))
+    assert logged["streaming"]["requested"] is True
+    assert logged["streaming"]["chunk_count"] == 2
+
+
+def test_minimax_client_falls_back_when_streaming_is_unsupported(tmp_path: Path) -> None:
+    transport = FakeUnsupportedStreamingTransport(
+        HttpResponse(400, {"error": {"message": "streaming is not supported by this model"}}),
+        HttpResponse(
+            200,
+            {
+                "model": "MiniMax-M2.7",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": '{"ok": true}'},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17},
+                "base_resp": {"status_code": 0, "status_msg": ""},
+            },
+        ),
+    )
+    client = MiniMaxOpenAICompatibleClient(
+        MiniMaxSettings(api_key="test-key"),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+    )
+
+    response = client.chat(request())
+
+    assert response.content == '{"ok": true}'
+    assert len(transport.calls) == 2
+    assert transport.calls[0]["payload"]["stream"] is True
+    assert transport.calls[1]["payload"]["stream"] is False
+    assert "stream_options" not in transport.calls[1]["payload"]
+    assert response.streaming is not None
+    assert response.streaming.mode == "streaming_fallback_non_streaming"
+    logged = json.loads((tmp_path / "model_calls.jsonl").read_text(encoding="utf-8"))
+    assert logged["streaming"]["error_type"] == "streaming_unsupported"
+
+
+def test_minimax_client_falls_back_on_stream_setup_error(tmp_path: Path) -> None:
+    transport = FakeBrokenStreamingTransport(
+        HttpResponse(
+            200,
+            {
+                "model": "MiniMax-M2.7",
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": '{"ok": true}'},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17},
+                "base_resp": {"status_code": 0, "status_msg": ""},
+            },
+        )
+    )
+    client = MiniMaxOpenAICompatibleClient(
+        MiniMaxSettings(api_key="test-key"),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+    )
+
+    response = client.chat(request())
+
+    assert response.content == '{"ok": true}'
+    assert len(transport.calls) == 2
+    assert transport.calls[1]["payload"]["stream"] is False
+    assert response.streaming is not None
+    assert response.streaming.mode == "streaming_fallback_non_streaming"
+    assert response.streaming.error_type == "streaming_transport_error"
 
 
 def test_minimax_client_raises_and_logs_http_failure(tmp_path: Path) -> None:
     transport = FakeTransport(HttpResponse(401, {"error": {"message": "unauthorized"}}))
     client = MiniMaxOpenAICompatibleClient(
-        MiniMaxSettings(api_key="bad-key", max_retries=0),
+        MiniMaxSettings(api_key="bad-key", max_retries=0, streaming_enabled=False),
         transport=transport,
         logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
     )
@@ -114,14 +350,16 @@ def test_minimax_client_raises_and_logs_http_failure(tmp_path: Path) -> None:
     with pytest.raises(ModelProviderError):
         client.chat(request())
 
-    assert (tmp_path / "model_calls.jsonl").read_text(encoding="utf-8")
+    logged = json.loads((tmp_path / "model_calls.jsonl").read_text(encoding="utf-8"))
+    assert logged["status"] == "failure"
+    assert logged["streaming"]["mode"] == "non_streaming_failed"
 
 
 def test_minimax_client_budget_denies_before_http_call(tmp_path: Path) -> None:
     transport = FakeTransport(HttpResponse(200, {}))
     budget = BudgetController(policy(max_model_calls=0), run_id="run-1")
     client = MiniMaxOpenAICompatibleClient(
-        MiniMaxSettings(api_key="test-key"),
+        MiniMaxSettings(api_key="test-key", streaming_enabled=False),
         transport=transport,
         logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
         budget=budget,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from threading import RLock
 
-from asteria_runtime.models.base import ChatRequest, ChatResponse
+from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -27,6 +27,7 @@ class ModelCallLogger:
         model_name: str,
         model_tier: str,
         error: str,
+        streaming: StreamingTelemetry | None = None,
     ) -> dict | None:
         with _MODEL_CALL_LOGGER_LOCK:
             record = self._base_record(request, provider, model_name, model_tier)
@@ -39,6 +40,9 @@ class ModelCallLogger:
                     "summary": error,
                 }
             )
+            if streaming is not None:
+                record["duration_ms"] = streaming.duration_ms
+                record["streaming"] = streaming.to_dict()
             self._append(record)
             return record
 
@@ -65,6 +69,9 @@ class ModelCallLogger:
                     "summary": summary,
                 }
             )
+            if response.streaming is not None:
+                record["duration_ms"] = response.streaming.duration_ms
+                record["streaming"] = response.streaming.to_dict()
             self._append(record)
             return record
 

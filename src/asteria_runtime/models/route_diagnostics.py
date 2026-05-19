@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from asteria_runtime.models.factory import ZAI_PROVIDER_ALIASES, ZHIPU_PROVIDER_ALIASES
 from asteria_runtime.models.local import local_provider_names
+from asteria_runtime.models.local_route_config import any_local_route_value, local_route_value
 from asteria_runtime.models.model_failure import model_failure_context_from_env
 from asteria_runtime.models.routing import MODEL_TIERS
 
@@ -20,6 +21,9 @@ class RouteDiagnostic:
     source: str
     missing: list[str]
     api_key_present: bool
+    streaming_enabled: bool
+    stream_idle_timeout_seconds: int | None
+    timeout_seconds: int | None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -31,6 +35,11 @@ class RouteDiagnostic:
             "env_prefix": self.env_prefix,
             "source": self.source,
             "api_key_present": self.api_key_present,
+            "streaming": {
+                "enabled": self.streaming_enabled,
+                "idle_timeout_seconds": self.stream_idle_timeout_seconds,
+                "deadline_seconds": self.timeout_seconds,
+            },
         }
 
 
@@ -51,21 +60,30 @@ def route_diagnostic_for_tier(tier: str) -> RouteDiagnostic:
         source=source,
         missing=missing,
         api_key_present=api_key_present,
+        streaming_enabled=_env_bool(env_prefix, "STREAMING", True),
+        stream_idle_timeout_seconds=_env_int(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS"),
+        timeout_seconds=_env_int(env_prefix, "TIMEOUT_SECONDS"),
     )
 
 
 def _effective_route(tier: str) -> tuple[str, str, str]:
     tier_prefix = f"AGENT_MODEL_{tier.upper()}"
-    tier_provider = _env(f"{tier_prefix}_PROVIDER")
+    tier_provider = _env(f"{tier_prefix}_PROVIDER") or local_route_value(tier_prefix, "PROVIDER")
     if tier_provider:
-        return tier_prefix, tier_provider.lower(), "tier"
+        source = "tier" if _env(f"{tier_prefix}_PROVIDER") else "local_tier"
+        return tier_prefix, tier_provider.lower(), source
 
-    global_provider = _env("AGENT_MODEL_PROVIDER")
+    global_provider = _env("AGENT_MODEL_PROVIDER") or local_route_value("AGENT_MODEL", "PROVIDER")
     if global_provider:
-        return "AGENT_MODEL", global_provider.lower(), "global"
+        source = "global" if _env("AGENT_MODEL_PROVIDER") else "local_global"
+        return "AGENT_MODEL", global_provider.lower(), source
 
     tier_routes = [
-        (candidate, _env(f"AGENT_MODEL_{candidate.upper()}_PROVIDER"))
+        (
+            candidate,
+            _env(f"AGENT_MODEL_{candidate.upper()}_PROVIDER")
+            or local_route_value(f"AGENT_MODEL_{candidate.upper()}", "PROVIDER"),
+        )
         for candidate in MODEL_TIERS
     ]
     configured_routes = [
@@ -169,13 +187,19 @@ def _api_key_present(provider: str, env_prefix: str) -> bool:
     if provider in {"fake", "offline"} or provider in local_provider_names():
         return True
     if provider == "minimax":
-        return _any_env(("MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"))
+        return _any_env(("MINIMAX_API_KEY", "MINIMAX_CN_API_KEY")) or bool(
+            any_local_route_value(("MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"))
+        )
     if provider in ZAI_PROVIDER_ALIASES:
-        return _any_env(("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY"))
+        return _any_env(("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY")) or bool(
+            any_local_route_value(("ZAI_API_KEY", "GLM_API_KEY", "ZHIPU_API_KEY"))
+        )
     if provider in ZHIPU_PROVIDER_ALIASES:
-        return _any_env(("ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY"))
+        return _any_env(("ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY")) or bool(
+            any_local_route_value(("ZHIPU_API_KEY", "BIGMODEL_API_KEY", "GLM_API_KEY"))
+        )
     if provider in {"openai", "openai-compatible", "generic"}:
-        return _any_env(("OPENAI_API_KEY",))
+        return _any_env(("OPENAI_API_KEY",)) or bool(any_local_route_value(("OPENAI_API_KEY",)))
     return False
 
 
@@ -191,8 +215,11 @@ def _env_key(env_prefix: str, key: str) -> str:
     value = _env(f"{env_prefix}_{key}")
     if value:
         return value
+    value = local_route_value(env_prefix, key)
+    if value:
+        return value
     if env_prefix != "AGENT_MODEL":
-        return _env(f"AGENT_MODEL_{key}")
+        return _env(f"AGENT_MODEL_{key}") or local_route_value("AGENT_MODEL", key)
     return ""
 
 
@@ -202,3 +229,20 @@ def _any_env(names: tuple[str, ...]) -> bool:
 
 def _env(name: str) -> str:
     return os.getenv(name) or ""
+
+
+def _env_int(env_prefix: str, key: str) -> int | None:
+    value = _env_key(env_prefix, key)
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _env_bool(env_prefix: str, key: str, default: bool) -> bool:
+    value = _env_key(env_prefix, key)
+    if not value:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}

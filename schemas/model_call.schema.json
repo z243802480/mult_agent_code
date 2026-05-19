@@ -26,6 +26,23 @@
     "model_tier": { "type": "string", "enum": ["cheap", "medium", "strong"] },
     "input_tokens": { "type": ["integer", "null"] },
     "output_tokens": { "type": ["integer", "null"] },
+    "duration_ms": { "type": ["integer", "null"] },
+    "streaming": {
+      "type": "object",
+      "properties": {
+        "requested": { "type": "boolean" },
+        "supported": { "type": "boolean" },
+        "mode": { "type": "string" },
+        "first_chunk_ms": { "type": ["integer", "null"] },
+        "last_chunk_ms": { "type": ["integer", "null"] },
+        "duration_ms": { "type": ["integer", "null"] },
+        "chunk_count": { "type": "integer" },
+        "idle_timeout_ms": { "type": ["integer", "null"] },
+        "deadline_ms": { "type": ["integer", "null"] },
+        "finish_reason": { "type": ["string", "null"] },
+        "error_type": { "type": ["string", "null"] }
+      }
+    },
     "status": { "type": "string" },
     "created_at": { "type": "string" },
     "summary": { "type": "string" }
