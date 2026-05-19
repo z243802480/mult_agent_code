@@ -95,6 +95,38 @@
     "classification": "cheap",
     "evaluation": "medium"
   },
+  "provider_route_strategy": {
+    "strong_goal_spec": {
+      "primary_model": "glm-5",
+      "cost_saver_model": "glm-4.7",
+      "min_calls_before_enforcement": 3,
+      "min_success_rate_for_gray": 0.8,
+      "max_timeout_failures_for_gray": 1,
+      "provider_deadline_seconds": 120,
+      "stream_idle_timeout_seconds": 30,
+      "continue_primary_when": [
+        "release gate is being refreshed",
+        "route guidance is healthy",
+        "recent success rate is at or above min_success_rate_for_gray"
+      ],
+      "allow_cost_saver_when": [
+        "task is a small gray validation task",
+        "cost budget is constrained",
+        "cost_saver recent success rate is at or above min_success_rate_for_gray"
+      ],
+      "downgrade_or_retry_when": [
+        "primary route is transiently rate limited",
+        "primary route hits one timeout but recent success rate remains acceptable",
+        "task is doc-only or low-risk and medium route is healthy"
+      ],
+      "block_gray_when": [
+        "strong goal_spec success rate is below min_success_rate_for_gray after min_calls_before_enforcement calls",
+        "timeout failures exceed max_timeout_failures_for_gray",
+        "authentication, budget, or configuration failure is present",
+        "provider streaming evidence is missing for required strong and medium routes"
+      ]
+    }
+  },
   "commands": {
     "agent_invocable_without_approval": [
       "plan",

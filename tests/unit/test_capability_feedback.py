@@ -83,3 +83,114 @@ def test_capability_feedback_advisor_returns_actionable_planner_hints(tmp_path: 
     assert guidance["status"] == "review"
     assert guidance["review"][0]["purpose"] == "coding"
     assert "smaller scoped tasks" in guidance["recommended_actions"][1]
+
+
+def test_provider_route_strategy_blocks_unstable_strong_goal_spec(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    JsonStore(validator).write(
+        agent_dir / "policies.json",
+        {
+            "schema_version": "0.3.0",
+            "decision_granularity": "balanced",
+            "budgets": {
+                "max_model_calls_per_goal": 60,
+                "max_tool_calls_per_goal": 120,
+                "max_total_minutes_per_goal": 30,
+                "max_iterations_per_goal": 8,
+                "max_repair_attempts_total": 5,
+                "max_repair_attempts_per_task": 2,
+                "max_replans_per_task": 2,
+                "max_research_calls": 5,
+                "max_user_decisions": 5,
+            },
+            "context": {
+                "compaction_threshold": 0.75,
+                "hard_stop_threshold": 0.9,
+                "phase_boundary_compaction": True,
+                "handoff_compaction": True,
+            },
+            "permissions": {
+                "allow_network": False,
+                "allow_shell": True,
+                "allow_destructive_shell": False,
+                "allow_global_package_install": False,
+                "allow_secret_file_read": False,
+                "allow_remote_push": False,
+                "allow_deploy": False,
+                "allow_restore_delete_created_files": True,
+            },
+            "protected_paths": [".env", "secrets/"],
+            "hooks": {
+                "enabled": True,
+                "plugins_enabled": False,
+                "allowed_hook_names": ["before_worker", "after_worker"],
+                "redacted_data_keys": ["api_key"],
+                "handler_timeout_ms": 1000,
+            },
+            "promotion": {
+                "manual_approval_default": False,
+                "release_blocking_statuses": ["pending_manual_approval"],
+                "max_pending_release_promotions": 0,
+                "max_blocked_release_promotions": 0,
+            },
+            "feature_flags": {},
+            "capability_flags": {},
+            "model_routing": {"goal_spec": "strong"},
+            "provider_route_strategy": {
+                "strong_goal_spec": {
+                    "primary_model": "glm-5",
+                    "cost_saver_model": "glm-4.7",
+                    "min_calls_before_enforcement": 3,
+                    "min_success_rate_for_gray": 0.8,
+                    "max_timeout_failures_for_gray": 1,
+                }
+            },
+            "commands": {},
+        },
+        "policy_config",
+    )
+    JsonStore(validator).write(
+        agent_dir / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "zai",
+                    "model": "glm-4.7",
+                    "purpose": "goal_spec",
+                    "model_tier": "strong",
+                    "total_calls": 5,
+                    "success_calls": 3,
+                    "failure_calls": 2,
+                    "success_rate": 0.6,
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_workers": 0,
+                    "successful_workers": 0,
+                    "failed_workers": 0,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {"timeout": 2},
+                    "recent_failures": ["stream deadline exceeded"],
+                    "recommended_action": "keep_route",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    assert guidance["status"] == "blocked"
+    assert guidance["provider_route_strategy"]["decision"] == "block_gray"
+    assert guidance["blocking"][0]["recommended_action"] == "block_gray_until_strong_goal_spec_stable"
+    assert "Do not widen small real-task gray" in guidance["recommended_actions"][0]

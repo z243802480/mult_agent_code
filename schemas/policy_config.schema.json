@@ -118,6 +118,7 @@
     "feature_flags": { "type": "object" },
     "capability_flags": { "type": "object" },
     "model_routing": { "type": "object" },
+    "provider_route_strategy": { "type": "object" },
     "commands": { "type": "object" }
   }
 }

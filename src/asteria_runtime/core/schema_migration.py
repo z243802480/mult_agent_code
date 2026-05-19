@@ -108,6 +108,18 @@ def build_default_registry() -> SchemaMigrationRegistry:
         )
     )
 
+    # policy_config: 0.2.0 -> 0.3.0
+    # Adds provider route strategy thresholds for strong goal specification.
+    registry.register(
+        SchemaMigration(
+            schema_name="policy_config",
+            from_version="0.2.0",
+            to_version="0.3.0",
+            migrate=_policy_020_to_030,
+            description="Add provider route strategy thresholds.",
+        )
+    )
+
     # plugin_manifest: 0.1.0 -> 0.2.0
     # Adds blocked_reason and loaded_at fields.
     registry.register(
@@ -134,6 +146,52 @@ def _policy_010_to_020(data: dict[str, Any]) -> dict[str, Any]:
         },
     )
     data.setdefault("capability_flags", {})
+    return data
+
+
+def _policy_020_to_030(data: dict[str, Any]) -> dict[str, Any]:
+    strategy = data.setdefault("provider_route_strategy", {})
+    strong_goal_spec = strategy.setdefault("strong_goal_spec", {})
+    strong_goal_spec.setdefault("primary_model", "glm-5")
+    strong_goal_spec.setdefault("cost_saver_model", "glm-4.7")
+    strong_goal_spec.setdefault("min_calls_before_enforcement", 3)
+    strong_goal_spec.setdefault("min_success_rate_for_gray", 0.8)
+    strong_goal_spec.setdefault("max_timeout_failures_for_gray", 1)
+    strong_goal_spec.setdefault("provider_deadline_seconds", 120)
+    strong_goal_spec.setdefault("stream_idle_timeout_seconds", 30)
+    strong_goal_spec.setdefault(
+        "continue_primary_when",
+        [
+            "release gate is being refreshed",
+            "route guidance is healthy",
+            "recent success rate is at or above min_success_rate_for_gray",
+        ],
+    )
+    strong_goal_spec.setdefault(
+        "allow_cost_saver_when",
+        [
+            "task is a small gray validation task",
+            "cost budget is constrained",
+            "cost_saver recent success rate is at or above min_success_rate_for_gray",
+        ],
+    )
+    strong_goal_spec.setdefault(
+        "downgrade_or_retry_when",
+        [
+            "primary route is transiently rate limited",
+            "primary route hits one timeout but recent success rate remains acceptable",
+            "task is doc-only or low-risk and medium route is healthy",
+        ],
+    )
+    strong_goal_spec.setdefault(
+        "block_gray_when",
+        [
+            "strong goal_spec success rate is below min_success_rate_for_gray after min_calls_before_enforcement calls",
+            "timeout failures exceed max_timeout_failures_for_gray",
+            "authentication, budget, or configuration failure is present",
+            "provider streaming evidence is missing for required strong and medium routes",
+        ],
+    )
     return data
 
 

@@ -56,7 +56,13 @@ def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> Non
     assert "after_tool_call" in policy["hooks"]["allowed_hook_names"]
     assert policy["promotion"]["manual_approval_default"] is False
     assert policy["promotion"]["max_pending_release_promotions"] == 0
+    assert policy["provider_route_strategy"]["strong_goal_spec"]["primary_model"] == "glm-5"
+    assert (
+        policy["provider_route_strategy"]["strong_goal_spec"]["min_success_rate_for_gray"]
+        == 0.8
+    )
     persisted = json.loads(policy_path.read_text(encoding="utf-8"))
     assert persisted["permissions"]["allow_restore_delete_created_files"] is True
     assert persisted["hooks"]["handler_timeout_ms"] == 1000
     assert "promotion_failed" in persisted["promotion"]["release_blocking_statuses"]
+    assert persisted["provider_route_strategy"]["strong_goal_spec"]["cost_saver_model"] == "glm-4.7"
