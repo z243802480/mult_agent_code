@@ -492,15 +492,50 @@ h2 {
 .reportBody {
   border-top: 1px solid #273039;
   display: grid;
-  gap: 8px;
+  gap: 10px;
   padding: 12px 14px 0 50px;
 }
 
-.reportBody p {
+.reportBody p,
+.reportBody li {
   color: #c0c8ce;
   font-size: 13px;
   line-height: 1.5;
   margin: 0;
+}
+
+.reportLead,
+.reportSection {
+  background: #111518;
+  border: 1px solid #2c353d;
+  border-radius: 7px;
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+}
+
+.reportSection.outcome {
+  border-color: #2f6b4d;
+}
+
+.reportSection.next {
+  border-color: #36647d;
+}
+
+.reportLead span,
+.reportSection span {
+  color: #8f9ba5;
+  font-size: 11px;
+  font-weight: 780;
+  text-transform: uppercase;
+}
+
+.reportSection ol,
+.reportSection ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
 }
 
 .emptyThread {

@@ -188,7 +188,7 @@ function startRuntimeJob(sessionId, mode, goal) {
       command
     });
   });
-  child.on("close", (code) => {
+  child.on("close", async (code) => {
     job.status = code === 0 ? "completed" : "failed";
     liveJobs.set(jobId, job);
     void appendEvent(sessionId, {
@@ -207,8 +207,9 @@ function startRuntimeJob(sessionId, mode, goal) {
       summary: code === 0 ? "这是根据真实模型和 runtime 结果整理出的回复。" : "这次没有完成，我会给出失败原因和可选下一步。",
       phase: code === 0 ? "result" : "review",
       display_level: "main",
-      content_delta: finalTextFor(mode, code, stdout, stderr),
-      evidence_refs: [sessionPath(sessionId, "events.jsonl")]
+      content_delta: await finalTextFor(mode, code, stdout, stderr),
+      evidence_refs: [sessionPath(sessionId, "events.jsonl")],
+      artifact_refs: runArtifactRefs(extractRunId(stdout))
     });
   });
   child.on("error", (error) => {
@@ -304,7 +305,7 @@ function summarizeRuntimeChunk(text) {
   return clean.slice(0, 120);
 }
 
-function finalTextFor(mode, code, stdout, stderr) {
+async function finalTextFor(mode, code, stdout, stderr) {
   if (code !== 0) {
     return [
       "## 结果",
@@ -317,6 +318,8 @@ function finalTextFor(mode, code, stdout, stderr) {
       "可以重试、切换模型/路由，或把失败证据导出后继续诊断。"
     ].join("\n");
   }
+  const runId = extractRunId(stdout);
+  if (mode === "plan" && runId) return planFinalTextForRun(runId, stdout);
   const text = stdout.trim();
   const result = text ? trimForUser(text) : "Runtime 已完成，但没有返回文本输出。可以在 Inspector 查看证据和产物。";
   return [
@@ -334,6 +337,86 @@ function nextStepForMode(mode) {
   if (mode === "review") return "你可以选择修复问题、继续执行，或导出证据。";
   if (mode === "resume") return "你可以继续推进当前任务，或要求我先总结当前状态。";
   return "你可以继续给出下一步要求。";
+}
+
+async function planFinalTextForRun(runId, fallbackStdout) {
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  const goalSpec = await readJson(path.join(runDir, "goal_spec.json"));
+  const taskPlan = await readJson(path.join(runDir, "task_plan.json"));
+  const taskEval = await readJson(path.join(runDir, "task_plan_eval.json"));
+  const costReport = await readJson(path.join(runDir, "cost_report.json"));
+  const tasks = Array.isArray(taskPlan.tasks) ? taskPlan.tasks : [];
+  if (!Object.keys(goalSpec).length && !tasks.length) {
+    return [
+      "## 结果",
+      "Runtime 已完成计划生成，但 Studio 暂时只能读取到产物收据，没能解析出计划内容。",
+      "",
+      "## 证据",
+      trimForUser(fallbackStdout),
+      "",
+      "## 下一步",
+      "请在 Inspector 或 Evidence Explorer 查看原始产物后重试。"
+    ].join("\n");
+  }
+  const goal = firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, "已生成一份结构化计划。");
+  const requirements = Array.isArray(goalSpec.expanded_requirements) ? goalSpec.expanded_requirements.length : 0;
+  const warnings = Array.isArray(taskEval.issues) ? taskEval.issues.filter((issue) => issue.severity !== "error") : [];
+  const recommendations = Array.isArray(taskEval.recommendations) ? taskEval.recommendations : [];
+  const taskLines = tasks.slice(0, 5).map((task, index) => {
+    const title = firstRuntimeText(task.title, task.task_id, `Task ${index + 1}`);
+    const acceptance = Array.isArray(task.acceptance) ? task.acceptance.length : 0;
+    return `- ${title}${acceptance ? ` (${acceptance} acceptance checks)` : ""}`;
+  });
+  const riskLines = [
+    ...warnings.slice(0, 3).map((issue) => `- ${firstRuntimeText(issue.message, issue.code)}`),
+    ...recommendations.slice(0, 3).map((item) => `- ${item}`)
+  ];
+  return [
+    "## 结果",
+    `已生成计划 run ${runId}。这不是一次实现完成记录，而是一份可执行计划：${goal}`,
+    "",
+    "## 计划内容",
+    taskLines.length ? taskLines.join("\n") : "- 未生成可展示的任务条目。",
+    "",
+    "## 质量判断",
+    firstRuntimeText(taskEval.summary, `共 ${tasks.length} 个任务，${requirements} 条需求。`),
+    "",
+    "## 风险与修正",
+    riskLines.length ? [...new Set(riskLines)].join("\n") : "- 暂无明确阻断项；执行前仍应核对写入范围和验证命令。",
+    "",
+    "## 下一步",
+    nextPlanAction(tasks, taskEval, costReport)
+  ].join("\n");
+}
+
+function nextPlanAction(tasks, taskEval, costReport) {
+  const status = String(taskEval.status || "").toLowerCase();
+  const modelCalls = costReport.model_calls ?? costReport.total_model_calls;
+  if (status === "warn") return "先把过大的任务拆成 3-5 个可独立验证的实现切片，再进入 run。模型调用和成本证据已记录在 Evidence Explorer。";
+  if (tasks.length > 1) return `可以选择第一个切片进入 run，继续使用受控限制。${modelCalls != null ? `本次计划用了 ${modelCalls} 次模型调用。` : ""}`;
+  return "可以直接要求执行该计划，或先调整范围、验收标准和风险边界。";
+}
+
+function extractRunId(text) {
+  return String(text || "").match(/\brun-\d{8}-\d{4}\b/)?.[0] || null;
+}
+
+function runArtifactRefs(runId) {
+  if (!runId) return [];
+  return [
+    path.join(workspace, ".asteria", "runs", runId, "goal_spec.json"),
+    path.join(workspace, ".asteria", "runs", runId, "task_plan.json"),
+    path.join(workspace, ".asteria", "runs", runId, "task_plan_eval.json"),
+    path.join(workspace, ".asteria", "runs", runId, "cost_report.json")
+  ];
+}
+
+function firstRuntimeText(...items) {
+  for (const item of items) {
+    const text = String(item ?? "").trim();
+    if (text) return text;
+  }
+  return "";
 }
 
 function trimForUser(text) {
@@ -438,13 +521,22 @@ async function readSessionEvents(sessionId) {
   if (!isSafeId(sessionId)) return [];
   const file = sessionPath(sessionId, "events.jsonl");
   if (!existsSync(file)) return [];
-  return (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => {
+  const events = (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => {
     try {
       return redact(JSON.parse(line));
     } catch {
       return { type: "raw", content_delta: redactText(line) };
     }
   });
+  for (const event of events) {
+    if (event.type !== "final_answer") continue;
+    const runId = extractRunId(event.content_delta);
+    if (!runId) continue;
+    event.content_delta = await planFinalTextForRun(runId, event.content_delta);
+    event.summary = "已从 runtime 产物提炼为用户可读结论。";
+    event.artifact_refs = [...(event.artifact_refs || []), ...runArtifactRefs(runId)];
+  }
+  return events;
 }
 
 function sessionPath(sessionId, file = "") {

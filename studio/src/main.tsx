@@ -422,7 +422,7 @@ function Thread({ events, selected, onSelect }: { events: StudioEvent[]; selecte
       {narrative.steps.map((step) => (
         <NarrativeStepCard step={step} selected={selected} key={step.id} onSelect={onSelect} />
       ))}
-      {(narrative.report.status === "completed" || narrative.report.status === "failed") && <RunReport narrative={narrative} />}
+      {(narrative.report.status === "completed" || narrative.report.status === "failed") && <RunReportV2 narrative={narrative} />}
     </section>
   );
 }
@@ -488,6 +488,7 @@ function NarrativeStepCard({
 
 function RunReport({ narrative }: { narrative: RunNarrative }) {
   const [open, setOpen] = useState(false);
+  const conclusionLabel = /已生成计划|Task plan quality|可执行计划/.test(narrative.report.finalText) ? "Plan conclusion" : "Result";
   return (
     <section className={`runReport ${narrative.report.status}`}>
       <button className="reportHeader" onClick={() => setOpen(!open)}>
@@ -507,12 +508,90 @@ function RunReport({ narrative }: { narrative: RunNarrative }) {
       {open && (
         <div className="reportBody">
           <p><strong>Goal</strong> {narrative.report.goal || "No explicit user goal captured."}</p>
-          <p><strong>Result</strong> {narrative.report.finalText || narrative.report.headline}</p>
+          <p><strong>{conclusionLabel}</strong> {narrative.report.finalText || narrative.report.headline}</p>
           <p><strong>Process</strong> {narrative.steps.map((step) => step.label).join(" -> ")}</p>
         </div>
       )}
     </section>
   );
+}
+
+function RunReportV2({ narrative }: { narrative: RunNarrative }) {
+  const [open, setOpen] = useState(true);
+  const sections = useMemo(() => parseReportSections(narrative.report.finalText), [narrative.report.finalText]);
+  const process = summarizeProcess(narrative.steps);
+  const outcome = firstText(sections["结果"], sections.Result, narrative.report.finalText, narrative.report.headline);
+  const plan = firstText(sections["计划内容"], sections.Plan);
+  const quality = firstText(sections["质量判断"], sections.Validation, sections["验证"]);
+  const risks = firstText(sections["风险与修正"], sections.Risks, sections["风险"]);
+  const next = firstText(sections["下一步"], sections.Next);
+  return (
+    <section className={`runReport ${narrative.report.status}`}>
+      <button className="reportHeader" onClick={() => setOpen(!open)}>
+        <CheckCircle2 size={16} />
+        <span>
+          <strong>Run Report</strong>
+          <small>{narrative.report.headline}</small>
+        </span>
+        {open ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+      </button>
+      <div className="reportGrid">
+        <Metric label="Model" value={String(narrative.report.modelEvents)} tone="warn" />
+        <Metric label="Tool" value={String(narrative.report.toolEvents)} tone="warn" />
+        <Metric label="Artifacts" value={String(narrative.report.artifactRefs)} tone="good" />
+        <Metric label="Evidence" value={String(narrative.report.evidenceRefs)} tone="good" />
+      </div>
+      {open && (
+        <div className="reportBody">
+          <div className="reportLead">
+            <span>目标</span>
+            <p>{narrative.report.goal || "No explicit user goal captured."}</p>
+          </div>
+          <ReportSection title="结论" text={outcome} tone="outcome" />
+          <div className="reportSection">
+            <span>过程</span>
+            <ol>
+              {process.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ol>
+          </div>
+          {plan && <ReportSection title="产物" text={plan} />}
+          <div className="reportSection">
+            <span>证据</span>
+            <p>
+              记录了 {narrative.report.modelEvents} 个模型事件、{narrative.report.toolEvents} 个工具事件、{narrative.report.artifactRefs} 个产物引用和 {narrative.report.evidenceRefs} 个证据引用。
+            </p>
+          </div>
+          {(quality || risks) && <ReportSection title="验证与风险" text={[quality, risks].filter(Boolean).join("\n")} />}
+          {next && <ReportSection title="下一步" text={next} tone="next" />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ReportSection({ title, text, tone = "" }: { title: string; text: string; tone?: string }) {
+  return (
+    <div className={`reportSection ${tone}`}>
+      <span>{title}</span>
+      <ReportText text={text} />
+    </div>
+  );
+}
+
+function ReportText({ text }: { text: string }) {
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (lines.length > 1) {
+    return (
+      <ul>
+        {lines.map((line) => (
+          <li key={line}>{line.replace(/^-\s*/, "")}</li>
+        ))}
+      </ul>
+    );
+  }
+  return <p>{text}</p>;
 }
 
 function EventCard({ event, selected, onSelect, compact = false }: { event: StudioEvent; selected: boolean; onSelect: () => void; compact?: boolean }) {
@@ -905,6 +984,7 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent) {
   if (kind === "goal") return "User Goal";
+  if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "Structured Generation";
   if (kind === "thinking") return "Thinking";
   if (kind === "plan") return "Plan";
   if (kind === "tool") return event.command?.length ? "Tool Call" : "Action";
@@ -936,6 +1016,33 @@ function mergeStatus(current: StudioEvent["status"], next: StudioEvent["status"]
 
 function countRefs(events: StudioEvent[], key: "evidence_refs" | "artifact_refs") {
   return events.reduce((count, event) => count + (event[key]?.length ?? 0), 0);
+}
+
+function parseReportSections(text: string) {
+  const sections: Record<string, string> = {};
+  let current = "Result";
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const heading = rawLine.match(/^##\s+(.+?)\s*$/);
+    if (heading) {
+      current = heading[1].trim();
+      sections[current] = "";
+      continue;
+    }
+    sections[current] = [sections[current], rawLine].filter(Boolean).join("\n").trim();
+  }
+  return sections;
+}
+
+function summarizeProcess(steps: NarrativeStep[]) {
+  const labels = new Set(steps.map((step) => step.label));
+  const items: string[] = [];
+  if (labels.has("User Goal")) items.push("接收用户目标，并把它固定为本次 run 的任务契约。");
+  if (labels.has("Thinking") || labels.has("Structured Generation")) items.push("接收模型输出，把结构化生成归入规划过程，而不是混进工具日志。");
+  if (labels.has("Plan")) items.push("生成任务计划，包含验收条件、运行约束和执行边界。");
+  if (labels.has("Tool Call") || labels.has("Action")) items.push("调用本地 runtime 命令，并把原始命令输出留在 Inspector 证据链中。");
+  if (labels.has("Verification")) items.push("收集验证或审查信号，用于判断结果是否可信。");
+  if (labels.has("Final Answer")) items.push("将过程折叠成最终报告，明确结论、证据、风险和下一步。");
+  return items.length ? items : steps.map((step) => `${step.label}: ${step.summary}`).slice(0, 6);
 }
 
 function phaseLabel(phase: StudioEvent["phase"], fallback: string) {
