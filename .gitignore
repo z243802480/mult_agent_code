@@ -7,6 +7,8 @@
 htmlcov/
 build/
 dist/
+studio/dist/
+studio/node_modules/
 *.egg-info/
 .asteria/
 .agent/

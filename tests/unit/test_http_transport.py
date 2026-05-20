@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from asteria_runtime.models.http_transport import HttpTransport, HttpTransportError
@@ -70,3 +72,36 @@ def test_http_transport_parses_openai_style_stream(monkeypatch: pytest.MonkeyPat
     assert response.telemetry.requested is True
     assert response.telemetry.chunk_count == 2
     assert response.telemetry.idle_timeout_ms == 2000
+
+
+def test_http_transport_stream_writes_studio_model_events(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    def fake_urlopen(request: object, timeout: int) -> FakeStreamResponse:
+        return FakeStreamResponse()
+
+    event_file = tmp_path / "events.jsonl"
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    monkeypatch.setenv("ASTERIA_STUDIO_EVENT_SINK", str(event_file))
+    monkeypatch.setenv("ASTERIA_STUDIO_SESSION_ID", "session-test")
+
+    HttpTransport().post_json_stream(
+        "https://api.minimax.io/v1/chat/completions",
+        headers={},
+        payload={"stream": True, "model": "MiniMax-M2.7"},
+        timeout_seconds=5,
+        idle_timeout_seconds=2,
+        deadline_seconds=5,
+    )
+
+    events = [json.loads(line) for line in event_file.read_text(encoding="utf-8").splitlines()]
+    assert [event["type"] for event in events] == [
+        "model_start",
+        "model_delta",
+        "model_delta",
+        "model_end",
+    ]
+    assert "".join(event.get("content_delta", "") for event in events) == '{"ok": true}'
+    assert events[0]["model_provider"] == "minimax"
+    assert events[-1]["telemetry"]["chunk_count"] == 2
