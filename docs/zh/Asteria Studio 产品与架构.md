@@ -20,6 +20,8 @@ Studio 不负责：
 
 Studio 的原则是：视图层轻，runtime 可信。所有关键判断仍来自 runtime 命令和证据文件。
 
+竞品调研与展示设计维护在 [Asteria Studio 竞品调研与展示设计.md](./Asteria%20Studio%20竞品调研与展示设计.md)。当前展示方向从普通聊天页收敛为“任务驾驶舱 + 证据 Inspector”：第一屏优先回答 gate/route/runtime 是否可用，主线程承载任务 phase 和用户反馈，右侧承载 evidence、artifact、telemetry 和文件预览。
+
 ## 2. Agent Workspace
 
 上一版 Studio 偏后台 dashboard，Conversation 被放在侧栏，只能问证据，不能承担“用户如何使用智能体”的入口。现在主界面修正为 Agent Workspace：

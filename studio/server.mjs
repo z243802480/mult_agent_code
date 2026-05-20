@@ -85,6 +85,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await overview());
     return;
   }
+  if (request.method === "GET" && url.pathname.match(/^\/api\/runs\/[^/]+$/)) {
+    const runId = decodeURIComponent(url.pathname.split("/").pop() || "");
+    sendJson(response, 200, await readRunDetail(runId));
+    return;
+  }
   sendJson(response, 404, { ok: false, error: "not found" });
 }
 
@@ -487,6 +492,50 @@ async function readRuns() {
     runs.push(redact({ run_id: entry.name, ...(await readJson(path.join(runDir, "run.json"))), cost_report: await readJson(path.join(runDir, "cost_report.json")) }));
   }
   return runs.sort((a, b) => String(b.run_id).localeCompare(String(a.run_id)));
+}
+
+async function readRunDetail(runId) {
+  if (!isSafeId(runId)) return { ok: false, error: "invalid run id" };
+  const runsDir = path.join(workspace, ".asteria", "runs");
+  const runDir = path.resolve(runsDir, runId);
+  if (!runDir.startsWith(runsDir) || !existsSync(runDir)) return { ok: false, error: "run not found" };
+  const jsonFiles = {
+    run: "run.json",
+    cost_report: "cost_report.json",
+    goal_spec: "goal_spec.json",
+    task_plan: "task_plan.json",
+    task_plan_eval: "task_plan_eval.json",
+    agent_run_graph: "agent_run_graph.json"
+  };
+  const payload = { ok: true, run_id: runId };
+  for (const [key, file] of Object.entries(jsonFiles)) {
+    payload[key] = redact(await readJson(path.join(runDir, file)));
+  }
+  payload.model_calls = redact(await readJsonlTail(path.join(runDir, "model_calls.jsonl"), 120));
+  payload.task_execution_evidence = redact(await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 80));
+  payload.worker_results = redact(await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80));
+  payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
+  payload.events = redact(await readJsonlTail(path.join(runDir, "events.jsonl"), 120));
+  payload.files = await listRunEvidenceFiles(runDir, runId);
+  return redact(payload);
+}
+
+async function listRunEvidenceFiles(runDir, runId) {
+  let entries = [];
+  try {
+    entries = await fs.readdir(runDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile()) continue;
+    const relative = `.asteria/runs/${runId}/${entry.name}`;
+    if (!isSafeWorkspacePath(relative) || !isPreviewableFile(relative)) continue;
+    const stat = await fs.stat(path.join(runDir, entry.name));
+    files.push({ path: relative, size: stat.size, modified_at: stat.mtime.toISOString() });
+  }
+  return files.sort((a, b) => String(a.path).localeCompare(String(b.path)));
 }
 
 async function modelRouteSummary() {
