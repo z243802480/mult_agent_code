@@ -381,6 +381,116 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     }
 
 
+def test_gate_status_uses_latest_gray_acceptance_summary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_release_routes(monkeypatch)
+    gate_dir = tmp_path / ".asteria" / "model"
+    gate_dir.mkdir(parents=True)
+    (gate_dir / "real_model_gate_report.json").write_text(
+        json.dumps({"ok": True}),
+        encoding="utf-8",
+    )
+    verification_dir = tmp_path / ".asteria" / "verification"
+    verification_dir.mkdir(parents=True)
+    stale = verification_dir / "real_model_acceptance_gray.json"
+    fresh = verification_dir / "real_model_acceptance_gray_after_fix.json"
+    stale.write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "suite": "gray",
+                "gray_ready": False,
+                "aggregate": {"total": 7, "passed": 3, "failed": 4},
+            }
+        ),
+        encoding="utf-8",
+    )
+    fresh.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "suite": "gray",
+                "gray_ready": True,
+                "aggregate": {
+                    "total": 7,
+                    "passed": 7,
+                    "failed": 0,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps({"ok": True, "suite": "core", "aggregate": {"total": 10, "passed": 10}}),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["gates"]["gray_suite"]["passed"] == 7
+    assert payload["evidence_sources"]["gray_suite"].endswith(
+        "real_model_acceptance_gray_after_fix.json"
+    )
+
+
+def test_gate_status_prefers_passing_canonical_gray_summary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_release_routes(monkeypatch)
+    gate_dir = tmp_path / ".asteria" / "model"
+    gate_dir.mkdir(parents=True)
+    (gate_dir / "real_model_gate_report.json").write_text(
+        json.dumps({"ok": True}),
+        encoding="utf-8",
+    )
+    verification_dir = tmp_path / ".asteria" / "verification"
+    verification_dir.mkdir(parents=True)
+    (verification_dir / "real_model_acceptance_gray.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "suite": "gray",
+                "gray_ready": True,
+                "aggregate": {
+                    "total": 7,
+                    "passed": 7,
+                    "failed": 0,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (verification_dir / "real_model_acceptance_gray_named_history.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "suite": "gray",
+                "gray_ready": True,
+                "aggregate": {
+                    "total": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps({"ok": True, "suite": "core", "aggregate": {"total": 10, "passed": 10}}),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["gates"]["gray_suite"]["total"] == 7
+    assert payload["evidence_sources"]["gray_suite"].endswith("real_model_acceptance_gray.json")
+
+
 def test_gate_status_blocks_release_when_current_routes_are_missing(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
+from asteria_runtime.models.local_route_config import any_local_route_value, local_route_value
 
 
 OFFLINE_PROVIDERS = {"fake", "offline"}
@@ -438,12 +439,19 @@ def route_provider(tier: str) -> str:
 
 
 def route_env(tier: str, key: str, *, fallback: bool = True) -> str:
-    value = os.getenv(f"AGENT_MODEL_{tier.upper()}_{key}")
+    tier_name = f"AGENT_MODEL_{tier.upper()}"
+    value = os.getenv(f"{tier_name}_{key}")
     if value is not None:
+        return value
+    value = local_route_value(tier_name, key)
+    if value:
         return value
     if not fallback:
         return ""
-    return os.getenv(f"AGENT_MODEL_{key}", "")
+    value = os.getenv(f"AGENT_MODEL_{key}")
+    if value is not None:
+        return value
+    return local_route_value("AGENT_MODEL", key)
 
 
 def _require_route_key(tier: str) -> None:
@@ -459,6 +467,8 @@ def _require_route_key(tier: str) -> None:
         "minimax": ("MINIMAX_API_KEY", "MINIMAX_CN_API_KEY"),
     }.get(provider, ())
     if any(os.getenv(name) for name in extra_names):
+        return
+    if any_local_route_value(extra_names):
         return
     raise GateFailure(f"AGENT_MODEL_{tier.upper()}_API_KEY is required for {provider}.")
 

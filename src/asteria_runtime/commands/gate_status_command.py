@@ -30,6 +30,7 @@ class GateStatusResult:
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     feature_flags: dict[str, Any] = field(default_factory=dict)
     capability_flags: dict[str, Any] = field(default_factory=dict)
+    evidence_sources: dict[str, str] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -57,6 +58,7 @@ class GateStatusResult:
             "plugin_risks": self.plugin_risks,
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
+            "evidence_sources": self.evidence_sources,
             "gray_task_limits": _gray_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
@@ -120,6 +122,10 @@ class GateStatusResult:
         if self.capability_flags:
             available = [n for n, v in self.capability_flags.items() if v.get("available")]
             lines.append(f"Capabilities: {len(available)} available of {len(self.capability_flags)}")
+        if self.evidence_sources:
+            lines.append("Evidence sources:")
+            for name, source in sorted(self.evidence_sources.items()):
+                lines.append(f"  - {name}: {source}")
         if self.promotion_release_risks:
             lines.append(
                 "Promotion risks: "
@@ -174,13 +180,14 @@ class GateStatusCommand:
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> GateStatusResult:
-        gate = self._read_json(self.root / ".asteria" / "model" / "real_model_gate_report.json")
-        gray = self._read_json(
-            self.root / ".asteria" / "verification" / "real_model_acceptance_gray.json"
-        )
-        core = self._read_json(
-            self.root / ".asteria" / "verification" / "real_model_acceptance_core.json"
-        ) or self._read_json(self.root / ".asteria" / "acceptance" / "acceptance_report.json")
+        gate_path = self.root / ".asteria" / "model" / "real_model_gate_report.json"
+        gate = self._read_json(gate_path)
+        gray, gray_path = self._latest_acceptance_report("gray")
+        core, core_path = self._latest_acceptance_report("core")
+        if not core:
+            fallback_core_path = self.root / ".asteria" / "acceptance" / "acceptance_report.json"
+            core = self._read_json(fallback_core_path)
+            core_path = fallback_core_path if core else None
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
@@ -247,6 +254,11 @@ class GateStatusCommand:
             validation_recommendation=_validation_recommendation(self.root),
             feature_flags=feature_flags,
             capability_flags=capability_flags,
+            evidence_sources=_evidence_sources(
+                gate_path if gate else None,
+                gray_path,
+                core_path,
+            ),
             next_actions=actions,
         )
 
@@ -308,6 +320,28 @@ class GateStatusCommand:
         except (OSError, ValueError):
             return {}
 
+    def _latest_acceptance_report(self, suite: str) -> tuple[dict[str, Any], Path | None]:
+        verification_dir = self.root / ".asteria" / "verification"
+        if not verification_dir.exists():
+            return {}, None
+        canonical = verification_dir / f"real_model_acceptance_{suite}.json"
+        canonical_report = self._read_json(canonical)
+        if _matches_acceptance_suite(canonical_report, suite) and canonical_report.get("ok"):
+            return canonical_report, canonical
+        candidates: list[tuple[float, Path, dict[str, Any]]] = []
+        for path in verification_dir.glob(f"real_model_acceptance_{suite}*.json"):
+            report = self._read_json(path)
+            if _matches_acceptance_suite(report, suite):
+                try:
+                    modified = path.stat().st_mtime
+                except OSError:
+                    modified = 0.0
+                candidates.append((modified, path, report))
+        if not candidates:
+            return {}, None
+        _modified, path, report = max(candidates, key=lambda item: (item[0], item[1].name))
+        return report, path
+
 
 def _gray_task_limits() -> dict[str, object]:
     return {
@@ -342,6 +376,30 @@ def _provider_streaming_available(route_environment: dict[str, Any]) -> bool:
         if streaming.get("enabled") is not True:
             return False
     return True
+
+
+def _matches_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
+    if not report:
+        return False
+    report_suite = report.get("suite")
+    if report_suite is None:
+        return True
+    return str(report_suite) == suite
+
+
+def _evidence_sources(
+    gate_path: Path | None,
+    gray_path: Path | None,
+    core_path: Path | None,
+) -> dict[str, str]:
+    sources: dict[str, str] = {}
+    if gate_path is not None:
+        sources["real_model_gate"] = str(gate_path)
+    if gray_path is not None:
+        sources["gray_suite"] = str(gray_path)
+    if core_path is not None:
+        sources["core_acceptance"] = str(core_path)
+    return sources
 
 
 def _route_guidance(root: Path) -> dict[str, Any]:

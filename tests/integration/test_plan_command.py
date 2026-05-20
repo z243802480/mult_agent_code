@@ -9,7 +9,11 @@ from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 
 class FakePlanClient:
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
     def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
         return ChatResponse(
             content=json.dumps(
                 {
@@ -55,9 +59,21 @@ class FakePlanClient:
 class FailingPlanClient:
     provider = "fake"
 
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
     def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
         assert request.purpose == "goal_spec"
         raise RuntimeError("HTTP 429 rate limit")
+
+
+class TransientPlanClient(FakePlanClient):
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        if not self.requests:
+            self.requests.append(request)
+            raise RuntimeError("stream deadline exceeded")
+        return super().chat(request)
 
 
 def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> None:
@@ -93,9 +109,12 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
 
 def test_plan_command_records_model_failure_report_and_failed_run(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
+    client = FailingPlanClient()
 
     with pytest.raises(RuntimeError, match="rate_limited"):
-        PlanCommand(tmp_path, "build a local-first helper", model_client=FailingPlanClient()).run()
+        PlanCommand(tmp_path, "build a local-first helper", model_client=client).run()
+
+    assert len(client.requests) == 2
 
     report_path = tmp_path / ".asteria" / "model" / "latest_failure.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -116,3 +135,89 @@ def test_plan_command_records_model_failure_report_and_failed_run(tmp_path: Path
     assert run["status"] == "failed"
     assert run["current_phase"] == "SPEC"
     assert "Failure report:" in run["summary"]
+
+
+def test_plan_command_retries_transient_goal_spec_timeout(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    client = TransientPlanClient()
+
+    result = PlanCommand(tmp_path, "build a local-first helper", model_client=client).run()
+
+    assert result.task_count == 2
+    assert [request.model_tier for request in client.requests] == ["strong", "strong"]
+    run_dirs = sorted((tmp_path / ".asteria" / "runs").iterdir(), key=lambda item: item.name)
+    events = [
+        json.loads(line)
+        for line in (run_dirs[-1] / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(event["type"] == "model_route_retry" for event in events)
+    assert any(event["type"] == "model_route_retry_succeeded" for event in events)
+
+
+def test_plan_command_downgrades_low_risk_goal_spec_route_from_strategy(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    _write_blocked_goal_spec_profile(tmp_path)
+    client = FakePlanClient()
+
+    PlanCommand(
+        tmp_path,
+        "Update README documentation for local setup.",
+        model_client=client,
+    ).run()
+
+    assert client.requests[0].model_tier == "medium"
+    run_dirs = sorted((tmp_path / ".asteria" / "runs").iterdir(), key=lambda item: item.name)
+    events = [
+        json.loads(line)
+        for line in (run_dirs[-1] / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    route_event = next(event for event in events if event["type"] == "model_route_selected")
+    assert route_event["data"]["selected_model_tier"] == "medium"
+    assert "downgrade_low_risk_goal_spec_to_medium" in route_event["data"]["actions"]
+
+
+def _write_blocked_goal_spec_profile(root: Path) -> None:
+    model_dir = root / ".asteria" / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "capability_profile.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "root": str(root),
+                "profile_count": 1,
+                "profiles": [
+                    {
+                        "provider": "zai",
+                        "model": "glm-4.7",
+                        "purpose": "goal_spec",
+                        "model_tier": "strong",
+                        "total_calls": 5,
+                        "success_calls": 3,
+                        "failure_calls": 2,
+                        "success_rate": 0.6,
+                        "input_tokens": 10,
+                        "output_tokens": 5,
+                        "total_workers": 0,
+                        "successful_workers": 0,
+                        "failed_workers": 0,
+                        "worker_success_rate": 0.0,
+                        "validation_total": 0,
+                        "validation_passed": 0,
+                        "validation_pass_rate": 0.0,
+                        "runtime_request_total": 0,
+                        "runtime_request_rate": 0.0,
+                        "runtime_request_types": {},
+                        "merge_gate_blocks": 0,
+                        "failure_types": {"timeout": 1},
+                        "recent_failures": ["stream deadline exceeded"],
+                        "recommended_action": "keep_route",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )

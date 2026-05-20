@@ -6,6 +6,8 @@ from pathlib import Path
 from asteria_runtime.commands.gray_run_command import GrayRunCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.run_command import RunResult, RunStepSummary
+from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
 
@@ -43,6 +45,59 @@ def test_gray_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatch) -> 
     assert summary["preflight"]["gate_status"]["stage"] == "ready_for_small_real_task_gray"
     assert summary["route_expectations"]["planning_coordinator"] == "strong"
     assert summary["route_expectations"]["worker"] == "medium"
+
+
+def test_gray_run_explains_blocked_route_guidance(
+    tmp_path: Path, monkeypatch
+) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    JsonStore(validator).write(
+        tmp_path / ".asteria" / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "runtime",
+                    "model": "medium-route",
+                    "purpose": "coding",
+                    "model_tier": "medium",
+                    "total_calls": 2,
+                    "success_calls": 0,
+                    "failure_calls": 2,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    result = GrayRunCommand(tmp_path, dry_run=True).run()
+
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    assert result.status == "blocked"
+    assert summary["preflight"]["gate_status"]["stage"] == "route_guidance_blocked"
+    assert any("route guidance" in action for action in summary["next_actions"])
 
 
 def test_gray_run_executes_small_task_and_collects_route_evidence(

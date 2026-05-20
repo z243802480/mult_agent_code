@@ -16,6 +16,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     status_args = parser.parse_args(["/status", "--root", ".", "--json"])
     doctor_args = parser.parse_args(["/doctor", "--root", ".", "--json"])
     gate_status_args = parser.parse_args(["/gate-status", "--root", ".", "--json"])
+    gate_args = parser.parse_args(["/gate", "--root", ".", "--json"])
     real_model_gate_args = parser.parse_args(
         ["/real-model-gate", "--root", ".", "--summary-json", "gate.json", "--allow-fake"]
     )
@@ -52,6 +53,17 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     )
     model_check_args = parser.parse_args(
         ["/model-check", "--root", ".", "--tier", "strong", "--json"]
+    )
+    gray_args = parser.parse_args(
+        [
+            "/gray",
+            "Create a small probe",
+            "--root",
+            ".",
+            "--summary-json",
+            "gray-plan.json",
+            "--json",
+        ]
     )
     runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(
@@ -131,6 +143,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     capability_report_args = parser.parse_args(
         ["/capability-report", "--root", ".", "--limit", "5"]
     )
+    evidence_bundle_args = parser.parse_args(
+        ["/evidence-bundle", "--root", ".", "--max-runs", "3", "--json"]
+    )
     weekly_report_args = parser.parse_args(
         ["/weekly-report", "--root", ".", "--week-id", "2026-W20", "--limit", "4"]
     )
@@ -183,6 +198,8 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert doctor_args.json
     assert gate_status_args.command == "/gate-status"
     assert gate_status_args.json
+    assert gate_args.command == "/gate"
+    assert gate_args.json
     assert real_model_gate_args.command == "/real-model-gate"
     assert real_model_gate_args.allow_fake
     assert real_model_acceptance_args.command == "/real-model-acceptance"
@@ -194,6 +211,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert gray_run_args.max_iterations == 2
     assert gray_run_args.summary_json.as_posix() == "gray.json"
     assert gray_run_args.json
+    assert gray_args.command == "/gray"
+    assert gray_args.goal == "Create a small probe"
+    assert gray_args.summary_json.as_posix() == "gray-plan.json"
+    assert gray_args.json
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json
@@ -238,6 +259,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert acceptance_gate_args.no_require_runtime_os
     assert capability_report_args.command == "/capability-report"
     assert capability_report_args.limit == 5
+    assert evidence_bundle_args.command == "/evidence-bundle"
+    assert evidence_bundle_args.max_runs == 3
+    assert evidence_bundle_args.json
     assert weekly_report_args.command == "/weekly-report"
     assert weekly_report_args.week_id == "2026-W20"
     assert weekly_report_args.limit == 4

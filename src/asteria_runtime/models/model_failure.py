@@ -144,7 +144,7 @@ def classify_model_failure(message: str) -> str:
         return "authentication"
     if "429" in normalized or "rate limit" in normalized or "too many requests" in normalized:
         return "rate_limited"
-    if "timeout" in normalized or "timed out" in normalized:
+    if "timeout" in normalized or "timed out" in normalized or "deadline exceeded" in normalized:
         return "timeout"
     if "tls" in normalized or "ssl" in normalized or "eof" in normalized:
         return "network"

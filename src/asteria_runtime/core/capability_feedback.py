@@ -35,6 +35,38 @@ class CapabilityFeedbackAdvisor:
             "recommended_actions": self._route_actions(blocking, review, strategy),
         }
 
+    def goal_spec_execution_plan(self, agent_dir: Path, goal: str) -> dict[str, Any]:
+        evaluation = self._provider_route_strategy_evaluation(agent_dir)
+        decision = str(evaluation.get("decision") or "unknown")
+        low_risk = _is_low_risk_goal_spec_goal(goal)
+        plan: dict[str, Any] = {
+            "purpose": "goal_spec",
+            "default_model_tier": "strong",
+            "selected_model_tier": "strong",
+            "decision": decision,
+            "low_risk_goal": low_risk,
+            "reason": str(evaluation.get("reason") or ""),
+            "provider_route_strategy": evaluation,
+            "actions": [],
+        }
+        if decision == "retry_or_downgrade":
+            plan["actions"].append("retry_strong_goal_spec_once_before_downgrade")
+            if low_risk:
+                plan["selected_model_tier"] = "medium"
+                plan["actions"].append("downgrade_low_risk_goal_spec_to_medium")
+        elif decision == "block_gray":
+            plan["actions"].append("block_gray_until_strong_goal_spec_stable")
+            if low_risk and not _hard_provider_failure(evaluation):
+                plan["selected_model_tier"] = "medium"
+                plan["actions"].append("downgrade_low_risk_goal_spec_to_medium")
+        elif decision == "allow_cost_saver":
+            plan["actions"].append("allow_cost_saver_strong_goal_spec_for_small_gray")
+        elif decision == "continue_primary":
+            plan["actions"].append("continue_primary_strong_goal_spec")
+        else:
+            plan["actions"].append("collect_goal_spec_route_evidence")
+        return plan
+
     def _actionable_hints(self, agent_dir: Path) -> list[dict]:
         profile_path = agent_dir / "model" / "capability_profile.json"
         if not profile_path.exists():
@@ -243,3 +275,40 @@ class CapabilityFeedbackAdvisor:
         route_strategy = route_strategy if isinstance(route_strategy, dict) else {}
         strategy = route_strategy.get("strong_goal_spec")
         return strategy if isinstance(strategy, dict) else {}
+
+
+def _hard_provider_failure(evaluation: dict[str, Any]) -> bool:
+    reason = str(evaluation.get("reason") or "").lower()
+    return "authentication" in reason or "budget" in reason
+
+
+def _is_low_risk_goal_spec_goal(goal: str) -> bool:
+    text = goal.lower()
+    doc_signals = (
+        "doc",
+        "docs",
+        "documentation",
+        "readme",
+        "markdown",
+        "runbook",
+        "说明",
+        "文档",
+        "手册",
+    )
+    code_signals = (
+        "src/",
+        "test",
+        "pytest",
+        "implement",
+        "refactor",
+        "fix",
+        "cli",
+        "api",
+        "代码",
+        "实现",
+        "修复",
+        "重构",
+    )
+    return any(signal in text for signal in doc_signals) and not any(
+        signal in text for signal in code_signals
+    )

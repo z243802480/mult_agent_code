@@ -25,7 +25,10 @@ from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
+from asteria_runtime.commands.evidence_bundle_command import EvidenceBundleCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.gate_command import GateCommand
+from asteria_runtime.commands.gray_command import GrayCommand
 from asteria_runtime.commands.gray_run_command import GrayRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
@@ -188,6 +191,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable JSON",
     )
 
+    gate_parser = subcommands.add_parser(
+        "gate",
+        aliases=["/gate"],
+        help="Run read-only staged rollout checks for package, doctor, and gate status",
+    )
+    gate_parser.add_argument("--root", default=".", help="Workspace root path")
+    gate_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
+
     real_model_smoke_parser = subcommands.add_parser(
         "real-model-smoke",
         aliases=["/real-model-smoke"],
@@ -287,6 +302,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the gray-run summary to this JSON path",
     )
     gray_run_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
+
+    gray_parser = subcommands.add_parser(
+        "gray",
+        aliases=["/gray"],
+        help="Prepare a dry-run gray validation plan without changing candidate writes",
+    )
+    gray_parser.add_argument(
+        "goal",
+        nargs="?",
+        default=None,
+        help="Small real-task goal; defaults to the gray artifact probe",
+    )
+    gray_parser.add_argument("--root", default=".", help="Workspace root path")
+    gray_parser.add_argument(
+        "--summary-json",
+        type=Path,
+        default=None,
+        help="Write the gray dry-run summary to this JSON path",
+    )
+    gray_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
@@ -851,6 +890,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="Maximum acceptance history entries to include",
     )
+    evidence_bundle_parser = subcommands.add_parser(
+        "evidence-bundle",
+        aliases=["/evidence-bundle", "diagnostic-bundle", "/diagnostic-bundle"],
+        help="Export a redacted post-run evidence bundle for dogfooding analysis",
+    )
+    evidence_bundle_parser.add_argument("--root", default=".", help="Workspace root path")
+    evidence_bundle_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output zip path; defaults to .asteria/evidence_bundles/evidence-<timestamp>.zip",
+    )
+    evidence_bundle_parser.add_argument(
+        "--max-runs",
+        type=int,
+        default=12,
+        help="Maximum recent run directories to include",
+    )
+    evidence_bundle_parser.add_argument("--json", action="store_true", help="Print JSON")
+    evidence_bundle_parser.add_argument(
+        "--no-events",
+        action="store_true",
+        help="Skip events.jsonl tails from run evidence",
+    )
+    evidence_bundle_parser.add_argument(
+        "--no-model-calls",
+        action="store_true",
+        help="Skip model_calls.jsonl tails from run evidence",
+    )
     weekly_report_parser = subcommands.add_parser(
         "weekly-report",
         aliases=["/weekly-report", "production-report", "/production-report"],
@@ -1029,6 +1097,16 @@ def main() -> None:
             print(gate_status_result.to_text())
         return
 
+    if command == "gate":
+        gate_result = GateCommand(root=Path(args.root)).run()
+        if args.json:
+            print(json.dumps(gate_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(gate_result.to_text())
+        if gate_result.status == "blocked":
+            raise SystemExit(1)
+        return
+
     if command == "real-model-smoke":
         run_real_model_smoke(args)
         return
@@ -1055,6 +1133,20 @@ def main() -> None:
         else:
             print(gray_run_result.to_text())
         if gray_run_result.status in {"blocked", "failed"}:
+            raise SystemExit(1)
+        return
+
+    if command == "gray":
+        gray_result = GrayCommand(
+            root=Path(args.root),
+            goal=args.goal,
+            summary_json=args.summary_json,
+        ).run()
+        if args.json:
+            print(json.dumps(gray_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(gray_result.to_text())
+        if gray_result.status == "blocked":
             raise SystemExit(1)
         return
 
@@ -1295,6 +1387,22 @@ def main() -> None:
             limit=args.limit,
         ).run()
         print(capability_report_result.to_text())
+        return
+
+    if command in {"evidence-bundle", "diagnostic-bundle"}:
+        evidence_bundle_result = EvidenceBundleCommand(
+            root=Path(args.root),
+            output=args.output,
+            include_events=not args.no_events,
+            include_model_calls=not args.no_model_calls,
+            max_runs=args.max_runs,
+        ).run()
+        if args.json:
+            print(json.dumps(evidence_bundle_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(evidence_bundle_result.to_text())
+        if not evidence_bundle_result.ok:
+            raise SystemExit(1)
         return
 
     if command in {"weekly-report", "production-report"}:

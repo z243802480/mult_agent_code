@@ -17,11 +17,17 @@ class GoalSpecAgent:
     model_client: ModelClient
     validator: SchemaValidator
 
-    def generate(self, goal: str, project_context: dict, run_id: str) -> dict:
+    def generate(
+        self,
+        goal: str,
+        project_context: dict,
+        run_id: str,
+        model_tier: str = "strong",
+    ) -> dict:
         parse_error: GoalSpecError | None = None
         request = ChatRequest(
             purpose="goal_spec",
-            model_tier="strong",
+            model_tier=model_tier,
             messages=[
                 ChatMessage(role="system", content=self._system_prompt()),
                 ChatMessage(role="user", content=self._user_prompt(goal, project_context)),

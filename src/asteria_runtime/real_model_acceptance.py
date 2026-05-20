@@ -414,6 +414,7 @@ def main(argv: list[str] | None = None) -> None:
 def run_from_args(args: argparse.Namespace) -> None:
     root, cleanup = prepare_root(args.root)
     results: list[dict[str, Any]] = []
+    summary_paths = summary_output_paths(args, root)
     try:
         selected = select_scenarios(args)
         for scenario in selected:
@@ -432,7 +433,7 @@ def run_from_args(args: argparse.Namespace) -> None:
             "gray_ready": gray_ready(args.suite, aggregate),
         }
         attach_history(args.history_jsonl, summary)
-        write_summary(args.summary_json, summary)
+        write_summary_paths(summary_paths, summary)
         if not summary["ok"]:
             failed = [result["scenario"] for result in results if not result["ok"]]
             raise AcceptanceFailure("Scenario(s) failed: " + ", ".join(failed))
@@ -441,8 +442,8 @@ def run_from_args(args: argparse.Namespace) -> None:
         print("Scenarios: " + ", ".join(result["scenario"] for result in results))
     except Exception as exc:  # noqa: BLE001 - diagnostic script boundary
         if results:
-            write_summary(
-                args.summary_json,
+            write_summary_paths(
+                summary_paths,
                 {
                     "ok": False,
                     "root": str(root),
@@ -532,6 +533,17 @@ def prepare_root(root: Path | None) -> tuple[Path, bool]:
         resolved.mkdir(parents=True, exist_ok=True)
         return resolved, False
     return Path(tempfile.mkdtemp(prefix="agent-real-acceptance-")).resolve(), True
+
+
+def summary_output_paths(args: argparse.Namespace, root: Path) -> list[Path]:
+    paths: list[Path] = []
+    if args.summary_json is not None:
+        paths.append(args.summary_json.resolve())
+    if not args.scenario:
+        canonical = root / ".asteria" / "verification" / f"real_model_acceptance_{args.suite}.json"
+        if canonical not in paths:
+            paths.append(canonical)
+    return paths
 
 
 def run_scenario(
@@ -1268,6 +1280,11 @@ def write_summary(path: Path | None, summary: dict[str, Any]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def write_summary_paths(paths: list[Path], summary: dict[str, Any]) -> None:
+    for path in paths:
+        write_summary(path, summary)
 
 
 if __name__ == "__main__":

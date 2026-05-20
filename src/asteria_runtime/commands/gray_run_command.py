@@ -10,6 +10,7 @@ from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.run_command import RunCommand, RunResult
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -84,6 +85,9 @@ class GrayRunCommand:
         package = PackageCheckCommand(self.root).run().to_dict()
         doctor = DoctorCommand(self.root).run()
         gate = GateStatusCommand(self.root).run()
+        goal_spec_route_plan = CapabilityFeedbackAdvisor(
+            self.validator
+        ).goal_spec_execution_plan(self.root / ".asteria", self.goal)
         blocked_reasons = self._blocked_reasons(doctor.to_dict(), gate.to_dict())
         if blocked_reasons:
             summary = self._build_summary(
@@ -94,6 +98,7 @@ class GrayRunCommand:
                 package=package,
                 doctor=doctor.to_dict(),
                 gate=gate.to_dict(),
+                goal_spec_route_plan=goal_spec_route_plan,
                 run_result=None,
                 evidence={},
                 next_actions=blocked_reasons,
@@ -111,6 +116,7 @@ class GrayRunCommand:
                 package=package,
                 doctor=doctor.to_dict(),
                 gate=gate.to_dict(),
+                goal_spec_route_plan=goal_spec_route_plan,
                 run_result=None,
                 evidence={},
                 next_actions=actions,
@@ -138,6 +144,7 @@ class GrayRunCommand:
             package=package,
             doctor=doctor.to_dict(),
             gate=gate.to_dict(),
+            goal_spec_route_plan=goal_spec_route_plan,
             run_result=self._run_result_dict(run_result),
             evidence=evidence,
             next_actions=actions,
@@ -150,9 +157,16 @@ class GrayRunCommand:
         if doctor.get("ok") is not True:
             reasons.append("Fix `asteria doctor` error checks before gray-run.")
         if gate.get("stage") != "ready_for_small_real_task_gray":
-            reasons.append(
-                "Reach `ready_for_small_real_task_gray` via real model gate, gray suite, and core acceptance."
-            )
+            blocking_reason = gate.get("blocking_reason")
+            if blocking_reason:
+                reasons.append(str(blocking_reason))
+            else:
+                reasons.append(
+                    "Reach `ready_for_small_real_task_gray` via real model gate, gray suite, and core acceptance."
+                )
+        route_guidance = gate.get("route_guidance")
+        if isinstance(route_guidance, dict) and route_guidance.get("status") == "blocked":
+            reasons.extend(str(item) for item in route_guidance.get("recommended_actions", []))
         return reasons
 
     def _build_summary(
@@ -165,6 +179,7 @@ class GrayRunCommand:
         package: dict[str, object],
         doctor: dict[str, object],
         gate: dict[str, Any],
+        goal_spec_route_plan: dict[str, Any],
         run_result: dict[str, Any] | None,
         evidence: dict[str, Any],
         next_actions: list[str],
@@ -201,6 +216,7 @@ class GrayRunCommand:
                 "worker": "medium",
                 "strong_provider_target": "GLM 5.1 or configured strong route",
                 "medium_provider_target": "MiniMax or configured medium route",
+                "goal_spec_execution_plan": goal_spec_route_plan,
             },
             "run_id": run_result["run_id"] if run_result else None,
             "run_result": run_result,

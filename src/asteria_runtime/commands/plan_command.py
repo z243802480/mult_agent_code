@@ -6,6 +6,7 @@ from pathlib import Path
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
@@ -93,35 +94,91 @@ class PlanCommand:
             {"from": "INIT", "to": "SPEC"},
         )
         runtime_context = ContextLoader(self.root, self.validator).load()
+        goal_spec_route_plan = CapabilityFeedbackAdvisor(
+            self.validator
+        ).goal_spec_execution_plan(agent_dir, self.goal)
+        runtime_context["goal_spec_route_plan"] = goal_spec_route_plan
+        event_logger.record(
+            run["run_id"],
+            "model_route_selected",
+            "PlanCommand",
+            "Selected GoalSpec model route.",
+            goal_spec_route_plan,
+        )
 
-        try:
-            goal_spec = GoalSpecAgent(model_client, self.validator).generate(
-                self.goal,
-                project_context={
-                    "project": project_config,
-                    "runtime_context": runtime_context,
-                    "policy": {
-                        "decision_granularity": policy["decision_granularity"],
-                        "budgets": policy["budgets"],
-                        "permissions": policy["permissions"],
-                    },
-                },
-                run_id=run["run_id"],
-            )
-        except Exception as exc:  # noqa: BLE001 - plan records model-boundary diagnostics before re-raise
-            context = model_failure_context_from_client(model_client, model_tier="strong")
-            report_path, report = ModelFailureRecorder(self.root, self.validator).record(
-                provider=context.provider,
-                model_name=context.model_name,
-                base_url=context.base_url,
-                error=exc,
-            )
+        goal_spec_agent = GoalSpecAgent(model_client, self.validator)
+        goal_spec_project_context = {
+            "project": project_config,
+            "runtime_context": runtime_context,
+            "policy": {
+                "decision_granularity": policy["decision_granularity"],
+                "budgets": policy["budgets"],
+                "permissions": policy["permissions"],
+            },
+        }
+        selected_model_tier = str(goal_spec_route_plan.get("selected_model_tier") or "strong")
+        max_goal_spec_attempts = 2
+        goal_spec = None
+        last_exc: Exception | None = None
+        last_report_path: Path | None = None
+        last_report: dict | None = None
+        for attempt in range(1, max_goal_spec_attempts + 1):
+            try:
+                goal_spec = goal_spec_agent.generate(
+                    self.goal,
+                    project_context=goal_spec_project_context,
+                    run_id=run["run_id"],
+                    model_tier=selected_model_tier,
+                )
+                if attempt > 1:
+                    event_logger.record(
+                        run["run_id"],
+                        "model_route_retry_succeeded",
+                        "GoalSpecAgent",
+                        "GoalSpec model retry succeeded.",
+                        {"attempt": attempt, "model_tier": selected_model_tier},
+                    )
+                break
+            except Exception as exc:  # noqa: BLE001 - model boundary diagnostics
+                last_exc = exc
+                context = model_failure_context_from_client(
+                    model_client,
+                    model_tier=selected_model_tier,
+                )
+                last_report_path, last_report = ModelFailureRecorder(
+                    self.root, self.validator
+                ).record(
+                    provider=context.provider,
+                    model_name=context.model_name,
+                    base_url=context.base_url,
+                    error=exc,
+                )
+                retryable = bool(last_report.get("retryable"))
+                if attempt < max_goal_spec_attempts and retryable:
+                    event_logger.record(
+                        run["run_id"],
+                        "model_route_retry",
+                        "GoalSpecAgent",
+                        "Retrying GoalSpec model call after transient provider failure.",
+                        {
+                            "attempt": attempt,
+                            "next_attempt": attempt + 1,
+                            "model_tier": selected_model_tier,
+                            "failure_type": last_report["failure_type"],
+                            "failure_report": str(last_report_path),
+                        },
+                    )
+                    continue
+                break
+        if goal_spec is None:
+            report = last_report or {}
+            report_path = last_report_path or self.root / ".asteria" / "model" / "latest_failure.json"
+            failure_type = str(report.get("failure_type") or "unknown")
             run["current_phase"] = "SPEC"
             run["status"] = "failed"
             run["ended_at"] = now_iso()
             run["summary"] = (
-                f"GoalSpec model call failed with {report['failure_type']}. "
-                f"Failure report: {report_path}"
+                f"GoalSpec model call failed with {failure_type}. Failure report: {report_path}"
             )
             run_store.update_run(run)
             event_logger.record(
@@ -129,9 +186,9 @@ class PlanCommand:
                 "run_failed",
                 "GoalSpecAgent",
                 run["summary"],
-                {"failure_report": str(report_path), "failure_type": report["failure_type"]},
+                {"failure_report": str(report_path), "failure_type": failure_type},
             )
-            raise RuntimeError(run["summary"]) from exc
+            raise RuntimeError(run["summary"]) from last_exc
         goal_spec_path = run_dir / "goal_spec.json"
         self.store.write(goal_spec_path, goal_spec, "goal_spec")
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")
