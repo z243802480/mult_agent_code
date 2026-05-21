@@ -17,6 +17,14 @@ import { Thread } from "./components/Thread";
 import { Composer, type PromptSignal } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 
+function eventTimeValue(event: StudioEvent): number {
+  const value = Date.parse(String(event.created_at ?? ""));
+  if (Number.isFinite(value)) return value;
+  const sequence = Number((event as unknown as Record<string, unknown>).sequence);
+  if (Number.isFinite(sequence)) return sequence;
+  return 0;
+}
+
 export function App() {
   const [sessions, setSessions] = useState<StudioSession[]>([]);
   const [activeSession, setActiveSession] = useState<StudioSession | null>(null);
@@ -38,7 +46,7 @@ export function App() {
       const existingIds = new Set(prev.map((e) => e.event_id));
       const fresh = incoming.filter((e) => !existingIds.has(e.event_id));
       if (!fresh.length) return prev;
-      return [...prev, ...fresh].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      return [...prev, ...fresh].sort((a, b) => eventTimeValue(a) - eventTimeValue(b));
     });
   }
 

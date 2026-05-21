@@ -292,6 +292,44 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
     assert cost_report["estimated_output_tokens"] == 63
 
 
+def test_debug_command_records_repair_user_progress(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
+    ).run()
+    assert execute.blocked == 1
+
+    DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeDebugClient()).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    titles = [event["title"] for event in progress]
+    assert "Repair started" in titles
+    assert "Repair evidence loaded" in titles
+    assert "Repair action requested" in titles
+    assert "Repair action proposed" in titles
+    assert "Repair candidate workspace created" in titles
+    assert "Repair verification started" in titles
+    assert "Repair contract checked" in titles
+    assert "Repair candidate promoted" in titles
+    assert "Repair evidence recorded" in titles
+    assert any(
+        event["channel"] == "file" and event["file_changes"]
+        for event in progress
+    )
+    assert any(
+        event["channel"] == "evidence"
+        and event["phase"] == "result"
+        and event["title"] == "Repair evidence recorded"
+        for event in progress
+    )
+
+
 def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     (tmp_path / "repairable.py").write_text("VALUE = 0\n", encoding="utf-8")

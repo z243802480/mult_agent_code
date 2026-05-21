@@ -11,6 +11,7 @@ from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.task_contract import check_completion_contract
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 
 
 @dataclass(frozen=True)
@@ -52,8 +53,40 @@ class TaskAttemptRunner:
         candidate = create_candidate_workspace(context, task)
         candidate_context_value = candidate_context(context, candidate)
         self._record_candidate_created(context, task, candidate)
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title="Candidate workspace created",
+            summary=(
+                f"Created isolated candidate {candidate.candidate_id} "
+                f"with {candidate.strategy} strategy."
+            ),
+            artifact_refs=[str(candidate.manifest_path)] if candidate.manifest_path else [],
+            data={
+                "candidate_id": candidate.candidate_id,
+                "strategy": candidate.strategy,
+                "workspace_policy": candidate.workspace_policy,
+                "backend_reason": candidate.backend_reason,
+                "branch_name": candidate.branch_name,
+            },
+        )
         tool_results = run_tool_calls(action["tool_calls"], task, candidate_context_value)
         task_board.update_status(task_id, "testing")
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title="Verification started",
+            summary=f"Running {len(action['verification'])} verification call(s) for {task_id}.",
+            data={"verification_count": len(action["verification"])},
+        )
         verification_results = run_tool_calls(
             action["verification"],
             task,
@@ -67,10 +100,41 @@ class TaskAttemptRunner:
             action.get("verification") or [],
             verification_results,
         )
+        verification_passed = len([result for result in verification_results if result.ok])
+        self._record_progress(
+            context,
+            task,
+            channel="evidence",
+            event_type="evidence",
+            phase="review",
+            status="completed",
+            title="Validation results recorded",
+            summary=(
+                f"{verification_passed}/{len(verification_results)} verification call(s) passed "
+                f"for {task_id}."
+            ),
+            evidence_refs=self._run_refs(context, "validation_results.jsonl"),
+            data={
+                "validation_refs": validation_refs,
+                "verification_total": len(verification_results),
+                "verification_passed": verification_passed,
+            },
+        )
         contract_check = check_completion_contract(
             task,
             changed_files(tool_results),
             verification_results,
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="message",
+            phase="review" if contract_check.ok else "blocked",
+            status="completed" if contract_check.ok else "blocked",
+            title="Completion contract checked",
+            summary=contract_check.summary(),
+            data=contract_check.to_dict(),
         )
         if contract_check.ok:
             merge_gate = MergeGate().evaluate(
@@ -79,6 +143,17 @@ class TaskAttemptRunner:
                 verification_results,
             )
             contract_with_merge = {**contract_check.to_dict(), "merge_gate": merge_gate.to_dict()}
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="review" if merge_gate.ok else "blocked",
+                status="completed" if merge_gate.ok else "blocked",
+                title="Merge gate evaluated",
+                summary=merge_gate.summary(),
+                data=merge_gate.to_dict(),
+            )
             if not merge_gate.ok:
                 return self._block_for_merge_gate(
                     task=task,
@@ -95,6 +170,21 @@ class TaskAttemptRunner:
                     record_task_failure=record_task_failure,
                 )
             try:
+                self._record_progress(
+                    context,
+                    task,
+                    channel="progress",
+                    event_type="message",
+                    phase="execute",
+                    status="running",
+                    title="Promotion started",
+                    summary=(
+                        f"Promoting {len(merge_gate.promotable_files)} candidate file(s) "
+                        f"for {task_id}."
+                    ),
+                    file_changes=self._file_changes(merge_gate.promotable_files, "modified"),
+                    data={"promotable_files": merge_gate.promotable_files},
+                )
                 promoted_files = promote_candidate_changes(
                     context,
                     candidate,
@@ -117,6 +207,19 @@ class TaskAttemptRunner:
                     record_experiment=record_experiment,
                     record_task_failure=record_task_failure,
                 )
+            self._record_progress(
+                context,
+                task,
+                channel="file",
+                event_type="file_modified",
+                phase="execute",
+                status="completed",
+                title="Candidate promoted",
+                summary=f"Promoted {len(promoted_files)} file(s) into the workspace.",
+                file_changes=self._file_changes(promoted_files, "modified"),
+                artifact_refs=promoted_files,
+                data={"promoted_files": promoted_files},
+            )
             evidence_path = self.evidence_recorder.record(
                 context,
                 task,
@@ -154,6 +257,24 @@ class TaskAttemptRunner:
                     self.actor,
                     f"Completed {task_id}",
                 )
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="result",
+                status="completed",
+                title="Task execution evidence recorded",
+                summary=f"{task_id} completed with verified evidence.",
+                artifact_refs=promoted_files,
+                evidence_refs=[str(evidence_path)],
+                data={
+                    "task_id": task_id,
+                    "status": "done",
+                    "tool_calls": len(action["tool_calls"]),
+                    "verification_calls": len(action["verification"]),
+                },
+            )
             return TaskAttemptSummary(
                 task_id=task_id,
                 status="done",
@@ -251,6 +372,23 @@ class TaskAttemptRunner:
                 f"{task_id} pending {promotion_id}",
                 {"promotion_id": promotion_id, "candidate_id": candidate.candidate_id},
             )
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="decision",
+            phase="blocked",
+            status="waiting_user",
+            title="Promotion waiting for approval",
+            summary=reason,
+            evidence_refs=[str(evidence_path)],
+            file_changes=self._file_changes(promotion.get("promotable_files", []), "modified"),
+            data={
+                "promotion_id": promotion_id,
+                "promotable_files": promotion.get("promotable_files", []),
+                "candidate_id": candidate.candidate_id,
+            },
+        )
         return TaskAttemptSummary(
             task_id=task_id,
             status="blocked",
@@ -327,6 +465,19 @@ class TaskAttemptRunner:
                 reason,
                 {"task_id": task_id, "violations": merge_gate.violations},
             )
+        self._record_progress(
+            context,
+            task,
+            channel="evidence",
+            event_type="evidence",
+            phase="blocked",
+            status="blocked",
+            title="Merge gate blocked promotion",
+            summary=reason,
+            evidence_refs=[str(evidence_path)],
+            file_changes=self._file_changes(contract_with_merge.get("changed_files", []), "modified"),
+            data={"merge_gate": merge_gate.to_dict()},
+        )
         return TaskAttemptSummary(
             task_id=task_id,
             status="blocked",
@@ -400,6 +551,19 @@ class TaskAttemptRunner:
                 self.actor,
                 f"Blocked {task_id}",
             )
+        self._record_progress(
+            context,
+            task,
+            channel="evidence",
+            event_type="evidence",
+            phase="blocked",
+            status="blocked",
+            title="Completion contract failed",
+            summary=reason,
+            evidence_refs=[str(evidence_path)],
+            file_changes=self._file_changes(contract_check.changed_files, "modified"),
+            data=contract_check.to_dict(),
+        )
         return TaskAttemptSummary(
             task_id=task_id,
             status="blocked",
@@ -433,3 +597,55 @@ class TaskAttemptRunner:
                 "branch_name": candidate.branch_name,
             },
         )
+
+    def _progress_logger(self, context: RuntimeContext) -> UserProgressLogger | None:
+        if context.run_dir is None:
+            return None
+        return UserProgressLogger(context.run_dir / "user_progress.jsonl", context.validator)
+
+    def _record_progress(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        *,
+        channel: str,
+        event_type: str,
+        phase: str,
+        status: str,
+        title: str,
+        summary: str,
+        artifact_refs: list[str] | None = None,
+        evidence_refs: list[str] | None = None,
+        file_changes: list[dict[str, Any]] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        logger = self._progress_logger(context)
+        if logger is None:
+            return
+        logger.record(
+            run_id=context.run_id,
+            channel=channel,
+            event_type=event_type,
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            artifact_refs=artifact_refs,
+            evidence_refs=evidence_refs,
+            file_changes=file_changes,
+            call_chain=[self.actor],
+            execution_chain=[str(task.get("task_id", "")), phase],
+            data=data,
+        )
+
+    def _file_changes(self, paths: list[str], operation: str) -> list[dict[str, Any]]:
+        event_type = "file_created" if operation == "created" else "file_modified"
+        return [
+            {"path": str(path), "operation": operation, "event_type": event_type}
+            for path in paths
+        ]
+
+    def _run_refs(self, context: RuntimeContext, filename: str) -> list[str]:
+        if context.run_dir is None:
+            return []
+        return [str(context.run_dir / filename)]

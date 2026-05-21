@@ -31,6 +31,12 @@ const PHASE_LABELS: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function formatEventTime(value: unknown): string {
+  const date = new Date(String(value ?? ""));
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString();
+}
+
 function splitIntoTurns(steps: NarrativeStepType[]): NarrativeStepType[][] {
   const turns: NarrativeStepType[][] = [];
   let current: NarrativeStepType[] | null = null;
@@ -304,6 +310,7 @@ function TurnFinal({
   const isError = step.kind === "error" || step.status === "failed";
 
   const { modelId, tokens, latencyMs } = extractTelemetry(middleSteps);
+  const sections = splitFinalSections(text);
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
@@ -318,9 +325,40 @@ function TurnFinal({
           </span>
         )}
       </div>
-      <pre className="turnFinalText">{text}</pre>
+      <div className="turnFinalText">
+        {sections.map((section, index) => (
+          <section key={`${section.title}-${index}`} className={index === 0 ? "primaryFinalSection" : ""}>
+            {section.title && <h3>{section.title}</h3>}
+            {section.lines.map((line, lineIndex) => renderFinalLine(line, lineIndex))}
+          </section>
+        ))}
+      </div>
     </div>
   );
+}
+
+function splitFinalSections(text: string): { title: string; lines: string[] }[] {
+  const sections: { title: string; lines: string[] }[] = [];
+  let current: { title: string; lines: string[] } = { title: "", lines: [] };
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    const heading = raw.match(/^##\s+(.+?)\s*$/);
+    if (heading) {
+      if (current.title || current.lines.some(Boolean)) sections.push(current);
+      current = { title: heading[1].trim(), lines: [] };
+      continue;
+    }
+    current.lines.push(raw);
+  }
+  if (current.title || current.lines.some(Boolean)) sections.push(current);
+  return sections.length ? sections : [{ title: "", lines: [text] }];
+}
+
+function renderFinalLine(line: string, index: number) {
+  if (!line.trim()) return null;
+  const bullet = line.match(/^\s*-\s+(.+)$/);
+  if (bullet) return <p key={index} className="finalBullet">{bullet[1]}</p>;
+  if (/^\s{2,}\S/.test(line)) return <p key={index} className="finalDetail">{line.trim()}</p>;
+  return <p key={index}>{line}</p>;
 }
 
 // ── ConversationTurn ──────────────────────────────────────────────────────────
@@ -347,14 +385,20 @@ function ConversationTurn({
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
 
-  const lastRest = restSteps.at(-1);
-  const responseStep =
-    lastRest?.kind === "final" || lastRest?.kind === "error" ? lastRest : null;
-  const middleSteps = responseStep ? restSteps.slice(0, -1) : restSteps;
+  const responseIndex = (() => {
+    for (let index = restSteps.length - 1; index >= 0; index -= 1) {
+      if (restSteps[index].kind === "final" || restSteps[index].kind === "error") return index;
+    }
+    return -1;
+  })();
+  const responseStep = responseIndex >= 0 ? restSteps[responseIndex] : null;
+  const middleSteps = responseIndex >= 0
+    ? restSteps.filter((_, index) => index !== responseIndex)
+    : restSteps;
 
   const goalEvent = goalStep.events[0];
   const userText = goalEvent?.content_delta || goalStep.summary || goalStep.title || "";
-  const time = goalEvent ? new Date(goalEvent.created_at).toLocaleTimeString() : "";
+  const time = goalEvent ? formatEventTime(goalEvent.created_at) : "";
 
   const turnRunning = isLast && isRunning && !responseStep;
 

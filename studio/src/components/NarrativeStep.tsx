@@ -16,6 +16,12 @@ import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../types";
 import { Status } from "./Shared";
 import { EventCard } from "./EventCard";
 
+function formatEventTime(value: unknown): string {
+  const date = new Date(String(value ?? ""));
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString();
+}
+
 function stepIcon(kind: NarrativeStepType["kind"]) {
   if (kind === "goal") return <CircleDot size={14} />;
   if (kind === "thinking") return <Clock3 size={14} />;
@@ -39,7 +45,7 @@ export function NarrativeStep({
 }) {
   const [open, setOpen] = useState(step.defaultOpen);
   const primary = step.events[0];
-  const time = primary ? new Date(primary.created_at).toLocaleTimeString() : "";
+  const time = primary ? formatEventTime(primary.created_at) : "";
 
   // Goal step → compact user-message bubble, no expand
   if (step.kind === "goal") {

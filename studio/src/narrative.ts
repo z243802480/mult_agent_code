@@ -1,5 +1,13 @@
 import type { StudioEvent, NarrativeStep, RunNarrative } from "./types";
 
+function eventTime(event: StudioEvent): number {
+  const value = Date.parse(String(event.created_at ?? ""));
+  if (Number.isFinite(value)) return value;
+  const sequence = Number((event as unknown as Record<string, unknown>).sequence);
+  if (Number.isFinite(sequence)) return sequence;
+  return 0;
+}
+
 export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
   const result: StudioEvent[] = [];
   let activeModel: StudioEvent | null = null;
@@ -203,9 +211,9 @@ export function isSessionLive(events: StudioEvent[]): boolean {
   const lastFinal = [...events].reverse().find(
     (e) => e.type === "final_answer" || e.type === "error"
   );
-  const cutoff = lastFinal?.created_at;
+  const cutoff = lastFinal ? eventTime(lastFinal) : null;
   const liveEvents = cutoff
-    ? events.filter((e) => e.created_at > cutoff)
+    ? events.filter((e) => eventTime(e) > cutoff)
     : events;
   return liveEvents.some(
     (e) => e.status === "running" || e.status === "queued" || e.status === "waiting_user"

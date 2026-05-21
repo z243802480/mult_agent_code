@@ -37,6 +37,7 @@ from asteria_runtime.models.metered import MeteredModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.defaults import create_default_tool_registry
@@ -310,6 +311,20 @@ class ExecuteCommand:
             )
         task_board.update_status(task_id, "in_progress")
         try:
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="start",
+                phase="execute",
+                status="running",
+                title="Worker action requested",
+                summary=f"Asked the coder model to propose execution steps for {task_id}.",
+                data={
+                    "task_id": task_id,
+                    "available_tools": self.registry.names(),
+                },
+            )
             action = coder.propose_action(
                 task=task,
                 goal_spec=goal_spec,
@@ -319,6 +334,30 @@ class ExecuteCommand:
                 runtime_context=runtime_context,
             )
             action = self.action_preparer.prepare(action, task, context.policy)
+            tool_calls = list(action.get("tool_calls") or [])
+            verification = list(action.get("verification") or [])
+            runtime_requests = list(action.get("runtime_requests") or [])
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title="Worker action proposed",
+                summary=(
+                    f"Prepared {len(tool_calls)} tool call(s), "
+                    f"{len(verification)} verification step(s), "
+                    f"and {len(runtime_requests)} runtime request(s)."
+                ),
+                data={
+                    "task_id": task_id,
+                    "tool_call_count": len(tool_calls),
+                    "verification_count": len(verification),
+                    "runtime_request_count": len(runtime_requests),
+                    "summary": action.get("summary", ""),
+                },
+            )
             runtime_request_result = self.runtime_request_policy.handle_runtime_requests(
                 action=action,
                 task=task,
@@ -326,6 +365,7 @@ class ExecuteCommand:
                 context=context,
             )
             if runtime_request_result is not None:
+                self._record_runtime_request_progress(context, task, runtime_request_result)
                 return self._runtime_request_task_summary(runtime_request_result)
             decision = self.tool_permission_policy.create_policy_decision_if_needed(
                 action=action,
@@ -333,15 +373,31 @@ class ExecuteCommand:
                 context=context,
             )
             if decision is not None:
-                return self._blocked_task_summary(
-                    self.blocking_handler.block_for_policy_decision(
-                        context=context,
-                        task_board=task_board,
-                        task=task,
-                        action=action,
-                        decision=decision,
-                    )
+                blocked = self.blocking_handler.block_for_policy_decision(
+                    context=context,
+                    task_board=task_board,
+                    task=task,
+                    action=action,
+                    decision=decision,
                 )
+                self._record_progress(
+                    context,
+                    task,
+                    channel="progress",
+                    event_type="decision",
+                    phase="blocked",
+                    status="waiting_user",
+                    title="Tool permission decision required",
+                    summary=blocked.summary,
+                    evidence_refs=self._refs(blocked.evidence_path),
+                    data={
+                        "task_id": task_id,
+                        "decision_id": decision.get("decision_id"),
+                        "risk": decision.get("risk"),
+                        "reason": decision.get("reason"),
+                    },
+                )
+                return self._blocked_task_summary(blocked)
             attempt = self.task_attempt_runner.run(
                 task=task,
                 task_board=task_board,
@@ -394,27 +450,59 @@ class ExecuteCommand:
                 context=context,
             )
             if runtime_request_result is not None:
+                self._record_runtime_request_progress(context, task, runtime_request_result)
                 return self._runtime_request_task_summary(runtime_request_result)
-            return self._blocked_task_summary(
-                self.blocking_handler.block_for_failure(
-                    context=context,
-                    task_board=task_board,
-                    task=task,
-                    reason=str(exc),
-                    failure_type="tool_permission_denied",
-                    action=fallback_action if isinstance(fallback_action, dict) else None,
-                )
+            blocked = self.blocking_handler.block_for_failure(
+                context=context,
+                task_board=task_board,
+                task=task,
+                reason=str(exc),
+                failure_type="tool_permission_denied",
+                action=fallback_action if isinstance(fallback_action, dict) else None,
             )
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="blocked",
+                status="blocked",
+                title="Task action blocked before tools",
+                summary=str(exc),
+                evidence_refs=self._refs(blocked.evidence_path),
+                data={
+                    "task_id": task_id,
+                    "failure_type": "tool_permission_denied",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return self._blocked_task_summary(blocked)
         except Exception as exc:  # noqa: BLE001 - execution loop must persist failures
-            return self._blocked_task_summary(
-                self.blocking_handler.block_for_failure(
-                    context=context,
-                    task_board=task_board,
-                    task=task,
-                    reason=str(exc),
-                    failure_type=self._failure_type(exc),
-                )
+            failure_type = self._failure_type(exc)
+            blocked = self.blocking_handler.block_for_failure(
+                context=context,
+                task_board=task_board,
+                task=task,
+                reason=str(exc),
+                failure_type=failure_type,
             )
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="blocked",
+                status="blocked",
+                title="Task action failed before tools",
+                summary=str(exc),
+                evidence_refs=self._refs(blocked.evidence_path),
+                data={
+                    "task_id": task_id,
+                    "failure_type": failure_type,
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return self._blocked_task_summary(blocked)
 
     def _runtime_request_task_summary(
         self,
@@ -438,6 +526,67 @@ class ExecuteCommand:
             verification_calls=0,
             evidence_path=result.evidence_path,
         )
+
+    def _record_runtime_request_progress(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        result: RuntimeRequestPolicyResult,
+    ) -> None:
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="decision",
+            phase="blocked",
+            status="waiting_user",
+            title="Runtime request created",
+            summary=result.summary,
+            evidence_refs=self._refs(result.evidence_path),
+            data={
+                "task_id": result.task_id,
+                "status": result.status,
+            },
+        )
+
+    def _record_progress(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        *,
+        channel: str,
+        event_type: str,
+        phase: str,
+        status: str,
+        title: str,
+        summary: str,
+        evidence_refs: list[str] | None = None,
+        data: dict | None = None,
+    ) -> None:
+        if context.run_id is None:
+            return
+        run_dir = context.root / ".asteria" / "runs" / context.run_id
+        logger = UserProgressLogger(run_dir / "user_progress.jsonl", context.validator)
+        logger.record(
+            run_id=context.run_id,
+            channel=channel,
+            event_type=event_type,
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            evidence_refs=evidence_refs or [],
+            data={
+                "task_id": task.get("task_id"),
+                "task_title": task.get("title"),
+                **(data or {}),
+            },
+        )
+
+    def _refs(self, path: Path | None) -> list[str]:
+        if path is None:
+            return []
+        return [str(path)]
 
     def _record_task_failure(
         self,

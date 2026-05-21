@@ -401,7 +401,7 @@ async function handlePermission(sessionId, jobId, body) {
 
 /** Map user_progress channel → studio event type */
 function channelToEventType(channel, eventType) {
-  if (channel === "conclusion") return "final_answer";
+  if (channel === "conclusion") return eventType === "message" ? "assistant_delta" : "reasoning_delta";
   if (channel === "model") return "reasoning_delta";
   if (channel === "tool") return "tool_start";
   if (channel === "file") return "tool_end";
@@ -461,7 +461,7 @@ function tailUserProgress(sessionId, jobId) {
                 // Emit via appendEvent so it persists in events.jsonl AND hits SSE
                 void appendEvent(sessionId, {
                   event_id: evt.event_id,           // preserve original ID for client dedup
-                  type: channelToEventType(evt.channel, evt.event_type),
+                  type: userProgressChannelToEventType(evt.channel, evt.event_type, evt.phase),
                   status: evt.status || "running",
                   title: evt.title || "",
                   summary: evt.summary || "",
@@ -686,9 +686,9 @@ async function finalTextFor(mode, code, stdout, stderr) {
     ].join("\n");
   }
   const runId = extractRunId(stdout) || extractRunId(stderr);
-  if (mode === "plan" && runId) return planFinalTextForRun(runId, stdout);
-  if ((mode === "run" || mode === "resume") && runId) return runFinalTextForRun(runId, stdout);
-  if (mode === "review" && runId) return reviewFinalTextForRun(runId, stdout);
+  if (mode === "plan" && runId) return withProcessDigest(runId, await planFinalTextForRun(runId, stdout));
+  if ((mode === "run" || mode === "resume") && runId) return withProcessDigest(runId, await runFinalTextForRun(runId, stdout));
+  if (mode === "review" && runId) return withProcessDigest(runId, await reviewFinalTextForRun(runId, stdout));
   const text = stdout.trim();
   const result = text ? trimForUser(text) : "Runtime 已完成，但没有返回文本输出。可以在 Inspector 查看证据和产物。";
   return [
@@ -706,6 +706,47 @@ function nextStepForMode(mode) {
   if (mode === "review") return "你可以选择修复问题、继续执行，或导出证据。";
   if (mode === "resume") return "你可以继续推进当前任务，或要求我先总结当前状态。";
   return "你可以继续给出下一步要求。";
+}
+
+async function userProgressDigestLines(runId) {
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  const events = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 1200);
+  const counts = { model: 0, tool: 0, file: 0, evidence: 0 };
+  const fileNames = [];
+  for (const event of events) {
+    const channel = String(event.channel || "");
+    if (Object.hasOwn(counts, channel)) counts[channel] += 1;
+    if (channel !== "file") continue;
+    for (const change of event.file_changes || []) {
+      const name = path.basename(String(change.path || ""));
+      if (name && !fileNames.includes(name)) fileNames.push(name);
+    }
+  }
+  const lines = [];
+  if (counts.model) lines.push(`- 模型流式输出 ${counts.model} 段，用于理解目标、生成结构化计划或评审结论。`);
+  if (counts.tool) lines.push(`- Runtime 记录 ${counts.tool} 个工具/内部执行事件，过程细节已收进 Inspector。`);
+  if (counts.file) {
+    const names = fileNames.slice(0, 4).join("、");
+    lines.push(`- 写入或更新 ${counts.file} 个文件事件${names ? `：${names}` : ""}。`);
+  }
+  if (counts.evidence) lines.push(`- 沉淀 ${counts.evidence} 条证据引用，可回溯到 run 目录里的 JSON/Markdown 产物。`);
+  return lines.length ? lines : ["- Runtime 已完成任务并保留原始事件；当前 run 暂无可折叠的用户进展摘要。"];
+}
+
+function userProgressChannelToEventType(channel, eventType, phase) {
+  if (channel === "conclusion" && phase === "result") return "final_answer";
+  return channelToEventType(channel, eventType);
+}
+
+async function withProcessDigest(runId, text) {
+  const digest = await userProgressDigestLines(runId);
+  const body = String(text || "").trim();
+  return [
+    body,
+    "",
+    "## 过程摘要",
+    digest.join("\n"),
+  ].filter(Boolean).join("\n");
 }
 
 async function planFinalTextForRun(runId, fallbackStdout) {
@@ -733,24 +774,29 @@ async function planFinalTextForRun(runId, fallbackStdout) {
   const recommendations = Array.isArray(taskEval.recommendations) ? taskEval.recommendations : [];
   const taskLines = tasks.slice(0, 5).map((task, index) => {
     const title = firstRuntimeText(task.title, task.task_id, `Task ${index + 1}`);
-    const acceptance = Array.isArray(task.acceptance) ? task.acceptance.length : 0;
-    return `- ${title}${acceptance ? ` (${acceptance} acceptance checks)` : ""}`;
+    const description = firstRuntimeText(task.description).replace(/\s+/g, " ");
+    const acceptance = Array.isArray(task.acceptance) ? task.acceptance.slice(0, 3) : [];
+    const artifacts = Array.isArray(task.expected_artifacts) ? task.expected_artifacts.slice(0, 3) : [];
+    return [
+      `- ${title}`,
+      description ? `  目标：${description}` : "",
+      acceptance.length ? `  验收：${acceptance.join("；")}` : "",
+      artifacts.length ? `  产物：${artifacts.join("、")}` : "",
+    ].filter(Boolean).join("\n");
   });
   const riskLines = [
     ...warnings.slice(0, 3).map((issue) => `- ${firstRuntimeText(issue.message, issue.code)}`),
     ...recommendations.slice(0, 3).map((item) => `- ${item}`)
   ];
   return [
-    "## 结果",
-    `已生成计划 run ${runId}。这不是一次实现完成记录，而是一份可执行计划：${goal}`,
+    "## 答案",
+    `我给你的规划结论是：围绕「${goal}」生成 ${tasks.length || 0} 个可执行任务，先按下面任务顺序推进。`,
     "",
-    "## 计划内容",
+    "## 任务计划",
     taskLines.length ? taskLines.join("\n") : "- 未生成可展示的任务条目。",
     "",
-    "## 质量判断",
+    "## 验收与风险",
     firstRuntimeText(taskEval.summary, `共 ${tasks.length} 个任务，${requirements} 条需求。`),
-    "",
-    "## 风险与修正",
     riskLines.length ? [...new Set(riskLines)].join("\n") : "- 暂无明确阻断项；执行前仍应核对写入范围和验证命令。",
     "",
     "## 下一步",
@@ -769,39 +815,64 @@ function nextPlanAction(tasks, taskEval, costReport) {
 /** Build final text for run/resume modes — reads final_report.md and eval_report.json */
 async function runFinalTextForRun(runId, fallbackStdout) {
   const runDir = path.join(workspace, ".asteria", "runs", runId);
-  // Try final_report.md first (most human-readable)
-  const finalReportPath = path.join(runDir, "final_report.md");
-  if (existsSync(finalReportPath)) {
-    try {
-      const md = (await fs.readFile(finalReportPath, "utf8")).trim();
-      if (md.length > 80) {
-        return [
-          md,
-          "",
-          "---",
-          "完整证据在 Inspector → Evidence Explorer 查看。"
-        ].join("\n");
-      }
-    } catch {}
-  }
-  // Fallback: build from eval_report.json + worker_results.jsonl
+  const goalSpec = await readJson(path.join(runDir, "goal_spec.json"));
+  const taskPlan = await readJson(path.join(runDir, "task_plan.json"));
+  const runJson = await readJson(path.join(runDir, "run.json"));
   const evalReport = await readJson(path.join(runDir, "eval_report.json"));
+  const executionEvidence = await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 30);
+  const validationResults = await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 30);
+  const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20);
   const workerLines = await readWorkerSummaryLines(runDir);
-  const status = firstRuntimeText(evalReport?.overall?.status, "completed");
+  const taskRows = Array.isArray(taskPlan.tasks) ? taskPlan.tasks : [];
+  const doneTasks = taskRows.filter((task) => task.status === "done");
+  const blockedTasks = taskRows.filter((task) => task.status === "blocked");
+  const pendingDecisions = decisions.filter((decision) => decision.status === "pending");
+  const status = firstRuntimeText(runJson.status, evalReport?.overall?.status, "completed");
   const score = evalReport?.overall?.score != null ? `评分 ${Number(evalReport.overall.score).toFixed(2)}` : null;
   const reason = firstRuntimeText(evalReport?.overall?.reason);
   const costReport = await readJson(path.join(runDir, "cost_report.json"));
   const modelCalls = costReport.model_calls ?? costReport.total_model_calls;
+  const artifacts = await runArtifactLines(runDir);
+  const evidenceLines = executionEvidence.slice(-5).map((item) => {
+    const taskId = firstRuntimeText(item.task_id, item.task?.task_id, "task");
+    const itemStatus = firstRuntimeText(item.status, "unknown");
+    const summary = firstRuntimeText(item.summary, item.failure_type, "").replace(/\s+/g, " ");
+    return `- ${taskId}: ${itemStatus}${summary ? ` - ${summary}` : ""}`;
+  });
+  const validationLines = validationResults.slice(-5).map((item) => {
+    const label = firstRuntimeText(item.name, item.command, item.validation_result_id, "validation");
+    const itemStatus = firstRuntimeText(item.status, item.outcome, "unknown");
+    const summary = firstRuntimeText(item.summary, item.error, "");
+    return `- ${label}: ${itemStatus}${summary ? ` - ${summary}` : ""}`;
+  });
+  const answerLine = runAnswerLine({
+    runId,
+    goal: firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, runJson.goal, "本次目标"),
+    status,
+    done: doneTasks.length,
+    total: taskRows.length,
+    blocked: blockedTasks.length,
+    decisions: pendingDecisions.length,
+  });
   return [
-    "## 结果",
-    `Run ${runId} 已完成（${status}）。${score ? score + "。" : ""}${reason ? reason : ""}`,
+    "## 答案",
+    answerLine,
     "",
-    ...(workerLines.length ? ["## 执行明细", ...workerLines, ""] : []),
-    "## 证据",
-    `已记录 ${modelCalls != null ? modelCalls + " 次模型调用" : "若干模型调用"}。可在 Inspector 查看任务执行证据、worker 结果和产物引用。`,
+    "## 完成情况",
+    `- 状态：${status}`,
+    `- 任务：${doneTasks.length}/${taskRows.length} 完成，${blockedTasks.length} 个阻断`,
+    pendingDecisions.length ? `- 待决策：${pendingDecisions.length} 个，需要你选择后继续` : "- 待决策：无",
+    score || reason ? `- 评审：${[score, reason].filter(Boolean).join("；")}` : "",
+    "",
+    ...(artifacts.length ? ["## 产物", ...artifacts, ""] : []),
+    ...(validationLines.length ? ["## 验证", ...validationLines, ""] : []),
+    ...(evidenceLines.length ? ["## 执行证据", ...evidenceLines, ""] : []),
+    ...(workerLines.length ? ["## Worker 摘要", ...workerLines, ""] : []),
+    "## 证据入口",
+    `已记录 ${modelCalls != null ? modelCalls + " 次模型调用" : "若干模型调用"}。完整证据在 Inspector → Evidence Explorer 查看。`,
     "",
     "## 下一步",
-    nextStepForMode("run")
+    nextRunAction({ status, blocked: blockedTasks.length, decisions: pendingDecisions.length })
   ].join("\n");
 }
 
@@ -853,6 +924,33 @@ async function readWorkerSummaryLines(runDir) {
       } catch { return null; }
     }).filter(Boolean);
   } catch { return []; }
+}
+
+async function runArtifactLines(runDir) {
+  const artifacts = await readJsonlTail(path.join(runDir, "artifacts.jsonl"), 20);
+  return artifacts.slice(-8).map((item) => {
+    const artifactPath = firstRuntimeText(item.path, item.artifact_id, "artifact");
+    const summary = firstRuntimeText(item.summary, item.type, "");
+    return `- ${artifactPath}${summary ? `：${summary}` : ""}`;
+  });
+}
+
+function runAnswerLine({ runId, goal, status, done, total, blocked, decisions }) {
+  if (decisions > 0) {
+    return `本次目标「${goal}」还没有最终完成。Run ${runId} 已推进到需要人工决策的位置：完成 ${done}/${total} 个任务，当前有 ${blocked} 个阻断和 ${decisions} 个待决策项。`;
+  }
+  if (blocked > 0 || /blocked|paused|failed/i.test(status)) {
+    return `本次目标「${goal}」暂未完成。Run ${runId} 已产出执行证据，但仍有 ${blocked} 个阻断，需要先处理后才能给出完成结论。`;
+  }
+  return `本次目标「${goal}」已完成。Run ${runId} 完成 ${done}/${total} 个任务，并留下了产物、验证和执行证据。`;
+}
+
+function nextRunAction({ status, blocked, decisions }) {
+  if (decisions > 0) return "先处理待决策项；通过后继续 resume，让 runtime 接着完成剩余任务。";
+  if (blocked > 0 || /blocked|paused|failed/i.test(String(status))) {
+    return "先运行 debug 或 replan 处理阻断，再继续 resume。";
+  }
+  return "可以进入 review 检查产物质量，或基于当前结果继续提出下一轮目标。";
 }
 
 function extractRunId(text) {
@@ -1075,7 +1173,28 @@ async function discoverRuntimeRunIdForJob(job) {
 async function readRuntimeUserProgressEvents(runId, sessionId) {
   const file = path.join(workspace, ".asteria", "runs", runId, "user_progress.jsonl");
   const rows = await readJsonlTail(file, 500);
-  return rows.map((event) => userProgressToStudioEvent(event, sessionId, runId)).filter(Boolean);
+  const events = rows.map((event) => userProgressToStudioEvent(event, sessionId, runId)).filter(Boolean);
+  for (const event of events) {
+    if (event.type !== "final_answer") continue;
+    await enrichFinalAnswerEvent(event, runId);
+  }
+  return events;
+}
+
+async function enrichFinalAnswerEvent(event, runId) {
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  const hasFinalReport = existsSync(path.join(runDir, "final_report.md"));
+  const hasEvalReport = existsSync(path.join(runDir, "eval_report.json"));
+  const hasGoalSpec = existsSync(path.join(runDir, "goal_spec.json"));
+  if (hasFinalReport) {
+    event.content_delta = await runFinalTextForRun(runId, event.content_delta);
+  } else if (hasEvalReport && !hasGoalSpec) {
+    event.content_delta = await reviewFinalTextForRun(runId, event.content_delta);
+  } else {
+    event.content_delta = await planFinalTextForRun(runId, event.content_delta);
+  }
+  event.summary = "已从 runtime 产物提炼为用户可读结论。";
+  event.artifact_refs = [...(event.artifact_refs || []), ...runArtifactRefs(runId)];
 }
 
 function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {

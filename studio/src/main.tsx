@@ -3,4 +3,39 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
 
-createRoot(document.getElementById("root")!).render(<App />);
+type ErrorFallbackState = {
+  error: Error | null;
+};
+
+class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorFallbackState> {
+  state: ErrorFallbackState = { error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorFallbackState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("Studio render failed", error, info);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <main className="studioCrash">
+        <section>
+          <p className="eyebrow">Asteria Studio</p>
+          <h1>Studio 渲染失败</h1>
+          <p>前端遇到了一个可恢复的渲染异常。错误已经显示在这里，避免整页黑屏。</p>
+          <pre>{this.state.error.stack || this.state.error.message}</pre>
+          <button onClick={() => window.location.reload()}>刷新 Studio</button>
+        </section>
+      </main>
+    );
+  }
+}
+
+createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

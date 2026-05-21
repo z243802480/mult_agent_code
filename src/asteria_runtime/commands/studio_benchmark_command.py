@@ -139,6 +139,8 @@ class StudioBenchmarkCommand:
         event_types = {str(event.get("type")) for event in events}
         progress_channels = {str(event.get("channel")) for event in user_progress_events}
         required_channels = self._required_user_progress_channels(manifest)
+        final_answers = [event for event in events if str(event.get("type")) == "final_answer"]
+        good_final_answers = [event for event in final_answers if self._is_user_facing_final(event)]
         main_events = [
             event
             for event in events
@@ -181,6 +183,13 @@ class StudioBenchmarkCommand:
                 "The task reaches a permission, model, or final result surface."
                 if {"permission_request", "final_answer", "model_delta"} & event_types
                 else "No permission, model, or final result event found.",
+            ),
+            self._check(
+                "final_answer_quality",
+                bool(good_final_answers),
+                "Final answers start with a user-facing answer/result, not backend logs."
+                if good_final_answers
+                else "No user-facing final answer found; final output may be process logs or missing.",
             ),
             self._check(
                 "inspector_separation",
@@ -241,6 +250,10 @@ class StudioBenchmarkCommand:
             recommendations.append(
                 "Make every task reach either a permission card, model response, or final answer."
             )
+        if "final_answer_quality" in failed:
+            recommendations.append(
+                "Make final answers begin with the answer/result users asked for; move process summaries and raw paths after the answer."
+            )
         if "inspector_separation" in failed:
             recommendations.append(
                 "Keep raw commands/stdout in Inspector and show user-facing progress in the thread."
@@ -293,6 +306,35 @@ class StudioBenchmarkCommand:
     @staticmethod
     def _check(name: str, ok: bool, summary: str) -> dict[str, Any]:
         return {"name": name, "ok": ok, "summary": summary}
+
+    @staticmethod
+    def _is_user_facing_final(event: dict[str, Any]) -> bool:
+        text = str(event.get("content_delta") or event.get("summary") or "").strip()
+        if len(text) < 24:
+            return False
+        normalized = text.lower().lstrip()
+        bad_prefixes = (
+            "{",
+            "[",
+            "## 工作过程",
+            "## process",
+            "# final report",
+            "final report",
+            "executed run:",
+            "created plan run",
+            "runtime stdout",
+        )
+        if normalized.startswith(bad_prefixes):
+            return False
+        if not (
+            normalized.startswith("## 答案")
+            or normalized.startswith("## 结果")
+            or normalized.startswith("答案")
+            or normalized.startswith("结果")
+        ):
+            return False
+        path_markers = text.count(".json") + text.count(".jsonl") + text.count("\\") + text.count("/")
+        return path_markers <= 8
 
     @staticmethod
     def _manifest_tasks(manifest: dict[str, Any]) -> list[dict[str, Any]]:

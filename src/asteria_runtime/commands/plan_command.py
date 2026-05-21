@@ -218,6 +218,26 @@ class PlanCommand:
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")
         progress_logger.record(
             run_id=run["run_id"],
+            channel="file",
+            event_type="file_created",
+            phase="plan",
+            status="completed",
+            title="GoalSpec file written",
+            summary="Persisted goal_spec.json for the planning run.",
+            artifact_refs=[str(goal_spec_path)],
+            evidence_refs=[str(goal_spec_path)],
+            file_changes=[
+                {
+                    "path": str(goal_spec_path),
+                    "operation": "created",
+                    "event_type": "file_created",
+                }
+            ],
+            call_chain=["PlanCommand", "GoalSpecAgent"],
+            execution_chain=["understand", "goal_spec", "persist"],
+        )
+        progress_logger.record(
+            run_id=run["run_id"],
             channel="evidence",
             event_type="evidence",
             phase="plan",
@@ -230,12 +250,79 @@ class PlanCommand:
             execution_chain=["understand", "goal_spec"],
         )
 
+        planner_event = progress_logger.record(
+            run_id=run["run_id"],
+            channel="tool",
+            event_type="tool_call",
+            phase="plan",
+            status="running",
+            title="Build task plan",
+            summary="RequirementPlanner is converting the GoalSpec into a task graph.",
+            display_level="inspector",
+            call_chain=["PlanCommand", "RequirementPlanner"],
+            execution_chain=["goal_spec", "task_plan"],
+            data={"goal_id": goal_spec["goal_id"]},
+        )
         task_plan = RequirementPlanner().build_task_plan(goal_spec, runtime_context=runtime_context)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)
         task_plan_path = run_dir / "task_plan.json"
         self.store.write(task_plan_path, task_plan, "task_board")
         self.store.write(agent_dir / "tasks" / "backlog.json", task_plan, "task_board")
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="tool",
+            event_type="tool_output",
+            phase="plan",
+            status="completed",
+            title="Task plan built",
+            summary=f"Created {len(task_plan['tasks'])} task(s) from the GoalSpec.",
+            display_level="inspector",
+            parent_event_id=planner_event.get("event_id"),
+            artifact_refs=[str(task_plan_path)],
+            evidence_refs=[str(task_plan_path)],
+            call_chain=["PlanCommand", "RequirementPlanner"],
+            execution_chain=["goal_spec", "task_plan"],
+            data={"task_count": len(task_plan["tasks"])},
+        )
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="file",
+            event_type="file_created",
+            phase="plan",
+            status="completed",
+            title="Task plan files written",
+            summary="Persisted task_plan.json and refreshed the workspace backlog.",
+            artifact_refs=[str(task_plan_path), str(agent_dir / "tasks" / "backlog.json")],
+            evidence_refs=[str(task_plan_path)],
+            file_changes=[
+                {
+                    "path": str(task_plan_path),
+                    "operation": "created",
+                    "event_type": "file_created",
+                },
+                {
+                    "path": str(agent_dir / "tasks" / "backlog.json"),
+                    "operation": "modified",
+                    "event_type": "file_modified",
+                },
+            ],
+            call_chain=["PlanCommand", "RequirementPlanner"],
+            execution_chain=["goal_spec", "task_plan", "persist"],
+        )
+        evaluator_event = progress_logger.record(
+            run_id=run["run_id"],
+            channel="tool",
+            event_type="tool_call",
+            phase="review",
+            status="running",
+            title="Evaluate task plan",
+            summary="TaskPlanEvaluator is checking plan quality before handoff.",
+            display_level="inspector",
+            call_chain=["PlanCommand", "TaskPlanEvaluator"],
+            execution_chain=["task_plan", "task_plan_eval"],
+            data={"task_count": len(task_plan["tasks"])},
+        )
         task_plan_eval = TaskPlanEvaluator().evaluate(
             task_plan,
             goal_spec,
@@ -243,6 +330,46 @@ class PlanCommand:
         )
         task_plan_eval_path = run_dir / "task_plan_eval.json"
         self.store.write(task_plan_eval_path, task_plan_eval, "task_plan_eval")
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="tool",
+            event_type="tool_output",
+            phase="review",
+            status="completed",
+            title="Task plan evaluated",
+            summary=str(task_plan_eval["summary"]),
+            display_level="inspector",
+            parent_event_id=evaluator_event.get("event_id"),
+            artifact_refs=[str(task_plan_eval_path)],
+            evidence_refs=[str(task_plan_eval_path)],
+            call_chain=["PlanCommand", "TaskPlanEvaluator"],
+            execution_chain=["task_plan", "task_plan_eval"],
+            data={
+                "status": task_plan_eval["status"],
+                "overall_score": task_plan_eval["overall_score"],
+                "issues": len(task_plan_eval["issues"]),
+            },
+        )
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="file",
+            event_type="file_created",
+            phase="review",
+            status="completed",
+            title="Task plan evaluation written",
+            summary="Persisted task_plan_eval.json as planning evidence.",
+            artifact_refs=[str(task_plan_eval_path)],
+            evidence_refs=[str(task_plan_eval_path)],
+            file_changes=[
+                {
+                    "path": str(task_plan_eval_path),
+                    "operation": "created",
+                    "event_type": "file_created",
+                }
+            ],
+            call_chain=["PlanCommand", "TaskPlanEvaluator"],
+            execution_chain=["task_plan", "task_plan_eval", "persist"],
+        )
         event_logger.record(
             run["run_id"],
             "task_created",
@@ -283,6 +410,26 @@ class PlanCommand:
         cost_report = budget.cost_report()
         cost_report_path = run_dir / "cost_report.json"
         self.store.write(cost_report_path, cost_report, "cost_report")
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="file",
+            event_type="file_created",
+            phase="review",
+            status="completed",
+            title="Cost report written",
+            summary="Persisted cost_report.json for budget and routing evidence.",
+            artifact_refs=[str(cost_report_path)],
+            evidence_refs=[str(cost_report_path)],
+            file_changes=[
+                {
+                    "path": str(cost_report_path),
+                    "operation": "created",
+                    "event_type": "file_created",
+                }
+            ],
+            call_chain=["PlanCommand", "BudgetController"],
+            execution_chain=["task_plan_eval", "cost_report", "persist"],
+        )
 
         run["goal_id"] = goal_spec["goal_id"]
         run["current_phase"] = "PLAN"

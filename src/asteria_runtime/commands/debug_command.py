@@ -23,6 +23,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.tools.defaults import create_default_tool_registry
 from asteria_runtime.utils.time import now_iso
 
@@ -177,8 +178,43 @@ class DebugCommand:
             context.event_logger.record(
                 context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}"
             )
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="start",
+            phase="execute",
+            status="running",
+            title="Repair started",
+            summary=f"Started repair loop for {task_id}.",
+        )
         try:
             failure_evidence = self._failure_evidence(run_dir, task_board.get_task(task_id))
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="review",
+                status="completed",
+                title="Repair evidence loaded",
+                summary=(
+                    f"Loaded {len(failure_evidence.get('recent_task_execution_evidence') or [])} "
+                    "recent task evidence item(s)."
+                ),
+                evidence_refs=self._run_refs(
+                    "task_execution_evidence.jsonl",
+                    "task_failures.jsonl",
+                    "worker_results.jsonl",
+                ),
+                data={
+                    "recent_task_execution_evidence": len(
+                        failure_evidence.get("recent_task_execution_evidence") or []
+                    ),
+                    "recent_task_failures": len(failure_evidence.get("recent_task_failures") or []),
+                    "recent_tool_failures": len(failure_evidence.get("recent_tool_failures") or []),
+                },
+            )
             skip_reason = self._skip_unpromoted_candidate_repair(failure_evidence)
             if skip_reason:
                 self._block_task(task_board, task_id, skip_reason, context)
@@ -203,11 +239,34 @@ class DebugCommand:
                     "repair_skipped_replan_required",
                     skip_reason,
                 )
+                self._record_progress(
+                    context,
+                    task,
+                    channel="evidence",
+                    event_type="evidence",
+                    phase="blocked",
+                    status="blocked",
+                    title="Repair skipped",
+                    summary=skip_reason,
+                    evidence_refs=self._refs(evidence_path),
+                    data={"failure_type": "repair_skipped_replan_required"},
+                )
                 return RepairSummary(task_id, "blocked", skip_reason, 0, 0, evidence_path)
             if context.budget:
                 context.budget.record_repair_attempt()
             task_board.update_status(task_id, "ready")
             task_board.update_status(task_id, "in_progress")
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title="Repair action requested",
+                summary=f"Asked the debug model to propose a repair for {task_id}.",
+                data={"available_tools": self.registry.names()},
+            )
             action = debug_agent.propose_repair(
                 task=task_board.get_task(task_id),
                 goal_spec=goal_spec,
@@ -217,6 +276,24 @@ class DebugCommand:
                 runtime_context=runtime_context,
             )
             self._require_non_empty_action(action)
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title="Repair action proposed",
+                summary=(
+                    f"Prepared {len(action.get('tool_calls') or [])} repair tool call(s) "
+                    f"and {len(action.get('verification') or [])} verification step(s)."
+                ),
+                data={
+                    "tool_call_count": len(action.get("tool_calls") or []),
+                    "verification_count": len(action.get("verification") or []),
+                    "summary": action.get("summary", ""),
+                },
+            )
             candidate = self._create_candidate_workspace(context, task)
             candidate_context = self._candidate_context(context, candidate)
             if context.event_logger:
@@ -231,8 +308,40 @@ class DebugCommand:
                         "workspace": str(candidate.root),
                     },
                 )
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title="Repair candidate workspace created",
+                summary=(
+                    f"Created repair candidate {candidate.candidate_id} "
+                    f"using {candidate.strategy}."
+                ),
+                artifact_refs=self._refs(candidate.manifest_path),
+                data={
+                    "candidate_id": candidate.candidate_id,
+                    "strategy": candidate.strategy,
+                    "workspace_policy": candidate.workspace_policy,
+                    "backend_reason": candidate.backend_reason,
+                    "branch_name": candidate.branch_name,
+                },
+            )
             tool_results = self._run_tool_calls(action["tool_calls"], task, candidate_context)
             task_board.update_status(task_id, "testing")
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="start",
+                phase="review",
+                status="running",
+                title="Repair verification started",
+                summary=f"Running {len(action.get('verification') or [])} repair verification step(s).",
+                data={"verification_count": len(action.get("verification") or [])},
+            )
             verification = self._run_tool_calls(
                 action["verification"],
                 task,
@@ -245,11 +354,37 @@ class DebugCommand:
                 verification,
                 allow_verified_noop=True,
             )
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="review",
+                status="completed" if contract_check.ok else "blocked",
+                title="Repair contract checked",
+                summary=contract_check.summary(),
+                data={"contract_check": contract_check.to_dict()},
+            )
             if contract_check.ok:
                 promoted_files = self._promote_candidate_changes(
                     context, candidate, contract_check.changed_files
                 )
                 self._record_repair_artifacts(context, task, promoted_files)
+                self._record_progress(
+                    context,
+                    task,
+                    channel="file",
+                    event_type="file_modified",
+                    phase="execute",
+                    status="completed",
+                    title="Repair candidate promoted",
+                    summary=(
+                        f"Promoted {len(promoted_files)} repaired file(s) from candidate workspace."
+                    ),
+                    artifact_refs=promoted_files,
+                    file_changes=self._file_changes(promoted_files),
+                    data={"promoted_files": promoted_files},
+                )
                 reason = "Repair verification passed."
                 if not self._changed_files(tool_results):
                     reason = (
@@ -289,6 +424,20 @@ class DebugCommand:
                     context.event_logger.record(
                         context.run_id, "repair_completed", "DebugCommand", f"Repaired {task_id}"
                     )
+                self._record_progress(
+                    context,
+                    task,
+                    channel="evidence",
+                    event_type="evidence",
+                    phase="result",
+                    status="completed",
+                    title="Repair evidence recorded",
+                    summary=reason,
+                    artifact_refs=promoted_files,
+                    evidence_refs=self._refs(evidence_path),
+                    file_changes=self._file_changes(promoted_files),
+                    data={"verification_passed": True},
+                )
                 return RepairSummary(
                     task_id,
                     "done",
@@ -336,6 +485,21 @@ class DebugCommand:
                     "changed_files": contract_check.changed_files,
                 },
             )
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="blocked",
+                status="blocked",
+                title="Repair evidence recorded",
+                summary=reason,
+                evidence_refs=self._refs(evidence_path),
+                data={
+                    "failure_type": "repair_contract_violation",
+                    "contract_check": contract_check.to_dict(),
+                },
+            )
             return RepairSummary(
                 task_id,
                 "blocked",
@@ -346,7 +510,8 @@ class DebugCommand:
             )
         except Exception as exc:  # noqa: BLE001 - repair loop must persist failures
             self._block_task(task_board, task_id, str(exc), context)
-            self._record_task_failure(context, task, self._failure_type(exc), str(exc))
+            failure_type = self._failure_type(exc)
+            self._record_task_failure(context, task, failure_type, str(exc))
             evidence_path = self.execution_evidence.record(
                 context,
                 task,
@@ -356,7 +521,19 @@ class DebugCommand:
                 "blocked",
                 str(exc),
                 actor="DebugCommand",
-                failure_type=self._failure_type(exc),
+                failure_type=failure_type,
+            )
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="blocked",
+                status="blocked",
+                title="Repair failed before completion",
+                summary=str(exc),
+                evidence_refs=self._refs(evidence_path),
+                data={"failure_type": failure_type, "error_type": type(exc).__name__},
             )
             return RepairSummary(task_id, "blocked", str(exc), 0, 0, evidence_path)
 
@@ -538,6 +715,60 @@ class DebugCommand:
                     "failure_type": failure_type,
                 },
             )
+
+    def _record_progress(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        *,
+        channel: str,
+        event_type: str,
+        phase: str,
+        status: str,
+        title: str,
+        summary: str,
+        artifact_refs: list[str] | None = None,
+        evidence_refs: list[str] | None = None,
+        file_changes: list[dict] | None = None,
+        data: dict | None = None,
+    ) -> None:
+        if context.run_id is None or context.run_dir is None:
+            return
+        logger = UserProgressLogger(context.run_dir / "user_progress.jsonl", context.validator)
+        logger.record(
+            run_id=context.run_id,
+            channel=channel,
+            event_type=event_type,
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            artifact_refs=artifact_refs or [],
+            evidence_refs=evidence_refs or [],
+            file_changes=file_changes or [],
+            data={
+                "task_id": task.get("task_id"),
+                "task_title": task.get("title"),
+                **(data or {}),
+            },
+        )
+
+    def _refs(self, value: Path | str | None) -> list[str]:
+        if value is None:
+            return []
+        return [str(value)]
+
+    def _run_refs(self, *names: str) -> list[str]:
+        return [name for name in names]
+
+    def _file_changes(self, paths: list[str]) -> list[dict]:
+        return [
+            {
+                "path": path,
+                "operation": "modified",
+            }
+            for path in sorted(set(paths))
+        ]
 
     def _failure_type(self, exc: Exception) -> str:
         if isinstance(exc, PermissionError):

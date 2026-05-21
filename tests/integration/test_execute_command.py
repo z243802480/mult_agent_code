@@ -709,6 +709,18 @@ class FakeInvalidThenValidExecuteClient:
         return FakeExecuteClient().chat(request)
 
 
+class FakeInvalidExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content="not json",
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-invalid",
+            raw_response={},
+        )
+
+
 def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
@@ -824,6 +836,109 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert cost_report["tool_calls"] == 3
     assert cost_report["estimated_input_tokens"] == 25
     assert cost_report["estimated_output_tokens"] == 45
+
+
+def test_execute_command_records_run_loop_user_progress(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    titles = [event["title"] for event in progress]
+    assert "Candidate workspace created" in titles
+    assert "Verification started" in titles
+    assert "Validation results recorded" in titles
+    assert "Completion contract checked" in titles
+    assert "Merge gate evaluated" in titles
+    assert "Promotion started" in titles
+    assert "Candidate promoted" in titles
+    assert "Task execution evidence recorded" in titles
+    assert any(
+        event["channel"] == "file" and event["file_changes"]
+        for event in progress
+    )
+    assert any(
+        event["channel"] == "evidence" and event["phase"] == "result"
+        for event in progress
+    )
+
+
+def test_execute_command_records_pre_tool_user_progress_when_action_fails(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeInvalidExecuteClient()).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    titles = [event["title"] for event in progress]
+    assert "Worker action requested" in titles
+    assert "Task action failed before tools" in titles
+    failure_event = next(
+        event for event in progress if event["title"] == "Task action failed before tools"
+    )
+    assert failure_event["channel"] == "evidence"
+    assert failure_event["phase"] == "blocked"
+    assert failure_event["status"] == "blocked"
+    assert failure_event["evidence_refs"]
+    assert failure_event["data"]["failure_type"] == "exception"
+    assert not (run_dir / "tool_calls.jsonl").exists()
+
+
+def test_execute_command_records_runtime_request_user_progress(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "allowed_tools": ["write_file"],
+            "expected_artifacts": ["allowed/output.txt"],
+            "expected_changed_files": ["allowed/output.txt"],
+            "write_scope": ["allowed/output.txt"],
+            "read_scope": ["AGENTS.md"],
+            "task_kind": "implementation",
+            "parallel_safety": "serial",
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeScopeExpansionRequestClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    runtime_event = next(event for event in progress if event["title"] == "Runtime request created")
+    assert runtime_event["channel"] == "progress"
+    assert runtime_event["event_type"] == "decision"
+    assert runtime_event["status"] == "waiting_user"
+    assert runtime_event["evidence_refs"]
+    assert not (run_dir / "tool_calls.jsonl").exists()
 
 
 def test_execute_command_manual_promotion_keeps_candidate_isolated(

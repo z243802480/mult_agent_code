@@ -14,6 +14,12 @@ import {
 import type { StudioEvent, AnyRecord } from "../types";
 import { Status } from "./Shared";
 
+function formatEventTime(value: unknown): string {
+  const date = new Date(String(value ?? ""));
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString();
+}
+
 function iconFor(type: StudioEvent["type"]) {
   if (type === "tool_start" || type === "tool_delta" || type === "tool_end") return <Terminal size={15} />;
   if (type === "model_start" || type === "model_delta" || type === "model_end") return <Play size={15} />;
@@ -101,7 +107,7 @@ export function EventCard({
           {(event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} evidence</span>}
           {(event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} artifacts</span>}
           {fileChanges.length > 0 && <span>{fileChanges.length} 文件</span>}
-          <span>{new Date(event.created_at).toLocaleTimeString()}</span>
+          <span>{formatEventTime(event.created_at)}</span>
         </div>
         {showBody &&
           (open || event.type !== "reasoning_delta") &&
