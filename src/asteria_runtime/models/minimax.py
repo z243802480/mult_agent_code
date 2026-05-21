@@ -89,7 +89,8 @@ class MiniMaxOpenAICompatibleClient:
 
         for attempt in range(self.settings.max_retries + 1):
             try:
-                response = self._call_provider(payload, timeout)
+                with self.logger.progress_context(request):
+                    response = self._call_provider(payload, timeout)
                 if self.budget:
                     self._update_budget_tokens(response)
                 self.logger.record_success(request, response)

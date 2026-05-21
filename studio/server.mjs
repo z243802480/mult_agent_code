@@ -136,7 +136,14 @@ async function submitUserGoal(sessionId, body) {
 function startRuntimeJob(sessionId, mode, goal) {
   const command = runtimeCommand(mode, goal);
   const jobId = `job-${Date.now()}`;
-  const job = { job_id: jobId, session_id: sessionId, status: "running", command };
+  const job = {
+    job_id: jobId,
+    session_id: sessionId,
+    status: "running",
+    command,
+    started_at_ms: Date.now(),
+    run_id: null
+  };
   liveJobs.set(jobId, job);
 
   void appendEvent(sessionId, {
@@ -165,6 +172,7 @@ function startRuntimeJob(sessionId, mode, goal) {
   child.stdout.on("data", (chunk) => {
     const text = redactText(chunk.toString());
     stdout = tailText(stdout + text, 24000);
+    rememberJobRunId(jobId, extractRunId(text) || extractRunId(stdout));
     void appendEvent(sessionId, {
       type: "tool_delta",
       status: "running",
@@ -178,6 +186,7 @@ function startRuntimeJob(sessionId, mode, goal) {
   child.stderr.on("data", (chunk) => {
     const text = redactText(chunk.toString());
     stderr = tailText(stderr + text, 16000);
+    rememberJobRunId(jobId, extractRunId(text) || extractRunId(stderr));
     void appendEvent(sessionId, {
       type: "tool_delta",
       status: "running",
@@ -189,6 +198,7 @@ function startRuntimeJob(sessionId, mode, goal) {
     });
   });
   child.on("close", async (code) => {
+    rememberJobRunId(jobId, extractRunId(stdout) || extractRunId(stderr));
     job.status = code === 0 ? "completed" : "failed";
     liveJobs.set(jobId, job);
     void appendEvent(sessionId, {
@@ -521,22 +531,150 @@ async function readSessionEvents(sessionId) {
   if (!isSafeId(sessionId)) return [];
   const file = sessionPath(sessionId, "events.jsonl");
   if (!existsSync(file)) return [];
-  const events = (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => {
+  let events = (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => {
     try {
       return redact(JSON.parse(line));
     } catch {
       return { type: "raw", content_delta: redactText(line) };
     }
   });
+  const runIds = new Set();
   for (const event of events) {
     if (event.type !== "final_answer") continue;
-    const runId = extractRunId(event.content_delta);
+    const runId = extractRunId(event.content_delta) || extractRunId((event.artifact_refs || []).join("\n"));
     if (!runId) continue;
+    runIds.add(runId);
     event.content_delta = await planFinalTextForRun(runId, event.content_delta);
     event.summary = "已从 runtime 产物提炼为用户可读结论。";
     event.artifact_refs = [...(event.artifact_refs || []), ...runArtifactRefs(runId)];
   }
+  for (const runId of await activeRuntimeRunIdsForSession(sessionId)) {
+    runIds.add(runId);
+  }
+  if (runIds.size) {
+    const runtimeEvents = [];
+    for (const runId of runIds) {
+      runtimeEvents.push(...(await readRuntimeUserProgressEvents(runId, sessionId)));
+    }
+    if (runtimeEvents.length) {
+      events = mergeSessionAndRuntimeEvents(events, runtimeEvents);
+    }
+  }
   return events;
+}
+
+function rememberJobRunId(jobId, runId) {
+  if (!runId) return;
+  const job = liveJobs.get(jobId);
+  if (!job || job.run_id) return;
+  job.run_id = runId;
+  liveJobs.set(jobId, job);
+}
+
+async function activeRuntimeRunIdsForSession(sessionId) {
+  const jobs = [...liveJobs.values()].filter((job) => job.session_id === sessionId && job.status === "running");
+  const runIds = [];
+  for (const job of jobs) {
+    const runId = job.run_id || (await discoverRuntimeRunIdForJob(job));
+    if (!runId) continue;
+    job.run_id = runId;
+    liveJobs.set(job.job_id, job);
+    runIds.push(runId);
+  }
+  return [...new Set(runIds)];
+}
+
+async function discoverRuntimeRunIdForJob(job) {
+  const runsDir = path.join(workspace, ".asteria", "runs");
+  if (!existsSync(runsDir)) return null;
+  let entries = [];
+  try {
+    entries = await fs.readdir(runsDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const candidates = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !/^run-\d{8}-\d{4}$/.test(entry.name)) continue;
+    const runDir = path.join(runsDir, entry.name);
+    const progressPath = path.join(runDir, "user_progress.jsonl");
+    if (!existsSync(progressPath)) continue;
+    let stat;
+    try {
+      stat = await fs.stat(runDir);
+    } catch {
+      continue;
+    }
+    if (stat.mtimeMs + 2500 < Number(job.started_at_ms || 0)) continue;
+    candidates.push({ run_id: entry.name, modified_at: stat.mtimeMs });
+  }
+  candidates.sort((a, b) => b.modified_at - a.modified_at);
+  return candidates[0]?.run_id || null;
+}
+
+async function readRuntimeUserProgressEvents(runId, sessionId) {
+  const file = path.join(workspace, ".asteria", "runs", runId, "user_progress.jsonl");
+  const rows = await readJsonlTail(file, 500);
+  return rows.map((event) => userProgressToStudioEvent(event, sessionId, runId)).filter(Boolean);
+}
+
+function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {
+  const runtimeTypes = new Set(runtimeEvents.map((event) => event.type));
+  const replaceable = new Set(["model_start", "model_delta", "model_end", "model_error", "file_changed"]);
+  const filteredSessionEvents = sessionEvents.filter((event) => {
+    if (!replaceable.has(event.type)) return true;
+    return !runtimeTypes.has(event.type);
+  });
+  return [...filteredSessionEvents, ...runtimeEvents].sort((a, b) =>
+    String(a.created_at || "").localeCompare(String(b.created_at || ""))
+  );
+}
+
+function userProgressToStudioEvent(event, sessionId, runId) {
+  const channel = String(event.channel || "");
+  const eventType = String(event.event_type || "");
+  let type = "reasoning_delta";
+  if (channel === "model") {
+    if (eventType === "start") type = "model_start";
+    else if (eventType === "delta") type = "model_delta";
+    else if (eventType === "end") type = "model_end";
+    else if (eventType === "error") type = "model_error";
+  } else if (channel === "tool") {
+    if (eventType === "tool_call") type = "tool_start";
+    else if (eventType === "tool_output") type = "tool_end";
+    else if (eventType === "error") type = "error";
+    else type = "tool_delta";
+  } else if (channel === "file") {
+    type = "file_changed";
+  } else if (channel === "conclusion") {
+    type = event.phase === "result" ? "final_answer" : "assistant_delta";
+  } else if (channel === "diagnostic") {
+    type = "tool_delta";
+  }
+  return redact({
+    schema_version: "0.1.0",
+    event_id: `runtime-${runId}-${event.event_id}`,
+    session_id: sessionId,
+    type,
+    status: event.status,
+    title: event.title,
+    summary: event.summary,
+    content_delta: event.content_delta || "",
+    command: event.command || [],
+    artifact_refs: event.artifact_refs || [],
+    evidence_refs: [...(event.evidence_refs || []), `.asteria/runs/${runId}/user_progress.jsonl`],
+    model_provider: event.model_provider,
+    model_name: event.model_name,
+    telemetry: event.telemetry || {},
+    phase: event.phase,
+    display_level: event.display_level,
+    created_at: event.created_at,
+    source: "runtime_user_progress",
+    runtime_channel: channel,
+    runtime_event_type: eventType,
+    file_changes: event.file_changes || [],
+    run_id: runId
+  });
 }
 
 function sessionPath(sessionId, file = "") {
@@ -608,6 +746,7 @@ async function readRunDetail(runId) {
   payload.worker_results = redact(await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80));
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
   payload.events = redact(await readJsonlTail(path.join(runDir, "events.jsonl"), 120));
+  payload.user_progress = redact(await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120));
   payload.files = await listRunEvidenceFiles(runDir, runId);
   return redact(payload);
 }

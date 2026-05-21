@@ -100,6 +100,30 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(events) >= 4
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [event["phase"] for event in user_progress] == [
+        "understand",
+        "plan",
+        "plan",
+        "review",
+        "result",
+        "next",
+    ]
+    assert [event["channel"] for event in user_progress] == [
+        "conclusion",
+        "model",
+        "evidence",
+        "evidence",
+        "conclusion",
+        "conclusion",
+    ]
+    assert all(event["display_level"] == "main" for event in user_progress)
+    assert user_progress[1]["call_chain"] == ["PlanCommand", "GoalSpecAgent"]
+    assert user_progress[-2]["artifact_refs"]
 
     backlog = json.loads(
         (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")

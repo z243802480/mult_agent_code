@@ -95,7 +95,8 @@ class OpenAICompatibleClient:
         call_started = time.monotonic()
         for attempt in range(self.settings.max_retries + 1):
             try:
-                response = self._call_provider(payload, timeout)
+                with self.logger.progress_context(request):
+                    response = self._call_provider(payload, timeout)
                 if self.budget:
                     self.budget.record_model_tokens(
                         response.usage.input_tokens,

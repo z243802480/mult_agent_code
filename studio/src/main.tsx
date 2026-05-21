@@ -50,7 +50,7 @@ type StudioEvent = {
     | "file_changed"
     | "final_answer"
     | "error";
-  status: "queued" | "running" | "waiting_user" | "completed" | "failed";
+  status: "queued" | "running" | "waiting_user" | "completed" | "failed" | "blocked";
   title: string;
   summary: string;
   content_delta?: string;
@@ -60,6 +60,11 @@ type StudioEvent = {
   model_provider?: string;
   model_name?: string;
   telemetry?: AnyRecord;
+  file_changes?: AnyRecord[];
+  runtime_channel?: string;
+  runtime_event_type?: string;
+  source?: string;
+  run_id?: string;
   phase?: "understand" | "plan" | "execute" | "review" | "resume" | "result" | "next" | string;
   display_level?: "main" | "inspector";
   created_at: string;
@@ -113,6 +118,7 @@ type RunDetailPayload = {
   worker_results?: AnyRecord[];
   validation_results?: AnyRecord[];
   events?: AnyRecord[];
+  user_progress?: AnyRecord[];
   files?: WorkspaceFile[];
 };
 
@@ -703,6 +709,7 @@ function Inspector({
 }) {
   const eventFiles = useMemo(() => files.slice(0, 12), [files]);
   const routes = overview?.modelRoutes?.slice(0, 5) ?? [];
+  const inspectorSections = useMemo(() => buildInspectorSections(event), [event]);
   return (
     <aside className="inspector">
       <section>
@@ -714,12 +721,7 @@ function Inspector({
               <strong>{event.title}</strong>
               <Status status={event.status} />
             </div>
-            {event.command && <code>{event.command.join(" ")}</code>}
-            {event.model_provider && <small>{event.model_provider}/{event.model_name ?? "unknown"}</small>}
-            {!!event.evidence_refs?.length && <RefList title="Evidence" items={event.evidence_refs} />}
-            {!!event.artifact_refs?.length && <RefList title="Artifacts" items={event.artifact_refs} />}
-            {event.telemetry && <pre>{JSON.stringify(event.telemetry, null, 2)}</pre>}
-            {event.content_delta && <pre>{event.content_delta}</pre>}
+            <InspectorTabs sections={inspectorSections} />
           </div>
         )}
       </section>
@@ -798,6 +800,7 @@ function EvidenceExplorer({
   const validations = runDetail?.validation_results ?? [];
   const workers = runDetail?.worker_results ?? [];
   const evidence = runDetail?.task_execution_evidence ?? [];
+  const userProgress = runDetail?.user_progress ?? [];
   const files = runDetail?.files ?? [];
   return (
     <section className="evidenceExplorer">
@@ -819,8 +822,9 @@ function EvidenceExplorer({
           <div className="evidenceStats">
             <Metric label="Models" value={String(modelCalls.length)} tone={modelCalls.some((item) => item.status === "failure") ? "bad" : "good"} />
             <Metric label="Validation" value={String(validations.length)} tone={validations.some((item) => /fail|error/i.test(String(item.status ?? item.outcome ?? ""))) ? "bad" : "warn"} />
-            <Metric label="Workers" value={String(workers.length)} tone={workers.some((item) => /fail|error/i.test(String(item.status ?? ""))) ? "bad" : "warn"} />
+            <Metric label="Progress" value={String(userProgress.length)} tone={userProgress.length ? "good" : "warn"} />
           </div>
+          <EvidenceBlock title="User Progress" items={userProgress.slice(-8)} render={userProgressLine} />
           <EvidenceBlock title="Run Summary" items={compactRecords(runDetail.run, runDetail.cost_report, runDetail.goal_spec)} render={summaryLine} />
           <EvidenceBlock title="Model Calls" items={modelCalls.slice(-5)} render={modelCallLine} />
           <EvidenceBlock title="Validation" items={validations.slice(-5)} render={validationLine} />
@@ -1218,6 +1222,135 @@ function workerLine(item: AnyRecord) {
 
 function evidenceLine(item: AnyRecord) {
   return firstText(`${item.task_id ?? item.kind ?? "evidence"} ${item.status ?? item.outcome ?? ""}`, item.summary, item.path);
+}
+
+type InspectorSection = {
+  id: string;
+  title: string;
+  count: number;
+  empty: string;
+  content: React.ReactNode;
+};
+
+function InspectorTabs({ sections }: { sections: InspectorSection[] }) {
+  const [active, setActive] = useState(sections.find((section) => section.count > 0)?.id ?? sections[0]?.id ?? "shell");
+  useEffect(() => {
+    if (!sections.some((section) => section.id === active && section.count > 0)) {
+      setActive(sections.find((section) => section.count > 0)?.id ?? sections[0]?.id ?? "shell");
+    }
+  }, [sections, active]);
+  const selected = sections.find((section) => section.id === active) ?? sections[0];
+  return (
+    <div className="inspectorTabs">
+      <div className="inspectorTabList">
+        {sections.map((section) => (
+          <button className={section.id === active ? "active" : ""} key={section.id} onClick={() => setActive(section.id)}>
+            {section.title}
+            <span>{section.count}</span>
+          </button>
+        ))}
+      </div>
+      <div className="inspectorTabPanel">
+        {selected?.count ? selected.content : <p className="muted">{selected?.empty}</p>}
+      </div>
+    </div>
+  );
+}
+
+function buildInspectorSections(event: StudioEvent | null): InspectorSection[] {
+  if (!event) return [];
+  const shellItems = [
+    ...(event.command?.length ? [{ label: "Command", value: event.command.join(" ") }] : []),
+    ...(event.content_delta && (event.type.startsWith("tool_") || event.runtime_channel === "tool")
+      ? [{ label: "Output", value: event.content_delta }]
+      : []),
+  ];
+  const fileChanges = event.file_changes ?? [];
+  const artifacts = event.artifact_refs ?? [];
+  const evidence = event.evidence_refs ?? [];
+  const diagnostics = compactRecords(
+    event.model_provider ? { provider: event.model_provider, model: event.model_name } : undefined,
+    event.telemetry,
+    event.source ? { source: event.source, channel: event.runtime_channel, event_type: event.runtime_event_type, run_id: event.run_id } : undefined,
+    event.content_delta && !event.type.startsWith("tool_") ? { content: event.content_delta } : undefined
+  );
+  return [
+    {
+      id: "shell",
+      title: "Shell",
+      count: shellItems.length,
+      empty: "No shell command or tool output on this event.",
+      content: <KeyValueList items={shellItems} />,
+    },
+    {
+      id: "diff",
+      title: "Diff",
+      count: fileChanges.length,
+      empty: "No file changes attached to this event.",
+      content: <RecordList items={fileChanges} render={fileChangeLine} />,
+    },
+    {
+      id: "artifact",
+      title: "Artifacts",
+      count: artifacts.length + evidence.length,
+      empty: "No artifact or evidence refs attached.",
+      content: (
+        <>
+          {!!artifacts.length && <RefList title="Artifacts" items={artifacts} />}
+          {!!evidence.length && <RefList title="Evidence" items={evidence} />}
+        </>
+      ),
+    },
+    {
+      id: "diagnostic",
+      title: "Diagnostic",
+      count: diagnostics.length,
+      empty: "No diagnostic telemetry attached.",
+      content: <RecordList items={diagnostics} render={diagnosticLine} />,
+    },
+  ];
+}
+
+function KeyValueList({ items }: { items: { label: string; value: string }[] }) {
+  return (
+    <div className="keyValueList">
+      {items.map((item) => (
+        <div key={item.label}>
+          <small>{item.label}</small>
+          <pre>{item.value}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RecordList({ items, render }: { items: AnyRecord[]; render: (item: AnyRecord) => string }) {
+  return (
+    <div className="recordList">
+      {items.map((item, index) => (
+        <details key={`${render(item)}-${index}`}>
+          <summary>{render(item)}</summary>
+          <pre>{JSON.stringify(item, null, 2)}</pre>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+function userProgressLine(item: AnyRecord) {
+  return firstText(
+    `${item.channel ?? "progress"}/${item.event_type ?? "message"} ${item.phase ?? ""} ${item.status ?? ""}`,
+    item.summary,
+    item.title
+  );
+}
+
+function fileChangeLine(item: AnyRecord) {
+  return firstText(`${item.operation ?? item.event_type ?? "change"} ${item.path ?? ""}`, item.summary);
+}
+
+function diagnosticLine(item: AnyRecord) {
+  return firstText(item.provider ? `${item.provider}/${item.model ?? "unknown"}` : "", item.source ? `${item.source} ${item.channel ?? ""}/${item.event_type ?? ""}` : "", item.content, JSON.stringify(item));
 }
 
 function firstText(...items: unknown[]) {

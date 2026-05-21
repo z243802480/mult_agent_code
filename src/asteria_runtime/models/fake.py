@@ -5,6 +5,7 @@ import json
 from asteria_runtime.core.budget import BudgetController, BudgetExceededError
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.models.model_call_logger import ModelCallLogger
+from asteria_runtime.models.model_progress_sink import model_progress_sink
 
 
 class FakeModelClient:
@@ -33,7 +34,24 @@ class FakeModelClient:
                 )
             raise
 
-        payload = self._payload(request)
+        if self.logger:
+            progress_context = self.logger.progress_context(request)
+        else:
+            progress_context = None
+        if progress_context is None:
+            payload = self._payload(request)
+        else:
+            with progress_context:
+                sink = model_progress_sink()
+                sink.model_start(provider="fake", model="fake-offline", mode="non_streaming")
+                payload = self._payload(request)
+                preview = json.dumps(payload, ensure_ascii=False)
+                sink.model_delta(preview, provider="fake", model="fake-offline")
+                sink.model_end(
+                    provider="fake",
+                    model="fake-offline",
+                    telemetry={"mode": "non_streaming", "usage_estimated": True},
+                )
         content = json.dumps(payload, ensure_ascii=False)
         usage = TokenUsage(
             input_tokens=self._estimate_tokens(request),

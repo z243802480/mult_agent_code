@@ -1,0 +1,65 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Asteria Studio user-side task benchmark. These tasks prove whether the product feels like an agent workspace instead of a backend dashboard.",
+  "minimum_ready_score": 0.8,
+  "required_user_progress_channels": ["model", "tool", "file", "evidence"],
+  "tasks": [
+    {
+      "id": "travel_plan_qingdao",
+      "category": "general",
+      "goal": "帮我计划一个 3 天青岛旅行，考虑交通、住宿区域、每天路线、预算和雨天备选。",
+      "expected_user_experience": [
+        "assistant acknowledges the goal immediately",
+        "plan progress is visible before completion",
+        "final answer has result and next step",
+        "no raw stdout is required to understand the answer"
+      ],
+      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+    },
+    {
+      "id": "small_code_change",
+      "category": "coding",
+      "goal": "给一个小 CLI 增加 --version 参数，并补一个测试。",
+      "expected_user_experience": [
+        "permission is requested before write/run",
+        "file or artifact evidence is inspectable",
+        "verification result is summarized for the user",
+        "next action is explicit"
+      ],
+      "required_events": ["user_message", "assistant_delta", "permission_request"]
+    },
+    {
+      "id": "log_analysis",
+      "category": "analysis",
+      "goal": "分析一段失败日志，判断根因、影响范围和下一步修复建议。",
+      "expected_user_experience": [
+        "the answer is organized as diagnosis, evidence, and next step",
+        "internal command output is kept in Inspector",
+        "the user can continue the same session"
+      ],
+      "required_events": ["user_message", "assistant_delta", "reasoning_delta"]
+    },
+    {
+      "id": "document_synthesis",
+      "category": "writing",
+      "goal": "把几段零散需求整理成一份一页 PRD，列出目标、非目标、验收标准和风险。",
+      "expected_user_experience": [
+        "planning is visible",
+        "final artifact is readable without backend knowledge",
+        "the next step asks for scope confirmation or execution"
+      ],
+      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+    },
+    {
+      "id": "resume_previous_task",
+      "category": "continuity",
+      "goal": "继续上次未完成的任务，先总结当前状态，再推进下一步。",
+      "expected_user_experience": [
+        "resume context is explicit",
+        "completed work is separated from next work",
+        "risks and blockers are visible"
+      ],
+      "required_events": ["user_message", "assistant_delta", "reasoning_delta"]
+    }
+  ]
+}

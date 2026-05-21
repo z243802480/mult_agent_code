@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import RLock
+from contextlib import nullcontext
+from typing import ContextManager
 
 from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry
+from asteria_runtime.models.model_progress_sink import ModelProgressSink, use_model_progress_sink
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -15,7 +18,13 @@ _MODEL_CALL_LOGGER_LOCK = RLock()
 class ModelCallLogger:
     def __init__(self, run_dir: Path | None, validator: SchemaValidator | None = None) -> None:
         self.run_dir = run_dir
+        self.validator = validator
         self.store = JsonlStore(validator)
+
+    def progress_context(self, request: ChatRequest) -> ContextManager[None]:
+        if self.run_dir is None:
+            return nullcontext()
+        return use_model_progress_sink(ModelProgressSink(self.run_dir, self.validator, request))
 
     def record_success(self, request: ChatRequest, response: ChatResponse) -> dict | None:
         return self._record(request, response, status="success", summary="model call succeeded")

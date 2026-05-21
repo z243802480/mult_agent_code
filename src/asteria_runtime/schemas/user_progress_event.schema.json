@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UserProgressEvent",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "run_id",
+    "created_at",
+    "channel",
+    "event_type",
+    "phase",
+    "status",
+    "title",
+    "summary",
+    "display_level"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "event_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "session_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "sequence": { "type": "integer" },
+    "channel": {
+      "type": "string",
+      "enum": ["conclusion", "progress", "model", "tool", "file", "evidence", "call_chain", "execution_chain", "diagnostic"]
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "message",
+        "delta",
+        "start",
+        "end",
+        "error",
+        "tool_call",
+        "tool_output",
+        "file_created",
+        "file_modified",
+        "file_deleted",
+        "evidence",
+        "decision",
+        "heartbeat"
+      ]
+    },
+    "parent_event_id": { "type": ["string", "null"] },
+    "tool_call_id": { "type": ["string", "null"] },
+    "phase": {
+      "type": "string",
+      "enum": ["understand", "plan", "execute", "review", "result", "next", "blocked"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "waiting_user", "completed", "failed", "blocked"]
+    },
+    "title": { "type": "string" },
+    "summary": { "type": "string" },
+    "content_delta": { "type": "string" },
+    "display_level": {
+      "type": "string",
+      "enum": ["main", "inspector"]
+    },
+    "model_provider": { "type": ["string", "null"] },
+    "model_name": { "type": ["string", "null"] },
+    "command": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "telemetry": { "type": "object" },
+    "call_chain": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "execution_chain": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "file_changes": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "data": { "type": "object" }
+  }
+}

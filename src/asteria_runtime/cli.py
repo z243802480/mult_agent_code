@@ -42,6 +42,7 @@ from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand
+from asteria_runtime.commands.studio_benchmark_command import StudioBenchmarkCommand
 from asteria_runtime.commands.verification_command import VerificationStatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
@@ -1013,6 +1014,24 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Long-running objective this cycle should describe",
     )
+    studio_benchmark_parser = subcommands.add_parser(
+        "studio-benchmark",
+        aliases=["/studio-benchmark", "ux-benchmark", "/ux-benchmark"],
+        help="Evaluate Studio sessions against user-side agent workspace benchmarks",
+    )
+    studio_benchmark_parser.add_argument("--root", default=".", help="Workspace root path")
+    studio_benchmark_parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=None,
+        help="Benchmark manifest path; defaults to benchmarks/studio_user_tasks.json",
+    )
+    studio_benchmark_parser.add_argument(
+        "--session-id",
+        default=None,
+        help="Evaluate only one Studio session id",
+    )
+    studio_benchmark_parser.add_argument("--json", action="store_true", help="Print JSON")
     return parser
 
 
@@ -1457,6 +1476,20 @@ def main() -> None:
             objective=args.objective,
         ).run()
         print(daily_report_result.to_text())
+        return
+
+    if command in {"studio-benchmark", "ux-benchmark"}:
+        studio_benchmark_result = StudioBenchmarkCommand(
+            root=Path(args.root),
+            manifest=args.manifest,
+            session_id=args.session_id,
+        ).run()
+        if args.json:
+            print(json.dumps(studio_benchmark_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(studio_benchmark_result.to_text())
+        if not studio_benchmark_result.ok:
+            raise SystemExit(1)
         return
 
     parser.error(f"Unsupported command: {args.command}")

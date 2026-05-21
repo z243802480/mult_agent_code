@@ -22,6 +22,7 @@ from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -74,6 +75,7 @@ class PlanCommand:
         run = run_store.create_run(f'asteria plan "{self.goal}"')
         run_dir = run_store.run_dir(run["run_id"])
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
+        progress_logger = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
         budget = BudgetController(policy, run_id=run["run_id"])
         model_client: ModelClient
         if self.model_client:
@@ -86,6 +88,16 @@ class PlanCommand:
             model_client = create_model_client(run_dir, self.validator, budget)
 
         event_logger.record(run["run_id"], "run_started", "PlanCommand", "Plan run started")
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="conclusion",
+            event_type="message",
+            phase="understand",
+            status="completed",
+            title="理解目标",
+            summary="Runtime accepted the user goal and started a planning run.",
+            content_delta=self.goal,
+        )
         event_logger.record(
             run["run_id"],
             "phase_changed",
@@ -104,6 +116,18 @@ class PlanCommand:
             "PlanCommand",
             "Selected GoalSpec model route.",
             goal_spec_route_plan,
+        )
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="model",
+            event_type="start",
+            phase="plan",
+            status="running",
+            title="制定计划",
+            summary="Selecting a model route and generating a structured goal specification.",
+            data={"model_route": goal_spec_route_plan},
+            call_chain=["PlanCommand", "GoalSpecAgent"],
+            execution_chain=["understand", "goal_spec"],
         )
 
         goal_spec_agent = GoalSpecAgent(model_client, self.validator)
@@ -192,6 +216,19 @@ class PlanCommand:
         goal_spec_path = run_dir / "goal_spec.json"
         self.store.write(goal_spec_path, goal_spec, "goal_spec")
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="evidence",
+            event_type="evidence",
+            phase="plan",
+            status="running",
+            title="目标规格已生成",
+            summary="Goal specification artifact was created.",
+            artifact_refs=[str(goal_spec_path)],
+            evidence_refs=[str(goal_spec_path)],
+            call_chain=["PlanCommand", "GoalSpecAgent"],
+            execution_chain=["understand", "goal_spec"],
+        )
 
         task_plan = RequirementPlanner().build_task_plan(goal_spec, runtime_context=runtime_context)
         for task in task_plan["tasks"]:
@@ -224,6 +261,24 @@ class PlanCommand:
                 "artifact": str(task_plan_eval_path),
             },
         )
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="evidence",
+            event_type="evidence",
+            phase="review",
+            status="completed",
+            title="计划质量核对",
+            summary=str(task_plan_eval["summary"]),
+            artifact_refs=[str(task_plan_eval_path)],
+            evidence_refs=[str(task_plan_eval_path)],
+            call_chain=["PlanCommand", "RequirementPlanner", "TaskPlanEvaluator"],
+            execution_chain=["goal_spec", "task_plan", "task_plan_eval"],
+            data={
+                "status": task_plan_eval["status"],
+                "overall_score": task_plan_eval["overall_score"],
+                "issues": len(task_plan_eval["issues"]),
+            },
+        )
 
         cost_report = budget.cost_report()
         cost_report_path = run_dir / "cost_report.json"
@@ -240,6 +295,39 @@ class PlanCommand:
         run_store.update_run(run)
         run_store.set_current_session(run["run_id"], "plan_created")
         event_logger.record(run["run_id"], "run_completed", "PlanCommand", run["summary"])
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="conclusion",
+            event_type="message",
+            phase="result",
+            status="completed",
+            title="计划已生成",
+            summary=run["summary"],
+            artifact_refs=[
+                str(goal_spec_path),
+                str(task_plan_path),
+                str(task_plan_eval_path),
+                str(cost_report_path),
+            ],
+            evidence_refs=[
+                str(goal_spec_path),
+                str(task_plan_path),
+                str(task_plan_eval_path),
+                str(cost_report_path),
+            ],
+            call_chain=["PlanCommand", "GoalSpecAgent", "RequirementPlanner", "TaskPlanEvaluator"],
+            execution_chain=["understand", "goal_spec", "task_plan", "task_plan_eval", "result"],
+        )
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="conclusion",
+            event_type="message",
+            phase="next",
+            status="completed",
+            title="下一步",
+            summary="Review the plan, then run it with bounded permissions or adjust scope.",
+            content_delta="You can continue with `asteria run --root <workspace>` or ask Studio to execute the plan after confirming permissions.",
+        )
 
         return PlanResult(
             run_id=run["run_id"],

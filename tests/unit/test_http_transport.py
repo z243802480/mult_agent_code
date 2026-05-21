@@ -1,8 +1,12 @@
 import json
+from pathlib import Path
 
 import pytest
 
+from asteria_runtime.models.base import ChatMessage, ChatRequest
 from asteria_runtime.models.http_transport import HttpTransport, HttpTransportError
+from asteria_runtime.models.model_call_logger import ModelCallLogger
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 class FakeResponse:
@@ -103,5 +107,47 @@ def test_http_transport_stream_writes_studio_model_events(
         "model_end",
     ]
     assert "".join(event.get("content_delta", "") for event in events) == '{"ok": true}'
+    assert events[0]["model_provider"] == "minimax"
+    assert events[-1]["telemetry"]["chunk_count"] == 2
+
+
+def test_http_transport_stream_writes_runtime_user_progress_events(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    def fake_urlopen(request: object, timeout: int) -> FakeStreamResponse:
+        return FakeStreamResponse()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    request = ChatRequest(
+        purpose="task_execution",
+        model_tier="medium",
+        messages=[ChatMessage(role="user", content="do work")],
+        metadata={"run_id": "run-1", "agent_id": "CoderAgent"},
+    )
+    logger = ModelCallLogger(tmp_path, SchemaValidator(Path("schemas")))
+
+    with logger.progress_context(request):
+        HttpTransport().post_json_stream(
+            "https://api.minimax.io/v1/chat/completions",
+            headers={},
+            payload={"stream": True, "model": "MiniMax-M2.7"},
+            timeout_seconds=5,
+            idle_timeout_seconds=2,
+            deadline_seconds=5,
+        )
+
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [(event["channel"], event["event_type"]) for event in events] == [
+        ("model", "start"),
+        ("model", "delta"),
+        ("model", "delta"),
+        ("model", "end"),
+    ]
+    assert "".join(event.get("content_delta", "") for event in events) == '{"ok": true}'
+    assert events[0]["phase"] == "execute"
     assert events[0]["model_provider"] == "minimax"
     assert events[-1]["telemetry"]["chunk_count"] == 2
