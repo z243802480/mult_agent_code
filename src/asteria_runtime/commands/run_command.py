@@ -22,6 +22,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 
 
 @dataclass(frozen=True)
@@ -127,14 +128,41 @@ class RunCommand:
         ).run()
         steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
-        return self.continue_run(plan.run_id, steps)
+        # Emit a progress event so Studio knows planning finished and execution starts
+        run_dir = self.root / ".asteria" / "runs" / plan.run_id
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+        progress.record(
+            run_id=plan.run_id,
+            channel="progress",
+            phase="execute",
+            status="running",
+            title="计划完成，开始执行",
+            summary=f"已生成 {plan.task_count} 个任务，正在启动执行阶段。",
+            display_level="main",
+        )
+        return self.continue_run(plan.run_id, steps, _progress=progress)
 
     def continue_run(
         self,
         run_id: str,
         steps: list[RunStepSummary] | None = None,
+        _progress: UserProgressLogger | None = None,
     ) -> RunResult:
         steps = steps or []
+        # Create a progress logger if caller didn't supply one (e.g. resume path)
+        if _progress is None:
+            run_dir = self.root / ".asteria" / "runs" / run_id
+            _progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+            _progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="running",
+                title="恢复执行",
+                summary="正在检查任务状态，准备继续推进。",
+                display_level="main",
+            )
+
         if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
             compact = CompactCommand(self.root, run_id=run_id, focus="task plan quality gate").run()
             steps.append(
@@ -157,12 +185,30 @@ class RunCommand:
         for index in range(max_iterations):
             if self._budget_guard(run_id, steps, f"iteration-{index + 1}-execute"):
                 break
-            self._execute_until_no_ready(run_id, steps, iteration=index + 1)
+            _progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="running",
+                title=f"执行迭代 {index + 1}",
+                summary=f"正在执行第 {index + 1} 轮任务，最多处理 {self.max_tasks_per_iteration} 个任务。",
+                display_level="main",
+            )
+            self._execute_until_no_ready(run_id, steps, iteration=index + 1, progress=_progress)
             if self._run_status(run_id) in {"blocked", "paused"}:
                 break
 
             if self._budget_guard(run_id, steps, f"iteration-{index + 1}-review"):
                 break
+            _progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="review",
+                status="running",
+                title="评审阶段",
+                summary="正在评审本轮执行结果，判断是否需要修复或继续。",
+                display_level="main",
+            )
             review = ReviewCommand(
                 self.root,
                 run_id=run_id,
@@ -179,6 +225,19 @@ class RunCommand:
                     ),
                 )
             )
+            _progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="review",
+                status="running" if review.follow_up_count > 0 else "completed",
+                title="评审完成",
+                summary=(
+                    f"评分 {review.score:.2f}；"
+                    f"{review.follow_up_count} 个后续任务；"
+                    f"{review.decision_count} 个待决策点。"
+                ),
+                display_level="main",
+            )
             if review.decision_count:
                 break
             if review.status == "pass" or review.follow_up_count == 0:
@@ -193,9 +252,20 @@ class RunCommand:
 
         review_status = self._latest_review_status(run_id)
         final_report_path = self._write_final_report(run_id, review_status, steps)
+        run_status = self._run_status(run_id)
+        _progress.conclusion(
+            run_id=run_id,
+            phase="result",
+            title="运行完成" if run_status == "completed" else "运行结束",
+            summary=(
+                f"Run {run_id} 已完成，状态：{run_status}。"
+                f"共 {len(steps)} 个执行步骤。"
+            ),
+            artifact_refs=[str(final_report_path)],
+        )
         return RunResult(
             run_id=run_id,
-            status=self._run_status(run_id),
+            status=run_status,
             final_report_path=final_report_path,
             steps=steps,
         )
@@ -205,6 +275,7 @@ class RunCommand:
         run_id: str,
         steps: list[RunStepSummary],
         iteration: int,
+        progress: UserProgressLogger | None = None,
     ) -> bool:
         progressed = False
         while self._ready_count(run_id) > 0:
@@ -227,10 +298,33 @@ class RunCommand:
                     ),
                 )
             )
+            if progress:
+                progress.record(
+                    run_id=run_id,
+                    channel="progress",
+                    phase="execute",
+                    status="running",
+                    title="任务执行进展",
+                    summary=(
+                        f"迭代 {iteration}：完成 {execute.completed} 个任务，"
+                        f"阻塞 {execute.blocked} 个任务。"
+                    ),
+                    display_level="main",
+                )
             status = self._run_status(run_id)
             if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
                 return progressed
             if status == "blocked":
+                if progress:
+                    progress.record(
+                        run_id=run_id,
+                        channel="progress",
+                        phase="execute",
+                        status="running",
+                        title="调试阶段",
+                        summary="检测到阻塞任务，正在分析失败原因并尝试修复。",
+                        display_level="main",
+                    )
                 debug = DebugCommand(
                     self.root,
                     run_id=run_id,
@@ -243,6 +337,16 @@ class RunCommand:
                         (f"{debug.repaired} repaired, {debug.still_blocked} still blocked."),
                     )
                 )
+                if progress:
+                    progress.record(
+                        run_id=run_id,
+                        channel="progress",
+                        phase="execute",
+                        status="running",
+                        title="调试完成",
+                        summary=f"修复 {debug.repaired} 个任务，仍阻塞 {debug.still_blocked} 个。",
+                        display_level="main",
+                    )
                 if self._run_status(run_id) == "blocked":
                     if self._budget_guard(run_id, steps, f"iteration-{iteration}-replan"):
                         return progressed

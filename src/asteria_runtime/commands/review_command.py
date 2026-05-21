@@ -20,6 +20,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -90,7 +91,27 @@ class ReviewCommand:
         run_store.update_run(run)
         event_logger.record(run_id, "phase_changed", "ReviewCommand", "DONE -> REVIEW")
 
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="running",
+            title="开始评审",
+            summary="正在汇总执行结果、证据和产物，准备进行质量评审。",
+            display_level="main",
+        )
+
         review_context = self._review_context(agent_dir, run_dir, run_id)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="running",
+            title="评审分析中",
+            summary="评审模型正在分析执行证据，判断目标完成情况。",
+            display_level="main",
+        )
         eval_report = reviewer.evaluate(review_context, run_id)
         eval_report_path = run_dir / "eval_report.json"
         self.store.write(eval_report_path, eval_report, "eval_report")
@@ -133,6 +154,16 @@ class ReviewCommand:
             run["current_phase"] = "REVIEWED"
         run["summary"] = eval_report["overall"]["reason"]
         run_store.update_run(run)
+
+        score = float(eval_report["overall"]["score"])
+        reason = str(eval_report["overall"].get("reason", ""))
+        progress.conclusion(
+            run_id=run_id,
+            phase="review",
+            title="评审完成",
+            summary=f"评分 {score:.2f}（{status}）。{reason}",
+            artifact_refs=[str(eval_report_path), str(review_report_path)],
+        )
 
         return ReviewResult(
             run_id=run_id,

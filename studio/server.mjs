@@ -14,6 +14,17 @@ const python = args.python || process.env.ASTERIA_PYTHON || "python";
 const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
+const pendingJobs = new Map(); // jobId -> { sessionId, mode, goal, command }
+const sseClients = new Map(); // sessionId -> Set<response>
+
+function notifySSE(sessionId, event) {
+  const clients = sseClients.get(sessionId);
+  if (!clients?.size) return;
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of [...clients]) {
+    try { res.write(payload); } catch { clients.delete(res); }
+  }
+}
 
 createServer(async (request, response) => {
   try {
@@ -54,9 +65,40 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, { ok: true, events: await readSessionEvents(sessionId) });
     return;
   }
+  if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/events\/stream$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-3) || "");
+    if (!isSafeId(sessionId)) { sendJson(response, 400, { ok: false, error: "invalid session id" }); return; }
+    response.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no"
+    });
+    response.write(": connected\n\n");
+    const existingEvents = await readSessionEvents(sessionId);
+    for (const event of existingEvents) {
+      response.write(`data: ${JSON.stringify(event)}\n\n`);
+    }
+    if (!sseClients.has(sessionId)) sseClients.set(sessionId, new Set());
+    sseClients.get(sessionId).add(response);
+    const ping = setInterval(() => { try { response.write(": ping\n\n"); } catch {} }, 15000);
+    request.on("close", () => {
+      clearInterval(ping);
+      sseClients.get(sessionId)?.delete(response);
+    });
+    return;
+  }
   if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/messages$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, await submitUserGoal(sessionId, await readRequestJson(request)));
+    return;
+  }
+  if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs\/[^/]+\/permission$/)) {
+    const parts = url.pathname.split("/");
+    // /api/studio/sessions/SESSION_ID/jobs/JOB_ID/permission
+    const sessionId = decodeURIComponent(parts.at(-4) || "");
+    const jobId = decodeURIComponent(parts.at(-2) || "");
+    sendJson(response, 200, await handlePermission(sessionId, jobId, await readRequestJson(request)));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/files") {
@@ -100,6 +142,11 @@ async function submitUserGoal(sessionId, body) {
   const permission = String(body?.permission || "ask");
   if (!goal) return { ok: false, error: "message is required" };
 
+  // Chat mode: instant local response, no CLI spawn
+  if (mode === "chat") {
+    return handleChatMode(session.session_id, goal);
+  }
+
   await appendEvent(session.session_id, {
     type: "user_message",
     status: "completed",
@@ -118,19 +165,325 @@ async function submitUserGoal(sessionId, body) {
 
   if (mode !== "plan" && permission !== "allow") {
     const command = runtimeCommand(mode, goal);
+    const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    pendingJobs.set(pendingJobId, { sessionId: session.session_id, mode, goal, command });
     await appendEvent(session.session_id, {
       type: "permission_request",
       status: "waiting_user",
       title: "需要权限确认",
-      summary: "这个动作可能写文件或调用工具。",
+      summary: "这个动作可能写文件或调用工具，请确认是否允许。",
       command,
-      content_delta: "允许本次执行，或切回 Plan 模式只生成计划。"
+      job_id: pendingJobId,
+      content_delta: "允许后将立即启动，或取消后切回 plan 模式先查看计划。"
     });
-    return { ok: true, session, started: false, needs_permission: true };
+    return { ok: true, session, started: false, needs_permission: true, job_id: pendingJobId };
   }
 
   startRuntimeJob(session.session_id, mode, goal);
   return { ok: true, session, started: true };
+}
+
+// ─── Chat mode: instant local answer, zero CLI overhead ─────────────────────
+
+async function handleChatMode(sessionId, goal) {
+  await appendEvent(sessionId, {
+    type: "user_message",
+    status: "completed",
+    title: "User",
+    summary: goal.slice(0, 80),
+    content_delta: goal,
+    phase: "understand",
+    display_level: "main",
+  });
+  const content = await buildChatAnswer(goal, sessionId);
+  await appendEvent(sessionId, {
+    type: "final_answer",
+    status: "completed",
+    title: "Asteria",
+    summary: "即时回复，未调用 CLI。",
+    phase: "result",
+    display_level: "main",
+    content_delta: content,
+  });
+  return { ok: true, chat: true };
+}
+
+async function buildChatAnswer(message, sessionId) {
+  const m = message.trim();
+  const lower = m.toLowerCase();
+
+  if (/你是谁|who are you|自我介绍|介绍.{0,4}自己|你叫什么/.test(lower)) return CHAT_INTRO;
+  if (/帮助|help|怎么用|如何使用|使用说明|教程/.test(lower)) return CHAT_HELP;
+  if (/状态|status|当前|现在怎样|运行情况/.test(lower)) return await chatStatusAnswer(sessionId);
+  if (/你好|hello|hi\b|嗨|早|晚上好|下午好/.test(lower)) return CHAT_GREETING;
+  if (/plan|run|review|resume|什么模式|模式区别|怎么选/.test(lower)) return CHAT_MODES;
+  if (/chat|对话.*模式|聊天模式/.test(lower)) return CHAT_ABOUT_CHAT;
+  if (/证据|evidence|inspector|产物|artifact/.test(lower)) return CHAT_EVIDENCE;
+
+  // Looks like a task accidentally sent in chat mode → suggest switching
+  const looksLikeTask = m.length > 15 && /[。！？，]|实现|修复|重构|添加|生成|补全|创建|更新|检查|分析/.test(m);
+  if (looksLikeTask) return chatTaskSuggestion(m);
+
+  return chatDefault(m);
+}
+
+async function chatStatusAnswer(sessionId) {
+  try {
+    const runsDir = path.join(workspace, ".asteria", "runs");
+    let latestRunLine = "暂无运行记录。";
+    if (existsSync(runsDir)) {
+      const dirs = (await fs.readdir(runsDir)).filter((d) => /^run-\d{8}-\d{4}/.test(d)).sort().reverse();
+      if (dirs.length) {
+        const runJson = await readJson(path.join(runsDir, dirs[0], "run.json")).catch(() => ({}));
+        const status = firstRuntimeText(runJson.status, "unknown");
+        const goal = firstRuntimeText(runJson.goal, runJson.original_goal, "未记录目标");
+        latestRunLine = `最近 run：**${dirs[0]}**（${status}）\n目标：${goal.slice(0, 100)}`;
+      }
+    }
+    return `## 当前状态\n\n工作区：\`${workspace}\`\n\n${latestRunLine}\n\n使用 Inspector 右侧面板查看完整证据，或切换 **review** 模式出具质量评审。`;
+  } catch {
+    return `## 当前状态\n\n工作区：\`${workspace}\`\n\n无法读取运行记录，请刷新后重试。`;
+  }
+}
+
+function chatTaskSuggestion(message) {
+  return `## 看起来是一个任务
+
+你的消息：**${message.slice(0, 80)}**
+
+当前是 **chat** 模式（即时问答），不会调用 CLI。
+
+如果你想执行这个任务：
+- 切换到 **plan** → 先出执行计划
+- 切换到 **run** → 直接执行（plan + execute + review）
+
+切换方式：点击下方模式选择器，再重新发送。`;
+}
+
+function chatDefault(message) {
+  return `## 收到
+
+你问的是：**${message.slice(0, 100)}**
+
+我暂时没有针对这个问题的内置回答。你可以：
+- 切换 **plan** 或 **run** 模式，把它变成一个任务让我执行
+- 换个关键词再问（支持：你是谁 / 怎么用 / 当前状态 / 模式区别 / 证据）`;
+}
+
+const CHAT_INTRO = `## 我是 Asteria
+
+本地优先的多智能体自主开发运行时。
+
+**核心定位**
+把你的目标转化为可验证的工作产物——计划、代码补丁、测试、报告。每一步都有证据，失败时硬停，不盲目修复。
+
+**四个工作模式**
+| 模式 | 做什么 |
+|------|--------|
+| plan | 分析目标 → 拆解结构化任务计划（不执行）|
+| run | 完整执行：plan + execute + debug + review |
+| review | 对最近一次 run 出具独立质量评审 |
+| resume | 恢复被中断的 run |
+
+**当前模式 chat** 是即时问答，不调用 CLI，没有延迟。
+
+想开始一个任务？切换到 **plan** 或 **run** 然后描述目标。`;
+
+const CHAT_GREETING = `你好！我是 Asteria，本地多智能体开发运行时。
+
+现在是 **chat** 模式——问我任何问题都会即时回答，没有等待。
+
+想让我执行任务，切换到 **plan**（先看计划）或 **run**（直接执行）。`;
+
+const CHAT_HELP = `## 使用指南
+
+**模式选择**（下方选择器）
+| 模式 | 适合场景 |
+|------|---------|
+| **chat** | 快速问答，了解 Asteria，查看状态 |
+| **plan** | 先看任务拆解再决定是否执行 |
+| **run** | 直接完整执行，包含 debug 和 review |
+| **review** | 评审最近一次 run 的质量 |
+| **resume** | 恢复因超预算/pending decision 中断的 run |
+
+**权限控制**（plan/run/resume 模式下显示）
+- 写入前询问 → 每次写文件前弹出确认卡片
+- 直接允许 → 自动放行（适合信任的工作区）
+
+**快捷键**：Ctrl+Enter 发送
+
+**Inspector**（右侧面板）：查看原始事件、模型调用、证据文件和产物引用。`;
+
+const CHAT_MODES = `## 模式说明
+
+**chat** — 当前模式。即时本地回复，不调用 CLI，零等待。适合问答和了解状态。
+
+**plan** — 只分析目标、生成任务计划，不执行任何代码。适合先看思路再决定。
+
+**run** — 完整执行：制定计划 → 执行任务 → 调试失败 → 评审结果。一步到位。
+
+**review** — 对最近一次 run 出具独立质量评审，判断是否达标、有无遗漏。
+
+**resume** — 从上次中断处恢复。run 因超预算、待确认决策或权限等待暂停时使用。
+
+---
+**怎么选？**
+- 第一次跑某个目标 → **plan** 先看拆解
+- 目标清晰、工作区干净 → **run** 直接执行
+- 上次没跑完 → **resume**
+- 不确定质量 → **review**`;
+
+const CHAT_ABOUT_CHAT = `## chat 模式
+
+即时本地问答，不调用任何 CLI 命令，没有模型 API 调用，回复是瞬时的。
+
+**支持的问题类型**
+- 你是谁 / 自我介绍
+- 怎么用 / 使用帮助
+- 当前状态 / 最近运行
+- 模式区别 / 怎么选
+- 证据 / Inspector / 产物
+
+**不支持的**：实际任务执行（请切换到 plan / run / review / resume）。`;
+
+const CHAT_EVIDENCE = `## 证据与 Inspector
+
+**Inspector（右侧面板）** 是 Asteria 的证据中心，包含：
+
+- **Shell** — 原始命令输出（stdout/stderr）
+- **Diff** — 文件变化对比
+- **产物** — 生成的文件、报告引用
+- **诊断** — 模型调用记录、worker 结果、验证结果、任务执行证据
+
+**证据文件位置**（工作区 .asteria/runs/run-YYYYMMDD-XXXX/）
+- \`goal_spec.json\` — 目标规格
+- \`task_plan.json\` — 任务计划
+- \`eval_report.json\` — 评审评分
+- \`final_report.md\` — 完整运行报告
+- \`worker_results.jsonl\` — 各 worker 执行结果
+- \`model_calls.jsonl\` — 全部模型调用记录
+
+点击 Thread 中的任意事件卡片，Inspector 会跳到对应细节。`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function handlePermission(sessionId, jobId, body) {
+  const action = String(body?.action || "");
+  if (action === "allow") {
+    const pending = pendingJobs.get(jobId);
+    if (!pending || pending.sessionId !== sessionId) return { ok: false, error: "job not found or session mismatch" };
+    pendingJobs.delete(jobId);
+    await appendEvent(sessionId, {
+      type: "assistant_delta",
+      status: "completed",
+      title: "已授权",
+      summary: "权限已批准，正在启动 runtime...",
+      phase: "execute",
+      display_level: "main"
+    });
+    startRuntimeJob(sessionId, pending.mode, pending.goal);
+    return { ok: true, started: true };
+  }
+  if (action === "deny") {
+    pendingJobs.delete(jobId);
+    await appendEvent(sessionId, {
+      type: "assistant_delta",
+      status: "completed",
+      title: "已取消",
+      summary: "操作已取消。如需继续，可以选择 plan 模式先查看计划，再决定是否执行。",
+      phase: "next",
+      display_level: "main"
+    });
+    return { ok: true, started: false };
+  }
+  return { ok: false, error: "invalid action, use allow or deny" };
+}
+
+/** Map user_progress channel → studio event type */
+function channelToEventType(channel, eventType) {
+  if (channel === "conclusion") return "final_answer";
+  if (channel === "model") return "reasoning_delta";
+  if (channel === "tool") return "tool_start";
+  if (channel === "file") return "tool_end";
+  if (eventType === "heartbeat") return "tool_delta";
+  return "reasoning_delta";
+}
+
+/**
+ * While a subprocess is live, tail the current run's user_progress.jsonl every 1.2s
+ * and emit new entries as SSE events.  Returns a stop function.
+ */
+function tailUserProgress(sessionId, jobId) {
+  let stopped = false;
+  let lastSeq = 0;
+  let runDir = null;
+
+  async function poll() {
+    if (stopped) return;
+    const job = liveJobs.get(jobId);
+    if (!job) { stopped = true; return; }
+
+    // Try to locate the run directory
+    if (!runDir && job.run_id) {
+      const candidate = path.join(workspace, ".asteria", "runs", job.run_id);
+      if (existsSync(candidate)) runDir = candidate;
+    }
+    if (!runDir) {
+      const runsDir = path.join(workspace, ".asteria", "runs");
+      if (existsSync(runsDir)) {
+        try {
+          const dirs = (await fs.readdir(runsDir)).filter((d) => /^run-\d{8}-\d{4}/.test(d));
+          const withStats = (
+            await Promise.all(
+              dirs.map(async (d) => {
+                const p = path.join(runsDir, d);
+                try { return { path: p, mtime: (await fs.stat(p)).mtimeMs }; } catch { return null; }
+              })
+            )
+          ).filter(Boolean);
+          const recent = withStats.filter((s) => s.mtime >= job.started_at_ms - 6000);
+          if (recent.length) { recent.sort((a, b) => b.mtime - a.mtime); runDir = recent[0].path; }
+        } catch {}
+      }
+    }
+
+    if (runDir) {
+      const progressPath = path.join(runDir, "user_progress.jsonl");
+      if (existsSync(progressPath)) {
+        try {
+          const lines = (await fs.readFile(progressPath, "utf8")).split(/\r?\n/).filter(Boolean);
+          for (const line of lines) {
+            try {
+              const evt = JSON.parse(line);
+              const seq = Number(evt.sequence ?? 0);
+              if (seq > lastSeq) {
+                lastSeq = seq;
+                // Emit via appendEvent so it persists in events.jsonl AND hits SSE
+                void appendEvent(sessionId, {
+                  event_id: evt.event_id,           // preserve original ID for client dedup
+                  type: channelToEventType(evt.channel, evt.event_type),
+                  status: evt.status || "running",
+                  title: evt.title || "",
+                  summary: evt.summary || "",
+                  phase: evt.phase || "",
+                  content_delta: evt.content_delta || "",
+                  display_level: evt.display_level || "main",
+                  artifact_refs: evt.artifact_refs || [],
+                  evidence_refs: evt.evidence_refs || [],
+                });
+              }
+            } catch {}
+          }
+        } catch {}
+      }
+    }
+
+    if (!stopped) setTimeout(poll, 1200);
+  }
+
+  // Brief delay so the subprocess has time to start writing
+  setTimeout(poll, 1200);
+  return () => { stopped = true; };
 }
 
 function startRuntimeJob(sessionId, mode, goal) {
@@ -154,6 +507,8 @@ function startRuntimeJob(sessionId, mode, goal) {
     display_level: "inspector",
     command
   });
+
+  const stopTail = tailUserProgress(sessionId, jobId);
 
   const child = spawn(command[0], command.slice(1), {
     cwd: runtimeRoot,
@@ -198,6 +553,7 @@ function startRuntimeJob(sessionId, mode, goal) {
     });
   });
   child.on("close", async (code) => {
+    stopTail();
     rememberJobRunId(jobId, extractRunId(stdout) || extractRunId(stderr));
     job.status = code === 0 ? "completed" : "failed";
     liveJobs.set(jobId, job);
@@ -223,6 +579,7 @@ function startRuntimeJob(sessionId, mode, goal) {
     });
   });
   child.on("error", (error) => {
+    stopTail();
     job.status = "failed";
     liveJobs.set(jobId, job);
     void appendEvent(sessionId, {
@@ -328,8 +685,10 @@ async function finalTextFor(mode, code, stdout, stderr) {
       "可以重试、切换模型/路由，或把失败证据导出后继续诊断。"
     ].join("\n");
   }
-  const runId = extractRunId(stdout);
+  const runId = extractRunId(stdout) || extractRunId(stderr);
   if (mode === "plan" && runId) return planFinalTextForRun(runId, stdout);
+  if ((mode === "run" || mode === "resume") && runId) return runFinalTextForRun(runId, stdout);
+  if (mode === "review" && runId) return reviewFinalTextForRun(runId, stdout);
   const text = stdout.trim();
   const result = text ? trimForUser(text) : "Runtime 已完成，但没有返回文本输出。可以在 Inspector 查看证据和产物。";
   return [
@@ -405,6 +764,95 @@ function nextPlanAction(tasks, taskEval, costReport) {
   if (status === "warn") return "先把过大的任务拆成 3-5 个可独立验证的实现切片，再进入 run。模型调用和成本证据已记录在 Evidence Explorer。";
   if (tasks.length > 1) return `可以选择第一个切片进入 run，继续使用受控限制。${modelCalls != null ? `本次计划用了 ${modelCalls} 次模型调用。` : ""}`;
   return "可以直接要求执行该计划，或先调整范围、验收标准和风险边界。";
+}
+
+/** Build final text for run/resume modes — reads final_report.md and eval_report.json */
+async function runFinalTextForRun(runId, fallbackStdout) {
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  // Try final_report.md first (most human-readable)
+  const finalReportPath = path.join(runDir, "final_report.md");
+  if (existsSync(finalReportPath)) {
+    try {
+      const md = (await fs.readFile(finalReportPath, "utf8")).trim();
+      if (md.length > 80) {
+        return [
+          md,
+          "",
+          "---",
+          "完整证据在 Inspector → Evidence Explorer 查看。"
+        ].join("\n");
+      }
+    } catch {}
+  }
+  // Fallback: build from eval_report.json + worker_results.jsonl
+  const evalReport = await readJson(path.join(runDir, "eval_report.json"));
+  const workerLines = await readWorkerSummaryLines(runDir);
+  const status = firstRuntimeText(evalReport?.overall?.status, "completed");
+  const score = evalReport?.overall?.score != null ? `评分 ${Number(evalReport.overall.score).toFixed(2)}` : null;
+  const reason = firstRuntimeText(evalReport?.overall?.reason);
+  const costReport = await readJson(path.join(runDir, "cost_report.json"));
+  const modelCalls = costReport.model_calls ?? costReport.total_model_calls;
+  return [
+    "## 结果",
+    `Run ${runId} 已完成（${status}）。${score ? score + "。" : ""}${reason ? reason : ""}`,
+    "",
+    ...(workerLines.length ? ["## 执行明细", ...workerLines, ""] : []),
+    "## 证据",
+    `已记录 ${modelCalls != null ? modelCalls + " 次模型调用" : "若干模型调用"}。可在 Inspector 查看任务执行证据、worker 结果和产物引用。`,
+    "",
+    "## 下一步",
+    nextStepForMode("run")
+  ].join("\n");
+}
+
+/** Build final text for review mode — reads review_report.md and eval_report.json */
+async function reviewFinalTextForRun(runId, fallbackStdout) {
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  const evalReport = await readJson(path.join(runDir, "eval_report.json"));
+  const status = firstRuntimeText(evalReport?.overall?.status, "reviewed");
+  const score = evalReport?.overall?.score != null ? Number(evalReport.overall.score).toFixed(2) : null;
+  const reason = firstRuntimeText(evalReport?.overall?.reason);
+  // Try review_report.md for body
+  const reviewMdPath = path.join(runDir, "review_report.md");
+  let reviewBody = "";
+  if (existsSync(reviewMdPath)) {
+    try { reviewBody = (await fs.readFile(reviewMdPath, "utf8")).trim(); } catch {}
+  }
+  if (reviewBody.length > 80) {
+    return [
+      `## 评审结果 — ${status}${score ? `（评分 ${score}）` : ""}`,
+      reason ? reason : "",
+      "",
+      reviewBody,
+      "",
+      "## 下一步",
+      nextStepForMode("review")
+    ].filter((l, i, arr) => !(l === "" && arr[i - 1] === "")).join("\n");
+  }
+  return [
+    "## 评审结果",
+    `Run ${runId} 评审完成（${status}）。${score ? "评分 " + score + "。" : ""}${reason}`,
+    "",
+    "## 下一步",
+    nextStepForMode("review")
+  ].join("\n");
+}
+
+async function readWorkerSummaryLines(runDir) {
+  const workersPath = path.join(runDir, "worker_results.jsonl");
+  if (!existsSync(workersPath)) return [];
+  try {
+    const lines = (await fs.readFile(workersPath, "utf8")).split(/\r?\n/).filter(Boolean);
+    return lines.slice(0, 5).map((line) => {
+      try {
+        const w = JSON.parse(line);
+        const id = firstRuntimeText(w.task_id, w.worker_id, "task");
+        const st = firstRuntimeText(w.status, "?");
+        const note = firstRuntimeText(w.summary, w.result_summary, "");
+        return `- ${id}: ${st}${note ? " — " + note.slice(0, 80) : ""}`;
+      } catch { return null; }
+    }).filter(Boolean);
+  } catch { return []; }
 }
 
 function extractRunId(text) {
@@ -525,6 +973,8 @@ async function appendEvent(sessionId, event) {
     if (full.type === "user_message") session.title = String(full.summary || session.title).slice(0, 64);
     await fs.writeFile(sessionFile, JSON.stringify(session, null, 2), "utf8");
   }
+  notifySSE(sessionId, full);
+  return full;
 }
 
 async function readSessionEvents(sessionId) {
@@ -544,7 +994,17 @@ async function readSessionEvents(sessionId) {
     const runId = extractRunId(event.content_delta) || extractRunId((event.artifact_refs || []).join("\n"));
     if (!runId) continue;
     runIds.add(runId);
-    event.content_delta = await planFinalTextForRun(runId, event.content_delta);
+    const runDir = path.join(workspace, ".asteria", "runs", runId);
+    const hasFinalReport = existsSync(path.join(runDir, "final_report.md"));
+    const hasEvalReport = existsSync(path.join(runDir, "eval_report.json"));
+    const hasGoalSpec = existsSync(path.join(runDir, "goal_spec.json"));
+    if (hasFinalReport) {
+      event.content_delta = await runFinalTextForRun(runId, event.content_delta);
+    } else if (hasEvalReport && !hasGoalSpec) {
+      event.content_delta = await reviewFinalTextForRun(runId, event.content_delta);
+    } else {
+      event.content_delta = await planFinalTextForRun(runId, event.content_delta);
+    }
     event.summary = "已从 runtime 产物提炼为用户可读结论。";
     event.artifact_refs = [...(event.artifact_refs || []), ...runArtifactRefs(runId)];
   }
