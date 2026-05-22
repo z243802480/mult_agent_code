@@ -124,6 +124,10 @@ class CompactCommand:
             acceptance_failures,
         )
 
+        tool_observations = self._read_optional_jsonl(
+            run_dir / "tool_observations.jsonl" if run_dir else None, "tool_observation"
+        )
+        capability_manifest_ref = self._capability_manifest_ref(run_dir)
         snapshot_id = f"snapshot-{now_iso().replace(':', '').replace('-', '').replace('+', '-')}"
         return {
             "schema_version": "0.1.0",
@@ -131,6 +135,7 @@ class CompactCommand:
             "run_id": run_id,
             "created_at": now_iso(),
             "focus": self.focus,
+            "compaction_purpose": "continuation_state_not_success_evidence",
             "goal_summary": goal_spec.get("normalized_goal")
             if goal_spec
             else "No GoalSpec available",
@@ -145,11 +150,13 @@ class CompactCommand:
             "verification": self._verification(tool_calls),
             "verification_summary": self._latest_verification_summary(agent_dir),
             "failures": failures,
+            "failed_tool_observations": self._failed_tool_observations(tool_observations),
             "task_failures": self._task_failures(task_failures, run_dir),
             "runtime_requests": self._runtime_requests(runtime_requests),
             "worker_summary": self._worker_summary(workers, worker_results),
             "acceptance_failures": acceptance_failures,
             "report_summaries": report_summaries,
+            "capability_manifest_ref": capability_manifest_ref,
             "research_claims": [],
             "open_risks": self._open_risks(
                 cost_report, failures, task_failures, acceptance_failures, runtime_requests
@@ -459,6 +466,46 @@ class CompactCommand:
         lines = [line.rstrip() for line in path.read_text(encoding="utf-8").splitlines()]
         meaningful = [line for line in lines if line.strip()]
         return "\n".join(meaningful[:max_lines])
+
+    def _failed_tool_observations(self, tool_observations: list[dict]) -> list[dict]:
+        failed = [obs for obs in tool_observations if not obs.get("ok")]
+        return [
+            {
+                "tool_name": obs.get("tool_name"),
+                "status": obs.get("status"),
+                "summary": obs.get("summary"),
+                "error_class": obs.get("error_class"),
+                "next_hint": obs.get("next_hint"),
+                "created_at": obs.get("created_at"),
+            }
+            for obs in failed[-10:]
+        ]
+
+    def _capability_manifest_ref(self, run_dir: Path | None) -> dict:
+        if not run_dir:
+            return {}
+        for candidate in ("prompt_envelope.json", "prompt_envelope_execute.json"):
+            path = run_dir / candidate
+            if path.exists():
+                try:
+                    envelope = self.store.read(path, "prompt_envelope")
+                    manifest = envelope.get("capability_manifest") or {}
+                    return {
+                        "path": str(path),
+                        "modes": manifest.get("modes", []),
+                        "direct_tool_names": [
+                            tool["name"]
+                            for tool in (manifest.get("direct_tools") or [])
+                        ],
+                        "deferred_tool_names": [
+                            tool["name"]
+                            for tool in (manifest.get("deferred_tools") or [])
+                        ],
+                        "section_order": envelope.get("section_order", []),
+                    }
+                except Exception:  # noqa: BLE001 - best effort
+                    pass
+        return {}
 
     def _open_risks(
         self,

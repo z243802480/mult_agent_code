@@ -529,3 +529,110 @@ def test_sessions_context_shows_acceptance_failure_recovery_pointer(tmp_path: Pa
     )
     assert "next: debug" in text
     assert "acceptance failures: 1 (latest: markdown_kb)" in text
+
+
+def test_compact_snapshot_includes_p1_context_fields(tmp_path: Path) -> None:
+    """Verify P1 ContextSnapshot fields: compaction_purpose, failed_tool_observations,
+    capability_manifest_ref, and that context_loader exposes pending_decisions."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "build a notes tool", model_client=FakePlanClient()).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    jsonl = JsonlStore(validator)
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+
+    jsonl.append(
+        run_dir / "tool_observations.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_id": "tool-observation-toolcall-0001",
+            "run_id": plan.run_id,
+            "task_id": "task-0001",
+            "tool_call_id": "toolcall-0001",
+            "tool_name": "run_command",
+            "ok": False,
+            "status": "failure",
+            "summary": "pytest failed: 1 assertion error",
+            "error_class": "AssertionError",
+            "artifact_refs": [],
+            "evidence_refs": [],
+            "user_progress_event_id": None,
+            "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+            "observation": {"tool_name": "run_command", "ok": False, "summary": "pytest failed: 1 assertion error"},
+            "created_at": now_iso(),
+        },
+        "tool_observation",
+    )
+    store.write(
+        run_dir / "prompt_envelope.json",
+        {
+            "schema_version": "0.1.0",
+            "run_id": plan.run_id,
+            "mode": "plan",
+            "sections": [
+                {
+                    "name": "capability_manifest",
+                    "source": "AgentHarness",
+                    "priority": "system",
+                    "cache_scope": "dynamic",
+                    "token_estimate": 20,
+                    "content_hash": "sha256:abc123",
+                    "summary": "Direct tools and deferred tools listed.",
+                    "evidence_refs": [],
+                    "cache_break_reasons": [],
+                }
+            ],
+            "section_order": ["capability_manifest"],
+            "capability_manifest": {
+                "modes": ["plan", "build", "review"],
+                "direct_tools": [{"name": "read_file", "kind": "read", "permission": "allow", "permission_state": "allow", "description": "", "sandbox_profile": "runtime_policy", "read_scope": [], "write_scope": [], "cost_tier": "low", "observation_schema": "tool_observation"}],
+                "deferred_tools": [{"name": "tool_search", "kind": "discover", "permission": "allow", "permission_state": "allow", "description": "", "sandbox_profile": "runtime_policy", "read_scope": [], "write_scope": [], "cost_tier": "low", "observation_schema": "tool_observation"}],
+                "mcp_tools": [],
+                "skills": [],
+                "subagents": [],
+                "verification": [],
+                "tools": [],
+                "boundaries": {},
+            },
+            "content_hash": "sha256:def456",
+        },
+        "prompt_envelope",
+    )
+    jsonl.append(
+        run_dir / "decisions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "decision_id": "decision-0001",
+            "status": "pending",
+            "question": "Should we add markdown export?",
+            "recommended_option_id": "yes",
+            "default_option_id": "no",
+            "selected_option_id": None,
+            "resolved_at": None,
+            "options": [{"option_id": "yes", "label": "Yes", "tradeoff": "More features", "action": "create_task"}, {"option_id": "no", "label": "No", "tradeoff": "Stay minimal", "action": "record_constraint"}],
+            "impact": {"scope": "low", "budget": "low", "risk": "low", "quality": "medium"},
+            "created_at": now_iso(),
+            "metadata": {},
+        },
+        "decision_point",
+    )
+
+    compact = CompactCommand(tmp_path, focus="p1 context test").run()
+    snapshot = json.loads(compact.snapshot_path.read_text(encoding="utf-8"))
+
+    assert snapshot["compaction_purpose"] == "continuation_state_not_success_evidence"
+    assert len(snapshot["failed_tool_observations"]) == 1
+    assert snapshot["failed_tool_observations"][0]["tool_name"] == "run_command"
+    assert snapshot["failed_tool_observations"][0]["next_hint"] == "diagnose_then_repair_replan_ask_or_stop"
+    assert snapshot["capability_manifest_ref"]["modes"] == ["plan", "build", "review"]
+    assert "read_file" in snapshot["capability_manifest_ref"]["direct_tool_names"]
+    assert "tool_search" in snapshot["capability_manifest_ref"]["deferred_tool_names"]
+    assert snapshot["pending_decisions"][0]["decision_id"] == "decision-0001"
+
+    from asteria_runtime.core.context_loader import ContextLoader
+    context = ContextLoader(tmp_path, validator).load(plan.run_id)
+    loaded_snapshot = context["latest_snapshot"]
+    assert loaded_snapshot["compaction_purpose"] == "continuation_state_not_success_evidence"
+    assert loaded_snapshot["pending_decisions"][0]["decision_id"] == "decision-0001"
+    assert loaded_snapshot["failed_tool_observations"][0]["tool_name"] == "run_command"
+    assert loaded_snapshot["capability_manifest_ref"]["modes"] == ["plan", "build", "review"]

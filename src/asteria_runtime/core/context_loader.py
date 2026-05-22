@@ -85,19 +85,28 @@ class ContextLoader:
         if not candidates:
             return {}
         snapshot = self.store.read(candidates[-1], "context_snapshot")
-        return {
+        result: dict = {
             "snapshot_id": snapshot["snapshot_id"],
             "focus": snapshot["focus"],
+            "compaction_purpose": snapshot.get(
+                "compaction_purpose", "continuation_state_not_success_evidence"
+            ),
             "goal_summary": snapshot["goal_summary"],
             "accepted_decisions": snapshot.get("accepted_decisions", [])[-5:],
+            "pending_decisions": snapshot.get("pending_decisions", [])[-5:],
             "active_tasks": snapshot.get("active_tasks", [])[-10:],
             "modified_files": snapshot.get("modified_files", [])[-10:],
             "verification": snapshot.get("verification", [])[-5:],
             "failures": snapshot.get("failures", [])[-5:],
+            "failed_tool_observations": snapshot.get("failed_tool_observations", [])[-5:],
             "task_failures": snapshot.get("task_failures", [])[-5:],
             "open_risks": snapshot.get("open_risks", [])[-5:],
             "next_actions": snapshot.get("next_actions", [])[-5:],
         }
+        capability_manifest_ref = snapshot.get("capability_manifest_ref")
+        if capability_manifest_ref:
+            result["capability_manifest_ref"] = capability_manifest_ref
+        return result
 
     def _latest_handoff(self, agent_dir: Path) -> dict:
         handoffs_dir = agent_dir / "context" / "handoffs"
