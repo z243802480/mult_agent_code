@@ -85,6 +85,20 @@ RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
         capability="runtime_evidence_consumption",
         special_evidence=("debug_consumed_runtime_evidence", "review_consumed_runtime_evidence"),
     ),
+    RuntimeOSCapability(
+        scenario="runtime_delegation_contract",
+        capability="delegation_contract",
+        required_evidence=(),
+        suite_evidence=(),
+        special_evidence=("delegation_brief_recorded", "brief_quality_status_present"),
+    ),
+    RuntimeOSCapability(
+        scenario="runtime_independent_verification",
+        capability="independent_verification",
+        required_evidence=(),
+        suite_evidence=(),
+        special_evidence=("verification_commands_recorded", "review_evidence_present"),
+    ),
 )
 
 

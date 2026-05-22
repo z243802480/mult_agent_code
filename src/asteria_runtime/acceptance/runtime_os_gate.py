@@ -132,6 +132,14 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: prompt envelope did not include project guidance"
         if key == "safety_budget_sections":
             return f"{scenario_name}: prompt envelope did not include safety and budget sections"
+        if key == "delegation_brief_recorded":
+            return f"{scenario_name}: delegation brief was not recorded in worker evidence"
+        if key == "brief_quality_status_present":
+            return f"{scenario_name}: brief quality gate status was not recorded"
+        if key == "verification_commands_recorded":
+            return f"{scenario_name}: no independent verification commands were recorded"
+        if key == "review_evidence_present":
+            return f"{scenario_name}: review agent did not produce an eval report"
         return f"{scenario_name}: missing {key}"
 
 

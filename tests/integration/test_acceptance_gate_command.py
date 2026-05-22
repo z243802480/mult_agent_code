@@ -318,6 +318,56 @@ def test_acceptance_gate_blocks_unresolved_candidate_promotions(tmp_path: Path) 
     assert any("approve --all-pending" in action for action in result.next_actions)
 
 
+def test_acceptance_gate_detects_missing_delegation_contract_evidence(tmp_path: Path) -> None:
+    scenarios = runtime_os_pass_scenarios()
+    for item in scenarios:
+        if item.get("capability") == "delegation_contract":
+            item["summary"]["runtime_os"]["evidence"]["delegation_brief_recorded"] = False
+    report_path = write_report(
+        tmp_path,
+        {"suite": "core", "ok": True, "returncode": 0, "scenarios": scenarios},
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=1,
+        require_tiers=["core"],
+    ).run()
+
+    assert result.runtime_os["status"] in {"fail", "partial"}
+    assert any(
+        "delegation_brief_recorded" in msg or "delegation brief" in msg
+        for msg in result.runtime_os.get("missing_evidence", [])
+    )
+
+
+def test_acceptance_gate_detects_missing_independent_verification_evidence(tmp_path: Path) -> None:
+    scenarios = runtime_os_pass_scenarios()
+    for item in scenarios:
+        if item.get("capability") == "independent_verification":
+            item["summary"]["runtime_os"]["evidence"]["verification_commands_recorded"] = False
+    report_path = write_report(
+        tmp_path,
+        {"suite": "core", "ok": True, "returncode": 0, "scenarios": scenarios},
+    )
+
+    result = AcceptanceGateCommand(
+        tmp_path,
+        report_path=report_path,
+        suite="core",
+        min_scenarios=1,
+        require_tiers=["core"],
+    ).run()
+
+    assert result.runtime_os["status"] in {"fail", "partial"}
+    assert any(
+        "verification_commands_recorded" in msg or "verification commands" in msg
+        for msg in result.runtime_os.get("missing_evidence", [])
+    )
+
+
 def scenario(name: str, ok: bool) -> dict:
     capability = {
         "file_smoke": "artifact_creation",

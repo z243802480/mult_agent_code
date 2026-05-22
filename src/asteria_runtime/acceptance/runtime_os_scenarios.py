@@ -370,6 +370,10 @@ def run_runtime_os_scenario(
             ok, summary = _runtime_capability_feedback(workspace)
         elif scenario_name == "runtime_evidence_consumption":
             ok, summary = _runtime_evidence_consumption(workspace)
+        elif scenario_name == "runtime_delegation_contract":
+            ok, summary = _runtime_delegation_contract(workspace)
+        elif scenario_name == "runtime_independent_verification":
+            ok, summary = _runtime_independent_verification(workspace)
         else:
             raise ValueError(f"Unknown runtime OS scenario: {scenario_name}")
     except Exception as exc:  # noqa: BLE001 - scenario summary should preserve diagnostics
@@ -979,6 +983,82 @@ def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]
         evidence,
         result="debug and review consumed Runtime OS evidence",
     )
+    return ok, summary
+
+
+def _runtime_delegation_contract(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from asteria_runtime.commands.execute_command import ExecuteCommand
+
+    task = _runtime_task(
+        "task-0001",
+        "High-risk write without output contract",
+        write_scope=["out/guarded.txt"],
+    )
+    task["expected_artifacts"] = []
+    run_id = _seed_runtime_run(workspace, [task])
+    result = ExecuteCommand(
+        workspace,
+        run_id=run_id,
+        model_client=RuntimeAcceptanceClient("disjoint"),
+    ).run()
+    run_dir = workspace / ".asteria" / "runs" / run_id
+    workers = _read_jsonl(run_dir / "workers.jsonl")
+    latest = workers[-1] if workers else {}
+    evidence = {
+        "delegation_brief_recorded": bool(latest.get("delegation_brief")),
+        "brief_quality_status_present": bool(
+            latest.get("brief_quality")
+            and latest["brief_quality"].get("status") in {"pass", "warn", "fail"}
+        ),
+    }
+    ok = (
+        result.blocked == 1
+        and evidence["delegation_brief_recorded"]
+        and evidence["brief_quality_status_present"]
+    )
+    summary = _runtime_summary("delegation_contract", run_id, evidence, result=result.to_text())
+    summary["runtime_os"]["brief_quality"] = latest.get("brief_quality")
+    return ok, summary
+
+
+def _runtime_independent_verification(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from asteria_runtime.commands.execute_command import ExecuteCommand
+    from asteria_runtime.commands.review_command import ReviewCommand
+
+    run_id = _seed_runtime_run(
+        workspace,
+        [_runtime_task("task-0001", "Non-trivial write with verification", write_scope=["out/alpha.txt"])],
+    )
+    ExecuteCommand(
+        workspace,
+        run_id=run_id,
+        model_client=RuntimeAcceptanceClient("disjoint"),
+    ).run()
+    review_client = RuntimeEvidenceReviewClient()
+    ReviewCommand(workspace, run_id=run_id, model_client=review_client).run()
+    run_dir = workspace / ".asteria" / "runs" / run_id
+    tool_calls = _read_jsonl(run_dir / "tool_calls.jsonl")
+    verification_calls = [
+        call for call in tool_calls
+        if call.get("tool_name") in {"run_command", "run_tests"}
+    ]
+    eval_report_path = run_dir / "eval_report.json"
+    evidence = {
+        "verification_commands_recorded": bool(verification_calls),
+        "review_evidence_present": eval_report_path.exists(),
+    }
+    ok = (
+        evidence["verification_commands_recorded"]
+        and evidence["review_evidence_present"]
+        and review_client.consumed_runtime_evidence
+    )
+    summary = _runtime_summary(
+        "independent_verification",
+        run_id,
+        evidence,
+        result="verification commands and review eval_report present",
+    )
+    summary["runtime_os"]["verification_count"] = len(verification_calls)
     return ok, summary
 
 
