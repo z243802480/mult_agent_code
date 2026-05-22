@@ -22,6 +22,8 @@ export type StudioEvent = {
     | "tool_start"
     | "tool_delta"
     | "tool_end"
+    | "agent_turn"
+    | "tool_observation"
     | "permission_request"
     | "file_changed"
     | "final_answer"
@@ -31,6 +33,9 @@ export type StudioEvent = {
   summary: string;
   content_delta?: string;
   command?: string[];
+  data?: AnyRecord;
+  tool_call_id?: string;
+  parent_event_id?: string;
   artifact_refs?: string[];
   evidence_refs?: string[];
   model_provider?: string;
@@ -105,7 +110,7 @@ export type NarrativeStep = {
   title: string;
   summary: string;
   status: StudioEvent["status"];
-  kind: "goal" | "thinking" | "plan" | "tool" | "result" | "repair" | "verification" | "final" | "error";
+  kind: "goal" | "thinking" | "plan" | "turn" | "tool" | "observation" | "result" | "repair" | "verification" | "final" | "error";
   events: StudioEvent[];
   defaultOpen: boolean;
 };

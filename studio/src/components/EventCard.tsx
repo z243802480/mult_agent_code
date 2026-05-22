@@ -6,6 +6,7 @@ import {
   Clock3,
   FileText,
   FolderOpen,
+  ListChecks,
   Play,
   ShieldAlert,
   Terminal,
@@ -21,7 +22,9 @@ function formatEventTime(value: unknown): string {
 }
 
 function iconFor(type: StudioEvent["type"]) {
+  if (type === "agent_turn") return <Clock3 size={15} />;
   if (type === "tool_start" || type === "tool_delta" || type === "tool_end") return <Terminal size={15} />;
+  if (type === "tool_observation") return <ListChecks size={15} />;
   if (type === "model_start" || type === "model_delta" || type === "model_end") return <Play size={15} />;
   if (type === "model_error") return <XCircle size={15} />;
   if (type === "permission_request") return <ShieldAlert size={15} />;
@@ -44,6 +47,16 @@ function phaseLabel(phase: StudioEvent["phase"], fallback: string): string {
   return fallback;
 }
 
+function observationText(event: StudioEvent): string {
+  const observation = (event.data as AnyRecord | undefined)?.observation as AnyRecord | undefined;
+  const summary = String(observation?.model_summary ?? observation?.summary ?? "").trim();
+  const stdout = String(observation?.stdout_excerpt ?? "").trim();
+  const stderr = String(observation?.stderr_excerpt ?? "").trim();
+  return [summary, stdout && `stdout: ${stdout}`, stderr && `stderr: ${stderr}`]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function EventCard({
   event,
   selected,
@@ -64,11 +77,14 @@ export function EventCard({
     isModel ||
     event.type === "assistant_delta" ||
     event.type === "reasoning_delta" ||
+    event.type === "agent_turn" ||
+    event.type === "tool_observation" ||
     event.type === "final_answer" ||
     event.type === "error" ||
     event.type === "permission_request";
   const showCommandInline = event.type === "permission_request";
   const fileChanges = (event.file_changes ?? []) as AnyRecord[];
+  const bodyText = event.content_delta || (event.type === "tool_observation" ? observationText(event) : "");
 
   return (
     <article
@@ -111,8 +127,8 @@ export function EventCard({
         </div>
         {showBody &&
           (open || event.type !== "reasoning_delta") &&
-          event.content_delta && (
-            <pre className={isUser ? "messageText" : "deltaText"}>{event.content_delta}</pre>
+          bodyText && (
+            <pre className={isUser ? "messageText" : "deltaText"}>{bodyText}</pre>
           )}
         {showCommandInline && event.command && (
           <code className="commandLine">{event.command.join(" ")}</code>

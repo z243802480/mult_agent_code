@@ -30,7 +30,13 @@ class TaskPlanQualityGate:
         self.store = JsonStore(validator)
         self.jsonl = JsonlStore(validator)
 
-    def check(self, run_id: str, *, pause_run: bool = True) -> TaskPlanQualityGateResult:
+    def check(
+        self,
+        run_id: str,
+        *,
+        pause_run: bool = True,
+        blocking: bool = True,
+    ) -> TaskPlanQualityGateResult:
         run_dir = self.root / ".asteria" / "runs" / run_id
         eval_path = run_dir / "task_plan_eval.json"
         task_plan_eval = self.refresh(run_id, run_dir, eval_path)
@@ -64,6 +70,13 @@ class TaskPlanQualityGate:
             )
         if revised_eval:
             task_plan_eval = revised_eval
+        if not blocking:
+            return TaskPlanQualityGateResult(
+                False,
+                task_plan_eval,
+                eval_path,
+                reason="quality failure recorded as repairable warning",
+            )
 
         pending = [decision for decision in existing if decision["status"] == "pending"]
         decision = (

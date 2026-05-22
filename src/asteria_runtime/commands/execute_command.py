@@ -9,6 +9,7 @@ from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
+from asteria_runtime.core.agent_harness import load_harness_observations
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
@@ -171,7 +172,11 @@ class ExecuteCommand:
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
         runtime_context = ContextLoader(self.root, self.validator).load(run_id)
 
-        quality_gate = TaskPlanQualityGate(self.root, self.validator).check(run_id, pause_run=True)
+        quality_gate = TaskPlanQualityGate(self.root, self.validator).check(
+            run_id,
+            pause_run=True,
+            blocking=self._task_plan_quality_gate_blocks(policy),
+        )
         if quality_gate.blocked:
             event_logger.record(
                 run_id,
@@ -260,6 +265,10 @@ class ExecuteCommand:
             cost_report_path=cost_report_path,
         )
 
+    def _task_plan_quality_gate_blocks(self, policy: dict) -> bool:
+        agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+        return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
+
     def _execute_task_with_worker_record(
         self,
         task: dict,
@@ -325,6 +334,7 @@ class ExecuteCommand:
                     "available_tools": self.registry.names(),
                 },
             )
+            self._refresh_harness_observations(runtime_context, context)
             action = coder.propose_action(
                 task=task,
                 goal_spec=goal_spec,
@@ -402,6 +412,7 @@ class ExecuteCommand:
                 task=task,
                 task_board=task_board,
                 context=context,
+                runtime_context=runtime_context,
                 action=action,
                 create_candidate_workspace=self.candidate_gateway.create_workspace,
                 candidate_context=self.candidate_gateway.candidate_context,
@@ -503,6 +514,15 @@ class ExecuteCommand:
                 },
             )
             return self._blocked_task_summary(blocked)
+
+    def _refresh_harness_observations(
+        self,
+        runtime_context: dict,
+        context: RuntimeContext,
+    ) -> None:
+        observations = load_harness_observations(context.run_dir)
+        if observations:
+            runtime_context["harness_observations"] = observations
 
     def _runtime_request_task_summary(
         self,

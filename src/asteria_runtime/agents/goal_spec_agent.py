@@ -51,7 +51,11 @@ class GoalSpecAgent:
         try:
             self.validator.validate("goal_spec", data)
         except SchemaValidationError as exc:
-            raise GoalSpecError(f"GoalSpec failed schema validation: {exc}") from exc
+            data = self._fallback_goal_spec(goal, f"schema validation failed: {exc}")
+            data["assumptions"].append(
+                "Model GoalSpec shape could not be repaired safely; deterministic fallback was used."
+            )
+            self.validator.validate("goal_spec", data)
         return data
 
     def _parse_json(self, content: str) -> dict:

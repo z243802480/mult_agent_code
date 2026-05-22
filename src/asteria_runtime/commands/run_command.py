@@ -423,8 +423,23 @@ class RunCommand:
         run_id: str,
         steps: list[RunStepSummary],
     ) -> bool:
-        result = TaskPlanQualityGate(self.root, self.validator).check(run_id, pause_run=True)
+        result = TaskPlanQualityGate(self.root, self.validator).check(
+            run_id,
+            pause_run=True,
+            blocking=self._task_plan_quality_gate_blocks(),
+        )
         if not result.blocked:
+            if result.task_plan_eval and result.task_plan_eval.get("status") == "fail":
+                steps.append(
+                    RunStepSummary(
+                        "plan-quality",
+                        "warning",
+                        (
+                            "Task plan quality failed but was kept as a repairable "
+                            "agent-loop warning before execution."
+                        ),
+                    )
+                )
             return False
         task_plan_eval = result.task_plan_eval or {}
         decision = result.decision or {"decision_id": "unknown"}
@@ -440,6 +455,11 @@ class RunCommand:
             )
         )
         return True
+
+    def _task_plan_quality_gate_blocks(self) -> bool:
+        policy = self._policy()
+        agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+        return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
     def _refresh_task_plan_eval(
         self,

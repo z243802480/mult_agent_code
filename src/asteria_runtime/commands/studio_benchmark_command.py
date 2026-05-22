@@ -264,7 +264,7 @@ class StudioBenchmarkCommand:
             )
         if "process_channel_coverage" in failed:
             recommendations.append(
-                "Cover model, tool, file, and evidence channels so Studio can show thinking, shell, diffs, and artifacts without guessing."
+                "Cover model, tool, file, evidence, and execution_chain channels so Studio can show thinking, shell, diffs, artifacts, and harness observations without guessing."
             )
         if self._manifest_tasks(manifest):
             recommendations.append(

@@ -39,7 +39,7 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
       continue;
     }
     if (event.type === "model_error") { activeModel = null; result.push(event); continue; }
-    if (event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end") {
+    if (event.type === "agent_turn" || event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end" || event.type === "tool_observation") {
       activeModel = null; result.push(event); continue;
     }
     activeModel = null;
@@ -50,8 +50,10 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
 
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (event.type === "user_message") return "goal";
+  if (event.type === "agent_turn" || event.runtime_event_type === "turn_start" || event.runtime_event_type === "turn_end") return "turn";
   if (event.type === "permission_request") return "tool";
   if (event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end") return "tool";
+  if (event.type === "tool_observation" || event.runtime_event_type === "tool_observation") return "observation";
   if (event.type === "model_error" || event.type === "error") return "error";
   if (event.type === "final_answer") return "final";
   if (event.phase === "plan") return "plan";
@@ -63,6 +65,8 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 }
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string {
+  if (kind === "observation") return "观察结果";
+  if (kind === "turn") return "Agent 回合";
   if (kind === "goal") return "用户目标";
   if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "结构化生成";
   if (kind === "thinking") return "思考";
@@ -79,10 +83,12 @@ function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   const first = step.events[0];
   if (step.kind === "goal" || step.kind === "final" || step.kind === "error") return false;
   if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
+  if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {
     if (first.command?.join(" ") === event.command?.join(" ")) return true;
     return first.type.startsWith("tool_") && event.type.startsWith("tool_") && first.title === event.title;
   }
+  if (step.kind === "observation") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   return first.phase === event.phase;
 }
 
@@ -162,7 +168,7 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
       modelEvents: events.filter(
         (e) => e.type.startsWith("model_") || e.type === "assistant_delta" || e.type === "reasoning_delta"
       ).length,
-      toolEvents: events.filter((e) => e.type.startsWith("tool_") || (e.command?.length ?? 0) > 0).length,
+      toolEvents: events.filter((e) => e.type.startsWith("tool_") || e.type === "agent_turn" || e.runtime_channel === "execution_chain" || (e.command?.length ?? 0) > 0).length,
       evidenceRefs: countRefs(events, "evidence_refs"),
       artifactRefs: countRefs(events, "artifact_refs"),
       finalText: (finalEvent?.content_delta ?? finalEvent?.summary ?? "") as string,
@@ -188,8 +194,10 @@ export function summarizeProcess(steps: NarrativeStep[]): string[] {
   if (labels.has("思考") || labels.has("结构化生成")) items.push("接收模型输出，把结构化生成归入规划过程。");
   if (labels.has("计划")) items.push("生成任务计划，包含验收条件、运行约束和执行边界。");
   if (labels.has("工具调用") || labels.has("动作")) items.push("调用本地 runtime 命令，并把原始命令输出留在 Inspector。");
+  if (labels.has("Agent 回合")) items.push("把工具调用、观察和下一步判断组织成可回放的 agent 回合。");
   if (labels.has("验证")) items.push("收集验证或审查信号，用于判断结果是否可信。");
   if (labels.has("最终结果")) items.push("将过程折叠成最终报告，明确结论、证据、风险和下一步。");
+  if (labels.has("观察结果")) items.push("读取工具观察结果，并把它回灌到下一轮 agent 判断。");
   return items.length ? items : steps.map((s) => `${s.label}: ${s.summary}`).slice(0, 6);
 }
 

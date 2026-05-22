@@ -5,6 +5,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 from asteria_runtime.core.candidate_promotion_queue import PromotionPendingManualApproval
+from asteria_runtime.core.agent_harness import (
+    harness_observation_record,
+    tool_observation_dict,
+    tool_observation_summary,
+)
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.merge_gate import MergeGate
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -36,6 +41,7 @@ class TaskAttemptRunner:
         task: dict,
         task_board: TaskBoard,
         context: RuntimeContext,
+        runtime_context: dict,
         action: dict,
         create_candidate_workspace: Callable[[RuntimeContext, dict], CandidateWorkspace],
         candidate_context: Callable[[RuntimeContext, CandidateWorkspace], RuntimeContext],
@@ -75,6 +81,7 @@ class TaskAttemptRunner:
             },
         )
         tool_results = run_tool_calls(action["tool_calls"], task, candidate_context_value)
+        self._append_harness_observations(runtime_context, task, tool_results, stage="tool_calls")
         task_board.update_status(task_id, "testing")
         self._record_progress(
             context,
@@ -93,6 +100,12 @@ class TaskAttemptRunner:
             candidate_context_value,
             stop_on_failure=False,
             stop_verification_on_fatal=True,
+        )
+        self._append_harness_observations(
+            runtime_context,
+            task,
+            verification_results,
+            stage="verification",
         )
         validation_refs = record_validation_results(
             context,
@@ -637,6 +650,33 @@ class TaskAttemptRunner:
             execution_chain=[str(task.get("task_id", "")), phase],
             data=data,
         )
+
+    def _append_harness_observations(
+        self,
+        runtime_context: dict,
+        task: dict,
+        results: list[Any],
+        *,
+        stage: str,
+    ) -> None:
+        observations = []
+        for result in results:
+            observation = tool_observation_dict(result)
+            summary = tool_observation_summary(result)
+            if not observation or not summary:
+                continue
+            observations.append(
+                harness_observation_record(
+                    task_id=task.get("task_id"),
+                    stage=stage,
+                    summary=summary,
+                    observation=observation,
+                )
+            )
+        if not observations:
+            return
+        existing = list(runtime_context.get("harness_observations") or [])
+        runtime_context["harness_observations"] = [*existing, *observations][-12:]
 
     def _file_changes(self, paths: list[str], operation: str) -> list[dict[str, Any]]:
         event_type = "file_created" if operation == "created" else "file_modified"

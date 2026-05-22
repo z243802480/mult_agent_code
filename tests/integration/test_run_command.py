@@ -500,6 +500,13 @@ def set_budget_policy(
     path.write_text(json.dumps(policy), encoding="utf-8")
 
 
+def set_task_plan_quality_gate_blocks(root: Path, value: bool) -> None:
+    path = root / ".asteria" / "policies.json"
+    policy = json.loads(path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["task_plan_quality_gate_blocks"] = value
+    path.write_text(json.dumps(policy), encoding="utf-8")
+
+
 class FakeFailingDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -713,6 +720,8 @@ def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
         }
 
     monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+    InitCommand(tmp_path).run()
+    set_task_plan_quality_gate_blocks(tmp_path, True)
 
     result = RunCommand(
         tmp_path,
@@ -736,6 +745,56 @@ def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "Task plan quality: fail (0.55; 2 issue(s))" in final_report
     assert "Task plan quality failed" in final_report
+
+
+def test_run_command_treats_task_plan_quality_failure_as_repairable_warning_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_task_plan_quality(self, task_plan, goal_spec, run_id=None):
+        return {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "created_at": "2026-05-06T12:00:00+08:00",
+            "status": "fail",
+            "overall_score": 0.55,
+            "scores": {
+                "granularity_score": 0.5,
+                "dependency_score": 1.0,
+                "acceptance_score": 0.5,
+                "artifact_score": 0.5,
+                "tooling_score": 0.25,
+            },
+            "summary": "Task plan quality fail with score 0.55; 1 error(s), 0 warning(s).",
+            "issues": [
+                {
+                    "task_id": "task-0001",
+                    "severity": "error",
+                    "code": "missing_artifact",
+                    "message": "Deliverable task has no expected artifact.",
+                    "recommendation": "Add expected_artifacts before execution.",
+                }
+            ],
+            "recommendations": ["Add expected_artifacts before execution."],
+            "task_count": 1,
+        }
+
+    monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "completed"
+    assert (tmp_path / "complete_module.py").exists()
+    assert any(step.name == "plan-quality" and step.status == "warning" for step in result.steps)
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    assert not (run_dir / "decisions.jsonl").exists()
 
 
 def test_resume_prioritizes_task_plan_revision_after_quality_gate(
@@ -781,6 +840,8 @@ def test_resume_prioritizes_task_plan_revision_after_quality_gate(
         }
 
     monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+    InitCommand(tmp_path).run()
+    set_task_plan_quality_gate_blocks(tmp_path, True)
     paused = RunCommand(
         tmp_path,
         "create a complete module",
@@ -866,6 +927,8 @@ def test_resume_rechecks_quality_after_plan_revision_task(
         }
 
     monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+    InitCommand(tmp_path).run()
+    set_task_plan_quality_gate_blocks(tmp_path, True)
     paused = RunCommand(
         tmp_path,
         "create a complete module",
@@ -941,6 +1004,8 @@ def test_resume_proceed_once_bypasses_current_task_plan_quality_failure(
         }
 
     monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
+    InitCommand(tmp_path).run()
+    set_task_plan_quality_gate_blocks(tmp_path, True)
     paused = RunCommand(
         tmp_path,
         "create a complete module",

@@ -1917,6 +1917,10 @@ def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
 
     monkeypatch.setattr(TaskPlanEvaluator, "evaluate", fail_task_plan_quality)
     InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["task_plan_quality_gate_blocks"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 
     result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()

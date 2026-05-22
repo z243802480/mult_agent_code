@@ -404,6 +404,8 @@ function channelToEventType(channel, eventType) {
   if (channel === "conclusion") return eventType === "message" ? "assistant_delta" : "reasoning_delta";
   if (channel === "model") return "reasoning_delta";
   if (channel === "tool") return "tool_start";
+  if (channel === "execution_chain" && (eventType === "turn_start" || eventType === "turn_end")) return "agent_turn";
+  if (channel === "execution_chain" && eventType === "tool_observation") return "tool_observation";
   if (channel === "file") return "tool_end";
   if (eventType === "heartbeat") return "tool_delta";
   return "reasoning_delta";
@@ -470,6 +472,17 @@ function tailUserProgress(sessionId, jobId) {
                   display_level: evt.display_level || "main",
                   artifact_refs: evt.artifact_refs || [],
                   evidence_refs: evt.evidence_refs || [],
+                  command: evt.command || [],
+                  data: evt.data || {},
+                  tool_call_id: evt.tool_call_id,
+                  parent_event_id: evt.parent_event_id,
+                  model_provider: evt.model_provider,
+                  model_name: evt.model_name,
+                  telemetry: evt.telemetry || {},
+                  runtime_channel: evt.channel || "",
+                  runtime_event_type: evt.event_type || "",
+                  file_changes: evt.file_changes || [],
+                  run_id: path.basename(runDir),
                 });
               }
             } catch {}
@@ -711,7 +724,7 @@ function nextStepForMode(mode) {
 async function userProgressDigestLines(runId) {
   const runDir = path.join(workspace, ".asteria", "runs", runId);
   const events = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 1200);
-  const counts = { model: 0, tool: 0, file: 0, evidence: 0 };
+  const counts = { model: 0, tool: 0, file: 0, evidence: 0, execution_chain: 0 };
   const fileNames = [];
   for (const event of events) {
     const channel = String(event.channel || "");
@@ -725,6 +738,7 @@ async function userProgressDigestLines(runId) {
   const lines = [];
   if (counts.model) lines.push(`- 模型流式输出 ${counts.model} 段，用于理解目标、生成结构化计划或评审结论。`);
   if (counts.tool) lines.push(`- Runtime 记录 ${counts.tool} 个工具/内部执行事件，过程细节已收进 Inspector。`);
+  if (counts.execution_chain) lines.push(`- Harness 记录 ${counts.execution_chain} 条工具观察事件，用于把工具结果回灌到下一轮判断。`);
   if (counts.file) {
     const names = fileNames.slice(0, 4).join("、");
     lines.push(`- 写入或更新 ${counts.file} 个文件事件${names ? `：${names}` : ""}。`);
@@ -735,6 +749,8 @@ async function userProgressDigestLines(runId) {
 
 function userProgressChannelToEventType(channel, eventType, phase) {
   if (channel === "conclusion" && phase === "result") return "final_answer";
+  if (channel === "execution_chain" && (eventType === "turn_start" || eventType === "turn_end")) return "agent_turn";
+  if (channel === "execution_chain" && eventType === "tool_observation") return "tool_observation";
   return channelToEventType(channel, eventType);
 }
 
@@ -1225,6 +1241,9 @@ function userProgressToStudioEvent(event, sessionId, runId) {
     else type = "tool_delta";
   } else if (channel === "file") {
     type = "file_changed";
+  } else if (channel === "execution_chain") {
+    if (eventType === "turn_start" || eventType === "turn_end") type = "agent_turn";
+    else type = eventType === "tool_observation" ? "tool_observation" : "reasoning_delta";
   } else if (channel === "conclusion") {
     type = event.phase === "result" ? "final_answer" : "assistant_delta";
   } else if (channel === "diagnostic") {
@@ -1240,6 +1259,9 @@ function userProgressToStudioEvent(event, sessionId, runId) {
     summary: event.summary,
     content_delta: event.content_delta || "",
     command: event.command || [],
+    data: event.data || {},
+    tool_call_id: event.tool_call_id,
+    parent_event_id: event.parent_event_id,
     artifact_refs: event.artifact_refs || [],
     evidence_refs: [...(event.evidence_refs || []), `.asteria/runs/${runId}/user_progress.jsonl`],
     model_provider: event.model_provider,

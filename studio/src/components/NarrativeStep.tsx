@@ -7,6 +7,7 @@ import {
   Clock3,
   FileText,
   GitBranch,
+  ListChecks,
   RefreshCw,
   ShieldAlert,
   Terminal,
@@ -26,7 +27,9 @@ function stepIcon(kind: NarrativeStepType["kind"]) {
   if (kind === "goal") return <CircleDot size={14} />;
   if (kind === "thinking") return <Clock3 size={14} />;
   if (kind === "plan") return <GitBranch size={14} />;
+  if (kind === "turn") return <RefreshCw size={14} />;
   if (kind === "tool") return <Terminal size={14} />;
+  if (kind === "observation") return <ListChecks size={14} />;
   if (kind === "result") return <FileText size={14} />;
   if (kind === "repair") return <RefreshCw size={14} />;
   if (kind === "verification") return <ShieldAlert size={14} />;

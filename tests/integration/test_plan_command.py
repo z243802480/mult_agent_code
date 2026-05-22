@@ -119,7 +119,16 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
         for event in user_progress
     )
     assert all(event["display_level"] in {"main", "inspector"} for event in user_progress)
-    assert user_progress[1]["call_chain"] == ["PlanCommand", "GoalSpecAgent"]
+    assert user_progress[1]["call_chain"] == ["PlanCommand", "AgentHarness"]
+    assert any(
+        event["call_chain"] == ["PlanCommand", "GoalSpecAgent"]
+        for event in user_progress
+    )
+    assert any(
+        event["data"].get("capability_manifest")
+        for event in user_progress
+        if event["call_chain"] == ["PlanCommand", "AgentHarness"]
+    )
     assert user_progress[-2]["artifact_refs"]
 
     backlog = json.loads(

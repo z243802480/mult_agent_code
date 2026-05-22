@@ -29,7 +29,7 @@ def write_manifest(root: Path) -> Path:
         json.dumps(
             {
                 "minimum_ready_score": 0.8,
-                "required_user_progress_channels": ["model", "tool", "file", "evidence"],
+                "required_user_progress_channels": ["model", "tool", "file", "evidence", "execution_chain"],
                 "tasks": [
                     {
                         "id": "travel",
@@ -96,13 +96,14 @@ def test_studio_benchmark_counts_runtime_user_progress_channels(tmp_path: Path) 
             {"channel": "tool"},
             {"channel": "file"},
             {"channel": "evidence"},
+            {"channel": "execution_chain"},
         ],
     )
 
     result = StudioBenchmarkCommand(tmp_path, manifest=manifest).run()
     checks = {check["name"]: check for check in result.checks}
 
-    assert result.user_progress_events == 4
+    assert result.user_progress_events == 5
     assert checks["user_progress_protocol"]["ok"] is True
     assert checks["process_channel_coverage"]["ok"] is True
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.agents.planner import RequirementPlanner
+from asteria_runtime.core.agent_harness import AgentHarness
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_loader import ContextLoader
@@ -23,6 +24,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
+from asteria_runtime.tools.defaults import create_default_tool_registry
 from asteria_runtime.utils.time import now_iso
 
 
@@ -106,6 +108,23 @@ class PlanCommand:
             {"from": "INIT", "to": "SPEC"},
         )
         runtime_context = ContextLoader(self.root, self.validator).load()
+        capability_manifest = AgentHarness(
+            policy,
+            tool_names=create_default_tool_registry().names(),
+        ).capability_manifest(mode="plan")
+        runtime_context["capability_manifest"] = capability_manifest.to_dict()
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="progress",
+            event_type="message",
+            phase="plan",
+            status="running",
+            title="能力环境已装载",
+            summary="Runtime exposed available modes, tools, permissions, and safety boundaries to the model.",
+            data={"capability_manifest": capability_manifest.to_dict()},
+            call_chain=["PlanCommand", "AgentHarness"],
+            execution_chain=["understand", "capability_manifest"],
+        )
         goal_spec_route_plan = CapabilityFeedbackAdvisor(
             self.validator
         ).goal_spec_execution_plan(agent_dir, self.goal)
@@ -139,6 +158,7 @@ class PlanCommand:
                 "budgets": policy["budgets"],
                 "permissions": policy["permissions"],
             },
+            "capability_manifest": capability_manifest.to_dict(),
         }
         selected_model_tier = str(goal_spec_route_plan.get("selected_model_tier") or "strong")
         max_goal_spec_attempts = 2

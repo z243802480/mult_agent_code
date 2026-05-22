@@ -4,6 +4,8 @@
 
 P0 目标是让开发者在干净环境内测前后，能用本地 Web 控制面查看 Asteria 的真实状态，并能用一个轻量交互层触发安全 runtime 动作。
 
+2026-05-22 方向调整：Studio 的首要任务不再是把 runtime 状态 JSON 包装得更漂亮，而是展示模型主导 Agent Harness 的真实工作过程。也就是说，Studio 要消费 runtime/harness 产生的用户进展事件，把“模型理解目标、组织能力、调用工具、观察结果、修复、验证、最终结论”呈现为一条可读主线；命令、stdout、schema、证据路径和遥测继续放在 Inspector。
+
 完成定义：
 
 - `studio/` 可以独立安装依赖、启动和 build。
@@ -15,6 +17,19 @@ P0 目标是让开发者在干净环境内测前后，能用本地 Web 控制面
 - UI 能触发 `evidence-bundle` 导出。
 - 所有数据来自 runtime CLI 或 `.asteria/` evidence。
 - 不读取、不显示、不导出 API key。
+- UI 能展示 Agent Harness narrative：用户目标、模型计划摘要、能力/工具准备、工具调用、观察结果、repair/replan、验证、final answer 和 folded run report。
+- final answer 必须是用户可读结论；后台 JSON 路径、stdout 或 schema 状态只能作为 Inspector 证据。
+
+## 1.1 Agent Harness 展示验收
+
+下一轮 Studio 验收以 5 个小 benchmark goal 为准：
+
+- 每个 goal 都保留 session。
+- 主线能看到模型驱动的过程节奏，而不是只看到 job 状态。
+- 至少覆盖 `model`、`tool`、`file`、`evidence` 和 `final_answer` 事件。
+- 工具/MCP/skill 组织过程可见，具体命令和输出可展开。
+- final report 自动折叠过程，保留目标、关键步骤、产物、验证、风险和下一步。
+- 如果失败，显示失败 observation、模型下一步选择和阻断原因。
 
 ## 2. P0 页面
 

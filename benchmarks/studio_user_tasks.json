@@ -2,7 +2,7 @@
   "schema_version": "0.1.0",
   "purpose": "Asteria Studio user-side task benchmark. These tasks prove whether the product feels like an agent workspace instead of a backend dashboard.",
   "minimum_ready_score": 0.8,
-  "required_user_progress_channels": ["model", "tool", "file", "evidence"],
+  "required_user_progress_channels": ["model", "tool", "file", "evidence", "execution_chain"],
   "tasks": [
     {
       "id": "travel_plan_qingdao",

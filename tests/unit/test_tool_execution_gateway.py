@@ -5,6 +5,7 @@ import pytest
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
+from asteria_runtime.core.agent_harness import load_harness_observations
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -98,7 +99,7 @@ def test_tool_gateway_records_runtime_hooks(tmp_path: Path) -> None:
 def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     gateway, context = _gateway(tmp_path)
 
-    gateway.run_tool_calls(
+    results = gateway.run_tool_calls(
         [
             {
                 "tool_name": "run_command",
@@ -114,13 +115,25 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
         "user_progress_event",
     )
     assert [(event["channel"], event["event_type"]) for event in events] == [
+        ("execution_chain", "turn_start"),
         ("tool", "tool_call"),
         ("tool", "tool_output"),
+        ("execution_chain", "tool_observation"),
+        ("execution_chain", "turn_end"),
     ]
     assert events[0]["tool_call_id"] == "toolcall-0001"
-    assert events[0]["command"] == ["pytest -q"]
-    assert events[1]["status"] == "completed"
-    assert events[1]["parent_event_id"] == events[0]["event_id"]
+    assert events[0]["data"]["turn_event"]["event_type"] == "turn_start"
+    assert events[1]["command"] == ["pytest -q"]
+    assert events[2]["status"] == "completed"
+    assert events[2]["parent_event_id"] == events[1]["event_id"]
+    assert events[3]["display_level"] == "main"
+    assert events[3]["data"]["observation"]["tool_name"] == "run_command"
+    assert events[3]["data"]["observation"]["ok"] is True
+    assert events[4]["data"]["turn_event"]["event_type"] == "turn_end"
+    assert events[4]["parent_event_id"] == events[0]["event_id"]
+    assert getattr(results[0], "harness_observation").model_summary() == (
+        "run_command ok: tests passed"
+    )
 
 
 def test_tool_gateway_records_user_progress_file_events(tmp_path: Path) -> None:
@@ -142,10 +155,13 @@ def test_tool_gateway_records_user_progress_file_events(tmp_path: Path) -> None:
         "user_progress_event",
     )
     file_events = [event for event in events if event["channel"] == "file"]
+    observations = [event for event in events if event["event_type"] == "tool_observation"]
     assert len(file_events) == 1
     assert file_events[0]["event_type"] == "file_created"
     assert file_events[0]["display_level"] == "main"
     assert file_events[0]["file_changes"][0]["path"] == "src/app.py"
+    assert observations[0]["data"]["observation"]["artifact_refs"] == ["src/app.py"]
+    assert observations[0]["data"]["observation"]["file_changes"][0]["path"] == "src/app.py"
 
 
 def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
@@ -162,10 +178,20 @@ def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
         tmp_path / "user_progress.jsonl",
         "user_progress_event",
     )
-    assert events[-1]["channel"] == "tool"
-    assert events[-1]["event_type"] == "error"
+    assert events[-3]["channel"] == "tool"
+    assert events[-3]["event_type"] == "error"
+    assert events[-3]["status"] == "failed"
+    assert events[-3]["data"]["error_type"] == "RuntimeError"
+    assert events[-2]["channel"] == "execution_chain"
+    assert events[-2]["event_type"] == "tool_observation"
+    assert events[-2]["data"]["observation"]["ok"] is False
+    assert events[-2]["data"]["observation"]["tool_name"] == "run_command"
+    assert events[-2]["data"]["observation"]["data"]["error_type"] == "RuntimeError"
     assert events[-1]["status"] == "failed"
+    assert events[-1]["event_type"] == "turn_end"
+    assert events[-1]["data"]["observation"]["ok"] is False
     assert events[-1]["data"]["error_type"] == "RuntimeError"
+    assert load_harness_observations(tmp_path)[-1]["observation"]["ok"] is False
 
 
 def _gateway(tmp_path: Path) -> tuple[ToolExecutionGateway, RuntimeContext]:

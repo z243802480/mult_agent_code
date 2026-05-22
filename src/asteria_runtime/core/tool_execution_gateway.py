@@ -4,6 +4,11 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
+from asteria_runtime.core.agent_harness import (
+    HarnessTurnEvent,
+    observation_from_exception,
+    observation_from_tool_result,
+)
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
@@ -35,6 +40,27 @@ class ToolExecutionGateway:
             tool_call_id = self._next_tool_call_id(context)
             started = perf_counter()
             start_event: dict[str, Any] | None = None
+            turn_start_event = self._record_harness_turn(
+                context,
+                task,
+                tool_call_id,
+                event_type="turn_start",
+                status="running",
+                title="Agent 回合",
+                summary=f"Agent is preparing to use {tool_name}.",
+                execution_step="turn_start",
+                data={
+                    "turn_event": HarnessTurnEvent(
+                        turn_id=tool_call_id,
+                        run_id=context.run_id,
+                        task_id=str(task.get("task_id", "")),
+                        event_type="turn_start",
+                        summary=f"Agent is preparing to use {tool_name}.",
+                    ).to_dict(),
+                    "tool_name": tool_name,
+                    "arg_keys": sorted(list(args.keys())),
+                },
+            )
             pre_file_changes = self._planned_file_changes(tool_name, args, context)
             try:
                 if tool_name not in allowed:
@@ -83,6 +109,15 @@ class ToolExecutionGateway:
                     result.error = None
                     result.summary = f"Diagnostic failure accepted: {result.summary}"
                 results.append(result)
+                duration_ms = int((perf_counter() - started) * 1000)
+                file_changes = self._result_file_changes(tool_name, result, pre_file_changes)
+                observation = observation_from_tool_result(
+                    tool_name=tool_name,
+                    result=result,
+                    telemetry={"duration_ms": duration_ms},
+                    file_changes=file_changes,
+                )
+                setattr(result, "harness_observation", observation)
                 self._record_tool_progress(
                     context,
                     task,
@@ -94,8 +129,15 @@ class ToolExecutionGateway:
                     summary=str(getattr(result, "summary", "")),
                     parent_event_id=start_event.get("event_id") if start_event else None,
                     command=self._command_args(tool_name, args),
-                    telemetry={"duration_ms": int((perf_counter() - started) * 1000)},
+                    telemetry={"duration_ms": duration_ms},
                     data=self._tool_result_data(result),
+                )
+                self._record_harness_observation(
+                    context,
+                    task,
+                    tool_call_id,
+                    observation,
+                    parent_event_id=start_event.get("event_id") if start_event else None,
                 )
                 self._record_file_progress(
                     context,
@@ -105,6 +147,31 @@ class ToolExecutionGateway:
                     result,
                     pre_file_changes,
                     parent_event_id=start_event.get("event_id") if start_event else None,
+                )
+                self._record_harness_turn(
+                    context,
+                    task,
+                    tool_call_id,
+                    event_type="turn_end",
+                    status="completed" if observation.ok else "failed",
+                    title="Agent 回合完成",
+                    summary=f"Agent observed {tool_name} and can decide the next step.",
+                    parent_event_id=turn_start_event.get("event_id") if turn_start_event else None,
+                    artifact_refs=observation.artifact_refs,
+                    file_changes=observation.file_changes,
+                    telemetry=observation.telemetry,
+                    execution_step="turn_end",
+                    data={
+                        "turn_event": HarnessTurnEvent(
+                            turn_id=tool_call_id,
+                            run_id=context.run_id,
+                            task_id=str(task.get("task_id", "")),
+                            event_type="turn_end",
+                            summary=f"Agent observed {tool_name} and can decide the next step.",
+                            observation=observation,
+                        ).to_dict(),
+                        "observation": observation.to_dict(),
+                    },
                 )
                 self._emit(
                     context,
@@ -124,6 +191,13 @@ class ToolExecutionGateway:
                 if stop_verification_on_fatal and self._fatal_verification_failure(result):
                     break
             except Exception as exc:
+                duration_ms = int((perf_counter() - started) * 1000)
+                observation = observation_from_exception(
+                    tool_name=tool_name,
+                    exc=exc,
+                    telemetry={"duration_ms": duration_ms},
+                    file_changes=pre_file_changes,
+                )
                 self._record_tool_progress(
                     context,
                     task,
@@ -135,9 +209,60 @@ class ToolExecutionGateway:
                     summary=str(exc),
                     parent_event_id=start_event.get("event_id") if start_event else None,
                     command=self._command_args(tool_name, args),
-                    telemetry={"duration_ms": int((perf_counter() - started) * 1000)},
+                    telemetry={"duration_ms": duration_ms},
                     file_changes=pre_file_changes,
                     data={"error": str(exc), "error_type": exc.__class__.__name__},
+                )
+                self._record_harness_turn(
+                    context,
+                    task,
+                    tool_call_id,
+                    event_type="tool_observation",
+                    status="failed",
+                    title="工具观察",
+                    summary=observation.model_summary(),
+                    artifact_refs=observation.artifact_refs,
+                    file_changes=observation.file_changes,
+                    telemetry=observation.telemetry,
+                    data={
+                        "turn_event": HarnessTurnEvent(
+                            turn_id=tool_call_id,
+                            run_id=context.run_id,
+                            task_id=str(task.get("task_id", "")),
+                            event_type="tool_observation",
+                            summary=observation.model_summary(),
+                            observation=observation,
+                        ).to_dict(),
+                        "observation": observation.to_dict(),
+                    },
+                    parent_event_id=start_event.get("event_id") if start_event else None,
+                )
+                self._record_harness_turn(
+                    context,
+                    task,
+                    tool_call_id,
+                    event_type="turn_end",
+                    status="failed",
+                    title="Agent 回合失败",
+                    summary=f"Agent received a failure observation from {tool_name}.",
+                    parent_event_id=turn_start_event.get("event_id") if turn_start_event else None,
+                    telemetry={"duration_ms": duration_ms},
+                    artifact_refs=observation.artifact_refs,
+                    file_changes=observation.file_changes,
+                    execution_step="turn_end",
+                    data={
+                        "turn_event": HarnessTurnEvent(
+                            turn_id=tool_call_id,
+                            run_id=context.run_id,
+                            task_id=str(task.get("task_id", "")),
+                            event_type="turn_end",
+                            summary=f"Agent received a failure observation from {tool_name}.",
+                            observation=observation,
+                        ).to_dict(),
+                        "observation": observation.to_dict(),
+                        "error": str(exc),
+                        "error_type": exc.__class__.__name__,
+                    },
                 )
                 self._emit(
                     context,
@@ -211,6 +336,77 @@ class ToolExecutionGateway:
             telemetry=telemetry,
             call_chain=[self.actor, tool_name],
             execution_chain=[str(task.get("task_id", "")), tool_name],
+            file_changes=file_changes,
+            data=data,
+        )
+
+    def _record_harness_observation(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_call_id: str,
+        observation: object,
+        *,
+        parent_event_id: str | None,
+    ) -> None:
+        turn = HarnessTurnEvent(
+            turn_id=tool_call_id,
+            run_id=context.run_id,
+            task_id=str(task.get("task_id", "")),
+            event_type="tool_observation",
+            summary=observation.model_summary(),
+            observation=observation,
+        )
+        self._record_harness_turn(
+            context,
+            task,
+            tool_call_id,
+            event_type="tool_observation",
+            status="completed" if observation.ok else "failed",
+            title="工具观察",
+            summary=observation.model_summary(),
+            parent_event_id=parent_event_id,
+            artifact_refs=observation.artifact_refs,
+            file_changes=observation.file_changes,
+            telemetry=observation.telemetry,
+            data={"turn_event": turn.to_dict(), "observation": observation.to_dict()},
+        )
+
+    def _record_harness_turn(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_call_id: str,
+        *,
+        event_type: str,
+        status: str,
+        title: str,
+        summary: str,
+        parent_event_id: str | None = None,
+        artifact_refs: list[str] | None = None,
+        file_changes: list[dict[str, Any]] | None = None,
+        telemetry: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        execution_step: str | None = None,
+    ) -> dict[str, Any] | None:
+        logger = self._progress_logger(context)
+        if logger is None:
+            return None
+        return logger.record(
+            run_id=context.run_id,
+            channel="execution_chain",
+            event_type=event_type,
+            phase="execute",
+            status=status,
+            title=title,
+            summary=summary,
+            display_level="main",
+            parent_event_id=parent_event_id,
+            tool_call_id=tool_call_id,
+            artifact_refs=artifact_refs,
+            telemetry=telemetry,
+            call_chain=[self.actor, "AgentHarness"],
+            execution_chain=[str(task.get("task_id", "")), execution_step or event_type],
             file_changes=file_changes,
             data=data,
         )
