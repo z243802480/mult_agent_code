@@ -7,9 +7,11 @@ from pathlib import Path
 from asteria_runtime.agents.planner import FollowUpTaskPlanner
 from asteria_runtime.agents.review_agent import ReviewAgent
 from asteria_runtime.commands.decide_command import DecideCommand
+from asteria_runtime.core.agent_harness import load_raw_tool_observations
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
@@ -21,6 +23,7 @@ from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
+from asteria_runtime.tools.defaults import create_default_tool_registry
 from asteria_runtime.utils.time import now_iso
 
 
@@ -101,8 +104,23 @@ class ReviewCommand:
             summary="正在汇总执行结果、证据和产物，准备进行质量评审。",
             display_level="main",
         )
+        prompt_envelope = persist_prompt_envelope(
+            root=self.root,
+            run_dir=run_dir,
+            run_id=run_id,
+            mode="review",
+            policy=policy,
+            validator=self.validator,
+            tool_names=create_default_tool_registry().names(),
+            event_logger=event_logger,
+            progress_logger=progress,
+            phase="review",
+            actor="ReviewCommand",
+        )
 
         review_context = self._review_context(agent_dir, run_dir, run_id)
+        review_context["prompt_envelope"] = prompt_envelope.context_ref()
+        review_context["tool_observations"] = load_raw_tool_observations(run_dir)
         progress.record(
             run_id=run_id,
             channel="progress",
@@ -287,6 +305,10 @@ class ReviewCommand:
         task_plan = self.store.read(run_dir / "task_plan.json", "task_board")
         cost_report = self._read_cost(run_dir / "cost_report.json", run_id)
         tool_calls = self._read_jsonl(run_dir / "tool_calls.jsonl", "tool_call")
+        tool_observations = self._read_jsonl(
+            run_dir / "tool_observations.jsonl",
+            "tool_observation",
+        )
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
         runtime_os_evidence = self.runtime_evidence.run_evidence(run_dir)
@@ -301,6 +323,7 @@ class ReviewCommand:
                 "runtime_os_evidence": runtime_os_evidence,
                 "events": events[-50:],
                 "tool_calls": tool_calls[-50:],
+                "tool_observations": tool_observations[-50:],
                 "model_calls": model_calls[-20:],
                 "task_execution_evidence": execution_evidence[-20:],
                 "worker_results": runtime_os_evidence["worker_results"][-20:],

@@ -458,7 +458,8 @@ class RunCommand:
 
     def _task_plan_quality_gate_blocks(self) -> bool:
         policy = self._policy()
-        agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
     def _refresh_task_plan_eval(

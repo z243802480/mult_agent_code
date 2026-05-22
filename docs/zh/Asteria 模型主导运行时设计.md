@@ -159,6 +159,149 @@ Asteria 应采用 mode，而不是用命令数量表达全部产品形态：
 
 manifest 给模型看的是能力和边界，不是内部 Python 类名。
 
+
+
+## 6.1 从 claude_code 源码得到的可借鉴点
+
+本轮本地阅读了 `claude_code/CLAUDE.md`、`claude_code/src/constants/prompts.ts`、`claude_code/src/constants/systemPromptSections.ts`、`claude_code/packages/builtin-tools/src/tools/AgentTool/prompt.ts`、权限/工具/compact 相关文件。结论不是照搬 Claude Code，而是吸收其成熟产品化经验，并保留 Asteria 的 Runtime OS 优势。
+
+可借鉴点：
+
+- **系统提示词分段组装**：Claude Code 把身份、任务原则、工具使用、风险动作、会话特定能力、输出风格、memory、环境信息拆成 section，并区分可缓存静态段与会话动态段。Asteria 的 `PromptEnvelope` 也应是可命名、可审计、可缓存的 section 列表，而不是一整块字符串。
+- **能力目录显式化**：核心工具直接可用，延迟工具、MCP、skills、agents 通过发现或附件逐步暴露。Asteria 应保留 `CapabilityManifest`，但补充 `direct_tools`、`deferred_tools`、`skills`、`mcp_tools`、`subagents`、`modes`、`permission_state` 的分层，避免模型误以为所有能力都已常驻上下文。
+- **工具优先级和误用防护**：Claude Code 明确要求“读文件用 Read，不要用 shell cat；搜索未知符号先 grep/glob；简单定位不要派子 agent”。Asteria 的提示词也需要写清工具选择规则，减少无意义 shell、无意义 delegation 和上下文浪费。
+- **风险动作单独成章**：删除、force push、改 CI/CD、发外部消息、上传内容等高爆炸半径动作都需要确认。Asteria 已有 DecisionPoint、protected paths、ToolPermissionPolicy，应把这些不仅放在代码 policy 中，也放进模型可见的 safety envelope。
+- **失败后诊断再换路**：失败不是直接 abandon，也不是盲目重试；先读错误、检查假设、做聚焦修复。Asteria 已有 repair/replan 次数预算，应在系统提示词中要求模型把失败 observation 当成下一轮输入。
+- **子 agent prompt 需要像交代同事**：Claude Code 要求给子 agent 足够背景、已知事实、排除项、期望输出和作用域；不能把“理解”外包给子 agent。Asteria 的 WorkerInvocation 也应增加 `brief_quality` 检查，保证 delegation 是可执行任务，而不是空泛转包。
+- **后台/并行 agent 要有隔离和汇报契约**：社区实现支持前台/后台、fork、worktree isolation、完成通知。Asteria 应继续坚持 candidate workspace、merge gate、promotion queue，不让并行 worker 污染主工作区。
+- **独立验证代理理念值得吸收**：非平凡实现完成前，应有独立 review/verification 路线，且主 agent 不能自己给自己判 PASS。Asteria 已有 ReviewAgent、DebugAgent、MergeGate 和 Runtime OS gate，应把“实现者不能自封通过”写入 harness contract。
+- **上下文压缩不是简单摘要**：compact 会保留边界消息、最近片段、文件状态、skills、计划和 hooks 结果，并记录压缩前后 token。Asteria 的 ContextSnapshot/ContextPackage 应从“保存摘要”升级为“保存继续执行所需的不变量、文件触点、失败证据和未完成任务”。
+- **用户沟通是产品能力**：Claude Code 要求首次工具调用前说明将做什么，中途关键节点短更新，最终如实报告验证结果。Asteria 的 user_progress 事件协议已经走在正确方向，应继续保留并强化。
+
+不能照搬的点：
+
+- 不把产品做成单体交互 CLI 的超大文件堆叠。Asteria 的目标是 Runtime OS：CLI、Studio、JSON/JSONL evidence、candidate workspace、gate、resume 都要共享同一套运行证据。
+- 不依赖单一模型或单一 provider 的专有行为。提示词、tool schema、provider adapter 必须可替换。
+- 不让 feature flag、实验工具、远端控制、插件市场先于核心 runtime loop。MVP 仍以 filesystem + JSON/JSONL、真实行为和测试为优先。
+- 不把 dashboard 放到核心之前。Studio 只消费 harness/user_progress/evidence，不成为新的执行内核。
+
+## 6.2 Asteria 系统级提示词骨架
+
+Asteria 的系统级提示词应由 Runtime 生成 `PromptEnvelope`，每个 section 有稳定名称、来源、优先级、是否可缓存、token 预算和证据引用。建议骨架如下：
+
+```text
+# Identity
+You are Asteria, a local-first autonomous development runtime agent. You help the user turn a compact goal into verified local artifacts.
+
+# Operating contract
+- Work inside the current project and respect project guidance.
+- Preserve user-authored content and avoid unrelated refactors.
+- Prefer small, verifiable changes over speculative rewrites.
+- Produce durable artifacts when the task requires them; answer inline when that is enough.
+- Before reporting completion, verify with the strongest available local check. If you cannot verify, say exactly why.
+
+# Project guidance
+- Root AGENTS.md and nearest scoped guidance.
+- docs/zh/当前状态与路线.md summary when working on Asteria itself.
+- Current goal, definition of done, accepted decisions, open risks.
+
+# Capability manifest
+- Direct tools: read/search/edit/write/shell/test/status/report.
+- Deferred tools: MCP, skills, subagents, automations, external adapters.
+- Modes: plan, build, review, repair, release.
+- For each capability: permission state, sandbox, read/write scope, cost tier, expected observation format.
+
+# Tool-use policy
+- Search or read before proposing code changes to files you have not inspected.
+- Prefer dedicated file/search tools over shell equivalents.
+- Use shell mainly for tests, builds, git inspection, and commands that cannot be represented by safer tools.
+- Do not use subagents for a specific file read or a narrow symbol lookup; use subagents for broad exploration, independent implementation, adversarial review, or context isolation.
+- Every tool result becomes a concise model observation plus durable raw evidence.
+
+# Safety envelope
+- Protected paths, network policy, destructive command policy, secret policy, budget, candidate workspace policy, merge gate policy.
+- If a requested action has high blast radius, ask for a DecisionPoint rather than proceeding silently.
+- Tool denial is an observation: do not retry the identical request; adapt or ask.
+
+# Failure and repair
+- Diagnose the error before changing route.
+- Try focused repair within the repair budget.
+- If scope, permissions, budget, or product direction is the blocker, create a structured runtime request or DecisionPoint.
+- Never manufacture green status by suppressing tests, weakening validation, or hiding failures.
+
+# Delegation contract
+- Brief subagents like new teammates: goal, why it matters, known context, files/commands, constraints, expected output, and whether they may write.
+- Parallelize only independent work.
+- Isolate writes in candidate workspaces when possible.
+- Implementation and verification should be separate for non-trivial changes.
+
+# Context and compaction
+- Keep active goal, decisions, modified files, validation results, failures, and next actions available across compaction/resume.
+- Treat compacted summaries as state snapshots, not as proof that work succeeded.
+
+# User communication
+- Before the first action, briefly say what will be examined or changed.
+- Give short progress updates at meaningful transitions.
+- Final response states what changed, where, verification result, remaining risk, and next action if any.
+```
+
+该骨架不是写死在模型外的流程图，而是把 Runtime OS 的边界、能力和证据格式交给模型，让模型在边界内选择下一步。
+
+## 6.3 PromptEnvelope section 数据结构建议
+
+建议把系统提示词落成可持久化对象，便于调试、缓存和回放：
+
+```json
+{
+  "id": "prompt-envelope-...",
+  "run_id": "run-...",
+  "model_route": "strong|medium|cheap",
+  "sections": [
+    {
+      "name": "identity",
+      "source": "runtime_builtin",
+      "priority": 100,
+      "cache_scope": "global",
+      "content_ref": "sha256:...",
+      "token_estimate": 80
+    },
+    {
+      "name": "project_guidance",
+      "source": "AGENTS.md + docs/zh/当前状态与路线.md",
+      "priority": 90,
+      "cache_scope": "project",
+      "evidence_refs": ["file:AGENTS.md", "file:docs/zh/当前状态与路线.md"]
+    },
+    {
+      "name": "capability_manifest",
+      "source": "ToolRegistry + RuntimeProfile + policy",
+      "priority": 80,
+      "cache_scope": "turn",
+      "evidence_refs": [".asteria/.../capabilities.json"]
+    }
+  ]
+}
+```
+
+实现要求：
+
+- 静态 section 不随每轮工具结果改变，减少 prompt cache 破坏。
+- 动态 section 必须说明为什么动态，例如权限变化、MCP 连接变化、budget 接近阈值、context compaction 后恢复。
+- section 内容进入 `.asteria/` 时可保存 hash + 摘要，必要时保存完整文本；不能把 secrets 或受保护文件内容写入 prompt evidence。
+- `CapabilityManifest` 同时面向模型和审计，不暴露内部 Python 类名，而暴露用户可理解能力、权限和边界。
+
+## 6.4 保留并放大的 Asteria 优势
+
+学习 Claude Code 不等于变成 Claude Code。Asteria 必须继续保留这些更适合长期自治开发 runtime 的设计：
+
+- **Runtime OS evidence-first**：TaskGraph、WorkerInvocation、WorkerResult、TaskExecutionEvidence、MergeGate、RuntimeProfile 都是可落盘、可回放、可验收对象。
+- **候选工作区和 promotion gate**：写入隔离、merge gate 阻断、promotion queue 是超越普通 CLI agent 的关键安全能力。
+- **多模型、多 profile 调度**：不要把成功绑定到单一 provider；route guidance、capability feedback、预算信号要继续沉淀。
+- **Schema 校验但不让 schema 绑架模型循环**：持久化对象必须校验，但模型自然语言尝试可以先进入 repair/extract/fallback，而不是直接硬停。
+- **用户进展事件协议**：主线给用户看，Inspector 给审计看；这比裸 stdout 或大段 JSON 更适合长任务。
+- **成本和 hard-stop DecisionPoint**：预算接近硬停必须可见、可决策、可恢复。
+- **真实任务基准和 release gate**：功能必须有真实行为和测试，不能靠 prompt 看起来聪明。
+
 ## 7. Studio 展示方向
 
 Studio 要展示 Agent Harness 的真实工作过程：

@@ -9,7 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 
+from asteria_runtime.acceptance.runtime_os_catalog import RUNTIME_OS_CAPABILITIES
+from asteria_runtime.core.agent_harness import AgentHarness
 from asteria_runtime.core.merge_gate import MergeGate
 from asteria_runtime.core.schema_migration import (
     SchemaMigration,
@@ -20,6 +23,9 @@ from asteria_runtime.core.flag_resolver import (
     FeatureFlag,
     FlagResolver,
 )
+from tests.helpers.runtime_os import runtime_os_pass_report, runtime_os_pass_scenarios
+
+pytestmark = pytest.mark.contract
 
 
 class TestMergeGateBlocksUnsafePromotion:
@@ -236,3 +242,52 @@ class TestDocOnlyTaskVerification:
         doc_file.write_text("# Title\n\nContent here.\n", encoding="utf-8")
         assert doc_file.exists()
         assert "Title" in doc_file.read_text(encoding="utf-8")
+
+
+class TestRuntimeOSFixtureCoverage:
+    """Golden trace: report fixtures derive Runtime OS coverage from the catalog."""
+
+    def test_runtime_os_pass_scenarios_cover_catalog(self, tmp_path: Path) -> None:
+        expected = {item.capability for item in RUNTIME_OS_CAPABILITIES}
+        scenarios = runtime_os_pass_scenarios()
+        report = runtime_os_pass_report(tmp_path)
+
+        assert {item["capability"] for item in scenarios} == expected
+        assert {item["capability"] for item in report["scenario_metadata"]} == expected
+        assert report["aggregate"]["total"] == len(RUNTIME_OS_CAPABILITIES)
+
+
+class TestPromptEnvelopeContract:
+    """Golden trace: prompt envelopes keep the model-visible runtime contract."""
+
+    def test_prompt_envelope_contains_required_sections(self) -> None:
+        envelope = AgentHarness(
+            {
+                "permissions": {
+                    "allow_shell": False,
+                    "allow_network": False,
+                    "allow_remote_push": False,
+                    "allow_destructive_shell": False,
+                },
+                "protected_paths": [".env", "secrets/"],
+                "budgets": {"max_model_calls_per_goal": 60},
+            },
+            tool_names=["read_file"],
+        ).prompt_envelope(
+            run_id="run-golden",
+            mode="plan",
+            project_guidance="Project guidance.",
+            project_guidance_refs=["AGENTS.md"],
+        )
+        data = envelope.to_dict()
+
+        assert {
+            "project_guidance",
+            "capability_manifest",
+            "safety_envelope",
+            "failure_repair",
+            "delegation_contract",
+            "user_communication",
+        }.issubset(set(data["section_order"]))
+        assert data["capability_manifest"]["direct_tools"]
+        assert data["capability_manifest"]["verification"]

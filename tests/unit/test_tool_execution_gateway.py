@@ -129,6 +129,13 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     assert events[3]["display_level"] == "main"
     assert events[3]["data"]["observation"]["tool_name"] == "run_command"
     assert events[3]["data"]["observation"]["ok"] is True
+    observations = JsonlStore(context.validator).read_all(
+        tmp_path / "tool_observations.jsonl",
+        "tool_observation",
+    )
+    assert observations[0]["tool_name"] == "run_command"
+    assert observations[0]["user_progress_event_id"] == events[3]["event_id"]
+    assert observations[0]["next_hint"] == "continue"
     assert events[4]["data"]["turn_event"]["event_type"] == "turn_end"
     assert events[4]["parent_event_id"] == events[0]["event_id"]
     assert getattr(results[0], "harness_observation").model_summary() == (
@@ -191,6 +198,13 @@ def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
     assert events[-1]["event_type"] == "turn_end"
     assert events[-1]["data"]["observation"]["ok"] is False
     assert events[-1]["data"]["error_type"] == "RuntimeError"
+    observations = JsonlStore(context.validator).read_all(
+        tmp_path / "tool_observations.jsonl",
+        "tool_observation",
+    )
+    assert observations[-1]["ok"] is False
+    assert observations[-1]["error_class"] == "RuntimeError"
+    assert observations[-1]["next_hint"] == "diagnose_then_repair_replan_ask_or_stop"
     assert load_harness_observations(tmp_path)[-1]["observation"]["ok"] is False
 
 

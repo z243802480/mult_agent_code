@@ -6,8 +6,10 @@ from pathlib import Path
 from asteria_runtime.agents.debug_agent import DebugAgent
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
+from asteria_runtime.core.agent_harness import load_raw_tool_observations
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_contract import check_completion_contract
@@ -113,6 +115,23 @@ class DebugCommand:
         debug_agent = DebugAgent(self._model_client(run_dir, budget), self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
         runtime_context = ContextLoader(self.root, self.validator).load(run_id)
+        prompt_envelope = persist_prompt_envelope(
+            root=self.root,
+            run_dir=run_dir,
+            run_id=run_id,
+            mode="debug",
+            policy=policy,
+            validator=self.validator,
+            tool_names=self.registry.names(),
+            event_logger=event_logger,
+            progress_logger=UserProgressLogger(run_dir / "user_progress.jsonl", self.validator),
+            phase="execute",
+            actor="DebugCommand",
+        )
+        runtime_context["prompt_envelope"] = prompt_envelope.context_ref()
+        tool_observations = load_raw_tool_observations(run_dir)
+        if tool_observations:
+            runtime_context["tool_observations"] = tool_observations
 
         run["status"] = "running"
         run["current_phase"] = "DEBUG"

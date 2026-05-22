@@ -7,6 +7,8 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
+pytestmark = pytest.mark.workflow
+
 
 class FakePlanClient:
     def __init__(self) -> None:
@@ -98,6 +100,17 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     assert "Task plan quality" in result.to_text()
 
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    prompt_envelope = json.loads((run_dir / "prompt_envelope.json").read_text(encoding="utf-8"))
+    assert {
+        "identity",
+        "project_guidance",
+        "capability_manifest",
+        "failure_repair",
+        "delegation_contract",
+        "user_communication",
+    }.issubset(set(prompt_envelope["section_order"]))
+    assert prompt_envelope["capability_manifest"]["direct_tools"]
+    assert prompt_envelope["capability_manifest"]["verification"]
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(events) >= 4
     user_progress = [
@@ -126,6 +139,11 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     )
     assert any(
         event["data"].get("capability_manifest")
+        for event in user_progress
+        if event["call_chain"] == ["PlanCommand", "AgentHarness"]
+    )
+    assert any(
+        event["data"].get("prompt_envelope", {}).get("sections")
         for event in user_progress
         if event["call_chain"] == ["PlanCommand", "AgentHarness"]
     )

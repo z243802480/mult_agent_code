@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,13 +13,24 @@ class CapabilityTool:
     kind: str
     permission: str
     description: str = ""
+    sandbox_profile: str = "runtime_policy"
+    read_scope: list[str] = field(default_factory=list)
+    write_scope: list[str] = field(default_factory=list)
+    cost_tier: str = "low"
+    observation_schema: str = "tool_observation"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "kind": self.kind,
             "permission": self.permission,
+            "permission_state": self.permission,
             "description": self.description,
+            "sandbox_profile": self.sandbox_profile,
+            "read_scope": self.read_scope,
+            "write_scope": self.write_scope,
+            "cost_tier": self.cost_tier,
+            "observation_schema": self.observation_schema,
         }
 
 
@@ -27,10 +39,21 @@ class CapabilityManifest:
     modes: list[str]
     tools: list[CapabilityTool]
     boundaries: dict[str, Any] = field(default_factory=dict)
+    deferred_tools: list[CapabilityTool] = field(default_factory=list)
+    mcp_tools: list[CapabilityTool] = field(default_factory=list)
+    skills: list[CapabilityTool] = field(default_factory=list)
+    subagents: list[CapabilityTool] = field(default_factory=list)
+    verification: list[CapabilityTool] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "modes": self.modes,
+            "direct_tools": [tool.to_dict() for tool in self.tools],
+            "deferred_tools": [tool.to_dict() for tool in self.deferred_tools],
+            "mcp_tools": [tool.to_dict() for tool in self.mcp_tools],
+            "skills": [tool.to_dict() for tool in self.skills],
+            "subagents": [tool.to_dict() for tool in self.subagents],
+            "verification": [tool.to_dict() for tool in self.verification],
             "tools": [tool.to_dict() for tool in self.tools],
             "boundaries": self.boundaries,
         }
@@ -46,12 +69,61 @@ class CapabilityManifest:
         return "\n".join(
             [
                 "Available modes: " + ", ".join(self.modes),
-                "Available capabilities:",
+                "Direct tools:",
                 *tool_lines,
+                "Deferred tools: "
+                + ", ".join(tool.name for tool in self.deferred_tools + self.mcp_tools),
+                "Skills: " + ", ".join(tool.name for tool in self.skills),
+                "Subagents: " + ", ".join(tool.name for tool in self.subagents),
+                "Verification: " + ", ".join(tool.name for tool in self.verification),
                 "Runtime boundaries:",
                 *boundary_lines,
             ]
         )
+
+
+@dataclass(frozen=True)
+class PromptEnvelopeSection:
+    name: str
+    source: str
+    priority: str
+    cache_scope: str
+    content: str
+    evidence_refs: list[str] = field(default_factory=list)
+    cache_break_reasons: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "source": self.source,
+            "priority": self.priority,
+            "cache_scope": self.cache_scope,
+            "token_estimate": _token_estimate(self.content),
+            "content_hash": _content_hash(self.content),
+            "summary": _summary(self.content),
+            "evidence_refs": self.evidence_refs,
+            "cache_break_reasons": self.cache_break_reasons,
+        }
+
+
+@dataclass(frozen=True)
+class PromptEnvelope:
+    run_id: str
+    mode: str
+    sections: list[PromptEnvelopeSection]
+    capability_manifest: CapabilityManifest
+
+    def to_dict(self) -> dict[str, Any]:
+        section_dicts = [section.to_dict() for section in self.sections]
+        return {
+            "schema_version": "0.1.0",
+            "run_id": self.run_id,
+            "mode": self.mode,
+            "sections": section_dicts,
+            "section_order": [section.name for section in self.sections],
+            "capability_manifest": self.capability_manifest.to_dict(),
+            "content_hash": _content_hash(json.dumps(section_dicts, sort_keys=True)),
+        }
 
 
 @dataclass(frozen=True)
@@ -166,6 +238,25 @@ def load_harness_observations(run_dir: Path | None, *, limit: int = 12) -> list[
     return observations[-limit:]
 
 
+def load_raw_tool_observations(run_dir: Path | None, *, limit: int = 12) -> list[dict[str, Any]]:
+    if run_dir is None:
+        return []
+    path = run_dir / "tool_observations.jsonl"
+    if not path.exists():
+        return []
+    observations: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            observation = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(observation, dict):
+            observations.append(observation)
+    return observations[-limit:]
+
+
 def _observation_summary_from_dict(observation: dict[str, Any]) -> str:
     tool_name = str(observation.get("tool_name") or "tool")
     state = "ok" if observation.get("ok") else "failed"
@@ -204,11 +295,76 @@ class AgentHarness:
     def capability_manifest(self, mode: str = "build") -> CapabilityManifest:
         permissions = self.policy.get("permissions") or {}
         protected_paths = self.policy.get("protected_paths") or []
-        tools = self._default_tools(permissions)
+        tools = self._direct_tools(permissions)
         tools.extend(self._registered_tools(permissions))
+        direct_tools = self._dedupe_tools(tools)
+        deferred_tools = [
+            CapabilityTool(
+                "tool_search",
+                "discover",
+                "allow",
+                "Discover deferred tools before exposing them to the model loop.",
+                cost_tier="low",
+            )
+        ]
+        mcp_tools = [
+            CapabilityTool(
+                "mcp",
+                "external",
+                "ask",
+                "Use configured MCP tools only through runtime policy and audit logging.",
+                cost_tier="medium",
+            )
+        ]
+        skills = [
+            CapabilityTool(
+                "skill",
+                "workflow",
+                "allow",
+                "Load task-specific workflow guidance and templates.",
+                cost_tier="low",
+            )
+        ]
+        subagents = [
+            CapabilityTool(
+                "subagent",
+                "delegate",
+                "ask",
+                "Delegate bounded work with a goal, scope, permissions, and verification brief.",
+                cost_tier="medium",
+            )
+        ]
+        verification = [
+            CapabilityTool(
+                "run_tests",
+                "verify",
+                "ask" if permissions.get("allow_shell") else "deny",
+                "Run bounded local verification commands and persist results.",
+                cost_tier="medium",
+            ),
+            CapabilityTool(
+                "review_agent",
+                "verify",
+                "ask",
+                "Independently review non-trivial changes before final success claims.",
+                cost_tier="medium",
+            ),
+            CapabilityTool(
+                "merge_gate",
+                "verify",
+                "allow",
+                "Check changed files, write scope, and verification evidence before promotion.",
+                cost_tier="low",
+            ),
+        ]
         return CapabilityManifest(
             modes=["plan", "build", "review", "repair", "release"],
-            tools=self._dedupe_tools(tools),
+            tools=direct_tools,
+            deferred_tools=deferred_tools,
+            mcp_tools=mcp_tools,
+            skills=skills,
+            subagents=subagents,
+            verification=verification,
             boundaries={
                 "active_mode": mode,
                 "protected_paths": protected_paths,
@@ -221,7 +377,128 @@ class AgentHarness:
             },
         )
 
-    def _default_tools(self, permissions: dict[str, Any]) -> list[CapabilityTool]:
+    def prompt_envelope(
+        self,
+        *,
+        run_id: str,
+        mode: str = "build",
+        project_guidance: str = "",
+        project_guidance_refs: list[str] | None = None,
+    ) -> PromptEnvelope:
+        manifest = self.capability_manifest(mode=mode)
+        permissions = self.policy.get("permissions") or {}
+        budgets = self.policy.get("budgets") or {}
+        sections = [
+            PromptEnvelopeSection(
+                "identity",
+                "runtime",
+                "system",
+                "static",
+                "You are Asteria Runtime OS, a local-first autonomous development runtime.",
+            ),
+            PromptEnvelopeSection(
+                "operating_contract",
+                "runtime",
+                "system",
+                "static",
+                (
+                    "Turn compact goals into verified artifacts through goal specification, "
+                    "task decomposition, controlled tool use, validation, repair, context "
+                    "compression, cost control, and final reporting."
+                ),
+            ),
+            PromptEnvelopeSection(
+                "project_guidance",
+                "AGENTS.md",
+                "project",
+                "workspace",
+                project_guidance or "No project guidance file was available.",
+                project_guidance_refs or [],
+                ["workspace_guidance_changed"],
+            ),
+            PromptEnvelopeSection(
+                "capability_manifest",
+                "AgentHarness",
+                "system",
+                "dynamic",
+                manifest.prompt_summary(),
+                cache_break_reasons=["tools_or_modes_changed", "permissions_changed"],
+            ),
+            PromptEnvelopeSection(
+                "tool_policy",
+                "policy_config",
+                "system",
+                "dynamic",
+                (
+                    "Prefer read/search/file tools for local context, shell for bounded "
+                    "verification or commands not expressible as structured tools, and "
+                    "subagents only for broad exploration, independent implementation, "
+                    "adversarial review, or context isolation."
+                ),
+                cache_break_reasons=["tool_registry_changed", "permissions_changed"],
+            ),
+            PromptEnvelopeSection(
+                "safety_envelope",
+                "policy_config",
+                "system",
+                "dynamic",
+                (
+                    "Protected paths, destructive shell actions, remote push, production "
+                    f"deploy, and network-sensitive actions are governed by policy: {permissions}."
+                ),
+                cache_break_reasons=["permissions_changed"],
+            ),
+            PromptEnvelopeSection(
+                "failure_repair",
+                "runtime",
+                "system",
+                "static",
+                (
+                    "Treat failures as observations. Diagnose before repair, replan, ask, "
+                    "downgrade, or stop. Do not claim success without evidence."
+                ),
+            ),
+            PromptEnvelopeSection(
+                "delegation_contract",
+                "runtime",
+                "system",
+                "static",
+                (
+                    "Child workers need a brief with goal, why, known context, files or "
+                    "commands, constraints, allowed writes, expected output, and verification."
+                ),
+            ),
+            PromptEnvelopeSection(
+                "context_compaction",
+                "policy_config",
+                "system",
+                "dynamic",
+                (
+                    "Context snapshots preserve goal, definition of done, accepted decisions, "
+                    "active tasks, modified files, verification, failures, risks, and next actions."
+                ),
+                cache_break_reasons=["compaction_or_resume"],
+            ),
+            PromptEnvelopeSection(
+                "user_communication",
+                "runtime",
+                "system",
+                "dynamic",
+                (
+                    "Keep low-noise user progress visible: current phase, route, tool/model "
+                    f"heartbeat, artifacts, evidence, and budget thresholds {budgets}."
+                ),
+                cache_break_reasons=["budget_threshold_changed"],
+            ),
+        ]
+        return PromptEnvelope(
+            run_id=run_id,
+            mode=mode,
+            sections=sections,
+            capability_manifest=manifest,
+        )
+
+    def _direct_tools(self, permissions: dict[str, Any]) -> list[CapabilityTool]:
         shell_permission = "ask" if permissions.get("allow_shell") else "deny"
         return [
             CapabilityTool("read_file", "read", "allow", "Read files inside the workspace."),
@@ -229,9 +506,6 @@ class AgentHarness:
             CapabilityTool("edit_file", "write", "ask", "Create or modify workspace files."),
             CapabilityTool("shell", "execute", shell_permission, "Run non-destructive shell commands."),
             CapabilityTool("run_tests", "verify", shell_permission, "Run bounded local verification."),
-            CapabilityTool("mcp", "external", "ask", "Use configured MCP tools when policy allows."),
-            CapabilityTool("skill", "workflow", "allow", "Load task-specific workflow guidance."),
-            CapabilityTool("subagent", "delegate", "ask", "Delegate bounded work to a child worker."),
         ]
 
     def _registered_tools(self, permissions: dict[str, Any]) -> list[CapabilityTool]:
@@ -317,3 +591,18 @@ def _artifact_refs(tool_name: str, data: dict[str, Any]) -> list[str]:
     if isinstance(changed_files, list):
         return [str(path) for path in changed_files]
     return []
+
+
+def _content_hash(content: str) -> str:
+    return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _token_estimate(content: str) -> int:
+    return max(1, (len(content) + 3) // 4) if content else 0
+
+
+def _summary(content: str, max_chars: int = 280) -> str:
+    compact = " ".join(content.split())
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 3] + "..."

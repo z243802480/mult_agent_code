@@ -1,8 +1,12 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.storage.schema_validator import SchemaValidator
+
+pytestmark = pytest.mark.contract
 
 
 def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> None:

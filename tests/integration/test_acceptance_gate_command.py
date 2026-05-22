@@ -5,11 +5,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
+from tests.helpers.runtime_os import runtime_os_capability_count, runtime_os_pass_scenarios
+
+pytestmark = pytest.mark.release_gate
 
 
 def test_acceptance_gate_passes_clean_report(tmp_path: Path) -> None:
@@ -262,55 +267,17 @@ def test_acceptance_gate_passes_with_runtime_os_evidence(tmp_path: Path) -> None
             "suite": "core",
             "ok": True,
             "returncode": 0,
-            "scenarios": [
-                runtime_scenario("runtime_parallel_readonly"),
-                runtime_scenario("runtime_disjoint_writes"),
-                runtime_scenario(
-                    "runtime_worker_failure",
-                    {
-                        "failure_evidence": True,
-                        "candidate_isolated": True,
-                        "promotion_failure_recorded": True,
-                    },
-                ),
-                runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
-                runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
-                runtime_scenario(
-                    "runtime_context_package_slice",
-                    {
-                        "context_package_sliced": True,
-                        "context_package_scope_partitioned": True,
-                    },
-                ),
-                runtime_scenario(
-                    "runtime_sandbox_backend_selection",
-                    {"sandbox_backend_recorded": True},
-                ),
-                runtime_scenario(
-                    "runtime_planner_scope_quality",
-                    {"planner_scope_narrowed": True, "runtime_request_created": True},
-                ),
-                runtime_scenario(
-                    "runtime_capability_feedback",
-                    {"capability_feedback_recorded": True},
-                ),
-                runtime_scenario(
-                    "runtime_evidence_consumption",
-                    {
-                        "debug_consumed_runtime_evidence": True,
-                        "review_consumed_runtime_evidence": True,
-                    },
-                ),
-            ],
+            "scenarios": runtime_os_pass_scenarios(),
         },
     )
 
+    capability_count = runtime_os_capability_count()
     result = AcceptanceGateCommand(
         tmp_path,
         report_path=report_path,
         suite="core",
-        min_scenarios=10,
-        min_capabilities=10,
+        min_scenarios=capability_count,
+        min_capabilities=capability_count,
         require_tiers=["core"],
     ).run()
 
@@ -326,58 +293,20 @@ def test_acceptance_gate_blocks_unresolved_candidate_promotions(tmp_path: Path) 
             "suite": "core",
             "ok": True,
             "returncode": 0,
-            "scenarios": [
-                runtime_scenario("runtime_parallel_readonly"),
-                runtime_scenario("runtime_disjoint_writes"),
-                runtime_scenario(
-                    "runtime_worker_failure",
-                    {
-                        "failure_evidence": True,
-                        "candidate_isolated": True,
-                        "promotion_failure_recorded": True,
-                    },
-                ),
-                runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
-                runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
-                runtime_scenario(
-                    "runtime_context_package_slice",
-                    {
-                        "context_package_sliced": True,
-                        "context_package_scope_partitioned": True,
-                    },
-                ),
-                runtime_scenario(
-                    "runtime_sandbox_backend_selection",
-                    {"sandbox_backend_recorded": True},
-                ),
-                runtime_scenario(
-                    "runtime_planner_scope_quality",
-                    {"planner_scope_narrowed": True, "runtime_request_created": True},
-                ),
-                runtime_scenario(
-                    "runtime_capability_feedback",
-                    {"capability_feedback_recorded": True},
-                ),
-                runtime_scenario(
-                    "runtime_evidence_consumption",
-                    {
-                        "debug_consumed_runtime_evidence": True,
-                        "review_consumed_runtime_evidence": True,
-                    },
-                ),
-            ],
+            "scenarios": runtime_os_pass_scenarios(),
         },
     )
     run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     _append_candidate_promotion(run_dir, "pending_manual_approval")
 
+    capability_count = runtime_os_capability_count()
     result = AcceptanceGateCommand(
         tmp_path,
         report_path=report_path,
         suite="core",
-        min_scenarios=10,
-        min_capabilities=10,
+        min_scenarios=capability_count,
+        min_capabilities=capability_count,
         require_tiers=["core"],
     ).run()
 
@@ -416,40 +345,6 @@ def legacy_scenario(name: str, ok: bool) -> dict:
     item.pop("capability")
     item.pop("tier")
     return item
-
-
-def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
-    capability = {
-        "runtime_context_package_slice": "context_package_slice",
-        "runtime_sandbox_backend_selection": "sandbox_backend_selection",
-        "runtime_planner_scope_quality": "planner_scope_quality",
-        "runtime_capability_feedback": "capability_feedback",
-    }.get(name, name)
-    evidence = {
-        "workers_jsonl": True,
-        "worker_results_jsonl": True,
-        "runtime_profiles_jsonl": True,
-        "context_mounts_jsonl": True,
-        "validation_results_jsonl": True,
-        "task_execution_evidence_jsonl": True,
-    }
-    evidence.update(extra_evidence or {})
-    return {
-        "scenario": name,
-        "capability": capability,
-        "tier": "core",
-        "ok": True,
-        "workspace": None,
-        "failure_summary": "",
-        "stdout_tail": "",
-        "stderr_tail": "",
-        "summary": {
-            "runtime_os": {
-                "capability": capability,
-                "evidence": evidence,
-            }
-        },
-    }
 
 
 def write_report(tmp_path: Path, overrides: dict) -> Path:

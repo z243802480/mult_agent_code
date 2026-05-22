@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.new_command import NewCommand
@@ -8,6 +10,8 @@ from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+
+pytestmark = pytest.mark.workflow
 
 
 class FakePlanClient:

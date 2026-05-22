@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PromptEnvelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "mode",
+    "sections",
+    "section_order",
+    "capability_manifest",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": "string" },
+    "mode": { "type": "string" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "source",
+          "priority",
+          "cache_scope",
+          "token_estimate",
+          "content_hash",
+          "summary",
+          "evidence_refs",
+          "cache_break_reasons"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "source": { "type": "string" },
+          "priority": { "type": "string" },
+          "cache_scope": { "type": "string" },
+          "token_estimate": { "type": "integer" },
+          "content_hash": { "type": "string" },
+          "summary": { "type": "string" },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "cache_break_reasons": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "section_order": { "type": "array", "items": { "type": "string" } },
+    "capability_manifest": {
+      "type": "object",
+      "required": [
+        "modes",
+        "direct_tools",
+        "deferred_tools",
+        "mcp_tools",
+        "skills",
+        "subagents",
+        "verification",
+        "boundaries"
+      ],
+      "properties": {
+        "modes": { "type": "array", "items": { "type": "string" } },
+        "direct_tools": { "type": "array", "items": { "type": "object" } },
+        "deferred_tools": { "type": "array", "items": { "type": "object" } },
+        "mcp_tools": { "type": "array", "items": { "type": "object" } },
+        "skills": { "type": "array", "items": { "type": "object" } },
+        "subagents": { "type": "array", "items": { "type": "object" } },
+        "verification": { "type": "array", "items": { "type": "object" } },
+        "tools": { "type": "array", "items": { "type": "object" } },
+        "boundaries": { "type": "object" }
+      }
+    },
+    "content_hash": { "type": "string" }
+  }
+}

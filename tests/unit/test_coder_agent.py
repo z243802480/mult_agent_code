@@ -56,10 +56,31 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
         project_config={"name": "demo"},
         available_tools=["run_command"],
         run_id="run-1",
-        runtime_context={
-            "harness_observations": [
-                {
-                    "task_id": "task-0001",
+            runtime_context={
+                "prompt_envelope": {
+                    "section_order": ["project_guidance", "capability_manifest"],
+                    "sections": [
+                        {
+                            "name": "project_guidance",
+                            "summary": "Follow AGENTS.md project guidance.",
+                        }
+                    ],
+                    "capability_manifest": {
+                        "direct_tools": [{"name": "run_command"}],
+                        "verification": [{"name": "run_tests"}],
+                    },
+                },
+                "tool_observations": [
+                    {
+                        "tool_name": "run_command",
+                        "ok": False,
+                        "summary": "pytest failed",
+                        "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+                    }
+                ],
+                "harness_observations": [
+                    {
+                        "task_id": "task-0001",
                     "stage": "verification",
                     "summary": "run_command failed: pytest failed",
                     "observation": {
@@ -74,4 +95,7 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
 
     prompt = client.requests[0].messages[-1].content
     assert "harness_observations" in prompt
+    assert "prompt_envelope" in prompt
+    assert "capability_manifest" in prompt
+    assert "tool_observations" in prompt
     assert "run_command failed: pytest failed" in prompt

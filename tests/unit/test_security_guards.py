@@ -5,6 +5,8 @@ import pytest
 from asteria_runtime.security.path_guard import PathGuard, PathPolicyError
 from asteria_runtime.security.shell_guard import ShellGuard, ShellPolicyError
 
+pytestmark = pytest.mark.contract
+
 
 def test_path_guard_blocks_escaping_root(tmp_path: Path) -> None:
     guard = PathGuard(tmp_path, [".env", "secrets/"])

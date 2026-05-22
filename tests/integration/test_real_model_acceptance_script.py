@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.real_model_acceptance import (
     SCENARIOS,
     SUITES,
@@ -15,6 +17,8 @@ from scripts.real_model_acceptance import (
     classify_acceptance_subprocess_failure,
     gray_ready,
 )
+
+pytestmark = pytest.mark.real_provider
 
 
 def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:

@@ -9,12 +9,13 @@ from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
-from asteria_runtime.core.agent_harness import load_harness_observations
+from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
 from asteria_runtime.core.plugin_manifest import PluginManifestLoader
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_state_finalizer import RunStateFinalizer
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -42,6 +43,7 @@ from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.defaults import create_default_tool_registry
+from asteria_runtime.utils.time import now_iso
 
 
 @dataclass(frozen=True)
@@ -171,6 +173,20 @@ class ExecuteCommand:
         coder = CoderAgent(model_client, self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
         runtime_context = ContextLoader(self.root, self.validator).load(run_id)
+        prompt_envelope = persist_prompt_envelope(
+            root=self.root,
+            run_dir=run_dir,
+            run_id=run_id,
+            mode="execute",
+            policy=policy,
+            validator=self.validator,
+            tool_names=self.registry.names(),
+            event_logger=event_logger,
+            progress_logger=UserProgressLogger(run_dir / "user_progress.jsonl", self.validator),
+            phase="execute",
+            actor="ExecuteCommand",
+        )
+        runtime_context["prompt_envelope"] = prompt_envelope.context_ref()
 
         quality_gate = TaskPlanQualityGate(self.root, self.validator).check(
             run_id,
@@ -266,7 +282,8 @@ class ExecuteCommand:
         )
 
     def _task_plan_quality_gate_blocks(self, policy: dict) -> bool:
-        agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
     def _execute_task_with_worker_record(
@@ -280,6 +297,15 @@ class ExecuteCommand:
         runtime_context: dict,
         worker_slot: WorkerExecutionSlot,
     ) -> TaskExecutionSummary:
+        gate = self.worker_recorder.delegation_gate(task)
+        if gate["status"] == "blocked":
+            return self._block_for_delegation_quality_gate(
+                task=task,
+                task_board=task_board,
+                context=context,
+                worker_slot=worker_slot,
+                gate=gate,
+            )
         return self.worker_runner.run(
             task=task,
             context=context,
@@ -302,6 +328,67 @@ class ExecuteCommand:
             worker_id=worker_slot.worker_id,
             result_id=worker_slot.result_id,
         )
+
+    def _block_for_delegation_quality_gate(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        worker_slot: WorkerExecutionSlot,
+        gate: dict,
+    ) -> TaskExecutionSummary:
+        blocked = self.blocking_handler.block_for_failure(
+            context=context,
+            task_board=task_board,
+            task=task,
+            reason=str(gate["reason"]),
+            failure_type="delegation_brief_quality_gate",
+            action={
+                "schema_version": "0.1.0",
+                "task_id": task["task_id"],
+                "summary": str(gate["reason"]),
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "completion_notes": "Worker was denied before model execution.",
+            },
+        )
+        timestamp = now_iso()
+        self.worker_recorder.record_execution(
+            context=context,
+            worker_id=worker_slot.worker_id,
+            result_id=worker_slot.result_id,
+            task=task,
+            status="denied",
+            started_at=timestamp,
+            ended_at=timestamp,
+            model_calls=0,
+            tool_calls=0,
+            artifact_refs=[],
+            validation_refs=[],
+            failure_evidence_refs=self._refs(blocked.evidence_path),
+            summary=str(gate["reason"]),
+            runtime_profile_id=self.worker_recorder.default_runtime_profile_id(task),
+            actor="ExecuteCommand",
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="evidence",
+            event_type="evidence",
+            phase="blocked",
+            status="blocked",
+            title="Delegation brief quality gate blocked worker",
+            summary=str(gate["reason"]),
+            evidence_refs=self._refs(blocked.evidence_path),
+            data={
+                "task_id": task["task_id"],
+                "failure_type": "delegation_brief_quality_gate",
+                "delegation_gate": gate,
+            },
+        )
+        return self._blocked_task_summary(blocked)
 
     def _execute_task(
         self,
@@ -523,6 +610,9 @@ class ExecuteCommand:
         observations = load_harness_observations(context.run_dir)
         if observations:
             runtime_context["harness_observations"] = observations
+        raw_observations = load_raw_tool_observations(context.run_dir)
+        if raw_observations:
+            runtime_context["tool_observations"] = raw_observations
 
     def _runtime_request_task_summary(
         self,

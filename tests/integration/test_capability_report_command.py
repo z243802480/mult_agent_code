@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from tests.helpers.runtime_os import runtime_os_pass_report
+
+pytestmark = pytest.mark.release_gate
 
 
 def test_capability_report_summarizes_acceptance_and_execution_evidence(
@@ -520,91 +525,4 @@ def legacy_scenario(name: str, ok: bool) -> dict:
 
 
 def runtime_os_report(tmp_path: Path) -> dict:
-    scenarios = [
-        runtime_scenario("runtime_parallel_readonly"),
-        runtime_scenario("runtime_disjoint_writes"),
-        runtime_scenario(
-            "runtime_worker_failure",
-            {
-                "failure_evidence": True,
-                "candidate_isolated": True,
-                "promotion_failure_recorded": True,
-            },
-        ),
-        runtime_scenario("runtime_merge_gate_block", {"merge_gate_blocked": True}),
-        runtime_scenario("runtime_request_resume", {"resume_recovered": True}),
-        runtime_scenario(
-            "runtime_context_package_slice",
-            {
-                "context_package_sliced": True,
-                "context_package_scope_partitioned": True,
-            },
-        ),
-        runtime_scenario(
-            "runtime_sandbox_backend_selection",
-            {"sandbox_backend_recorded": True},
-        ),
-        runtime_scenario(
-            "runtime_planner_scope_quality",
-            {"planner_scope_narrowed": True, "runtime_request_created": True},
-        ),
-        runtime_scenario("runtime_capability_feedback", {"capability_feedback_recorded": True}),
-        runtime_scenario(
-            "runtime_evidence_consumption",
-            {
-                "debug_consumed_runtime_evidence": True,
-                "review_consumed_runtime_evidence": True,
-            },
-        ),
-    ]
-    return {
-        "schema_version": "0.1.0",
-        "suite": "core",
-        "requested_scenarios": [],
-        "root": str(tmp_path),
-        "ok": True,
-        "returncode": 0,
-        "created_at": "2026-05-13T10:00:00+08:00",
-        "summary_json": str(tmp_path / ".asteria" / "acceptance" / "latest_summary.json"),
-        "aggregate": {"total": len(scenarios), "passed": len(scenarios), "failed": 0},
-        "trend_warnings": [],
-        "scenarios": scenarios,
-        "scenario_metadata": [
-            {
-                "scenario": item["scenario"],
-                "capability": item["capability"],
-                "tier": item["tier"],
-                "kind": "runtime_os",
-            }
-            for item in scenarios
-        ],
-    }
-
-
-def runtime_scenario(name: str, extra_evidence: dict | None = None) -> dict:
-    capability = {
-        "runtime_context_package_slice": "context_package_slice",
-        "runtime_sandbox_backend_selection": "sandbox_backend_selection",
-        "runtime_planner_scope_quality": "planner_scope_quality",
-        "runtime_capability_feedback": "capability_feedback",
-    }.get(name, name)
-    evidence = {
-        "workers_jsonl": True,
-        "worker_results_jsonl": True,
-        "runtime_profiles_jsonl": True,
-        "context_mounts_jsonl": True,
-        "validation_results_jsonl": True,
-        "task_execution_evidence_jsonl": True,
-    }
-    evidence.update(extra_evidence or {})
-    return {
-        "scenario": name,
-        "capability": capability,
-        "tier": "core",
-        "ok": True,
-        "workspace": None,
-        "failure_summary": "",
-        "stdout_tail": "",
-        "stderr_tail": "",
-        "summary": {"runtime_os": {"capability": capability, "evidence": evidence}},
-    }
+    return runtime_os_pass_report(tmp_path)

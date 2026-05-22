@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.real_model_smoke import (
     CommandRecord,
     SmokeResult,
@@ -16,6 +18,8 @@ from scripts.real_model_smoke import (
     validate_artifacts,
 )
 from asteria_runtime.real_model_gate import GateCommand, model_check_ok
+
+pytestmark = pytest.mark.real_provider
 
 
 def test_real_model_smoke_script_validates_offline_flow_when_explicitly_allowed(

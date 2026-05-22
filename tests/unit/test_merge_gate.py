@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
 from asteria_runtime.core.merge_gate import MergeGate
+
+pytestmark = pytest.mark.contract
 
 
 @dataclass(frozen=True)

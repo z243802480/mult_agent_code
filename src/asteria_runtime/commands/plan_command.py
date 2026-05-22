@@ -5,11 +5,11 @@ from pathlib import Path
 
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.agents.planner import RequirementPlanner
-from asteria_runtime.core.agent_harness import AgentHarness
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
@@ -108,23 +108,22 @@ class PlanCommand:
             {"from": "INIT", "to": "SPEC"},
         )
         runtime_context = ContextLoader(self.root, self.validator).load()
-        capability_manifest = AgentHarness(
-            policy,
-            tool_names=create_default_tool_registry().names(),
-        ).capability_manifest(mode="plan")
-        runtime_context["capability_manifest"] = capability_manifest.to_dict()
-        progress_logger.record(
+        prompt_envelope = persist_prompt_envelope(
+            root=self.root,
+            run_dir=run_dir,
             run_id=run["run_id"],
-            channel="progress",
-            event_type="message",
+            mode="plan",
+            policy=policy,
+            validator=self.validator,
+            tool_names=create_default_tool_registry().names(),
+            event_logger=event_logger,
+            progress_logger=progress_logger,
             phase="plan",
-            status="running",
-            title="能力环境已装载",
-            summary="Runtime exposed available modes, tools, permissions, and safety boundaries to the model.",
-            data={"capability_manifest": capability_manifest.to_dict()},
-            call_chain=["PlanCommand", "AgentHarness"],
-            execution_chain=["understand", "capability_manifest"],
+            actor="PlanCommand",
         )
+        capability_manifest = prompt_envelope.envelope.capability_manifest
+        runtime_context["capability_manifest"] = capability_manifest.to_dict()
+        runtime_context["prompt_envelope"] = prompt_envelope.context_ref()
         goal_spec_route_plan = CapabilityFeedbackAdvisor(
             self.validator
         ).goal_spec_execution_plan(agent_dir, self.goal)

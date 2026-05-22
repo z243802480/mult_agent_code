@@ -1,11 +1,15 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+
+pytestmark = pytest.mark.workflow
 
 
 class FakePlanClient:
@@ -89,6 +93,9 @@ class FakeDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
         failure_evidence = payload["failure_evidence"]
+        assert "prompt_envelope" in payload["runtime_context"]
+        assert "capability_manifest" in payload["runtime_context"]["prompt_envelope"]
+        assert payload["runtime_context"]["tool_observations"]
         assert "runtime_os_evidence" in failure_evidence
         assert "recent_worker_results" in failure_evidence
         assert "recent_merge_gate_evidence" in failure_evidence
@@ -261,6 +268,11 @@ def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) ->
     assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
 
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    debug_envelope = json.loads(
+        (run_dir / "prompt_envelope_debug.json").read_text(encoding="utf-8")
+    )
+    assert debug_envelope["mode"] == "debug"
+    assert "failure_repair" in debug_envelope["section_order"]
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"
     assert "VALUE = 2" in task_plan["tasks"][0]["notes"]

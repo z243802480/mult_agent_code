@@ -6,6 +6,7 @@ from typing import Any
 
 from asteria_runtime.core.agent_harness import (
     HarnessTurnEvent,
+    ToolObservation,
     observation_from_exception,
     observation_from_tool_result,
 )
@@ -15,6 +16,7 @@ from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
 from asteria_runtime.core.task_contract import allows_expected_failure
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
+from asteria_runtime.utils.time import now_iso
 
 
 @dataclass(frozen=True)
@@ -148,7 +150,7 @@ class ToolExecutionGateway:
                     pre_file_changes,
                     parent_event_id=start_event.get("event_id") if start_event else None,
                 )
-                self._record_harness_turn(
+                observation_event = self._record_harness_turn(
                     context,
                     task,
                     tool_call_id,
@@ -213,7 +215,7 @@ class ToolExecutionGateway:
                     file_changes=pre_file_changes,
                     data={"error": str(exc), "error_type": exc.__class__.__name__},
                 )
-                self._record_harness_turn(
+                observation_event = self._record_harness_turn(
                     context,
                     task,
                     tool_call_id,
@@ -236,6 +238,17 @@ class ToolExecutionGateway:
                         "observation": observation.to_dict(),
                     },
                     parent_event_id=start_event.get("event_id") if start_event else None,
+                )
+                self._record_raw_observation(
+                    context,
+                    task,
+                    tool_call_id,
+                    observation,
+                    user_progress_event_id=(
+                        str(observation_event.get("event_id"))
+                        if observation_event and observation_event.get("event_id")
+                        else None
+                    ),
                 )
                 self._record_harness_turn(
                     context,
@@ -345,7 +358,7 @@ class ToolExecutionGateway:
         context: RuntimeContext,
         task: dict,
         tool_call_id: str,
-        observation: object,
+        observation: ToolObservation,
         *,
         parent_event_id: str | None,
     ) -> None:
@@ -357,7 +370,7 @@ class ToolExecutionGateway:
             summary=observation.model_summary(),
             observation=observation,
         )
-        self._record_harness_turn(
+        observation_event = self._record_harness_turn(
             context,
             task,
             tool_call_id,
@@ -370,6 +383,53 @@ class ToolExecutionGateway:
             file_changes=observation.file_changes,
             telemetry=observation.telemetry,
             data={"turn_event": turn.to_dict(), "observation": observation.to_dict()},
+        )
+        self._record_raw_observation(
+            context,
+            task,
+            tool_call_id,
+            observation,
+            user_progress_event_id=(
+                str(observation_event.get("event_id"))
+                if observation_event and observation_event.get("event_id")
+                else None
+            ),
+        )
+
+    def _record_raw_observation(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        tool_call_id: str,
+        observation: ToolObservation,
+        *,
+        user_progress_event_id: str | None,
+    ) -> None:
+        if context.run_dir is None:
+            return
+        JsonlStore(context.validator).append(
+            context.run_dir / "tool_observations.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "observation_id": f"tool-observation-{tool_call_id}",
+                "run_id": context.run_id,
+                "task_id": str(task.get("task_id", "")),
+                "tool_call_id": tool_call_id,
+                "tool_name": observation.tool_name,
+                "ok": observation.ok,
+                "status": observation.status,
+                "summary": observation.summary,
+                "error_class": observation.data.get("error_type") if observation.data else None,
+                "artifact_refs": observation.artifact_refs,
+                "evidence_refs": [str(context.run_dir / "tool_calls.jsonl")],
+                "user_progress_event_id": user_progress_event_id,
+                "next_hint": (
+                    "continue" if observation.ok else "diagnose_then_repair_replan_ask_or_stop"
+                ),
+                "observation": observation.to_dict(),
+                "created_at": now_iso(),
+            },
+            "tool_observation",
         )
 
     def _record_harness_turn(

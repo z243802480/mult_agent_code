@@ -4,6 +4,8 @@ import pytest
 
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
 
+pytestmark = pytest.mark.contract
+
 
 def test_schema_validator_accepts_valid_task() -> None:
     validator = SchemaValidator(Path("schemas"))

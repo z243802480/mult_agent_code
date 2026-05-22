@@ -41,9 +41,16 @@ asteria_runtime = [
 ]
 
 [tool.pytest.ini_options]
+addopts = ["-m", "not real_provider"]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "contract: public contracts such as schema, policy, merge gate, security, and compatibility invariants",
+  "workflow: user-visible runtime workflows such as plan, run, execute, debug, review, and resume",
+  "release_gate: release readiness reports, acceptance gates, capability reports, and weekly reports",
+  "real_provider: tests for real-model smoke, acceptance, routing, and fake-provider rejection",
+]
 
 [tool.ruff]
 line-length = 100

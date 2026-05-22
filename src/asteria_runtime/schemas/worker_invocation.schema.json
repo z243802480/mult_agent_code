@@ -25,6 +25,27 @@
     },
     "started_at": { "type": "string" },
     "ended_at": { "type": ["string", "null"] },
-    "summary": { "type": "string" }
+    "summary": { "type": "string" },
+    "delegation_brief": {
+      "type": "object",
+      "properties": {
+        "goal": { "type": "string" },
+        "why": { "type": "string" },
+        "known_context": { "type": "object" },
+        "files_or_commands": { "type": "object" },
+        "constraints": { "type": "object" },
+        "allowed_writes": { "type": "array", "items": { "type": "string" } },
+        "expected_output": { "type": "array", "items": { "type": "string" } },
+        "verification_expectation": { "type": "object" }
+      }
+    },
+    "brief_quality": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "enum": ["pass", "warn", "fail"] },
+        "missing_fields": { "type": "array", "items": { "type": "string" } },
+        "required_fields": { "type": "array", "items": { "type": "string" } }
+      }
+    }
   }
 }

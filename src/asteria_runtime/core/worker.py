@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from asteria_runtime.core.runtime_profile import SCHEMA_VERSION
 
@@ -16,10 +17,12 @@ class WorkerInvocation:
     started_at: str
     ended_at: str | None = None
     summary: str = ""
+    delegation_brief: dict | None = None
+    brief_quality: dict | None = None
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        return {
+        data: dict[str, Any] = {
             "schema_version": self.schema_version,
             "worker_invocation_id": self.worker_invocation_id,
             "run_id": self.run_id,
@@ -31,6 +34,11 @@ class WorkerInvocation:
             "ended_at": self.ended_at,
             "summary": self.summary,
         }
+        if self.delegation_brief is not None:
+            data["delegation_brief"] = self.delegation_brief
+        if self.brief_quality is not None:
+            data["brief_quality"] = self.brief_quality
+        return data
 
 
 @dataclass(frozen=True)

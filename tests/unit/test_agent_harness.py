@@ -25,13 +25,62 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
 
     data = manifest.to_dict()
     tools = {tool["name"]: tool for tool in data["tools"]}
+    direct_tools = {tool["name"]: tool for tool in data["direct_tools"]}
     assert data["boundaries"]["active_mode"] == "build"
     assert data["boundaries"]["protected_paths"] == [".env", "secrets/"]
     assert data["boundaries"]["destructive_shell"] == "deny"
     assert tools["apply_patch"]["kind"] == "write"
     assert tools["apply_patch"]["permission"] == "ask"
+    assert direct_tools["apply_patch"]["permission_state"] == "ask"
     assert tools["run_command"]["kind"] == "execute"
+    assert data["deferred_tools"][0]["name"] == "tool_search"
+    assert data["mcp_tools"][0]["permission_state"] == "ask"
+    assert data["skills"][0]["name"] == "skill"
+    assert data["subagents"][0]["name"] == "subagent"
+    assert {item["name"] for item in data["verification"]} >= {"run_tests", "merge_gate"}
     assert "Available modes" in manifest.prompt_summary()
+    assert "Direct tools" in manifest.prompt_summary()
+
+
+def test_agent_harness_builds_prompt_envelope_without_full_prompt_body() -> None:
+    policy = {
+        "permissions": {
+            "allow_network": False,
+            "allow_shell": False,
+            "allow_destructive_shell": False,
+            "allow_remote_push": False,
+        },
+        "protected_paths": [".env"],
+        "budgets": {"max_model_calls_per_goal": 60},
+    }
+
+    envelope = AgentHarness(policy, tool_names=["read_file"]).prompt_envelope(
+        run_id="run-1",
+        mode="plan",
+        project_guidance="Project rules and boundaries.",
+        project_guidance_refs=["AGENTS.md"],
+    )
+
+    data = envelope.to_dict()
+    section_names = {section["name"] for section in data["sections"]}
+    assert section_names >= {
+        "identity",
+        "operating_contract",
+        "project_guidance",
+        "capability_manifest",
+        "tool_policy",
+        "safety_envelope",
+        "failure_repair",
+        "delegation_contract",
+        "context_compaction",
+        "user_communication",
+    }
+    project = next(section for section in data["sections"] if section["name"] == "project_guidance")
+    assert project["evidence_refs"] == ["AGENTS.md"]
+    assert project["content_hash"].startswith("sha256:")
+    assert "content" not in project
+    assert data["capability_manifest"]["direct_tools"]
+    assert data["content_hash"].startswith("sha256:")
 
 
 def test_tool_observation_summarizes_result_for_model_loop() -> None:

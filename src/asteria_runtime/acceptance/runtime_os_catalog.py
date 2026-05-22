@@ -26,6 +26,18 @@ class RuntimeOSCapability:
 
 RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
     RuntimeOSCapability(
+        scenario="runtime_prompt_envelope",
+        capability="prompt_envelope",
+        required_evidence=(),
+        suite_evidence=(),
+        special_evidence=(
+            "prompt_envelope_persisted",
+            "capability_manifest_layered",
+            "project_guidance_section",
+            "safety_budget_sections",
+        ),
+    ),
+    RuntimeOSCapability(
         scenario="runtime_parallel_readonly",
         capability="runtime_parallel_readonly",
     ),

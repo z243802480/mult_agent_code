@@ -1,11 +1,15 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+
+pytestmark = pytest.mark.workflow
 
 
 class FakePlanClient:
@@ -92,6 +96,10 @@ class FakeReviewClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
         assert "runtime_os_evidence" in payload["trajectory"]
+        assert "prompt_envelope" in payload
+        assert "capability_manifest" in payload["prompt_envelope"]
+        assert payload["tool_observations"]
+        assert payload["trajectory"]["tool_observations"]
         assert payload["trajectory"]["worker_results"]
         assert "runtime_os_summary" in payload["deterministic_checks"]
         assert payload["deterministic_checks"]["worker_result_count"] == 1
@@ -231,6 +239,11 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert result.status == "pass"
     assert result.score == 0.92
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    review_envelope = json.loads(
+        (run_dir / "prompt_envelope_review.json").read_text(encoding="utf-8")
+    )
+    assert review_envelope["mode"] == "review"
+    assert "delegation_contract" in review_envelope["section_order"]
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["overall"]["status"] == "pass"
     assert (run_dir / "review_report.md").read_text(encoding="utf-8").startswith("# Review Report")

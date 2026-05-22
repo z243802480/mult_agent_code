@@ -124,6 +124,14 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: debug did not consume Runtime OS evidence"
         if key == "review_consumed_runtime_evidence":
             return f"{scenario_name}: review did not consume Runtime OS evidence"
+        if key == "prompt_envelope_persisted":
+            return f"{scenario_name}: missing persisted prompt envelope evidence"
+        if key == "capability_manifest_layered":
+            return f"{scenario_name}: capability manifest was not layered"
+        if key == "project_guidance_section":
+            return f"{scenario_name}: prompt envelope did not include project guidance"
+        if key == "safety_budget_sections":
+            return f"{scenario_name}: prompt envelope did not include safety and budget sections"
         return f"{scenario_name}: missing {key}"
 
 

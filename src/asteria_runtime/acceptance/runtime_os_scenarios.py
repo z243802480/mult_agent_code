@@ -350,6 +350,8 @@ def run_runtime_os_scenario(
     try:
         if scenario_name == "runtime_parallel_readonly":
             ok, summary = _runtime_parallel_readonly(workspace)
+        elif scenario_name == "runtime_prompt_envelope":
+            ok, summary = _runtime_prompt_envelope(workspace)
         elif scenario_name == "runtime_disjoint_writes":
             ok, summary = _runtime_disjoint_writes(workspace)
         elif scenario_name == "runtime_worker_failure":
@@ -396,6 +398,98 @@ def runtime_os_acceptance_scenarios() -> dict[str, dict[str, str]]:
         }
         for item in runtime_os_capability_map().values()
     }
+
+
+class PromptEnvelopeAcceptanceClient:
+    provider = "runtime-acceptance"
+
+    def chat(self, request: Any) -> Any:
+        from asteria_runtime.models.base import ChatResponse, TokenUsage
+
+        del request
+        goal = "Validate prompt envelope evidence."
+        action = {
+            "schema_version": "0.1.0",
+            "goal_id": "goal-prompt-envelope",
+            "original_goal": goal,
+            "normalized_goal": goal,
+            "goal_type": "codebase_improvement",
+            "assumptions": ["deterministic prompt envelope acceptance"],
+            "constraints": ["local_first"],
+            "non_goals": [],
+            "expanded_requirements": [
+                {
+                    "id": "req-prompt-envelope",
+                    "priority": "must",
+                    "description": "Persist prompt envelope and layered capability manifest.",
+                    "source": "user",
+                    "acceptance": ["prompt_envelope.json exists and is schema-valid"],
+                }
+            ],
+            "target_outputs": [".asteria/runs/<run_id>/prompt_envelope.json"],
+            "definition_of_done": ["Prompt envelope evidence is persisted."],
+            "verification_strategy": ["schema validation"],
+            "budget": {"max_iterations": 1, "max_model_calls": 2},
+        }
+        return ChatResponse(
+            content=json.dumps(action, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="runtime-acceptance",
+            model_name="prompt-envelope",
+            raw_response={},
+        )
+
+
+def _runtime_prompt_envelope(workspace: Path) -> tuple[bool, dict[str, Any]]:
+    from asteria_runtime.commands.init_command import InitCommand
+    from asteria_runtime.commands.plan_command import PlanCommand
+    from asteria_runtime.storage.json_store import JsonStore
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    InitCommand(workspace).run()
+    (workspace / "AGENTS.md").write_text(
+        "# Runtime acceptance guidance\n\nRespect local-first execution and protected paths.\n",
+        encoding="utf-8",
+    )
+    result = PlanCommand(
+        workspace,
+        "Validate prompt envelope evidence.",
+        model_client=PromptEnvelopeAcceptanceClient(),
+    ).run()
+    run_dir = workspace / ".asteria" / "runs" / result.run_id
+    prompt_path = run_dir / "prompt_envelope.json"
+    validator = SchemaValidator(REPO_ROOT / "schemas")
+    envelope = JsonStore(validator).read(prompt_path, "prompt_envelope")
+    sections = set(envelope.get("section_order") or [])
+    raw_manifest = envelope.get("capability_manifest") if isinstance(envelope, dict) else {}
+    manifest: dict[str, Any] = raw_manifest if isinstance(raw_manifest, dict) else {}
+    evidence = {
+        "prompt_envelope_persisted": prompt_path.exists()
+        and bool(envelope.get("content_hash"))
+        and bool(envelope.get("sections")),
+        "capability_manifest_layered": all(
+            isinstance(manifest.get(key), list)
+            for key in [
+                "direct_tools",
+                "deferred_tools",
+                "mcp_tools",
+                "skills",
+                "subagents",
+                "verification",
+            ]
+        ),
+        "project_guidance_section": "project_guidance" in sections,
+        "safety_budget_sections": {"safety_envelope", "user_communication"}.issubset(sections),
+    }
+    ok = all(evidence.values())
+    summary = _runtime_summary("prompt_envelope", result.run_id, evidence, result=result.to_text())
+    summary["runtime_os"]["prompt_envelope"] = {
+        "path": str(prompt_path),
+        "sections": list(envelope.get("section_order") or []),
+        "content_hash": envelope.get("content_hash"),
+    }
+    return ok, summary
 
 
 def _runtime_parallel_readonly(workspace: Path) -> tuple[bool, dict[str, Any]]:

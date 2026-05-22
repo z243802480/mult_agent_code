@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
@@ -9,6 +11,8 @@ from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+
+pytestmark = pytest.mark.workflow
 
 
 class FakePlanClient:
@@ -86,6 +90,11 @@ class FakeExecuteClient:
             model_name="fake-execute",
             raw_response={},
         )
+
+
+class ExplodingExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise AssertionError("model should not be called when delegation quality gate blocks")
 
 
 class FakeReadonlyExecuteClient:
@@ -734,6 +743,11 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     )
 
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    execute_envelope = json.loads(
+        (run_dir / "prompt_envelope_execute.json").read_text(encoding="utf-8")
+    )
+    assert execute_envelope["mode"] == "execute"
+    assert "capability_manifest" in execute_envelope["section_order"]
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"
     assert "working add_note" in task_plan["tasks"][0]["notes"]
@@ -755,6 +769,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert experiments[0]["candidate"]["workspace_policy"] in {"worktree", "isolated_copy"}
     assert experiments[0]["candidate"]["backend_reason"]
     assert experiments[0]["candidate"]["promoted_files"] == ["src/notes_tool.py"]
+
     promotions = [
         json.loads(line)
         for line in (run_dir / "candidate_promotions.jsonl")
@@ -836,6 +851,44 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert cost_report["tool_calls"] == 3
     assert cost_report["estimated_input_tokens"] == 25
     assert cost_report["estimated_output_tokens"] == 45
+
+
+def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0]["risk_score"] = 0.95
+    task_plan["tasks"][0]["allowed_tools"] = ["write_file"]
+    task_plan["tasks"][0]["write_scope"] = []
+    task_plan["tasks"][0]["expected_artifacts"] = ["src/"]
+    task_plan["tasks"][0]["expected_changed_files"] = []
+    task_plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=ExplodingExecuteClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    workers = [
+        json.loads(line)
+        for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert workers[-1]["status"] == "denied"
+    assert workers[-1]["brief_quality"]["status"] == "warn"
+    evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert evidence[-1]["failure_type"] == "delegation_brief_quality_gate"
 
 
 def test_execute_command_records_run_loop_user_progress(tmp_path: Path) -> None:
