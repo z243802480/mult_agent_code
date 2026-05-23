@@ -188,6 +188,21 @@ def test_gate_control_surface_example_keeps_nested_stage_contracts_in_sync() -> 
         for field in expected_payload["control_surface"]["stable_fields"]:
             assert field in stage_payload
 
+
+def test_gray_run_control_surface_summary_schema_requires_contract() -> None:
+    schema = json.loads(Path("schemas/gray_run.schema.json").read_text(encoding="utf-8"))
+
+    assert "control_surface" in schema["required"]
+    control_surface = schema["properties"]["control_surface"]
+    assert set(control_surface["required"]) == {
+        "schema_version",
+        "command",
+        "audience",
+        "stability",
+        "stable_fields",
+    }
+    assert control_surface["properties"]["stability"]["enum"] == ["additive"]
+
 def test_status_control_surface_example_keeps_user_workflow_next_action() -> None:
     payload = _load_control_surface_example("status_control_surface.json")
 

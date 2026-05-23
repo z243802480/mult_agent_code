@@ -4,6 +4,7 @@
   "type": "object",
   "required": [
     "schema_version",
+    "control_surface",
     "gray_run_id",
     "created_at",
     "root",
@@ -20,26 +21,100 @@
     "next_actions"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
-    "gray_run_id": { "type": "string" },
-    "created_at": { "type": "string" },
-    "root": { "type": "string" },
+    "schema_version": {
+      "type": "string"
+    },
+    "gray_run_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    },
     "status": {
       "type": "string",
-      "enum": ["blocked", "dry_run", "running", "completed", "failed"]
+      "enum": [
+        "blocked",
+        "dry_run",
+        "running",
+        "completed",
+        "failed"
+      ]
     },
-    "dry_run": { "type": "boolean" },
-    "goal": { "type": "string" },
-    "preflight": { "type": "object" },
-    "budgets": { "type": "object" },
-    "route_expectations": { "type": "object" },
-    "run_id": { "type": ["string", "null"] },
-    "run_result": { "type": ["object", "null"] },
-    "evidence": { "type": "object" },
-    "summary_path": { "type": "string" },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "goal": {
+      "type": "string"
+    },
+    "preflight": {
+      "type": "object"
+    },
+    "budgets": {
+      "type": "object"
+    },
+    "route_expectations": {
+      "type": "object"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "run_result": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "evidence": {
+      "type": "object"
+    },
+    "summary_path": {
+      "type": "string"
+    },
     "next_actions": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
+    },
+    "control_surface": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "command",
+        "audience",
+        "stability",
+        "stable_fields"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "audience": {
+          "type": "string"
+        },
+        "stability": {
+          "type": "string",
+          "enum": [
+            "additive"
+          ]
+        },
+        "stable_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

@@ -36,18 +36,7 @@ class GrayRunResult:
     def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": "0.1.0",
-            "control_surface": control_surface_contract(
-                command="gray-run",
-                audience="maintainer_gray_execution",
-                stable_fields=[
-                    "schema_version",
-                    "gray_run_id",
-                    "status",
-                    "summary_path",
-                    "run_id",
-                    "next_actions",
-                ],
-            ),
+            "control_surface": _gray_run_control_surface(),
             "gray_run_id": self.gray_run_id,
             "status": self.status,
             "summary_path": str(self.summary_path),
@@ -200,6 +189,7 @@ class GrayRunCommand:
     ) -> dict[str, Any]:
         return {
             "schema_version": "0.1.0",
+            "control_surface": _gray_run_control_surface(),
             "gray_run_id": gray_run_id,
             "created_at": now_iso(),
             "root": str(self.root),
@@ -336,3 +326,18 @@ class GrayRunCommand:
 
     def _gray_run_id(self) -> str:
         return "gray-" + now_iso().replace(":", "").replace("+", "-").replace(".", "")
+
+
+def _gray_run_control_surface() -> dict[str, object]:
+    return control_surface_contract(
+        command="gray-run",
+        audience="maintainer_gray_execution",
+        stable_fields=[
+            "schema_version",
+            "gray_run_id",
+            "status",
+            "summary_path",
+            "run_id",
+            "next_actions",
+        ],
+    )
