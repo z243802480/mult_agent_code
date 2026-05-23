@@ -31,6 +31,7 @@ def _assert_control_surface_contract(
     assert contract["stability"] == "additive"
     assert required_fields <= set(contract["stable_fields"])
     assert set(contract["stable_fields"]) <= set(payload)
+    SchemaValidator(Path("schemas")).validate("control_surface", contract)
 
 
 def test_version_command_reports_runtime_diagnostics() -> None:

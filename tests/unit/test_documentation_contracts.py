@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+from asteria_runtime.storage.schema_validator import SchemaValidator
+
 
 def test_readme_points_to_existing_chinese_source_of_truth() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
@@ -57,6 +59,8 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "`doctor` 使用 `maintainer_preflight`",
         "`gate-status` 使用 `maintainer_release_readiness`",
         "docs/en/examples/status_control_surface.json",
+        "schemas/control_surface.schema.json",
+        "`stability=additive`",
     ]
 
     for fragment in required_fragments:
@@ -76,6 +80,7 @@ def test_status_control_surface_example_matches_documented_contract() -> None:
     assert payload["schema_version"] == contract["schema_version"]
     assert payload["recommended_next_command"] == "resume"
     assert payload["next_actions"] == ["Run `asteria resume`."]
+    SchemaValidator(Path("schemas")).validate("control_surface", contract)
 
 
 def test_runtime_command_docs_keep_user_workflow_sections_in_order() -> None:

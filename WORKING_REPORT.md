@@ -515,3 +515,40 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the example location under `docs/en/examples/` is the right long-term home for machine-readable contract samples.
+
+## 2026-05-24 05:05:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Strengthen the `control_surface` contract from documented/tested metadata into a schema-validated runtime object.
+
+### Substantive artifact change this round
+- Added `schemas/control_surface.schema.json` for the shared `control_surface` metadata.
+- Extended schema validator tests to accept the additive contract and reject unsupported stability values.
+- Updated control-surface command tests and the status example test to validate the contract against the new schema.
+- Documented the schema in the Chinese runtime command source of truth.
+
+### Modified files
+- `schemas/control_surface.schema.json`: new schema for control-surface metadata.
+- `tests/unit/test_schema_validator.py`: covers valid additive contracts and invalid stability values.
+- `tests/unit/test_control_surface_commands.py`: validates emitted `status`/`doctor`/`gate-status` contracts against the schema.
+- `tests/unit/test_documentation_contracts.py`: validates the example contract against the schema and guards schema documentation.
+- `docs/zh/????.md`: documents the new schema and required fields.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The project guidance says persisted/runtime objects should not skip schema validation. `control_surface` is becoming a reusable UI/automation contract, so it should have a formal schema rather than only ad hoc assertions.
+- Keeping the schema minimal preserves additive evolution while rejecting accidental unsupported stability modes.
+
+### Test/build results
+- `python -m pytest tests/unit/test_schema_validator.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py -q`: passed, 39 passed.
+- `ruff check tests/unit/test_schema_validator.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The schema currently validates the metadata shape, not command-specific stable field lists. A deeper per-command schema would be a larger product/governance decision.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add `doctor` and `gate-status` control-surface example JSON fixtures and validate them against `schemas/control_surface.schema.json`.
+
+### Suggested review focus for tomorrow
+- Review whether `control_surface` should remain a shared embedded metadata object or become part of each command's full JSON schema later.

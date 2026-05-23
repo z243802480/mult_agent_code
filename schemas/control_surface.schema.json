@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ControlSurfaceContract",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "command",
+    "audience",
+    "stability",
+    "stable_fields"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "command": { "type": "string" },
+    "audience": { "type": "string" },
+    "stability": { "type": "string", "enum": ["additive"] },
+    "stable_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}
