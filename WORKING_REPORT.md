@@ -413,3 +413,39 @@
 
 ### Suggested review focus for tomorrow
 - Review whether maintainer/CI language should also appear in the Chinese command reference around the `gate` and `gray` sections.
+
+## 2026-05-24 04:16:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Make machine-readable control-surface JSON from `status`, `doctor`, and `gate-status` self-describing so UI/automation can rely on a stable additive field contract.
+
+### Substantive artifact change this round
+- Added a shared `control_surface` contract helper that records command name, audience, additive stability policy, and stable field names.
+- Added the contract to `status`, `doctor`, and `gate-status` JSON payloads without changing existing top-level fields.
+- Added regression tests that verify each contract is present, identifies the correct command/audience, and only lists fields actually present in the payload.
+
+### Modified files
+- `src/asteria_runtime/commands/control_surface_contract.py`: new shared helper for control-surface JSON metadata.
+- `src/asteria_runtime/commands/status_command.py`: exposes the user-workflow control-surface contract.
+- `src/asteria_runtime/commands/doctor_command.py`: exposes the maintainer preflight control-surface contract.
+- `src/asteria_runtime/commands/gate_status_command.py`: exposes the maintainer release-readiness control-surface contract.
+- `tests/unit/test_control_surface_commands.py`: adds contract assertions for `status`, `doctor`, and `gate-status`.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The docs say `status --json`, `doctor --json`, and `gate-status --json` are reusable control-surface outputs for future TUI/GUI/automation. A small self-describing contract makes that promise explicit and testable.
+- The change is additive and keeps existing JSON fields intact.
+
+### Test/build results
+- `python -m pytest tests/unit/test_control_surface_commands.py tests/unit/test_cli.py -q`: passed, 41 passed.
+- `ruff check src/asteria_runtime/commands/control_surface_contract.py src/asteria_runtime/commands/status_command.py src/asteria_runtime/commands/doctor_command.py src/asteria_runtime/commands/gate_status_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- No JSON field deprecation or schema version bump was introduced; formal cross-version compatibility policy can be documented separately if needed.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Document the new `control_surface` contract in `docs/zh/????.md` and add documentation contract tests for its stable field/audience semantics.
+
+### Suggested review focus for tomorrow
+- Review whether `control_surface.stability=additive` is the right compatibility promise before relying on it from UI/automation.

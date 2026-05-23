@@ -16,6 +16,23 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
 
+def _assert_control_surface_contract(
+    payload: dict,
+    *,
+    command: str,
+    audience: str,
+    required_fields: set[str],
+) -> None:
+    contract = payload["control_surface"]
+
+    assert contract["schema_version"] == "0.1.0"
+    assert contract["command"] == command
+    assert contract["audience"] == audience
+    assert contract["stability"] == "additive"
+    assert required_fields <= set(contract["stable_fields"])
+    assert set(contract["stable_fields"]) <= set(payload)
+
+
 def test_version_command_reports_runtime_diagnostics() -> None:
     result = VersionCommand().run()
 
@@ -65,6 +82,18 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "uninitialized"
     assert payload["next_actions"] == ["Run `asteria /init --root .`."]
+    _assert_control_surface_contract(
+        payload,
+        command="status",
+        audience="user_workflow",
+        required_fields={
+            "schema_version",
+            "status",
+            "current_session_id",
+            "recommended_next_command",
+            "next_actions",
+        },
+    )
 
 
 def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -> None:
@@ -413,6 +442,21 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     assert next(check for check in payload["checks"] if check["name"] == "plugins")[
         "error_type"
     ] == "plugin"
+    _assert_control_surface_contract(
+        payload,
+        command="doctor",
+        audience="maintainer_preflight",
+        required_fields={
+            "schema_version",
+            "ok",
+            "status",
+            "checks",
+            "routes",
+            "route_requirements",
+            "plugin_control",
+            "next_actions",
+        },
+    )
 
 
 def test_doctor_reports_blocked_plugin_manifest(tmp_path: Path, monkeypatch) -> None:
@@ -514,6 +558,21 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     _configure_release_routes(monkeypatch)
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "missing_real_model_gate"
+    _assert_control_surface_contract(
+        result.to_dict(),
+        command="gate-status",
+        audience="maintainer_release_readiness",
+        required_fields={
+            "schema_version",
+            "stage",
+            "rollout_state",
+            "release_ready",
+            "gates",
+            "route_environment",
+            "validation_recommendation",
+            "next_actions",
+        },
+    )
 
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)

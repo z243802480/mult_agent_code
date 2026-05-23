@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -31,6 +32,28 @@ class StatusResult:
         )
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="status",
+                audience="user_workflow",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "initialized",
+                    "status",
+                    "summary",
+                    "conclusion",
+                    "current_session_id",
+                    "blockers",
+                    "risks",
+                    "pending_decision_count",
+                    "candidate_promotions",
+                    "plugin_control",
+                    "latest_failure",
+                    "recommended_next_command",
+                    "next_actions",
+                    "recent_sessions",
+                ],
+            ),
             "root": str(self.root),
             "initialized": self.initialized,
             "status": self._status(),
