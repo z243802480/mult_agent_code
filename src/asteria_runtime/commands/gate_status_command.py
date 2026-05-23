@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import subprocess
@@ -13,6 +13,7 @@ from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -25,6 +26,7 @@ class GateStatusResult:
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
+    latest_observation_plan: dict[str, Any] = field(default_factory=dict)
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
@@ -54,6 +56,7 @@ class GateStatusResult:
             },
             "route_environment": self.route_environment,
             "route_guidance": self.route_guidance,
+            "latest_observation_plan": self.latest_observation_plan,
             "promotion_release_risks": self.promotion_release_risks,
             "plugin_risks": self.plugin_risks,
             "feature_flags": self.feature_flags,
@@ -116,6 +119,12 @@ class GateStatusResult:
             )
         if self.route_guidance:
             lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
+        if self.latest_observation_plan:
+            lines.append(
+                "Latest agent next action: "
+                f"{self.latest_observation_plan.get('recommended_route', 'unknown')} - "
+                f"{self.latest_observation_plan.get('reason', 'No reason recorded.')}"
+            )
         if self.feature_flags:
             active = [n for n, v in self.feature_flags.items() if v.get("active")]
             lines.append(f"Feature flags: {len(active)} active of {len(self.feature_flags)}")
@@ -191,6 +200,7 @@ class GateStatusCommand:
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
+        latest_observation_plan = _latest_observation_plan(self.root, self.validator)
         promotion_release_risks = _promotion_release_risks(self.root, self._policy())
         if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
             stage = "current_environment_incomplete"
@@ -249,6 +259,7 @@ class GateStatusCommand:
             core_report=core,
             route_environment=route_environment,
             route_guidance=route_guidance,
+            latest_observation_plan=latest_observation_plan,
             promotion_release_risks=promotion_release_risks,
             plugin_risks=plugin_risks,
             validation_recommendation=_validation_recommendation(self.root),
@@ -385,6 +396,34 @@ def _matches_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
     if report_suite is None:
         return True
     return str(report_suite) == suite
+
+
+def _latest_observation_plan(root: Path, validator: SchemaValidator) -> dict[str, Any]:
+    agent_dir = root / ".asteria"
+    try:
+        run_id = RunStore(agent_dir, validator).current_session_id()
+    except RuntimeError:
+        run_id = None
+    if not run_id:
+        return {}
+    path = agent_dir / "runs" / run_id / "observation_plans.jsonl"
+    if not path.exists():
+        return {}
+    plans = JsonlStore(validator).read_all(path, "observation_plan")
+    if not plans:
+        return {}
+    latest = plans[-1]
+    return {
+        "observation_plan_id": latest.get("observation_plan_id"),
+        "run_id": latest.get("run_id"),
+        "task_id": latest.get("task_id"),
+        "trigger": latest.get("trigger"),
+        "failed_observation_count": latest.get("failed_observation_count"),
+        "recommended_route": latest.get("recommended_route"),
+        "reason": latest.get("reason"),
+        "evidence_refs": list(latest.get("evidence_refs") or [])[:5],
+        "created_at": latest.get("created_at"),
+    }
 
 
 def _evidence_sources(
@@ -597,3 +636,4 @@ def _plugin_risks(root: Path, validator: SchemaValidator) -> dict[str, Any]:
         "actions": actions,
         "plugin_control": summary,
     }
+

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RouteCapabilitySignal",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "signal_id",
+    "run_id",
+    "provider",
+    "model",
+    "model_tier",
+    "task_kind",
+    "route",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "signal_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "task_id": { "type": ["string", "null"] },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "model_tier": { "type": "string" },
+    "purpose": { "type": "string" },
+    "task_kind": { "type": "string" },
+    "route": { "type": "string" },
+    "status": { "type": "string" },
+    "observation_plan_id": { "type": ["string", "null"] },
+    "reason": { "type": ["string", "null"] },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string" }
+  }
+}

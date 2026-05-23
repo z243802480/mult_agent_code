@@ -7,8 +7,10 @@ from asteria_runtime.agents.debug_agent import DebugAgent
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.agent_harness import (
+    append_harness_observations,
     load_raw_tool_observations,
-    tool_observation_action_options,
+    persist_observation_next_action_plan,
+    refresh_tool_observation_plan,
 )
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
@@ -137,9 +139,7 @@ class DebugCommand:
         tool_observations = load_raw_tool_observations(run_dir)
         if tool_observations:
             runtime_context["tool_observations"] = tool_observations
-            runtime_context["tool_observation_actions"] = tool_observation_action_options(
-                tool_observations
-            )
+            refresh_tool_observation_plan(runtime_context, tool_observations)
 
         run["status"] = "running"
         run["current_phase"] = "DEBUG"
@@ -397,6 +397,14 @@ class DebugCommand:
                 candidate_context,
                 stop_on_failure=False,
             )
+            self._append_harness_observations(
+                runtime_context,
+                task,
+                [*tool_results, *verification],
+                context=context,
+                stage="repair",
+            )
+            self._record_observation_next_action_progress(context, task, runtime_context)
             contract_check = check_completion_contract(
                 task,
                 self._changed_files(tool_results),
@@ -589,6 +597,62 @@ class DebugCommand:
     def _require_non_empty_action(self, action: dict) -> None:
         if not action.get("tool_calls") and not action.get("verification"):
             raise RuntimeError("Repair action contained no tool calls or verification.")
+
+    def _append_harness_observations(
+        self,
+        runtime_context: dict,
+        task: dict,
+        results: list,
+        *,
+        context: RuntimeContext,
+        stage: str,
+    ) -> None:
+        observations = append_harness_observations(
+            runtime_context,
+            task_id=task.get("task_id"),
+            stage=stage,
+            results=results,
+        )
+        if observations:
+            plan = refresh_tool_observation_plan(runtime_context)
+            persist_observation_next_action_plan(
+                run_dir=context.run_dir,
+                validator=context.validator,
+                plan=plan,
+                run_id=context.run_id,
+                task_id=str(task.get("task_id") or ""),
+                trigger=f"debug:{stage}",
+            )
+
+    def _record_observation_next_action_progress(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        runtime_context: dict,
+    ) -> None:
+        plan = runtime_context.get("observation_next_action_plan")
+        if not isinstance(plan, dict):
+            return
+        failed_count = int(plan.get("failed_observation_count") or 0)
+        if failed_count <= 0:
+            return
+        raw_actions = plan.get("actions")
+        actions = raw_actions if isinstance(raw_actions, list) else []
+        names = sorted({str(action.get("action")) for action in actions if action.get("action")})
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title="Observation next-action plan",
+            summary=(
+                f"{failed_count} failed observation(s) mapped to next actions: "
+                f"{', '.join(names) if names else 'none'}."
+            ),
+            data={"observation_next_action_plan": plan},
+        )
 
     def _run_tool_calls(
         self,

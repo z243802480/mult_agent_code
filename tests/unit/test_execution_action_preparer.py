@@ -154,6 +154,72 @@ def test_preparer_preserves_valid_doc_content_verification() -> None:
     assert "missing or empty" not in commands[0]
 
 
+def test_preparer_drops_redundant_root_list_after_verified_standalone_artifact() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "hello.txt", "content": "hello"},
+            },
+            {"tool_name": "list_files", "args": {"path": "."}},
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": "python -c \"from pathlib import Path; assert Path('hello.txt').exists()\""
+                },
+            }
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            allowed_tools=["write_file", "list_files", "run_command"],
+            expected_artifacts=["hello.txt"],
+            expected_changed_files=["hello.txt"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    assert [call["tool_name"] for call in prepared["tool_calls"]] == ["write_file"]
+
+
+def test_preparer_keeps_scoped_list_for_artifact_task() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "docs/hello.txt", "content": "hello"},
+            },
+            {"tool_name": "list_files", "args": {"path": "docs"}},
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": "python -c \"from pathlib import Path; assert Path('docs/hello.txt').exists()\""
+                },
+            }
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            allowed_tools=["write_file", "list_files", "run_command"],
+            expected_artifacts=["docs/hello.txt"],
+            expected_changed_files=["docs/hello.txt"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    assert [call["tool_name"] for call in prepared["tool_calls"]] == ["write_file", "list_files"]
+
+
 def test_preparer_rejects_empty_action() -> None:
     with pytest.raises(RuntimeError, match="contained no tool calls"):
         _preparer().prepare(

@@ -15,6 +15,7 @@ from asteria_runtime.commands.research_command import ResearchCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.base import ModelClient
@@ -348,6 +349,19 @@ class RunCommand:
                         display_level="main",
                     )
                 if self._run_status(run_id) == "blocked":
+                    blocked_route = self._blocked_route_from_observation_plan(run_id)
+                    if blocked_route in {"ask", "stop"}:
+                        steps.append(
+                            RunStepSummary(
+                                "observe",
+                                blocked_route,
+                                (
+                                    "Observation plan selected "
+                                    f"{blocked_route}; not replanning automatically."
+                                ),
+                            )
+                        )
+                        return progressed
                     if self._budget_guard(run_id, steps, f"iteration-{iteration}-replan"):
                         return progressed
                     replan = ReplanCommand(
@@ -748,6 +762,7 @@ class RunCommand:
         accepted_decisions = self._accepted_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
         execution_evidence = self._execution_evidence(run_dir)
+        latest_observation_plan = self._latest_observation_plan(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         acceptance = self._latest_acceptance_report()
         verification_evidence = self._verification_evidence(run_dir)
@@ -834,6 +849,19 @@ class RunCommand:
         if risks:
             lines.extend(["", "## Risks", ""])
             lines.extend(f"- {item}" for item in risks)
+        if latest_observation_plan:
+            lines.extend(["", "## Latest Agent Next Action", ""])
+            lines.append(f"- Route: {latest_observation_plan.get('recommended_route', 'unknown')}")
+            lines.append(f"- Why: {latest_observation_plan.get('reason', 'No reason recorded.')}")
+            evidence_refs = latest_observation_plan.get("evidence_refs") or []
+            if evidence_refs:
+                lines.append(f"- Evidence: {', '.join(str(ref) for ref in evidence_refs[:3])}")
+            actions = latest_observation_plan.get("actions") or []
+            if actions:
+                action_names = ", ".join(
+                    sorted({str(action.get("action")) for action in actions if action.get("action")})
+                )
+                lines.append(f"- Candidate actions: {action_names}")
         if blocked_tasks:
             lines.extend(["", "## Blocked Tasks", ""])
             lines.extend(
@@ -951,6 +979,13 @@ class RunCommand:
                 }
             )
         return items
+
+    def _latest_observation_plan(self, run_dir: Path) -> dict:
+        path = run_dir / "observation_plans.jsonl"
+        if not path.exists():
+            return {}
+        plans = self.jsonl.read_all(path, "observation_plan")
+        return plans[-1] if plans else {}
 
     def _verification_evidence(self, run_dir: Path) -> list[dict]:
         path = run_dir / "tool_calls.jsonl"
@@ -1078,3 +1113,9 @@ class RunCommand:
         if risks:
             return ["Review risks, then run `asteria /acceptance-gate` before release."]
         return ["Run `asteria /acceptance-gate --suite core --min-scenarios 6` before release."]
+
+    def _blocked_route_from_observation_plan(self, run_id: str) -> str | None:
+        plan = self._latest_observation_plan(self.root / ".asteria" / "runs" / run_id)
+        if not plan:
+            return None
+        return str(plan.get("recommended_route") or recommended_route_from_observation_plan(plan))
