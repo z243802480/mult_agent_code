@@ -449,3 +449,35 @@
 
 ### Suggested review focus for tomorrow
 - Review whether `control_surface.stability=additive` is the right compatibility promise before relying on it from UI/automation.
+
+## 2026-05-24 04:35:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Close the documentation loop for the new `control_surface` JSON contract added to `status`, `doctor`, and `gate-status`.
+
+### Substantive artifact change this round
+- Documented `control_surface`, `stable_fields`, `stability=additive`, and command audiences in the Chinese runtime command source of truth.
+- Added a documentation contract test that guards the control-surface semantics and the required audiences for `status`, `doctor`, and `gate-status`.
+
+### Modified files
+- `docs/zh/????.md`: explains the control-surface metadata contract and its additive compatibility promise.
+- `tests/unit/test_documentation_contracts.py`: adds regression coverage for the documented contract.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The previous iteration added the JSON metadata in code; this iteration makes the source-of-truth docs match the runtime behavior and protects it with tests.
+- This keeps future UI/automation consumers aligned on which fields are stable and when a DecisionPoint is required.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py -q`: passed, 34 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The additive compatibility promise is now documented; any future removal/rename/semantic change must be handled as a DecisionPoint.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a small machine-readable example fixture for `status --json` that includes `control_surface`, then use it in docs/tests as an executable contract sample.
+
+### Suggested review focus for tomorrow
+- Review whether `stable_fields` should eventually move into JSON Schema files for stronger validation beyond unit tests.

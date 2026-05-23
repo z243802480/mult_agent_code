@@ -42,6 +42,25 @@ def test_runtime_command_docs_describe_accept_workflow_and_alias_policy() -> Non
         assert fragment in docs
 
 
+def test_runtime_command_docs_describe_control_surface_contract() -> None:
+    docs = Path("docs/zh/运行命令.md").read_text(encoding="utf-8")
+    required_fragments = [
+        "`asteria status --json`",
+        "`asteria doctor --json`",
+        "`asteria gate-status --json`",
+        "`control_surface`",
+        "`stable_fields`",
+        "`control_surface.stability` 当前为 `additive`",
+        "DecisionPoint",
+        "`status` 使用 `user_workflow`",
+        "`doctor` 使用 `maintainer_preflight`",
+        "`gate-status` 使用 `maintainer_release_readiness`",
+    ]
+
+    for fragment in required_fragments:
+        assert fragment in docs
+
+
 def test_runtime_command_docs_keep_user_workflow_sections_in_order() -> None:
     docs = Path("docs/zh/运行命令.md").read_text(encoding="utf-8")
     headings = [
