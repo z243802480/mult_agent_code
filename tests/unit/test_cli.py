@@ -26,6 +26,21 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Use `asteria <command> --help`" in help_text
 
 
+def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
+    parser = build_parser()
+    start_commands = ("init", "run", "status", "resume", "review", "accept")
+
+    for command in start_commands:
+        plain_args = [command]
+        slash_args = [f"/{command}"]
+        if command == "run":
+            plain_args.append("build a small tool")
+            slash_args.append("build a small tool")
+
+        assert parser.parse_args(plain_args).command == command
+        assert parser.parse_args(slash_args).command == f"/{command}"
+
+
 def test_slash_command_aliases_parse_like_regular_commands() -> None:
     parser = build_parser()
 

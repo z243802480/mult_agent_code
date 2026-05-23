@@ -179,3 +179,36 @@
 
 ### Suggested review focus for tomorrow
 - Review whether tests should assert every Start command has both plain and slash parsing, or whether targeted coverage for changed commands is enough.
+
+## 2026-05-23 23:48:00 +08:00 automated heartbeat check
+
+### 30-minute iteration goal
+- Complete the plain-command vs slash-alias compatibility loop for the Start workflow: document the preferred public form and lock parsing coverage for all Start commands.
+
+### Substantive artifact change this round
+- Added a Chinese command-reference note that new user-facing docs should prefer plain `asteria <command>` examples, while slash-prefixed forms remain compatibility aliases.
+- Added a CLI regression test that checks every Start workflow command (`init`, `run`, `status`, `resume`, `review`, `accept`) parses in both plain and slash forms.
+
+### Modified files
+- the Chinese runtime-command reference: documents plain-command preference and slash alias compatibility.
+- `tests/unit/test_cli.py`: adds Start workflow plain/slash parser coverage.
+- `WORKING_REPORT.md`: records this heartbeat, rationale, validation, unresolved issues, and next target.
+
+### Reasons
+- The roadmap freezes the ordinary user path as `init -> run -> status -> resume -> review -> accept`, while older docs still use slash headings. This iteration makes the migration rule explicit and protects compatibility in tests.
+- This is a medium-granularity documentation + test alignment, not a behavior change, so it avoids deciding open product semantics such as automatic promotion approval.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 8 passed.
+- `ruff check tests/unit/test_cli.py`: passed, All checks passed.
+- Python assertions against the Chinese runtime-command reference: passed for plain-command preference, `asteria accept`, `/accept`, and compatibility alias wording.
+
+### DecisionPoint / unresolved issues
+- Slash-style section headings remain throughout the long command reference. Renaming all headings would be a broader doc migration and should be reviewed separately.
+- GitHub CLI is still unavailable, so PR creation remains manual even though the branch can be pushed.
+
+### Suggested next 30-minute iteration target
+- Add an `accept` subsection to the Chinese runtime-command reference that defines purpose, inputs, state changes, outputs, blockers, and safety notes, aligned with the implemented `AcceptCommand`.
+
+### Suggested review focus for tomorrow
+- Review whether plain-command preference should be applied to all README/docs examples immediately or only when touching nearby sections.
