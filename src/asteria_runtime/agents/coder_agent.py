@@ -56,6 +56,7 @@ class CoderAgent:
                     "attempt": attempt + 1,
                     "runtime_profile_id": (runtime_context or {}).get("runtime_profile_id"),
                     "model_profile_id": (runtime_context or {}).get("model_profile_id"),
+                    **self._prompt_envelope_metadata(runtime_context or {}),
                 },
             )
             response = self.model_client.chat(request)
@@ -78,6 +79,16 @@ class CoderAgent:
                 continue
             return action
         raise CoderAgentError(str(last_error) if last_error else "ExecutionAction generation failed")
+
+    def _prompt_envelope_metadata(self, runtime_context: dict) -> dict:
+        envelope = runtime_context.get("prompt_envelope")
+        if not isinstance(envelope, dict):
+            return {}
+        return {
+            "prompt_envelope_hash": envelope.get("content_hash"),
+            "prompt_envelope_path": envelope.get("path"),
+            "capability_manifest_hash": envelope.get("capability_manifest_hash"),
+        }
 
     def _validated_action(self, content: str, task: dict) -> dict:
         action = self._parse_json(content)

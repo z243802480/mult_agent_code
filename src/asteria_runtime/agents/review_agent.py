@@ -29,7 +29,11 @@ class ReviewAgent:
             response_format="json",
             temperature=0.1,
             max_output_tokens=5000,
-            metadata={"run_id": run_id, "agent_id": "ReviewAgent"},
+            metadata={
+                "run_id": run_id,
+                "agent_id": "ReviewAgent",
+                **self._prompt_envelope_metadata(review_context),
+            },
         )
         response = self.model_client.chat(request)
         try:
@@ -49,6 +53,16 @@ class ReviewAgent:
         except SchemaValidationError as exc:
             raise ReviewAgentError(f"EvalReport failed schema validation: {exc}") from exc
         return report
+
+    def _prompt_envelope_metadata(self, review_context: dict) -> dict:
+        envelope = review_context.get("prompt_envelope")
+        if not isinstance(envelope, dict):
+            return {}
+        return {
+            "prompt_envelope_hash": envelope.get("content_hash"),
+            "prompt_envelope_path": envelope.get("path"),
+            "capability_manifest_hash": envelope.get("capability_manifest_hash"),
+        }
 
     def _parse_json(self, content: str) -> dict:
         try:
@@ -130,6 +144,9 @@ You must:
 - Evaluate goal understanding, artifacts, outcome, trajectory, and cost.
 - Use the supplied logs and task board as evidence.
 - Penalize missing verification, blocked tasks, missing artifacts, unsafe actions, or uncontrolled cost.
+- When tool_observation_actions are present, use them as explicit review choices:
+  diagnose unresolved failures, repair scoped defects, replan wrong task contracts,
+  ask for decisions when policy/scope/budget blocks progress, or stop unsafe work.
 - Mark status as pass only when the run is usable, verified, and within budget.
 - Mark partial when the result is useful but has clear gaps.
 - Mark fail when the result is unusable, unverified, unsafe, or materially off-goal.

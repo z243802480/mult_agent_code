@@ -6,7 +6,10 @@ from pathlib import Path
 from asteria_runtime.agents.debug_agent import DebugAgent
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
-from asteria_runtime.core.agent_harness import load_raw_tool_observations
+from asteria_runtime.core.agent_harness import (
+    load_raw_tool_observations,
+    tool_observation_action_options,
+)
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
@@ -22,6 +25,7 @@ from asteria_runtime.models.metered import MeteredModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -85,6 +89,7 @@ class DebugCommand:
         self.registry = create_default_tool_registry()
         self.execution_evidence = TaskExecutionEvidenceRecorder(self.validator)
         self.runtime_evidence = RuntimeEvidenceReader(self.validator)
+        self.worker_recorder = WorkerExecutionRecorder(self.validator)
 
     def run(self) -> DebugResult:
         agent_dir = self.root / ".asteria"
@@ -132,6 +137,9 @@ class DebugCommand:
         tool_observations = load_raw_tool_observations(run_dir)
         if tool_observations:
             runtime_context["tool_observations"] = tool_observations
+            runtime_context["tool_observation_actions"] = tool_observation_action_options(
+                tool_observations
+            )
 
         run["status"] = "running"
         run["current_phase"] = "DEBUG"
@@ -193,6 +201,28 @@ class DebugCommand:
         runtime_context: dict,
     ) -> RepairSummary:
         task_id = task["task_id"]
+        gate = self.worker_recorder.delegation_gate(task)
+        if gate["status"] == "blocked":
+            reason = str(gate["reason"])
+            if context.event_logger:
+                context.event_logger.record(
+                    context.run_id,
+                    "repair_delegation_gate_blocked",
+                    "DebugCommand",
+                    f"Delegation gate blocked repair for {task_id}: {reason}",
+                )
+            self._record_progress(
+                context,
+                task,
+                channel="evidence",
+                event_type="evidence",
+                phase="blocked",
+                status="blocked",
+                title="Delegation gate blocked repair",
+                summary=reason,
+                data={"failure_type": "delegation_brief_quality_gate", "delegation_gate": gate},
+            )
+            return RepairSummary(task_id, "blocked", reason, 0, 0, None)
         if context.event_logger:
             context.event_logger.record(
                 context.run_id, "repair_started", "DebugCommand", f"Started repair for {task_id}"

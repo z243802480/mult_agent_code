@@ -1427,3 +1427,143 @@ def test_run_command_pauses_for_execution_policy_approval_and_resumes(tmp_path: 
     assert (tmp_path / "complete_module.py").exists()
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "done"
+
+
+class FakeNoVerificationExecuteClient:
+    """Execute client that writes the file but skips all verification commands."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Create module without running any verification.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "complete_module.py",
+                                "content": "def answer():\n    return 42\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create artifact",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "wrote file, no verification run",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
+class FakeResearchPlanClient:
+    """Plan client that creates a research task (no verification required) to avoid debug cycle."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "goal_id": "goal-0001",
+                    "original_goal": "create a complete module",
+                    "normalized_goal": "Create a complete module",
+                    "goal_type": "software_tool",
+                    "assumptions": [],
+                    "constraints": [],
+                    "non_goals": [],
+                    "expanded_requirements": [
+                        {
+                            "id": "req-0001",
+                            "priority": "must",
+                            "description": "Research the module structure",
+                            "source": "inferred",
+                            "acceptance": ["research done"],
+                            "task_kind": "research",
+                        }
+                    ],
+                    "target_outputs": [],
+                    "definition_of_done": ["module created"],
+                    "verification_strategy": [],
+                    "budget": {"max_iterations": 8, "max_model_calls": 60},
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(10, 20, 30),
+            model_provider="fake",
+            model_name="fake-plan",
+            raw_response={},
+        )
+
+
+class FakeResearchExecuteClient:
+    """Execute client that completes a research task using only a readonly tool call."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Research complete, no verification required.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "read_file",
+                            "args": {"path": "AGENTS.md"},
+                            "reason": "read project guidance for research",
+                        }
+                    ],
+                    "verification": [],
+                    "completion_notes": "research task completed without verification",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
+def test_final_report_marks_implemented_unverified_when_no_verification_calls(
+    tmp_path: Path,
+) -> None:
+    # Use a research task (requires_verification=False) so the task completes without
+    # needing a debug cycle, while still leaving tool_calls.jsonl with no run_command calls.
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=2,
+        plan_model_client=FakeResearchPlanClient(),
+        execute_model_client=FakeResearchExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "implemented_unverified" in final_report
+    assert "No verification commands" in final_report
+
+
+def test_final_report_includes_verification_evidence_section(tmp_path: Path) -> None:
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=2,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "## Verification Evidence" in final_report
+    assert "run_command" in final_report
+    assert "complete" in final_report

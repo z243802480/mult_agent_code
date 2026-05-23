@@ -18,7 +18,11 @@ from scripts.real_model_acceptance import (
     gray_ready,
 )
 
-pytestmark = pytest.mark.real_provider
+pytestmark = [
+    pytest.mark.real_provider,
+    pytest.mark.real_provider_gray,
+    pytest.mark.real_provider_core,
+]
 
 
 def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:

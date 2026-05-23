@@ -50,6 +50,9 @@ markers = [
   "workflow: user-visible runtime workflows such as plan, run, execute, debug, review, and resume",
   "release_gate: release readiness reports, acceptance gates, capability reports, and weekly reports",
   "real_provider: tests for real-model smoke, acceptance, routing, and fake-provider rejection",
+  "real_provider_smoke: real-provider smoke and route gate tests",
+  "real_provider_gray: real-provider gray acceptance tests and readiness contracts",
+  "real_provider_core: real-provider core/nightly acceptance contracts",
 ]
 
 [tool.ruff]

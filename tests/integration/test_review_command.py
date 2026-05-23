@@ -99,7 +99,10 @@ class FakeReviewClient:
         assert "prompt_envelope" in payload
         assert "capability_manifest" in payload["prompt_envelope"]
         assert payload["tool_observations"]
+        assert all("next_hint" in item for item in payload["tool_observations"])
+        assert "tool_observation_actions" in payload
         assert payload["trajectory"]["tool_observations"]
+        assert "tool_observation_actions" in payload["trajectory"]
         assert payload["trajectory"]["worker_results"]
         assert "runtime_os_summary" in payload["deterministic_checks"]
         assert payload["deterministic_checks"]["worker_result_count"] == 1
@@ -349,3 +352,62 @@ def test_review_command_excludes_discarded_replan_history_from_completion_rate(
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["goal_eval"]["requirement_coverage"] == 1.0
     assert eval_report["outcome_eval"]["run_success"]
+
+
+def test_review_command_includes_collaboration_summary_in_markdown_report(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    # Seed a minimal agent_run_graph with collaboration_summary
+    agent_run_graph = {
+        "schema_version": "0.1.0",
+        "agent_run_graph_id": "agent-run-graph-test",
+        "run_id": plan.run_id,
+        "status": "succeeded",
+        "coordination_modes": ["sequential"],
+        "max_concurrency_observed": 1,
+        "child_worker_plans": [],
+        "collaboration_summary": {
+            "total_workers": 2,
+            "successful_workers": 1,
+            "failed_workers": 1,
+            "blocked_workers": 0,
+            "total_model_calls": 4,
+            "total_tool_calls": 8,
+            "artifact_refs": ["out.py"],
+            "validation_refs": [],
+            "failure_evidence_refs": ["task_execution_evidence.jsonl"],
+            "merge_strategy": "merge_gate_then_promotion_queue",
+            "collaboration_protocol": {
+                "isolation_model": "isolated_workspace",
+                "review_agent_role": "evaluator",
+                "debug_agent_role": "repairer",
+                "merge_gate_role": "gatekeeper",
+                "promotion_queue_role": "coordinator",
+            },
+            "strategy_modes": [],
+            "next_actions": ["Debug failed child worker plans before widening concurrency."],
+        },
+        "updated_at": "2026-01-01T00:00:00+00:00",
+    }
+    from asteria_runtime.storage.json_store import JsonStore
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    JsonStore(SchemaValidator(Path.cwd() / "schemas")).write(
+        run_dir / "agent_run_graph.json", agent_run_graph, "agent_run_graph"
+    )
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id, model_client=FakeSparseReviewClient()).run()
+
+    assert result.status == "pass"
+    review_md = (run_dir / "review_report.md").read_text(encoding="utf-8")
+    assert "## Multi-Agent Collaboration" in review_md
+    assert "total_workers=2" not in review_md  # rendered as text, not raw dict
+    assert "Workers:" in review_md
+    assert "failed=1" in review_md
+    assert "Debug failed child worker" in review_md

@@ -54,6 +54,7 @@ class DebugAgent:
                     "agent_id": "DebugAgent",
                     "task_id": task["task_id"],
                     "attempt": attempt + 1,
+                    **self._prompt_envelope_metadata(runtime_context or {}),
                 },
             )
             response = self.model_client.chat(request)
@@ -76,6 +77,16 @@ class DebugAgent:
                 continue
             return action
         raise DebugAgentError(str(last_error) if last_error else "Repair action generation failed")
+
+    def _prompt_envelope_metadata(self, runtime_context: dict) -> dict:
+        envelope = runtime_context.get("prompt_envelope")
+        if not isinstance(envelope, dict):
+            return {}
+        return {
+            "prompt_envelope_hash": envelope.get("content_hash"),
+            "prompt_envelope_path": envelope.get("path"),
+            "capability_manifest_hash": envelope.get("capability_manifest_hash"),
+        }
 
     def _validated_action(self, content: str, task: dict) -> dict:
         action = self._parse_json(content)
@@ -144,6 +155,8 @@ You must:
 - Do not use shell control operators or redirection in verification commands: &&, ||, ;, |, <, >, 2>, 2>&1.
 - Do not use destructive cleanup commands like rm -rf; use a Python command for temporary test cleanup.
 - If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
+- When runtime_context.tool_observation_actions is present, choose one explicit action
+  (diagnose, repair, replan, ask, or stop) and make the repair JSON reflect that choice.
 - Avoid destructive commands, network calls, deployment, or secret access.
 - For a documentation or text-only artifact repair, write the expected file directly when it is in scope. Do not request more context just to create a standalone checklist, note, README, markdown, or text file.
 - For documentation/text-only verification, prefer a simple Python existence-and-nonempty check for the expected file. Do not generate complex Python one-liners that inspect unrelated files.

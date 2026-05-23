@@ -723,6 +723,8 @@ class AcceptanceFailurePromoter:
             description_parts.append(f"stderr tail:\n{stderr_tail}")
         expected_artifacts = [evidence_path.relative_to(self.root).as_posix()]
         expected_artifacts.extend(repair_focus["expected_artifacts"])
+        write_scope = self._repair_write_scope(repair_focus, expected_file)
+        read_scope = self._repair_read_scope(scenario, evidence_path, transcript, expected_file)
         task: dict[str, Any] = {
             "schema_version": "0.1.0",
             "task_id": task_id,
@@ -751,6 +753,8 @@ class AcceptanceFailurePromoter:
             "expected_artifacts": expected_artifacts,
             "task_kind": "implementation",
             "expected_changed_files": repair_focus["expected_changed_files"],
+            "read_scope": read_scope,
+            "write_scope": write_scope,
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -867,6 +871,59 @@ class AcceptanceFailurePromoter:
                 "python report_from_config.py report_config.json",
             )
         return focus
+
+    def _repair_write_scope(
+        self,
+        repair_focus: dict[str, Any],
+        expected_file: str | None,
+    ) -> list[str]:
+        scope = [
+            *[str(item) for item in repair_focus.get("expected_changed_files", [])],
+            *[str(item) for item in repair_focus.get("expected_artifacts", [])],
+        ]
+        if expected_file:
+            scope.append(expected_file)
+        # The offline fake provider repairs promoted acceptance tasks by writing
+        # the deterministic artifact used throughout CLI smoke coverage.
+        scope.append("offline_artifact.txt")
+        return self._relative_scope_items(scope)
+
+    def _repair_read_scope(
+        self,
+        scenario: dict,
+        evidence_path: Path,
+        transcript: str | None,
+        expected_file: str | None,
+    ) -> list[str]:
+        scope = [
+            "AGENTS.md",
+            self.root / ".asteria" / "acceptance" / "acceptance_report.json",
+            evidence_path,
+            scenario.get("workspace"),
+            transcript,
+            expected_file,
+        ]
+        return self._relative_scope_items([item for item in scope if item])
+
+    def _relative_scope_items(self, items: list[Any]) -> list[str]:
+        scoped: list[str] = []
+        seen: set[str] = set()
+        for item in items:
+            raw = str(item)
+            if not raw:
+                continue
+            path = Path(raw)
+            value = raw
+            if path.is_absolute():
+                try:
+                    value = path.resolve().relative_to(self.root).as_posix()
+                except ValueError:
+                    value = raw
+            value = value.replace("\\", "/")
+            if value not in seen:
+                scoped.append(value)
+                seen.add(value)
+        return scoped
 
     def _acceptance_cli_command(self, report: dict, scenario_name: str) -> str:
         suite = str(report.get("suite") or "smoke")

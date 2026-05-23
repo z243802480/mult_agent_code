@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
-from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
+from asteria_runtime.commands._runtime_os_helpers import (
+    runtime_os_catalog_report,
+    runtime_os_release_evidence,
+)
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from asteria_runtime.core.acceptance_catalog import (
     acceptance_metadata_index,
@@ -69,6 +72,15 @@ class AcceptanceGateResult:
             if missing_evidence:
                 lines.append("  missing evidence:")
                 lines.extend(f"    - {item}" for item in missing_evidence)
+            manifest_audit = self.runtime_os.get("capability_manifest_audit") or {}
+            if manifest_audit:
+                lines.append(
+                    "  capability manifest audit: "
+                    f"{manifest_audit.get('model_calls_with_capability_manifest', 0)} "
+                    "model call(s) linked"
+                )
+                if manifest_audit.get("manifest_changed"):
+                    lines.append("  manifest changed: true")
         if self.next_actions:
             lines.append("Recommended next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
@@ -203,6 +215,11 @@ class AcceptanceGateCommand:
             )
         promotion_risks = self._promotion_release_risks()
         runtime_os["promotion_release_risks"] = promotion_risks
+        release_evidence = runtime_os_release_evidence(self._run_dirs(), self._read_jsonl)
+        runtime_os["capability_manifest_audit"] = release_evidence.get(
+            "capability_manifest_audit", {}
+        )
+        runtime_os["catalog"] = runtime_os_catalog_report()
         if promotion_risks["pending"] or promotion_risks["blocked"]:
             failures.append("candidate promotion queue has unresolved release risks")
             next_actions.append(

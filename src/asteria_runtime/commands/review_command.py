@@ -7,7 +7,10 @@ from pathlib import Path
 from asteria_runtime.agents.planner import FollowUpTaskPlanner
 from asteria_runtime.agents.review_agent import ReviewAgent
 from asteria_runtime.commands.decide_command import DecideCommand
-from asteria_runtime.core.agent_harness import load_raw_tool_observations
+from asteria_runtime.core.agent_harness import (
+    load_raw_tool_observations,
+    tool_observation_action_options,
+)
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
 from asteria_runtime.core.policy_config import load_policy_config
@@ -121,6 +124,9 @@ class ReviewCommand:
         review_context = self._review_context(agent_dir, run_dir, run_id)
         review_context["prompt_envelope"] = prompt_envelope.context_ref()
         review_context["tool_observations"] = load_raw_tool_observations(run_dir)
+        review_context["tool_observation_actions"] = tool_observation_action_options(
+            review_context["tool_observations"]
+        )
         progress.record(
             run_id=run_id,
             channel="progress",
@@ -139,7 +145,10 @@ class ReviewCommand:
             eval_report,
         )
         review_report_path = run_dir / "review_report.md"
-        review_report_path.write_text(self._markdown_report(eval_report), encoding="utf-8")
+        review_report_path.write_text(
+            self._markdown_report(eval_report, review_context.get("collaboration_summary") or {}),
+            encoding="utf-8",
+        )
         event_logger.record(
             run_id,
             "artifact_created",
@@ -319,11 +328,13 @@ class ReviewCommand:
             "goal_spec": goal_spec,
             "task_plan": task_plan,
             "cost_report": cost_report,
+            "collaboration_summary": self._collaboration_summary(run_dir),
             "trajectory": {
                 "runtime_os_evidence": runtime_os_evidence,
                 "events": events[-50:],
                 "tool_calls": tool_calls[-50:],
                 "tool_observations": tool_observations[-50:],
+                "tool_observation_actions": tool_observation_action_options(tool_observations),
                 "model_calls": model_calls[-20:],
                 "task_execution_evidence": execution_evidence[-20:],
                 "worker_results": runtime_os_evidence["worker_results"][-20:],
@@ -337,6 +348,16 @@ class ReviewCommand:
                 runtime_os_evidence,
             ),
         }
+
+    def _collaboration_summary(self, run_dir: Path) -> dict:
+        path = run_dir / "agent_run_graph.json"
+        if not path.exists():
+            return {}
+        try:
+            graph = self.store.read(path, "agent_run_graph")
+            return graph.get("collaboration_summary") or {}
+        except Exception:  # noqa: BLE001
+            return {}
 
     def _deterministic_checks(
         self,
@@ -395,38 +416,58 @@ class ReviewCommand:
             "cost_status": cost_report.get("status", "within_budget"),
         }
 
-    def _markdown_report(self, eval_report: dict) -> str:
+    def _markdown_report(self, eval_report: dict, collaboration_summary: dict | None = None) -> str:
         overall = eval_report["overall"]
-        return "\n".join(
-            [
-                "# Review Report",
-                "",
-                f"- Status: {overall['status']}",
-                f"- Score: {overall['score']}",
-                f"- Reason: {overall['reason']}",
-                "",
-                "## Goal Eval",
-                "",
-                f"```json\n{self._json(eval_report['goal_eval'])}\n```",
-                "",
-                "## Artifact Eval",
-                "",
-                f"```json\n{self._json(eval_report['artifact_eval'])}\n```",
-                "",
-                "## Outcome Eval",
-                "",
-                f"```json\n{self._json(eval_report['outcome_eval'])}\n```",
-                "",
-                "## Trajectory Eval",
-                "",
-                f"```json\n{self._json(eval_report['trajectory_eval'])}\n```",
-                "",
-                "## Cost Eval",
-                "",
-                f"```json\n{self._json(eval_report['cost_eval'])}\n```",
-                "",
-            ]
-        )
+        lines = [
+            "# Review Report",
+            "",
+            f"- Status: {overall['status']}",
+            f"- Score: {overall['score']}",
+            f"- Reason: {overall['reason']}",
+            "",
+            "## Goal Eval",
+            "",
+            f"```json\n{self._json(eval_report['goal_eval'])}\n```",
+            "",
+            "## Artifact Eval",
+            "",
+            f"```json\n{self._json(eval_report['artifact_eval'])}\n```",
+            "",
+            "## Outcome Eval",
+            "",
+            f"```json\n{self._json(eval_report['outcome_eval'])}\n```",
+            "",
+            "## Trajectory Eval",
+            "",
+            f"```json\n{self._json(eval_report['trajectory_eval'])}\n```",
+            "",
+            "## Cost Eval",
+            "",
+            f"```json\n{self._json(eval_report['cost_eval'])}\n```",
+            "",
+        ]
+        collab = collaboration_summary or eval_report.get("collaboration_summary") or {}
+        if collab:
+            lines.extend(
+                [
+                    "## Multi-Agent Collaboration",
+                    "",
+                    f"- Workers: total={collab.get('total_workers', 0)}"
+                    f" succeeded={collab.get('successful_workers', 0)}"
+                    f" failed={collab.get('failed_workers', 0)}"
+                    f" blocked={collab.get('blocked_workers', 0)}",
+                    f"- Model calls: {collab.get('total_model_calls', 0)}"
+                    f"  Tool calls: {collab.get('total_tool_calls', 0)}",
+                ]
+            )
+            failure_refs = collab.get("failure_evidence_refs") or []
+            if failure_refs:
+                lines.append(f"- Failure evidence: {', '.join(failure_refs[:5])}")
+            next_actions = collab.get("next_actions") or []
+            for action in next_actions[:3]:
+                lines.append(f"- Next: {action}")
+            lines.append("")
+        return "\n".join(lines)
 
     def _json(self, value: dict) -> str:
         import json

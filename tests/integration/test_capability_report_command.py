@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
+from asteria_runtime.core.prompt_envelope import capability_manifest_hash
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -394,6 +395,62 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
         },
         "worker_result",
     )
+    manifest = {
+        "modes": ["build"],
+        "direct_tools": [{"name": "read_file"}],
+        "deferred_tools": [],
+        "mcp_tools": [],
+        "skills": [],
+        "subagents": [],
+        "verification": [{"name": "run_tests"}],
+        "boundaries": {"active_mode": "build"},
+    }
+    manifest_hash = capability_manifest_hash(manifest)
+    store.write(
+        run_dir / "prompt_envelope_execute.json",
+        {
+            "schema_version": "0.1.0",
+            "run_id": "run-1",
+            "mode": "execute",
+            "sections": [
+                {
+                    "name": "capability_manifest",
+                    "source": "AgentHarness",
+                    "priority": "system",
+                    "cache_scope": "dynamic",
+                    "token_estimate": 10,
+                    "content_hash": "sha256:section",
+                    "summary": "manifest",
+                    "evidence_refs": [],
+                    "cache_break_reasons": ["tools_or_modes_changed"],
+                }
+            ],
+            "section_order": ["capability_manifest"],
+            "capability_manifest": manifest,
+            "content_hash": "sha256:prompt",
+        },
+        "prompt_envelope",
+    )
+    jsonl.append(
+        run_dir / "model_calls.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_call_id": "modelcall-0001",
+            "run_id": "run-1",
+            "agent_id": "CoderAgent",
+            "prompt_envelope_hash": "sha256:prompt",
+            "prompt_envelope_path": str(run_dir / "prompt_envelope_execute.json"),
+            "capability_manifest_hash": manifest_hash,
+            "purpose": "task_execution",
+            "model_provider": "runtime",
+            "model_name": "medium-route",
+            "model_tier": "medium",
+            "status": "success",
+            "created_at": "2026-05-07T10:00:28+08:00",
+            "summary": "ok",
+        },
+        "model_call",
+    )
 
     result = CapabilityReportCommand(tmp_path).run()
 
@@ -419,7 +476,12 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     assert result.runtime_os["evidence"]["context_mounts"] == 1
     assert result.runtime_os["evidence"]["task_execution_evidence"] == 1
     assert result.runtime_os["evidence"]["task_graph_selections"] == 1
+    manifest_audit = result.runtime_os["evidence"]["capability_manifest_audit"]
+    assert manifest_audit["manifest_hashes"] == [manifest_hash]
+    assert manifest_audit["cache_break_reasons"] == ["tools_or_modes_changed"]
+    assert manifest_audit["model_metadata_complete"] is True
     assert "Runtime OS release evidence" in result.to_text()
+    assert "capability manifest audit" in result.to_text()
 
 
 def test_capability_report_uses_acceptance_runtime_evidence_without_run_jsonl(

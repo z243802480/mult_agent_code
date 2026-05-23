@@ -96,6 +96,19 @@ class FakeDebugClient:
         assert "prompt_envelope" in payload["runtime_context"]
         assert "capability_manifest" in payload["runtime_context"]["prompt_envelope"]
         assert payload["runtime_context"]["tool_observations"]
+        assert any(
+            item.get("ok") is False
+            and item.get("next_hint") == "diagnose_then_repair_replan_ask_or_stop"
+            for item in payload["runtime_context"]["tool_observations"]
+        )
+        actions = payload["runtime_context"]["tool_observation_actions"]
+        assert {item["action"] for item in actions} >= {
+            "diagnose",
+            "repair",
+            "replan",
+            "ask",
+            "stop",
+        }
         assert "runtime_os_evidence" in failure_evidence
         assert "recent_worker_results" in failure_evidence
         assert "recent_merge_gate_evidence" in failure_evidence
@@ -428,3 +441,111 @@ def test_debug_command_can_mark_already_satisfied_task_done(tmp_path: Path) -> N
     ]
     assert experiments[-1]["decision"] == "keep"
     assert "already satisfied" in experiments[-1]["reason"]
+
+
+class FakeWriteScopePlanClient:
+    """Plan that creates a write-scope task with no expected_artifacts — triggers delegation gate."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "goal_id": "goal-gate",
+                    "original_goal": "write without contract",
+                    "normalized_goal": "Write a file without an output contract",
+                    "goal_type": "software_tool",
+                    "assumptions": [],
+                    "constraints": [],
+                    "non_goals": [],
+                    "expanded_requirements": [],
+                    "target_outputs": [],
+                    "definition_of_done": ["file exists"],
+                    "verification_strategy": [],
+                    "budget": {"max_iterations": 8, "max_model_calls": 60},
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(10, 20, 30),
+            model_provider="fake",
+            model_name="fake-plan",
+            raw_response={},
+        )
+
+
+class FakeWriteScopeExecuteClient:
+    """Execute client that writes a file but triggers a verification failure, leaving task blocked."""
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Write file without verification contract.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": "out.txt", "content": "hello", "overwrite": True},
+                            "reason": "create output",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {"command": "python -c \"assert False, 'force fail'\""},
+                            "reason": "intentionally fail to put task in blocked state",
+                        }
+                    ],
+                    "completion_notes": "blocked intentionally",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
+def test_debug_command_blocks_repair_when_delegation_gate_fails(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(
+        tmp_path,
+        "write without contract",
+        model_client=FakeWriteScopePlanClient(),
+    ).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    # patch the task: write_file in allowed_tools (risk="write") but clear both
+    # write_scope and expected_artifacts so allowed_writes is empty (quality fails).
+    # write_scope is used rather than expected_artifacts alone because expected_artifacts
+    # may be re-computed during execution; write_scope stays stable.
+    task_plan["tasks"][0]["allowed_tools"] = [
+        "write_file",
+        "run_command",
+        "read_file",
+        "list_dir",
+        "find_files",
+        "search_in_files",
+    ]
+    task_plan["tasks"][0]["expected_artifacts"] = []
+    task_plan["tasks"][0]["write_scope"] = []
+    task_plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
+    execute = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeWriteScopeExecuteClient()
+    ).run()
+    assert execute.blocked == 1
+
+    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeDebugClient()).run()
+
+    assert result.still_blocked == 1
+    assert result.repaired == 0
+    repair = result.repairs[0]
+    assert repair.status == "blocked"
+    assert "delegation brief" in repair.summary.lower() or "quality gate" in repair.summary.lower()
+    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "repair_delegation_gate_blocked" in events

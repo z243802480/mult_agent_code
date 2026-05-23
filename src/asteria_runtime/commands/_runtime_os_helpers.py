@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
+from asteria_runtime.acceptance.runtime_os_catalog import RUNTIME_OS_CAPABILITIES
+from asteria_runtime.core.prompt_envelope import capability_manifest_hash, cache_break_reasons
 
 
 def runtime_os_full_summary(
@@ -42,22 +44,7 @@ def runtime_os_full_summary(
 
 def runtime_os_acceptance_evidence(scenarios: list[dict[str, Any]]) -> dict[str, Any]:
     """Summarize Runtime OS evidence embedded in acceptance scenario results."""
-    evidence_keys = [
-        "workers_jsonl",
-        "worker_results_jsonl",
-        "runtime_profiles_jsonl",
-        "context_mounts_jsonl",
-        "validation_results_jsonl",
-        "task_execution_evidence_jsonl",
-        "runtime_request_created",
-        "merge_gate_blocked",
-        "resume_recovered",
-        "context_package_sliced",
-        "sandbox_backend_recorded",
-        "capability_feedback_recorded",
-        "debug_consumed_runtime_evidence",
-        "review_consumed_runtime_evidence",
-    ]
+    evidence_keys = runtime_os_evidence_keys()
     summary: dict[str, Any] = {
         "acceptance_runtime_os_scenarios": 0,
     }
@@ -106,7 +93,18 @@ def runtime_os_release_evidence(
         "candidate_promotions_pending": 0,
         "candidate_promotions_blocked": 0,
         "candidate_promotions_promoted": 0,
+        "capability_manifest_audit": {
+            "prompt_envelopes": 0,
+            "model_calls_with_prompt_envelope": 0,
+            "model_calls_with_capability_manifest": 0,
+            "manifest_hashes": [],
+            "manifest_changed": False,
+            "cache_break_reasons": [],
+            "model_metadata_complete": False,
+            "audit_chain": "manifest -> cache_break_reasons -> model_call_metadata",
+        },
     }
+    manifest_audit = _empty_manifest_audit()
     for run_dir in run_dirs:
         workers = read_jsonl(run_dir / "workers.jsonl", "worker_invocation")
         worker_results = read_jsonl(run_dir / "worker_results.jsonl", "worker_result")
@@ -150,7 +148,56 @@ def runtime_os_release_evidence(
         summary["candidate_promotions_promoted"] += len(
             [item for item in promotions if item.get("status") == "promoted"]
         )
+        _merge_manifest_audit(manifest_audit, _capability_manifest_audit(run_dir, read_jsonl))
+    manifest_hashes = sorted(manifest_audit["manifest_hashes"])
+    summary["capability_manifest_audit"] = {
+        "prompt_envelopes": manifest_audit["prompt_envelopes"],
+        "model_calls_with_prompt_envelope": manifest_audit["model_calls_with_prompt_envelope"],
+        "model_calls_with_capability_manifest": manifest_audit[
+            "model_calls_with_capability_manifest"
+        ],
+        "manifest_hashes": manifest_hashes,
+        "manifest_changed": len(manifest_hashes) > 1,
+        "cache_break_reasons": sorted(manifest_audit["cache_break_reasons"]),
+        "model_metadata_complete": (
+            manifest_audit["model_calls_with_prompt_envelope"] > 0
+            and manifest_audit["model_calls_with_prompt_envelope"]
+            == manifest_audit["model_calls_with_capability_manifest"]
+        ),
+        "audit_chain": "manifest -> cache_break_reasons -> model_call_metadata",
+    }
     return summary
+
+
+def runtime_os_evidence_keys() -> list[str]:
+    keys: list[str] = []
+    for capability in RUNTIME_OS_CAPABILITIES:
+        for key in (
+            *capability.required_evidence,
+            *capability.suite_evidence,
+            *capability.special_evidence,
+        ):
+            if key not in keys:
+                keys.append(key)
+    return keys
+
+
+def runtime_os_catalog_report() -> dict[str, Any]:
+    return {
+        "capabilities": [
+            {
+                "scenario": item.scenario,
+                "capability": item.capability,
+                "tier": item.tier,
+                "kind": item.kind,
+                "required_evidence": list(item.required_evidence),
+                "suite_evidence": list(item.suite_evidence),
+                "special_evidence": list(item.special_evidence),
+            }
+            for item in RUNTIME_OS_CAPABILITIES
+        ],
+        "evidence_keys": runtime_os_evidence_keys(),
+    }
 
 
 def _latest_promotions(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -160,3 +207,56 @@ def _latest_promotions(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]
         if promotion_id:
             latest[str(promotion_id)] = promotion
     return list(latest.values())
+
+
+def _empty_manifest_audit() -> dict[str, Any]:
+    return {
+        "prompt_envelopes": 0,
+        "model_calls_with_prompt_envelope": 0,
+        "model_calls_with_capability_manifest": 0,
+        "manifest_hashes": set(),
+        "cache_break_reasons": set(),
+    }
+
+
+def _merge_manifest_audit(target: dict[str, Any], source: dict[str, Any]) -> None:
+    target["prompt_envelopes"] += int(source.get("prompt_envelopes") or 0)
+    target["model_calls_with_prompt_envelope"] += int(
+        source.get("model_calls_with_prompt_envelope") or 0
+    )
+    target["model_calls_with_capability_manifest"] += int(
+        source.get("model_calls_with_capability_manifest") or 0
+    )
+    target["manifest_hashes"].update(source.get("manifest_hashes") or [])
+    target["cache_break_reasons"].update(source.get("cache_break_reasons") or [])
+
+
+def _capability_manifest_audit(run_dir: Path, read_jsonl: Any) -> dict[str, Any]:
+    audit = _empty_manifest_audit()
+    envelope_hashes: set[str] = set()
+    for path in sorted(run_dir.glob("prompt_envelope*.json")):
+        try:
+            data = _read_json(path)
+        except Exception:  # noqa: BLE001
+            continue
+        manifest = data.get("capability_manifest")
+        if isinstance(manifest, dict):
+            audit["prompt_envelopes"] += 1
+            audit["manifest_hashes"].add(capability_manifest_hash(manifest))
+        audit["cache_break_reasons"].update(cache_break_reasons(data))
+        content_hash = data.get("content_hash")
+        if content_hash:
+            envelope_hashes.add(str(content_hash))
+    for call in read_jsonl(run_dir / "model_calls.jsonl", "model_call"):
+        if call.get("prompt_envelope_hash") in envelope_hashes:
+            audit["model_calls_with_prompt_envelope"] += 1
+        if call.get("capability_manifest_hash"):
+            audit["model_calls_with_capability_manifest"] += 1
+            audit["manifest_hashes"].add(str(call["capability_manifest_hash"]))
+    return audit
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    import json
+
+    return json.loads(path.read_text(encoding="utf-8"))

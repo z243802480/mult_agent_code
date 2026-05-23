@@ -42,6 +42,7 @@ class ToolExecutionGateway:
             tool_call_id = self._next_tool_call_id(context)
             started = perf_counter()
             start_event: dict[str, Any] | None = None
+            model_telemetry = self._last_model_telemetry(context)
             turn_start_event = self._record_harness_turn(
                 context,
                 task,
@@ -51,6 +52,7 @@ class ToolExecutionGateway:
                 title="Agent 回合",
                 summary=f"Agent is preparing to use {tool_name}.",
                 execution_step="turn_start",
+                telemetry=model_telemetry or None,
                 data={
                     "turn_event": HarnessTurnEvent(
                         turn_id=tool_call_id,
@@ -61,6 +63,7 @@ class ToolExecutionGateway:
                     ).to_dict(),
                     "tool_name": tool_name,
                     "arg_keys": sorted(list(args.keys())),
+                    "model_telemetry": model_telemetry,
                 },
             )
             pre_file_changes = self._planned_file_changes(tool_name, args, context)
@@ -504,6 +507,32 @@ class ToolExecutionGateway:
             execution_chain=[str(task.get("task_id", "")), tool_name],
             file_changes=changes,
         )
+
+    def _last_model_telemetry(self, context: RuntimeContext) -> dict[str, Any] | None:
+        if context.run_dir is None:
+            return None
+        path = context.run_dir / "model_calls.jsonl"
+        if not path.exists():
+            return None
+        last: dict[str, Any] | None = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                import json
+                last = json.loads(line)
+            except Exception:  # noqa: BLE001
+                pass
+        if last is None:
+            return None
+        return {
+            "chunk_count": last.get("chunk_count"),
+            "first_chunk_ms": last.get("first_chunk_ms"),
+            "duration_ms": last.get("duration_ms"),
+            "model_provider": last.get("model_provider"),
+            "model_name": last.get("model_name"),
+        }
 
     def _next_tool_call_id(self, context: RuntimeContext) -> str:
         if context.run_dir is None:

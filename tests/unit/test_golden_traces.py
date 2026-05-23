@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.acceptance.runtime_os_catalog import RUNTIME_OS_CAPABILITIES
+from asteria_runtime.commands._runtime_os_helpers import runtime_os_catalog_report
 from asteria_runtime.core.agent_harness import AgentHarness
 from asteria_runtime.core.merge_gate import MergeGate
 from asteria_runtime.core.schema_migration import (
@@ -256,6 +257,15 @@ class TestRuntimeOSFixtureCoverage:
         assert {item["capability"] for item in report["scenario_metadata"]} == expected
         assert report["aggregate"]["total"] == len(RUNTIME_OS_CAPABILITIES)
 
+    def test_runtime_os_report_catalog_is_derived_from_single_source(self) -> None:
+        catalog = runtime_os_catalog_report()
+
+        assert {item["capability"] for item in catalog["capabilities"]} == {
+            item.capability for item in RUNTIME_OS_CAPABILITIES
+        }
+        assert "debug_consumed_failure_next_hint" in catalog["evidence_keys"]
+        assert "delegation_evidence_consistent" in catalog["evidence_keys"]
+
 
 class TestPromptEnvelopeContract:
     """Golden trace: prompt envelopes keep the model-visible runtime contract."""
@@ -291,3 +301,23 @@ class TestPromptEnvelopeContract:
         }.issubset(set(data["section_order"]))
         assert data["capability_manifest"]["direct_tools"]
         assert data["capability_manifest"]["verification"]
+
+    def test_prompt_envelope_exposes_hashes_for_model_call_contract(self) -> None:
+        envelope = AgentHarness(
+            {
+                "permissions": {"allow_shell": True},
+                "protected_paths": [],
+                "budgets": {},
+            },
+            tool_names=["run_command"],
+        ).prompt_envelope(run_id="run-golden", mode="execute")
+        data = envelope.to_dict()
+        cache_break_reasons = [
+            reason
+            for section in data["sections"]
+            for reason in section.get("cache_break_reasons", [])
+        ]
+
+        assert data["content_hash"].startswith("sha256:")
+        assert "tools_or_modes_changed" in cache_break_reasons
+        assert "permissions_changed" in cache_break_reasons

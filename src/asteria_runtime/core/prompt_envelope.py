@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -18,10 +20,12 @@ class PromptEnvelopeRecord:
     data: dict[str, Any]
 
     def context_ref(self) -> dict[str, Any]:
+        manifest_hash = capability_manifest_hash(self.data["capability_manifest"])
         return {
             "path": str(self.path),
             "section_order": self.data["section_order"],
             "content_hash": self.data["content_hash"],
+            "capability_manifest_hash": manifest_hash,
             "sections": [
                 {
                     "name": section["name"],
@@ -32,6 +36,23 @@ class PromptEnvelopeRecord:
             ],
             "capability_manifest": self.data["capability_manifest"],
         }
+
+
+def capability_manifest_hash(manifest: dict[str, Any]) -> str:
+    return "sha256:" + hashlib.sha256(
+        json.dumps(manifest, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+
+def cache_break_reasons(data: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    for section in data.get("sections", []):
+        if not isinstance(section, dict):
+            continue
+        for reason in section.get("cache_break_reasons", []):
+            if reason not in reasons:
+                reasons.append(str(reason))
+    return reasons
 
 
 def persist_prompt_envelope(
@@ -61,12 +82,16 @@ def persist_prompt_envelope(
         project_guidance_refs=["AGENTS.md"] if project_guidance else [],
     )
     data = envelope.to_dict()
+    manifest_hash = capability_manifest_hash(data["capability_manifest"])
+    break_reasons = cache_break_reasons(data)
     path = _prompt_envelope_path(run_dir, mode)
     JsonStore(validator).write(path, data, "prompt_envelope")
     context_ref = {
         "path": str(path),
         "sections": data["section_order"],
         "content_hash": data["content_hash"],
+        "capability_manifest_hash": manifest_hash,
+        "cache_break_reasons": break_reasons,
     }
     if event_logger is not None:
         event_logger.record(
@@ -74,7 +99,11 @@ def persist_prompt_envelope(
             "prompt_envelope_created",
             actor,
             f"Prompt envelope for {mode} mode was persisted.",
-            {"artifact": str(path), **context_ref},
+            {
+                "artifact": str(path),
+                **context_ref,
+                "audit_chain": "manifest -> cache_break_reasons -> model_call_metadata",
+            },
         )
     if progress_logger is not None:
         progress_logger.record(

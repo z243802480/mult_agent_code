@@ -19,7 +19,7 @@ from scripts.real_model_smoke import (
 )
 from asteria_runtime.real_model_gate import GateCommand, model_check_ok
 
-pytestmark = pytest.mark.real_provider
+pytestmark = [pytest.mark.real_provider, pytest.mark.real_provider_smoke]
 
 
 def test_real_model_smoke_script_validates_offline_flow_when_explicitly_allowed(

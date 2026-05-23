@@ -6,6 +6,7 @@ from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import (
     runtime_os_acceptance_evidence,
+    runtime_os_catalog_report,
     runtime_os_full_summary,
     runtime_os_release_evidence,
 )
@@ -106,6 +107,22 @@ class CapabilityReportResult:
             if evidence.get("acceptance_worker_results_jsonl"):
                 lines.append("  - acceptance worker evidence: present")
             lines.append(f"  - task graph selections: {evidence.get('task_graph_selections', 0)}")
+            manifest_audit = evidence.get("capability_manifest_audit") or {}
+            if manifest_audit:
+                lines.append(
+                    "  - capability manifest audit: "
+                    f"{manifest_audit.get('prompt_envelopes', 0)} envelope(s), "
+                    f"{manifest_audit.get('model_calls_with_capability_manifest', 0)} "
+                    "model call(s) linked"
+                )
+                cache_break_reasons = [
+                    str(item) for item in manifest_audit.get("cache_break_reasons", [])
+                ]
+                if cache_break_reasons:
+                    lines.append(
+                        "  - cache break reasons: "
+                        + ", ".join(cache_break_reasons[:6])
+                    )
             missing = gate.get("missing_capabilities") or []
             if missing:
                 lines.append("  - missing capabilities: " + ", ".join(missing))
@@ -365,7 +382,9 @@ class CapabilityReportCommand:
         required = str(latest.get("suite") or "") in {"core", "nightly"}
         evidence = runtime_os_release_evidence(self._run_dirs(agent_dir), self._read_jsonl)
         evidence.update(runtime_os_acceptance_evidence(scenarios))
-        return runtime_os_full_summary(latest, scenarios, evidence, required=required)
+        summary = runtime_os_full_summary(latest, scenarios, evidence, required=required)
+        summary["catalog"] = runtime_os_catalog_report()
+        return summary
 
     def _ensure_model_profile(
         self,

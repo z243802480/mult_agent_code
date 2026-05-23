@@ -198,8 +198,12 @@ class WorkerExecutionRecorder:
         risk_score = task.get("risk_score")
         if isinstance(risk_score, int | float) and float(risk_score) >= 0.7:
             return "high"
-        if task.get("parallel_safety") == "readonly" and not (
-            task.get("write_scope") or task.get("expected_artifacts")
+        if task.get("parallel_safety") == "readonly":
+            return "low"
+        if (
+            str(task.get("task_kind") or "").lower() in {"research", "diagnostic"}
+            and not task.get("write_scope")
+            and not task.get("expected_changed_files")
         ):
             return "low"
         if self._expects_runtime_scope_request(task):

@@ -107,6 +107,9 @@ class ModelCallLogger:
             "model_provider": provider,
             "model_name": model_name,
             "model_tier": model_tier,
+            "prompt_envelope_hash": request.metadata.get("prompt_envelope_hash"),
+            "prompt_envelope_path": request.metadata.get("prompt_envelope_path"),
+            "capability_manifest_hash": request.metadata.get("capability_manifest_hash"),
         }
 
     def _append(self, record: dict) -> None:

@@ -4,6 +4,7 @@ from asteria_runtime.core.agent_harness import (
     AgentHarness,
     load_harness_observations,
     observation_from_tool_result,
+    tool_observation_action_options,
 )
 from asteria_runtime.tools.base import ToolResult
 
@@ -96,6 +97,28 @@ def test_tool_observation_summarizes_result_for_model_loop() -> None:
     assert observation.artifact_refs == ["src/app.py"]
     assert "content" not in observation.data
     assert observation.model_summary() == "write_file ok: Wrote src/app.py"
+
+
+def test_failed_tool_observation_builds_explicit_action_options() -> None:
+    actions = tool_observation_action_options(
+        [
+            {
+                "tool_name": "run_command",
+                "ok": False,
+                "error_class": "verification_failed",
+                "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+            }
+        ]
+    )
+
+    assert [item["action"] for item in actions] == [
+        "diagnose",
+        "repair",
+        "replan",
+        "ask",
+        "stop",
+    ]
+    assert all(item["tool_name"] == "run_command" for item in actions)
 
 
 def test_load_harness_observations_reads_execution_chain_events(tmp_path) -> None:

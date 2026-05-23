@@ -244,6 +244,7 @@ class RuntimeAcceptanceClient:
 class RuntimeEvidenceDebugClient:
     def __init__(self) -> None:
         self.consumed_runtime_evidence = False
+        self.consumed_failure_next_hint = False
 
     def chat(self, request: Any) -> Any:
         from asteria_runtime.models.base import ChatResponse, TokenUsage
@@ -251,11 +252,20 @@ class RuntimeEvidenceDebugClient:
         payload = json.loads(request.messages[-1].content)
         task = payload["task"]
         evidence = payload.get("failure_evidence", {})
+        runtime_context = payload.get("runtime_context", {})
+        observations = runtime_context.get("tool_observations")
+        observations = observations if isinstance(observations, list) else []
         runtime_evidence = evidence.get("runtime_os_evidence")
         self.consumed_runtime_evidence = bool(
             isinstance(runtime_evidence, dict)
             and runtime_evidence.get("worker_results")
             and runtime_evidence.get("task_execution_evidence")
+        )
+        self.consumed_failure_next_hint = any(
+            isinstance(item, dict)
+            and item.get("ok") is False
+            and item.get("next_hint") == "diagnose_then_repair_replan_ask_or_stop"
+            for item in observations
         )
         action = {
             "schema_version": "0.1.0",
@@ -299,6 +309,7 @@ class RuntimeEvidenceDebugClient:
 class RuntimeEvidenceReviewClient:
     def __init__(self) -> None:
         self.consumed_runtime_evidence = False
+        self.consumed_failure_next_hint = False
 
     def chat(self, request: Any) -> Any:
         from asteria_runtime.models.base import ChatResponse, TokenUsage
@@ -306,10 +317,18 @@ class RuntimeEvidenceReviewClient:
         payload = json.loads(request.messages[-1].content)
         trajectory = payload.get("trajectory", {})
         checks = payload.get("deterministic_checks", {})
+        observations = payload.get("tool_observations")
+        observations = observations if isinstance(observations, list) else []
         self.consumed_runtime_evidence = bool(
             isinstance(trajectory.get("runtime_os_evidence"), dict)
             and trajectory.get("worker_results")
             and "runtime_os_summary" in checks
+        )
+        self.consumed_failure_next_hint = any(
+            isinstance(item, dict)
+            and item.get("ok") is False
+            and item.get("next_hint") == "diagnose_then_repair_replan_ask_or_stop"
+            for item in observations
         )
         report = {
             "schema_version": "0.1.0",
@@ -974,8 +993,12 @@ def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]
     evidence = _runtime_evidence(run_dir)
     evidence["debug_consumed_runtime_evidence"] = debug_client.consumed_runtime_evidence
     evidence["review_consumed_runtime_evidence"] = review_client.consumed_runtime_evidence
+    evidence["debug_consumed_failure_next_hint"] = debug_client.consumed_failure_next_hint
+    evidence["review_consumed_failure_next_hint"] = review_client.consumed_failure_next_hint
     ok = (
         evidence["debug_consumed_runtime_evidence"] and evidence["review_consumed_runtime_evidence"]
+        and evidence["debug_consumed_failure_next_hint"]
+        and evidence["review_consumed_failure_next_hint"]
     )
     summary = _runtime_summary(
         "runtime_evidence_consumption",
@@ -989,35 +1012,96 @@ def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]
 def _runtime_delegation_contract(workspace: Path) -> tuple[bool, dict[str, Any]]:
     from asteria_runtime.commands.execute_command import ExecuteCommand
 
-    task = _runtime_task(
+    blocked_task = _runtime_task(
         "task-0001",
         "High-risk write without output contract",
-        write_scope=["out/guarded.txt"],
+        write_scope=[],
     )
-    task["expected_artifacts"] = []
-    run_id = _seed_runtime_run(workspace, [task])
-    result = ExecuteCommand(
+    blocked_task["expected_artifacts"] = ["out/guarded.txt"]
+    blocked_task["expected_changed_files"] = []
+    blocked_task["write_scope"] = []
+    blocked_task["read_scope"] = ["AGENTS.md"]
+    blocked_task["risk_score"] = 0.95
+    blocked_run_id = _seed_runtime_run(workspace, [blocked_task])
+    blocked_result = ExecuteCommand(
         workspace,
-        run_id=run_id,
+        run_id=blocked_run_id,
         model_client=RuntimeAcceptanceClient("disjoint"),
     ).run()
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    workers = _read_jsonl(run_dir / "workers.jsonl")
-    latest = workers[-1] if workers else {}
+    blocked_run_dir = workspace / ".asteria" / "runs" / blocked_run_id
+    blocked_workers = _read_jsonl(blocked_run_dir / "workers.jsonl")
+    blocked_results = _read_jsonl(blocked_run_dir / "worker_results.jsonl")
+    blocked_evidence = _read_jsonl(blocked_run_dir / "task_execution_evidence.jsonl")
+    blocked_worker = blocked_workers[-1] if blocked_workers else {}
+    blocked_worker_result = blocked_results[-1] if blocked_results else {}
+    blocked_execution = blocked_evidence[-1] if blocked_evidence else {}
+
+    scope_workspace = workspace / "scope-exception"
+    scope_workspace.mkdir()
+    scope_task = _runtime_task(
+        "task-0001",
+        "Create scoped runtime request",
+        write_scope=[],
+    )
+    scope_task["expected_artifacts"] = ["src/"]
+    scope_task["expected_changed_files"] = []
+    scope_task["write_scope"] = []
+    scope_task["read_scope"] = ["AGENTS.md"]
+    scope_task["allowed_tools"] = ["write_file", "run_command"]
+    scope_task["notes"] = (
+        "Scope quality: write_scope was broad, so it was narrowed to require a runtime scope request."
+    )
+    scope_run_id = _seed_runtime_run(scope_workspace, [scope_task])
+    scope_result = ExecuteCommand(
+        scope_workspace,
+        run_id=scope_run_id,
+        model_client=RuntimeAcceptanceClient("planner_scope"),
+    ).run()
+    scope_run_dir = scope_workspace / ".asteria" / "runs" / scope_run_id
+    scope_workers = _read_jsonl(scope_run_dir / "workers.jsonl")
+    scope_runtime_requests = _read_jsonl(scope_run_dir / "runtime_requests.jsonl")
+
     evidence = {
-        "delegation_brief_recorded": bool(latest.get("delegation_brief")),
+        "delegation_brief_recorded": bool(blocked_worker.get("delegation_brief")),
         "brief_quality_status_present": bool(
-            latest.get("brief_quality")
-            and latest["brief_quality"].get("status") in {"pass", "warn", "fail"}
+            blocked_worker.get("brief_quality")
+            and blocked_worker["brief_quality"].get("status") in {"pass", "warn", "fail"}
+        ),
+        "high_risk_delegation_blocked": (
+            blocked_result.blocked == 1
+            and blocked_worker.get("status") == "denied"
+            and blocked_worker_result.get("status") == "denied"
+            and blocked_execution.get("failure_type") == "delegation_brief_quality_gate"
+        ),
+        "scope_request_exception_recorded": (
+            scope_result.blocked == 1
+            and bool(scope_runtime_requests)
+            and (scope_workers[-1].get("status") == "failed" if scope_workers else False)
+            and (scope_workers[-1].get("brief_quality") or {}).get("status") == "warn"
+        ),
+        "delegation_evidence_consistent": (
+            blocked_worker.get("worker_invocation_id")
+            == blocked_worker_result.get("worker_invocation_id")
+            and blocked_worker.get("task_id") == blocked_execution.get("task_id")
         ),
     }
     ok = (
-        result.blocked == 1
-        and evidence["delegation_brief_recorded"]
+        evidence["delegation_brief_recorded"]
         and evidence["brief_quality_status_present"]
+        and evidence["high_risk_delegation_blocked"]
+        and evidence["scope_request_exception_recorded"]
+        and evidence["delegation_evidence_consistent"]
     )
-    summary = _runtime_summary("delegation_contract", run_id, evidence, result=result.to_text())
-    summary["runtime_os"]["brief_quality"] = latest.get("brief_quality")
+    summary = _runtime_summary(
+        "delegation_contract",
+        blocked_run_id,
+        evidence,
+        result=blocked_result.to_text(),
+    )
+    summary["runtime_os"]["blocked_brief_quality"] = blocked_worker.get("brief_quality")
+    summary["runtime_os"]["scope_exception_brief_quality"] = (
+        scope_workers[-1].get("brief_quality") if scope_workers else None
+    )
     return ok, summary
 
 

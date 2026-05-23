@@ -7,6 +7,7 @@ from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import (
     runtime_os_acceptance_evidence,
+    runtime_os_catalog_report,
     runtime_os_full_summary,
     runtime_os_release_evidence,
 )
@@ -146,7 +147,9 @@ class WeeklyReportCommand:
         required = str(latest.get("suite") or "") in {"core", "nightly"}
         evidence = runtime_os_release_evidence(self._run_dirs(agent_dir), self._read_jsonl)
         evidence.update(runtime_os_acceptance_evidence(scenarios))
-        return runtime_os_full_summary(latest, scenarios, evidence, required=required)
+        summary = runtime_os_full_summary(latest, scenarios, evidence, required=required)
+        summary["catalog"] = runtime_os_catalog_report()
+        return summary
 
     def _model_profile(self, agent_dir: Path) -> dict[str, Any]:
         path = agent_dir / "model" / "capability_profile.json"
@@ -313,6 +316,11 @@ class WeeklyReportCommand:
             f"- Worker results: {report['runtime_os']['evidence'].get('worker_results')}",
             f"- Acceptance worker evidence: {report['runtime_os']['evidence'].get('acceptance_worker_results_jsonl')}",
             f"- Task graph selections: {report['runtime_os']['evidence'].get('task_graph_selections')}",
+            (
+                "- Capability manifest audit: "
+                f"{(report['runtime_os']['evidence'].get('capability_manifest_audit') or {}).get('prompt_envelopes', 0)} envelope(s), "
+                f"{(report['runtime_os']['evidence'].get('capability_manifest_audit') or {}).get('model_calls_with_capability_manifest', 0)} model call(s) linked"
+            ),
             f"- Candidate promotions: {report['runtime_os']['evidence'].get('candidate_promotions')} "
             f"(pending={report['runtime_os']['evidence'].get('candidate_promotions_pending')}, "
             f"blocked={report['runtime_os']['evidence'].get('candidate_promotions_blocked')}, "

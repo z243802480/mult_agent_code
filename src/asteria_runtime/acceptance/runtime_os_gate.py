@@ -124,6 +124,10 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: debug did not consume Runtime OS evidence"
         if key == "review_consumed_runtime_evidence":
             return f"{scenario_name}: review did not consume Runtime OS evidence"
+        if key == "debug_consumed_failure_next_hint":
+            return f"{scenario_name}: debug did not consume failure ToolObservation next_hint"
+        if key == "review_consumed_failure_next_hint":
+            return f"{scenario_name}: review did not consume failure ToolObservation next_hint"
         if key == "prompt_envelope_persisted":
             return f"{scenario_name}: missing persisted prompt envelope evidence"
         if key == "capability_manifest_layered":
@@ -136,6 +140,12 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: delegation brief was not recorded in worker evidence"
         if key == "brief_quality_status_present":
             return f"{scenario_name}: brief quality gate status was not recorded"
+        if key == "high_risk_delegation_blocked":
+            return f"{scenario_name}: high-risk low-quality delegation was not blocked"
+        if key == "scope_request_exception_recorded":
+            return f"{scenario_name}: scope request exception was not recorded"
+        if key == "delegation_evidence_consistent":
+            return f"{scenario_name}: delegation worker/result/execution evidence is inconsistent"
         if key == "verification_commands_recorded":
             return f"{scenario_name}: no independent verification commands were recorded"
         if key == "review_evidence_present":

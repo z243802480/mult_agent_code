@@ -750,15 +750,19 @@ class RunCommand:
         execution_evidence = self._execution_evidence(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         acceptance = self._latest_acceptance_report()
+        verification_evidence = self._verification_evidence(run_dir)
         completion = self._completion_state(
             done=done,
             total=len(task_plan["tasks"]),
             blocked=len(blocked_tasks),
             pending_decisions=len(pending_decisions),
             review_status=review_status,
+            verification_count=len(verification_evidence),
         )
         blockers = self._report_blockers(blocked_tasks, pending_decisions, acceptance)
-        risks = self._report_risks(cost_report, task_plan_eval, execution_evidence, acceptance)
+        risks = self._report_risks(
+            cost_report, task_plan_eval, execution_evidence, acceptance, verification_evidence
+        )
         next_actions = self._final_next_actions(completion, blockers, risks, acceptance)
         lines = [
             "# Final Report",
@@ -784,6 +788,20 @@ class RunCommand:
         if artifacts:
             lines.extend(["", "## Artifacts", ""])
             lines.extend(f"- {path}" for path in artifacts)
+        passed_verifications = [v for v in verification_evidence if v.get("status") == "success"]
+        lines.extend(["", "## Verification Evidence", ""])
+        if verification_evidence:
+            lines.append(
+                f"- Verification commands: {len(verification_evidence)} run"
+                f" ({len(passed_verifications)} passed)"
+            )
+            for call in verification_evidence[-5:]:
+                lines.append(
+                    f"  - {call.get('tool_name')} [{call.get('status')}]: "
+                    f"{str(call.get('output_summary', ''))[:120]}"
+                )
+        else:
+            lines.append("- No verification commands recorded.")
         if execution_evidence:
             lines.extend(["", "## Execution Evidence", ""])
             lines.extend(
@@ -934,6 +952,16 @@ class RunCommand:
             )
         return items
 
+    def _verification_evidence(self, run_dir: Path) -> list[dict]:
+        path = run_dir / "tool_calls.jsonl"
+        if not path.exists():
+            return []
+        return [
+            call
+            for call in self.jsonl.read_all(path, "tool_call")
+            if call.get("tool_name") in {"run_tests", "run_command"}
+        ]
+
     def _latest_acceptance_report(self) -> dict:
         path = self.root / ".asteria" / "acceptance" / "acceptance_report.json"
         if not path.exists():
@@ -948,12 +976,15 @@ class RunCommand:
         blocked: int,
         pending_decisions: int,
         review_status: str,
+        verification_count: int = 0,
     ) -> str:
         if pending_decisions:
             return "paused_for_decision"
         if blocked:
             return "blocked"
         if total and done == total and review_status == "pass":
+            if verification_count == 0:
+                return "implemented_unverified"
             return "complete"
         if total and done == total:
             return "implemented_needs_review"
@@ -1004,6 +1035,7 @@ class RunCommand:
         task_plan_eval: dict | None,
         execution_evidence: list[dict],
         acceptance: dict,
+        verification_evidence: list[dict] | None = None,
     ) -> list[str]:
         risks = []
         if task_plan_eval and task_plan_eval.get("status") in {"warn", "fail"}:
@@ -1017,6 +1049,11 @@ class RunCommand:
             risks.append(f"{len(failed_evidence)} execution evidence item(s) still need repair")
         if acceptance.get("trend_warnings"):
             risks.extend(str(item) for item in acceptance.get("trend_warnings", [])[:3])
+        if verification_evidence is not None and len(verification_evidence) == 0:
+            risks.append(
+                "No verification commands (run_tests/run_command) were recorded — "
+                "completion status cannot be confirmed by evidence."
+            )
         return list(dict.fromkeys(risks))
 
     def _final_next_actions(

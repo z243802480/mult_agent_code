@@ -845,6 +845,9 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     execute_model_call = model_calls[-1]
     assert execute_model_call["runtime_profile_id"] == workers[0]["runtime_profile_id"]
     assert execute_model_call["model_profile_id"] == runtime_profiles[0]["model_profile_id"]
+    assert execute_model_call["prompt_envelope_hash"] == execute_envelope["content_hash"]
+    assert execute_model_call["prompt_envelope_path"].endswith("prompt_envelope_execute.json")
+    assert execute_model_call["capability_manifest_hash"].startswith("sha256:")
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 2

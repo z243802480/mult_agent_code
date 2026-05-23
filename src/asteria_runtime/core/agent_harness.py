@@ -257,6 +257,85 @@ def load_raw_tool_observations(run_dir: Path | None, *, limit: int = 12) -> list
     return observations[-limit:]
 
 
+def tool_observation_action_options(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn failed tool observations into model-visible next-step choices."""
+    actions: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for observation in observations:
+        if observation.get("ok", True):
+            continue
+        tool_name = str(observation.get("tool_name") or "unknown")
+        next_hint = str(observation.get("next_hint") or "diagnose_then_repair_replan_ask_or_stop")
+        error_class = str(observation.get("error_class") or "unknown")
+        for action in _actions_for_next_hint(next_hint, tool_name, error_class):
+            key = (
+                str(action.get("action")),
+                str(action.get("tool_name")),
+                str(action.get("error_class")),
+            )
+            if key in seen:
+                continue
+            actions.append(action)
+            seen.add(key)
+    return actions
+
+
+def _actions_for_next_hint(
+    next_hint: str,
+    tool_name: str,
+    error_class: str,
+) -> list[dict[str, Any]]:
+    if next_hint == "continue":
+        return []
+    if next_hint == "diagnose_then_repair_replan_ask_or_stop":
+        return [
+            {
+                "action": "diagnose",
+                "tool_name": tool_name,
+                "error_class": error_class,
+                "when": "The failure cause is still ambiguous.",
+                "instruction": "Read the error and nearby evidence before changing files.",
+            },
+            {
+                "action": "repair",
+                "tool_name": tool_name,
+                "error_class": error_class,
+                "when": "The cause is understood and the fix is inside current scope.",
+                "instruction": "Make the smallest scoped change, then verify.",
+            },
+            {
+                "action": "replan",
+                "tool_name": tool_name,
+                "error_class": error_class,
+                "when": "The task contract, scope, or decomposition is wrong.",
+                "instruction": "Create or recommend a narrower follow-up task.",
+            },
+            {
+                "action": "ask",
+                "tool_name": tool_name,
+                "error_class": error_class,
+                "when": "Policy, scope, credentials, budget, or product direction needs approval.",
+                "instruction": "Create a runtime request or DecisionPoint with concrete evidence.",
+            },
+            {
+                "action": "stop",
+                "tool_name": tool_name,
+                "error_class": error_class,
+                "when": "Continuing would hide failure or exceed guardrails.",
+                "instruction": "Preserve evidence and report the blocker.",
+            },
+        ]
+    return [
+        {
+            "action": next_hint,
+            "tool_name": tool_name,
+            "error_class": error_class,
+            "when": "The observation provided a custom next_hint.",
+            "instruction": "Use this hint only if it is consistent with policy and task scope.",
+        }
+    ]
+
+
 def _observation_summary_from_dict(observation: dict[str, Any]) -> str:
     tool_name = str(observation.get("tool_name") or "tool")
     state = "ok" if observation.get("ok") else "failed"
