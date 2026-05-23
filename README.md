@@ -22,7 +22,9 @@ The default user workflow is `init -> run -> status -> resume -> review -> accep
 start a goal with `asteria run "goal"`, inspect progress with `asteria status`, resolve
 runtime decisions with `asteria resume` after `asteria decide`, verify the result with
 `asteria review`, then finalize reviewed candidate outputs with `asteria accept`.
-Use plain command names in new docs and scripts; slash-prefixed forms such as
+`asteria accept` finalizes one reviewed run; `asteria acceptance` runs validation
+suites for maintainers and CI, so it is not part of the ordinary user completion
+path. Use plain command names in new docs and scripts; slash-prefixed forms such as
 `asteria /run` remain compatibility aliases for older automation.
 
 `asteria run "goal"` writes run artifacts under `.asteria/runs/<run_id>/`, including

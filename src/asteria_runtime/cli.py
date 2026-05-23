@@ -60,6 +60,10 @@ SLASH_ALIAS_HELP = (
     "Compatibility: slash-prefixed command forms such as `asteria /run` remain aliases "
     "for older automation; use plain command names in new docs and scripts."
 )
+ACCEPT_VS_ACCEPTANCE_HELP = (
+    "`accept` finalizes one reviewed run; `acceptance` runs validation suites for "
+    "maintainers and CI."
+)
 
 
 class AsteriaArgumentParser(argparse.ArgumentParser):
@@ -97,6 +101,9 @@ class AsteriaArgumentParser(argparse.ArgumentParser):
                 "",
                 "Compatibility",
                 f"  {SLASH_ALIAS_HELP}",
+                "",
+                "Accept vs acceptance",
+                f"  {ACCEPT_VS_ACCEPTANCE_HELP}",
                 "",
                 "Use `asteria <command> --help` for command-specific options.",
             ]
@@ -538,7 +545,7 @@ def build_parser() -> argparse.ArgumentParser:
         "accept",
         aliases=["/accept"],
         help="Accept reviewed results, promote candidates, and finalize the run",
-        epilog=SLASH_ALIAS_HELP,
+        epilog=f"{ACCEPT_VS_ACCEPTANCE_HELP} {SLASH_ALIAS_HELP}",
     )
     accept_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(accept_parser, "Session id to accept; defaults to current session")
@@ -766,6 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
         "acceptance",
         aliases=["/acceptance"],
         help="Run reproducible runtime acceptance scenarios",
+        epilog=f"{ACCEPT_VS_ACCEPTANCE_HELP} {SLASH_ALIAS_HELP}",
     )
     acceptance_parser.add_argument("--root", default=".", help="Acceptance workspace root")
     acceptance_parser.add_argument(

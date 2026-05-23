@@ -13,6 +13,10 @@ def test_readme_points_to_existing_chinese_source_of_truth() -> None:
     assert Path(match.group(1)).exists()
     assert "slash-prefixed forms" in readme
     assert "compatibility aliases" in readme
+    assert "`asteria accept` finalizes one reviewed run" in readme
+    assert "`asteria acceptance` runs validation" in readme
+    assert "not part of the ordinary user completion" in readme
+    assert "path. Use plain command names" in readme
 
 
 def test_runtime_command_docs_describe_accept_workflow_and_alias_policy() -> None:

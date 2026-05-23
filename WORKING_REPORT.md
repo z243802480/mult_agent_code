@@ -342,3 +342,39 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the compatibility help wording is clear enough for both new users and older automation owners.
+
+## 2026-05-24 03:46:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Clarify the `accept` versus `acceptance` split across CLI help, README, and tests so ordinary users can complete a run without confusing completion with validation suites.
+
+### Substantive artifact change this round
+- Added a shared CLI help note explaining that `accept` finalizes one reviewed run while `acceptance` runs validation suites for maintainers and CI.
+- Exposed that note in top-level help plus `accept` and `acceptance` command help.
+- Updated README quick-start wording to keep `acceptance` out of the ordinary user completion path.
+- Added CLI and documentation contract tests for the distinction.
+
+### Modified files
+- `src/asteria_runtime/cli.py`: adds the `accept`/`acceptance` distinction to user-facing help.
+- `README.md`: documents the same distinction in the quick-start workflow.
+- `tests/unit/test_cli.py`: covers top-level and command-specific help text.
+- `tests/unit/test_documentation_contracts.py`: guards the README quick-start contract.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The Chinese source-of-truth already says `accept` is the ordinary workflow closer and is not `acceptance`; the CLI and README needed the same explicit user-facing distinction.
+- This is a cohesive command-experience improvement and does not change runtime behavior.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py tests/unit/test_documentation_contracts.py -q`: passed, 13 passed.
+- `ruff check src/asteria_runtime/cli.py tests/unit/test_cli.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- No product policy change was made: `acceptance` remains available as a maintainer/CI command.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a compact CLI smoke/help contract for `gate`, `gray`, and `acceptance` so maintainer-facing commands remain clearly separate from the default user workflow.
+
+### Suggested review focus for tomorrow
+- Review whether the `accept`/`acceptance` wording is sufficiently clear for non-maintainer users.

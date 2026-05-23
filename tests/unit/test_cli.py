@@ -31,6 +31,9 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Compatibility" in help_text
     assert "slash-prefixed command forms such as `asteria /run` remain aliases" in help_text
     assert "use plain command names in new docs and scripts" in help_text
+    assert "Accept vs acceptance" in help_text
+    assert "`accept` finalizes one reviewed run" in help_text
+    assert "`acceptance` runs validation suites for maintainers and CI" in help_text
     assert "Use `asteria <command> --help`" in help_text
 
 
@@ -48,6 +51,20 @@ def test_start_workflow_help_explains_plain_commands_and_slash_aliases() -> None
     resume_help = _command_help("resume")
     assert "Allow resume to execute" in resume_help
     assert "/resume to execute" not in resume_help
+
+
+def test_accept_and_acceptance_help_describe_distinct_user_intents() -> None:
+    accept_help = " ".join(_command_help("accept").split())
+    acceptance_help = " ".join(_command_help("acceptance").split())
+    expected = (
+        "`accept` finalizes one reviewed run; `acceptance` runs validation suites "
+        "for maintainers and CI."
+    )
+
+    assert expected in accept_help
+    assert expected in acceptance_help
+    assert "Session id to accept; defaults to current session" in accept_help
+    assert "Acceptance scenario suite" in acceptance_help
 
 
 def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
