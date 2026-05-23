@@ -7,7 +7,9 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.status_command import StatusCommand
+from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -64,6 +66,8 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "`status` 使用 `user_workflow`",
         "`doctor` 使用 `maintainer_preflight`",
         "`gate-status` 使用 `maintainer_release_readiness`",
+        "docs/en/examples/version_control_surface.json",
+        "docs/en/examples/package_check_control_surface.json",
         "docs/en/examples/status_control_surface.json",
         "docs/en/examples/doctor_control_surface.json",
         "docs/en/examples/gate_status_control_surface.json",
@@ -113,6 +117,8 @@ def _assert_example_stable_fields_match_runtime_payload(
 def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     runtime_payloads = {
+        "version_control_surface.json": VersionCommand().run().to_dict(),
+        "package_check_control_surface.json": PackageCheckCommand(Path.cwd()).run().to_dict(),
         "status_control_surface.json": StatusCommand(tmp_path).run().to_dict(),
         "doctor_control_surface.json": DoctorCommand(tmp_path).run().to_dict(),
         "gate_status_control_surface.json": GateStatusCommand(tmp_path).run().to_dict(),
@@ -127,6 +133,8 @@ def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: P
 
 def test_control_surface_examples_match_documented_contracts() -> None:
     examples = [
+        ("version_control_surface.json", "version", "maintainer_preflight"),
+        ("package_check_control_surface.json", "package-check", "maintainer_preflight"),
         ("status_control_surface.json", "status", "user_workflow"),
         ("doctor_control_surface.json", "doctor", "maintainer_preflight"),
         (
