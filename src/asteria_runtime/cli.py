@@ -56,6 +56,10 @@ from asteria_runtime.real_model_smoke import run_from_args as run_real_model_smo
 
 
 CommandGroup = tuple[str, str, list[tuple[str, str]]]
+SLASH_ALIAS_HELP = (
+    "Compatibility: slash-prefixed command forms such as `asteria /run` remain aliases "
+    "for older automation; use plain command names in new docs and scripts."
+)
 
 
 class AsteriaArgumentParser(argparse.ArgumentParser):
@@ -90,6 +94,9 @@ class AsteriaArgumentParser(argparse.ArgumentParser):
                 "Options",
                 "  -h, --help  show this help message and exit",
                 "  --version   show runtime version and exit",
+                "",
+                "Compatibility",
+                f"  {SLASH_ALIAS_HELP}",
                 "",
                 "Use `asteria <command> --help` for command-specific options.",
             ]
@@ -132,6 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
         "init",
         aliases=["/init"],
         help="Initialize an agent-ready workspace",
+        epilog=SLASH_ALIAS_HELP,
     )
     init_parser.add_argument("--root", default=".", help="Workspace root path")
     init_parser.add_argument(
@@ -204,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         aliases=["/status"],
         help="Show current Runtime OS control surface status",
+        epilog=SLASH_ALIAS_HELP,
     )
     status_parser.add_argument("--root", default=".", help="Workspace root path")
     status_parser.add_argument(
@@ -494,6 +503,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run",
         aliases=["/run"],
         help="Plan, execute, repair, review, and report",
+        epilog=SLASH_ALIAS_HELP,
     )
     run_parser.add_argument("goal", nargs="?", help="Natural-language goal")
     run_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -521,13 +531,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument(
         "--parallel-disjoint-writes",
         action="store_true",
-        help="Allow /run to execute readonly and disjoint write-scope tasks concurrently",
+        help="Allow run to execute readonly and disjoint write-scope tasks concurrently",
     )
 
     accept_parser = subcommands.add_parser(
         "accept",
         aliases=["/accept"],
         help="Accept reviewed results, promote candidates, and finalize the run",
+        epilog=SLASH_ALIAS_HELP,
     )
     accept_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(accept_parser, "Session id to accept; defaults to current session")
@@ -547,6 +558,7 @@ def build_parser() -> argparse.ArgumentParser:
         "resume",
         aliases=["/resume"],
         help="Resume a paused run after decisions",
+        epilog=SLASH_ALIAS_HELP,
     )
     resume_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(resume_parser, "Session id; defaults to current session")
@@ -565,7 +577,7 @@ def build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument(
         "--parallel-disjoint-writes",
         action="store_true",
-        help="Allow /resume to execute readonly and disjoint write-scope tasks concurrently",
+        help="Allow resume to execute readonly and disjoint write-scope tasks concurrently",
     )
 
     compact_parser = subcommands.add_parser(
@@ -712,6 +724,7 @@ def build_parser() -> argparse.ArgumentParser:
         "review",
         aliases=["/review"],
         help="Evaluate a run and write review reports",
+        epilog=SLASH_ALIAS_HELP,
     )
     review_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(review_parser, "Session id to review; defaults to current session")

@@ -7,6 +7,11 @@ from pathlib import Path
 from asteria_runtime.cli import build_parser, main
 
 
+def _command_help(command: str) -> str:
+    subparsers_action = build_parser()._subparsers._group_actions[0]
+    return subparsers_action.choices[command].format_help()
+
+
 def test_top_level_help_groups_command_surface() -> None:
     help_text = build_parser().format_help()
 
@@ -23,7 +28,26 @@ def test_top_level_help_groups_command_surface() -> None:
     assert help_text.index("accept  Accept") < help_text.index("Maintain")
     assert "gate             Run staged readiness checks" in help_text
     assert "real-model-acceptance" in help_text
+    assert "Compatibility" in help_text
+    assert "slash-prefixed command forms such as `asteria /run` remain aliases" in help_text
+    assert "use plain command names in new docs and scripts" in help_text
     assert "Use `asteria <command> --help`" in help_text
+
+
+def test_start_workflow_help_explains_plain_commands_and_slash_aliases() -> None:
+    for command in ("init", "run", "status", "resume", "review", "accept"):
+        help_text = _command_help(command)
+        normalized_help = " ".join(help_text.split())
+
+        assert "slash-prefixed command forms such as `asteria /run` remain aliases" in normalized_help
+        assert "use plain command names in new docs and scripts" in normalized_help
+
+    run_help = _command_help("run")
+    assert "Allow run to execute" in run_help
+    assert "/run to execute" not in run_help
+    resume_help = _command_help("resume")
+    assert "Allow resume to execute" in resume_help
+    assert "/resume to execute" not in resume_help
 
 
 def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:

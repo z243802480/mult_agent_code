@@ -309,3 +309,36 @@
 
 ### Suggested review focus for tomorrow
 - Review whether `accept` should remain before `debug` in the reference because it is a user-workflow command, while `debug` is an advanced repair command.
+
+## 2026-05-24 03:31:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Make the CLI help surface match the documented plain-command workflow by explaining slash-prefixed aliases directly in user-facing help.
+
+### Substantive artifact change this round
+- Added a shared slash-alias compatibility help message to the top-level CLI help and the default workflow commands (`init`, `run`, `status`, `resume`, `review`, `accept`).
+- Removed slash-prefixed wording from `run` and `resume` option help so new help text prefers plain commands while keeping slash aliases functional.
+- Added regression coverage for the top-level compatibility section and all default workflow command help pages.
+
+### Modified files
+- `src/asteria_runtime/cli.py`: adds the compatibility help constant, wires it into relevant help output, and normalizes `run`/`resume` option wording.
+- `tests/unit/test_cli.py`: verifies the plain-command/slash-alias help contract and guards against reintroducing slash-first option wording.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The Chinese command reference and README already say new docs/scripts should prefer plain command names, while slash-prefixed forms are compatibility aliases. CLI help was the remaining user-facing surface that did not make this explicit.
+- A single shared message keeps the policy consistent across the top-level help and the default workflow commands.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py tests/unit/test_documentation_contracts.py -q`: passed, 12 passed.
+- `ruff check src/asteria_runtime/cli.py tests/unit/test_cli.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- Slash aliases remain available and are still shown by argparse in some compatibility contexts; a broader deprecation/migration plan would need an explicit product decision.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a small documentation/CLI contract around `acceptance` versus `accept` so ordinary users do not confuse finalizing a reviewed run with running validation suites.
+
+### Suggested review focus for tomorrow
+- Review whether the compatibility help wording is clear enough for both new users and older automation owners.
