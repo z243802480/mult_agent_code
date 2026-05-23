@@ -156,6 +156,27 @@ def test_control_surface_examples_match_documented_contracts() -> None:
         )
 
 
+
+def test_gate_control_surface_example_keeps_nested_stage_contracts_in_sync() -> None:
+    payload = _load_control_surface_example("gate_control_surface.json")
+    stages = payload["stages"]
+    assert isinstance(stages, dict)
+
+    expected_stage_examples = {
+        "version": "version_control_surface.json",
+        "package_check": "package_check_control_surface.json",
+        "doctor": "doctor_control_surface.json",
+        "gate_status": "gate_status_control_surface.json",
+    }
+
+    for stage_name, example_name in expected_stage_examples.items():
+        stage_payload = stages[stage_name]
+        assert isinstance(stage_payload, dict)
+        expected_payload = _load_control_surface_example(example_name)
+        assert stage_payload["control_surface"] == expected_payload["control_surface"]
+        for field in expected_payload["control_surface"]["stable_fields"]:
+            assert field in stage_payload
+
 def test_status_control_surface_example_keeps_user_workflow_next_action() -> None:
     payload = _load_control_surface_example("status_control_surface.json")
 
