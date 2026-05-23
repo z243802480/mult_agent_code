@@ -277,3 +277,35 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the README compatibility note is enough for migration, or whether the CLI help should also explicitly say slash-prefixed forms are compatibility aliases.
+
+## 2026-05-24 03:16:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Finish the command-reference cleanup introduced by adding `accept`: remove duplicate section numbering and guard the user workflow section order with tests.
+
+### Substantive artifact change this round
+- Renumbered the affected Chinese runtime-command sections from `accept/debug/handoff` so `accept` owns `3.8`, `debug` becomes `3.9`, and `handoff` becomes `3.10`.
+- Added a documentation contract test that asserts `resume -> review -> accept -> debug -> handoff` appears in order and that there is only one `3.8` command heading.
+
+### Modified files
+- `docs/zh/????.md`: fixes command-reference numbering around `accept`, `debug`, and `handoff`.
+- `tests/unit/test_documentation_contracts.py`: adds section-order and duplicate-heading regression coverage.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The previous `accept` insertion left two `3.8` headings, which weakens the source-of-truth command reference. This iteration makes the documentation internally consistent and protects the ordering with a targeted test.
+- The change is a cohesive doc/test maintenance pass and does not alter runtime behavior.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 13 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_cli.py src/asteria_runtime/commands/accept_command.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The command reference still contains many slash-style headings by design; broader conversion to plain headings should be reviewed separately.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a small user-facing CLI help line or epilog explaining that slash-prefixed commands are compatibility aliases, and extend CLI tests to cover that text.
+
+### Suggested review focus for tomorrow
+- Review whether `accept` should remain before `debug` in the reference because it is a user-workflow command, while `debug` is an advanced repair command.

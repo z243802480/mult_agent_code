@@ -32,3 +32,19 @@ def test_runtime_command_docs_describe_accept_workflow_and_alias_policy() -> Non
 
     for fragment in required_fragments:
         assert fragment in docs
+
+
+def test_runtime_command_docs_keep_user_workflow_sections_in_order() -> None:
+    docs = Path("docs/zh/运行命令.md").read_text(encoding="utf-8")
+    headings = [
+        "### 3.6.1 `/resume`",
+        "### 3.7 `/review`",
+        "### 3.8 `/accept`",
+        "### 3.9 `/debug`",
+        "### 3.10 `/handoff`",
+    ]
+
+    positions = [docs.index(heading) for heading in headings]
+
+    assert positions == sorted(positions)
+    assert docs.count("### 3.8 ") == 1
