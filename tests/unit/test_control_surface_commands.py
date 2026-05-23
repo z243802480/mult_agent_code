@@ -4,6 +4,7 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.gray_command import GrayCommand
 from asteria_runtime.commands.gate_status_command import _validation_recommendation_for_changed_files
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
@@ -211,6 +212,34 @@ def test_status_has_no_next_command_after_acceptance(tmp_path: Path) -> None:
 
     assert payload["recommended_next_command"] is None
     assert payload["next_actions"] == []
+
+
+
+
+def test_gray_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    result = GrayCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["mode"] == "dry_run"
+    assert "gate_status" in payload
+    assert "gray_run" in payload
+    _assert_control_surface_contract(
+        payload,
+        command="gray",
+        audience="maintainer_gray_readiness",
+        required_fields={
+            "schema_version",
+            "root",
+            "status",
+            "ok",
+            "mode",
+            "gate_status",
+            "gray_run",
+            "next_actions",
+        },
+    )
 
 
 def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: Path) -> None:

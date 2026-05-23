@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gray_run_command import GrayRunCommand
 
@@ -23,6 +24,20 @@ class GrayCommandResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="gray",
+                audience="maintainer_gray_readiness",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "status",
+                    "ok",
+                    "mode",
+                    "gate_status",
+                    "gray_run",
+                    "next_actions",
+                ],
+            ),
             "root": str(self.root),
             "status": self.status,
             "ok": self.status == "dry_run_ready",
