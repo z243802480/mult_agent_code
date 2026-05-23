@@ -52,6 +52,8 @@ def test_runtime_command_docs_describe_accept_workflow_and_alias_policy() -> Non
 def test_runtime_command_docs_describe_control_surface_contract() -> None:
     docs = Path("docs/zh/运行命令.md").read_text(encoding="utf-8")
     required_fragments = [
+        "`asteria version --json`",
+        "`asteria package-check --json`",
         "`asteria status --json`",
         "`asteria doctor --json`",
         "`asteria gate-status --json`",

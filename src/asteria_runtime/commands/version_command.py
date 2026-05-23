@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass
 
 from asteria_runtime import __version__
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,17 @@ class VersionResult:
     def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="version",
+                audience="maintainer_preflight",
+                stable_fields=[
+                    "schema_version",
+                    "package",
+                    "version",
+                    "python_version",
+                    "executable",
+                ],
+            ),
             "package": self.package,
             "version": self.version,
             "python_version": self.python_version,

@@ -44,6 +44,18 @@ def test_version_command_reports_runtime_diagnostics() -> None:
     assert payload["version"]
     assert payload["python_version"]
     assert payload["executable"]
+    _assert_control_surface_contract(
+        payload,
+        command="version",
+        audience="maintainer_preflight",
+        required_fields={
+            "schema_version",
+            "package",
+            "version",
+            "python_version",
+            "executable",
+        },
+    )
 
 
 def test_package_check_reports_packaging_preflight() -> None:
@@ -66,6 +78,22 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert hook_plugins["ok"] is True
     assert hook_plugins["error_type"] == "plugin"
     assert "plugin" in payload["error_taxonomy"]["categories"]
+    _assert_control_surface_contract(
+        payload,
+        command="package-check",
+        audience="maintainer_preflight",
+        required_fields={
+            "schema_version",
+            "root",
+            "ok",
+            "status",
+            "checks",
+            "failed_checks",
+            "runbook",
+            "error_taxonomy",
+            "next_actions",
+        },
+    )
     assert payload["runbook"]["path"] == "docs/zh/灰度试运行手册.md"
     assert "rollback" in payload["runbook"]["required_sections"]
     assert any("model.routes.gray.example.ps1" in action for action in payload["next_actions"])
