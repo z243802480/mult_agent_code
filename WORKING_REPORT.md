@@ -97,3 +97,31 @@
 
 ### Suggested review focus for tomorrow
 - Review whether README should describe `asteria decide` explicitly in Quick Start or leave it as part of the blocked-run/resume path.
+
+## 2026-05-23 23:12:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Mirrored the default `init -> run -> status -> resume -> review -> accept` user workflow into the Chinese runtime-command reference.
+
+### Modified files
+- the Chinese runtime-command reference: added section `1.2 default user workflow` describing the normal user path and clarifying that `accept` is distinct from the `acceptance` test suite and promotion internals.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The Chinese docs are the project source of truth, while the previous heartbeat only updated the English README. This round keeps the command reference aligned with the command-surface convergence plan.
+- The change is documentation-only, small, and avoids changing open product policy questions such as whether `accept` should auto-approve pending promotions.
+
+### Test/build results
+- `python -m asteria_runtime accept --help`: passed and confirms the documented final command is available.
+- Python doc assertions against the Chinese runtime-command reference: passed for the workflow string, section heading, and `accept`/`acceptance` distinction.
+- `ruff check README.md`: passed with the expected Markdown/no-Python-files warning.
+
+### DecisionPoint / unresolved issues
+- `accept` default promotion semantics still need human product review before changing behavior.
+- GitHub CLI remains unavailable locally, so branches can be pushed but PR creation must use the GitHub web link unless `gh` is installed.
+
+### Suggested smallest next task
+- Add a small CLI help or status test that asserts `accept` appears in the Start/default workflow group, if such grouping is intended to be stable.
+
+### Suggested review focus for tomorrow
+- Review whether the Chinese command reference should rename slash-style section headings like `/init` to plain `init`, or keep slash aliases as compatibility notes.
