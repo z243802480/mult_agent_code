@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
+from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
@@ -72,6 +73,7 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "docs/en/examples/status_control_surface.json",
         "docs/en/examples/doctor_control_surface.json",
         "docs/en/examples/gate_status_control_surface.json",
+        "docs/en/examples/gate_control_surface.json",
         "schemas/control_surface.schema.json",
         "`stability=additive`",
     ]
@@ -123,6 +125,7 @@ def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: P
         "status_control_surface.json": StatusCommand(tmp_path).run().to_dict(),
         "doctor_control_surface.json": DoctorCommand(tmp_path).run().to_dict(),
         "gate_status_control_surface.json": GateStatusCommand(tmp_path).run().to_dict(),
+        "gate_control_surface.json": GateCommand(Path.cwd()).run().to_dict(),
     }
 
     for filename, runtime_payload in runtime_payloads.items():
@@ -143,6 +146,7 @@ def test_control_surface_examples_match_documented_contracts() -> None:
             "gate-status",
             "maintainer_release_readiness",
         ),
+        ("gate_control_surface.json", "gate", "maintainer_release_readiness"),
     ]
 
     for filename, command, audience in examples:

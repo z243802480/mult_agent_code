@@ -1,0 +1,2078 @@
+{
+  "schema_version": "0.1.0",
+  "control_surface": {
+    "schema_version": "0.1.0",
+    "command": "gate",
+    "audience": "maintainer_release_readiness",
+    "stability": "additive",
+    "stable_fields": [
+      "schema_version",
+      "root",
+      "status",
+      "ok",
+      "mode",
+      "stages",
+      "latest_observation_plan",
+      "next_actions"
+    ]
+  },
+  "root": "H:/mult_agent_code",
+  "status": "ready",
+  "ok": true,
+  "mode": "read_only",
+  "stages": {
+    "version": {
+      "schema_version": "0.1.0",
+      "control_surface": {
+        "schema_version": "0.1.0",
+        "command": "version",
+        "audience": "maintainer_preflight",
+        "stability": "additive",
+        "stable_fields": [
+          "schema_version",
+          "package",
+          "version",
+          "python_version",
+          "executable"
+        ]
+      },
+      "package": "asteria-runtime",
+      "version": "0.1.0",
+      "python_version": "3.13.13",
+      "executable": "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
+    },
+    "package_check": {
+      "schema_version": "0.1.0",
+      "control_surface": {
+        "schema_version": "0.1.0",
+        "command": "package-check",
+        "audience": "maintainer_preflight",
+        "stability": "additive",
+        "stable_fields": [
+          "schema_version",
+          "root",
+          "ok",
+          "status",
+          "summary",
+          "checks",
+          "failed_checks",
+          "artifacts",
+          "runbook",
+          "error_taxonomy",
+          "next_actions"
+        ]
+      },
+      "root": "H:\\mult_agent_code",
+      "ok": true,
+      "status": "pass",
+      "summary": "Package preflight checks passed.",
+      "checks": [
+        {
+          "name": "pyproject",
+          "ok": true,
+          "summary": "name=asteria-runtime, version=0.1.0",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "build_backend",
+          "ok": true,
+          "summary": "build-backend=setuptools.build_meta",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "console_script",
+          "ok": true,
+          "summary": "asteria=asteria_runtime.cli:main",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "version_sync",
+          "ok": true,
+          "summary": "pyproject=0.1.0, runtime=0.1.0",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "gray_command_modules",
+          "ok": true,
+          "summary": "real-model smoke/gate/acceptance package modules present and gate/gray/gray-run command modules present",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "hook_plugin_control_surface",
+          "ok": true,
+          "summary": "hook/plugin schemas, control command, defaults, and docs present",
+          "severity": "error",
+          "error_type": "plugin"
+        },
+        {
+          "name": "gray_route_template",
+          "ok": true,
+          "summary": "templates\\model.routes.gray.example.ps1",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "gray_docs",
+          "ok": true,
+          "summary": "gray rollout docs present",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "gray_runbook",
+          "ok": true,
+          "summary": "docs\\zh\\\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+          "severity": "error",
+          "error_type": "configuration"
+        }
+      ],
+      "failed_checks": [],
+      "artifacts": [
+        "dist\\asteria_runtime-0.1.0-py3-none-any.whl",
+        "dist\\asteria_runtime-0.1.0.tar.gz",
+        "dist\\tzdata-2026.2-py2.py3-none-any.whl"
+      ],
+      "runbook": {
+        "path": "docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+        "required_sections": [
+          "install",
+          "route_config",
+          "self_check",
+          "upgrade",
+          "rollback",
+          "failure_collection",
+          "pause_resume"
+        ]
+      },
+      "error_taxonomy": {
+        "schema_version": "0.1.0",
+        "categories": [
+          "candidate_workspace",
+          "configuration",
+          "internal",
+          "plugin",
+          "promotion",
+          "provider",
+          "schema"
+        ]
+      },
+      "next_actions": [
+        "Follow `docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md` for install, route config, self-check, rollback, and failure collection.",
+        "Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.",
+        "Run `asteria version --json` from the installed package before gray rollout."
+      ]
+    },
+    "doctor": {
+      "schema_version": "0.1.0",
+      "control_surface": {
+        "schema_version": "0.1.0",
+        "command": "doctor",
+        "audience": "maintainer_preflight",
+        "stability": "additive",
+        "stable_fields": [
+          "schema_version",
+          "root",
+          "ok",
+          "status",
+          "summary",
+          "checks",
+          "failed_checks",
+          "routes",
+          "route_requirements",
+          "sandbox",
+          "gray_task_limits",
+          "plugin_control",
+          "error_taxonomy",
+          "next_actions"
+        ]
+      },
+      "root": "H:\\mult_agent_code",
+      "ok": true,
+      "status": "pass",
+      "summary": "Doctor checks passed.",
+      "checks": [
+        {
+          "name": "agent_dir",
+          "ok": true,
+          "summary": ".asteria exists",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "root_guidance",
+          "ok": true,
+          "summary": "AGENTS.md exists",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "runtime_config",
+          "ok": true,
+          "summary": "project and policy config present",
+          "severity": "error",
+          "error_type": "configuration"
+        },
+        {
+          "name": "plugins",
+          "ok": true,
+          "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off.",
+          "severity": "warning",
+          "error_type": "plugin"
+        },
+        {
+          "name": "git",
+          "ok": true,
+          "summary": "git worktree detected",
+          "severity": "warning",
+          "error_type": "candidate_workspace"
+        },
+        {
+          "name": "model_strong",
+          "ok": true,
+          "summary": "glm/glm-5 at https://open.bigmodel.cn/api/coding/paas/v4 via tier",
+          "severity": "info",
+          "error_type": "provider"
+        },
+        {
+          "name": "model_medium",
+          "ok": true,
+          "summary": "minimax/MiniMax-M2.7 at https://api.minimaxi.com/v1 via global",
+          "severity": "info",
+          "error_type": "provider"
+        },
+        {
+          "name": "real_model_gate",
+          "ok": true,
+          "summary": "H:\\mult_agent_code\\.asteria\\model\\real_model_gate_report.json",
+          "severity": "warning",
+          "error_type": "provider"
+        }
+      ],
+      "failed_checks": [],
+      "routes": {
+        "strong": {
+          "configured": true,
+          "missing": [],
+          "provider": "glm",
+          "model": "glm-5",
+          "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+          "env_prefix": "AGENT_MODEL_STRONG",
+          "source": "tier",
+          "api_key_present": true,
+          "streaming": {
+            "enabled": true,
+            "idle_timeout_seconds": null,
+            "deadline_seconds": null
+          }
+        },
+        "medium": {
+          "configured": true,
+          "missing": [],
+          "provider": "minimax",
+          "model": "MiniMax-M2.7",
+          "base_url": "https://api.minimaxi.com/v1",
+          "env_prefix": "AGENT_MODEL",
+          "source": "global",
+          "api_key_present": true,
+          "streaming": {
+            "enabled": true,
+            "idle_timeout_seconds": null,
+            "deadline_seconds": null
+          }
+        },
+        "cheap": {
+          "configured": true,
+          "missing": [],
+          "provider": "minimax",
+          "model": "MiniMax-M2.7",
+          "base_url": "https://api.minimaxi.com/v1",
+          "env_prefix": "AGENT_MODEL",
+          "source": "global",
+          "api_key_present": true,
+          "streaming": {
+            "enabled": true,
+            "idle_timeout_seconds": null,
+            "deadline_seconds": null
+          }
+        }
+      },
+      "route_requirements": {
+        "strong": [
+          "AGENT_MODEL_STRONG_PROVIDER or AGENT_MODEL_PROVIDER",
+          "AGENT_MODEL_STRONG_NAME or provider default",
+          "AGENT_MODEL_STRONG_API_KEY or provider/global API key"
+        ],
+        "medium": [
+          "AGENT_MODEL_MEDIUM_PROVIDER or AGENT_MODEL_PROVIDER",
+          "AGENT_MODEL_MEDIUM_NAME or provider default",
+          "AGENT_MODEL_MEDIUM_API_KEY or provider/global API key"
+        ],
+        "cheap": [
+          "AGENT_MODEL_CHEAP_PROVIDER",
+          "or AGENT_MODEL_PROVIDER"
+        ]
+      },
+      "sandbox": {
+        "git_available": true,
+        "tracked_worktree_clean": true,
+        "preferred_backend": "git_worktree",
+        "fallback_backend": "temp_workspace",
+        "reason": "tracked git state supports worktree candidate branches"
+      },
+      "gray_task_limits": {
+        "max_iterations": 3,
+        "max_tasks_per_iteration": 1,
+        "max_repairs": 1,
+        "max_replans": 1,
+        "recommended_run_flags": [
+          "--max-iterations 3",
+          "--max-tasks-per-iteration 1",
+          "--no-research"
+        ],
+        "allowed_task_types": [
+          "file_artifact",
+          "small_cli_or_script",
+          "multi_file_small_tool",
+          "test_repair",
+          "controlled_refactor",
+          "documentation_update"
+        ],
+        "stop_conditions": [
+          "cost_status near_limit or hard_stop",
+          "repeated schema-invalid provider responses",
+          "merge gate promotion risk",
+          "protected path risk",
+          "session cannot resume"
+        ]
+      },
+      "plugin_control": {
+        "initialized": true,
+        "ok": true,
+        "plugin_dir": "H:\\mult_agent_code\\.asteria\\plugins",
+        "hook_policy": {
+          "enabled": true,
+          "plugins_enabled": false,
+          "allowed_hook_names": [
+            "before_worker",
+            "after_worker",
+            "worker_error",
+            "before_tool_call",
+            "after_tool_call",
+            "tool_call_error"
+          ],
+          "redacted_data_keys": [
+            "secret",
+            "token",
+            "api_key",
+            "apikey",
+            "authorization",
+            "password",
+            "credential",
+            "raw_context"
+          ],
+          "handler_timeout_ms": 1000
+        },
+        "plugins": [],
+        "status_counts": {},
+        "warnings": [],
+        "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off."
+      },
+      "error_taxonomy": {
+        "schema_version": "0.1.0",
+        "categories": [
+          "candidate_workspace",
+          "configuration",
+          "internal",
+          "plugin",
+          "promotion",
+          "provider",
+          "schema"
+        ]
+      },
+      "next_actions": [
+        "Use `docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
+      ]
+    },
+    "gate_status": {
+      "schema_version": "0.1.0",
+      "control_surface": {
+        "schema_version": "0.1.0",
+        "command": "gate-status",
+        "audience": "maintainer_release_readiness",
+        "stability": "additive",
+        "stable_fields": [
+          "schema_version",
+          "root",
+          "stage",
+          "rollout_state",
+          "release_ready",
+          "blocking_reason",
+          "gates",
+          "route_environment",
+          "route_guidance",
+          "latest_observation_plan",
+          "promotion_release_risks",
+          "plugin_risks",
+          "feature_flags",
+          "capability_flags",
+          "evidence_sources",
+          "gray_task_limits",
+          "validation_recommendation",
+          "next_actions"
+        ]
+      },
+      "root": "H:\\mult_agent_code",
+      "stage": "ready_for_small_real_task_gray",
+      "rollout_state": "release_ready",
+      "release_ready": true,
+      "blocking_reason": null,
+      "gates": {
+        "real_model_gate": {
+          "present": true,
+          "ok": true,
+          "status": "pass"
+        },
+        "gray_suite": {
+          "present": true,
+          "ok": true,
+          "status": "pass",
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "gray_ready": true,
+          "route_evidence": {
+            "scenarios_with_route_evidence": [
+              "gray_file_artifact",
+              "gray_multi_file_scope",
+              "gray_debug_repair"
+            ],
+            "scenarios_missing_strong": [],
+            "scenarios_missing_medium": [],
+            "providers_by_tier": {
+              "medium": [
+                "minimax"
+              ],
+              "strong": [
+                "zai"
+              ]
+            },
+            "strong_used": true,
+            "medium_used": true
+          }
+        },
+        "core_acceptance": {
+          "present": true,
+          "ok": true,
+          "status": "pass",
+          "total": 10,
+          "passed": 10,
+          "failed": 0
+        }
+      },
+      "route_environment": {
+        "ready": true,
+        "missing_required": [],
+        "strong": {
+          "configured": true,
+          "missing": [],
+          "provider": "glm",
+          "model": "glm-5",
+          "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+          "env_prefix": "AGENT_MODEL_STRONG",
+          "source": "tier",
+          "api_key_present": true,
+          "streaming": {
+            "enabled": true,
+            "idle_timeout_seconds": null,
+            "deadline_seconds": null
+          }
+        },
+        "medium": {
+          "configured": true,
+          "missing": [],
+          "provider": "minimax",
+          "model": "MiniMax-M2.7",
+          "base_url": "https://api.minimaxi.com/v1",
+          "env_prefix": "AGENT_MODEL",
+          "source": "global",
+          "api_key_present": true,
+          "streaming": {
+            "enabled": true,
+            "idle_timeout_seconds": null,
+            "deadline_seconds": null
+          }
+        }
+      },
+      "route_guidance": {
+        "status": "healthy",
+        "blocking": [],
+        "review": [],
+        "provider_route_strategy": {
+          "strategy": {
+            "primary_model": "glm-5",
+            "cost_saver_model": "glm-4.7",
+            "min_calls_before_enforcement": 3,
+            "min_success_rate_for_gray": 0.8,
+            "max_timeout_failures_for_gray": 1,
+            "provider_deadline_seconds": 120,
+            "stream_idle_timeout_seconds": 30,
+            "continue_primary_when": [
+              "release gate is being refreshed",
+              "route guidance is healthy",
+              "recent success rate is at or above min_success_rate_for_gray"
+            ],
+            "allow_cost_saver_when": [
+              "task is a small gray validation task",
+              "cost budget is constrained",
+              "cost_saver recent success rate is at or above min_success_rate_for_gray"
+            ],
+            "downgrade_or_retry_when": [
+              "primary route is transiently rate limited",
+              "primary route hits one timeout but recent success rate remains acceptable",
+              "task is doc-only or low-risk and medium route is healthy"
+            ],
+            "block_gray_when": [
+              "strong goal_spec success rate is below min_success_rate_for_gray after min_calls_before_enforcement calls",
+              "timeout failures exceed max_timeout_failures_for_gray",
+              "authentication, budget, or configuration failure is present",
+              "provider streaming evidence is missing for required strong and medium routes"
+            ]
+          },
+          "provider": "zai",
+          "model": "glm-5.1",
+          "total_calls": 1,
+          "success_rate": 1.0,
+          "timeout_failures": 0,
+          "min_calls_before_enforcement": 3,
+          "min_success_rate_for_gray": 0.8,
+          "max_timeout_failures_for_gray": 1,
+          "decision": "continue_primary",
+          "reason": "Strong goal_spec route is within configured provider strategy thresholds."
+        },
+        "recommended_actions": [
+          "Keep current model routes and continue collecting capability evidence."
+        ]
+      },
+      "latest_observation_plan": {},
+      "promotion_release_risks": {
+        "total": 1,
+        "pending": 0,
+        "blocked": 0,
+        "promoted": 1,
+        "risk_policy": {
+          "manual_approval_default": false,
+          "release_blocking_statuses": [
+            "queued",
+            "pending_manual_approval",
+            "approved",
+            "blocked",
+            "promotion_failed"
+          ],
+          "max_pending_release_promotions": 0,
+          "max_blocked_release_promotions": 0
+        },
+        "release_blocking_threshold": 0,
+        "release_blocking_statuses": [
+          "queued",
+          "pending_manual_approval",
+          "approved",
+          "blocked",
+          "promotion_failed"
+        ]
+      },
+      "plugin_risks": {
+        "blocked": false,
+        "blocked_manifests": [],
+        "warnings": [],
+        "actions": [],
+        "plugin_control": {
+          "initialized": true,
+          "ok": true,
+          "plugin_dir": "H:\\mult_agent_code\\.asteria\\plugins",
+          "hook_policy": {
+            "enabled": true,
+            "plugins_enabled": false,
+            "allowed_hook_names": [
+              "before_worker",
+              "after_worker",
+              "worker_error",
+              "before_tool_call",
+              "after_tool_call",
+              "tool_call_error"
+            ],
+            "redacted_data_keys": [
+              "secret",
+              "token",
+              "api_key",
+              "apikey",
+              "authorization",
+              "password",
+              "credential",
+              "raw_context"
+            ],
+            "handler_timeout_ms": 1000
+          },
+          "plugins": [],
+          "status_counts": {},
+          "warnings": [],
+          "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off."
+        }
+      },
+      "feature_flags": {
+        "streaming": {
+          "name": "streaming",
+          "active": true,
+          "reason": "Feature is enabled and all required capabilities are available.",
+          "feature_enabled": true,
+          "capability_available": true,
+          "capability_reason": "Strong and medium provider routes have streaming enabled."
+        }
+      },
+      "capability_flags": {
+        "strong_model": {
+          "name": "strong_model",
+          "available": true,
+          "reason": "Strong model route is configured."
+        },
+        "medium_model": {
+          "name": "medium_model",
+          "available": true,
+          "reason": "Medium model route is configured."
+        },
+        "plugin_execution": {
+          "name": "plugin_execution",
+          "available": false,
+          "reason": "Plugin execution is disabled."
+        },
+        "real_model": {
+          "name": "real_model",
+          "available": true,
+          "reason": "Real model gate has passed."
+        },
+        "provider_streaming": {
+          "name": "provider_streaming",
+          "available": true,
+          "reason": "Strong and medium provider routes have streaming enabled."
+        }
+      },
+      "evidence_sources": {
+        "real_model_gate": "H:\\mult_agent_code\\.asteria\\model\\real_model_gate_report.json",
+        "gray_suite": "H:\\mult_agent_code\\.asteria\\verification\\real_model_acceptance_gray.json",
+        "core_acceptance": "H:\\mult_agent_code\\.asteria\\acceptance\\acceptance_report.json"
+      },
+      "gray_task_limits": {
+        "max_iterations": 3,
+        "max_tasks_per_iteration": 1,
+        "max_repairs": 1,
+        "max_replans": 1,
+        "recommended_run_flags": [
+          "--max-iterations 3",
+          "--max-tasks-per-iteration 1",
+          "--no-research"
+        ],
+        "stop_conditions": [
+          "cost_status near_limit or hard_stop",
+          "merge gate promotion risk",
+          "protected path risk",
+          "session cannot resume"
+        ]
+      },
+      "validation_recommendation": {
+        "level": "none",
+        "reason": "No git changes detected or git status unavailable.",
+        "changed_file_count": 0,
+        "command": "asteria gate-status --json"
+      },
+      "gate_report": {
+        "schema_version": "0.1.0",
+        "ok": true,
+        "status": "passed",
+        "workspace": "H:\\mult_agent_code",
+        "duration_seconds": 185.309,
+        "routes": {
+          "strong": {
+            "configured": true,
+            "provider": "glm",
+            "model": "glm-5",
+            "base_url": ""
+          },
+          "medium": {
+            "configured": true,
+            "provider": "minimax",
+            "model": "",
+            "base_url": ""
+          },
+          "cheap": {
+            "configured": false,
+            "provider": "",
+            "model": "",
+            "base_url": ""
+          }
+        },
+        "checks": {
+          "strong_model_check": true,
+          "medium_model_check": true,
+          "smoke": true,
+          "strong_route_used": true,
+          "medium_route_used": true,
+          "worker_results_recorded": true,
+          "task_execution_evidence_recorded": true,
+          "cost_report_consistent": true
+        },
+        "failures": [],
+        "recommended_actions": [
+          "Run `asteria real-model-acceptance --suite gray` before core acceptance."
+        ],
+        "model_call_summary": {
+          "run_id": "run-20260517-0001",
+          "total_model_calls": 3,
+          "total_worker_results": 1,
+          "total_task_execution_evidence": 1,
+          "tiers": [
+            "medium",
+            "strong"
+          ],
+          "providers_by_tier": {
+            "medium": [
+              "minimax"
+            ],
+            "strong": [
+              "zai"
+            ]
+          },
+          "cost_report_model_calls": 3,
+          "cost_report_tool_calls": 3
+        },
+        "smoke_summary": {
+          "workspace": "H:\\mult_agent_code",
+          "run_id": "run-20260517-0001",
+          "expected_file": "H:\\mult_agent_code\\hello_runtime.txt",
+          "final_report": "H:\\mult_agent_code\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+          "transcript": "H:\\mult_agent_code\\real_model_smoke_transcript.json",
+          "duration_seconds": 165.565,
+          "diagnostics": {
+            "run_status": "completed",
+            "review_status": "pass",
+            "review_score": 0.9,
+            "task_status_counts": {
+              "done": 1
+            },
+            "model_calls": 3,
+            "tool_calls": 3,
+            "estimated_input_tokens": 28470,
+            "estimated_output_tokens": 5141,
+            "repair_attempts": 0,
+            "context_compactions": 1,
+            "cost_status": "within_budget"
+          },
+          "commands": [
+            {
+              "name": "init",
+              "command": [
+                "python",
+                "-m",
+                "asteria_runtime",
+                "/init",
+                "--root",
+                "H:\\mult_agent_code"
+              ],
+              "returncode": 0,
+              "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\nCreated:\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\nPreserved:\n  - AGENTS.md\n",
+              "stderr": ""
+            },
+            {
+              "name": "model-check",
+              "command": [
+                "python",
+                "-m",
+                "asteria_runtime",
+                "/model-check",
+                "--root",
+                "H:\\mult_agent_code"
+              ],
+              "returncode": 0,
+              "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
+              "stderr": ""
+            },
+            {
+              "name": "run",
+              "command": [
+                "python",
+                "-m",
+                "asteria_runtime",
+                "/run",
+                "Create a local file hello_runtime.txt containing one line: real model smoke ok",
+                "--root",
+                "H:\\mult_agent_code",
+                "--max-iterations",
+                "3",
+                "--max-tasks-per-iteration",
+                "1",
+                "--no-research"
+              ],
+              "returncode": 0,
+              "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183205-0800.json.\n",
+              "stderr": ""
+            }
+          ]
+        },
+        "commands": [
+          {
+            "name": "model-check-strong",
+            "command": [
+              "python",
+              "-m",
+              "asteria_runtime",
+              "/model-check",
+              "--root",
+              "H:\\mult_agent_code",
+              "--tier",
+              "strong"
+            ],
+            "returncode": 0,
+            "stdout": "Model check\nProvider: zai\nModel: glm-5.1\nBase URL: https://open.bigmodel.cn/api/coding/paas/v4\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
+            "stderr": ""
+          },
+          {
+            "name": "model-check-medium",
+            "command": [
+              "python",
+              "-m",
+              "asteria_runtime",
+              "/model-check",
+              "--root",
+              "H:\\mult_agent_code",
+              "--tier",
+              "medium"
+            ],
+            "returncode": 0,
+            "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
+            "stderr": ""
+          },
+          {
+            "name": "real-model-smoke",
+            "command": [
+              "python",
+              "-m",
+              "asteria_runtime.real_model_smoke",
+              "--root",
+              "H:\\mult_agent_code",
+              "--summary-json",
+              "H:\\mult_agent_code\\.asteria\\model\\real_model_smoke_summary.json",
+              "--run-attempts",
+              "2",
+              "--no-research"
+            ],
+            "returncode": 0,
+            "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\hello_runtime.txt\nFinal report: H:\\mult_agent_code\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\real_model_smoke_transcript.json\n",
+            "stderr": ""
+          }
+        ]
+      },
+      "gray_report": {
+        "ok": true,
+        "root": "H:\\mult_agent_code",
+        "suite": "gray",
+        "requested_scenarios": [],
+        "created_at": "2026-05-17T18:40:58+08:00",
+        "scenario_metadata": [
+          {
+            "scenario": "gray_file_artifact",
+            "capability": "gray_artifact_creation",
+            "tier": "gray",
+            "kind": "run"
+          },
+          {
+            "scenario": "gray_multi_file_scope",
+            "capability": "gray_multi_file_scope",
+            "tier": "gray",
+            "kind": "run"
+          },
+          {
+            "scenario": "gray_debug_repair",
+            "capability": "gray_debug_repair",
+            "tier": "gray",
+            "kind": "run"
+          },
+          {
+            "scenario": "runtime_request_resume",
+            "capability": "runtime_request_resume",
+            "tier": "core",
+            "kind": "runtime_os"
+          }
+        ],
+        "scenarios": [
+          {
+            "scenario": "gray_file_artifact",
+            "capability": "gray_artifact_creation",
+            "tier": "gray",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\gray_file_artifact",
+            "duration_seconds": 187.908,
+            "attempts": [
+              {
+                "attempt": 1,
+                "returncode": 0,
+                "retryable": false,
+                "failure_type": null,
+                "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\gray_file_artifact\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\gray_file_artifact\\gray_runtime.txt\nFinal report: H:\\mult_agent_code\\gray_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\gray_file_artifact\\real_model_smoke_transcript.json\n",
+                "stderr_tail": ""
+              }
+            ],
+            "summary": {
+              "workspace": "H:\\mult_agent_code\\gray_file_artifact",
+              "run_id": "run-20260517-0001",
+              "expected_file": "H:\\mult_agent_code\\gray_file_artifact\\gray_runtime.txt",
+              "final_report": "H:\\mult_agent_code\\gray_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+              "transcript": "H:\\mult_agent_code\\gray_file_artifact\\real_model_smoke_transcript.json",
+              "duration_seconds": 187.834,
+              "diagnostics": {
+                "run_status": "completed",
+                "review_status": "pass",
+                "review_score": 0.9,
+                "task_status_counts": {
+                  "done": 1
+                },
+                "model_calls": 3,
+                "tool_calls": 3,
+                "estimated_input_tokens": 17349,
+                "estimated_output_tokens": 4648,
+                "repair_attempts": 0,
+                "context_compactions": 1,
+                "cost_status": "within_budget"
+              },
+              "commands": [
+                {
+                  "name": "init",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/init",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_file_artifact"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\gray_file_artifact\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
+                  "stderr": ""
+                },
+                {
+                  "name": "model-check",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/model-check",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_file_artifact"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
+                  "stderr": ""
+                },
+                {
+                  "name": "run",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/run",
+                    "Create a local file gray_runtime.txt containing one line: gray route artifact ok",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_file_artifact",
+                    "--max-iterations",
+                    "3",
+                    "--max-tasks-per-iteration",
+                    "1",
+                    "--no-research"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\gray_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183600-0800.json.\n",
+                  "stderr": ""
+                }
+              ]
+            },
+            "route_evidence": {
+              "available": true,
+              "run_id": "run-20260517-0001",
+              "model_call_count": 3,
+              "worker_result_count": 1,
+              "task_execution_evidence_count": 1,
+              "tiers": [
+                "medium",
+                "strong"
+              ],
+              "providers_by_tier": {
+                "medium": [
+                  "minimax"
+                ],
+                "strong": [
+                  "zai"
+                ]
+              },
+              "purposes_by_tier": {
+                "medium": [
+                  "task_execution"
+                ],
+                "strong": [
+                  "goal_spec",
+                  "run_review"
+                ]
+              },
+              "strong_used": true,
+              "medium_used": true
+            },
+            "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\gray_file_artifact\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\gray_file_artifact\\gray_runtime.txt\nFinal report: H:\\mult_agent_code\\gray_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\gray_file_artifact\\real_model_smoke_transcript.json\n",
+            "stderr": ""
+          },
+          {
+            "scenario": "gray_multi_file_scope",
+            "capability": "gray_multi_file_scope",
+            "tier": "gray",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\gray_multi_file_scope",
+            "duration_seconds": 119.911,
+            "attempts": [
+              {
+                "attempt": 1,
+                "returncode": 0,
+                "retryable": false,
+                "failure_type": null,
+                "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\gray_multi_file_scope\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\gray_multi_file_scope\\notes.py\nFinal report: H:\\mult_agent_code\\gray_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\gray_multi_file_scope\\real_model_smoke_transcript.json\n",
+                "stderr_tail": ""
+              }
+            ],
+            "summary": {
+              "workspace": "H:\\mult_agent_code\\gray_multi_file_scope",
+              "run_id": "run-20260517-0001",
+              "expected_file": "H:\\mult_agent_code\\gray_multi_file_scope\\notes.py",
+              "final_report": "H:\\mult_agent_code\\gray_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+              "transcript": "H:\\mult_agent_code\\gray_multi_file_scope\\real_model_smoke_transcript.json",
+              "duration_seconds": 119.837,
+              "diagnostics": {
+                "run_status": "completed",
+                "review_status": "pass",
+                "review_score": 0.9,
+                "task_status_counts": {
+                  "done": 1
+                },
+                "model_calls": 3,
+                "tool_calls": 10,
+                "estimated_input_tokens": 26434,
+                "estimated_output_tokens": 6110,
+                "repair_attempts": 0,
+                "context_compactions": 1,
+                "cost_status": "within_budget"
+              },
+              "commands": [
+                {
+                  "name": "init",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/init",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_multi_file_scope"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\gray_multi_file_scope\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
+                  "stderr": ""
+                },
+                {
+                  "name": "model-check",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/model-check",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_multi_file_scope"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
+                  "stderr": ""
+                },
+                {
+                  "name": "run",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/run",
+                    "Create a small multi-file Python notes CLI. Use a package directory named notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support `python notes.py add \"ship gray\"` and `python notes.py list`, storing notes in notes.json under the current directory.",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_multi_file_scope",
+                    "--max-iterations",
+                    "5",
+                    "--max-tasks-per-iteration",
+                    "1",
+                    "--no-research"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\gray_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183800-0800.json.\n",
+                  "stderr": ""
+                }
+              ]
+            },
+            "route_evidence": {
+              "available": true,
+              "run_id": "run-20260517-0001",
+              "model_call_count": 3,
+              "worker_result_count": 1,
+              "task_execution_evidence_count": 1,
+              "tiers": [
+                "medium",
+                "strong"
+              ],
+              "providers_by_tier": {
+                "medium": [
+                  "minimax"
+                ],
+                "strong": [
+                  "zai"
+                ]
+              },
+              "purposes_by_tier": {
+                "medium": [
+                  "task_execution"
+                ],
+                "strong": [
+                  "goal_spec",
+                  "run_review"
+                ]
+              },
+              "strong_used": true,
+              "medium_used": true
+            },
+            "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\gray_multi_file_scope\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\gray_multi_file_scope\\notes.py\nFinal report: H:\\mult_agent_code\\gray_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\gray_multi_file_scope\\real_model_smoke_transcript.json\n",
+            "stderr": ""
+          },
+          {
+            "scenario": "gray_debug_repair",
+            "capability": "gray_debug_repair",
+            "tier": "gray",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\gray_debug_repair",
+            "duration_seconds": 103.37,
+            "attempts": [
+              {
+                "attempt": 1,
+                "returncode": 0,
+                "retryable": false,
+                "failure_type": null,
+                "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\gray_debug_repair\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\gray_debug_repair\\buggy_math.py\nFinal report: H:\\mult_agent_code\\gray_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\gray_debug_repair\\real_model_smoke_transcript.json\n",
+                "stderr_tail": ""
+              }
+            ],
+            "summary": {
+              "workspace": "H:\\mult_agent_code\\gray_debug_repair",
+              "run_id": "run-20260517-0001",
+              "expected_file": "H:\\mult_agent_code\\gray_debug_repair\\buggy_math.py",
+              "final_report": "H:\\mult_agent_code\\gray_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+              "transcript": "H:\\mult_agent_code\\gray_debug_repair\\real_model_smoke_transcript.json",
+              "duration_seconds": 103.303,
+              "diagnostics": {
+                "run_status": "completed",
+                "review_status": "pass",
+                "review_score": 0.9,
+                "task_status_counts": {
+                  "done": 1
+                },
+                "model_calls": 4,
+                "tool_calls": 6,
+                "estimated_input_tokens": 34499,
+                "estimated_output_tokens": 5323,
+                "repair_attempts": 1,
+                "context_compactions": 1,
+                "cost_status": "within_budget"
+              },
+              "commands": [
+                {
+                  "name": "init",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/init",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_debug_repair"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\gray_debug_repair\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
+                  "stderr": ""
+                },
+                {
+                  "name": "model-check",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/model-check",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_debug_repair"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
+                  "stderr": ""
+                },
+                {
+                  "name": "run",
+                  "command": [
+                    "python",
+                    "-m",
+                    "asteria_runtime",
+                    "/run",
+                    "Fix the failing tests in this project. Run the Python tests, identify the bug in buggy_math.py, and make the tests pass with the smallest reasonable change.",
+                    "--root",
+                    "H:\\mult_agent_code\\gray_debug_repair",
+                    "--max-iterations",
+                    "5",
+                    "--max-tasks-per-iteration",
+                    "1",
+                    "--no-research"
+                  ],
+                  "returncode": 0,
+                  "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\gray_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 0 completed, 1 blocked.\n- debug: completed - 1 repaired, 0 still blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183943-0800.json.\n",
+                  "stderr": ""
+                }
+              ]
+            },
+            "route_evidence": {
+              "available": true,
+              "run_id": "run-20260517-0001",
+              "model_call_count": 4,
+              "worker_result_count": 1,
+              "task_execution_evidence_count": 2,
+              "tiers": [
+                "medium",
+                "strong"
+              ],
+              "providers_by_tier": {
+                "medium": [
+                  "minimax"
+                ],
+                "strong": [
+                  "zai"
+                ]
+              },
+              "purposes_by_tier": {
+                "medium": [
+                  "task_execution",
+                  "task_repair"
+                ],
+                "strong": [
+                  "goal_spec",
+                  "run_review"
+                ]
+              },
+              "strong_used": true,
+              "medium_used": true
+            },
+            "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\gray_debug_repair\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\gray_debug_repair\\buggy_math.py\nFinal report: H:\\mult_agent_code\\gray_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\gray_debug_repair\\real_model_smoke_transcript.json\n",
+            "stderr": ""
+          },
+          {
+            "scenario": "runtime_request_resume",
+            "capability": "runtime_request_resume",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\runtime_request_resume",
+            "duration_seconds": 74.635,
+            "summary": {
+              "run_id": "run-20260517-0001",
+              "runtime_os": {
+                "capability": "runtime_request_resume",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": false,
+                  "task_execution_evidence_jsonl": true,
+                  "resume_recovered": true,
+                  "failure_evidence": true
+                },
+                "result": "Resumed run: run-20260517-0001\nStatus: blocked\nApplied decisions: 1\nCreated tasks: 0\nFinal report: H:\\mult_agent_code\\runtime_request_resume\\.asteria\\runs\\run-20260517-0001\\final_report.md"
+              }
+            },
+            "stdout": "{\"run_id\": \"run-20260517-0001\", \"runtime_os\": {\"capability\": \"runtime_request_resume\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": false, \"task_execution_evidence_jsonl\": true, \"resume_recovered\": true, \"failure_evidence\": true}, \"result\": \"Resumed run: run-20260517-0001\\nStatus: blocked\\nApplied decisions: 1\\nCreated tasks: 0\\nFinal report: H:\\\\mult_agent_code\\\\runtime_request_resume\\\\.asteria\\\\runs\\\\run-20260517-0001\\\\final_report.md\"}}",
+            "stderr": ""
+          }
+        ],
+        "aggregate": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "duration_seconds": 485.824,
+          "model_calls": 10,
+          "tool_calls": 19,
+          "estimated_input_tokens": 78282,
+          "estimated_output_tokens": 16081,
+          "repair_attempts": 1,
+          "context_compactions": 3,
+          "failed_scenarios": [],
+          "capabilities": {
+            "gray_artifact_creation": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "gray_multi_file_scope": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "gray_debug_repair": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "runtime_request_resume": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            }
+          },
+          "tiers": {
+            "gray": {
+              "total": 3,
+              "passed": 3,
+              "failed": 0,
+              "ok": true
+            },
+            "core": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            }
+          },
+          "route_evidence": {
+            "scenarios_with_route_evidence": [
+              "gray_file_artifact",
+              "gray_multi_file_scope",
+              "gray_debug_repair"
+            ],
+            "scenarios_missing_strong": [],
+            "scenarios_missing_medium": [],
+            "providers_by_tier": {
+              "medium": [
+                "minimax"
+              ],
+              "strong": [
+                "zai"
+              ]
+            },
+            "strong_used": true,
+            "medium_used": true
+          }
+        },
+        "gray_ready": true,
+        "trend": {
+          "previous": null,
+          "deltas": {}
+        }
+      },
+      "core_report": {
+        "schema_version": "0.1.0",
+        "suite": "core",
+        "requested_scenarios": [],
+        "root": "H:\\mult_agent_code",
+        "ok": true,
+        "returncode": 0,
+        "created_at": "2026-05-19T00:16:25+08:00",
+        "summary_json": "H:\\mult_agent_code\\.asteria\\acceptance\\latest_summary.json",
+        "aggregate": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "duration_seconds": 6.161,
+          "model_calls": 0,
+          "tool_calls": 0,
+          "estimated_input_tokens": 0,
+          "estimated_output_tokens": 0,
+          "repair_attempts": 0,
+          "context_compactions": 0,
+          "failed_scenarios": [],
+          "capabilities": {
+            "runtime_parallel_readonly": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "runtime_disjoint_writes": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "runtime_worker_failure": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "runtime_merge_gate_block": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "runtime_request_resume": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "context_package_slice": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "sandbox_backend_selection": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "planner_scope_quality": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "capability_feedback": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            },
+            "runtime_evidence_consumption": {
+              "total": 1,
+              "passed": 1,
+              "failed": 0,
+              "ok": true
+            }
+          },
+          "tiers": {
+            "core": {
+              "total": 10,
+              "passed": 10,
+              "failed": 0,
+              "ok": true
+            }
+          },
+          "route_evidence": {
+            "scenarios_with_route_evidence": [],
+            "scenarios_missing_strong": [],
+            "scenarios_missing_medium": [],
+            "providers_by_tier": {},
+            "strong_used": false,
+            "medium_used": false
+          }
+        },
+        "trend": {
+          "previous": {
+            "created_at": "2026-05-18T22:36:08+08:00",
+            "ok": true,
+            "aggregate": {
+              "total": 10,
+              "passed": 10,
+              "failed": 0,
+              "duration_seconds": 2.495,
+              "model_calls": 0,
+              "tool_calls": 0,
+              "estimated_input_tokens": 0,
+              "estimated_output_tokens": 0,
+              "repair_attempts": 0,
+              "context_compactions": 0,
+              "failed_scenarios": [],
+              "capabilities": {
+                "runtime_parallel_readonly": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "runtime_disjoint_writes": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "runtime_worker_failure": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "runtime_merge_gate_block": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "runtime_request_resume": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "context_package_slice": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "sandbox_backend_selection": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "planner_scope_quality": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "capability_feedback": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                },
+                "runtime_evidence_consumption": {
+                  "total": 1,
+                  "passed": 1,
+                  "failed": 0,
+                  "ok": true
+                }
+              },
+              "tiers": {
+                "core": {
+                  "total": 10,
+                  "passed": 10,
+                  "failed": 0,
+                  "ok": true
+                }
+              },
+              "route_evidence": {
+                "scenarios_with_route_evidence": [],
+                "scenarios_missing_strong": [],
+                "scenarios_missing_medium": [],
+                "providers_by_tier": {},
+                "strong_used": false,
+                "medium_used": false
+              }
+            }
+          },
+          "deltas": {
+            "passed": 0.0,
+            "failed": 0.0,
+            "duration_seconds": 3.666,
+            "model_calls": 0.0,
+            "tool_calls": 0.0,
+            "estimated_input_tokens": 0.0,
+            "estimated_output_tokens": 0.0,
+            "repair_attempts": 0.0,
+            "context_compactions": 0.0
+          }
+        },
+        "scenario_metadata": [
+          {
+            "scenario": "runtime_parallel_readonly",
+            "capability": "runtime_parallel_readonly",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_disjoint_writes",
+            "capability": "runtime_disjoint_writes",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_worker_failure",
+            "capability": "runtime_worker_failure",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_merge_gate_block",
+            "capability": "runtime_merge_gate_block",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_request_resume",
+            "capability": "runtime_request_resume",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_context_package_slice",
+            "capability": "context_package_slice",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_sandbox_backend_selection",
+            "capability": "sandbox_backend_selection",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_planner_scope_quality",
+            "capability": "planner_scope_quality",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_capability_feedback",
+            "capability": "capability_feedback",
+            "tier": "core",
+            "kind": "runtime_os"
+          },
+          {
+            "scenario": "runtime_evidence_consumption",
+            "capability": "runtime_evidence_consumption",
+            "tier": "core",
+            "kind": "runtime_os"
+          }
+        ],
+        "scenarios": [
+          {
+            "scenario": "runtime_parallel_readonly",
+            "capability": "runtime_parallel_readonly",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_parallel_readonly",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"runtime_parallel_readonly\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true}, \"result\": \"Executed run: run-20260519-0001\\nCompleted tasks: 2\\nBlocked tasks: 0\\n- task-0001: done (0 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_parallel_readonly\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\n- task-0002: done (0 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_parallel_readonly\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\nCost report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_parallel_readonly\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\cost_report.json\"}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "runtime_parallel_readonly",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true
+                },
+                "result": "Executed run: run-20260519-0001\nCompleted tasks: 2\nBlocked tasks: 0\n- task-0001: done (0 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_parallel_readonly\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\n- task-0002: done (0 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_parallel_readonly\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\nCost report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_parallel_readonly\\.asteria\\runs\\run-20260519-0001\\cost_report.json"
+              }
+            }
+          },
+          {
+            "scenario": "runtime_disjoint_writes",
+            "capability": "runtime_disjoint_writes",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_disjoint_writes",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"runtime_disjoint_writes\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true}, \"result\": \"Executed run: run-20260519-0001\\nCompleted tasks: 2\\nBlocked tasks: 0\\n- task-0001: done (1 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_disjoint_writes\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\n- task-0002: done (1 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_disjoint_writes\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\nCost report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_disjoint_writes\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\cost_report.json\"}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "runtime_disjoint_writes",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true
+                },
+                "result": "Executed run: run-20260519-0001\nCompleted tasks: 2\nBlocked tasks: 0\n- task-0001: done (1 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_disjoint_writes\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\n- task-0002: done (1 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_disjoint_writes\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\nCost report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_disjoint_writes\\.asteria\\runs\\run-20260519-0001\\cost_report.json"
+              }
+            }
+          },
+          {
+            "scenario": "runtime_worker_failure",
+            "capability": "runtime_worker_failure",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_worker_failure",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"runtime_worker_failure\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true, \"candidate_isolated\": true, \"failure_evidence\": true, \"promotion_failure_recorded\": true}, \"result\": \"Executed run: run-20260519-0001\\nCompleted tasks: 0\\nBlocked tasks: 1\\n- task-0001: blocked (1 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_worker_failure\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\nCost report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_worker_failure\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\cost_report.json\"}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "runtime_worker_failure",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true,
+                  "candidate_isolated": true,
+                  "failure_evidence": true,
+                  "promotion_failure_recorded": true
+                },
+                "result": "Executed run: run-20260519-0001\nCompleted tasks: 0\nBlocked tasks: 1\n- task-0001: blocked (1 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_worker_failure\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\nCost report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_worker_failure\\.asteria\\runs\\run-20260519-0001\\cost_report.json"
+              }
+            }
+          },
+          {
+            "scenario": "runtime_merge_gate_block",
+            "capability": "runtime_merge_gate_block",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_merge_gate_block",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"runtime_merge_gate_block\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true, \"merge_gate_blocked\": true}, \"result\": null, \"merge_gate\": {\"ok\": false, \"promotable_files\": [], \"violations\": [\"changed files outside write_scope: unsafe/output.txt\"]}}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "runtime_merge_gate_block",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true,
+                  "merge_gate_blocked": true
+                },
+                "result": null,
+                "merge_gate": {
+                  "ok": false,
+                  "promotable_files": [],
+                  "violations": [
+                    "changed files outside write_scope: unsafe/output.txt"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "scenario": "runtime_request_resume",
+            "capability": "runtime_request_resume",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_request_resume",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"runtime_request_resume\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": false, \"task_execution_evidence_jsonl\": true, \"resume_recovered\": true, \"failure_evidence\": true}, \"result\": \"Resumed run: run-20260519-0001\\nStatus: completed\\nApplied decisions: 1\\nCreated tasks: 0\\nFinal report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_request_resume\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\final_report.md\"}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "runtime_request_resume",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": false,
+                  "task_execution_evidence_jsonl": true,
+                  "resume_recovered": true,
+                  "failure_evidence": true
+                },
+                "result": "Resumed run: run-20260519-0001\nStatus: completed\nApplied decisions: 1\nCreated tasks: 0\nFinal report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_request_resume\\.asteria\\runs\\run-20260519-0001\\final_report.md"
+              }
+            }
+          },
+          {
+            "scenario": "runtime_context_package_slice",
+            "capability": "context_package_slice",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_context_package_slice",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"context_package_slice\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true, \"context_package_sliced\": true, \"context_package_scope_partitioned\": true}, \"result\": \"Executed run: run-20260519-0001\\nCompleted tasks: 1\\nBlocked tasks: 0\\n- task-0001: done (1 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_context_package_slice\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\nCost report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_context_package_slice\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\cost_report.json\", \"context_package\": {\"paths\": [\"input/scoped.txt\"], \"has_scoped_file\": true, \"has_unscoped_file\": false, \"has_scope_summary\": true, \"has_evidence_scope\": true, \"has_write_scope_files\": true, \"has_recent_failures\": true}}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "context_package_slice",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true,
+                  "context_package_sliced": true,
+                  "context_package_scope_partitioned": true
+                },
+                "result": "Executed run: run-20260519-0001\nCompleted tasks: 1\nBlocked tasks: 0\n- task-0001: done (1 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_context_package_slice\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\nCost report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_context_package_slice\\.asteria\\runs\\run-20260519-0001\\cost_report.json",
+                "context_package": {
+                  "paths": [
+                    "input/scoped.txt"
+                  ],
+                  "has_scoped_file": true,
+                  "has_unscoped_file": false,
+                  "has_scope_summary": true,
+                  "has_evidence_scope": true,
+                  "has_write_scope_files": true,
+                  "has_recent_failures": true
+                }
+              }
+            }
+          },
+          {
+            "scenario": "runtime_sandbox_backend_selection",
+            "capability": "sandbox_backend_selection",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_sandbox_backend_selection",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"sandbox_backend_selection\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true, \"sandbox_backend_recorded\": true}, \"result\": \"Executed run: run-20260519-0001\\nCompleted tasks: 1\\nBlocked tasks: 0\\n- task-0001: done (1 tool, 1 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_sandbox_backend_selection\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\nCost report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_sandbox_backend_selection\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\cost_report.json\", \"sandbox_profiles\": [{\"schema_version\": \"0.1.0\", \"sandbox_profile_id\": \"sandbox-profile-worker-0001\", \"backend\": \"temp_workspace\", \"workspace_policy\": \"isolated_copy\", \"cleanup_policy\": \"keep_evidence\", \"export_required\": [\"artifact_index\", \"diff\", \"failure_evidence\"], \"reason\": \"use copied temp workspace when git worktree is unavailable\"}]}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "sandbox_backend_selection",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true,
+                  "sandbox_backend_recorded": true
+                },
+                "result": "Executed run: run-20260519-0001\nCompleted tasks: 1\nBlocked tasks: 0\n- task-0001: done (1 tool, 1 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_sandbox_backend_selection\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\nCost report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_sandbox_backend_selection\\.asteria\\runs\\run-20260519-0001\\cost_report.json",
+                "sandbox_profiles": [
+                  {
+                    "schema_version": "0.1.0",
+                    "sandbox_profile_id": "sandbox-profile-worker-0001",
+                    "backend": "temp_workspace",
+                    "workspace_policy": "isolated_copy",
+                    "cleanup_policy": "keep_evidence",
+                    "export_required": [
+                      "artifact_index",
+                      "diff",
+                      "failure_evidence"
+                    ],
+                    "reason": "use copied temp workspace when git worktree is unavailable"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "scenario": "runtime_planner_scope_quality",
+            "capability": "planner_scope_quality",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_planner_scope_quality",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"planner_scope_quality\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": false, \"task_execution_evidence_jsonl\": true, \"planner_scope_narrowed\": true, \"runtime_request_created\": true}, \"result\": \"Executed run: run-20260519-0001\\nCompleted tasks: 0\\nBlocked tasks: 1\\n- task-0001: blocked (0 tool, 0 verification)\\n  evidence: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_planner_scope_quality\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\task_execution_evidence.jsonl\\nCost report: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_planner_scope_quality\\\\.asteria\\\\runs\\\\run-20260519-0001\\\\cost_report.json\", \"planned_task\": {\"write_scope\": [], \"parallel_safety\": \"serial\", \"notes\": \"Generated from req-runtime-scope. Quality: clarity=0.85 testability=0.85 size=0.80 artifact=0.85. Scope quality: write_scope was broad (src/), so it was narrowed to require a runtime scope request. Multi-agent strategy: readonly_fanout (max_child_workers=3; readonly or diagnostic work can fan out safely under shared budget).\"}}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "planner_scope_quality",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": false,
+                  "task_execution_evidence_jsonl": true,
+                  "planner_scope_narrowed": true,
+                  "runtime_request_created": true
+                },
+                "result": "Executed run: run-20260519-0001\nCompleted tasks: 0\nBlocked tasks: 1\n- task-0001: blocked (0 tool, 0 verification)\n  evidence: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_planner_scope_quality\\.asteria\\runs\\run-20260519-0001\\task_execution_evidence.jsonl\nCost report: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_planner_scope_quality\\.asteria\\runs\\run-20260519-0001\\cost_report.json",
+                "planned_task": {
+                  "write_scope": [],
+                  "parallel_safety": "serial",
+                  "notes": "Generated from req-runtime-scope. Quality: clarity=0.85 testability=0.85 size=0.80 artifact=0.85. Scope quality: write_scope was broad (src/), so it was narrowed to require a runtime scope request. Multi-agent strategy: readonly_fanout (max_child_workers=3; readonly or diagnostic work can fan out safely under shared budget)."
+                }
+              }
+            }
+          },
+          {
+            "scenario": "runtime_capability_feedback",
+            "capability": "capability_feedback",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_capability_feedback",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"capability_feedback\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true, \"capability_feedback_recorded\": true}, \"result\": \"Capability report\\nRoot: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_capability_feedback\\nAcceptance runs: 0\\nFailure types:\\n  - merge_gate: 1\\n  - runtime_request: 1\\nAverage repair rounds: 0.00\\nCost signals: 2 model calls, 2 tool calls\\nModel capability profiles:\\n  - runtime/medium-route purpose=coding tier=medium: 0.00 success (0/0 calls, 0 in/0 out tokens, worker=0.50, validation=1.00, runtime_requests=1, merge_blocks=1)\\n  - runtime-acceptance/feedback purpose=task_execution tier=medium: 1.00 success (2/2 calls, 2 in/2 out tokens, worker=0.00, validation=0.00, runtime_requests=0, merge_blocks=0)\\nModel profile: H:\\\\mult_agent_code\\\\.asteria\\\\acceptance\\\\workspaces\\\\latest_summary\\\\runtime_capability_feedback\\\\.asteria\\\\model\\\\capability_profile.json\\nRoute guidance: blocked\\n  - Pause scaling affected routes until provider, worker, or budget issues are resolved.\\n  - Run `asteria capability-report` after collecting fresh evidence.\\nRuntime OS release evidence:\\n  - gate: partial\\n  - workers: 2 result(s) from 2 invocation(s)\\n  - task graph selections: 1\\n  - missing capabilities: runtime_parallel_readonly, runtime_disjoint_writes, runtime_worker_failure, runtime_merge_gate_block, runtime_request_resume, context_package_slice, sandbox_backend_selection, planner_scope_quality, capability_feedback, runtime_evidence_consumption\\nCommon blockers:\\n  - Runtime request requires decision decision-0001: runtime-request-0001\\n  - Synthetic merge gate signal for capability feedback acceptance.\\nRecommended next actions:\\n  - Run `asteria /acceptance --suite core` to establish a baseline.\\n  - Use `/replan` and `/debug` on the latest execution evidence failures.\\n  - Inspect the most common blocker evidence before widening scope.\\n  - Pause scaling affected routes until provider, worker, or budget issues are resolved.\\n  - Run `asteria capability-report` after collecting fresh evidence.\\n  - Run Runtime OS core acceptance and gate before release: `asteria /acceptance --suite core` then `asteria /acceptance-gate --suite core`.\", \"capability_profile\": {\"provider\": \"runtime\", \"model\": \"medium-route\", \"purpose\": \"coding\", \"model_tier\": \"medium\", \"total_calls\": 0, \"success_calls\": 0, \"failure_calls\": 0, \"input_tokens\": 0, \"output_tokens\": 0, \"total_workers\": 2, \"successful_workers\": 1, \"failed_workers\": 1, \"validation_total\": 1, \"validation_passed\": 1, \"runtime_request_total\": 1, \"runtime_request_types\": {\"scope_expansion\": 1}, \"merge_gate_blocks\": 1, \"failure_types\": {\"failed\": 1, \"merge_gate\": 1}, \"recent_failures\": [\"Runtime request requires decision decision-0001: runtime-request-0001\"], \"success_rate\": 0.0, \"average_input_tokens\": 0.0, \"average_output_tokens\": 0.0, \"worker_success_rate\": 0.5, \"validation_pass_rate\": 1.0, \"runtime_request_rate\": 0.5, \"recommended_action\": \"review_worker_route_before_scaling\"}}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "capability_feedback",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true,
+                  "capability_feedback_recorded": true
+                },
+                "result": "Capability report\nRoot: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_capability_feedback\nAcceptance runs: 0\nFailure types:\n  - merge_gate: 1\n  - runtime_request: 1\nAverage repair rounds: 0.00\nCost signals: 2 model calls, 2 tool calls\nModel capability profiles:\n  - runtime/medium-route purpose=coding tier=medium: 0.00 success (0/0 calls, 0 in/0 out tokens, worker=0.50, validation=1.00, runtime_requests=1, merge_blocks=1)\n  - runtime-acceptance/feedback purpose=task_execution tier=medium: 1.00 success (2/2 calls, 2 in/2 out tokens, worker=0.00, validation=0.00, runtime_requests=0, merge_blocks=0)\nModel profile: H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_capability_feedback\\.asteria\\model\\capability_profile.json\nRoute guidance: blocked\n  - Pause scaling affected routes until provider, worker, or budget issues are resolved.\n  - Run `asteria capability-report` after collecting fresh evidence.\nRuntime OS release evidence:\n  - gate: partial\n  - workers: 2 result(s) from 2 invocation(s)\n  - task graph selections: 1\n  - missing capabilities: runtime_parallel_readonly, runtime_disjoint_writes, runtime_worker_failure, runtime_merge_gate_block, runtime_request_resume, context_package_slice, sandbox_backend_selection, planner_scope_quality, capability_feedback, runtime_evidence_consumption\nCommon blockers:\n  - Runtime request requires decision decision-0001: runtime-request-0001\n  - Synthetic merge gate signal for capability feedback acceptance.\nRecommended next actions:\n  - Run `asteria /acceptance --suite core` to establish a baseline.\n  - Use `/replan` and `/debug` on the latest execution evidence failures.\n  - Inspect the most common blocker evidence before widening scope.\n  - Pause scaling affected routes until provider, worker, or budget issues are resolved.\n  - Run `asteria capability-report` after collecting fresh evidence.\n  - Run Runtime OS core acceptance and gate before release: `asteria /acceptance --suite core` then `asteria /acceptance-gate --suite core`.",
+                "capability_profile": {
+                  "provider": "runtime",
+                  "model": "medium-route",
+                  "purpose": "coding",
+                  "model_tier": "medium",
+                  "total_calls": 0,
+                  "success_calls": 0,
+                  "failure_calls": 0,
+                  "input_tokens": 0,
+                  "output_tokens": 0,
+                  "total_workers": 2,
+                  "successful_workers": 1,
+                  "failed_workers": 1,
+                  "validation_total": 1,
+                  "validation_passed": 1,
+                  "runtime_request_total": 1,
+                  "runtime_request_types": {
+                    "scope_expansion": 1
+                  },
+                  "merge_gate_blocks": 1,
+                  "failure_types": {
+                    "failed": 1,
+                    "merge_gate": 1
+                  },
+                  "recent_failures": [
+                    "Runtime request requires decision decision-0001: runtime-request-0001"
+                  ],
+                  "success_rate": 0.0,
+                  "average_input_tokens": 0.0,
+                  "average_output_tokens": 0.0,
+                  "worker_success_rate": 0.5,
+                  "validation_pass_rate": 1.0,
+                  "runtime_request_rate": 0.5,
+                  "recommended_action": "review_worker_route_before_scaling"
+                }
+              }
+            }
+          },
+          {
+            "scenario": "runtime_evidence_consumption",
+            "capability": "runtime_evidence_consumption",
+            "tier": "core",
+            "ok": true,
+            "workspace": "H:\\mult_agent_code\\.asteria\\acceptance\\workspaces\\latest_summary\\runtime_evidence_consumption",
+            "failure_summary": "",
+            "failure_attribution": {
+              "category": "none",
+              "retryable": false,
+              "confidence": 1.0,
+              "signals": []
+            },
+            "attempts": [],
+            "stdout_tail": "{\"run_id\": \"run-20260519-0001\", \"runtime_os\": {\"capability\": \"runtime_evidence_consumption\", \"evidence\": {\"workers_jsonl\": true, \"worker_results_jsonl\": true, \"runtime_profiles_jsonl\": true, \"context_mounts_jsonl\": true, \"validation_results_jsonl\": true, \"task_execution_evidence_jsonl\": true, \"debug_consumed_runtime_evidence\": true, \"review_consumed_runtime_evidence\": true}, \"result\": \"debug and review consumed Runtime OS evidence\"}}",
+            "stderr_tail": "",
+            "summary": {
+              "run_id": "run-20260519-0001",
+              "runtime_os": {
+                "capability": "runtime_evidence_consumption",
+                "evidence": {
+                  "workers_jsonl": true,
+                  "worker_results_jsonl": true,
+                  "runtime_profiles_jsonl": true,
+                  "context_mounts_jsonl": true,
+                  "validation_results_jsonl": true,
+                  "task_execution_evidence_jsonl": true,
+                  "debug_consumed_runtime_evidence": true,
+                  "review_consumed_runtime_evidence": true
+                },
+                "result": "debug and review consumed Runtime OS evidence"
+              }
+            }
+          }
+        ],
+        "trend_warnings": []
+      },
+      "next_actions": [
+        "Start small real-task gray validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
+        "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears."
+      ]
+    }
+  },
+  "latest_observation_plan": {},
+  "next_actions": [
+    "Start small real-task gray validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
+    "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears."
+  ]
+}
