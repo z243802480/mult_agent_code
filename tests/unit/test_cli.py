@@ -7,6 +7,22 @@ from pathlib import Path
 from asteria_runtime.cli import build_parser, main
 
 
+def test_top_level_help_groups_command_surface() -> None:
+    help_text = build_parser().format_help()
+
+    assert "Start" in help_text
+    assert "Maintain" in help_text
+    assert "Advanced" in help_text
+    assert "CI / Reports" in help_text
+    assert "Models" in help_text
+    assert help_text.index("Start") < help_text.index("Maintain")
+    assert help_text.index("Maintain") < help_text.index("Advanced")
+    assert "init    Initialize an agent-ready workspace." in help_text
+    assert "gate             Run staged readiness checks" in help_text
+    assert "real-model-acceptance" in help_text
+    assert "Use `asteria <command> --help`" in help_text
+
+
 def test_slash_command_aliases_parse_like_regular_commands() -> None:
     parser = build_parser()
 

@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from asteria_runtime import __version__
 from asteria_runtime.commands.acceptance_command import AcceptanceCommand
@@ -53,6 +54,48 @@ from asteria_runtime.real_model_gate import run_from_args as run_real_model_gate
 from asteria_runtime.real_model_smoke import run_from_args as run_real_model_smoke
 
 
+CommandGroup = tuple[str, str, list[tuple[str, str]]]
+
+
+class AsteriaArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._command_groups: list[CommandGroup] = []
+
+    def set_command_groups(self, groups: list[CommandGroup]) -> None:
+        self._command_groups = groups
+
+    def format_help(self) -> str:
+        if self.prog != "asteria" or not self._command_groups:
+            return super().format_help()
+
+        lines = [
+            "usage: asteria [-h] [--version] <command> ...",
+            "",
+            "Asteria runtime CLI",
+            "",
+            "Start",
+            "  Default workflow commands for day-to-day autonomous development.",
+        ]
+        for title, description, commands in self._command_groups:
+            if title != "Start":
+                lines.extend(["", title, f"  {description}"])
+            width = max(len(command) for command, _summary in commands)
+            for command, summary in commands:
+                lines.append(f"  {command.ljust(width)}  {summary}")
+        lines.extend(
+            [
+                "",
+                "Options",
+                "  -h, --help  show this help message and exit",
+                "  --version   show runtime version and exit",
+                "",
+                "Use `asteria <command> --help` for command-specific options.",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+
 def add_session_id_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
     parser.add_argument(
         "--session-id",
@@ -64,7 +107,7 @@ def add_session_id_argument(parser: argparse.ArgumentParser, help_text: str) -> 
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="asteria", description="Asteria runtime CLI")
+    parser = AsteriaArgumentParser(prog="asteria", description="Asteria runtime CLI")
     parser.add_argument(
         "--version",
         action="version",
@@ -1054,6 +1097,80 @@ def build_parser() -> argparse.ArgumentParser:
         help="Evaluate only one Studio session id",
     )
     studio_benchmark_parser.add_argument("--json", action="store_true", help="Print JSON")
+    parser.set_command_groups(
+        [
+            (
+                "Start",
+                "Default workflow commands for day-to-day autonomous development.",
+                [
+                    ("init", "Initialize an agent-ready workspace."),
+                    ("run", "Start or continue a goal-oriented agent loop."),
+                    ("status", "Show current session progress, blockers, and next actions."),
+                    ("resume", "Continue after decisions, pauses, or repair checkpoints."),
+                    ("review", "Inspect risks, validation evidence, and candidate results."),
+                ],
+            ),
+            (
+                "Maintain",
+                "Readiness, rollout, and support commands for maintainers.",
+                [
+                    ("doctor", "Diagnose local runtime setup and model route readiness."),
+                    ("gate", "Run staged readiness checks; use --stage release before release."),
+                    ("gray", "Plan controlled real-provider rollout tasks."),
+                    ("evidence-bundle", "Export a redacted diagnostic bundle."),
+                ],
+            ),
+            (
+                "Advanced",
+                "Internal workflow controls; useful for debugging and expert operation.",
+                [
+                    ("plan", "Generate GoalSpec and task plan."),
+                    ("execute", "Run ready task graph work directly."),
+                    ("debug", "Repair failed execution evidence."),
+                    ("replan", "Create follow-up tasks from blockers."),
+                    ("compact", "Create context snapshots."),
+                    ("handoff", "Write recovery handoff context."),
+                    ("sessions", "List, inspect, or select session contexts."),
+                    ("promotions", "Inspect and operate candidate promotions."),
+                    ("plugins", "Inspect plugin manifest policy state."),
+                    ("decide", "Create or resolve DecisionPoints."),
+                    ("research", "Collect research context."),
+                    ("brainstorm", "Generate early solution options."),
+                ],
+            ),
+            (
+                "CI / Reports",
+                "Validation, release evidence, and product reporting commands.",
+                [
+                    ("acceptance", "Run reproducible runtime acceptance scenarios."),
+                    ("acceptance-gate", "Evaluate acceptance reports as release gates."),
+                    ("acceptance-history", "Show acceptance trend history."),
+                    ("capability-report", "Summarize capability and failure trends."),
+                    ("weekly-report", "Summarize long-run and release risks."),
+                    ("roadmap-update", "Update roadmap artifacts from runtime evidence."),
+                    ("daily-plan", "Plan a bounded long-run cycle."),
+                    ("daily-run", "Run or stage a bounded long-run cycle."),
+                    ("daily-report", "Report on a bounded long-run cycle."),
+                    ("verification", "Show latest verification summary."),
+                    ("package-check", "Check packaging metadata and docs."),
+                    ("gate-status", "Show rollout readiness evidence."),
+                    ("version", "Show runtime version diagnostics."),
+                    ("studio-benchmark", "Evaluate Studio sessions against UX benchmarks."),
+                ],
+            ),
+            (
+                "Models",
+                "Explicit real-provider checks; not part of ordinary pytest.",
+                [
+                    ("model-check", "Validate provider configuration."),
+                    ("real-model-smoke", "Run an isolated real-model smoke test."),
+                    ("real-model-gate", "Run controlled real-model preflight gate."),
+                    ("real-model-acceptance", "Run gray/core real-provider suites."),
+                    ("gray-run", "Run or dry-run controlled gray tasks."),
+                ],
+            ),
+        ]
+    )
     return parser
 
 
