@@ -4,6 +4,10 @@ import json
 import re
 from pathlib import Path
 
+from asteria_runtime.commands.doctor_command import DoctorCommand
+from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -87,6 +91,36 @@ def _assert_control_surface_example_contract(
     assert set(contract["stable_fields"]) <= set(payload)
     assert payload["schema_version"] == contract["schema_version"]
     SchemaValidator(Path("schemas")).validate("control_surface", contract)
+
+
+def _assert_example_stable_fields_match_runtime_payload(
+    example_payload: dict[str, object], runtime_payload: dict[str, object]
+) -> None:
+    example_contract = example_payload["control_surface"]
+    runtime_contract = runtime_payload["control_surface"]
+    assert isinstance(example_contract, dict)
+    assert isinstance(runtime_contract, dict)
+
+    assert example_contract == runtime_contract
+    for field in example_contract["stable_fields"]:
+        assert field in example_payload
+        assert field in runtime_payload
+    assert example_payload["schema_version"] == runtime_payload["schema_version"]
+
+
+def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    runtime_payloads = {
+        "status_control_surface.json": StatusCommand(tmp_path).run().to_dict(),
+        "doctor_control_surface.json": DoctorCommand(tmp_path).run().to_dict(),
+        "gate_status_control_surface.json": GateStatusCommand(tmp_path).run().to_dict(),
+    }
+
+    for filename, runtime_payload in runtime_payloads.items():
+        example_payload = _load_control_surface_example(filename)
+        _assert_example_stable_fields_match_runtime_payload(
+            example_payload, runtime_payload
+        )
 
 
 def test_control_surface_examples_match_documented_contracts() -> None:
