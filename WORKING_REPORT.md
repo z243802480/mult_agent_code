@@ -47,3 +47,26 @@
 ### Suggested review focus for tomorrow
 - Confirm whether `accept --no-promote` is the right escape hatch for teams that require explicit promotion approval.
 - Confirm whether the current README changes from slash commands to plain commands should be mirrored consistently in the Chinese runtime-command and command-surface convergence docs.
+
+## 2026-05-23 22:40:30 +08:00 automated heartbeat check
+
+### Modified files
+- None in this heartbeat. The working tree is clean after the previous commit and push.
+
+### Reasons
+- The heartbeat instruction says to commit and push if there is too much uncommitted code. The repository is already on `codex/runtime-control-surface-accept`, tracking `origin/codex/runtime-control-surface-accept`, with latest commit `269f147 Add accept workflow and runtime control signals`, so no additional commit was needed.
+- Ran a read-only runtime status check to verify the newly pushed branch still exposes a coherent control surface.
+
+### Test/build results
+- `python -m asteria_runtime status --root . --json`: passed. It reports the workspace is initialized and currently blocked by an older pending runtime decision (`decision-0001`) in session `run-20260521-0006`.
+- `git ls-remote --heads origin codex/runtime-control-surface-accept`: passed and confirms remote branch commit `269f147f1d82d34e28f4022d94503e42cb702100` exists.
+
+### DecisionPoint / unresolved issues
+- There is an existing runtime-level pending decision for a previous Qingdao travel-plan run: `asteria decide --decision-id decision-0001`. This appears unrelated to the code branch and should not be auto-resolved by the heartbeat.
+- GitHub CLI is not installed locally, so the branch was pushed but the PR still needs to be opened manually from the GitHub link provided earlier.
+
+### Suggested smallest next task
+- Open a draft PR for `codex/runtime-control-surface-accept` and review whether `WORKING_REPORT.md` should remain committed or be moved to local-only operational notes.
+
+### Suggested review focus for tomorrow
+- Review the pending runtime decision separately from the code branch; it is product evidence that the control surface correctly blocks on scope expansion rather than silently proceeding.
