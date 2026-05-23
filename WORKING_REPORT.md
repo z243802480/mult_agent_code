@@ -125,3 +125,30 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the Chinese command reference should rename slash-style section headings like `/init` to plain `init`, or keep slash aliases as compatibility notes.
+
+## 2026-05-23 23:22:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Added a regression test that locks `accept` into the top-level Start help group after the documented `init -> run -> status -> resume -> review -> accept` workflow.
+
+### Modified files
+- `tests/unit/test_cli.py`: asserts `accept` appears in the default Start command surface and before the Maintain section.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The command-surface convergence docs say ordinary users should see the Start workflow, not internal command lists. The help output already includes `accept`; this test makes that product contract durable.
+- This is a narrow non-invasive test change that does not alter runtime behavior or the open product question about `accept` promotion defaults.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 7 passed.
+- `ruff check tests/unit/test_cli.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- `accept` default promotion semantics still need product review before behavior changes.
+- The branch has multiple documentation/test commits and still needs PR creation or merge review; GitHub CLI is not installed locally.
+
+### Suggested smallest next task
+- Add one focused test for slash alias parsing of `/accept`, if not already covered, so old-style command compatibility stays explicit while docs move toward plain commands.
+
+### Suggested review focus for tomorrow
+- Review whether the top-level help text should explicitly show the workflow order in one line, or whether the grouped Start list is sufficient.

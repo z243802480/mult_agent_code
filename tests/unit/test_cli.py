@@ -18,6 +18,9 @@ def test_top_level_help_groups_command_surface() -> None:
     assert help_text.index("Start") < help_text.index("Maintain")
     assert help_text.index("Maintain") < help_text.index("Advanced")
     assert "init    Initialize an agent-ready workspace." in help_text
+    assert "accept  Accept reviewed results and finalize the run." in help_text
+    assert help_text.index("init    Initialize") < help_text.index("accept  Accept")
+    assert help_text.index("accept  Accept") < help_text.index("Maintain")
     assert "gate             Run staged readiness checks" in help_text
     assert "real-model-acceptance" in help_text
     assert "Use `asteria <command> --help`" in help_text
