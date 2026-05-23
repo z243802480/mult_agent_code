@@ -70,3 +70,30 @@
 
 ### Suggested review focus for tomorrow
 - Review the pending runtime decision separately from the code branch; it is product evidence that the control surface correctly blocks on scope expansion rather than silently proceeding.
+
+## 2026-05-23 22:56:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Added a Quick Start workflow sentence to `README.md` documenting the normal `init -> run -> status -> resume -> review -> accept` path and the role of `asteria accept`.
+
+### Modified files
+- `README.md`: documented the default user workflow and final acceptance step.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The current roadmap and Claude Code learning plan call out command-surface convergence and a user-facing workflow rather than exposing internal command stages. After the previous merge added the `accept` command, the README still did not make the full user path explicit.
+- This is a small documentation-only product improvement that avoids changing acceptance policy semantics such as whether promotion approval should be automatic by default.
+
+### Test/build results
+- `python -m asteria_runtime accept --help`: passed and confirms the documented final command is exposed.
+- `ruff check README.md`: passed with the expected warning that no Python files were found under the Markdown path.
+
+### DecisionPoint / unresolved issues
+- The default behavior of `asteria accept` still deserves product review: automatic pending-promotion approval is convenient, but some users may expect explicit approval unless they opt in.
+- Chinese command docs may still need the same workflow wording, but this heartbeat intentionally kept the change to one documentation file plus the report.
+
+### Suggested smallest next task
+- Mirror the same `init -> run -> status -> resume -> review -> accept` workflow wording into the Chinese runtime-command or command-surface convergence document, using Python `utf-8-sig` path discovery to avoid terminal encoding issues.
+
+### Suggested review focus for tomorrow
+- Review whether README should describe `asteria decide` explicitly in Quick Start or leave it as part of the blocked-run/resume path.
