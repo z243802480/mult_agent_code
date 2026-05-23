@@ -17,6 +17,23 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     doctor_args = parser.parse_args(["/doctor", "--root", ".", "--json"])
     gate_status_args = parser.parse_args(["/gate-status", "--root", ".", "--json"])
     gate_args = parser.parse_args(["/gate", "--root", ".", "--json"])
+    release_gate_args = parser.parse_args(
+        [
+            "/gate",
+            "--root",
+            ".",
+            "--stage",
+            "release",
+            "--report",
+            "acceptance_report.json",
+            "--suite",
+            "core",
+            "--skip-lint",
+            "--skip-typecheck",
+            "--skip-tests",
+            "--json",
+        ]
+    )
     real_model_gate_args = parser.parse_args(
         ["/real-model-gate", "--root", ".", "--summary-json", "gate.json", "--allow-fake"]
     )
@@ -200,6 +217,14 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert gate_status_args.json
     assert gate_args.command == "/gate"
     assert gate_args.json
+    assert gate_args.stage == "read-only"
+    assert release_gate_args.command == "/gate"
+    assert release_gate_args.stage == "release"
+    assert release_gate_args.report.as_posix() == "acceptance_report.json"
+    assert release_gate_args.suite == "core"
+    assert release_gate_args.skip_lint
+    assert release_gate_args.skip_typecheck
+    assert release_gate_args.skip_tests
     assert real_model_gate_args.command == "/real-model-gate"
     assert real_model_gate_args.allow_fake
     assert real_model_acceptance_args.command == "/real-model-acceptance"

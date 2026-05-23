@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from asteria_runtime.commands.version_command import VersionCommand
 class GateCommandResult:
     root: Path
     status: str
+    mode: str = "read_only"
     stages: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
@@ -27,7 +30,7 @@ class GateCommandResult:
             "root": str(self.root),
             "status": self.status,
             "ok": self.ok,
-            "mode": "read_only",
+            "mode": self.mode,
             "stages": self.stages,
             "next_actions": self.next_actions,
         }
@@ -37,14 +40,19 @@ class GateCommandResult:
             "Gate",
             f"Root: {self.root}",
             f"Status: {self.status}",
-            "Mode: read_only",
+            f"Mode: {self.mode}",
         ]
-        package = self.stages.get("package_check", {})
-        doctor = self.stages.get("doctor", {})
-        gate_status = self.stages.get("gate_status", {})
-        lines.append(f"Package check: {package.get('status', 'unknown')}")
-        lines.append("Doctor: ok" if doctor.get("ok") else "Doctor: blocked")
-        lines.append(f"Gate status: {gate_status.get('stage', 'unknown')}")
+        if self.mode == "release":
+            for stage in self.stages.get("release", []):
+                label = "[pass]" if stage.get("ok") else "[fail]"
+                lines.append(f"{label} {stage.get('name')}: {stage.get('summary')}")
+        else:
+            package = self.stages.get("package_check", {})
+            doctor = self.stages.get("doctor", {})
+            gate_status = self.stages.get("gate_status", {})
+            lines.append(f"Package check: {package.get('status', 'unknown')}")
+            lines.append("Doctor: ok" if doctor.get("ok") else "Doctor: blocked")
+            lines.append(f"Gate status: {gate_status.get('stage', 'unknown')}")
         if self.next_actions:
             lines.append("Next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
@@ -52,10 +60,30 @@ class GateCommandResult:
 
 
 class GateCommand:
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        stage: str = "read_only",
+        report_path: Path | None = None,
+        suite: str = "core",
+        skip_lint: bool = False,
+        skip_typecheck: bool = False,
+        skip_tests: bool = False,
+        skip_acceptance_gate: bool = False,
+    ) -> None:
         self.root = root.resolve()
+        self.stage = stage
+        self.report_path = report_path
+        self.suite = suite
+        self.skip_lint = skip_lint
+        self.skip_typecheck = skip_typecheck
+        self.skip_tests = skip_tests
+        self.skip_acceptance_gate = skip_acceptance_gate
 
     def run(self) -> GateCommandResult:
+        if self.stage == "release":
+            return self._run_release_gate()
         version = VersionCommand().run().to_dict()
         package = PackageCheckCommand(self.root).run().to_dict()
         doctor = DoctorCommand(self.root).run().to_dict()
@@ -65,6 +93,7 @@ class GateCommand:
         return GateCommandResult(
             root=self.root,
             status=status,
+            mode="read_only",
             stages={
                 "version": version,
                 "package_check": package,
@@ -73,6 +102,117 @@ class GateCommand:
             },
             next_actions=actions,
         )
+
+    def _run_release_gate(self) -> GateCommandResult:
+        stages: list[dict[str, Any]] = []
+        project_root = self._find_project_root()
+        if not self.skip_lint:
+            stages.append(self._stage("lint (ruff)", ["ruff", "check", "."], project_root))
+        if not self.skip_typecheck:
+            stages.append(self._stage("typecheck (mypy)", ["mypy", "src"], project_root))
+        if not self.skip_tests:
+            stages.append(
+                self._stage(
+                    "tests (pytest)",
+                    [
+                        sys.executable,
+                        "-m",
+                        "pytest",
+                        "-x",
+                        "-q",
+                        "--tb=short",
+                        "-m",
+                        "not real_provider",
+                    ],
+                    project_root,
+                )
+            )
+        if not self.skip_acceptance_gate:
+            stages.append(self._acceptance_gate_stage(project_root))
+        failures = [str(stage["summary"]) for stage in stages if not stage.get("ok")]
+        return GateCommandResult(
+            root=self.root,
+            status="ready" if not failures else "blocked",
+            mode="release",
+            stages={"release": stages},
+            next_actions=(
+                []
+                if not failures
+                else [
+                    "Fix the failing release gate stages before releasing.",
+                    *[f"{stage['name']}: {stage['summary']}" for stage in stages if not stage.get("ok")],
+                ]
+            ),
+        )
+
+    def _acceptance_gate_stage(self, cwd: Path) -> dict[str, Any]:
+        if self.report_path is None or not self.report_path.exists():
+            return {
+                "name": "acceptance-gate",
+                "ok": False,
+                "summary": (
+                    "No acceptance report provided. "
+                    "Run `asteria /acceptance --suite core` first."
+                ),
+                "returncode": 1,
+                "output": "",
+            }
+        return self._stage(
+            "acceptance-gate",
+            [
+                sys.executable,
+                "-m",
+                "asteria_runtime",
+                "/acceptance-gate",
+                "--root",
+                str(self.root),
+                "--report",
+                str(self.report_path),
+                "--suite",
+                self.suite,
+            ],
+            cwd,
+            success_summary="Acceptance gate passed.",
+            failure_summary="Acceptance gate failed",
+        )
+
+    def _stage(
+        self,
+        name: str,
+        command: list[str],
+        cwd: Path,
+        *,
+        success_summary: str | None = None,
+        failure_summary: str | None = None,
+    ) -> dict[str, Any]:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        ok = completed.returncode == 0
+        return {
+            "name": name,
+            "ok": ok,
+            "summary": (
+                success_summary
+                if ok and success_summary
+                else f"{name} passed."
+                if ok
+                else f"{failure_summary or name} (exit {completed.returncode})."
+            ),
+            "returncode": completed.returncode,
+            "output": completed.stdout + completed.stderr,
+        }
+
+    def _find_project_root(self) -> Path:
+        candidate = Path(__file__).resolve()
+        for parent in candidate.parents:
+            if (parent / "pyproject.toml").exists() or (parent / "setup.py").exists():
+                return parent
+        return Path.cwd()
 
     def _status(
         self,

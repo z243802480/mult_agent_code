@@ -37,7 +37,6 @@ from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.commands.research_command import ResearchCommand
 from asteria_runtime.commands.roadmap_command import RoadmapCommand
-from asteria_runtime.commands.release_command import ReleaseCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
@@ -200,33 +199,31 @@ def build_parser() -> argparse.ArgumentParser:
     )
     gate_parser.add_argument("--root", default=".", help="Workspace root path")
     gate_parser.add_argument(
+        "--stage",
+        choices=["read-only", "release"],
+        default="read-only",
+        help="Gate stage to run",
+    )
+    gate_parser.add_argument("--report", type=Path, default=None, help="Acceptance report path")
+    gate_parser.add_argument("--suite", default="core", help="Acceptance suite name")
+    gate_parser.add_argument(
+        "--skip-lint", action="store_true", help="Skip ruff lint check in release stage"
+    )
+    gate_parser.add_argument(
+        "--skip-typecheck", action="store_true", help="Skip mypy type check in release stage"
+    )
+    gate_parser.add_argument(
+        "--skip-tests", action="store_true", help="Skip pytest run in release stage"
+    )
+    gate_parser.add_argument(
+        "--skip-acceptance-gate",
+        action="store_true",
+        help="Skip acceptance-gate check in release stage",
+    )
+    gate_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
-    )
-
-    release_parser = subcommands.add_parser(
-        "release",
-        aliases=["/release"],
-        help="Run full release gate: lint, typecheck, tests, and acceptance-gate",
-    )
-    release_parser.add_argument("--root", default=".", help="Workspace root path")
-    release_parser.add_argument("--report", type=Path, default=None, help="Acceptance report path")
-    release_parser.add_argument("--suite", default="core", help="Acceptance suite name")
-    release_parser.add_argument(
-        "--skip-lint", action="store_true", help="Skip ruff lint check"
-    )
-    release_parser.add_argument(
-        "--skip-typecheck", action="store_true", help="Skip mypy type check"
-    )
-    release_parser.add_argument(
-        "--skip-tests", action="store_true", help="Skip pytest run"
-    )
-    release_parser.add_argument(
-        "--skip-gate", action="store_true", help="Skip acceptance-gate check"
-    )
-    release_parser.add_argument(
-        "--json", action="store_true", help="Print machine-readable JSON"
     )
 
     real_model_smoke_parser = subcommands.add_parser(
@@ -1142,30 +1139,21 @@ def main() -> None:
         return
 
     if command == "gate":
-        gate_result = GateCommand(root=Path(args.root)).run()
-        if args.json:
-            print(json.dumps(gate_result.to_dict(), ensure_ascii=False, indent=2))
-        else:
-            print(gate_result.to_text())
-        if gate_result.status == "blocked":
-            raise SystemExit(1)
-        return
-
-    if command == "release":
-        release_result = ReleaseCommand(
+        gate_result = GateCommand(
             root=Path(args.root),
+            stage=args.stage.replace("-", "_"),
             report_path=getattr(args, "report", None),
             suite=getattr(args, "suite", "core"),
             skip_lint=getattr(args, "skip_lint", False),
             skip_typecheck=getattr(args, "skip_typecheck", False),
             skip_tests=getattr(args, "skip_tests", False),
-            skip_gate=getattr(args, "skip_gate", False),
+            skip_acceptance_gate=getattr(args, "skip_acceptance_gate", False),
         ).run()
-        if getattr(args, "json", False):
-            print(json.dumps(release_result.to_dict(), ensure_ascii=False, indent=2))
+        if args.json:
+            print(json.dumps(gate_result.to_dict(), ensure_ascii=False, indent=2))
         else:
-            print(release_result.to_text())
-        if not release_result.ok:
+            print(gate_result.to_text())
+        if gate_result.status == "blocked":
             raise SystemExit(1)
         return
 

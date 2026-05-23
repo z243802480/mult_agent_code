@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
+from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gate_status_command import _validation_recommendation_for_changed_files
 from asteria_runtime.commands.init_command import InitCommand
@@ -76,6 +77,41 @@ def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -
     payload = result.to_dict()
     assert payload["initialized"] is True
     assert payload["plugin_control"]["hook_policy"]["plugins_enabled"] is False
+
+
+def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: Path) -> None:
+    result = GateCommand(
+        tmp_path,
+        stage="release",
+        skip_lint=True,
+        skip_typecheck=True,
+        skip_tests=True,
+        skip_acceptance_gate=True,
+    ).run()
+
+    assert result.ok
+    assert result.status == "ready"
+    payload = result.to_dict()
+    assert payload["mode"] == "release"
+    assert payload["stages"]["release"] == []
+    assert "Mode: release" in result.to_text()
+
+
+def test_gate_release_stage_blocks_without_acceptance_report(tmp_path: Path) -> None:
+    result = GateCommand(
+        tmp_path,
+        stage="release",
+        skip_lint=True,
+        skip_typecheck=True,
+        skip_tests=True,
+    ).run()
+
+    assert not result.ok
+    assert result.status == "blocked"
+    gate_stage = next(stage for stage in result.stages["release"] if stage["name"] == "acceptance-gate")
+    assert gate_stage["ok"] is False
+    assert "No acceptance report provided" in gate_stage["summary"]
+    assert any("acceptance-gate" in action for action in result.next_actions)
 
 
 def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:
