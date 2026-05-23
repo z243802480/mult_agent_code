@@ -152,3 +152,30 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the top-level help text should explicitly show the workflow order in one line, or whether the grouped Start list is sufficient.
+
+## 2026-05-23 23:32:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Added explicit parser coverage for the `/accept` slash alias, including `--session-id`, `--no-promote`, and `--json`.
+
+### Modified files
+- `tests/unit/test_cli.py`: verifies `/accept` remains compatible while documentation moves the default user surface toward plain `accept`.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The Chinese command docs still contain slash-style command sections, while README/help now emphasize plain command names. Keeping slash alias coverage explicit prevents compatibility drift during command-surface convergence.
+- The test is a small, safe addition that does not change runtime behavior or decide the open product question about default promotion approval.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 7 passed.
+- `ruff check tests/unit/test_cli.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The branch still needs review/PR or merge. GitHub CLI is not installed locally, so PR creation remains manual.
+- Slash aliases remain documented in headings; a future doc cleanup should decide whether to keep slash headings or convert them to plain command names with slash aliases noted as compatibility.
+
+### Suggested smallest next task
+- Add a short note in the Chinese runtime-command naming/compatibility section that slash-prefixed commands are aliases, while plain `asteria <command>` is the preferred public form.
+
+### Suggested review focus for tomorrow
+- Review whether tests should assert every Start command has both plain and slash parsing, or whether targeted coverage for changed commands is enough.
