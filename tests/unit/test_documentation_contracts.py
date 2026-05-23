@@ -59,6 +59,8 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "`doctor` 使用 `maintainer_preflight`",
         "`gate-status` 使用 `maintainer_release_readiness`",
         "docs/en/examples/status_control_surface.json",
+        "docs/en/examples/doctor_control_surface.json",
+        "docs/en/examples/gate_status_control_surface.json",
         "schemas/control_surface.schema.json",
         "`stability=additive`",
     ]
@@ -67,20 +69,49 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         assert fragment in docs
 
 
-def test_status_control_surface_example_matches_documented_contract() -> None:
-    example_path = Path("docs/en/examples/status_control_surface.json")
-    payload = json.loads(example_path.read_text(encoding="utf-8"))
+def _load_control_surface_example(name: str) -> dict[str, object]:
+    example_path = Path("docs/en/examples") / name
+    return json.loads(example_path.read_text(encoding="utf-8"))
+
+
+def _assert_control_surface_example_contract(
+    payload: dict[str, object], *, command: str, audience: str
+) -> None:
     contract = payload["control_surface"]
+    assert isinstance(contract, dict)
 
     assert contract["schema_version"] == "0.1.0"
-    assert contract["command"] == "status"
-    assert contract["audience"] == "user_workflow"
+    assert contract["command"] == command
+    assert contract["audience"] == audience
     assert contract["stability"] == "additive"
     assert set(contract["stable_fields"]) <= set(payload)
     assert payload["schema_version"] == contract["schema_version"]
+    SchemaValidator(Path("schemas")).validate("control_surface", contract)
+
+
+def test_control_surface_examples_match_documented_contracts() -> None:
+    examples = [
+        ("status_control_surface.json", "status", "user_workflow"),
+        ("doctor_control_surface.json", "doctor", "maintainer_preflight"),
+        (
+            "gate_status_control_surface.json",
+            "gate-status",
+            "maintainer_release_readiness",
+        ),
+    ]
+
+    for filename, command, audience in examples:
+        payload = _load_control_surface_example(filename)
+        _assert_control_surface_example_contract(
+            payload, command=command, audience=audience
+        )
+
+
+def test_status_control_surface_example_keeps_user_workflow_next_action() -> None:
+    payload = _load_control_surface_example("status_control_surface.json")
+
     assert payload["recommended_next_command"] == "resume"
     assert payload["next_actions"] == ["Run `asteria resume`."]
-    SchemaValidator(Path("schemas")).validate("control_surface", contract)
 
 
 def test_runtime_command_docs_keep_user_workflow_sections_in_order() -> None:

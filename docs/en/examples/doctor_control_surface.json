@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.1.0",
+  "control_surface": {
+    "schema_version": "0.1.0",
+    "command": "doctor",
+    "audience": "maintainer_preflight",
+    "stability": "additive",
+    "stable_fields": [
+      "schema_version",
+      "root",
+      "ok",
+      "status",
+      "summary",
+      "checks",
+      "failed_checks",
+      "routes",
+      "route_requirements",
+      "sandbox",
+      "gray_task_limits",
+      "plugin_control",
+      "error_taxonomy",
+      "next_actions"
+    ]
+  },
+  "root": "H:/mult_agent_code",
+  "ok": true,
+  "status": "pass",
+  "summary": "Doctor checks passed.",
+  "checks": [
+    {
+      "name": "agent_dir",
+      "ok": true,
+      "summary": ".asteria exists",
+      "severity": "error",
+      "error_type": "runtime_state"
+    },
+    {
+      "name": "root_guidance",
+      "ok": true,
+      "summary": "AGENTS.md exists",
+      "severity": "error",
+      "error_type": "config"
+    }
+  ],
+  "failed_checks": [],
+  "routes": {
+    "strong": {
+      "configured": true,
+      "provider": "glm",
+      "model_name": "glm-4.7",
+      "source": "tier"
+    },
+    "medium": {
+      "configured": true,
+      "provider": "minimax",
+      "model_name": "MiniMax-M2.7",
+      "source": "tier"
+    }
+  },
+  "route_requirements": {
+    "strong": [
+      "AGENT_MODEL_STRONG_PROVIDER or AGENT_MODEL_PROVIDER"
+    ],
+    "medium": [
+      "AGENT_MODEL_MEDIUM_PROVIDER or AGENT_MODEL_PROVIDER"
+    ]
+  },
+  "sandbox": {
+    "preferred_backend": "git_worktree"
+  },
+  "gray_task_limits": {
+    "max_iterations": 3,
+    "max_tasks_per_iteration": 1,
+    "max_repairs": 1
+  },
+  "plugin_control": {
+    "ok": true,
+    "summary": "Plugin control surface is available."
+  },
+  "error_taxonomy": {
+    "categories": [
+      "config",
+      "plugin",
+      "runtime_state"
+    ]
+  },
+  "next_actions": [
+    "Run `asteria gate-status --json` before gray validation."
+  ]
+}
