@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
@@ -34,6 +35,19 @@ class GrayRunResult:
 
     def to_dict(self) -> dict[str, object]:
         return {
+            "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="gray-run",
+                audience="maintainer_gray_execution",
+                stable_fields=[
+                    "schema_version",
+                    "gray_run_id",
+                    "status",
+                    "summary_path",
+                    "run_id",
+                    "next_actions",
+                ],
+            ),
             "gray_run_id": self.gray_run_id,
             "status": self.status,
             "summary_path": str(self.summary_path),

@@ -5,6 +5,7 @@ from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gray_command import GrayCommand
+from asteria_runtime.commands.gray_run_command import GrayRunCommand
 from asteria_runtime.commands.gate_status_command import _validation_recommendation_for_changed_files
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
@@ -215,6 +216,28 @@ def test_status_has_no_next_command_after_acceptance(tmp_path: Path) -> None:
 
 
 
+
+
+def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+
+    payload = GrayRunCommand(tmp_path, dry_run=True).run().to_dict()
+
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["status"] == "blocked"
+    _assert_control_surface_contract(
+        payload,
+        command="gray-run",
+        audience="maintainer_gray_execution",
+        required_fields={
+            "schema_version",
+            "gray_run_id",
+            "status",
+            "summary_path",
+            "run_id",
+            "next_actions",
+        },
+    )
 
 def test_gray_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
