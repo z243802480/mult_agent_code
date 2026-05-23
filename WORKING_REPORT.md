@@ -212,3 +212,36 @@
 
 ### Suggested review focus for tomorrow
 - Review whether plain-command preference should be applied to all README/docs examples immediately or only when touching nearby sections.
+
+## 2026-05-24 00:06:00 +08:00 automated heartbeat check
+
+### 30-minute iteration goal
+- Complete the Chinese command-reference documentation for the implemented `accept` workflow so the source-of-truth docs cover purpose, invocation, flow, state changes, artifacts, blockers, and safety boundaries.
+
+### Substantive artifact change this round
+- Added a full `accept` command section to the Chinese runtime-command reference, aligned with the implemented `AcceptCommand` behavior.
+- Verified the docs against the actual CLI help and targeted unit tests for accept/CLI parsing.
+
+### Modified files
+- the Chinese runtime-command reference: adds the `accept` command reference section.
+- `WORKING_REPORT.md`: records this heartbeat, validation, open decisions, and next target.
+
+### Reasons
+- The project guidance says Chinese docs are the source of truth, and previous iterations established `accept` as part of the default user workflow. The command reference needed the actual behavior documented, not only the workflow list.
+- The section avoids changing the open product policy about automatic promotion approval; it documents current behavior and explicitly marks default promotion semantics as a DecisionPoint if changed later.
+
+### Test/build results
+- Python assertions against the Chinese runtime-command reference: passed for `accept` section, `acceptance` distinction, `--no-promote`, state transitions, event names, and DecisionPoint note.
+- `python -m asteria_runtime accept --help`: passed.
+- `python -m pytest tests/unit/test_accept_command.py tests/unit/test_cli.py -q`: passed, 10 passed.
+- `ruff check tests/unit/test_cli.py src/asteria_runtime/commands/accept_command.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- If the product wants stricter human approval, `accept` default promotion behavior should be changed only after a user-visible DecisionPoint/RFC.
+- The Chinese command reference now has two `3.8` headings (`accept` and `debug`); renumbering the long document is a broader doc-maintenance task and should be done separately to avoid noisy diffs.
+
+### Suggested next 30-minute iteration target
+- Renumber the affected command-reference headings around `accept/debug/handoff` in a small controlled doc-only pass, with assertions that key anchors still exist.
+
+### Suggested review focus for tomorrow
+- Review whether the documented `accept --skip-review` positioning as a controlled/test path is acceptable, or whether it should be hidden from ordinary user docs.
