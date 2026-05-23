@@ -1,0 +1,67 @@
+{
+  "schema_version": "0.1.0",
+  "control_surface": {
+    "schema_version": "0.1.0",
+    "command": "status",
+    "audience": "user_workflow",
+    "stability": "additive",
+    "stable_fields": [
+      "schema_version",
+      "root",
+      "initialized",
+      "status",
+      "summary",
+      "conclusion",
+      "current_session_id",
+      "blockers",
+      "risks",
+      "pending_decision_count",
+      "candidate_promotions",
+      "plugin_control",
+      "latest_failure",
+      "recommended_next_command",
+      "next_actions",
+      "recent_sessions"
+    ]
+  },
+  "root": "H:/mult_agent_code",
+  "initialized": true,
+  "status": "active",
+  "summary": "Current session is available.",
+  "conclusion": "Current session is active and can continue.",
+  "evidence_chain": [
+    "run=running phase=EXECUTING",
+    "tasks remaining=1 total=3"
+  ],
+  "current_session_id": "run-example-0001",
+  "current_context": {
+    "run_status": {
+      "status": "running",
+      "current_phase": "EXECUTING",
+      "summary": "Current session is available."
+    },
+    "task_summary": {
+      "remaining": 1,
+      "total": 3
+    }
+  },
+  "blockers": [],
+  "risks": [],
+  "pending_decision_count": 0,
+  "candidate_promotions": {
+    "total": 0,
+    "pending": [],
+    "blocked": [],
+    "status_counts": {}
+  },
+  "plugin_control": {
+    "ok": true,
+    "summary": "Plugin control surface is available."
+  },
+  "latest_failure": {},
+  "recommended_next_command": "resume",
+  "next_actions": [
+    "Run `asteria resume`."
+  ],
+  "recent_sessions": []
+}

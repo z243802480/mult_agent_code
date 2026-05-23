@@ -481,3 +481,37 @@
 
 ### Suggested review focus for tomorrow
 - Review whether `stable_fields` should eventually move into JSON Schema files for stronger validation beyond unit tests.
+
+## 2026-05-24 04:50:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Add an executable `status --json` control-surface example fixture and bind it to the documented contract.
+
+### Substantive artifact change this round
+- Added `docs/en/examples/status_control_surface.json` as a minimal machine-readable example containing the new `control_surface` metadata.
+- Updated the Chinese runtime command source of truth to point to the example and require `stable_fields` to match top-level fields.
+- Added a documentation contract test that loads the JSON example and validates command, audience, additive stability, stable fields, and next-action semantics.
+
+### Modified files
+- `docs/en/examples/status_control_surface.json`: new executable JSON example for `status --json` consumers.
+- `docs/zh/????.md`: links the example to the control-surface contract and documents the consistency requirement.
+- `tests/unit/test_documentation_contracts.py`: validates the example as part of the documentation contract suite.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The previous two iterations added and documented the control-surface contract; this adds a concrete sample that UI/automation authors can reuse and tests can enforce.
+- The change is documentation/test focused but still produces a durable machine-readable artifact.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py -q`: passed, 35 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- Only `status --json` has an example fixture for now; `doctor` and `gate-status` examples can be added later if UI/automation consumers need them.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add similar example fixtures for `doctor --json` and `gate-status --json`, or move the shared `control_surface` metadata into JSON Schema validation if stronger enforcement is preferred.
+
+### Suggested review focus for tomorrow
+- Review whether the example location under `docs/en/examples/` is the right long-term home for machine-readable contract samples.

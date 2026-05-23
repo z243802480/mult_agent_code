@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -55,10 +56,26 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "`status` 使用 `user_workflow`",
         "`doctor` 使用 `maintainer_preflight`",
         "`gate-status` 使用 `maintainer_release_readiness`",
+        "docs/en/examples/status_control_surface.json",
     ]
 
     for fragment in required_fragments:
         assert fragment in docs
+
+
+def test_status_control_surface_example_matches_documented_contract() -> None:
+    example_path = Path("docs/en/examples/status_control_surface.json")
+    payload = json.loads(example_path.read_text(encoding="utf-8"))
+    contract = payload["control_surface"]
+
+    assert contract["schema_version"] == "0.1.0"
+    assert contract["command"] == "status"
+    assert contract["audience"] == "user_workflow"
+    assert contract["stability"] == "additive"
+    assert set(contract["stable_fields"]) <= set(payload)
+    assert payload["schema_version"] == contract["schema_version"]
+    assert payload["recommended_next_command"] == "resume"
+    assert payload["next_actions"] == ["Run `asteria resume`."]
 
 
 def test_runtime_command_docs_keep_user_workflow_sections_in_order() -> None:
