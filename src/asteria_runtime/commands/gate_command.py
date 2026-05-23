@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import subprocess
 import sys
@@ -8,8 +8,10 @@ from typing import Any
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.gate_status_command import _latest_observation_plan
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @dataclass(frozen=True)
@@ -18,6 +20,7 @@ class GateCommandResult:
     status: str
     mode: str = "read_only"
     stages: dict[str, Any] = field(default_factory=dict)
+    latest_observation_plan: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     @property
@@ -32,6 +35,7 @@ class GateCommandResult:
             "ok": self.ok,
             "mode": self.mode,
             "stages": self.stages,
+            "latest_observation_plan": self.latest_observation_plan,
             "next_actions": self.next_actions,
         }
 
@@ -39,6 +43,7 @@ class GateCommandResult:
         lines = [
             "Gate",
             f"Root: {self.root}",
+            f"Conclusion: {self._conclusion()}",
             f"Status: {self.status}",
             f"Mode: {self.mode}",
         ]
@@ -53,10 +58,80 @@ class GateCommandResult:
             lines.append(f"Package check: {package.get('status', 'unknown')}")
             lines.append("Doctor: ok" if doctor.get("ok") else "Doctor: blocked")
             lines.append(f"Gate status: {gate_status.get('stage', 'unknown')}")
+        blockers = self._blockers()
+        if self.latest_observation_plan:
+            lines.append(
+                "Latest agent next action: "
+                f"{self.latest_observation_plan.get('recommended_route', 'unknown')} - "
+                f"{self.latest_observation_plan.get('reason', 'No reason recorded.')}"
+            )
+        if blockers:
+            lines.append("Blockers:")
+            lines.extend(f"  - {blocker}" for blocker in blockers)
+        evidence = self._evidence_chain()
+        if evidence:
+            lines.append("Evidence chain:")
+            lines.extend(f"  - {item}" for item in evidence)
         if self.next_actions:
             lines.append("Next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
         return "\n".join(lines)
+
+    def _conclusion(self) -> str:
+        if self.ok:
+            return "Ready for the requested gate stage."
+        return "Blocked; resolve the listed gate evidence before proceeding."
+
+    def _blockers(self) -> list[str]:
+        blockers: list[str] = []
+        if self.mode == "release":
+            for stage in self.stages.get("release", []):
+                if not stage.get("ok"):
+                    blockers.append(f"{stage.get('name')}: {stage.get('summary')}")
+            return blockers
+        package = self.stages.get("package_check", {})
+        doctor = self.stages.get("doctor", {})
+        gate_status = self.stages.get("gate_status", {})
+        if package.get("ok") is not True:
+            blockers.append(f"package_check: {package.get('summary', 'not ok')}")
+        if doctor.get("ok") is not True:
+            blockers.append(f"doctor: {doctor.get('summary', 'not ok')}")
+        if gate_status.get("release_ready") is False or gate_status.get("blocking_reason"):
+            blockers.append(str(gate_status.get("blocking_reason") or "gate-status is not release ready"))
+        return blockers
+
+    def _evidence_chain(self) -> list[str]:
+        if self.mode == "release":
+            evidence = [
+                f"{stage.get('name')}: {'pass' if stage.get('ok') else 'fail'}"
+                for stage in self.stages.get("release", [])
+            ]
+            if self.latest_observation_plan:
+                evidence.append(
+                    "latest_next_action="
+                    f"{self.latest_observation_plan.get('recommended_route', 'unknown')} "
+                    f"plan={self.latest_observation_plan.get('observation_plan_id', 'unknown')}"
+                )
+            return evidence
+        package = self.stages.get("package_check", {})
+        doctor = self.stages.get("doctor", {})
+        gate_status = self.stages.get("gate_status", {})
+        evidence = [
+            f"package_check={package.get('status', 'unknown')}",
+            f"doctor={'pass' if doctor.get('ok') else 'blocked'}",
+            f"rollout={gate_status.get('rollout_state', 'unknown')}",
+        ]
+        gates = gate_status.get("gates") if isinstance(gate_status.get("gates"), dict) else {}
+        for name, gate in list(gates.items())[:5]:
+            if isinstance(gate, dict):
+                evidence.append(f"{name}={gate.get('status') or ('pass' if gate.get('ok') else 'unknown')}")
+        if self.latest_observation_plan:
+            evidence.append(
+                "latest_next_action="
+                f"{self.latest_observation_plan.get('recommended_route', 'unknown')} "
+                f"plan={self.latest_observation_plan.get('observation_plan_id', 'unknown')}"
+            )
+        return evidence
 
 
 class GateCommand:
@@ -80,6 +155,7 @@ class GateCommand:
         self.skip_typecheck = skip_typecheck
         self.skip_tests = skip_tests
         self.skip_acceptance_gate = skip_acceptance_gate
+        self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> GateCommandResult:
         if self.stage == "release":
@@ -100,6 +176,7 @@ class GateCommand:
                 "doctor": doctor,
                 "gate_status": gate_status,
             },
+            latest_observation_plan=_latest_observation_plan(self.root, self.validator),
             next_actions=actions,
         )
 
@@ -135,6 +212,7 @@ class GateCommand:
             status="ready" if not failures else "blocked",
             mode="release",
             stages={"release": stages},
+            latest_observation_plan=_latest_observation_plan(self.root, self.validator),
             next_actions=(
                 []
                 if not failures
@@ -242,3 +320,4 @@ class GateCommand:
             actions.extend(str(item) for item in doctor.get("next_actions", []))
         actions.extend(str(item) for item in gate_status.get("next_actions", []))
         return actions
+

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ObservationPlan",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "observation_plan_id",
+    "run_id",
+    "trigger",
+    "failed_observation_count",
+    "actions",
+    "blockers",
+    "evidence_refs",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "observation_plan_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": ["string", "null"] },
+    "trigger": { "type": "string" },
+    "failed_observation_count": { "type": "integer" },
+    "actions": { "type": "array", "items": { "type": "object" } },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "recommended_route": { "type": "string" },
+    "reason": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

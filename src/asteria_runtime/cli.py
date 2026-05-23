@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime import __version__
+from asteria_runtime.commands.accept_command import AcceptCommand
 from asteria_runtime.commands.acceptance_command import AcceptanceCommand
 from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
@@ -522,6 +523,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow /run to execute readonly and disjoint write-scope tasks concurrently",
     )
+
+    accept_parser = subcommands.add_parser(
+        "accept",
+        aliases=["/accept"],
+        help="Accept reviewed results, promote candidates, and finalize the run",
+    )
+    accept_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_session_id_argument(accept_parser, "Session id to accept; defaults to current session")
+    accept_parser.add_argument(
+        "--skip-review",
+        action="store_true",
+        help="Use the latest eval report instead of running review first",
+    )
+    accept_parser.add_argument(
+        "--no-promote",
+        action="store_true",
+        help="Do not approve pending candidate promotions automatically",
+    )
+    accept_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     resume_parser = subcommands.add_parser(
         "resume",
@@ -1108,6 +1128,7 @@ def build_parser() -> argparse.ArgumentParser:
                     ("status", "Show current session progress, blockers, and next actions."),
                     ("resume", "Continue after decisions, pauses, or repair checkpoints."),
                     ("review", "Inspect risks, validation evidence, and candidate results."),
+                    ("accept", "Accept reviewed results and finalize the run."),
                 ],
             ),
             (
@@ -1467,6 +1488,21 @@ def main() -> None:
     if command == "review":
         review_result = ReviewCommand(root=Path(args.root), run_id=args.session_id).run()
         print(review_result.to_text())
+        return
+
+    if command == "accept":
+        accept_result = AcceptCommand(
+            root=Path(args.root),
+            run_id=args.session_id,
+            skip_review=args.skip_review,
+            promote_all=not args.no_promote,
+        ).run()
+        if args.json:
+            print(json.dumps(accept_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(accept_result.to_text())
+        if not accept_result.accepted:
+            raise SystemExit(1)
         return
 
     if command == "decide":

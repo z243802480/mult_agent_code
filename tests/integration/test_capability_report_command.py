@@ -136,6 +136,56 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
         },
         "model_call",
     )
+    store.write(
+        run_dir / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "run_id": "run-1",
+            "tasks": [
+                {
+                    "task_id": "task-0001",
+                    "title": "Fix module",
+                    "description": "Fix module",
+                    "status": "done",
+                    "priority": "medium",
+                    "role": "CoderAgent",
+                    "depends_on": [],
+                    "acceptance": ["verified"],
+                    "allowed_tools": ["run_command"],
+                    "expected_artifacts": ["repairable.py"],
+                    "task_kind": "bugfix",
+                    "parallel_safety": "serial",
+                    "completion_contract": {
+                        "requires_changed_artifact": True,
+                        "requires_verification": True,
+                        "allows_expected_failure": False,
+                    },
+                    "created_at": "2026-05-13T10:00:00+08:00",
+                    "updated_at": "2026-05-13T10:00:00+08:00",
+                    "notes": "",
+                }
+            ],
+        },
+        "task_board",
+    )
+    jsonl.append(
+        run_dir / "observation_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_plan_id": "observation-plan-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "trigger": "task_attempt:verification",
+            "failed_observation_count": 1,
+            "actions": [{"action": "repair"}],
+            "blockers": ["run_command: tests failed"],
+            "evidence_refs": ["tool_calls.jsonl"],
+            "recommended_route": "repair",
+            "reason": "repair: tests failed",
+            "created_at": "2026-05-13T10:00:28+08:00",
+        },
+        "observation_plan",
+    )
 
     result = CapabilityReportCommand(tmp_path).run()
 
@@ -451,6 +501,56 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
         },
         "model_call",
     )
+    store.write(
+        run_dir / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "run_id": "run-1",
+            "tasks": [
+                {
+                    "task_id": "task-0001",
+                    "title": "Fix module",
+                    "description": "Fix module",
+                    "status": "done",
+                    "priority": "medium",
+                    "role": "CoderAgent",
+                    "depends_on": [],
+                    "acceptance": ["verified"],
+                    "allowed_tools": ["run_command"],
+                    "expected_artifacts": ["repairable.py"],
+                    "task_kind": "bugfix",
+                    "parallel_safety": "serial",
+                    "completion_contract": {
+                        "requires_changed_artifact": True,
+                        "requires_verification": True,
+                        "allows_expected_failure": False,
+                    },
+                    "created_at": "2026-05-13T10:00:00+08:00",
+                    "updated_at": "2026-05-13T10:00:00+08:00",
+                    "notes": "",
+                }
+            ],
+        },
+        "task_board",
+    )
+    jsonl.append(
+        run_dir / "observation_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_plan_id": "observation-plan-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "trigger": "task_attempt:verification",
+            "failed_observation_count": 1,
+            "actions": [{"action": "repair"}],
+            "blockers": ["run_command: tests failed"],
+            "evidence_refs": ["tool_calls.jsonl"],
+            "recommended_route": "repair",
+            "reason": "repair: tests failed",
+            "created_at": "2026-05-13T10:00:28+08:00",
+        },
+        "observation_plan",
+    )
 
     result = CapabilityReportCommand(tmp_path).run()
 
@@ -469,6 +569,11 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     assert route["runtime_request_types"]["scope_expansion"] == 1
     assert route["merge_gate_blocks"] == 1
     assert route["failure_types"]["merge_gate"] == 1
+    assert route["route_signal_total"] == 1
+    assert route["route_signal_success"] == 1
+    assert route["route_signal_success_rate"] == 1.0
+    assert route["route_task_kinds"]["bugfix"] == 1
+    assert route["route_decisions"]["repair"] == 1
     assert result.runtime_os["status"] == "pass"
     assert result.runtime_os["gate"]["status"] == "pass"
     assert result.runtime_os["evidence"]["worker_invocations"] == 1

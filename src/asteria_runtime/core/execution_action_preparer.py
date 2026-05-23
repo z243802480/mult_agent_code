@@ -22,6 +22,7 @@ class ExecutionActionPreparer:
         prepared = self._replace_unsafe_verification(prepared, task, policy)
         prepared = self._stabilize_text_artifact_verification(prepared, task)
         prepared = self._prepend_python_compile_verification(prepared, task)
+        prepared = self._drop_redundant_root_list_for_standalone_artifact(prepared, task)
         self.require_non_empty(prepared)
         return prepared
 
@@ -231,7 +232,9 @@ class ExecutionActionPreparer:
         if not artifacts:
             return []
         text_suffixes = {".md", ".txt", ".rst"}
-        if not all(any(path.lower().endswith(suffix) for suffix in text_suffixes) for path in artifacts):
+        if not all(
+            any(path.lower().endswith(suffix) for suffix in text_suffixes) for path in artifacts
+        ):
             return []
         return artifacts
 
@@ -271,6 +274,42 @@ class ExecutionActionPreparer:
             [*compile_calls, *list(action.get("verification") or [])]
         )
         return normalized
+
+    def _drop_redundant_root_list_for_standalone_artifact(self, action: dict, task: dict) -> dict:
+        """Avoid broad root listings after a standalone artifact is already produced.
+
+        Real model actions sometimes append ``list_files`` at ``.`` as a final sanity check after
+        writing and verifying an explicit file artifact. In a sliced runtime, that broad read is not
+        needed for completion and can incorrectly turn an otherwise verified task into a context
+        request. Keep scoped directory listings and actions without verification intact.
+        """
+        if not action.get("verification") or not self._has_explicit_expected_artifacts(task):
+            return action
+        tool_calls = list(action.get("tool_calls") or [])
+        if not any(call.get("tool_name") in {"write_file", "apply_patch"} for call in tool_calls):
+            return action
+        filtered = [
+            call
+            for call in tool_calls
+            if not (
+                call.get("tool_name") == "list_files"
+                and str((call.get("args") or {}).get("path") or ".").strip() in {"", "."}
+            )
+        ]
+        if len(filtered) == len(tool_calls):
+            return action
+        normalized = dict(action)
+        normalized["tool_calls"] = filtered
+        return normalized
+
+    def _has_explicit_expected_artifacts(self, task: dict) -> bool:
+        return any(
+            isinstance(path, str) and path.strip()
+            for path in [
+                *list(task.get("expected_artifacts") or []),
+                *list(task.get("expected_changed_files") or []),
+            ]
+        )
 
     def _dedupe_tool_calls(self, calls: list[dict]) -> list[dict]:
         deduped = []

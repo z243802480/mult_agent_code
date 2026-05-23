@@ -1,11 +1,17 @@
 import json
+from pathlib import Path
 
 from asteria_runtime.core.agent_harness import (
     AgentHarness,
+    append_harness_observations,
     load_harness_observations,
     observation_from_tool_result,
+    observation_next_action_plan,
+    persist_observation_next_action_plan,
+    refresh_tool_observation_plan,
     tool_observation_action_options,
 )
+from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.base import ToolResult
 
 
@@ -20,9 +26,9 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
         "protected_paths": [".env", "secrets/"],
     }
 
-    manifest = AgentHarness(policy, tool_names=["apply_patch", "read_file", "run_command"]).capability_manifest(
-        mode="build"
-    )
+    manifest = AgentHarness(
+        policy, tool_names=["apply_patch", "read_file", "run_command"]
+    ).capability_manifest(mode="build")
 
     data = manifest.to_dict()
     tools = {tool["name"]: tool for tool in data["tools"]}
@@ -163,3 +169,121 @@ def test_load_harness_observations_reads_execution_chain_events(tmp_path) -> Non
             },
         }
     ]
+
+
+def test_observation_next_action_plan_exposes_blockers_and_evidence() -> None:
+    plan = observation_next_action_plan(
+        [
+            {
+                "tool_name": "run_command",
+                "ok": False,
+                "summary": "pytest failed",
+                "error_class": "verification_failed",
+                "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+                "artifact_refs": [".asteria/runs/run-1/tool_observations.jsonl"],
+            }
+        ]
+    )
+
+    assert plan["failed_observation_count"] == 1
+    assert plan["blockers"] == ["run_command: pytest failed"]
+    assert plan["evidence_refs"] == [".asteria/runs/run-1/tool_observations.jsonl"]
+    assert {action["action"] for action in plan["actions"]} >= {
+        "diagnose",
+        "repair",
+        "replan",
+        "ask",
+        "stop",
+    }
+
+
+def test_append_harness_observations_updates_runtime_context() -> None:
+    result = ToolResult(ok=False, summary="tests failed", error="nonzero_exit")
+    observation = observation_from_tool_result(tool_name="run_command", result=result)
+    setattr(result, "harness_observation", observation)
+    runtime_context: dict = {}
+
+    appended = append_harness_observations(
+        runtime_context,
+        task_id="task-1",
+        stage="verification",
+        results=[result],
+    )
+    plan = refresh_tool_observation_plan(
+        runtime_context,
+        [
+            {
+                "tool_name": "run_command",
+                "ok": False,
+                "summary": "tests failed",
+                "error_class": "nonzero_exit",
+                "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+            }
+        ],
+    )
+
+    assert appended[0]["task_id"] == "task-1"
+    assert runtime_context["harness_observations"][0]["stage"] == "verification"
+    assert plan["failed_observation_count"] == 1
+    assert {action["action"] for action in runtime_context["tool_observation_actions"]} >= {
+        "diagnose",
+        "repair",
+        "replan",
+        "ask",
+        "stop",
+    }
+
+
+def test_refresh_tool_observation_plan_uses_harness_observations_by_default() -> None:
+    result = ToolResult(ok=False, summary="tests failed", error="nonzero_exit")
+    observation = observation_from_tool_result(tool_name="run_command", result=result)
+    setattr(result, "harness_observation", observation)
+    runtime_context: dict = {}
+    append_harness_observations(
+        runtime_context,
+        task_id="task-1",
+        stage="verification",
+        results=[result],
+    )
+
+    plan = refresh_tool_observation_plan(runtime_context)
+
+    assert plan["failed_observation_count"] == 1
+    assert plan["blockers"] == ["run_command: tests failed"]
+    assert {action["action"] for action in plan["actions"]} >= {
+        "diagnose",
+        "repair",
+        "replan",
+        "ask",
+        "stop",
+    }
+
+
+def test_persist_observation_next_action_plan_writes_jsonl(tmp_path) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    plan = observation_next_action_plan(
+        [
+            {
+                "tool_name": "run_command",
+                "ok": False,
+                "summary": "verification did not pass",
+                "error_class": "nonzero_exit",
+                "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+                "evidence_refs": ["tool_calls.jsonl"],
+            }
+        ]
+    )
+
+    record = persist_observation_next_action_plan(
+        run_dir=tmp_path,
+        validator=validator,
+        plan=plan,
+        run_id="run-1",
+        task_id="task-1",
+        trigger="unit",
+    )
+
+    assert record is not None
+    assert record["observation_plan_id"] == "observation-plan-0001"
+    assert record["recommended_route"] == "repair"
+    assert (tmp_path / "observation_plans.jsonl").exists()

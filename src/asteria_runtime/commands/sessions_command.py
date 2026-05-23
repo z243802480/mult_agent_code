@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -194,17 +194,29 @@ class SessionsCommand:
         )
         task_failures = (snapshot or {}).get("task_failures") or self._task_failures(run_dir)
         execution_evidence = self._task_execution_evidence(run_dir)
+        latest_observation_plan = self._latest_observation_plan(run_dir)
         worker_tree = WorkerTreeBuilder(self.validator).build(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         blockers = self._blockers(run_dir, pending_decisions, task_failures, acceptance_failures)
         risks = (snapshot or {}).get("open_risks") or self._risks(
             run_dir, task_failures, acceptance_failures
         )
-        recommended_next_command = (
-            (handoff or {}).get("recommended_next_command")
-            or self._first_next_action(snapshot)
-            or self._recommended_next_command(run_dir, pending_decisions, task_failures, blockers)
+        recommended_next_command = self._recommended_next_command(
+            run_dir,
+            run_status,
+            task_summary,
+            pending_decisions,
+            task_failures,
+            blockers,
         )
+        if (
+            recommended_next_command is None
+            and str(run_status.get("status") or "") != "completed"
+            and str(run_status.get("current_phase") or "") != "ACCEPTED"
+        ):
+            recommended_next_command = (handoff or {}).get(
+                "recommended_next_command"
+            ) or self._first_next_action(snapshot)
         return {
             "goal_summary": (snapshot or {}).get("goal_summary") or self._goal_summary(run_dir),
             "run_status": run_status,
@@ -220,6 +232,7 @@ class SessionsCommand:
             "task_failures": task_failures[-3:],
             "latest_execution_evidence": execution_evidence[-1] if execution_evidence else None,
             "task_execution_evidence": execution_evidence[-3:],
+            "latest_observation_plan": latest_observation_plan,
             "worker_tree": worker_tree,
             "candidate_promotions": promotion_summary,
             "blockers": blockers,
@@ -359,6 +372,24 @@ class SessionsCommand:
             for evidence in evidence_items[-10:]
         ]
 
+    def _latest_observation_plan(self, run_dir: Path) -> dict | None:
+        plans = self._read_jsonl(run_dir / "observation_plans.jsonl", "observation_plan")
+        if not plans:
+            return None
+        latest = plans[-1]
+        return {
+            "observation_plan_id": latest["observation_plan_id"],
+            "task_id": latest.get("task_id"),
+            "trigger": latest["trigger"],
+            "failed_observation_count": latest["failed_observation_count"],
+            "recommended_route": latest.get("recommended_route"),
+            "reason": latest.get("reason"),
+            "actions": latest.get("actions", [])[:5],
+            "blockers": latest.get("blockers", [])[:5],
+            "evidence_refs": latest.get("evidence_refs", [])[:5],
+            "created_at": latest.get("created_at"),
+        }
+
     def _blockers(
         self,
         run_dir: Path,
@@ -405,10 +436,21 @@ class SessionsCommand:
     def _recommended_next_command(
         self,
         run_dir: Path,
+        run_status: dict,
+        task_summary: dict,
         pending_decisions: list[dict],
         task_failures: list[dict],
         blockers: list[str],
     ) -> str | None:
+        status = str(run_status.get("status") or "")
+        phase = str(run_status.get("current_phase") or "")
+        remaining = int(task_summary.get("remaining", 0) or 0)
+        if phase == "ACCEPTED":
+            return None
+        if status == "completed" and remaining == 0:
+            if phase == "REVIEWED":
+                return "accept"
+            return "review"
         if pending_decisions:
             return f"decide --decision-id {pending_decisions[0]['decision_id']}"
         if task_failures or blockers:
@@ -473,3 +515,4 @@ class SessionsCommand:
         if not path:
             return None
         return path.relative_to(self.root).as_posix()
+

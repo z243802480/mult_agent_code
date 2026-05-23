@@ -35,6 +35,8 @@ class StatusResult:
             "initialized": self.initialized,
             "status": self._status(),
             "summary": self._summary(),
+            "conclusion": self._conclusion(),
+            "evidence_chain": self._evidence_chain(),
             "current_session_id": self.current_session_id,
             "current_context": self.current_context,
             "blockers": blockers or [],
@@ -55,6 +57,13 @@ class StatusResult:
             return "uninitialized"
         if self.plugin_control.get("ok") is False:
             return "blocked"
+        run_status = self.current_context.get("run_status") or {}
+        task_summary = self.current_context.get("task_summary") or {}
+        if (
+            run_status.get("status") == "completed"
+            and int(task_summary.get("remaining", 0) or 0) == 0
+        ):
+            return "completed"
         if self.current_context.get("pending_decision_count"):
             return "blocked"
         blockers = self.current_context.get("blockers") or []
@@ -63,6 +72,56 @@ class StatusResult:
         if self.current_session_id:
             return "active"
         return "idle"
+
+    def _conclusion(self) -> str:
+        status = self._status()
+        if status == "uninitialized":
+            return "Workspace is not initialized."
+        if status == "blocked":
+            return "Current work is blocked and needs an explicit next action."
+        if status == "completed":
+            return "Current session is complete; review the evidence chain and accept if satisfied."
+        if status == "active":
+            return "Current session is active and can continue."
+        return "Workspace is idle."
+
+    def _evidence_chain(self) -> list[str]:
+        if not self.current_context:
+            return []
+        evidence: list[str] = []
+        run_status = self.current_context.get("run_status") or {}
+        if run_status:
+            evidence.append(
+                f"run={run_status.get('status', 'unknown')} phase={run_status.get('current_phase', 'unknown')}"
+            )
+        task_summary = self.current_context.get("task_summary") or {}
+        if task_summary:
+            evidence.append(
+                f"tasks remaining={task_summary.get('remaining', 0)} total={task_summary.get('total', 0)}"
+            )
+        cost = self.current_context.get("cost_summary") or {}
+        if cost:
+            evidence.append(
+                f"cost={cost.get('status', 'unknown')} model_calls={cost.get('model_calls', 0)} tool_calls={cost.get('tool_calls', 0)}"
+            )
+            latest_execution = self.current_context.get("latest_execution_evidence") or {}
+            if latest_execution:
+                evidence.append(
+                    f"latest_execution={latest_execution.get('task_id')} {latest_execution.get('status')}"
+                )
+        latest_plan = self.current_context.get("latest_observation_plan") or {}
+        if latest_plan:
+            evidence.append(
+                "latest_next_action="
+                f"{latest_plan.get('recommended_route', 'unknown')} "
+                f"plan={latest_plan.get('observation_plan_id', 'unknown')}"
+            )
+        promotions = self.current_context.get("candidate_promotions") or {}
+        if promotions.get("total"):
+            evidence.append(
+                f"candidate_promotions total={promotions.get('total', 0)} pending={len(promotions.get('pending') or [])}"
+            )
+        return evidence
 
     def _summary(self) -> str:
         if not self.initialized:
@@ -77,6 +136,9 @@ class StatusResult:
             return ["Run `asteria /init --root .`."]
         if recommended:
             return [f"Run `asteria {recommended}`."]
+        run_status = self.current_context.get("run_status") if self.current_context else {}
+        if str((run_status or {}).get("current_phase") or "") == "ACCEPTED":
+            return []
         if not self.current_session_id:
             return ['Run `asteria /new "<goal>" --root .`.']
         return ["Run `asteria /sessions --context --root .` to inspect current state."]
@@ -86,6 +148,7 @@ class StatusResult:
             "Agent status",
             f"Root: {self.root}",
             f"Initialized: {'yes' if self.initialized else 'no'}",
+            f"Conclusion: {self._conclusion()}",
         ]
         if not self.initialized:
             lines.append("Next: asteria init")
@@ -150,8 +213,15 @@ class StatusResult:
                     f"promoted={counts.get('promoted', 0)})"
                 )
             blockers = context.get("blockers") or []
-            if blockers:
+            remaining = int((task_summary or {}).get("remaining", 0) or 0)
+            active_blockers = bool(blockers) and not (
+                run_status.get("status") == "completed" and remaining == 0
+            )
+            if active_blockers:
                 lines.append("Blockers:")
+                lines.extend(f"  - {item}" for item in blockers[:5])
+            elif blockers:
+                lines.append("Resolved blockers:")
                 lines.extend(f"  - {item}" for item in blockers[:5])
             latest_execution = context.get("latest_execution_evidence") or {}
             if latest_execution:
@@ -161,6 +231,20 @@ class StatusResult:
                     f"{latest_execution.get('status')} - "
                     f"{latest_execution.get('summary')}"
                 )
+            latest_plan = context.get("latest_observation_plan") or {}
+            if latest_plan:
+                lines.append(
+                    "Latest agent next action: "
+                    f"{latest_plan.get('recommended_route', 'unknown')} - "
+                    f"{latest_plan.get('reason', 'No reason recorded.')}"
+                )
+                evidence_refs = latest_plan.get("evidence_refs") or []
+                if evidence_refs:
+                    lines.append(f"  evidence: {', '.join(str(ref) for ref in evidence_refs[:3])}")
+            evidence_chain = self._evidence_chain()
+            if evidence_chain:
+                lines.append("Evidence chain:")
+                lines.extend(f"  - {item}" for item in evidence_chain[:6])
             if context.get("recommended_next_command"):
                 lines.append(f"Next: asteria {context['recommended_next_command']}")
         elif self.recent_sessions:

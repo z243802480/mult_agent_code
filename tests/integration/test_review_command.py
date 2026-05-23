@@ -249,7 +249,13 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert "delegation_contract" in review_envelope["section_order"]
     eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
     assert eval_report["overall"]["status"] == "pass"
-    assert (run_dir / "review_report.md").read_text(encoding="utf-8").startswith("# Review Report")
+    review_md = (run_dir / "review_report.md").read_text(encoding="utf-8")
+    assert review_md.startswith("# Review Report")
+    assert "## Conclusion" in review_md
+    assert "## Blocking Reasons" in review_md
+    assert "## Evidence Chain" in review_md
+    assert "## Latest Agent Next Action" in review_md
+    assert "## Next Actions" in review_md
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert run["status"] == "completed"
     assert run["current_phase"] == "REVIEWED"

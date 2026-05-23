@@ -331,6 +331,7 @@ class CapabilityReportCommand:
                 profile["input_tokens"] += int(call.get("input_tokens") or 0)
                 profile["output_tokens"] += int(call.get("output_tokens") or 0)
             self._merge_worker_profile_signals(run_dir, profiles)
+            self._merge_observation_route_signals(run_dir, profiles)
 
         normalized = []
         for profile in profiles.values():
@@ -360,6 +361,12 @@ class CapabilityReportCommand:
             profile["runtime_request_rate"] = round(
                 runtime_request_total / max(1, total_workers),
                 4,
+            )
+            route_signal_total = int(profile.get("route_signal_total") or 0)
+            profile["route_signal_success_rate"] = (
+                round(int(profile["route_signal_success"]) / route_signal_total, 4)
+                if route_signal_total
+                else 0.0
             )
             profile["recommended_action"] = self._model_route_action(profile)
             normalized.append(profile)
@@ -410,11 +417,131 @@ class CapabilityReportCommand:
                 "validation_passed": 0,
                 "runtime_request_total": 0,
                 "runtime_request_types": {},
+                "route_signal_total": 0,
+                "route_signal_success": 0,
+                "route_signal_failure": 0,
+                "route_signal_success_rate": 0.0,
+                "route_task_kinds": {},
+                "route_decisions": {},
+                "recent_route_signals": [],
                 "merge_gate_blocks": 0,
                 "failure_types": {},
                 "recent_failures": [],
             },
         )
+
+    def _merge_observation_route_signals(
+        self,
+        run_dir: Path,
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> None:
+        plans_path = run_dir / "observation_plans.jsonl"
+        if not plans_path.exists():
+            return
+        calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
+        if not calls:
+            return
+        profile_by_task = self._profile_by_task_from_runtime(run_dir, profiles)
+        task_kind_by_id = self._task_kind_by_id(run_dir)
+        done_tasks = self._done_task_ids(run_dir)
+        plans = self._read_jsonl(plans_path, "observation_plan")
+        for plan in plans:
+            task_id = str(plan.get("task_id") or "")
+            profile = profile_by_task.get(task_id) or self._profile_from_latest_call(calls, profiles)
+            route = str(plan.get("recommended_route") or "unknown")
+            task_kind = task_kind_by_id.get(task_id, "unknown")
+            success = task_id in done_tasks if task_id else False
+            profile["route_signal_total"] += 1
+            if success:
+                profile["route_signal_success"] += 1
+            else:
+                profile["route_signal_failure"] += 1
+            profile["route_task_kinds"][task_kind] = profile["route_task_kinds"].get(task_kind, 0) + 1
+            profile["route_decisions"][route] = profile["route_decisions"].get(route, 0) + 1
+            if len(profile["recent_route_signals"]) < 5:
+                profile["recent_route_signals"].append(
+                    f"{task_kind}:{route}:{'success' if success else 'failure'}"
+                )
+
+    def _profile_from_latest_call(
+        self,
+        calls: list[dict[str, Any]],
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> dict[str, Any]:
+        latest_call = calls[-1]
+        key = (
+            str(latest_call.get("model_provider") or "unknown"),
+            str(latest_call.get("model_name") or "unknown"),
+            str(latest_call.get("purpose") or "unknown"),
+            str(latest_call.get("model_tier") or "unknown"),
+        )
+        return self._ensure_model_profile(profiles, key)
+
+    def _profile_by_task_from_runtime(
+        self,
+        run_dir: Path,
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        workers_path = run_dir / "workers.jsonl"
+        runtime_profiles_path = run_dir / "runtime_profiles.jsonl"
+        model_profiles_path = run_dir / "model_profiles.jsonl"
+        if not (
+            workers_path.exists()
+            and runtime_profiles_path.exists()
+            and model_profiles_path.exists()
+        ):
+            return {}
+        model_profiles = {
+            item["model_profile_id"]: item
+            for item in self.jsonl.read_all(model_profiles_path, "model_profile")
+            if item.get("model_profile_id")
+        }
+        runtime_profiles = {
+            item["runtime_profile_id"]: item
+            for item in self.jsonl.read_all(runtime_profiles_path, "runtime_profile")
+            if item.get("runtime_profile_id")
+        }
+        profile_by_task: dict[str, dict[str, Any]] = {}
+        for worker in self.jsonl.read_all(workers_path, "worker_invocation"):
+            runtime_profile = runtime_profiles.get(str(worker.get("runtime_profile_id") or ""))
+            if not runtime_profile:
+                continue
+            model_profile = model_profiles.get(str(runtime_profile.get("model_profile_id") or ""))
+            if not model_profile:
+                continue
+            key = (
+                str(model_profile.get("provider") or "unknown"),
+                str(model_profile.get("model_name") or "unknown"),
+                str(model_profile.get("purpose") or "unknown"),
+                str(model_profile.get("model_tier") or "unknown"),
+            )
+            profile_by_task[str(worker.get("task_id") or "")] = self._ensure_model_profile(
+                profiles,
+                key,
+            )
+        return profile_by_task
+
+    def _task_kind_by_id(self, run_dir: Path) -> dict[str, str]:
+        path = run_dir / "task_plan.json"
+        if not path.exists():
+            return {}
+        board = self.store.read(path, "task_board")
+        return {
+            str(task.get("task_id")): str(task.get("task_kind") or "unknown")
+            for task in board.get("tasks", [])
+            if task.get("task_id")
+        }
+
+    def _done_task_ids(self, run_dir: Path) -> set[str]:
+        path = run_dir / "task_plan.json"
+        if not path.exists():
+            return set()
+        board = self.store.read(path, "task_board")
+        return {
+            str(task.get("task_id"))
+            for task in board.get("tasks", [])
+            if task.get("task_id") and task.get("status") == "done"
+        }
 
     def _merge_worker_profile_signals(
         self,

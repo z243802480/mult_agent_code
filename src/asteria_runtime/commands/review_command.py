@@ -8,7 +8,9 @@ from asteria_runtime.agents.planner import FollowUpTaskPlanner
 from asteria_runtime.agents.review_agent import ReviewAgent
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.core.agent_harness import (
+    latest_observation_next_action_plan,
     load_raw_tool_observations,
+    observation_next_action_plan,
     tool_observation_action_options,
 )
 from asteria_runtime.core.budget import BudgetController
@@ -124,6 +126,9 @@ class ReviewCommand:
         review_context = self._review_context(agent_dir, run_dir, run_id)
         review_context["prompt_envelope"] = prompt_envelope.context_ref()
         review_context["tool_observations"] = load_raw_tool_observations(run_dir)
+        review_context["latest_observation_plan"] = (
+            latest_observation_next_action_plan(run_dir, self.validator) or {}
+        )
         review_context["tool_observation_actions"] = tool_observation_action_options(
             review_context["tool_observations"]
         )
@@ -146,7 +151,12 @@ class ReviewCommand:
         )
         review_report_path = run_dir / "review_report.md"
         review_report_path.write_text(
-            self._markdown_report(eval_report, review_context.get("collaboration_summary") or {}),
+            self._markdown_report(
+                eval_report,
+                review_context.get("collaboration_summary") or {},
+                review_context.get("tool_observations") or [],
+                review_context.get("latest_observation_plan") or {},
+            ),
             encoding="utf-8",
         )
         event_logger.record(
@@ -416,14 +426,52 @@ class ReviewCommand:
             "cost_status": cost_report.get("status", "within_budget"),
         }
 
-    def _markdown_report(self, eval_report: dict, collaboration_summary: dict | None = None) -> str:
+    def _markdown_report(
+        self,
+        eval_report: dict,
+        collaboration_summary: dict | None = None,
+        tool_observations: list[dict] | None = None,
+        latest_observation_plan: dict | None = None,
+    ) -> str:
         overall = eval_report["overall"]
+        action_plan = observation_next_action_plan(tool_observations or [])
+        latest_plan = latest_observation_plan or {}
+        effective_plan = latest_plan or action_plan
+        blockers = self._human_blockers(eval_report, action_plan, latest_plan)
+        evidence = self._human_evidence(
+            eval_report,
+            collaboration_summary or {},
+            action_plan,
+            latest_plan,
+        )
+        next_actions = self._human_next_actions(eval_report, effective_plan, blockers)
         lines = [
             "# Review Report",
             "",
-            f"- Status: {overall['status']}",
+            "## Conclusion",
+            "",
+            f"- Verdict: {overall['status']}",
             f"- Score: {overall['score']}",
             f"- Reason: {overall['reason']}",
+            f"- Recommended next action: {effective_plan.get('recommended_route') or action_plan['recommended_action']}",
+            "",
+            "## Blocking Reasons",
+            "",
+            *([f"- {item}" for item in blockers] if blockers else ["- None."]),
+            "",
+            "## Evidence Chain",
+            "",
+            *([f"- {item}" for item in evidence] if evidence else ["- Eval report and review report were generated."]),
+            "",
+            "## Latest Agent Next Action",
+            "",
+            f"- Route: {effective_plan.get('recommended_route') or action_plan.get('recommended_action', 'continue')}",
+            f"- Why this route was chosen: {effective_plan.get('reason') or self._latest_plan_reason(action_plan)}",
+            f"- Evidence: {self._latest_plan_evidence(effective_plan)}",
+            "",
+            "## Next Actions",
+            "",
+            *[f"- {item}" for item in next_actions],
             "",
             "## Goal Eval",
             "",
@@ -468,6 +516,81 @@ class ReviewCommand:
                 lines.append(f"- Next: {action}")
             lines.append("")
         return "\n".join(lines)
+
+
+    def _human_blockers(
+        self,
+        eval_report: dict,
+        action_plan: dict,
+        latest_plan: dict | None = None,
+    ) -> list[str]:
+        blockers: list[str] = []
+        overall = eval_report.get("overall") or {}
+        if overall.get("status") != "pass":
+            blockers.append(f"Review verdict is {overall.get('status')}: {overall.get('reason')}")
+        source_plan = latest_plan or action_plan
+        blockers.extend(str(item) for item in source_plan.get("blockers") or [])
+        follow_ups = self._follow_ups(eval_report)
+        if follow_ups:
+            blockers.append(f"{len(follow_ups)} follow-up item(s) remain from review.")
+        return blockers[:10]
+
+    def _human_evidence(
+        self,
+        eval_report: dict,
+        collaboration_summary: dict,
+        action_plan: dict,
+        latest_plan: dict | None = None,
+    ) -> list[str]:
+        source_plan = latest_plan or action_plan
+        evidence = [
+            f"overall={eval_report['overall'].get('status')} score={eval_report['overall'].get('score')}",
+        ]
+        if source_plan.get("failed_observation_count"):
+            evidence.append(
+                f"failed tool observations={source_plan.get('failed_observation_count')} "
+                f"recommended={source_plan.get('recommended_route') or source_plan.get('recommended_action')}"
+            )
+        if source_plan.get("observation_plan_id"):
+            evidence.append(f"observation plan={source_plan.get('observation_plan_id')}")
+        for ref in source_plan.get("evidence_refs") or []:
+            evidence.append(f"tool evidence: {ref}")
+        if collaboration_summary:
+            evidence.append(
+                "worker evidence: "
+                f"{collaboration_summary.get('successful_workers', 0)}/"
+                f"{collaboration_summary.get('total_workers', 0)} workers succeeded"
+            )
+        return evidence[:10]
+
+    def _human_next_actions(self, eval_report: dict, action_plan: dict, blockers: list[str]) -> list[str]:
+        if not blockers and eval_report["overall"].get("status") == "pass":
+            return ["Run `asteria accept` to finalize accepted work."]
+        actions = []
+        recommended = action_plan.get("recommended_route") or action_plan.get("recommended_action")
+        if recommended and recommended != "continue":
+            actions.append(f"Follow observation action: {recommended}.")
+        if eval_report["overall"].get("status") != "pass":
+            actions.append("Run `asteria debug` or `asteria replan`, then rerun `asteria review`.")
+        if not actions:
+            actions.append("Inspect blockers and rerun review after repair.")
+        return actions[:5]
+
+    def _latest_plan_reason(self, action_plan: dict) -> str:
+        blockers = [str(item) for item in action_plan.get("blockers") or [] if item]
+        route = action_plan.get("recommended_route") or action_plan.get("recommended_action")
+        if blockers:
+            return f"{route or 'continue'}: {blockers[0]}"
+        return "No blocker summary available."
+
+    def _latest_plan_evidence(self, action_plan: dict) -> str:
+        refs = [str(item) for item in action_plan.get("evidence_refs") or [] if item]
+        if refs:
+            return ", ".join(refs[:3])
+        plan_id = action_plan.get("observation_plan_id")
+        if plan_id:
+            return str(plan_id)
+        return "No evidence refs recorded."
 
     def _json(self, value: dict) -> str:
         import json

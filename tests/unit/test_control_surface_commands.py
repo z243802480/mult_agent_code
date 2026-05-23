@@ -1,4 +1,4 @@
-import json
+﻿import json
 from pathlib import Path
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
@@ -59,6 +59,7 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
     result = StatusCommand(tmp_path).run()
 
     assert result.initialized is False
+    assert "Conclusion: Workspace is not initialized." in result.to_text()
     assert "Next: asteria init" in result.to_text()
     payload = result.to_dict()
     assert payload["schema_version"] == "0.1.0"
@@ -79,6 +80,81 @@ def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -
     assert payload["plugin_control"]["hook_policy"]["plugins_enabled"] is False
 
 
+def test_status_recommends_review_after_completed_done_tasks(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "completed", "current_phase": "DONE", "summary": "done"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    JsonStore(validator).write(
+        run_store.run_dir(run["run_id"]) / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "tasks": [
+                {
+                    "task_id": "task-0001",
+                    "title": "Done task",
+                    "status": "done",
+                }
+            ],
+        },
+        "task_board",
+    )
+
+    payload = StatusCommand(tmp_path).run().to_dict()
+
+    assert payload["recommended_next_command"] == "review"
+    assert payload["next_actions"] == ["Run `asteria review`."]
+
+
+def test_status_recommends_accept_after_reviewed_pass(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "completed", "current_phase": "REVIEWED", "summary": "reviewed"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    JsonStore(validator).write(
+        run_store.run_dir(run["run_id"]) / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "tasks": [{"task_id": "task-0001", "title": "Done task", "status": "done"}],
+        },
+        "task_board",
+    )
+
+    payload = StatusCommand(tmp_path).run().to_dict()
+
+    assert payload["recommended_next_command"] == "accept"
+    assert payload["next_actions"] == ["Run `asteria accept`."]
+
+
+def test_status_has_no_next_command_after_acceptance(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "completed", "current_phase": "ACCEPTED", "summary": "accepted"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    JsonStore(validator).write(
+        run_store.run_dir(run["run_id"]) / "task_plan.json",
+        {
+            "schema_version": "0.1.0",
+            "tasks": [{"task_id": "task-0001", "title": "Done task", "status": "done"}],
+        },
+        "task_board",
+    )
+
+    payload = StatusCommand(tmp_path).run().to_dict()
+
+    assert payload["recommended_next_command"] is None
+    assert payload["next_actions"] == []
+
+
 def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: Path) -> None:
     result = GateCommand(
         tmp_path,
@@ -94,7 +170,9 @@ def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: P
     payload = result.to_dict()
     assert payload["mode"] == "release"
     assert payload["stages"]["release"] == []
-    assert "Mode: release" in result.to_text()
+    text = result.to_text()
+    assert "Conclusion: Ready for the requested gate stage." in text
+    assert "Mode: release" in text
 
 
 def test_gate_release_stage_blocks_without_acceptance_report(tmp_path: Path) -> None:
@@ -111,7 +189,83 @@ def test_gate_release_stage_blocks_without_acceptance_report(tmp_path: Path) -> 
     gate_stage = next(stage for stage in result.stages["release"] if stage["name"] == "acceptance-gate")
     assert gate_stage["ok"] is False
     assert "No acceptance report provided" in gate_stage["summary"]
+    text = result.to_text()
+    assert "Conclusion: Blocked; resolve the listed gate evidence before proceeding." in text
+    assert "Blockers:" in text
+    assert "Evidence chain:" in text
     assert any("acceptance-gate" in action for action in result.next_actions)
+
+
+def test_gate_surfaces_latest_observation_plan(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    agent_dir = tmp_path / ".asteria"
+    run = RunStore(agent_dir, validator).create_run("test")
+    RunStore(agent_dir, validator).set_current_session(run["run_id"], "test")
+    JsonlStore(validator).append(
+        agent_dir / "runs" / run["run_id"] / "observation_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_plan_id": "observation-plan-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "trigger": "unit",
+            "failed_observation_count": 1,
+            "actions": [{"action": "repair"}],
+            "blockers": ["run_command: tests failed"],
+            "evidence_refs": ["tool_calls.jsonl"],
+            "recommended_route": "repair",
+            "reason": "repair: run_command tests failed",
+            "created_at": now_iso(),
+        },
+        "observation_plan",
+    )
+
+    result = GateCommand(
+        tmp_path,
+        stage="release",
+        skip_lint=True,
+        skip_typecheck=True,
+        skip_tests=True,
+    ).run()
+
+    assert result.latest_observation_plan["recommended_route"] == "repair"
+    text = result.to_text()
+    assert "Latest agent next action: repair" in text
+    assert "latest_next_action=repair" in text
+
+
+def test_gate_status_surfaces_latest_observation_plan(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    agent_dir = tmp_path / ".asteria"
+    run = RunStore(agent_dir, validator).create_run("test")
+    RunStore(agent_dir, validator).set_current_session(run["run_id"], "test")
+    JsonlStore(validator).append(
+        agent_dir / "runs" / run["run_id"] / "observation_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_plan_id": "observation-plan-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "trigger": "unit",
+            "failed_observation_count": 1,
+            "actions": [{"action": "ask"}],
+            "blockers": ["permission required"],
+            "evidence_refs": ["runtime_requests.jsonl"],
+            "recommended_route": "ask",
+            "reason": "ask: permission required",
+            "created_at": now_iso(),
+        },
+        "observation_plan",
+    )
+
+    result = GateStatusCommand(tmp_path).run()
+
+    assert result.latest_observation_plan["recommended_route"] == "ask"
+    payload = result.to_dict()
+    assert payload["latest_observation_plan"]["reason"] == "ask: permission required"
+    assert "Latest agent next action: ask" in result.to_text()
 
 
 def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:
@@ -834,3 +988,4 @@ def test_gate_status_blocks_release_when_plugin_manifests_are_blocked(
     assert payload["rollout_state"] == "blocked"
     assert payload["plugin_risks"]["blocked"] is True
     assert len(payload["plugin_risks"]["blocked_manifests"]) > 0
+

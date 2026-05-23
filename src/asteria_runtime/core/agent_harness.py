@@ -6,6 +6,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.storage.jsonl_store import JsonlStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
+
 
 @dataclass(frozen=True)
 class CapabilityTool:
@@ -259,14 +263,173 @@ def load_raw_tool_observations(run_dir: Path | None, *, limit: int = 12) -> list
 
 def tool_observation_action_options(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Turn failed tool observations into model-visible next-step choices."""
-    actions: list[dict[str, Any]] = []
-    seen: set[tuple[str, str, str]] = set()
-    for observation in observations:
-        if observation.get("ok", True):
+    return observation_next_action_plan(observations)["actions"]
+
+
+def append_harness_observations(
+    runtime_context: dict[str, Any],
+    *,
+    task_id: str | None,
+    stage: str,
+    results: list[Any],
+    limit: int = 12,
+) -> list[dict[str, Any]]:
+    """Append model-facing observations produced by tool results to runtime context."""
+    observations = []
+    for result in results:
+        observation = tool_observation_dict(result)
+        summary = tool_observation_summary(result)
+        if not observation or not summary:
             continue
+        observations.append(
+            harness_observation_record(
+                task_id=task_id,
+                stage=stage,
+                summary=summary,
+                observation=observation,
+            )
+        )
+    if not observations:
+        return []
+    existing = list(runtime_context.get("harness_observations") or [])
+    runtime_context["harness_observations"] = [*existing, *observations][-limit:]
+    return observations
+
+
+def refresh_tool_observation_plan(
+    runtime_context: dict[str, Any],
+    observations: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Refresh observation -> next-action plan in runtime context."""
+    source = observations
+    if source is None:
+        source = [
+            *list(runtime_context.get("tool_observations") or []),
+            *list(runtime_context.get("harness_observations") or []),
+        ]
+    raw_observations = [_normalize_observation_for_plan(item) for item in list(source or [])]
+    plan = observation_next_action_plan(raw_observations)
+    runtime_context["observation_next_action_plan"] = plan
+    runtime_context["tool_observation_actions"] = plan["actions"]
+    return plan
+
+
+def _normalize_observation_for_plan(observation: dict[str, Any]) -> dict[str, Any]:
+    """Accept raw tool observations or harness records and return the flat observation body."""
+    nested = observation.get("observation")
+    if isinstance(nested, dict):
+        merged = dict(nested)
+        if observation.get("task_id") and "task_id" not in merged:
+            merged["task_id"] = observation.get("task_id")
+        return merged
+    return observation
+
+
+def persist_observation_next_action_plan(
+    *,
+    run_dir: Path | None,
+    validator: SchemaValidator,
+    plan: dict[str, Any],
+    run_id: str | None,
+    task_id: str | None = None,
+    trigger: str,
+) -> dict[str, Any] | None:
+    """Persist an observation plan for review/gate/Studio consumers."""
+    if run_dir is None or not plan:
+        return None
+    failed_count = int(plan.get("failed_observation_count") or 0)
+    if failed_count <= 0:
+        return None
+    path = run_dir / "observation_plans.jsonl"
+    existing_count = len(JsonlStore(validator).read_all(path)) if path.exists() else 0
+    record = {
+        "schema_version": "0.1.0",
+        "observation_plan_id": f"observation-plan-{existing_count + 1:04d}",
+        "run_id": run_id,
+        "task_id": task_id,
+        "trigger": trigger,
+        "failed_observation_count": failed_count,
+        "actions": list(plan.get("actions") or []),
+        "blockers": list(plan.get("blockers") or []),
+        "evidence_refs": list(plan.get("evidence_refs") or []),
+        "recommended_route": recommended_route_from_observation_plan(plan),
+        "reason": observation_plan_reason(plan),
+        "created_at": now_iso(),
+    }
+    JsonlStore(validator).append(path, record, "observation_plan")
+    return record
+
+
+def latest_observation_next_action_plan(
+    run_dir: Path | None,
+    validator: SchemaValidator,
+) -> dict[str, Any] | None:
+    if run_dir is None:
+        return None
+    path = run_dir / "observation_plans.jsonl"
+    if not path.exists():
+        return None
+    plans = JsonlStore(validator).read_all(path, "observation_plan")
+    return plans[-1] if plans else None
+
+
+def recommended_route_from_observation_plan(plan: dict[str, Any]) -> str:
+    """Choose a safe high-level route from observation action candidates."""
+    raw_actions = plan.get("actions")
+    actions = raw_actions if isinstance(raw_actions, list) else []
+    action_names = {str(action.get("action")) for action in actions if action.get("action")}
+    raw_blockers = plan.get("blockers")
+    blocker_items = raw_blockers if isinstance(raw_blockers, list) else []
+    blockers = " ".join(str(item).lower() for item in blocker_items)
+    if "ask" in action_names and any(
+        signal in blockers
+        for signal in ["permission", "scope", "credential", "runtime request", "decision"]
+    ):
+        return "ask"
+    if "replan" in action_names and any(
+        signal in blockers
+        for signal in ["contract", "scope", "task", "expected", "read path", "write path"]
+    ):
+        return "replan"
+    if "repair" in action_names and any(
+        signal in blockers
+        for signal in ["verification", "nonzero", "assert", "test", "unit", "tool failed"]
+    ):
+        return "repair"
+    if "repair" in action_names:
+        return "repair"
+    if "replan" in action_names:
+        return "replan"
+    if "ask" in action_names:
+        return "ask"
+    if "stop" in action_names:
+        return "stop"
+    return "diagnose"
+
+
+def observation_plan_reason(plan: dict[str, Any]) -> str:
+    blockers = [str(item) for item in plan.get("blockers") or [] if item]
+    route = recommended_route_from_observation_plan(plan)
+    if blockers:
+        return f"{route}: {blockers[0]}"
+    return f"{route}: no blocker summary available"
+
+
+def observation_next_action_plan(observations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize observations into a structured diagnose/repair/replan/ask/stop plan."""
+    actions: list[dict[str, Any]] = []
+    blockers: list[str] = []
+    evidence_refs: list[str] = []
+    seen: set[tuple[str, str, str]] = set()
+    failed = [observation for observation in observations if not observation.get("ok", True)]
+    for observation in failed:
         tool_name = str(observation.get("tool_name") or "unknown")
         next_hint = str(observation.get("next_hint") or "diagnose_then_repair_replan_ask_or_stop")
         error_class = str(observation.get("error_class") or "unknown")
+        summary = str(observation.get("summary") or observation.get("error") or "tool failed")
+        blockers.append(f"{tool_name}: {summary}")
+        for ref in observation.get("artifact_refs") or observation.get("evidence_refs") or []:
+            evidence_refs.append(str(ref))
         for action in _actions_for_next_hint(next_hint, tool_name, error_class):
             key = (
                 str(action.get("action")),
@@ -275,9 +438,19 @@ def tool_observation_action_options(observations: list[dict[str, Any]]) -> list[
             )
             if key in seen:
                 continue
+            action = {**action, "source_summary": summary}
             actions.append(action)
             seen.add(key)
-    return actions
+    recommended = actions[0]["action"] if actions else "continue"
+    return {
+        "schema_version": "0.1.0",
+        "status": "blocked" if failed else "ready",
+        "failed_observation_count": len(failed),
+        "recommended_action": recommended,
+        "actions": actions,
+        "blockers": blockers[:10],
+        "evidence_refs": sorted(set(evidence_refs))[:10],
+    }
 
 
 def _actions_for_next_hint(
@@ -533,8 +706,12 @@ class AgentHarness:
                 "system",
                 "static",
                 (
-                    "Treat failures as observations. Diagnose before repair, replan, ask, "
-                    "downgrade, or stop. Do not claim success without evidence."
+                    "Treat failures as observations. Convert each failed ToolObservation into "
+                    "one explicit next action: diagnose, repair, replan, ask, or stop. "
+                    "Prefer diagnose when cause is ambiguous, repair only inside current scope, "
+                    "replan when the task contract is wrong, ask for policy/scope/credential "
+                    "approval, and stop when continuing would hide failure. Do not claim success "
+                    "without evidence."
                 ),
             ),
             PromptEnvelopeSection(
