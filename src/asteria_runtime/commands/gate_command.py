@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gate_status_command import _latest_observation_plan
@@ -30,6 +31,20 @@ class GateCommandResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="gate",
+                audience="maintainer_release_readiness",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "status",
+                    "ok",
+                    "mode",
+                    "stages",
+                    "latest_observation_plan",
+                    "next_actions",
+                ],
+            ),
             "root": str(self.root),
             "status": self.status,
             "ok": self.ok,

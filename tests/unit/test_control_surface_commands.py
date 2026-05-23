@@ -228,6 +228,21 @@ def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: P
     payload = result.to_dict()
     assert payload["mode"] == "release"
     assert payload["stages"]["release"] == []
+    _assert_control_surface_contract(
+        payload,
+        command="gate",
+        audience="maintainer_release_readiness",
+        required_fields={
+            "schema_version",
+            "root",
+            "status",
+            "ok",
+            "mode",
+            "stages",
+            "latest_observation_plan",
+            "next_actions",
+        },
+    )
     text = result.to_text()
     assert "Conclusion: Ready for the requested gate stage." in text
     assert "Mode: release" in text
