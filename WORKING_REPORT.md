@@ -245,3 +245,35 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the documented `accept --skip-review` positioning as a controlled/test path is acceptable, or whether it should be hidden from ordinary user docs.
+
+## 2026-05-24 02:57:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Complete a documentation-contract loop for the command-surface migration: README, Chinese runtime-command docs, and tests now agree that plain commands are preferred while slash-prefixed commands remain compatibility aliases.
+
+### Substantive artifact change this round
+- Added a README note for plain command names and slash alias compatibility.
+- Added documentation contract tests that verify the README source-of-truth link exists, README documents alias compatibility, and the Chinese runtime-command reference keeps the accept workflow and alias-policy fragments.
+
+### Modified files
+- `README.md`: documents plain-command preference and slash alias compatibility for older automation.
+- `tests/unit/test_documentation_contracts.py`: new documentation contract tests for README and Chinese runtime-command docs.
+- `WORKING_REPORT.md`: records this iteration, validation, open issues, and next target.
+
+### Reasons
+- Previous iterations updated docs and CLI tests, but there was no dedicated test guarding the README/source-of-truth and Chinese-doc workflow contract. This closes the loop and prevents future mojibake/link regressions or accidental removal of the alias policy.
+- The change is user-visible documentation plus durable tests, without changing runtime behavior or open product decisions around automatic promotion approval.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 12 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_cli.py src/asteria_runtime/commands/accept_command.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- GitHub CLI is still unavailable locally, so PR creation remains manual even though this branch is pushed.
+- The Chinese command reference still has numbering drift after inserting `accept`; renumbering should be done as a separate doc-only pass.
+
+### Suggested next medium-granularity target
+- Renumber the affected Chinese command-reference sections around `accept`, `debug`, and `handoff`, and add a doc assertion that these key sections appear in the expected order.
+
+### Suggested review focus for tomorrow
+- Review whether the README compatibility note is enough for migration, or whether the CLI help should also explicitly say slash-prefixed forms are compatibility aliases.
