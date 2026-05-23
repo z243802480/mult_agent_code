@@ -34,6 +34,8 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Accept vs acceptance" in help_text
     assert "`accept` finalizes one reviewed run" in help_text
     assert "`acceptance` runs validation suites for maintainers and CI" in help_text
+    assert "Maintainer commands" in help_text
+    assert "Maintainer/CI command: use after the default" in help_text
     assert "Use `asteria <command> --help`" in help_text
 
 
@@ -65,6 +67,20 @@ def test_accept_and_acceptance_help_describe_distinct_user_intents() -> None:
     assert expected in acceptance_help
     assert "Session id to accept; defaults to current session" in accept_help
     assert "Acceptance scenario suite" in acceptance_help
+
+
+def test_maintainer_command_help_stays_outside_default_completion_path() -> None:
+    expected = (
+        "Maintainer/CI command: use after the default init -> run -> status -> "
+        "resume -> review -> accept workflow"
+    )
+
+    for command in ("gate", "gray", "acceptance", "acceptance-gate"):
+        help_text = " ".join(_command_help(command).split())
+        assert expected in help_text
+        assert "not as an ordinary completion step" in help_text
+
+    assert "Maintainer/CI command" not in _command_help("accept")
 
 
 def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:

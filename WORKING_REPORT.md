@@ -378,3 +378,38 @@
 
 ### Suggested review focus for tomorrow
 - Review whether the `accept`/`acceptance` wording is sufficiently clear for non-maintainer users.
+
+## 2026-05-24 04:01:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Keep maintainer-facing validation commands (`gate`, `gray`, `acceptance`, `acceptance-gate`) clearly outside the ordinary user completion workflow in CLI help and quick-start docs.
+
+### Substantive artifact change this round
+- Added a shared maintainer/CI help note to top-level CLI help and the relevant maintainer command help pages.
+- Extended README quick-start to separate validation/release commands from the `init -> run -> status -> resume -> review -> accept` completion path.
+- Added CLI and documentation contract tests that guard this command-surface separation.
+
+### Modified files
+- `src/asteria_runtime/cli.py`: adds the maintainer command help note and wires it into `gate`, `gray`, `acceptance`, and `acceptance-gate`.
+- `README.md`: documents that maintainer validation commands are not ordinary completion steps.
+- `tests/unit/test_cli.py`: verifies maintainer command help includes the separation note and `accept` does not.
+- `tests/unit/test_documentation_contracts.py`: guards README quick-start wording for maintainer validation commands.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- Recent iterations clarified the default workflow and `accept`/`acceptance`; this closes the adjacent UX gap for `gate` and `gray`, which are important but should not become ordinary user mental-model requirements.
+- The change is user-visible help/documentation behavior with regression tests, without altering runtime execution.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py tests/unit/test_documentation_contracts.py -q`: passed, 14 passed.
+- `ruff check src/asteria_runtime/cli.py tests/unit/test_cli.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- No command deprecation was introduced; this only clarifies command audience and usage order.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add command help/documentation checks for machine-readable JSON fields on `status`, `doctor`, and `gate-status`, so future UI/automation can rely on stable control-surface contracts.
+
+### Suggested review focus for tomorrow
+- Review whether maintainer/CI language should also appear in the Chinese command reference around the `gate` and `gray` sections.

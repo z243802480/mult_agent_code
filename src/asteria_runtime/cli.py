@@ -64,6 +64,10 @@ ACCEPT_VS_ACCEPTANCE_HELP = (
     "`accept` finalizes one reviewed run; `acceptance` runs validation suites for "
     "maintainers and CI."
 )
+MAINTAINER_COMMAND_HELP = (
+    "Maintainer/CI command: use after the default init -> run -> status -> resume -> "
+    "review -> accept workflow, not as an ordinary completion step."
+)
 
 
 class AsteriaArgumentParser(argparse.ArgumentParser):
@@ -104,6 +108,9 @@ class AsteriaArgumentParser(argparse.ArgumentParser):
                 "",
                 "Accept vs acceptance",
                 f"  {ACCEPT_VS_ACCEPTANCE_HELP}",
+                "",
+                "Maintainer commands",
+                f"  {MAINTAINER_COMMAND_HELP}",
                 "",
                 "Use `asteria <command> --help` for command-specific options.",
             ]
@@ -256,6 +263,7 @@ def build_parser() -> argparse.ArgumentParser:
         "gate",
         aliases=["/gate"],
         help="Run read-only staged rollout checks for package, doctor, and gate status",
+        epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
     gate_parser.add_argument("--root", default=".", help="Workspace root path")
     gate_parser.add_argument(
@@ -394,6 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
         "gray",
         aliases=["/gray"],
         help="Prepare a dry-run gray validation plan without changing candidate writes",
+        epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
     gray_parser.add_argument(
         "goal",
@@ -773,7 +782,7 @@ def build_parser() -> argparse.ArgumentParser:
         "acceptance",
         aliases=["/acceptance"],
         help="Run reproducible runtime acceptance scenarios",
-        epilog=f"{ACCEPT_VS_ACCEPTANCE_HELP} {SLASH_ALIAS_HELP}",
+        epilog=f"{ACCEPT_VS_ACCEPTANCE_HELP} {MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
     acceptance_parser.add_argument("--root", default=".", help="Acceptance workspace root")
     acceptance_parser.add_argument(
@@ -939,6 +948,7 @@ def build_parser() -> argparse.ArgumentParser:
         "acceptance-gate",
         aliases=["/acceptance-gate", "release-gate", "/release-gate"],
         help="Evaluate the latest acceptance report as a release gate",
+        epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
     acceptance_gate_parser.add_argument("--root", default=".", help="Workspace root path")
     acceptance_gate_parser.add_argument(
