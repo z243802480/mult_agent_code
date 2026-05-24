@@ -23,6 +23,10 @@ def test_accept_command_promotes_pending_candidate_and_finalizes_run(tmp_path: P
     assert result.promoted_files == ["tool.py"]
     assert (root / "tool.py").read_text(encoding="utf-8") == "VALUE = 2\n"
     assert result.final_report_path.exists()
+    assert result.final_report_summary_path == run_dir / "final_report_summary.json"
+    assert result.final_report_summary["status"] == "completed"
+    assert result.to_dict()["final_report_summary"] == result.final_report_summary
+    assert "Final report summary:" in result.to_text()
     run = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(run_dir / "run.json", "run")
     assert run["current_phase"] == "ACCEPTED"
     assert "Accepted by operator" in run["summary"]
@@ -36,6 +40,18 @@ def test_accept_command_blocks_when_review_has_not_passed(tmp_path: Path) -> Non
     assert result.accepted is False
     assert result.status == "blocked"
     assert any("review status is partial" in blocker for blocker in result.blockers)
+    assert result.primary_blocker is not None
+    assert "review status is partial" in result.primary_blocker
+    assert result.recommended_next_command == "debug"
+    payload = result.to_dict()
+    assert "primary_blocker" in payload
+    assert payload["recommended_next_command"] == "debug"
+    assert payload["final_report_summary_path"] == str(run_dir / "final_report_summary.json")
+    assert payload["final_report_summary"]["status"] == "blocked"
+    assert payload["final_report_summary"]["recommended_next_command"] == "debug"
+    text = result.to_text()
+    assert "Primary blocker: " in text
+    assert "Recommended next command: asteria debug" in text
     run = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(run_dir / "run.json", "run")
     assert run["current_phase"] == "ACCEPT"
 

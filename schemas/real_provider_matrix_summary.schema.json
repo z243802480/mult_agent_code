@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RealProviderMatrixSummary",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "matrix",
+    "created_at",
+    "ok",
+    "output_dir",
+    "case_count",
+    "passed",
+    "failed",
+    "duration_seconds",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "matrix": { "type": "string" },
+    "created_at": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "output_dir": { "type": "string" },
+    "case_count": { "type": "integer" },
+    "passed": { "type": "integer" },
+    "failed": { "type": "integer" },
+    "duration_seconds": { "type": "number" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "task_kind",
+          "route",
+          "reason",
+          "ok",
+          "workspace",
+          "summary_json",
+          "expected_file",
+          "expected_text",
+          "run_id",
+          "final_report",
+          "diagnostics",
+          "failure_type",
+          "failure_summary",
+          "evidence_refs"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "task_kind": { "type": "string" },
+          "route": { "type": "string" },
+          "reason": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "workspace": { "type": ["string", "null"] },
+          "summary_json": { "type": "string" },
+          "expected_file": { "type": "string" },
+          "expected_text": { "type": "string" },
+          "run_id": { "type": ["string", "null"] },
+          "final_report": { "type": ["string", "null"] },
+          "diagnostics": { "type": "object" },
+          "failure_type": { "type": ["string", "null"] },
+          "failure_summary": { "type": ["string", "null"] },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "purpose": { "type": "string" },
+          "model_tier": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

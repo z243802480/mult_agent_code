@@ -12,6 +12,7 @@ from asteria_runtime.models.model_failure import (
     model_failure_context_from_env,
 )
 from asteria_runtime.models.openai_compatible import OpenAICompatibleProviderError
+from asteria_runtime.models.route_resolver import resolve_model_route, route_readiness_for_tiers
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -26,13 +27,16 @@ class ModelCheckResult:
     failure_report_path: Path | None = None
     failure_type: str | None = None
     streaming: StreamingTelemetry | None = None
+    route_readiness: dict | None = None
 
     def to_text(self) -> str:
+        route = self.route_readiness or {}
         lines = [
             "Model check",
             f"Provider: {self.provider}",
             f"Model: {self.model_name or 'not configured'}",
             f"Base URL: {self.base_url or 'not configured'}",
+            f"Route readiness: {route.get('status', 'unknown')}",
             f"Config: {'ok' if self.config_ok else 'failed'}",
             f"Call: {'ok' if self.call_ok else 'skipped/failed'}",
             f"Streaming: {self._streaming_text()}",
@@ -42,6 +46,8 @@ class ModelCheckResult:
             lines.append(f"Failure type: {self.failure_type}")
         if self.failure_report_path:
             lines.append(f"Failure report: {self.failure_report_path}")
+        if route.get("current_blocker"):
+            lines.append(f"Route blocker: {route['current_blocker']}")
         return "\n".join(lines)
 
     def _streaming_text(self) -> str:
@@ -70,6 +76,7 @@ class ModelCheckResult:
             else None,
             "failure_type": self.failure_type,
             "streaming": self.streaming.to_dict() if self.streaming else None,
+            "route_readiness": self.route_readiness or {},
         }
 
 
@@ -89,10 +96,25 @@ class ModelCheckCommand:
         self.failure_recorder = ModelFailureRecorder(self.root, self.validator)
 
     def run(self) -> ModelCheckResult:
+        route_resolution = resolve_model_route(self.model_tier)
+        route_readiness = route_readiness_for_tiers((self.model_tier,))
         context = model_failure_context_from_env(_env_prefix_for_tier(self.model_tier))
-        provider = context.provider
-        model_name = context.model_name
+        provider = route_resolution.provider or context.provider
+        model_name = route_resolution.model_name or context.model_name
         base_url = context.base_url
+
+        if not route_resolution.configured and self.model_client is None:
+            summary = route_resolution.next_action
+            return ModelCheckResult(
+                provider=provider,
+                model_name=model_name,
+                base_url=base_url,
+                config_ok=False,
+                call_ok=False,
+                summary=summary,
+                failure_type="configuration",
+                route_readiness=route_readiness,
+            )
 
         try:
             client = self.model_client or create_model_client(None, self.validator)
@@ -112,6 +134,7 @@ class ModelCheckCommand:
                 summary=str(exc),
                 failure_report_path=report_path,
                 failure_type=report["failure_type"],
+                route_readiness=route_readiness,
             )
 
         if self.skip_call:
@@ -122,6 +145,7 @@ class ModelCheckCommand:
                 config_ok=True,
                 call_ok=False,
                 summary="Configuration loaded; model call skipped.",
+                route_readiness=route_readiness,
             )
 
         try:
@@ -143,6 +167,7 @@ class ModelCheckCommand:
                 summary=f"Model call failed: {exc}",
                 failure_report_path=report_path,
                 failure_type=report["failure_type"],
+                route_readiness=route_readiness,
             )
 
         if not isinstance(parsed, dict) or parsed.get("ok") is not True:
@@ -161,6 +186,7 @@ class ModelCheckCommand:
                 summary="Model responded, but did not return the expected JSON payload.",
                 failure_report_path=report_path,
                 failure_type=report["failure_type"],
+                route_readiness=route_readiness,
             )
 
         return ModelCheckResult(
@@ -171,6 +197,7 @@ class ModelCheckCommand:
             call_ok=True,
             summary="Model returned valid JSON for the health check prompt.",
             streaming=response.streaming,
+            route_readiness=route_readiness,
         )
 
     def _request(self) -> ChatRequest:

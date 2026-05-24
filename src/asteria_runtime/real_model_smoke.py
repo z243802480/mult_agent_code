@@ -8,12 +8,14 @@ import subprocess
 import sys
 import tempfile
 import time
+from datetime import UTC, datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 DEFAULT_GOAL = "Create a local file hello_runtime.txt containing one line: real model smoke ok"
@@ -77,6 +79,127 @@ class SmokeFailure(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class SmokeCase:
+    name: str
+    task_kind: str
+    route: str
+    reason: str
+    goal: str
+    expected_file: str
+    expected_text: str
+    max_iterations: int = 3
+    max_tasks_per_iteration: int = 1
+    setup_files: dict[str, str] = field(default_factory=dict)
+
+
+P0_MATRIX_CASES: tuple[SmokeCase, ...] = (
+    SmokeCase(
+        name="file_output",
+        task_kind="file_output",
+        route="artifact_creation",
+        reason="Verifies a bounded goal can produce a concrete file artifact.",
+        goal=(
+            "Create a local file p0_matrix_file_output.txt containing one line: "
+            "P0 matrix file output ok"
+        ),
+        expected_file="p0_matrix_file_output.txt",
+        expected_text="P0 matrix file output ok",
+    ),
+    SmokeCase(
+        name="single_file_bugfix",
+        task_kind="bug_fix",
+        route="repair",
+        reason="Verifies a focused single-file defect can be repaired and validated.",
+        goal=(
+            "Fix calc.py so add(2, 3) returns 5. Keep the change limited to calc.py "
+            "and preserve the existing test intent."
+        ),
+        expected_file="calc.py",
+        expected_text="return a + b",
+        max_iterations=5,
+        setup_files={
+            "calc.py": "def add(a, b):\n    return a - b\n",
+            "test_calc.py": (
+                "from calc import add\n\n"
+                "def test_add():\n"
+                "    assert add(2, 3) == 5\n"
+            ),
+        },
+    ),
+    SmokeCase(
+        name="doc_update",
+        task_kind="doc_update",
+        route="artifact_creation",
+        reason="Verifies documentation-only tasks create durable user-facing artifacts.",
+        goal=(
+            "Create docs/p0_matrix_doc_update.md with the heading P0 Matrix Doc Update "
+            "and a short checklist for reviewing real-provider smoke evidence."
+        ),
+        expected_file="docs/p0_matrix_doc_update.md",
+        expected_text="P0 Matrix Doc Update",
+    ),
+    SmokeCase(
+        name="contract_mismatch_replan",
+        task_kind="contract_mismatch",
+        route="replan",
+        reason=(
+            "Exercises the route where an implementation contract mismatch should cause "
+            "a bounded replan rather than blind repair."
+        ),
+        goal=(
+            "If the requested artifact contract is ambiguous, replan once and then create "
+            "docs/p0_matrix_contract_mismatch_replan.md containing: contract mismatch replan ok"
+        ),
+        expected_file="docs/p0_matrix_contract_mismatch_replan.md",
+        expected_text="contract mismatch replan ok",
+        max_iterations=5,
+    ),
+    SmokeCase(
+        name="verification_failure_repair",
+        task_kind="verification_failure",
+        route="repair",
+        reason=(
+            "Exercises the route where failing verification should trigger a bounded repair "
+            "before final review."
+        ),
+        goal=(
+            "Run the provided test and repair repair_target.py so status() returns 'fixed'. "
+            "Keep the repair minimal."
+        ),
+        expected_file="repair_target.py",
+        expected_text="return 'fixed'",
+        max_iterations=5,
+        setup_files={
+            "repair_target.py": "def status():\n    return 'broken'\n",
+            "test_repair_target.py": (
+                "from repair_target import status\n\n"
+                "def test_status():\n"
+                "    assert status() == 'fixed'\n"
+            ),
+        },
+    ),
+)
+
+
+def matrix_cases(matrix: str, selected_names: list[str] | None = None) -> list[SmokeCase]:
+    if matrix != "p0":
+        raise SmokeFailure(f"Unsupported smoke matrix: {matrix}")
+    cases = list(P0_MATRIX_CASES)
+    if not selected_names:
+        return cases
+    known = {case.name: case for case in cases}
+    unknown = [name for name in selected_names if name not in known]
+    if unknown:
+        raise SmokeFailure(
+            "Unknown matrix case(s): "
+            + ", ".join(unknown)
+            + ". Known: "
+            + ", ".join(sorted(known))
+        )
+    return [known[name] for name in selected_names]
+
+
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     run_from_args(args)
@@ -106,24 +229,12 @@ def run_from_args(args: argparse.Namespace) -> None:
             str(args.model_max_retries),
         )
         apply_deadline_budget_env(os.environ, timeout_budget)
-        workspace, cleanup = prepare_workspace(args.root)
-        result = SmokeResult(
-            workspace=workspace,
-            run_id=None,
-            expected_file=workspace / args.expected_file,
-            final_report=None,
-            transcript=workspace / "real_model_smoke_transcript.json",
-            diagnostics={"timeout_budget": timeout_budget.as_dict()},
-        )
-        run_smoke(args, result)
-        result.ended_at = time.monotonic()
-        write_transcript(result)
+        if getattr(args, "matrix", None):
+            run_matrix_from_args(args, timeout_budget=timeout_budget)
+            return
+        result, cleanup = run_single_from_args(args, timeout_budget=timeout_budget)
         if args.summary_json:
-            args.summary_json.parent.mkdir(parents=True, exist_ok=True)
-            args.summary_json.write_text(
-                json.dumps(result.summary(), indent=2, ensure_ascii=False) + "\n",
-                encoding="utf-8",
-            )
+            write_json(args.summary_json, result.summary())
         print_success(result)
     except Exception as exc:  # noqa: BLE001 - this is a diagnostic script boundary
         if result:
@@ -235,7 +346,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--summary-json",
         type=Path,
         default=None,
-        help="Optional path for a machine-readable smoke summary.",
+        help="Optional path for a machine-readable smoke or matrix summary.",
+    )
+    parser.add_argument(
+        "--matrix",
+        choices=["p0"],
+        default=None,
+        help="Run a curated smoke matrix instead of a single smoke goal.",
+    )
+    parser.add_argument(
+        "--matrix-case",
+        action="append",
+        default=[],
+        help="Limit --matrix to one case name; may be repeated.",
+    )
+    parser.add_argument(
+        "--matrix-output-dir",
+        type=Path,
+        default=None,
+        help="Directory for matrix case workspaces and matrix_summary.json.",
     )
     return parser
 
@@ -259,6 +388,157 @@ def prepare_workspace(root: Path | None) -> tuple[Path, bool]:
         workspace.mkdir(parents=True, exist_ok=True)
         return workspace, False
     return Path(tempfile.mkdtemp(prefix="agent-real-e2e-")).resolve(), True
+
+
+def run_single_from_args(
+    args: argparse.Namespace,
+    *,
+    timeout_budget: DeadlineBudget,
+    case: SmokeCase | None = None,
+) -> tuple[SmokeResult, bool]:
+    workspace, cleanup = prepare_workspace(args.root)
+    if case:
+        apply_setup_files(workspace, case.setup_files)
+    result = SmokeResult(
+        workspace=workspace,
+        run_id=None,
+        expected_file=workspace / args.expected_file,
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+        diagnostics={"timeout_budget": timeout_budget.as_dict()},
+    )
+    run_smoke(args, result)
+    result.ended_at = time.monotonic()
+    write_transcript(result)
+    return result, cleanup
+
+
+def run_matrix_from_args(args: argparse.Namespace, *, timeout_budget: DeadlineBudget) -> None:
+    cases = matrix_cases(str(args.matrix), list(getattr(args, "matrix_case", []) or []))
+    output_dir = matrix_output_dir(args)
+    workspaces_dir = output_dir / "workspaces"
+    workspaces_dir.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
+    case_summaries: list[dict[str, Any]] = []
+    for case in cases:
+        case_args = argparse.Namespace(**vars(args))
+        case_workspace = workspaces_dir / case.name
+        case_args.root = case_workspace
+        case_args.goal = case.goal
+        case_args.expected_file = case.expected_file
+        case_args.expected_text = case.expected_text
+        case_args.max_iterations = case.max_iterations
+        case_args.max_tasks_per_iteration = case.max_tasks_per_iteration
+        case_args.summary_json = output_dir / f"{case.name}_summary.json"
+        case_args.matrix = None
+        try:
+            result, _cleanup = run_single_from_args(
+                case_args,
+                timeout_budget=timeout_budget,
+                case=case,
+            )
+            write_json(case_args.summary_json, result.summary())
+            case_summaries.append(
+                matrix_case_summary(case, result=result, summary_json=case_args.summary_json)
+            )
+        except Exception as exc:  # noqa: BLE001 - keep collecting bounded matrix evidence
+            case_summaries.append(
+                matrix_case_summary(
+                    case,
+                    workspace=case_workspace,
+                    summary_json=case_args.summary_json,
+                    failure=exc,
+                )
+            )
+    summary = {
+        "schema_version": "0.1.0",
+        "matrix": args.matrix,
+        "created_at": datetime.now(UTC).isoformat(),
+        "ok": all(item["ok"] for item in case_summaries),
+        "output_dir": str(output_dir),
+        "case_count": len(case_summaries),
+        "passed": sum(1 for item in case_summaries if item["ok"]),
+        "failed": sum(1 for item in case_summaries if not item["ok"]),
+        "duration_seconds": round(time.monotonic() - started, 3),
+        "cases": case_summaries,
+    }
+    matrix_summary_path = output_dir / "matrix_summary.json"
+    write_matrix_summary_json(matrix_summary_path, summary)
+    if args.summary_json:
+        write_matrix_summary_json(args.summary_json, summary)
+    print_matrix_summary(summary, matrix_summary_path)
+    if not summary["ok"]:
+        raise SmokeFailure("real-model smoke matrix failed; see matrix_summary.json for details.")
+
+
+def matrix_output_dir(args: argparse.Namespace) -> Path:
+    if args.matrix_output_dir is not None:
+        return args.matrix_output_dir.resolve()
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    if args.root is not None:
+        return (
+            args.root.resolve()
+            / ".asteria"
+            / "verification"
+            / "real_provider_matrix"
+            / stamp
+        )
+    return Path(tempfile.mkdtemp(prefix="asteria-real-provider-matrix-")).resolve()
+
+
+def apply_setup_files(workspace: Path, setup_files: dict[str, str]) -> None:
+    for relative_path, content in setup_files.items():
+        target = (workspace / relative_path).resolve()
+        if not str(target).startswith(str(workspace.resolve())):
+            raise SmokeFailure(f"Setup file escapes workspace: {relative_path}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
+
+def matrix_case_summary(
+    case: SmokeCase,
+    *,
+    result: SmokeResult | None = None,
+    workspace: Path | None = None,
+    summary_json: Path,
+    failure: Exception | None = None,
+) -> dict[str, Any]:
+    case_workspace = result.workspace if result else workspace
+    evidence_refs = []
+    if result:
+        evidence_refs.extend([str(result.transcript), str(summary_json)])
+        if result.final_report:
+            evidence_refs.append(str(result.final_report))
+    return {
+        "name": case.name,
+        "task_kind": case.task_kind,
+        "route": case.route,
+        "reason": case.reason,
+        "ok": failure is None,
+        "workspace": str(case_workspace) if case_workspace else None,
+        "summary_json": str(summary_json),
+        "expected_file": case.expected_file,
+        "expected_text": case.expected_text,
+        "run_id": result.run_id if result else None,
+        "final_report": str(result.final_report) if result and result.final_report else None,
+        "diagnostics": result.diagnostics if result else {},
+        "failure_type": type(failure).__name__ if failure else None,
+        "failure_summary": redact(str(failure)) if failure else None,
+        "evidence_refs": evidence_refs,
+    }
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def write_matrix_summary_json(path: Path, payload: dict[str, Any]) -> None:
+    SchemaValidator(Path(__file__).resolve().parents[2] / "schemas").validate(
+        "real_provider_matrix_summary",
+        payload,
+    )
+    write_json(path, payload)
 
 
 def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
@@ -844,6 +1124,17 @@ def print_failure(exc: Exception, result: SmokeResult) -> None:
     print(f"Workspace: {result.workspace}", file=sys.stderr)
     print(f"Session: {result.run_id or 'not created'}", file=sys.stderr)
     print(f"Transcript: {result.transcript}", file=sys.stderr)
+
+
+def print_matrix_summary(summary: dict[str, Any], matrix_summary_path: Path) -> None:
+    status = "passed" if summary["ok"] else "failed"
+    print(f"Real model smoke matrix {status}")
+    print(f"Matrix: {summary['matrix']}")
+    print(f"Cases: {summary['passed']}/{summary['case_count']} passed")
+    print(f"Summary: {matrix_summary_path}")
+    for case in summary["cases"]:
+        marker = "PASS" if case["ok"] else "FAIL"
+        print(f"- {marker} {case['name']} [{case['route']}]: {case['reason']}")
 
 
 if __name__ == "__main__":

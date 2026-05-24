@@ -16,6 +16,7 @@
       "route_environment",
       "route_guidance",
       "latest_observation_plan",
+      "latest_real_provider_matrix",
       "promotion_release_risks",
       "plugin_risks",
       "feature_flags",
@@ -26,16 +27,16 @@
       "next_actions"
     ]
   },
-  "root": "H:/mult_agent_code",
-  "stage": "ready_for_gray_suite",
-  "rollout_state": "conditional",
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmp10jn0r3d",
+  "stage": "missing_real_model_gate",
+  "rollout_state": "blocked",
   "release_ready": false,
-  "blocking_reason": "Run gray real-model acceptance before small real-task gray.",
+  "blocking_reason": "Run `python scripts/real_model_gate.py --summary-json .asteria/model/real_model_gate_report.json`.",
   "gates": {
     "real_model_gate": {
-      "present": true,
-      "ok": true,
-      "status": "pass"
+      "present": false,
+      "ok": null,
+      "status": "missing"
     },
     "gray_suite": {
       "present": false,
@@ -50,35 +51,208 @@
   },
   "route_environment": {
     "ready": true,
-    "missing_required": []
+    "missing_required": [],
+    "strong": {
+      "configured": true,
+      "missing": [],
+      "provider": "glm",
+      "model": "glm-5",
+      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "env_prefix": "AGENT_MODEL_STRONG",
+      "source": "tier",
+      "api_key_present": true,
+      "streaming": {
+        "enabled": true,
+        "idle_timeout_seconds": null,
+        "deadline_seconds": null
+      }
+    },
+    "medium": {
+      "configured": true,
+      "missing": [],
+      "provider": "minimax",
+      "model": "MiniMax-M2.7",
+      "base_url": "https://api.minimaxi.com/v1",
+      "env_prefix": "AGENT_MODEL",
+      "source": "global",
+      "api_key_present": true,
+      "streaming": {
+        "enabled": true,
+        "idle_timeout_seconds": null,
+        "deadline_seconds": null
+      }
+    }
   },
   "route_guidance": {
-    "status": "healthy"
+    "status": "healthy",
+    "blocking": [],
+    "review": [],
+    "provider_route_strategy": {
+      "decision": "collect_evidence",
+      "strategy": {
+        "primary_model": "glm-5",
+        "cost_saver_model": "glm-4.7",
+        "min_calls_before_enforcement": 3,
+        "min_success_rate_for_gray": 0.8,
+        "max_timeout_failures_for_gray": 1,
+        "provider_deadline_seconds": 120,
+        "stream_idle_timeout_seconds": 30,
+        "continue_primary_when": [
+          "release gate is being refreshed",
+          "route guidance is healthy",
+          "recent success rate is at or above min_success_rate_for_gray"
+        ],
+        "allow_cost_saver_when": [
+          "task is a small gray validation task",
+          "cost budget is constrained",
+          "cost_saver recent success rate is at or above min_success_rate_for_gray"
+        ],
+        "downgrade_or_retry_when": [
+          "primary route is transiently rate limited",
+          "primary route hits one timeout but recent success rate remains acceptable",
+          "task is doc-only or low-risk and medium route is healthy"
+        ],
+        "block_gray_when": [
+          "strong goal_spec success rate is below min_success_rate_for_gray after min_calls_before_enforcement calls",
+          "timeout failures exceed max_timeout_failures_for_gray",
+          "authentication, budget, or configuration failure is present",
+          "provider streaming evidence is missing for required strong and medium routes"
+        ]
+      },
+      "reason": "No model capability profile exists yet."
+    },
+    "recommended_actions": [
+      "Keep current model routes and continue collecting capability evidence."
+    ]
   },
   "latest_observation_plan": {},
   "promotion_release_risks": {
+    "total": 0,
     "pending": 0,
-    "blocked": 0
+    "blocked": 0,
+    "promoted": 0,
+    "risk_policy": {
+      "manual_approval_default": false,
+      "release_blocking_statuses": [
+        "queued",
+        "pending_manual_approval",
+        "approved",
+        "blocked",
+        "promotion_failed"
+      ],
+      "max_pending_release_promotions": 0,
+      "max_blocked_release_promotions": 0
+    },
+    "release_blocking_threshold": 0,
+    "release_blocking_statuses": [
+      "queued",
+      "pending_manual_approval",
+      "approved",
+      "blocked",
+      "promotion_failed"
+    ]
   },
   "plugin_risks": {
     "blocked": false,
-    "actions": []
+    "blocked_manifests": [],
+    "warnings": [],
+    "actions": [],
+    "plugin_control": {
+      "initialized": true,
+      "ok": true,
+      "plugin_dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmp10jn0r3d\\.asteria\\plugins",
+      "hook_policy": {
+        "enabled": true,
+        "plugins_enabled": false,
+        "allowed_hook_names": [
+          "before_worker",
+          "after_worker",
+          "worker_error",
+          "before_tool_call",
+          "after_tool_call",
+          "tool_call_error"
+        ],
+        "redacted_data_keys": [
+          "secret",
+          "token",
+          "api_key",
+          "apikey",
+          "authorization",
+          "password",
+          "credential",
+          "raw_context"
+        ],
+        "handler_timeout_ms": 1000
+      },
+      "plugins": [],
+      "status_counts": {},
+      "warnings": [],
+      "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off."
+    }
   },
-  "feature_flags": {},
-  "capability_flags": {},
-  "evidence_sources": {
-    "real_model_gate": ".asteria/model/real_model_gate_report.json"
+  "feature_flags": {
+    "streaming": {
+      "name": "streaming",
+      "active": true,
+      "reason": "Feature is enabled and all required capabilities are available.",
+      "feature_enabled": true,
+      "capability_available": true,
+      "capability_reason": "Strong and medium provider routes have streaming enabled."
+    }
   },
+  "capability_flags": {
+    "strong_model": {
+      "name": "strong_model",
+      "available": true,
+      "reason": "Strong model route is configured."
+    },
+    "medium_model": {
+      "name": "medium_model",
+      "available": true,
+      "reason": "Medium model route is configured."
+    },
+    "plugin_execution": {
+      "name": "plugin_execution",
+      "available": false,
+      "reason": "Plugin execution is disabled."
+    },
+    "real_model": {
+      "name": "real_model",
+      "available": false,
+      "reason": "No real model gate record."
+    },
+    "provider_streaming": {
+      "name": "provider_streaming",
+      "available": true,
+      "reason": "Strong and medium provider routes have streaming enabled."
+    }
+  },
+  "evidence_sources": {},
   "gray_task_limits": {
     "max_iterations": 3,
     "max_tasks_per_iteration": 1,
-    "max_repairs": 1
+    "max_repairs": 1,
+    "max_replans": 1,
+    "recommended_run_flags": [
+      "--max-iterations 3",
+      "--max-tasks-per-iteration 1",
+      "--no-research"
+    ],
+    "stop_conditions": [
+      "cost_status near_limit or hard_stop",
+      "merge gate promotion risk",
+      "protected path risk",
+      "session cannot resume"
+    ]
   },
   "validation_recommendation": {
-    "level": "targeted",
-    "command": "python -m pytest tests/unit/test_control_surface_commands.py -q"
+    "level": "none",
+    "reason": "No git changes detected or git status unavailable.",
+    "changed_file_count": 0,
+    "command": "asteria gate-status --json"
   },
   "next_actions": [
-    "Run `asteria real-model-acceptance --suite gray`."
-  ]
+    "Run `python scripts/real_model_gate.py --summary-json .asteria/model/real_model_gate_report.json`."
+  ],
+  "latest_real_provider_matrix": {}
 }

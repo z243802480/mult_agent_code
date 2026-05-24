@@ -1,35 +1,26 @@
 import React, { useMemo, useEffect, useRef, useState } from "react";
-import {
-  ChevronDown, ChevronRight, CircleDot,
-  FileText, Loader2, Terminal, Wrench,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, CircleDot, FileText, Loader2, Terminal, Wrench } from "lucide-react";
 import type { AnyRecord, StudioEvent, NarrativeStep as NarrativeStepType } from "../types";
 import { NarrativeStep } from "./NarrativeStep";
 import { PermissionCard } from "./PermissionCard";
 import { toNarrativeEvents, buildRunNarrative } from "../narrative";
 
-// ── Prompts ─────────────────────────────────────────────────────────────────
-
 const EXAMPLE_PROMPTS = [
-  "帮我制定一个 3 天青岛旅行计划",
-  "给这个项目的 --version 参数补一个测试",
-  "分析最近的失败日志，找出根因",
-  "把下面这段需求整理成一页 PRD",
+  "Plan a 3-day Qingdao trip",
+  "Add a --version test to this project",
+  "Analyze the latest failure log and identify the root cause",
+  "Turn these notes into a one-page PRD",
 ];
 
-// ── Phase labels ─────────────────────────────────────────────────────────────
-
 const PHASE_LABELS: Record<string, string> = {
-  thinking:     "思考中",
-  plan:         "规划中",
-  tool:         "执行工具",
-  result:       "整理结果",
-  verification: "验证中",
-  repair:       "修复中",
-  error:        "遇到错误",
+  thinking: "Thinking",
+  plan: "Planning",
+  tool: "Using tools",
+  result: "Preparing result",
+  verification: "Verifying",
+  repair: "Repairing",
+  error: "Error",
 };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));
@@ -54,8 +45,13 @@ function splitIntoTurns(steps: NarrativeStepType[]): NarrativeStepType[][] {
 
 function middleSummary(steps: NarrativeStepType[]): string {
   const kindLabels: Record<string, string> = {
-    thinking: "思考", plan: "规划", tool: "工具调用",
-    result: "文件变化", repair: "修复", verification: "验证", error: "错误",
+    thinking: "thinking",
+    plan: "plan",
+    tool: "tool",
+    result: "file change",
+    repair: "repair",
+    verification: "verification",
+    error: "error",
   };
   const seen = new Set<string>();
   const kinds: string[] = [];
@@ -63,28 +59,25 @@ function middleSummary(steps: NarrativeStepType[]): string {
     const label = kindLabels[s.kind] ?? s.label;
     if (!seen.has(label)) { seen.add(label); kinds.push(label); }
   }
-  return `${steps.length} 步 · ${kinds.slice(0, 4).join(" · ")}`;
+  return `${steps.length} step(s): ${kinds.slice(0, 4).join(" / ")}`;
 }
 
-/** Pull the last model telemetry from any step's events. */
-function extractTelemetry(steps: NarrativeStepType[]): {
-  modelId: string | null;
-  tokens: number;
-  latencyMs: number;
-} {
-  const allEvents = steps.flatMap((s) => s.events);
-  const last = [...allEvents].reverse().find((e) => e.model_provider && e.telemetry);
-  if (!last) return { modelId: null, tokens: 0, latencyMs: 0 };
-  const tel = (last.telemetry ?? {}) as Record<string, number>;
-  const tokens = tel.total_tokens ?? (tel.input_tokens ?? 0) + (tel.output_tokens ?? 0);
-  const latencyMs = tel.latency_ms ?? tel.duration_ms ?? 0;
-  const modelId = last.model_name
-    ? `${last.model_provider}/${last.model_name}`
-    : (last.model_provider ?? null);
-  return { modelId, tokens, latencyMs };
+function hasFinalAnswerForPhase(steps: NarrativeStepType[], phase?: string): boolean {
+  return steps.some((step) =>
+    step.kind === "final"
+    && step.events.some((event) =>
+      event.type === "final_answer" && (!phase || event.phase === phase)
+    )
+  );
 }
 
-/** Collect unique file changes from result-kind steps. */
+function isModelThinkingStep(step: NarrativeStepType, phase?: string): boolean {
+  return step.kind === "thinking"
+    && step.events.some((event) =>
+      event.type.startsWith("model_") && (!phase || event.phase === phase)
+    );
+}
+
 function extractFileChanges(steps: NarrativeStepType[]): AnyRecord[] {
   const seen = new Set<string>();
   const result: AnyRecord[] = [];
@@ -99,15 +92,13 @@ function extractFileChanges(steps: NarrativeStepType[]): AnyRecord[] {
   return result;
 }
 
-// ── EmptyState ─────────────────────────────────────────────────────────────
-
 function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
   return (
     <section className="emptyThread">
       <div className="emptyPanel">
         <CircleDot size={25} />
-        <h2>从一个目标开始</h2>
-        <p>告诉我要完成什么任务。我会制定计划、申请权限、执行，并把结果放回这条任务线。</p>
+        <h2>What would you like to do?</h2>
+        <p>Ask a question, draft a plan, or describe a goal. Asteria will answer naturally and ask before taking sensitive actions.</p>
         <div className="examplePrompts">
           {EXAMPLE_PROMPTS.map((ex) => (
             <button key={ex} onClick={() => onPrompt(ex)}>{ex}</button>
@@ -118,59 +109,73 @@ function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
   );
 }
 
-// ── LiveStream ────────────────────────────────────────────────────────────────
-// Shown WHILE a turn is running.  Surfaces LLM token stream + tool chips +
-// file-change chips so the user can watch progress in real time.
+function PendingTurn({ message, mode, startedAt }: { message: string; mode: string; startedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
 
-function LiveStream({
-  steps,
-  onPermit,
-}: {
-  steps: NarrativeStepType[];
-  onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
-}) {
+  const phase = mode === "auto"
+    ? "Routing intent"
+    : mode === "chat"
+    ? "Thinking"
+    : "Starting run";
+
+  return (
+    <div className="conversationTurn pendingTurn">
+      <div className="turnUser">
+        <div className="turnUserBubble optimistic">
+          <p>{message}</p>
+          <span className="turnUserTime">sending</span>
+        </div>
+      </div>
+      <div className="turnWaiting">
+        <Loader2 size={14} className="spinning" />
+        <span className="waitingDots" aria-hidden="true"><i /> <i /> <i /></span>
+        <strong>{phase}</strong>
+        <small>{elapsed}s</small>
+      </div>
+    </div>
+  );
+}
+
+function LiveStream({ steps, onPermit }: { steps: NarrativeStepType[]; onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>; }) {
   const activeStep = steps.at(-1);
-  const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "处理中";
+  const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "Processing";
   const isWaiting = activeStep?.status === "waiting_user";
-
-  // ── Streaming model text ─────────────────────────────────────────
-  // Concat all model/thinking output so the user sees every word as it arrives.
   const modelText = steps
     .filter((s) => s.kind === "thinking" || s.kind === "plan" || s.kind === "verification")
-    .map((s) => s.events[0]?.content_delta || s.summary || "")
+    .map((s) => {
+      const event = s.events[0];
+      if (event?.type?.startsWith("model_") && event.phase !== "chat") {
+        return event.status === "running"
+          ? "Model is drafting structured output. The readable plan will appear when validation finishes."
+          : "Model output captured; preparing a readable result.";
+      }
+      return event?.content_delta || s.summary || "";
+    })
     .filter(Boolean)
     .join("\n\n");
-
-  // ── Tool call chips ─────────────────────────────────────────────
   const toolSteps = steps.filter((s) => s.kind === "tool" || s.kind === "repair");
-
-  // ── File change chips ──────────────────────────────────────────
   const fileChanges = extractFileChanges(steps);
-
-  // ── Tool stdout (if Runtime emits content_delta on tool events) ──
   const toolOutputs = toolSteps
     .flatMap((s) => s.events.map((e) => ({ id: s.id, text: e.content_delta, cmd: e.command })))
     .filter((o) => o.text);
-
-  // ── Pending permission card ─────────────────────────────────────
   const permEvent = steps
     .flatMap((s) => s.events)
     .find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
 
   return (
     <div className="liveStream">
-      {/* Phase header */}
       <div className="livePhaseRow">
-        {isWaiting
-          ? <span className="livePhaseDot waiting" />
-          : <Loader2 size={13} className="spinning liveSpinner" />}
+        {isWaiting ? <span className="livePhaseDot waiting" /> : <Loader2 size={13} className="spinning liveSpinner" />}
         <span className="livePhaseLabel">{phaseLabel}</span>
-        {activeStep?.title && activeStep.title !== phaseLabel && (
-          <span className="livePhaseTitle">{activeStep.title}</span>
-        )}
+        {activeStep?.title && activeStep.title !== phaseLabel && <span className="livePhaseTitle">{activeStep.title}</span>}
       </div>
 
-      {/* Tool call chips — inline log of every tool invoked */}
       {toolSteps.length > 0 && (
         <div className="liveToolRow">
           {toolSteps.map((s) => {
@@ -187,16 +192,12 @@ function LiveStream({
         </div>
       )}
 
-      {/* Tool stdout — shown when Runtime emits output on tool_delta events */}
       {toolOutputs.length > 0 && (
         <div className="liveToolOutputs">
-          {toolOutputs.map((o, i) => (
-            <pre key={i} className="liveToolOutput">{o.text}</pre>
-          ))}
+          {toolOutputs.map((o, i) => <pre key={i} className="liveToolOutput">{o.text}</pre>)}
         </div>
       )}
 
-      {/* File change chips */}
       {fileChanges.length > 0 && (
         <div className="liveFileRow">
           {fileChanges.slice(0, 10).map((fc, i) => {
@@ -211,16 +212,11 @@ function LiveStream({
               </span>
             );
           })}
-          {fileChanges.length > 10 && (
-            <span className="liveFileChip muted">+{fileChanges.length - 10} 更多</span>
-          )}
+          {fileChanges.length > 10 && <span className="liveFileChip muted">+{fileChanges.length - 10} more</span>}
         </div>
       )}
 
-      {/* Streaming LLM text — this is the model's actual words arriving token by token */}
       {modelText && <pre className="liveModelText">{modelText}</pre>}
-
-      {/* Permission card — always surfaces immediately, not buried in a collapsed step */}
       {permEvent && (
         <PermissionCard
           event={permEvent}
@@ -232,34 +228,61 @@ function LiveStream({
   );
 }
 
-// ── TurnMiddle ────────────────────────────────────────────────────────────────
-// Shown AFTER a turn completes.  Collapsed by default — this is the process
-// archive for inspection, not the primary reading surface.
 
-function TurnMiddle({
-  steps,
-  selected,
-  onSelect,
-  onPermit,
-}: {
+function useSmoothText(text: string): string {
+  const [visible, setVisible] = useState(text);
+  useEffect(() => {
+    let cancelled = false;
+    setVisible((current) => (text.startsWith(current) ? current : ""));
+    const timer = window.setInterval(() => {
+      if (cancelled) return;
+      setVisible((current) => {
+        if (current.length >= text.length) {
+          window.clearInterval(timer);
+          return text;
+        }
+        return text.slice(0, Math.min(text.length, current.length + 28));
+      });
+    }, 28);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [text]);
+  return visible;
+}
+
+function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
+  const event = step.events.at(-1) || step.events[0];
+  const text = step.events.map((item) => item.content_delta || "").join("");
+  const smoothText = useSmoothText(text);
+  const modelId = event?.model_name
+    ? `${event.model_provider || "model"}/${event.model_name}`
+    : event?.model_provider || "model";
+  return (
+    <div className="chatStreamPreview">
+      <div className="chatStreamHeader">
+        <Loader2 size={13} className="spinning" />
+        <strong>Thinking</strong>
+        {modelId && <span>{modelId}</span>}
+      </div>
+      {smoothText ? <pre>{smoothText}</pre> : <p>Waiting for the first tokens...</p>}
+    </div>
+  );
+}
+
+function TurnMiddle({ steps, selected, onSelect, onPermit }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
 }) {
-  const hasPendingPermission = steps.some((s) =>
-    s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user")
-  );
+  const hasPendingPermission = steps.some((s) => s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"));
   const [open, setOpen] = useState(hasPendingPermission);
-
   if (steps.length === 0) return null;
-
   return (
     <div className="turnMiddle">
-      <button
-        className={`turnMiddleBadge ${open ? "open" : ""}`}
-        onClick={() => setOpen((o) => !o)}
-      >
+      <button className={`turnMiddleBadge ${open ? "open" : ""}`} onClick={() => setOpen((o) => !o)}>
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         <Wrench size={11} />
         <span>{middleSummary(steps)}</span>
@@ -267,9 +290,7 @@ function TurnMiddle({
       {open && (
         <div className="turnMiddleSteps">
           {steps.map((step) => {
-            const permStep = step.events.find(
-              (e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id
-            );
+            const permStep = step.events.find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
             if (permStep) {
               return (
                 <PermissionCard
@@ -280,14 +301,7 @@ function TurnMiddle({
                 />
               );
             }
-            return (
-              <NarrativeStep
-                key={step.id}
-                step={step}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            );
+            return <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />;
           })}
         </div>
       )}
@@ -295,35 +309,18 @@ function TurnMiddle({
   );
 }
 
-// ── TurnFinal ─────────────────────────────────────────────────────────────────
-// The agent's formal reply.  Shows actual content plus model/token metadata.
-
-function TurnFinal({
-  step,
-  middleSteps,
-}: {
-  step: NarrativeStepType;
-  middleSteps: NarrativeStepType[];
-}) {
+function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
   const event = step.events[0];
-  const text = event?.content_delta || step.summary || step.title || "（无内容）";
+  const text = event?.content_delta || step.summary || step.title || "No content";
   const isError = step.kind === "error" || step.status === "failed";
-
-  const { modelId, tokens, latencyMs } = extractTelemetry(middleSteps);
-  const sections = splitFinalSections(text);
+  const visibleText = stripContextNoise(text);
+  const sections = splitFinalSections(visibleText);
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
       <div className="turnFinalHeader">
         <span className="turnFinalAvatar">A</span>
         <span className="turnFinalLabel">Asteria</span>
-        {modelId && <span className="turnFinalMeta">{modelId}</span>}
-        {tokens > 0 && (
-          <span className="turnFinalMeta">
-            {tokens.toLocaleString()} tokens
-            {latencyMs > 0 && ` · ${(latencyMs / 1000).toFixed(1)}s`}
-          </span>
-        )}
       </div>
       <div className="turnFinalText">
         {sections.map((section, index) => (
@@ -335,6 +332,17 @@ function TurnFinal({
       </div>
     </div>
   );
+}
+
+function stripContextNoise(text: string): string {
+  const backendNoise = /\n(?:Context refs:|Current session:|Next actions:|Model route:|Route rationale:|Evidence refs:|Artifact refs:|Run id:|Latest run:)/i;
+  return String(text || "")
+    .split(backendNoise)[0]
+    .replace(/\n?_Answered with model route:[\s\S]*$/i, "")
+    .replace(/\n?_Local fallback answer:[\s\S]*$/i, "")
+    .replace(/^Latest run:\s*`?run-[^\n]+\n?/gim, "")
+    .replace(/^.*(?:Inspector|Evidence Explorer).*$/gim, "")
+    .trim();
 }
 
 function splitFinalSections(text: string): { title: string; lines: string[] }[] {
@@ -361,20 +369,7 @@ function renderFinalLine(line: string, index: number) {
   return <p key={index}>{line}</p>;
 }
 
-// ── ConversationTurn ──────────────────────────────────────────────────────────
-// One full user ↔ agent exchange.
-//
-// RUNNING  → LiveStream (LLM tokens stream in, tool + file chips inline)
-// DONE     → TurnMiddle (collapsed process archive) + TurnFinal (reply)
-
-function ConversationTurn({
-  steps,
-  selected,
-  onSelect,
-  onPermit,
-  isLast,
-  isRunning,
-}: {
+function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -384,7 +379,6 @@ function ConversationTurn({
 }) {
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
-
   const responseIndex = (() => {
     for (let index = restSteps.length - 1; index >= 0; index -= 1) {
       if (restSteps[index].kind === "final" || restSteps[index].kind === "error") return index;
@@ -392,78 +386,55 @@ function ConversationTurn({
     return -1;
   })();
   const responseStep = responseIndex >= 0 ? restSteps[responseIndex] : null;
-  const middleSteps = responseIndex >= 0
-    ? restSteps.filter((_, index) => index !== responseIndex)
-    : restSteps;
-
+  const rawMiddleSteps = responseIndex >= 0 ? restSteps.filter((_, index) => index !== responseIndex) : restSteps;
+  const responsePhase = responseStep?.events[0]?.phase;
+  const hideCompletedModelStream = responseStep ? hasFinalAnswerForPhase([responseStep], responsePhase) : false;
+  const middleSteps = hideCompletedModelStream
+    ? rawMiddleSteps.filter((step) => !isModelThinkingStep(step, responsePhase))
+    : rawMiddleSteps;
   const goalEvent = goalStep.events[0];
   const userText = goalEvent?.content_delta || goalStep.summary || goalStep.title || "";
   const time = goalEvent ? formatEventTime(goalEvent.created_at) : "";
-
   const turnRunning = isLast && isRunning && !responseStep;
 
   return (
     <div className="conversationTurn">
-      {/* User message bubble */}
       <div className="turnUser">
         <div className="turnUserBubble">
           <p>{userText}</p>
           <span className="turnUserTime">{time}</span>
         </div>
       </div>
-
       {turnRunning ? (
-        /* LIVE: stream LLM output while the run is active */
         middleSteps.length === 0 ? (
-          <div className="turnRunning">
-            <Loader2 size={14} className="spinning" />
-            <span>正在启动...</span>
-          </div>
+          <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>Starting...</span></div>
+        ) : middleSteps.length === 1 && isModelThinkingStep(middleSteps[0], "chat") ? (
+          <ChatStreamPreview step={middleSteps[0]} />
         ) : (
           <LiveStream steps={middleSteps} onPermit={onPermit} />
         )
       ) : (
-        /* DONE: collapsed process archive */
-        middleSteps.length > 0 && (
-          <TurnMiddle
-            steps={middleSteps}
-            selected={selected}
-            onSelect={onSelect}
-            onPermit={onPermit}
-          />
-        )
+        middleSteps.length > 0 && <TurnMiddle steps={middleSteps} selected={selected} onSelect={onSelect} onPermit={onPermit} />
       )}
-
-      {/* Formal reply — always shown once available */}
       {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
     </div>
   );
 }
 
-// ── Thread (root export) ──────────────────────────────────────────────────────
-
-export function Thread({
-  events,
-  selected,
-  isRunning,
-  onSelect,
-  onPrompt,
-  onPermit,
-}: {
+export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, pendingTurn }: {
   events: StudioEvent[];
   selected: StudioEvent | null;
   isRunning: boolean;
   onSelect: (event: StudioEvent) => void;
   onPrompt: (text: string) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
+  pendingTurn?: { message: string; mode: string; startedAt: number } | null;
 }) {
   const threadRef = useRef<HTMLElement>(null);
-
-  const mainEvents = useMemo(
-    () => events.filter((e) => !e.display_level || e.display_level === "main"),
-    [events]
+  const mainEvents = useMemo(() => events.filter((e) => !e.display_level || e.display_level === "main"), [events]);
+  const shouldShowPending = Boolean(pendingTurn) && !mainEvents.some((event) =>
+    event.type === "user_message" && event.content_delta === pendingTurn?.message
   );
-
   const narrativeEvents = useMemo(() => toNarrativeEvents(mainEvents), [mainEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
@@ -472,14 +443,10 @@ export function Thread({
     const el = threadRef.current;
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 220;
-    if (nearBottom || isRunning) {
-      requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
-    }
+    if (nearBottom || isRunning) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [mainEvents.length, isRunning]);
 
-  if (!turns.length) {
-    return <EmptyState onPrompt={onPrompt} />;
-  }
+  if (!turns.length && !shouldShowPending) return <EmptyState onPrompt={onPrompt} />;
 
   return (
     <section className="thread" ref={threadRef}>
@@ -494,6 +461,7 @@ export function Thread({
           isRunning={isRunning}
         />
       ))}
+      {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
     </section>
   );
 }

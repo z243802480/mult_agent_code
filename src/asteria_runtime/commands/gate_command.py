@@ -12,6 +12,10 @@ from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gate_status_command import _latest_observation_plan
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.core.real_provider_matrix import (
+    latest_real_provider_matrix,
+    real_provider_matrix_text_lines,
+)
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -22,6 +26,7 @@ class GateCommandResult:
     mode: str = "read_only"
     stages: dict[str, Any] = field(default_factory=dict)
     latest_observation_plan: dict[str, Any] = field(default_factory=dict)
+    latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     @property
@@ -42,6 +47,7 @@ class GateCommandResult:
                     "mode",
                     "stages",
                     "latest_observation_plan",
+                    "latest_real_provider_matrix",
                     "next_actions",
                 ],
             ),
@@ -51,6 +57,7 @@ class GateCommandResult:
             "mode": self.mode,
             "stages": self.stages,
             "latest_observation_plan": self.latest_observation_plan,
+            "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "next_actions": self.next_actions,
         }
 
@@ -80,6 +87,7 @@ class GateCommandResult:
                 f"{self.latest_observation_plan.get('recommended_route', 'unknown')} - "
                 f"{self.latest_observation_plan.get('reason', 'No reason recorded.')}"
             )
+        lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
         if blockers:
             lines.append("Blockers:")
             lines.extend(f"  - {blocker}" for blocker in blockers)
@@ -146,6 +154,13 @@ class GateCommandResult:
                 f"{self.latest_observation_plan.get('recommended_route', 'unknown')} "
                 f"plan={self.latest_observation_plan.get('observation_plan_id', 'unknown')}"
             )
+        if self.latest_real_provider_matrix:
+            evidence.append(
+                "real_provider_matrix="
+                f"{self.latest_real_provider_matrix.get('passed', 0)}/"
+                f"{self.latest_real_provider_matrix.get('case_count', 0)} "
+                f"route={self.latest_real_provider_matrix.get('latest_route', 'unknown')}"
+            )
         return evidence
 
 
@@ -192,6 +207,7 @@ class GateCommand:
                 "gate_status": gate_status,
             },
             latest_observation_plan=_latest_observation_plan(self.root, self.validator),
+            latest_real_provider_matrix=latest_real_provider_matrix(self.root / ".asteria"),
             next_actions=actions,
         )
 
@@ -228,6 +244,7 @@ class GateCommand:
             mode="release",
             stages={"release": stages},
             latest_observation_plan=_latest_observation_plan(self.root, self.validator),
+            latest_real_provider_matrix=latest_real_provider_matrix(self.root / ".asteria"),
             next_actions=(
                 []
                 if not failures

@@ -1,21 +1,17 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { RefreshCw, Route } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import type {
   StudioSession,
   StudioEvent,
-  WorkspaceFile,
-  FilePreview,
   SettingsPayload,
   OverviewPayload,
-  RunDetailPayload,
 } from "./types";
 import { api, subscribeToEvents } from "./api";
 import { isSessionLive } from "./narrative";
-import { Banner, routeDecision } from "./components/Shared";
+import { Banner } from "./components/Shared";
 import { Sidebar } from "./components/Sidebar";
 import { Thread } from "./components/Thread";
 import { Composer, type PromptSignal } from "./components/Composer";
-import { Inspector } from "./components/Inspector";
 
 function eventTimeValue(event: StudioEvent): number {
   const value = Date.parse(String(event.created_at ?? ""));
@@ -30,15 +26,12 @@ export function App() {
   const [activeSession, setActiveSession] = useState<StudioSession | null>(null);
   const [events, setEvents] = useState<StudioEvent[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<StudioEvent | null>(null);
-  const [files, setFiles] = useState<WorkspaceFile[]>([]);
-  const [preview, setPreview] = useState<FilePreview | null>(null);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [runDetail, setRunDetail] = useState<RunDetailPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [promptSignal, setPromptSignal] = useState<PromptSignal>({ text: "", id: 0 });
+  const [pendingTurn, setPendingTurn] = useState<{ message: string; mode: string; startedAt: number } | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
 
   function mergeEvents(incoming: StudioEvent[]) {
@@ -54,9 +47,8 @@ export function App() {
     setError(null);
     setLoading(true);
     try {
-      const [sessionData, fileData, settingsData, overviewData] = await Promise.all([
+      const [sessionData, settingsData, overviewData] = await Promise.all([
         api.sessions(),
-        api.files(),
         api.settings(),
         api.overview(),
       ]);
@@ -66,7 +58,6 @@ export function App() {
         nextSessions = [created.session];
       }
       setSessions(nextSessions);
-      setFiles(fileData.files ?? []);
       setSettings(settingsData.settings);
       setOverview(overviewData);
       setActiveSession((current) => current ?? nextSessions[0]);
@@ -94,12 +85,6 @@ export function App() {
     return () => { unsubRef.current?.(); unsubRef.current = null; };
   }, [activeSession?.session_id]);
 
-  // Auto-open latest run when overview loads
-  useEffect(() => {
-    const latestRunId = String(overview?.runs?.[0]?.run_id ?? "");
-    if (!latestRunId || selectedRunId) return;
-    void openRun(latestRunId);
-  }, [overview, selectedRunId]);
 
   async function newSession() {
     const created = await api.createSession();
@@ -109,12 +94,37 @@ export function App() {
     setSelectedEvent(null);
   }
 
+  async function deleteSession(session: StudioSession) {
+    const ok = window.confirm(`Delete session "${session.title || session.session_id}"? This only removes Studio conversation history.`);
+    if (!ok) return;
+    await api.deleteSession(session.session_id);
+    const refreshed = await api.sessions();
+    const nextSessions = refreshed.sessions ?? [];
+    setSessions(nextSessions);
+    if (activeSession?.session_id === session.session_id) {
+      if (nextSessions.length) {
+        setActiveSession(nextSessions[0]);
+      } else {
+        const created = await api.createSession();
+        setSessions([created.session]);
+        setActiveSession(created.session);
+      }
+      setEvents([]);
+      setSelectedEvent(null);
+    }
+  }
+
   async function sendGoal(message: string, mode: string, permission: string) {
     if (!activeSession) return;
-    await api.send(activeSession.session_id, message, mode, permission);
-    // SSE will pick up the new events; also refresh session list
-    const refreshed = await api.sessions();
-    setSessions(refreshed.sessions ?? []);
+    setPendingTurn({ message, mode, startedAt: Date.now() });
+    try {
+      await api.send(activeSession.session_id, message, mode, permission);
+      // SSE will pick up the new events; also refresh session list
+      const refreshed = await api.sessions();
+      setSessions(refreshed.sessions ?? []);
+    } finally {
+      setPendingTurn(null);
+    }
   }
 
   async function permitJob(jobId: string, action: "allow" | "deny") {
@@ -122,16 +132,6 @@ export function App() {
     await api.permitJob(activeSession.session_id, jobId, action);
   }
 
-  async function openFile(path: string) {
-    const result = await api.previewFile(path);
-    setPreview(result);
-  }
-
-  async function openRun(runId: string) {
-    setSelectedRunId(runId);
-    const result = await api.runDetail(runId);
-    setRunDetail(result);
-  }
 
   function selectSession(session: StudioSession) {
     setActiveSession(session);
@@ -149,19 +149,17 @@ export function App() {
         settings={settings}
         onSelect={selectSession}
         onNew={() => void newSession()}
+        onDelete={(session) => void deleteSession(session)}
       />
       <main className="missionPane">
         <header className="topBar">
           <div>
-            <p className="eyebrow">Asteria Studio</p>
-            <h1>{activeSession?.title ?? "Agent Workspace"}</h1>
-            <p>{settings?.workspace ?? "正在连接..."}</p>
+            <p className="eyebrow">Asteria</p>
+            <h1>{activeSession?.title ?? "New task"}</h1>
+            <p>Ask, plan, or continue a goal.</p>
           </div>
           <div className="topActions">
-            <span>
-              <Route size={14} /> {routeDecision(overview)}
-            </span>
-            <button title="刷新" onClick={() => void bootstrap()} disabled={loading}>
+            <button title="Refresh" onClick={() => void bootstrap()} disabled={loading}>
               <RefreshCw size={17} className={loading ? "spinning" : ""} />
             </button>
           </div>
@@ -174,23 +172,13 @@ export function App() {
           onSelect={setSelectedEvent}
           onPrompt={(text) => setPromptSignal((prev) => ({ text, id: prev.id + 1 }))}
           onPermit={permitJob}
+          pendingTurn={pendingTurn}
         />
         <Composer
           onSend={sendGoal}
           promptSignal={promptSignal}
         />
       </main>
-      <Inspector
-        event={selectedEvent}
-        files={files}
-        preview={preview}
-        settings={settings}
-        overview={overview}
-        selectedRunId={selectedRunId}
-        runDetail={runDetail}
-        onOpenFile={openFile}
-        onOpenRun={openRun}
-      />
     </div>
   );
 }

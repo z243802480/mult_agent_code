@@ -309,3 +309,69 @@ def test_goal_spec_execution_plan_downgrades_low_risk_docs_when_route_blocked(
     assert plan["decision"] == "block_gray"
     assert plan["selected_model_tier"] == "medium"
     assert "downgrade_low_risk_goal_spec_to_medium" in plan["actions"]
+
+
+def test_capability_feedback_uses_real_provider_matrix_signals(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    JsonStore(validator).write(
+        agent_dir / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "openai-compatible",
+                    "model": "matrix-model",
+                    "purpose": "task_execution",
+                    "model_tier": "medium",
+                    "total_calls": 4,
+                    "success_calls": 4,
+                    "failure_calls": 0,
+                    "success_rate": 1.0,
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_workers": 0,
+                    "successful_workers": 0,
+                    "failed_workers": 0,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "route_signal_total": 0,
+                    "route_signal_success": 0,
+                    "route_signal_failure": 0,
+                    "route_signal_success_rate": 0.0,
+                    "route_task_kinds": {},
+                    "route_decisions": {},
+                    "recent_route_signals": [],
+                    "matrix_signal_total": 3,
+                    "matrix_signal_success": 1,
+                    "matrix_signal_failure": 2,
+                    "matrix_signal_success_rate": 0.3333,
+                    "matrix_task_kinds": {"bug_fix": 2, "doc_update": 1},
+                    "matrix_routes": {"repair": 2, "artifact_creation": 1},
+                    "recent_matrix_signals": ["bug_fix:repair:failure"],
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "keep_route",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    assert guidance["status"] == "blocked"
+    assert guidance["blocking"][0]["recommended_action"] == (
+        "review_real_provider_matrix_before_scaling"
+    )
+    assert guidance["blocking"][0]["matrix_signal_success_rate"] == 0.3333
+    assert "bug_fix/repair" in guidance["blocking"][0]["message"]
+    assert "Do not widen real-provider matrix routes" in guidance["recommended_actions"][0]

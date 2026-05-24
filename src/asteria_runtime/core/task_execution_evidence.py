@@ -29,6 +29,7 @@ class TaskExecutionEvidenceRecorder:
         promoted_files: list[str] | None = None,
         candidate: dict | None = None,
         failure_type: str | None = None,
+        model_selection: dict | None = None,
     ) -> Path | None:
         if not context.run_dir:
             return None
@@ -56,6 +57,7 @@ class TaskExecutionEvidenceRecorder:
                 "tool_count": len((action or {}).get("tool_calls", [])),
                 "verification_count": len((action or {}).get("verification", [])),
                 "completion_notes": (action or {}).get("completion_notes"),
+                "model_selection": model_selection or {},
             },
             "candidate": {
                 "workspace": str(candidate_workspace.root) if candidate_workspace else None,

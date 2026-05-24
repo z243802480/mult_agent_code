@@ -24,6 +24,7 @@ from asteria_runtime.core.task_contract import (
     validation_commands,
     write_scope,
 )
+from asteria_runtime.models.route_resolver import resolve_model_route
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -67,12 +68,14 @@ class RuntimeProfileBuilder:
 
         profile_base_id = f"profile-{worker_id}"
         model_purpose = self._model_purpose(task)
-        model_tier = self._model_tier(task, context, model_purpose)
+        model_selection = self._model_selection(task, context, model_purpose)
+        model_tier = model_selection["selected_tier"]
+        resolved_route = resolve_model_route(model_tier)
         model_profile = ModelProfile(
             model_profile_id=f"model-{profile_base_id}",
             purpose=model_purpose,
-            provider="runtime",
-            model_name=f"{model_tier}-route",
+            provider=resolved_route.provider,
+            model_name=resolved_route.model_name or f"{model_tier}-route",
             model_tier=model_tier,
         )
         tool_profile = ToolPermissionProfile(
@@ -122,6 +125,10 @@ class RuntimeProfileBuilder:
         scoped["tool_permission_profile_id"] = tool_profile.tool_permission_profile_id
         scoped["sandbox_profile_id"] = sandbox_profile.sandbox_profile_id
         scoped["account_profile_id"] = account_profile.account_profile_id
+        scoped["model_selection"] = model_selection
+        scoped["model_route_resolution"] = resolved_route.to_dict()
+        if context.policy.get("model_strategy_profile"):
+            scoped["model_strategy_profile"] = context.policy["model_strategy_profile"]
 
         self._record_profiles(
             context=context,
@@ -236,22 +243,111 @@ class RuntimeProfileBuilder:
                 },
             )
 
-    def _model_tier(self, task: dict, context: RuntimeContext, purpose: str) -> str:
+    def _model_selection(self, task: dict, context: RuntimeContext, purpose: str) -> dict:
         kind = task_kind(task)
+        default = self._default_model_tier(task, kind)
+        strategy_tier, strategy_reason = self._strategy_adjusted_tier(
+            task,
+            context,
+            kind,
+            default,
+        )
+        capability_adjustment = self._capability_adjustment(context, purpose, strategy_tier)
+        selected = capability_adjustment["selected_tier"]
+        reason = strategy_reason
+        if selected != strategy_tier:
+            reason = f"capability_feedback_escalated_from_{strategy_tier}"
+        return {
+            "purpose": purpose,
+            "task_kind": kind,
+            "default_tier": default,
+            "strategy_tier": strategy_tier,
+            "selected_tier": selected,
+            "strategy": str(
+                (context.policy.get("model_strategy_profile") or {}).get("strategy") or "auto"
+            ),
+            "reason": reason,
+            "tier_pressure": self._tier_pressure(default, strategy_tier, selected),
+            "capability_feedback": capability_adjustment["feedback"],
+        }
+
+    def _default_model_tier(self, task: dict, kind: str) -> str:
+        _ = task
         if kind in {"architecture", "review"}:
-            default = "strong"
+            return "strong"
         elif kind in {"report", "decision"}:
-            default = "cheap"
+            return "cheap"
         elif (
             kind in {"research", "diagnostic", "verification"}
             and parallel_safety(task) == "readonly"
         ):
-            default = "cheap"
-        else:
-            default = "medium"
-        return self._capability_adjusted_tier(context, purpose, default)
+            return "cheap"
+        return "medium"
+
+    def _model_tier(self, task: dict, context: RuntimeContext, purpose: str) -> str:
+        return self._model_selection(task, context, purpose)["selected_tier"]
+
+    def _strategy_adjusted_tier(
+        self,
+        task: dict,
+        context: RuntimeContext,
+        kind: str,
+        default: str,
+    ) -> tuple[str, str]:
+        explicit = self._explicit_model_tier(task)
+        if explicit:
+            return explicit, "explicit_task_model_tier"
+        profile = context.policy.get("model_strategy_profile") or {}
+        strategy = str(profile.get("strategy") or "auto")
+        if strategy == "quality" and default == "medium" and self._needs_stronger_model(task, kind):
+            return "strong", "quality_strategy_escalated_high_risk_or_complex_task"
+        if strategy == "economy" and default == "medium" and self._is_low_risk_task(task, kind):
+            return "cheap", "economy_strategy_downgraded_low_risk_task"
+        if strategy == "local":
+            return default, "local_strategy_waiting_for_configured_provider_route"
+        return default, "task_default"
+
+    def _explicit_model_tier(self, task: dict) -> str | None:
+        hints = task.get("runtime_profile_hints")
+        candidate = None
+        if isinstance(hints, dict):
+            candidate = hints.get("model_tier")
+        candidate = candidate or task.get("model_tier")
+        value = str(candidate or "").strip().lower()
+        if value in {"cheap", "medium", "strong"}:
+            return value
+        return None
+
+    def _needs_stronger_model(self, task: dict, kind: str) -> bool:
+        if kind in {"architecture", "review", "decision"}:
+            return True
+        priority = str(task.get("priority") or "").strip().lower()
+        risk = str(task.get("risk") or task.get("risk_level") or "").strip().lower()
+        complexity = str(task.get("complexity") or "").strip().lower()
+        if priority in {"high", "critical", "p0"}:
+            return True
+        if risk in {"high", "critical"}:
+            return True
+        if complexity in {"high", "complex"}:
+            return True
+        expected = task.get("expected_changed_files") or task.get("expected_artifacts") or []
+        return isinstance(expected, list) and len(expected) >= 5
+
+    def _is_low_risk_task(self, task: dict, kind: str) -> bool:
+        if kind in {"architecture", "review", "decision"}:
+            return False
+        if write_scope(task) and kind in {"implementation", "ui"}:
+            return False
+        priority = str(task.get("priority") or "").strip().lower()
+        risk = str(task.get("risk") or task.get("risk_level") or "").strip().lower()
+        if priority in {"high", "critical", "p0"} or risk in {"high", "critical"}:
+            return False
+        return parallel_safety(task) == "readonly" or kind in {"report", "research", "verification"}
 
     def _capability_adjusted_tier(self, context: RuntimeContext, purpose: str, default: str) -> str:
+        return self._capability_adjustment(context, purpose, default)["selected_tier"]
+
+    def _capability_adjustment(self, context: RuntimeContext, purpose: str, default: str) -> dict:
         guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(context.asteria_dir)
         hints = [
             item
@@ -262,10 +358,20 @@ class RuntimeProfileBuilder:
             if isinstance(item, dict)
         ]
         if not hints or default == "strong":
-            return default
+            return {
+                "selected_tier": default,
+                "feedback": self._capability_feedback_summary(guidance, None, "no_escalation"),
+            }
         route = self._matching_route_hint(hints, purpose, default)
         if not route:
-            return default
+            return {
+                "selected_tier": default,
+                "feedback": self._capability_feedback_summary(
+                    guidance,
+                    None,
+                    "no_matching_route_hint",
+                ),
+            }
         action = str(route.get("recommended_action") or "")
         weak_actions = {
             "fallback_or_retry_later",
@@ -276,8 +382,60 @@ class RuntimeProfileBuilder:
             "use_json_stricter_or_switch_model",
         }
         if action not in weak_actions:
-            return default
-        return "medium" if default == "cheap" else "strong"
+            return {
+                "selected_tier": default,
+                "feedback": self._capability_feedback_summary(
+                    guidance,
+                    route,
+                    "matching_hint_did_not_require_escalation",
+                ),
+            }
+        selected = "medium" if default == "cheap" else "strong"
+        return {
+            "selected_tier": selected,
+            "feedback": self._capability_feedback_summary(
+                guidance,
+                route,
+                f"escalated_to_{selected}",
+            ),
+        }
+
+    def _tier_pressure(self, default: str, strategy_tier: str, selected: str) -> dict:
+        order = {"cheap": 0, "medium": 1, "strong": 2}
+        default_index = order.get(default, 1)
+        selected_index = order.get(selected, default_index)
+        if selected_index > default_index:
+            direction = "up"
+        elif selected_index < default_index:
+            direction = "down"
+        else:
+            direction = "neutral"
+        return {
+            "default_tier": default,
+            "strategy_tier": strategy_tier,
+            "selected_tier": selected,
+            "direction": direction,
+            "delta": selected_index - default_index,
+            "uses_stronger_than_default": selected_index > default_index,
+            "uses_cheaper_than_default": selected_index < default_index,
+        }
+
+    def _capability_feedback_summary(
+        self,
+        guidance: dict,
+        route: dict | None,
+        decision: str,
+    ) -> dict:
+        provider_strategy = guidance.get("provider_route_strategy")
+        return {
+            "status": guidance.get("status", "healthy"),
+            "decision": decision,
+            "matched_route": route or None,
+            "blocking_count": len(list(guidance.get("blocking") or [])),
+            "review_count": len(list(guidance.get("review") or [])),
+            "recommended_actions": list(guidance.get("recommended_actions") or [])[:3],
+            "provider_route_strategy": provider_strategy if isinstance(provider_strategy, dict) else {},
+        }
 
     def _route_guidance_for_task(self, context: RuntimeContext, purpose: str) -> dict:
         guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(context.asteria_dir)

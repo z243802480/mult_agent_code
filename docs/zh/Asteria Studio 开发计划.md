@@ -31,6 +31,32 @@ P0 目标是让开发者在干净环境内测前后，能用本地 Web 控制面
 - final report 自动折叠过程，保留目标、关键步骤、产物、验证、风险和下一步。
 - 如果失败，显示失败 observation、模型下一步选择和阻断原因。
 
+## 1.2 2026-05-24 Roadmap adjustment: Product Workspace and Ops Console
+
+User feedback confirmed that showing chat, run, status, model routes, goal_policy, and evidence in one primary conversation makes Studio feel incoherent. The next development phase must separate product features from backend/debug features.
+
+### Product Workspace P0
+
+- Default input is Auto; users should not have to choose chat/plan/run first.
+- Ordinary questions get direct natural answers.
+- Content, life, writing, learning, and planning requests return user-facing results without creating runtime artifacts.
+- Local file, shell, and long-task requests can route internally to plan/run/goal loop, but the main thread shows user-level progress, permission needs, and final results rather than backend state fields.
+- The main thread does not default to showing `run_id`, `status --json`, `goal_policy`, `model_route_timeline`, schema, stdout, or evidence paths.
+
+### Ops / Debug Console P0
+
+- Ops / Debug must not appear on the Product Workspace home page.
+- Later add a separate backend route such as `/ops` for AI Debug Agent, Inspector, Evidence Explorer, run detail, route timeline, goal_policy, and DecisionPoint.
+- Debug Agent can answer why a run is blocked, why a model was selected, which step failed, where evidence lives, what backend command to run next, and whether cost/permission/gate/policy is healthy.
+- Until the separate route exists, keep debug components dormant and focus implementation on the user-side product flow.
+
+### Near-term implementation order
+
+1. Remove homepage Debug/Ops controls and keep the default shell product-only.
+2. De-backend the main thread: natural answers first, backend details only as hidden metadata.
+3. Improve streaming/first-token feedback and final answer quality.
+4. Later add a separate `/ops` route plus Product Workspace and Ops Console smoke tests.
+
 ## 2. P0 页面
 
 ### 2.1 Agent Workspace

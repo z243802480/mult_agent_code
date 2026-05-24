@@ -13,6 +13,7 @@ export type StudioEvent = {
   session_id: string;
   type:
     | "user_message"
+    | "intent_route"
     | "assistant_delta"
     | "reasoning_delta"
     | "model_start"
@@ -40,6 +41,10 @@ export type StudioEvent = {
   evidence_refs?: string[];
   model_provider?: string;
   model_name?: string;
+  model_tier?: string;
+  model_route?: AnyRecord;
+  intent_route?: AnyRecord;
+  intent_audit?: AnyRecord;
   telemetry?: AnyRecord;
   file_changes?: AnyRecord[];
   runtime_channel?: string;
@@ -95,6 +100,10 @@ export type RunDetailPayload = {
   task_plan?: AnyRecord;
   task_plan_eval?: AnyRecord;
   agent_run_graph?: AnyRecord;
+  run_loop_summary?: AnyRecord;
+  final_report_summary?: AnyRecord;
+  model_route_timeline?: AnyRecord;
+  goal_policy?: AnyRecord;
   model_calls?: AnyRecord[];
   task_execution_evidence?: AnyRecord[];
   worker_results?: AnyRecord[];

@@ -17,11 +17,17 @@ from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
+from asteria_runtime.core.real_provider_matrix import (
+    latest_real_provider_matrix,
+    real_provider_matrix_text_lines,
+)
+from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
+from asteria_runtime.models.route_resolver import route_readiness_for_tiers
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -42,20 +48,59 @@ class ReviewResult:
     cost_report_path: Path
     follow_up_count: int = 0
     decision_count: int = 0
+    blockers: list[str] | None = None
+    next_actions: list[str] | None = None
+    recommended_next_command: str | None = None
+    failure_classification: dict | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": "0.1.0",
+            "run_id": self.run_id,
+            "status": self.status,
+            "score": self.score,
+            "eval_report_path": str(self.eval_report_path),
+            "review_report_path": str(self.review_report_path),
+            "cost_report_path": str(self.cost_report_path),
+            "follow_up_count": self.follow_up_count,
+            "decision_count": self.decision_count,
+            "blockers": self.blockers or [],
+            "primary_blocker": self.primary_blocker,
+            "next_actions": self.next_actions or [],
+            "recommended_next_command": self.recommended_next_command,
+            "failure_classification": self.failure_classification or {},
+        }
+
+    @property
+    def primary_blocker(self) -> str | None:
+        blockers = self.blockers or []
+        return blockers[0] if blockers else None
 
     def to_text(self) -> str:
-        return "\n".join(
-            [
-                f"Reviewed run: {self.run_id}",
-                f"Status: {self.status}",
-                f"Score: {self.score:.2f}",
-                f"Eval report: {self.eval_report_path}",
-                f"Review report: {self.review_report_path}",
-                f"Cost report: {self.cost_report_path}",
-                f"Follow-up tasks: {self.follow_up_count}",
-                f"Decision points: {self.decision_count}",
-            ]
-        )
+        lines = [
+            f"Reviewed run: {self.run_id}",
+            f"Status: {self.status}",
+            f"Score: {self.score:.2f}",
+            f"Eval report: {self.eval_report_path}",
+            f"Review report: {self.review_report_path}",
+            f"Cost report: {self.cost_report_path}",
+            f"Follow-up tasks: {self.follow_up_count}",
+            f"Decision points: {self.decision_count}",
+        ]
+        if self.failure_classification:
+            lines.append(
+                "Failure classification: "
+                f"{self.failure_classification.get('category')} -> "
+                f"{self.failure_classification.get('recommended_command')}"
+            )
+        if self.primary_blocker:
+            lines.append(f"Primary blocker: {self.primary_blocker}")
+        if self.next_actions:
+            lines.append("Next actions:")
+            lines.extend(f"- {item}" for item in self.next_actions)
+        if self.recommended_next_command:
+            lines.append(f"Recommended next command: asteria {self.recommended_next_command}")
+        return "\n".join(lines)
 
 
 class ReviewCommand:
@@ -84,7 +129,11 @@ class ReviewCommand:
             raise RuntimeError("No run found. Run `asteria plan` first.")
         run_dir = run_store.run_dir(run_id)
         run = run_store.load_run(run_id)
-        policy = load_policy_config(agent_dir, self.validator)
+        policy = effective_policy_for_run(
+            policy=load_policy_config(agent_dir, self.validator),
+            run_dir=run_dir,
+            validator=self.validator,
+        )
         cost_report_path = run_dir / "cost_report.json"
         budget = BudgetController.from_report(
             policy,
@@ -142,6 +191,12 @@ class ReviewCommand:
             display_level="main",
         )
         eval_report = reviewer.evaluate(review_context, run_id)
+        eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval") or {})
+        eval_report["trajectory_eval"]["route_readiness"] = review_context["route_readiness"]
+        eval_report["trajectory_eval"]["model_selection"] = review_context["model_selection"]
+        failure_classification = self._failure_classification(eval_report)
+        eval_report["failure_classification"] = failure_classification
+        eval_report["trajectory_eval"]["failure_classification"] = failure_classification
         eval_report_path = run_dir / "eval_report.json"
         self.store.write(eval_report_path, eval_report, "eval_report")
         follow_up_count, decision_count = self._handle_follow_up_actions(
@@ -156,6 +211,9 @@ class ReviewCommand:
                 review_context.get("collaboration_summary") or {},
                 review_context.get("tool_observations") or [],
                 review_context.get("latest_observation_plan") or {},
+                review_context.get("route_readiness") or {},
+                review_context.get("model_selection") or {},
+                review_context.get("latest_real_provider_matrix") or {},
             ),
             encoding="utf-8",
         )
@@ -211,7 +269,120 @@ class ReviewCommand:
             cost_report_path=cost_report_path,
             follow_up_count=follow_up_count,
             decision_count=decision_count,
+            blockers=self._result_blockers(eval_report, follow_up_count, decision_count),
+            next_actions=self._result_next_actions(status, follow_up_count, decision_count),
+            recommended_next_command=self._result_recommended_next_command(
+                status,
+                decision_count,
+                failure_classification,
+            ),
+            failure_classification=failure_classification,
         )
+
+    def _result_blockers(
+        self,
+        eval_report: dict,
+        follow_up_count: int,
+        decision_count: int,
+    ) -> list[str]:
+        overall = eval_report.get("overall") or {}
+        status = str(overall.get("status") or "unknown")
+        if status == "pass":
+            return []
+        blockers = [f"Review verdict is {status}: {overall.get('reason') or 'no reason recorded'}"]
+        if decision_count:
+            blockers.append(
+                f"{decision_count} decision point(s) must be resolved before acceptance."
+            )
+        if follow_up_count:
+            blockers.append(f"{follow_up_count} follow-up task(s) were created by review.")
+        return blockers
+
+    def _result_next_actions(
+        self,
+        status: str,
+        follow_up_count: int,
+        decision_count: int,
+    ) -> list[str]:
+        if status == "pass":
+            return ["Run `asteria accept` to finalize accepted work."]
+        if decision_count:
+            return [
+                "Run `asteria decide --list`, resolve pending decisions, then rerun `asteria review`."
+            ]
+        actions = ["Run the recommended repair command, then rerun `asteria review`."]
+        if follow_up_count:
+            actions.append("Inspect newly created follow-up tasks before continuing execution.")
+        return actions
+
+    def _result_recommended_next_command(
+        self,
+        status: str,
+        decision_count: int,
+        failure_classification: dict | None = None,
+    ) -> str:
+        if status == "pass":
+            return "accept"
+        if decision_count:
+            return "decide --list"
+        classified = (failure_classification or {}).get("recommended_command")
+        if classified:
+            return str(classified)
+        return "debug"
+
+    def _failure_classification(self, eval_report: dict) -> dict:
+        overall = eval_report.get("overall") or {}
+        status = str(overall.get("status") or "unknown")
+        overall_reason = str(overall.get("reason") or "").lower()
+        if status == "pass":
+            return {
+                "category": "none",
+                "recommended_command": "accept",
+                "reason": "Review passed.",
+            }
+        if self._needs_decision(eval_report):
+            return {
+                "category": "decision_required",
+                "recommended_command": "decide --list",
+                "reason": "Review found high-risk, unclear, permission, or cost-sensitive follow-up work.",
+            }
+        goal_eval = eval_report.get("goal_eval") or {}
+        artifact_eval = eval_report.get("artifact_eval") or {}
+        outcome_eval = eval_report.get("outcome_eval") or {}
+        trajectory_eval = eval_report.get("trajectory_eval") or {}
+        coverage = float(goal_eval.get("requirement_coverage", 1.0) or 0.0)
+        artifacts_present = artifact_eval.get("artifacts_present", True)
+        blocked_tasks = int(trajectory_eval.get("blocked_task_count", 0) or 0)
+        verification_rate = float(outcome_eval.get("verification_pass_rate", 1.0) or 0.0)
+        if coverage < 0.8 or artifacts_present is False:
+            return {
+                "category": "plan_gap",
+                "recommended_command": "replan",
+                "reason": "Requirement coverage or artifact fit is insufficient; revise the plan before more execution.",
+            }
+        if blocked_tasks > 0:
+            return {
+                "category": "execution_blocked",
+                "recommended_command": "debug",
+                "reason": "Execution has blocked tasks; debug the concrete failure before replanning.",
+            }
+        if verification_rate < 1.0 or "verification" in overall_reason:
+            return {
+                "category": "verification_failed",
+                "recommended_command": "debug",
+                "reason": "Verification did not pass; repair implementation or test failures.",
+            }
+        return {
+            "category": "review_failed",
+            "recommended_command": "debug",
+            "reason": f"Review status is {status}; inspect eval_report.json before continuing.",
+        }
+
+    def _needs_decision(self, eval_report: dict) -> bool:
+        follow_ups = self._follow_ups(eval_report)
+        policy = load_policy_config(self.root / ".asteria", self.validator)
+        decision_policy = DecisionPolicy(policy)
+        return any(decision_policy.candidate_for_follow_up(item) is not None for item in follow_ups)
 
     def _handle_follow_up_actions(
         self,
@@ -329,9 +500,12 @@ class ReviewCommand:
             "tool_observation",
         )
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
+        model_profiles = self._read_jsonl(run_dir / "model_profiles.jsonl", "model_profile")
+        route_readiness = self._route_readiness(model_profiles)
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
         runtime_os_evidence = self.runtime_evidence.run_evidence(run_dir)
         execution_evidence = runtime_os_evidence["task_execution_evidence"]
+        model_selection = self._latest_model_selection(execution_evidence)
         return {
             "run_id": run_id,
             "project": self.store.read(agent_dir / "project.json", "project_config"),
@@ -339,6 +513,9 @@ class ReviewCommand:
             "task_plan": task_plan,
             "cost_report": cost_report,
             "collaboration_summary": self._collaboration_summary(run_dir),
+            "route_readiness": route_readiness,
+            "model_selection": model_selection,
+            "latest_real_provider_matrix": latest_real_provider_matrix(agent_dir),
             "trajectory": {
                 "runtime_os_evidence": runtime_os_evidence,
                 "events": events[-50:],
@@ -346,6 +523,9 @@ class ReviewCommand:
                 "tool_observations": tool_observations[-50:],
                 "tool_observation_actions": tool_observation_action_options(tool_observations),
                 "model_calls": model_calls[-20:],
+                "model_profiles": model_profiles[-20:],
+                "route_readiness": route_readiness,
+                "model_selection": model_selection,
                 "task_execution_evidence": execution_evidence[-20:],
                 "worker_results": runtime_os_evidence["worker_results"][-20:],
                 "merge_gate_evidence": runtime_os_evidence["merge_gate_evidence"][-20:],
@@ -368,6 +548,27 @@ class ReviewCommand:
             return graph.get("collaboration_summary") or {}
         except Exception:  # noqa: BLE001
             return {}
+
+    def _latest_model_selection(self, execution_evidence: list[dict]) -> dict:
+        for evidence in reversed(execution_evidence):
+            selection = (evidence.get("action") or {}).get("model_selection")
+            if isinstance(selection, dict) and selection:
+                return selection
+        return {}
+
+    def _route_readiness(self, model_profiles: list[dict]) -> dict:
+        if not model_profiles:
+            return {
+                "status": "unknown",
+                "summary": "No model profiles were mounted for review.",
+                "routes": [],
+                "blockers": [],
+            }
+        latest_by_tier: dict[str, dict] = {}
+        for profile in model_profiles:
+            tier = str(profile.get("model_tier") or "unknown")
+            latest_by_tier[tier] = profile
+        return route_readiness_for_tiers(tuple(latest_by_tier))
 
     def _deterministic_checks(
         self,
@@ -432,17 +633,25 @@ class ReviewCommand:
         collaboration_summary: dict | None = None,
         tool_observations: list[dict] | None = None,
         latest_observation_plan: dict | None = None,
+        route_readiness: dict | None = None,
+        model_selection: dict | None = None,
+        latest_real_provider_matrix: dict | None = None,
     ) -> str:
         overall = eval_report["overall"]
         action_plan = observation_next_action_plan(tool_observations or [])
         latest_plan = latest_observation_plan or {}
         effective_plan = latest_plan or action_plan
-        blockers = self._human_blockers(eval_report, action_plan, latest_plan)
+        route_readiness = route_readiness or {}
+        model_selection = model_selection or {}
+        latest_real_provider_matrix = latest_real_provider_matrix or {}
+        blockers = self._human_blockers(eval_report, action_plan, latest_plan, route_readiness)
         evidence = self._human_evidence(
             eval_report,
             collaboration_summary or {},
             action_plan,
             latest_plan,
+            route_readiness,
+            model_selection,
         )
         next_actions = self._human_next_actions(eval_report, effective_plan, blockers)
         lines = [
@@ -461,13 +670,48 @@ class ReviewCommand:
             "",
             "## Evidence Chain",
             "",
-            *([f"- {item}" for item in evidence] if evidence else ["- Eval report and review report were generated."]),
+            *(
+                [f"- {item}" for item in evidence]
+                if evidence
+                else ["- Eval report and review report were generated."]
+            ),
             "",
             "## Latest Agent Next Action",
             "",
             f"- Route: {effective_plan.get('recommended_route') or action_plan.get('recommended_action', 'continue')}",
             f"- Why this route was chosen: {effective_plan.get('reason') or self._latest_plan_reason(action_plan)}",
             f"- Evidence: {self._latest_plan_evidence(effective_plan)}",
+            "",
+            "## Failure Classification",
+            "",
+            *self._failure_classification_lines(eval_report),
+            "",
+            "## Model Route Readiness",
+            "",
+            f"- Status: {route_readiness.get('status', 'unknown')}",
+            f"- Summary: {route_readiness.get('summary', 'No route readiness recorded.')}",
+            *[
+                "- "
+                f"{route.get('tier', 'unknown')}: "
+                f"{route.get('provider', route.get('recorded_provider', 'unknown'))}/"
+                f"{route.get('model_name', route.get('recorded_model_name', 'unknown'))} "
+                f"configured={route.get('configured', False)}"
+                for route in list(route_readiness.get("routes") or [])[:5]
+            ],
+            "",
+            "## Model Selection",
+            "",
+            *self._model_selection_report_lines(model_selection),
+            "## Latest Real Provider Matrix",
+            "",
+            *(
+                [
+                    f"- {line.strip()}"
+                    for line in real_provider_matrix_text_lines(latest_real_provider_matrix)
+                ]
+                if latest_real_provider_matrix
+                else ["- No real-provider P0 matrix evidence recorded."]
+            ),
             "",
             "## Next Actions",
             "",
@@ -517,18 +761,20 @@ class ReviewCommand:
             lines.append("")
         return "\n".join(lines)
 
-
     def _human_blockers(
         self,
         eval_report: dict,
         action_plan: dict,
         latest_plan: dict | None = None,
+        route_readiness: dict | None = None,
+        model_selection: dict | None = None,
     ) -> list[str]:
         blockers: list[str] = []
         overall = eval_report.get("overall") or {}
         if overall.get("status") != "pass":
             blockers.append(f"Review verdict is {overall.get('status')}: {overall.get('reason')}")
         source_plan = latest_plan or action_plan
+        blockers.extend(str(item) for item in (route_readiness or {}).get("blockers") or [])
         blockers.extend(str(item) for item in source_plan.get("blockers") or [])
         follow_ups = self._follow_ups(eval_report)
         if follow_ups:
@@ -541,6 +787,8 @@ class ReviewCommand:
         collaboration_summary: dict,
         action_plan: dict,
         latest_plan: dict | None = None,
+        route_readiness: dict | None = None,
+        model_selection: dict | None = None,
     ) -> list[str]:
         source_plan = latest_plan or action_plan
         evidence = [
@@ -561,9 +809,92 @@ class ReviewCommand:
                 f"{collaboration_summary.get('successful_workers', 0)}/"
                 f"{collaboration_summary.get('total_workers', 0)} workers succeeded"
             )
-        return evidence[:10]
+        if route_readiness:
+            evidence.append(f"model routes={route_readiness.get('status', 'unknown')}")
+            for route in list(route_readiness.get("routes") or [])[:3]:
+                evidence.append(
+                    "model route: "
+                    f"{route.get('tier', 'unknown')} "
+                    f"{route.get('provider', route.get('recorded_provider', 'unknown'))}/"
+                    f"{route.get('model_name', route.get('recorded_model_name', 'unknown'))} "
+                    f"configured={route.get('configured', False)}"
+                )
+        if model_selection:
+            evidence.append(
+                "model selection: "
+                f"{model_selection.get('selected_tier', 'unknown')} "
+                f"reason={model_selection.get('reason', 'unknown')}"
+            )
+            pressure = model_selection.get("tier_pressure") or {}
+            if pressure:
+                evidence.append(
+                    "model pressure: "
+                    f"{pressure.get('default_tier', 'unknown')} -> "
+                    f"{pressure.get('selected_tier', 'unknown')} "
+                    f"direction={pressure.get('direction', 'unknown')}"
+                )
+            feedback = model_selection.get("capability_feedback") or {}
+            if feedback:
+                evidence.append(
+                    "capability feedback: "
+                    f"{feedback.get('status', 'unknown')} "
+                    f"decision={feedback.get('decision', 'unknown')}"
+                )
+        return evidence[:12]
 
-    def _human_next_actions(self, eval_report: dict, action_plan: dict, blockers: list[str]) -> list[str]:
+    def _model_selection_report_lines(self, model_selection: dict) -> list[str]:
+        if not model_selection:
+            return ["- No model selection recorded in latest execution evidence."]
+        lines = [
+            f"- Purpose: {model_selection.get('purpose', 'unknown')}",
+            f"- Selected tier: {model_selection.get('selected_tier', 'unknown')}",
+            f"- Reason: {model_selection.get('reason', 'No reason recorded.')}",
+        ]
+        pressure = model_selection.get("tier_pressure") or {}
+        if pressure:
+            lines.append(
+                "- Tier pressure: "
+                f"{pressure.get('default_tier', 'unknown')} -> "
+                f"{pressure.get('selected_tier', 'unknown')} "
+                f"direction={pressure.get('direction', 'unknown')} "
+                f"delta={pressure.get('delta', 0)}"
+            )
+        feedback = model_selection.get("capability_feedback") or {}
+        if feedback:
+            lines.append(
+                "- Capability feedback: "
+                f"{feedback.get('status', 'unknown')} "
+                f"decision={feedback.get('decision', 'unknown')} "
+                f"blocking={feedback.get('blocking_count', 0)} "
+                f"review={feedback.get('review_count', 0)}"
+            )
+            matched = feedback.get("matched_route") or {}
+            if matched:
+                lines.append(
+                    "- Matched route: "
+                    f"{matched.get('purpose', 'unknown')}/"
+                    f"{matched.get('model_tier', 'unknown')} "
+                    f"action={matched.get('recommended_action', 'unknown')}"
+                )
+        return lines
+
+    def _failure_classification_lines(self, eval_report: dict) -> list[str]:
+        classification = (
+            eval_report.get("failure_classification")
+            or (eval_report.get("trajectory_eval") or {}).get("failure_classification")
+            or {}
+        )
+        if not classification:
+            return ["- Category: unknown", "- Recommended command: debug"]
+        return [
+            f"- Category: {classification.get('category', 'unknown')}",
+            f"- Recommended command: asteria {classification.get('recommended_command', 'debug')}",
+            f"- Reason: {classification.get('reason', 'No reason recorded.')}",
+        ]
+
+    def _human_next_actions(
+        self, eval_report: dict, action_plan: dict, blockers: list[str]
+    ) -> list[str]:
         if not blockers and eval_report["overall"].get("status") == "pass":
             return ["Run `asteria accept` to finalize accepted work."]
         actions = []

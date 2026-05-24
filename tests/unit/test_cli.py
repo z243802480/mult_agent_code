@@ -5,6 +5,10 @@ import sys
 from pathlib import Path
 
 from asteria_runtime.cli import build_parser, main
+from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.run_command import RunResult, RunStepSummary
+from asteria_runtime.storage.run_store import RunStore
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def _command_help(command: str) -> str:
@@ -22,10 +26,13 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Models" in help_text
     assert help_text.index("Start") < help_text.index("Maintain")
     assert help_text.index("Maintain") < help_text.index("Advanced")
-    assert "init    Initialize an agent-ready workspace." in help_text
-    assert "accept  Accept reviewed results and finalize the run." in help_text
-    assert help_text.index("init    Initialize") < help_text.index("accept  Accept")
-    assert help_text.index("accept  Accept") < help_text.index("Maintain")
+    assert "goal  Long-task objective mode" in help_text
+    assert "plan  Read-only comprehensive plan" in help_text
+    assert "chat  Lightweight Q&A mode" in help_text
+    assert help_text.index("goal  Long-task") < help_text.index("chat  Lightweight")
+    assert help_text.index("chat  Lightweight") < help_text.index("Maintain")
+    assert "run         Compatibility alias for goal mode." in help_text
+    assert "accept      Accept reviewed results and finalize the run." in help_text
     assert "gate             Run staged readiness checks" in help_text
     assert "real-model-acceptance" in help_text
     assert "Compatibility" in help_text
@@ -39,20 +46,21 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Use `asteria <command> --help`" in help_text
 
 
-def test_start_workflow_help_explains_plain_commands_and_slash_aliases() -> None:
-    for command in ("init", "run", "status", "resume", "review", "accept"):
+def test_user_mode_help_explains_permission_and_model_strategy() -> None:
+    for command in ("goal", "run", "plan", "chat"):
         help_text = _command_help(command)
         normalized_help = " ".join(help_text.split())
 
-        assert "slash-prefixed command forms such as `asteria /run` remain aliases" in normalized_help
-        assert "use plain command names in new docs and scripts" in normalized_help
+        assert "--permission-level" in normalized_help
+        assert "--model-strategy" in normalized_help
 
     run_help = _command_help("run")
     assert "Allow run to execute" in run_help
     assert "/run to execute" not in run_help
-    resume_help = _command_help("resume")
-    assert "Allow resume to execute" in resume_help
-    assert "/resume to execute" not in resume_help
+    goal_help = _command_help("goal")
+    assert "Allow run to execute" in goal_help
+    chat_help = _command_help("chat")
+    assert "question or short request" in chat_help.lower()
 
 
 def test_accept_and_acceptance_help_describe_distinct_user_intents() -> None:
@@ -85,14 +93,17 @@ def test_maintainer_command_help_stays_outside_default_completion_path() -> None
 
 def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
     parser = build_parser()
-    start_commands = ("init", "run", "status", "resume", "review", "accept")
+    start_commands = ("goal", "plan", "chat", "run")
 
     for command in start_commands:
         plain_args = [command]
         slash_args = [f"/{command}"]
-        if command == "run":
+        if command in {"goal", "run", "plan"}:
             plain_args.append("build a small tool")
             slash_args.append("build a small tool")
+        if command == "chat":
+            plain_args.append("what is this project?")
+            slash_args.append("what is this project?")
 
         assert parser.parse_args(plain_args).command == command
         assert parser.parse_args(slash_args).command == f"/{command}"
@@ -127,6 +138,22 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     )
     real_model_gate_args = parser.parse_args(
         ["/real-model-gate", "--root", ".", "--summary-json", "gate.json", "--allow-fake"]
+    )
+    real_model_smoke_matrix_args = parser.parse_args(
+        [
+            "/real-model-smoke",
+            "--root",
+            ".",
+            "--matrix",
+            "p0",
+            "--matrix-case",
+            "file_output",
+            "--matrix-output-dir",
+            "matrix",
+            "--summary-json",
+            "matrix.json",
+            "--allow-fake",
+        ]
     )
     real_model_acceptance_args = parser.parse_args(
         [
@@ -321,6 +348,12 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert release_gate_args.skip_tests
     assert real_model_gate_args.command == "/real-model-gate"
     assert real_model_gate_args.allow_fake
+    assert real_model_smoke_matrix_args.command == "/real-model-smoke"
+    assert real_model_smoke_matrix_args.matrix == "p0"
+    assert real_model_smoke_matrix_args.matrix_case == ["file_output"]
+    assert real_model_smoke_matrix_args.matrix_output_dir.as_posix() == "matrix"
+    assert real_model_smoke_matrix_args.summary_json.as_posix() == "matrix.json"
+    assert real_model_smoke_matrix_args.allow_fake
     assert real_model_acceptance_args.command == "/real-model-acceptance"
     assert real_model_acceptance_args.suite == "offline"
     assert real_model_acceptance_args.allow_fake
@@ -423,6 +456,84 @@ def test_status_json_output_is_machine_readable(
     payload = json.loads(capsys.readouterr().out)
     assert payload["root"] == str(tmp_path.resolve())
     assert payload["initialized"] is False
+
+
+def test_goal_cli_output_surfaces_workflow_state(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("/run", goal_id="goal-cli")
+    run_store.set_current_session(run["run_id"], "cli workflow test")
+    final_report = tmp_path / ".asteria" / "runs" / run["run_id"] / "final_report.md"
+
+    def fake_run(self):
+        return RunResult(
+            run_id=run["run_id"],
+            status="completed",
+            final_report_path=final_report,
+            final_report_summary_path=final_report.with_name("final_report_summary.json"),
+            final_report_summary={"workflow_state": "ready_for_accept"},
+            steps=[RunStepSummary("review", "pass", "Evidence looks good.")],
+            workflow_state="ready_for_accept",
+            current_phase="REVIEWED",
+            current_blocker=None,
+            recommended_next_command="accept",
+            next_actions=["Run `asteria accept`."],
+        )
+
+    monkeypatch.setattr("asteria_runtime.cli.RunCommand.run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["asteria", "goal", "finish the workflow", "--root", str(tmp_path)],
+    )
+
+    main()
+
+    output = capsys.readouterr().out
+    assert "Workflow: ready_for_accept" in output
+    assert "Current phase: REVIEWED" in output
+    assert "Recommended next command: asteria accept" in output
+    assert "Final report summary:" in output
+    assert "Loop steps:" in output
+
+
+def test_goal_cli_json_output_includes_final_summary(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    final_report = tmp_path / ".asteria" / "runs" / "run-cli" / "final_report.md"
+
+    def fake_run(self):
+        return RunResult(
+            run_id="run-cli",
+            status="completed",
+            final_report_path=final_report,
+            final_report_summary_path=final_report.with_name("final_report_summary.json"),
+            final_report_summary={"workflow_state": "accepted"},
+            workflow_state="accepted",
+            current_phase="ACCEPTED",
+        )
+
+    monkeypatch.setattr("asteria_runtime.cli.RunCommand.run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["asteria", "goal", "finish", "--root", str(tmp_path), "--json"],
+    )
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["run_id"] == "run-cli"
+    assert payload["final_report_summary_path"].endswith("final_report_summary.json")
+    assert payload["final_report_summary"] == {"workflow_state": "accepted"}
+    assert payload["workflow_state"] == "accepted"
 
 
 def test_gate_status_json_output_is_machine_readable(

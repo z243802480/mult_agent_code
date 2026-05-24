@@ -17,6 +17,10 @@ from asteria_runtime.core.acceptance_catalog import (
 )
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.failure_attribution import classify_failure_attribution
+from asteria_runtime.core.real_provider_matrix import (
+    latest_real_provider_matrix,
+    real_provider_matrix_text_lines,
+)
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -36,6 +40,8 @@ class CapabilityReportResult:
     model_profiles: list[dict[str, Any]] = field(default_factory=list)
     model_profile_path: Path | None = None
     route_guidance: dict[str, Any] = field(default_factory=dict)
+    latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
+    matrix_route_guidance: dict[str, Any] = field(default_factory=dict)
     runtime_os: dict[str, Any] = field(default_factory=dict)
     common_blockers: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
@@ -86,6 +92,8 @@ class CapabilityReportResult:
                     f"worker={profile.get('worker_success_rate', 0.0):.2f}, "
                     f"validation={profile.get('validation_pass_rate', 0.0):.2f}, "
                     f"runtime_requests={profile.get('runtime_request_total', 0)}, "
+                    f"matrix={profile.get('matrix_signal_success_rate', 0.0):.2f}/"
+                    f"{profile.get('matrix_signal_total', 0)}, "
                     f"merge_blocks={profile.get('merge_gate_blocks', 0)})"
                 )
         if self.model_profile_path:
@@ -93,6 +101,15 @@ class CapabilityReportResult:
         if self.route_guidance:
             lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
             for action in self.route_guidance.get("recommended_actions", [])[:3]:
+                lines.append(f"  - {action}")
+        if self.latest_real_provider_matrix:
+            lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
+        if self.matrix_route_guidance:
+            lines.append(
+                "Matrix route guidance: "
+                f"{self.matrix_route_guidance.get('status', 'unknown')}"
+            )
+            for action in self.matrix_route_guidance.get("recommended_actions", [])[:3]:
                 lines.append(f"  - {action}")
         if self.runtime_os:
             lines.append("Runtime OS release evidence:")
@@ -159,6 +176,8 @@ class CapabilityReportCommand:
         model_profiles = self._model_profiles(agent_dir)
         model_profile_path = self._write_model_profile(agent_dir, model_profiles)
         route_guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(agent_dir)
+        latest_matrix = latest_real_provider_matrix(agent_dir)
+        matrix_route_guidance = self._matrix_route_guidance(latest_matrix)
         runtime_os = self._runtime_os_summary(agent_dir, latest)
         next_actions = self._next_actions(
             latest,
@@ -167,6 +186,7 @@ class CapabilityReportCommand:
             blockers,
             model_profiles,
             route_guidance,
+            matrix_route_guidance,
             runtime_os,
         )
         return CapabilityReportResult(
@@ -181,6 +201,8 @@ class CapabilityReportCommand:
             model_profiles=model_profiles,
             model_profile_path=model_profile_path,
             route_guidance=route_guidance,
+            latest_real_provider_matrix=latest_matrix,
+            matrix_route_guidance=matrix_route_guidance,
             runtime_os=runtime_os,
             common_blockers=blockers,
             next_actions=next_actions,
@@ -332,6 +354,7 @@ class CapabilityReportCommand:
                 profile["output_tokens"] += int(call.get("output_tokens") or 0)
             self._merge_worker_profile_signals(run_dir, profiles)
             self._merge_observation_route_signals(run_dir, profiles)
+        self._merge_real_provider_matrix_signals(agent_dir, profiles)
 
         normalized = []
         for profile in profiles.values():
@@ -366,6 +389,12 @@ class CapabilityReportCommand:
             profile["route_signal_success_rate"] = (
                 round(int(profile["route_signal_success"]) / route_signal_total, 4)
                 if route_signal_total
+                else 0.0
+            )
+            matrix_signal_total = int(profile.get("matrix_signal_total") or 0)
+            profile["matrix_signal_success_rate"] = (
+                round(int(profile["matrix_signal_success"]) / matrix_signal_total, 4)
+                if matrix_signal_total
                 else 0.0
             )
             profile["recommended_action"] = self._model_route_action(profile)
@@ -424,11 +453,82 @@ class CapabilityReportCommand:
                 "route_task_kinds": {},
                 "route_decisions": {},
                 "recent_route_signals": [],
+                "matrix_signal_total": 0,
+                "matrix_signal_success": 0,
+                "matrix_signal_failure": 0,
+                "matrix_signal_success_rate": 0.0,
+                "matrix_task_kinds": {},
+                "matrix_routes": {},
+                "recent_matrix_signals": [],
                 "merge_gate_blocks": 0,
                 "failure_types": {},
                 "recent_failures": [],
             },
         )
+
+    def _merge_real_provider_matrix_signals(
+        self,
+        agent_dir: Path,
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> None:
+        matrix_root = agent_dir / "verification" / "real_provider_matrix"
+        if not matrix_root.exists():
+            return
+        for summary_path in sorted(matrix_root.glob("*/matrix_summary.json")):
+            try:
+                summary = self.store.read(summary_path, "real_provider_matrix_summary")
+            except (OSError, ValueError):
+                continue
+            created_at = str(summary.get("created_at") or "")
+            cases = [item for item in summary.get("cases", []) if isinstance(item, dict)]
+            for case in cases:
+                profile = self._profile_from_matrix_case(case, profiles)
+                ok = case.get("ok") is True
+                task_kind = str(case.get("task_kind") or "unknown")
+                route = str(case.get("route") or "unknown")
+                profile["matrix_signal_total"] += 1
+                if ok:
+                    profile["matrix_signal_success"] += 1
+                else:
+                    profile["matrix_signal_failure"] += 1
+                    failure_type = str(case.get("failure_type") or "matrix_case_failed")
+                    profile["failure_types"][failure_type] = (
+                        profile["failure_types"].get(failure_type, 0) + 1
+                    )
+                    if len(profile["recent_failures"]) < 5:
+                        profile["recent_failures"].append(
+                            str(case.get("failure_summary") or failure_type)
+                        )
+                profile["matrix_task_kinds"][task_kind] = (
+                    profile["matrix_task_kinds"].get(task_kind, 0) + 1
+                )
+                profile["matrix_routes"][route] = profile["matrix_routes"].get(route, 0) + 1
+                if len(profile["recent_matrix_signals"]) < 5:
+                    status = "success" if ok else "failure"
+                    profile["recent_matrix_signals"].append(
+                        f"{created_at}:{task_kind}:{route}:{status}"
+                    )
+
+    def _profile_from_matrix_case(
+        self,
+        case: dict[str, Any],
+        profiles: dict[tuple[str, str, str, str], dict[str, Any]],
+    ) -> dict[str, Any]:
+        workspace = Path(str(case.get("workspace") or ""))
+        calls: list[dict[str, Any]] = []
+        runs_dir = workspace / ".asteria" / "runs"
+        if runs_dir.exists():
+            for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+                calls.extend(self._read_jsonl(run_dir / "model_calls.jsonl", "model_call"))
+        if calls:
+            return self._profile_from_latest_call(calls, profiles)
+        key = (
+            str(case.get("provider") or "unknown"),
+            str(case.get("model") or "unknown"),
+            str(case.get("purpose") or "real_provider_matrix"),
+            str(case.get("model_tier") or "unknown"),
+        )
+        return self._ensure_model_profile(profiles, key)
 
     def _merge_observation_route_signals(
         self,
@@ -719,6 +819,10 @@ class CapabilityReportCommand:
         validation_total = int(profile.get("validation_total") or 0)
         validation_pass_rate = float(profile.get("validation_pass_rate") or 0.0)
         failure_types = profile.get("failure_types") or {}
+        matrix_signal_total = int(profile.get("matrix_signal_total") or 0)
+        matrix_signal_success_rate = float(profile.get("matrix_signal_success_rate") or 0.0)
+        if matrix_signal_total >= 1 and matrix_signal_success_rate < 1.0:
+            return "review_real_provider_matrix_before_scaling"
         if validation_total >= 2 and validation_pass_rate < 0.8:
             return "review_validation_or_route_before_scaling"
         if int(profile.get("merge_gate_blocks") or 0) >= 2:
@@ -796,6 +900,7 @@ class CapabilityReportCommand:
         blockers: list[str],
         model_profiles: list[dict[str, Any]],
         route_guidance: dict[str, Any],
+        matrix_route_guidance: dict[str, Any],
         runtime_os: dict[str, Any],
     ) -> list[str]:
         actions = []
@@ -831,6 +936,10 @@ class CapabilityReportCommand:
             )
         if route_guidance.get("status") in {"blocked", "review"}:
             actions.extend(str(item) for item in route_guidance.get("recommended_actions", []))
+        if matrix_route_guidance.get("status") in {"blocked", "review"}:
+            actions.extend(
+                str(item) for item in matrix_route_guidance.get("recommended_actions", [])
+            )
         if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
             actions.append(
                 "Run Runtime OS core acceptance and gate before release: "
@@ -839,6 +948,67 @@ class CapabilityReportCommand:
         if not model_profiles:
             actions.append("Run a long-run or acceptance cycle to collect model capability data.")
         return list(dict.fromkeys(actions))
+
+    def _matrix_route_guidance(self, matrix: dict[str, Any]) -> dict[str, Any]:
+        if not matrix:
+            return {}
+        route = str(matrix.get("latest_route") or "unknown")
+        task_kind = str(matrix.get("latest_task_kind") or "unknown")
+        case = str(matrix.get("latest_case") or "unknown")
+        reason = str(matrix.get("latest_reason") or "No reason recorded.")
+        summary_path = str(matrix.get("summary_path") or "")
+        evidence_refs = [str(ref) for ref in matrix.get("latest_evidence_refs") or []][:5]
+        if matrix.get("ok") is True:
+            return {
+                "status": "healthy",
+                "latest_route": route,
+                "latest_task_kind": task_kind,
+                "latest_case": case,
+                "reason": reason,
+                "evidence_refs": evidence_refs,
+                "summary_path": summary_path,
+                "recommended_actions": [],
+            }
+        actions = [
+            (
+                "Repair latest real-provider P0 matrix failure before widening gray: "
+                f"{case} requires {route} for task_kind={task_kind}."
+            )
+        ]
+        actions.append(self._matrix_route_action(route, case))
+        evidence = ", ".join(evidence_refs[:3]) if evidence_refs else "no evidence refs recorded"
+        if summary_path:
+            actions.append(f"Inspect {summary_path} and evidence refs: {evidence}.")
+        return {
+            "status": "blocked",
+            "latest_route": route,
+            "latest_task_kind": task_kind,
+            "latest_case": case,
+            "reason": reason,
+            "evidence_refs": evidence_refs,
+            "summary_path": summary_path,
+            "recommended_actions": actions,
+        }
+
+    def _matrix_route_action(self, route: str, case: str) -> str:
+        if route == "repair":
+            return (
+                "Run targeted repair/debug, then rerun "
+                f"`asteria real-model-smoke --matrix p0 --matrix-case {case}`."
+            )
+        if route == "replan":
+            return (
+                "Replan the contract mismatch, then rerun "
+                f"`asteria real-model-smoke --matrix p0 --matrix-case {case}`."
+            )
+        if route == "ask":
+            return "Resolve the permission or scope DecisionPoint before retrying the matrix case."
+        if route == "stop":
+            return "Stop widening real-provider gray work until repeated no-new-evidence is diagnosed."
+        return (
+            "Review the latest real-provider matrix route decision, then rerun "
+            f"`asteria real-model-smoke --matrix p0 --matrix-case {case}`."
+        )
 
     def _closed_failures(self, report: dict[str, Any]) -> set[str]:
         closure = report.get("repair_closure")

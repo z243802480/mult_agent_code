@@ -12,6 +12,10 @@ from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.flag_resolver import FlagResolver
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.real_provider_matrix import (
+    latest_real_provider_matrix,
+    real_provider_matrix_text_lines,
+)
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -28,6 +32,7 @@ class GateStatusResult:
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
     latest_observation_plan: dict[str, Any] = field(default_factory=dict)
+    latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
@@ -59,6 +64,7 @@ class GateStatusResult:
                     "route_environment",
                     "route_guidance",
                     "latest_observation_plan",
+                    "latest_real_provider_matrix",
                     "promotion_release_risks",
                     "plugin_risks",
                     "feature_flags",
@@ -82,6 +88,7 @@ class GateStatusResult:
             "route_environment": self.route_environment,
             "route_guidance": self.route_guidance,
             "latest_observation_plan": self.latest_observation_plan,
+            "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "promotion_release_risks": self.promotion_release_risks,
             "plugin_risks": self.plugin_risks,
             "feature_flags": self.feature_flags,
@@ -150,6 +157,7 @@ class GateStatusResult:
                 f"{self.latest_observation_plan.get('recommended_route', 'unknown')} - "
                 f"{self.latest_observation_plan.get('reason', 'No reason recorded.')}"
             )
+        lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
         if self.feature_flags:
             active = [n for n, v in self.feature_flags.items() if v.get("active")]
             lines.append(f"Feature flags: {len(active)} active of {len(self.feature_flags)}")
@@ -226,6 +234,12 @@ class GateStatusCommand:
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
         latest_observation_plan = _latest_observation_plan(self.root, self.validator)
+        latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
+        if latest_matrix and latest_matrix.get("ok") is False:
+            actions = [
+                *_real_provider_matrix_next_actions(latest_matrix),
+                *actions,
+            ]
         promotion_release_risks = _promotion_release_risks(self.root, self._policy())
         if stage == "ready_for_small_real_task_gray" and not route_environment["ready"]:
             stage = "current_environment_incomplete"
@@ -285,6 +299,7 @@ class GateStatusCommand:
             route_environment=route_environment,
             route_guidance=route_guidance,
             latest_observation_plan=latest_observation_plan,
+            latest_real_provider_matrix=latest_matrix,
             promotion_release_risks=promotion_release_risks,
             plugin_risks=plugin_risks,
             validation_recommendation=_validation_recommendation(self.root),
@@ -469,6 +484,29 @@ def _evidence_sources(
 def _route_guidance(root: Path) -> dict[str, Any]:
     validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
     return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
+
+
+def _real_provider_matrix_next_actions(matrix: dict[str, Any]) -> list[str]:
+    route = str(matrix.get("latest_route") or "unknown")
+    task_kind = str(matrix.get("latest_task_kind") or "unknown")
+    case = str(matrix.get("latest_case") or "unknown")
+    summary_path = str(matrix.get("summary_path") or "matrix_summary.json")
+    route_command = {
+        "repair": "Run the failed matrix case through `asteria debug` or rerun `asteria real-model-smoke --matrix p0 --matrix-case <case>` after fixing verification.",
+        "replan": "Run `asteria replan` for the failed matrix case contract, then rerun the targeted matrix case.",
+        "ask": "Resolve the permission or scope question before rerunning the targeted matrix case.",
+        "stop": "Stop widening gray validation until repeated no-new-evidence is investigated.",
+    }.get(
+        route,
+        "Inspect the failed matrix case and rerun the targeted matrix case after repair.",
+    )
+    return [
+        (
+            "Latest real-provider P0 matrix failed: "
+            f"{case} requires {route} for task_kind={task_kind}; inspect {summary_path}."
+        ),
+        route_command,
+    ]
 
 
 def _promotion_release_risks(root: Path, policy: dict[str, Any] | None = None) -> dict[str, Any]:

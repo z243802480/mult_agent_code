@@ -12,11 +12,25 @@
       "status",
       "summary",
       "conclusion",
+      "workflow_state",
+      "current_phase",
+      "current_blocker",
+      "can_review",
+      "can_accept",
       "current_session_id",
       "blockers",
       "risks",
       "pending_decision_count",
       "candidate_promotions",
+      "model_selection",
+      "model_route_timeline",
+      "route_readiness",
+      "run_loop_summary_path",
+      "run_loop_summary",
+      "final_report_summary_path",
+      "final_report_summary",
+      "goal_policy",
+      "latest_real_provider_matrix",
       "plugin_control",
       "latest_failure",
       "recommended_next_command",
@@ -24,44 +38,77 @@
       "recent_sessions"
     ]
   },
-  "root": "H:/mult_agent_code",
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmpsomqdtpg",
   "initialized": true,
-  "status": "active",
+  "status": "running",
   "summary": "Current session is available.",
-  "conclusion": "Current session is active and can continue.",
+  "conclusion": "Run is in progress.",
   "evidence_chain": [
     "run=running phase=EXECUTING",
     "tasks remaining=1 total=3"
   ],
-  "current_session_id": "run-example-0001",
+  "current_session_id": "run-20260524-0001",
   "current_context": {
     "run_status": {
       "status": "running",
       "current_phase": "EXECUTING",
       "summary": "Current session is available."
-    },
-    "task_summary": {
-      "remaining": 1,
-      "total": 3
     }
   },
   "blockers": [],
   "risks": [],
   "pending_decision_count": 0,
-  "candidate_promotions": {
-    "total": 0,
-    "pending": [],
-    "blocked": [],
-    "status_counts": {}
-  },
+  "candidate_promotions": {},
   "plugin_control": {
+    "initialized": true,
     "ok": true,
-    "summary": "Plugin control surface is available."
+    "plugin_dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmpsomqdtpg\\.asteria\\plugins",
+    "hook_policy": {
+      "enabled": true,
+      "plugins_enabled": false,
+      "allowed_hook_names": [
+        "before_worker",
+        "after_worker",
+        "worker_error",
+        "before_tool_call",
+        "after_tool_call",
+        "tool_call_error"
+      ],
+      "redacted_data_keys": [
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "authorization",
+        "password",
+        "credential",
+        "raw_context"
+      ],
+      "handler_timeout_ms": 1000
+    },
+    "plugins": [],
+    "status_counts": {},
+    "warnings": [],
+    "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off."
   },
   "latest_failure": {},
   "recommended_next_command": "resume",
   "next_actions": [
     "Run `asteria resume`."
   ],
-  "recent_sessions": []
+  "recent_sessions": [],
+  "workflow_state": "running",
+  "current_phase": "EXECUTING",
+  "current_blocker": null,
+  "can_review": false,
+  "can_accept": false,
+  "model_selection": {},
+  "model_route_timeline": [],
+  "route_readiness": {},
+  "run_loop_summary_path": null,
+  "run_loop_summary": {},
+  "final_report_summary_path": null,
+  "final_report_summary": {},
+  "goal_policy": {},
+  "latest_real_provider_matrix": {}
 }

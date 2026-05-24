@@ -8,6 +8,7 @@ from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.run_command import RunCommand, RunStepSummary
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -20,9 +21,12 @@ class AcceptResult:
     accepted: bool
     review_status: str
     final_report_path: Path
+    final_report_summary_path: Path | None = None
+    final_report_summary: dict = field(default_factory=dict)
     promoted_files: list[str] = field(default_factory=list)
     blockers: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
+    recommended_next_command: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -32,10 +36,23 @@ class AcceptResult:
             "accepted": self.accepted,
             "review_status": self.review_status,
             "final_report_path": str(self.final_report_path),
+            "final_report_summary_path": (
+                str(self.final_report_summary_path) if self.final_report_summary_path else None
+            ),
+            "final_report_summary": self.final_report_summary,
             "promoted_files": self.promoted_files,
             "blockers": self.blockers,
+            "primary_blocker": self.primary_blocker,
             "next_actions": self.next_actions,
+            "recommended_next_command": self.recommended_next_command,
         }
+
+    @property
+    def primary_blocker(self) -> str | None:
+        for blocker in self.blockers:
+            if "review status" in blocker:
+                return blocker
+        return self.blockers[0] if self.blockers else None
 
     def to_text(self) -> str:
         lines = [
@@ -45,15 +62,28 @@ class AcceptResult:
             f"Review status: {self.review_status}",
             f"Final report: {self.final_report_path}",
         ]
+        if self.final_report_summary_path:
+            lines.append(f"Final report summary: {self.final_report_summary_path}")
+        if self.final_report_summary:
+            selection = self.final_report_summary.get("model_selection") or {}
+            if selection:
+                lines.append(
+                    "Model selection: "
+                    f"{selection.get('selected_tier', 'unknown')} "
+                    f"({selection.get('reason', 'no reason recorded')})"
+                )
         if self.promoted_files:
             lines.append("Promoted files:")
             lines.extend(f"- {path}" for path in self.promoted_files)
         if self.blockers:
+            lines.append(f"Primary blocker: {self.primary_blocker}")
             lines.append("Blockers:")
             lines.extend(f"- {item}" for item in self.blockers)
         if self.next_actions:
             lines.append("Next actions:")
             lines.extend(f"- {item}" for item in self.next_actions)
+        if self.recommended_next_command:
+            lines.append(f"Recommended next command: asteria {self.recommended_next_command}")
         return "\n".join(lines)
 
 
@@ -100,7 +130,9 @@ class AcceptCommand:
             ).run()
             for promotion in promotion_result.promotions:
                 if promotion.get("status") == "promoted":
-                    promoted_files.extend(str(path) for path in promotion.get("promoted_files") or [])
+                    promoted_files.extend(
+                        str(path) for path in promotion.get("promoted_files") or []
+                    )
                 else:
                     failure = promotion.get("failure") or {}
                     blockers.append(
@@ -114,7 +146,9 @@ class AcceptCommand:
             )
 
         if review_status != "pass":
-            blockers.append(f"review status is {review_status}; run `asteria review` or repair follow-ups.")
+            blockers.append(
+                f"review status is {review_status}; run `asteria review` or repair follow-ups."
+            )
 
         pending_after = self._pending_promotions(run_dir)
         if pending_after:
@@ -127,18 +161,40 @@ class AcceptCommand:
             run["status"] = "completed"
             run["current_phase"] = "ACCEPTED"
             run["ended_at"] = now_iso()
-            run["summary"] = "Accepted by operator; review passed and candidate promotions are settled."
+            run["summary"] = (
+                "Accepted by operator; review passed and candidate promotions are settled."
+            )
         else:
             run["status"] = "blocked"
             run["current_phase"] = "ACCEPT"
             run["summary"] = "Acceptance blocked; review or candidate promotion issues remain."
         run_store.update_run(run)
+        next_actions = self._next_actions(accepted, blockers)
+        recommended_next_command = self._recommended_next_command(accepted, blockers)
+        final_report_summary_path = self._write_final_report_summary(
+            run_id=run_id,
+            status=run["status"],
+            review_status=review_status,
+            final_report_path=final_report_path,
+            blockers=blockers,
+            next_actions=next_actions,
+            recommended_next_command=recommended_next_command,
+        )
+        final_report_summary = JsonStore(self.validator).read(
+            final_report_summary_path,
+            "final_report_summary",
+        )
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             "run_accepted" if accepted else "accept_blocked",
             "AcceptCommand",
             run["summary"],
-            {"review_status": review_status, "promoted_files": promoted_files, "blockers": blockers},
+            {
+                "review_status": review_status,
+                "promoted_files": promoted_files,
+                "blockers": blockers,
+                "final_report_summary_path": str(final_report_summary_path),
+            },
         )
 
         return AcceptResult(
@@ -147,9 +203,12 @@ class AcceptCommand:
             accepted=accepted,
             review_status=review_status,
             final_report_path=final_report_path,
+            final_report_summary_path=final_report_summary_path,
+            final_report_summary=final_report_summary,
             promoted_files=sorted(set(promoted_files)),
             blockers=blockers,
-            next_actions=self._next_actions(accepted, blockers),
+            next_actions=next_actions,
+            recommended_next_command=recommended_next_command,
         )
 
     def _latest_review_status(self, run_dir: Path) -> str:
@@ -169,6 +228,31 @@ class AcceptCommand:
             [RunStepSummary("accept", "completed", "Operator acceptance workflow executed.")],
         )
 
+    def _write_final_report_summary(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        review_status: str,
+        final_report_path: Path,
+        blockers: list[str],
+        next_actions: list[str],
+        recommended_next_command: str | None,
+    ) -> Path:
+        return RunCommand(self.root)._write_final_report_summary(
+            run_id=run_id,
+            status=status,
+            review_status=review_status,
+            final_report_path=final_report_path,
+            status_payload={
+                "workflow_state": "accepted" if not blockers else "blocked",
+                "current_blocker": blockers[0] if blockers else None,
+                "recommended_next_command": recommended_next_command,
+                "blockers": blockers,
+                "next_actions": next_actions,
+            },
+        )
+
     def _next_actions(self, accepted: bool, blockers: list[str]) -> list[str]:
         if accepted:
             return ["Use the final report as the durable handoff artifact."]
@@ -176,5 +260,16 @@ class AcceptCommand:
         if any("review status" in blocker for blocker in blockers):
             actions.append("Run `asteria debug` or `asteria replan`, then `asteria review`.")
         if any("promotion" in blocker for blocker in blockers):
-            actions.append("Run `asteria promotions list` and approve, reject, retry, or discard blockers.")
+            actions.append(
+                "Run `asteria promotions list` and approve, reject, retry, or discard blockers."
+            )
         return actions
+
+    def _recommended_next_command(self, accepted: bool, blockers: list[str]) -> str | None:
+        if accepted:
+            return None
+        if any("review status" in blocker for blocker in blockers):
+            return "debug"
+        if any("promotion" in blocker for blocker in blockers):
+            return "promotions list"
+        return "status"

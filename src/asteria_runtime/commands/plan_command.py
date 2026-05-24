@@ -10,6 +10,7 @@ from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
+from asteria_runtime.core.run_config import apply_run_config, write_run_config
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
@@ -59,12 +60,19 @@ class PlanCommand:
         root: Path,
         goal: str,
         model_client: ModelClient | None = None,
+        *,
+        mode: str = "plan",
+        permission_level: str = "ask",
+        model_strategy: str = "auto",
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.model_client = model_client
+        self.mode = mode
+        self.permission_level = permission_level
+        self.model_strategy = model_strategy
 
     def run(self) -> PlanResult:
         agent_dir = self.root / ".asteria"
@@ -76,6 +84,15 @@ class PlanCommand:
         run_store = RunStore(agent_dir, self.validator)
         run = run_store.create_run(f'asteria plan "{self.goal}"')
         run_dir = run_store.run_dir(run["run_id"])
+        run_config = write_run_config(
+            run_dir=run_dir,
+            validator=self.validator,
+            run_id=run["run_id"],
+            mode=self.mode,
+            permission_level=self.permission_level,
+            model_strategy=self.model_strategy,
+        )
+        policy = apply_run_config(policy, run_config)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
         progress_logger = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
         budget = BudgetController(policy, run_id=run["run_id"])
@@ -124,9 +141,9 @@ class PlanCommand:
         capability_manifest = prompt_envelope.envelope.capability_manifest
         runtime_context["capability_manifest"] = capability_manifest.to_dict()
         runtime_context["prompt_envelope"] = prompt_envelope.context_ref()
-        goal_spec_route_plan = CapabilityFeedbackAdvisor(
-            self.validator
-        ).goal_spec_execution_plan(agent_dir, self.goal)
+        goal_spec_route_plan = CapabilityFeedbackAdvisor(self.validator).goal_spec_execution_plan(
+            agent_dir, self.goal
+        )
         runtime_context["goal_spec_route_plan"] = goal_spec_route_plan
         event_logger.record(
             run["run_id"],
@@ -215,7 +232,9 @@ class PlanCommand:
                 break
         if goal_spec is None:
             report = last_report or {}
-            report_path = last_report_path or self.root / ".asteria" / "model" / "latest_failure.json"
+            report_path = (
+                last_report_path or self.root / ".asteria" / "model" / "latest_failure.json"
+            )
             failure_type = str(report.get("failure_type") or "unknown")
             run["current_phase"] = "SPEC"
             run["status"] = "failed"

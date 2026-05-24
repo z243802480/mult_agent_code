@@ -693,3 +693,172 @@ def legacy_scenario(name: str, ok: bool) -> dict:
 
 def runtime_os_report(tmp_path: Path) -> dict:
     return runtime_os_pass_report(tmp_path)
+
+
+def test_capability_report_merges_real_provider_matrix_signals(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    jsonl = JsonlStore(validator)
+    matrix_dir = tmp_path / ".asteria" / "verification" / "real_provider_matrix" / "matrix-1"
+    workspace = matrix_dir / "workspaces" / "file_output"
+    run_dir = workspace / ".asteria" / "runs" / "run-matrix"
+    run_dir.mkdir(parents=True)
+    jsonl.append(
+        run_dir / "model_calls.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_call_id": "modelcall-matrix-0001",
+            "run_id": "run-matrix",
+            "agent_id": "CoderAgent",
+            "purpose": "task_execution",
+            "model_provider": "openai-compatible",
+            "model_name": "matrix-model",
+            "model_tier": "medium",
+            "input_tokens": 100,
+            "output_tokens": 30,
+            "status": "success",
+            "created_at": "2026-05-24T18:00:00+08:00",
+            "summary": "matrix case ok",
+        },
+        "model_call",
+    )
+    store.write(
+        matrix_dir / "matrix_summary.json",
+        {
+            "schema_version": "0.1.0",
+            "matrix": "p0",
+            "created_at": "2026-05-24T18:00:00+00:00",
+            "ok": True,
+            "output_dir": str(matrix_dir),
+            "case_count": 1,
+            "passed": 1,
+            "failed": 0,
+            "duration_seconds": 1.0,
+            "cases": [
+                {
+                    "name": "file_output",
+                    "task_kind": "file_output",
+                    "route": "artifact_creation",
+                    "reason": "bounded file output",
+                    "ok": True,
+                    "workspace": str(workspace),
+                    "summary_json": str(matrix_dir / "file_output_summary.json"),
+                    "expected_file": "p0_matrix_file_output.txt",
+                    "expected_text": "P0 matrix file output ok",
+                    "run_id": "run-matrix",
+                    "final_report": str(run_dir / "final_report.md"),
+                    "diagnostics": {},
+                    "failure_type": None,
+                    "failure_summary": None,
+                    "evidence_refs": [str(run_dir / "final_report.md")],
+                }
+            ],
+        },
+    )
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    profile = store.read(result.model_profile_path, "model_capability_profile")
+    route = profile["profiles"][0]
+    assert route["provider"] == "openai-compatible"
+    assert route["model"] == "matrix-model"
+    assert route["matrix_signal_total"] == 1
+    assert route["matrix_signal_success"] == 1
+    assert route["matrix_signal_failure"] == 0
+    assert route["matrix_signal_success_rate"] == 1.0
+    assert route["matrix_task_kinds"] == {"file_output": 1}
+    assert route["matrix_routes"] == {"artifact_creation": 1}
+    assert route["recent_matrix_signals"] == [
+        "2026-05-24T18:00:00+00:00:file_output:artifact_creation:success"
+    ]
+    assert "matrix=1.00/1" in result.to_text()
+
+
+def test_capability_report_surfaces_failed_real_provider_matrix_route_guidance(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    store = JsonStore(validator)
+    matrix_dir = tmp_path / ".asteria" / "verification" / "real_provider_matrix" / "matrix-2"
+    workspace = matrix_dir / "workspaces" / "verification_failure_repair"
+    workspace.mkdir(parents=True)
+    store.write(
+        matrix_dir / "matrix_summary.json",
+        {
+            "schema_version": "0.1.0",
+            "matrix": "p0",
+            "created_at": "2026-05-24T19:00:00+00:00",
+            "ok": False,
+            "output_dir": str(matrix_dir),
+            "case_count": 2,
+            "passed": 1,
+            "failed": 1,
+            "duration_seconds": 2.0,
+            "cases": [
+                {
+                    "name": "file_output",
+                    "task_kind": "file_output",
+                    "route": "artifact_creation",
+                    "reason": "bounded file output",
+                    "ok": True,
+                    "workspace": str(workspace),
+                    "summary_json": str(matrix_dir / "file_output_summary.json"),
+                    "expected_file": "p0_matrix_file_output.txt",
+                    "expected_text": "P0 matrix file output ok",
+                    "run_id": "run-matrix-ok",
+                    "final_report": str(workspace / "final_report_ok.md"),
+                    "diagnostics": {},
+                    "failure_type": None,
+                    "failure_summary": None,
+                    "evidence_refs": [str(workspace / "final_report_ok.md")],
+                    "provider": "openai-compatible",
+                    "model": "matrix-model",
+                    "purpose": "task_execution",
+                    "model_tier": "medium",
+                },
+                {
+                    "name": "verification_failure_repair",
+                    "task_kind": "verification_failure",
+                    "route": "repair",
+                    "reason": "verification failed after candidate output",
+                    "ok": False,
+                    "workspace": str(workspace),
+                    "summary_json": str(matrix_dir / "repair_summary.json"),
+                    "expected_file": "repair_target.py",
+                    "expected_text": "return x + 1",
+                    "run_id": "run-matrix-fail",
+                    "final_report": str(workspace / "final_report_fail.md"),
+                    "diagnostics": {"route": "repair"},
+                    "failure_type": "verification_failed",
+                    "failure_summary": "pytest failed for repair target",
+                    "evidence_refs": [str(workspace / "pytest.log")],
+                    "provider": "openai-compatible",
+                    "model": "matrix-model",
+                    "purpose": "task_execution",
+                    "model_tier": "medium",
+                },
+            ],
+        },
+        "real_provider_matrix_summary",
+    )
+
+    result = CapabilityReportCommand(tmp_path).run()
+
+    profile = store.read(result.model_profile_path, "model_capability_profile")
+    route = profile["profiles"][0]
+    assert route["matrix_signal_total"] == 2
+    assert route["matrix_signal_success"] == 1
+    assert route["matrix_signal_failure"] == 1
+    assert route["matrix_signal_success_rate"] == 0.5
+    assert route["recommended_action"] == "review_real_provider_matrix_before_scaling"
+    assert result.latest_real_provider_matrix["latest_route"] == "repair"
+    assert result.matrix_route_guidance["status"] == "blocked"
+    assert result.matrix_route_guidance["latest_task_kind"] == "verification_failure"
+    assert any(
+        "real-provider P0 matrix failure" in action and "requires repair" in action
+        for action in result.next_actions
+    )
+    text = result.to_text()
+    assert "Latest real-provider matrix: 1/2 passed" in text
+    assert "Matrix route guidance: blocked" in text
+    assert "requires repair" in text

@@ -1,10 +1,15 @@
 ﻿from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.worker_tree import WorkerTreeBuilder
+from asteria_runtime.models.route_resolver import (
+    route_readiness_for_tiers,
+    route_readiness_from_records,
+)
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
@@ -59,6 +64,8 @@ class SessionsResult:
             lines.append(f"  snapshot: {context['snapshot_path']}")
         if context.get("handoff_path"):
             lines.append(f"  handoff: {context['handoff_path']}")
+        if context.get("run_loop_summary_path"):
+            lines.append(f"  run loop summary: {context['run_loop_summary_path']}")
         if context.get("recommended_next_command"):
             lines.append(f"  next: {context['recommended_next_command']}")
         verification = context.get("verification")
@@ -194,10 +201,33 @@ class SessionsCommand:
         )
         task_failures = (snapshot or {}).get("task_failures") or self._task_failures(run_dir)
         execution_evidence = self._task_execution_evidence(run_dir)
+        model_selection = self._latest_model_selection(execution_evidence)
+        model_route_timeline = self._model_route_timeline(execution_evidence)
+        model_route_timeline_path = self._model_route_timeline_path(run_dir)
         latest_observation_plan = self._latest_observation_plan(run_dir)
+        route_readiness = self._route_readiness(run_dir)
+        run_loop_summary = self._run_loop_summary(run_dir)
+        final_report_summary = self._final_report_summary(run_dir)
+        latest_review = self._latest_review_report(run_dir)
+        goal_policy = (final_report_summary.get("goal_policy") or {}) if final_report_summary else {}
+        if not goal_policy:
+            marker = self._read_unvalidated_json(run_dir / "goal_policy.json")
+            goal_policy = marker.get("goal_policy") or {}
+        if not goal_policy:
+            goal_policy = self._goal_policy_from_pending_decisions(pending_decisions)
+        if not goal_policy:
+            goal_policy = (latest_review.get("trajectory_eval") or {}).get(
+                "failure_classification"
+            ) or {}
         worker_tree = WorkerTreeBuilder(self.validator).build(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
-        blockers = self._blockers(run_dir, pending_decisions, task_failures, acceptance_failures)
+        blockers = self._blockers(
+            run_dir,
+            pending_decisions,
+            task_failures,
+            acceptance_failures,
+            route_readiness,
+        )
         risks = (snapshot or {}).get("open_risks") or self._risks(
             run_dir, task_failures, acceptance_failures
         )
@@ -223,6 +253,14 @@ class SessionsCommand:
             "snapshot_path": snapshot_rel,
             "handoff_path": handoff_rel,
             "recommended_next_command": recommended_next_command,
+            "run_loop_summary_path": self._relative_path(run_dir / "run_loop_summary.json")
+            if run_loop_summary
+            else None,
+            "run_loop_summary": run_loop_summary,
+            "final_report_summary_path": self._relative_path(run_dir / "final_report_summary.json")
+            if final_report_summary
+            else None,
+            "final_report_summary": final_report_summary,
             "cost_summary": self._cost_summary(run_dir),
             "verification": verification,
             "pending_decision_count": len(pending_decisions),
@@ -232,6 +270,11 @@ class SessionsCommand:
             "task_failures": task_failures[-3:],
             "latest_execution_evidence": execution_evidence[-1] if execution_evidence else None,
             "task_execution_evidence": execution_evidence[-3:],
+            "model_selection": model_selection,
+            "model_route_timeline_path": model_route_timeline_path,
+            "model_route_timeline": model_route_timeline,
+            "goal_policy": goal_policy,
+            "route_readiness": route_readiness,
             "latest_observation_plan": latest_observation_plan,
             "worker_tree": worker_tree,
             "candidate_promotions": promotion_summary,
@@ -327,10 +370,36 @@ class SessionsCommand:
                 "decision_id": decision["decision_id"],
                 "question": decision["question"],
                 "recommended_option_id": decision["recommended_option_id"],
+                "metadata": decision.get("metadata", {}),
             }
             for decision in decisions
             if decision["status"] == "pending"
         ]
+
+    def _goal_policy_from_pending_decisions(self, pending_decisions: list[dict]) -> dict:
+        if not pending_decisions:
+            return {}
+        decision = pending_decisions[0]
+        metadata = decision.get("metadata") or {}
+        kind = str(metadata.get("kind") or "")
+        question = str(decision.get("question") or "")
+        decision_text = f"{kind} {question}".lower()
+        if "budget" in decision_text or "cost" in decision_text:
+            category = "budget_guard"
+        elif any(
+            term in decision_text
+            for term in ("permission", "policy", "runtime_request", "tool")
+        ):
+            category = "permission_guard"
+        else:
+            category = "decision_required"
+        decision_id = str(decision["decision_id"])
+        return {
+            "category": category,
+            "recommended_command": f"decide --decision-id {decision_id}",
+            "reason": f"DecisionPoint is pending: {question}",
+            "decision_id": decision_id,
+        }
 
     def _task_failures(self, run_dir: Path) -> list[dict]:
         failures = self._read_jsonl(run_dir / "task_failures.jsonl", "task_failure_evidence")
@@ -364,6 +433,7 @@ class SessionsCommand:
                 "failure_type": evidence.get("failure_type"),
                 "contract_ok": (evidence.get("contract_check") or {}).get("ok"),
                 "promoted_files": (evidence.get("candidate") or {}).get("promoted_files", []),
+                "model_selection": (evidence.get("action") or {}).get("model_selection"),
                 "evidence_path": (run_dir / "task_execution_evidence.jsonl")
                 .relative_to(self.root)
                 .as_posix(),
@@ -371,6 +441,43 @@ class SessionsCommand:
             }
             for evidence in evidence_items[-10:]
         ]
+
+    def _latest_model_selection(self, execution_evidence: list[dict]) -> dict:
+        for evidence in reversed(execution_evidence):
+            selection = evidence.get("model_selection")
+            if isinstance(selection, dict) and selection:
+                return selection
+        return {}
+
+    def _model_route_timeline(self, execution_evidence: list[dict]) -> list[dict]:
+        timeline = []
+        for evidence in execution_evidence:
+            selection = evidence.get("model_selection")
+            if not isinstance(selection, dict) or not selection:
+                continue
+            timeline.append(
+                {
+                    "task_id": evidence.get("task_id"),
+                    "purpose": selection.get("purpose"),
+                    "task_kind": selection.get("task_kind"),
+                    "selected_tier": selection.get("selected_tier"),
+                    "default_tier": selection.get("default_tier"),
+                    "strategy_tier": selection.get("strategy_tier"),
+                    "strategy": selection.get("strategy"),
+                    "reason": selection.get("reason"),
+                    "tier_pressure": selection.get("tier_pressure") or {},
+                    "capability_feedback": selection.get("capability_feedback") or {},
+                    "evidence_path": evidence.get("evidence_path"),
+                    "created_at": evidence.get("created_at"),
+                }
+            )
+        return timeline[-20:]
+
+    def _model_route_timeline_path(self, run_dir: Path) -> str | None:
+        path = run_dir / "model_route_timeline.json"
+        if not path.exists():
+            return None
+        return self._relative_path(path)
 
     def _latest_observation_plan(self, run_dir: Path) -> dict | None:
         plans = self._read_jsonl(run_dir / "observation_plans.jsonl", "observation_plan")
@@ -396,8 +503,12 @@ class SessionsCommand:
         pending_decisions: list[dict],
         task_failures: list[dict],
         acceptance_failures: list[dict],
+        route_readiness: dict,
     ) -> list[str]:
         blockers = []
+        route_blocker = route_readiness.get("current_blocker") if route_readiness else None
+        if route_blocker:
+            blockers.append(str(route_blocker))
         for decision in pending_decisions[:3]:
             blockers.append(f"pending decision {decision['decision_id']}")
         task_plan = self._read_json(run_dir / "task_plan.json", "task_board")
@@ -414,6 +525,35 @@ class SessionsCommand:
         if acceptance_failures:
             blockers.append(f"acceptance failure {acceptance_failures[-1]['scenario']}")
         return blockers
+
+    def _route_readiness(self, run_dir: Path) -> dict:
+        model_profiles = self._read_jsonl(run_dir / "model_profiles.jsonl", "model_profile")
+        if not model_profiles:
+            route_records = self._read_jsonl(
+                run_dir / "model_route_resolutions.jsonl",
+                schema_name=None,
+            )
+            if route_records:
+                return route_readiness_from_records(route_records)
+        if not model_profiles:
+            return {
+                "status": "unknown",
+                "summary": "No model profile has been mounted for this run yet.",
+                "routes": [],
+                "current_blocker": None,
+                "recommended_next_command": None,
+            }
+        latest_by_tier: dict[str, dict] = {}
+        for profile in model_profiles:
+            tier = str(profile.get("model_tier") or "unknown")
+            latest_by_tier[tier] = profile
+        return route_readiness_for_tiers(tuple(latest_by_tier))
+
+    def _run_loop_summary(self, run_dir: Path) -> dict:
+        return self._read_json(run_dir / "run_loop_summary.json", "run_loop_summary")
+
+    def _final_report_summary(self, run_dir: Path) -> dict:
+        return self._read_json(run_dir / "final_report_summary.json", "final_report_summary")
 
     def _risks(
         self,
@@ -447,6 +587,18 @@ class SessionsCommand:
         remaining = int(task_summary.get("remaining", 0) or 0)
         if phase == "ACCEPTED":
             return None
+        latest_review = self._latest_review_report(run_dir)
+        review_status = str((latest_review.get("overall") or {}).get("status") or "")
+        failure_classification = (latest_review.get("trajectory_eval") or {}).get(
+            "failure_classification"
+        ) or {}
+        classified_command = str(failure_classification.get("recommended_command") or "")
+        if review_status in {"partial", "fail"}:
+            if classified_command in {"debug", "replan", "decide --list"}:
+                return classified_command
+            return "debug"
+        if phase == "REVIEWED" and review_status == "pass":
+            return "accept"
         if status == "completed" and remaining == 0:
             if phase == "REVIEWED":
                 return "accept"
@@ -463,12 +615,20 @@ class SessionsCommand:
             return "review"
         return None
 
+    def _latest_review_report(self, run_dir: Path) -> dict:
+        return self._read_json(run_dir / "eval_report.json", "eval_report")
+
     def _read_json(self, path: Path, schema_name: str) -> dict:
         if not path.exists():
             return {}
         return self.store.read(path, schema_name)
 
-    def _read_jsonl(self, path: Path, schema_name: str) -> list[dict]:
+    def _read_unvalidated_json(self, path: Path) -> dict:
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def _read_jsonl(self, path: Path, schema_name: str | None) -> list[dict]:
         if not path.exists():
             return []
         return self.jsonl.read_all(path, schema_name)

@@ -68,6 +68,11 @@ def test_daily_plan_selects_failed_only_acceptance_action(tmp_path: Path) -> Non
     assert result.action_count == 1
     assert plan["cycle_id"] == "2026-05-12"
     assert plan["schedule_type"] == "long_running_cycle"
+    assert plan["automation_manifest"]["execution_policy"]["requires_explicit_execute"] is True
+    assert "action_failure" in plan["automation_manifest"]["stop_conditions"]
+    assert ".asteria/daily/2026-05-12/daily_report.json" in plan["automation_manifest"][
+        "evidence_outputs"
+    ]
     assert plan["actions"][0]["kind"] == "acceptance_failed_only"
     assert plan["actions"][0]["responsible_role"] == "Evaluator"
     assert "--failed-only" in plan["actions"][0]["command"]
@@ -92,6 +97,9 @@ def test_daily_run_plan_only_writes_report_and_markdown(tmp_path: Path) -> None:
     assert report["goal"]
     assert report["progress"]["planned_actions"] == 1
     assert report["stop_reason"] == "plan_only"
+    assert report["automation_manifest"]["execution_policy"]["default_mode"] == "plan_only"
+    assert "budget_exhausted" in report["stop_conditions"]
+    assert any(item.endswith("daily_report.json") for item in report["evidence_outputs"])
     assert report["model_profile"]["status"] == "missing"
     assert report["risks"]
     assert any("Model capability profile is missing" in risk for risk in report["risks"])
@@ -99,6 +107,8 @@ def test_daily_run_plan_only_writes_report_and_markdown(tmp_path: Path) -> None:
     assert (result.report_path.with_suffix(".md")).exists()
     markdown = result.report_path.with_suffix(".md").read_text(encoding="utf-8")
     assert "## Budget" in markdown
+    assert "## Automation Manifest" in markdown
+    assert "## Evidence Outputs" in markdown
     assert "## Risks" in markdown
     assert "## Model Profile" in markdown
     assert "release-hardening" in markdown
@@ -285,6 +295,8 @@ def test_daily_run_execute_records_evidence_and_budget_delta(
     assert report["budget"]["tool_calls"] == 3
     assert report["budget"]["repair_attempts"] == 1
     assert report["results"][0]["evidence_path"]
+    assert report["results"][0]["evidence_path"] in report["evidence_outputs"]
+    assert report["results"][0]["run_evidence_path"] in report["evidence_outputs"]
     assert report["results"][0]["responsible_role"] == "Evaluator"
     daily_evidence = (
         tmp_path / ".asteria" / "daily" / "2026-05-12" / "task_execution_evidence.jsonl"

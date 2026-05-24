@@ -13,7 +13,7 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
   let activeModel: StudioEvent | null = null;
   for (const event of events) {
     if (event.type === "model_start") {
-      activeModel = { ...event, type: "model_delta", summary: event.summary || "正在等待模型返回内容。" };
+      activeModel = { ...event, type: "model_delta", summary: event.summary || "Waiting for model response..." };
       result.push(activeModel);
       continue;
     }
@@ -51,6 +51,7 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (event.type === "user_message") return "goal";
   if (event.type === "agent_turn" || event.runtime_event_type === "turn_start" || event.runtime_event_type === "turn_end") return "turn";
+  if (event.type === "intent_route") return "thinking";
   if (event.type === "permission_request") return "tool";
   if (event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end") return "tool";
   if (event.type === "tool_observation" || event.runtime_event_type === "tool_observation") return "observation";
@@ -65,18 +66,18 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 }
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string {
-  if (kind === "observation") return "观察结果";
-  if (kind === "turn") return "Agent 回合";
-  if (kind === "goal") return "用户目标";
-  if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "结构化生成";
-  if (kind === "thinking") return "思考";
-  if (kind === "plan") return "计划";
-  if (kind === "tool") return event.command?.length ? "工具调用" : "动作";
-  if (kind === "result") return "文件变化";
-  if (kind === "repair") return "修复";
-  if (kind === "verification") return "验证";
-  if (kind === "final") return "最终结果";
-  return "问题";
+  if (kind === "observation") return "Observation";
+  if (kind === "turn") return "Agent turn";
+  if (kind === "goal") return "User message";
+  if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "Structured generation";
+  if (kind === "thinking") return "Thinking";
+  if (kind === "plan") return "Plan";
+  if (kind === "tool") return event.command?.length ? "Tool call" : "Action";
+  if (kind === "result") return "File change";
+  if (kind === "repair") return "Repair";
+  if (kind === "verification") return "Verification";
+  if (kind === "final") return "Final answer";
+  return "Issue";
 }
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
@@ -160,10 +161,10 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
       status,
       headline:
         status === "running"
-          ? "Agent 正在处理任务。"
+          ? "Agent is processing the task."
           : status === "failed"
-          ? "运行遇到了问题。"
-          : "运行已完成，并生成了最终结果。",
+          ? "The run encountered an issue."
+          : "The run completed and produced a final result.",
       goal: (goalEvent?.summary ?? "") as string,
       modelEvents: events.filter(
         (e) => e.type.startsWith("model_") || e.type === "assistant_delta" || e.type === "reasoning_delta"
@@ -190,14 +191,14 @@ export function parseReportSections(text: string): Record<string, string> {
 export function summarizeProcess(steps: NarrativeStep[]): string[] {
   const labels = new Set(steps.map((s) => s.label));
   const items: string[] = [];
-  if (labels.has("用户目标")) items.push("接收用户目标，并把它固定为本次 run 的任务契约。");
-  if (labels.has("思考") || labels.has("结构化生成")) items.push("接收模型输出，把结构化生成归入规划过程。");
-  if (labels.has("计划")) items.push("生成任务计划，包含验收条件、运行约束和执行边界。");
-  if (labels.has("工具调用") || labels.has("动作")) items.push("调用本地 runtime 命令，并把原始命令输出留在 Inspector。");
-  if (labels.has("Agent 回合")) items.push("把工具调用、观察和下一步判断组织成可回放的 agent 回合。");
-  if (labels.has("验证")) items.push("收集验证或审查信号，用于判断结果是否可信。");
-  if (labels.has("最终结果")) items.push("将过程折叠成最终报告，明确结论、证据、风险和下一步。");
-  if (labels.has("观察结果")) items.push("读取工具观察结果，并把它回灌到下一轮 agent 判断。");
+  if (labels.has("User message")) items.push("Received the user message and attached it to this turn.");
+  if (labels.has("Thinking") || labels.has("Structured generation")) items.push("Collected model output and folded it into the visible reasoning flow.");
+  if (labels.has("Plan")) items.push("Generated a read-only task plan with boundaries and validation criteria.");
+  if (labels.has("Tool call") || labels.has("Action")) items.push("Called the local runtime command and kept raw command details in Inspector.");
+  if (labels.has("Agent turn")) items.push("Grouped tool calls, observations, and next-step decisions into an auditable agent turn.");
+  if (labels.has("Verification")) items.push("Collected verification or review signals to judge whether the result is trustworthy.");
+  if (labels.has("Final answer")) items.push("Collapsed the process into a final answer with outcome, evidence, risks, and next steps.");
+  if (labels.has("Observation")) items.push("Read tool observations and fed them back into the next agent decision.");
   return items.length ? items : steps.map((s) => `${s.label}: ${s.summary}`).slice(0, 6);
 }
 

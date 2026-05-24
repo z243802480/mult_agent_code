@@ -184,6 +184,7 @@ class DailyPlanCommand:
         signals = self._signals(agent_dir)
         actions = self._actions(signals)
         summary = self._summary(signals, actions)
+        automation_manifest = self._automation_manifest(actions)
         plan = {
             "schema_version": "0.1.0",
             "date": self.date,
@@ -202,6 +203,7 @@ class DailyPlanCommand:
             },
             "signals": signals,
             "actions": actions,
+            "automation_manifest": automation_manifest,
         }
         plan_path = daily_dir / "daily_plan.json"
         self.store.write(plan_path, plan, "daily_plan")
@@ -457,6 +459,50 @@ class DailyPlanCommand:
             return f"Selected {action['kind']} for long-run objective: {self.objective}"
         return f"Selected {action['kind']} for current run {current}."
 
+    def _automation_manifest(self, actions: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "manifest_version": "0.1.0",
+            "cycle_id": self.date,
+            "trigger": {
+                "type": "manual_or_scheduler",
+                "recommended_command": (
+                    f"asteria /long-run --cycle-id {self.date} --root ."
+                    " --execute --max-actions 1"
+                ),
+            },
+            "execution_policy": {
+                "default_mode": "plan_only",
+                "requires_explicit_execute": True,
+                "max_actions": 1,
+                "allowed_action_kinds": [str(action.get("kind")) for action in actions],
+                "write_scope_policy": "use_action_contract_and_runtime_policy",
+            },
+            "budget": {
+                "max_model_calls": self.max_model_calls,
+                "max_tool_calls": self.max_tool_calls,
+                "max_runtime_minutes": self.max_runtime_minutes,
+                "max_repair_attempts": self.max_repair_attempts,
+            },
+            "stop_conditions": [
+                "pending_decision",
+                "candidate_promotion_pending_or_blocked",
+                "route_guidance_blocked",
+                "action_failure",
+                "budget_exhausted",
+                "runtime_timeout",
+            ],
+            "evidence_outputs": [
+                f".asteria/daily/{self.date}/daily_plan.json",
+                f".asteria/daily/{self.date}/daily_report.json",
+                f".asteria/daily/{self.date}/task_execution_evidence.jsonl",
+                ".asteria/runs/<current_run>/task_execution_evidence.jsonl",
+            ],
+            "report_outputs": [
+                f".asteria/daily/{self.date}/daily_report.json",
+                f".asteria/daily/{self.date}/daily_report.md",
+            ],
+        }
+
 
 class DailyRunCommand:
     def __init__(
@@ -535,6 +581,9 @@ class DailyRunCommand:
             "progress": self._progress(results, plan),
             "stop_reason": stop_reason,
             "budget": guard.snapshot(),
+            "automation_manifest": plan.get("automation_manifest") or {},
+            "stop_conditions": (plan.get("automation_manifest") or {}).get("stop_conditions", []),
+            "evidence_outputs": self._evidence_outputs(plan, results),
             "results": results,
             "summary": self._summary(results),
             "risks": self._risks(results, stop_reason, plan),
@@ -687,22 +736,37 @@ class DailyRunCommand:
             f"- Stop reason: {report.get('stop_reason') or 'none'}",
             f"- Summary: {report['summary']}",
             "",
-            "## Model Profile",
+            "## Automation Manifest",
             "",
-            f"- Status: {(report.get('model_profile') or {}).get('status', 'missing')}",
-            f"- Profiles: {(report.get('model_profile') or {}).get('profile_count', 0)}",
-            f"- Profile path: {(report.get('model_profile') or {}).get('profile_path') or 'none'}",
+            f"- Trigger: {((report.get('automation_manifest') or {}).get('trigger') or {}).get('type', 'unknown')}",
+            f"- Default mode: {((report.get('automation_manifest') or {}).get('execution_policy') or {}).get('default_mode', 'unknown')}",
+            f"- Requires explicit execute: {((report.get('automation_manifest') or {}).get('execution_policy') or {}).get('requires_explicit_execute', True)}",
+            f"- Stop conditions: {', '.join(report.get('stop_conditions') or []) or 'none'}",
             "",
-            "## Budget",
-            "",
-            f"- Runtime seconds: {report['budget']['elapsed_seconds']}",
-            f"- Model calls: {report['budget']['model_calls']}/{report['budget']['max_model_calls']}",
-            f"- Tool calls: {report['budget']['tool_calls']}/{report['budget']['max_tool_calls']}",
-            f"- Repair attempts: {report['budget']['repair_attempts']}/{report['budget']['max_repair_attempts']}",
-            "",
-            "## Results",
+            "## Evidence Outputs",
             "",
         ]
+        lines.extend(f"- {item}" for item in report.get("evidence_outputs", []))
+        lines.extend(
+            [
+                "",
+                "## Model Profile",
+                "",
+                f"- Status: {(report.get('model_profile') or {}).get('status', 'missing')}",
+                f"- Profiles: {(report.get('model_profile') or {}).get('profile_count', 0)}",
+                f"- Profile path: {(report.get('model_profile') or {}).get('profile_path') or 'none'}",
+                "",
+                "## Budget",
+                "",
+                f"- Runtime seconds: {report['budget']['elapsed_seconds']}",
+                f"- Model calls: {report['budget']['model_calls']}/{report['budget']['max_model_calls']}",
+                f"- Tool calls: {report['budget']['tool_calls']}/{report['budget']['max_tool_calls']}",
+                f"- Repair attempts: {report['budget']['repair_attempts']}/{report['budget']['max_repair_attempts']}",
+                "",
+                "## Results",
+                "",
+            ]
+        )
         for result in report["results"]:
             evidence = result.get("evidence_path") or "none"
             failure = result.get("failure_type") or "none"
@@ -734,6 +798,16 @@ class DailyRunCommand:
             "completed_actions": completed,
             "failed_actions": failed,
         }
+
+    def _evidence_outputs(self, plan: dict[str, Any], results: list[dict[str, Any]]) -> list[str]:
+        manifest = plan.get("automation_manifest") if isinstance(plan, dict) else {}
+        outputs = list((manifest or {}).get("evidence_outputs") or [])
+        for result in results:
+            for key in ("evidence_path", "run_evidence_path"):
+                value = result.get(key)
+                if value and str(value) not in outputs:
+                    outputs.append(str(value))
+        return outputs
 
     def _risks(
         self,

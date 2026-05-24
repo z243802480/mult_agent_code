@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunConfig",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "mode",
+    "permission_level",
+    "model_strategy",
+    "decision_granularity",
+    "permission_overrides",
+    "model_routing_overrides",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": "string" },
+    "mode": { "type": "string", "enum": ["goal", "plan", "chat", "run"] },
+    "permission_level": { "type": "string", "enum": ["ask", "balanced", "auto"] },
+    "model_strategy": { "type": "string", "enum": ["auto", "quality", "economy", "local"] },
+    "decision_granularity": {
+      "type": "string",
+      "enum": ["manual", "balanced", "autopilot"]
+    },
+    "permission_overrides": { "type": "object" },
+    "model_routing_overrides": { "type": "object" },
+    "model_strategy_profile": {
+      "type": "object",
+      "properties": {
+        "strategy": { "type": "string", "enum": ["auto", "quality", "economy", "local"] },
+        "selection_policy": { "type": "string" },
+        "bias": { "type": "string" },
+        "tier_preference": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["cheap", "medium", "strong"] }
+        },
+        "allow_downgrade": { "type": "boolean" },
+        "allow_escalation": { "type": "boolean" },
+        "requires_configured_local_route": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "created_at": { "type": "string" }
+  }
+}

@@ -13,10 +13,11 @@
       "mode",
       "stages",
       "latest_observation_plan",
+      "latest_real_provider_matrix",
       "next_actions"
     ]
   },
-  "root": "H:/mult_agent_code",
+  "root": "H:\\mult_agent_code",
   "status": "ready",
   "ok": true,
   "mode": "read_only",
@@ -126,7 +127,7 @@
         {
           "name": "gray_runbook",
           "ok": true,
-          "summary": "docs\\zh\\\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+          "summary": "docs\\zh\\灰度试运行手册.md",
           "severity": "error",
           "error_type": "configuration"
         }
@@ -138,7 +139,7 @@
         "dist\\tzdata-2026.2-py2.py3-none-any.whl"
       ],
       "runbook": {
-        "path": "docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+        "path": "docs/zh/灰度试运行手册.md",
         "required_sections": [
           "install",
           "route_config",
@@ -162,7 +163,7 @@
         ]
       },
       "next_actions": [
-        "Follow `docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md` for install, route config, self-check, rollback, and failure collection.",
+        "Follow `docs/zh/灰度试运行手册.md` for install, route config, self-check, rollback, and failure collection.",
         "Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.",
         "Run `asteria version --json` from the installed package before gray rollout."
       ]
@@ -319,10 +320,10 @@
       },
       "sandbox": {
         "git_available": true,
-        "tracked_worktree_clean": true,
-        "preferred_backend": "git_worktree",
+        "tracked_worktree_clean": false,
+        "preferred_backend": "temp_workspace",
         "fallback_backend": "temp_workspace",
-        "reason": "tracked git state supports worktree candidate branches"
+        "reason": "git unavailable or tracked files are dirty; use copied temp workspace"
       },
       "gray_task_limits": {
         "max_iterations": 3,
@@ -395,7 +396,7 @@
         ]
       },
       "next_actions": [
-        "Use `docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
+        "Use `docs/zh/灰度试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
       ]
     },
     "gate_status": {
@@ -416,6 +417,7 @@
           "route_environment",
           "route_guidance",
           "latest_observation_plan",
+          "latest_real_provider_matrix",
           "promotion_release_risks",
           "plugin_risks",
           "feature_flags",
@@ -683,10 +685,17 @@
         ]
       },
       "validation_recommendation": {
-        "level": "none",
-        "reason": "No git changes detected or git status unavailable.",
-        "changed_file_count": 0,
-        "command": "asteria gate-status --json"
+        "level": "full_gray_core",
+        "reason": "Schema, policy, or hook/plugin governance files changed.",
+        "changed_file_count": 53,
+        "governance_changes": [
+          "schemas/eval_report.schema.json",
+          "schemas/final_report_summary.schema.json",
+          "schemas/model_route_timeline.schema.json",
+          "schemas/run_config.schema.json",
+          "schemas/run_loop_summary.schema.json"
+        ],
+        "command": "ruff check . && mypy src && pytest -q && asteria package-check --root . --json && asteria /acceptance-gate --suite core"
       },
       "gate_report": {
         "schema_version": "0.1.0",
@@ -2067,12 +2076,14 @@
       "next_actions": [
         "Start small real-task gray validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
         "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears."
-      ]
+      ],
+      "latest_real_provider_matrix": {}
     }
   },
   "latest_observation_plan": {},
   "next_actions": [
     "Start small real-task gray validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
     "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears."
-  ]
+  ],
+  "latest_real_provider_matrix": {}
 }

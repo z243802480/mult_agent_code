@@ -188,6 +188,7 @@ class TaskAttemptRunner:
                     merge_gate=merge_gate,
                     record_experiment=record_experiment,
                     record_task_failure=record_task_failure,
+                    model_selection=runtime_context.get("model_selection"),
                 )
             try:
                 self._record_progress(
@@ -226,6 +227,7 @@ class TaskAttemptRunner:
                     promotion=exc.promotion,
                     record_experiment=record_experiment,
                     record_task_failure=record_task_failure,
+                    model_selection=runtime_context.get("model_selection"),
                 )
             self._record_progress(
                 context,
@@ -252,6 +254,7 @@ class TaskAttemptRunner:
                 contract_check=contract_with_merge,
                 candidate_workspace=candidate,
                 promoted_files=promoted_files,
+                model_selection=runtime_context.get("model_selection"),
             )
             record_experiment(
                 context,
@@ -316,6 +319,7 @@ class TaskAttemptRunner:
             candidate=candidate,
             record_experiment=record_experiment,
             record_task_failure=record_task_failure,
+            model_selection=runtime_context.get("model_selection"),
         )
 
     def _block_for_manual_promotion(
@@ -333,6 +337,7 @@ class TaskAttemptRunner:
         promotion: dict,
         record_experiment: Callable[..., None],
         record_task_failure: Callable[..., None],
+        model_selection: dict | None = None,
     ) -> TaskAttemptSummary:
         task_id = task["task_id"]
         promotion_id = str(promotion["promotion_id"])
@@ -354,6 +359,7 @@ class TaskAttemptRunner:
             candidate_workspace=candidate,
             promoted_files=[],
             failure_type="pending_manual_approval",
+            model_selection=model_selection,
         )
         record_experiment(
             context,
@@ -434,6 +440,7 @@ class TaskAttemptRunner:
         merge_gate: Any,
         record_experiment: Callable[..., None],
         record_task_failure: Callable[..., None],
+        model_selection: dict | None = None,
     ) -> TaskAttemptSummary:
         task_id = task["task_id"]
         reason = merge_gate.summary()
@@ -449,6 +456,7 @@ class TaskAttemptRunner:
             contract_check=contract_with_merge,
             candidate_workspace=candidate,
             failure_type="merge_gate",
+            model_selection=model_selection,
         )
         record_experiment(
             context,
@@ -522,6 +530,7 @@ class TaskAttemptRunner:
         candidate: CandidateWorkspace,
         record_experiment: Callable[..., None],
         record_task_failure: Callable[..., None],
+        model_selection: dict | None = None,
     ) -> TaskAttemptSummary:
         task_id = task["task_id"]
         reason = contract_check.summary()
@@ -537,6 +546,7 @@ class TaskAttemptRunner:
             contract_check=contract_check.to_dict(),
             candidate_workspace=candidate,
             failure_type="contract_violation",
+            model_selection=model_selection,
         )
         record_experiment(
             context,

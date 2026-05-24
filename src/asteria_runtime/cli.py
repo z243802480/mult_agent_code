@@ -13,6 +13,7 @@ from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateComma
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
 from asteria_runtime.commands.brainstorm_command import BrainstormCommand
 from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
+from asteria_runtime.commands.chat_command import ChatCommand
 from asteria_runtime.commands.compact_command import CompactCommand
 from asteria_runtime.commands.daily_command import (
     DailyPlanCommand,
@@ -56,6 +57,14 @@ from asteria_runtime.real_model_smoke import run_from_args as run_real_model_smo
 
 
 CommandGroup = tuple[str, str, list[tuple[str, str]]]
+PERMISSION_LEVEL_HELP = (
+    "User-facing permission level: ask confirms more actions, balanced allows low-risk "
+    "work and asks for sensitive actions, auto advances within policy boundaries."
+)
+MODEL_STRATEGY_HELP = (
+    "User-facing model strategy: auto routes by task, quality favors stronger models, "
+    "economy favors cheaper models, local is reserved for privacy-first local routes."
+)
 SLASH_ALIAS_HELP = (
     "Compatibility: slash-prefixed command forms such as `asteria /run` remain aliases "
     "for older automation; use plain command names in new docs and scripts."
@@ -190,10 +199,43 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser = subcommands.add_parser(
         "plan",
         aliases=["/plan"],
-        help="Generate GoalSpec and task plan",
+        help="Read-only comprehensive plan; analyze but do not execute user work",
     )
     plan_parser.add_argument("goal", help="Natural-language goal")
     plan_parser.add_argument("--root", default=".", help="Workspace root path")
+    plan_parser.add_argument(
+        "--permission-level",
+        choices=["ask", "balanced", "auto"],
+        default="ask",
+        help=PERMISSION_LEVEL_HELP,
+    )
+    plan_parser.add_argument(
+        "--model-strategy",
+        choices=["auto", "quality", "economy", "local"],
+        default="auto",
+        help=MODEL_STRATEGY_HELP,
+    )
+
+    chat_parser = subcommands.add_parser(
+        "chat",
+        aliases=["/chat"],
+        help="Lightweight Q&A mode; no state-changing project work",
+    )
+    chat_parser.add_argument("question", help="Question or short request")
+    chat_parser.add_argument("--root", default=".", help="Workspace root path")
+    chat_parser.add_argument(
+        "--permission-level",
+        choices=["ask", "balanced", "auto"],
+        default="balanced",
+        help=PERMISSION_LEVEL_HELP,
+    )
+    chat_parser.add_argument(
+        "--model-strategy",
+        choices=["auto", "quality", "economy", "local"],
+        default="auto",
+        help=MODEL_STRATEGY_HELP,
+    )
+    chat_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     new_parser = subcommands.add_parser(
         "new",
@@ -313,6 +355,9 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_smoke_parser.add_argument("--command-timeout-seconds", type=int, default=900)
     real_model_smoke_parser.add_argument("--python", default=sys.executable)
     real_model_smoke_parser.add_argument("--summary-json", type=Path, default=None)
+    real_model_smoke_parser.add_argument("--matrix", choices=["p0"], default=None)
+    real_model_smoke_parser.add_argument("--matrix-case", action="append", default=[])
+    real_model_smoke_parser.add_argument("--matrix-output-dir", type=Path, default=None)
     real_model_smoke_parser.add_argument("--allow-fake", action="store_true")
     real_model_smoke_parser.add_argument("--no-recovery", action="store_true")
     real_model_smoke_parser.add_argument("--recovery-rounds", type=int, default=2)
@@ -517,7 +562,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_parser = subcommands.add_parser(
         "run",
-        aliases=["/run"],
+        aliases=["/run", "goal", "/goal"],
         help="Plan, execute, repair, review, and report",
         epilog=SLASH_ALIAS_HELP,
     )
@@ -549,6 +594,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow run to execute readonly and disjoint write-scope tasks concurrently",
     )
+    run_parser.add_argument(
+        "--permission-level",
+        choices=["ask", "balanced", "auto"],
+        default="balanced",
+        help=PERMISSION_LEVEL_HELP,
+    )
+    run_parser.add_argument(
+        "--model-strategy",
+        choices=["auto", "quality", "economy", "local"],
+        default="auto",
+        help=MODEL_STRATEGY_HELP,
+    )
+    run_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     accept_parser = subcommands.add_parser(
         "accept",
@@ -679,7 +737,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="list",
         help="Promotion queue action",
     )
-    promotions_parser.add_argument("--promotion-id", default=None, help="Promotion id to operate on")
+    promotions_parser.add_argument(
+        "--promotion-id", default=None, help="Promotion id to operate on"
+    )
     promotions_parser.add_argument(
         "--status",
         default=None,
@@ -1152,14 +1212,11 @@ def build_parser() -> argparse.ArgumentParser:
         [
             (
                 "Start",
-                "Default workflow commands for day-to-day autonomous development.",
+                "User-facing modes. Start here; internal runtime phases stay hidden.",
                 [
-                    ("init", "Initialize an agent-ready workspace."),
-                    ("run", "Start or continue a goal-oriented agent loop."),
-                    ("status", "Show current session progress, blockers, and next actions."),
-                    ("resume", "Continue after decisions, pauses, or repair checkpoints."),
-                    ("review", "Inspect risks, validation evidence, and candidate results."),
-                    ("accept", "Accept reviewed results and finalize the run."),
+                    ("goal", "Long-task objective mode; keeps working within permissions."),
+                    ("plan", "Read-only comprehensive plan; analyze without changing work."),
+                    ("chat", "Lightweight Q&A mode for everyday questions."),
                 ],
             ),
             (
@@ -1177,6 +1234,11 @@ def build_parser() -> argparse.ArgumentParser:
                 "Internal workflow controls; useful for debugging and expert operation.",
                 [
                     ("plan", "Generate GoalSpec and task plan."),
+                    ("run", "Compatibility alias for goal mode."),
+                    ("status", "Show current session progress, blockers, and next actions."),
+                    ("resume", "Continue after decisions, pauses, or repair checkpoints."),
+                    ("review", "Inspect risks, validation evidence, and candidate results."),
+                    ("accept", "Accept reviewed results and finalize the run."),
                     ("execute", "Run ready task graph work directly."),
                     ("debug", "Repair failed execution evidence."),
                     ("replan", "Create follow-up tasks from blockers."),
@@ -1261,8 +1323,31 @@ def main() -> None:
         return
 
     if command == "plan":
-        plan_result = PlanCommand(root=Path(args.root), goal=args.goal).run()
+        plan_result = PlanCommand(
+            root=Path(args.root),
+            goal=args.goal,
+            permission_level=args.permission_level,
+            model_strategy=args.model_strategy,
+        ).run()
         print(plan_result.to_text())
+        print("")
+        print("Mode: plan (read-only analysis; no execution started).")
+        print(f"Permission level: {args.permission_level}")
+        print(f"Model strategy: {args.model_strategy}")
+        print('Next: run `asteria goal "<goal>"` when you want Asteria to execute.')
+        return
+
+    if command == "chat":
+        chat_result = ChatCommand(
+            root=Path(args.root),
+            question=args.question,
+            permission_level=args.permission_level,
+            model_strategy=args.model_strategy,
+        ).run()
+        if args.json:
+            print(json.dumps(chat_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(chat_result.to_text())
         return
 
     if command == "new":
@@ -1423,7 +1508,7 @@ def main() -> None:
         print(brainstorm_result.to_text())
         return
 
-    if command == "run":
+    if command in {"run", "goal"}:
         run_result = RunCommand(
             root=Path(args.root),
             goal=args.goal,
@@ -1432,8 +1517,14 @@ def main() -> None:
             max_tasks_per_iteration=args.max_tasks_per_iteration,
             enable_research=not args.no_research,
             parallel_writes=args.parallel_disjoint_writes,
+            mode="goal",
+            permission_level=args.permission_level,
+            model_strategy=args.model_strategy,
         ).run()
-        print(run_result.to_text())
+        if args.json:
+            print(json.dumps(run_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(run_result.to_text())
         return
 
     if command == "resume":

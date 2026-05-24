@@ -28,7 +28,7 @@ export function PermissionCard({
     return (
       <div className="permissionCard resolved allow">
         <CheckCircle2 size={15} />
-        <span>已授权，正在启动...</span>
+        <span>{"\u5df2\u786e\u8ba4\uff0c\u6b63\u5728\u5f00\u59cb\u5904\u7406..."}</span>
       </div>
     );
   }
@@ -36,7 +36,7 @@ export function PermissionCard({
     return (
       <div className="permissionCard resolved deny">
         <XCircle size={15} />
-        <span>已取消</span>
+        <span>{"\u5df2\u53d6\u6d88\uff0c\u672c\u6b21\u4e0d\u4f1a\u7ee7\u7eed\u6267\u884c\u3002"}</span>
       </div>
     );
   }
@@ -45,19 +45,16 @@ export function PermissionCard({
     <div className="permissionCard">
       <div className="permissionHeader">
         <ShieldAlert size={16} />
-        <strong>{event.title}</strong>
+        <strong>{event.title || "\u9700\u8981\u4f60\u786e\u8ba4"}</strong>
       </div>
       <p className="permissionSummary">{event.summary}</p>
       {event.content_delta && <p className="permissionDetail">{event.content_delta}</p>}
-      {event.command && event.command.length > 0 && (
-        <code className="permissionCommand">{event.command.join(" ")}</code>
-      )}
       <div className="permissionActions">
         <button className="permissionAllow" disabled={busy} onClick={() => void handle("allow")}>
-          <CheckCircle2 size={14} /> 允许执行
+          <CheckCircle2 size={14} /> {"\u786e\u8ba4\u7ee7\u7eed"}
         </button>
         <button className="permissionDeny" disabled={busy} onClick={() => void handle("deny")}>
-          <XCircle size={14} /> 取消
+          <XCircle size={14} /> {"\u53d6\u6d88"}
         </button>
       </div>
     </div>

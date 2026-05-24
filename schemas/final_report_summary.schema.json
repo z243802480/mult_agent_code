@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FinalReportSummary",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "status",
+    "review_status",
+    "final_report_path",
+    "workflow_state",
+    "current_blocker",
+    "recommended_next_command",
+    "model_selection",
+    "blockers",
+    "next_actions",
+    "goal_policy",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "run_id": { "type": "string" },
+    "status": { "type": "string" },
+    "review_status": { "type": "string" },
+    "final_report_path": { "type": "string" },
+    "workflow_state": { "type": ["string", "null"] },
+    "current_blocker": { "type": ["string", "null"] },
+    "recommended_next_command": { "type": ["string", "null"] },
+    "model_selection": { "type": "object" },
+    "model_route_timeline_path": { "type": ["string", "null"] },
+    "model_route_timeline": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "blockers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "goal_policy": { "type": "object" },
+    "updated_at": { "type": "string" }
+  },
+  "additionalProperties": false
+}

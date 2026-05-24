@@ -19,7 +19,7 @@
       "next_actions"
     ]
   },
-  "root": "H:/mult_agent_code",
+  "root": "H:\\mult_agent_code",
   "ok": true,
   "status": "pass",
   "summary": "Package preflight checks passed.",
@@ -83,7 +83,7 @@
     {
       "name": "gray_runbook",
       "ok": true,
-      "summary": "docs\\zh\\\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+      "summary": "docs\\zh\\灰度试运行手册.md",
       "severity": "error",
       "error_type": "configuration"
     }
@@ -95,7 +95,7 @@
     "dist\\tzdata-2026.2-py2.py3-none-any.whl"
   ],
   "runbook": {
-    "path": "docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+    "path": "docs/zh/灰度试运行手册.md",
     "required_sections": [
       "install",
       "route_config",
@@ -119,7 +119,7 @@
     ]
   },
   "next_actions": [
-    "Follow `docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md` for install, route config, self-check, rollback, and failure collection.",
+    "Follow `docs/zh/灰度试运行手册.md` for install, route config, self-check, rollback, and failure collection.",
     "Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.",
     "Run `asteria version --json` from the installed package before gray rollout."
   ]

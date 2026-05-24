@@ -6,6 +6,7 @@ from asteria_runtime.models.base import ChatMessage, ChatRequest
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.fake import FakeModelClient
 from asteria_runtime.models.openai_compatible import OpenAICompatibleClient
+from asteria_runtime.models.route_resolver import resolve_model_route
 from asteria_runtime.models.routing import RoutedModelClient
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -132,3 +133,18 @@ def test_factory_supports_zhipu_alias_with_bigmodel_defaults(
     assert client.provider == "zhipu"
     assert client.settings.base_url == "https://open.bigmodel.cn/api/paas/v4"
     assert client.settings.model_name == "glm-5.1"
+
+
+def test_route_resolver_reports_missing_requirements_without_fake_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("AGENT_MODEL_NAME", "fallback-model")
+
+    resolution = resolve_model_route("strong")
+
+    assert resolution.configured is False
+    assert resolution.provider == "openai-compatible"
+    assert resolution.model_name == "fallback-model"
+    assert "AGENT_MODEL_API_KEY or OPENAI_API_KEY" in resolution.missing
+    assert "Configure model route requirements" in resolution.next_action

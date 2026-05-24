@@ -14,9 +14,9 @@
       "next_actions"
     ]
   },
-  "gray_run_id": "gray-2026-05-24T073600-example",
+  "gray_run_id": "gray-2026-05-25T004109-0800",
   "status": "dry_run",
-  "summary_path": "H:/mult_agent_code/.asteria/gray_runs/gray-2026-05-24T073600-example/summary.json",
+  "summary_path": "H:\\mult_agent_code\\.asteria\\gray_runs\\gray-2026-05-25T004109-0800\\summary.json",
   "run_id": null,
   "next_actions": [
     "Run without `--dry-run` to start the controlled small real-task gray run."

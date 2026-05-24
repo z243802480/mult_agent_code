@@ -22,7 +22,7 @@
       "next_actions"
     ]
   },
-  "root": "H:/mult_agent_code",
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmp10jn0r3d",
   "ok": true,
   "status": "pass",
   "summary": "Doctor checks passed.",
@@ -32,59 +32,204 @@
       "ok": true,
       "summary": ".asteria exists",
       "severity": "error",
-      "error_type": "runtime_state"
+      "error_type": "configuration"
     },
     {
       "name": "root_guidance",
       "ok": true,
       "summary": "AGENTS.md exists",
       "severity": "error",
-      "error_type": "config"
+      "error_type": "configuration"
+    },
+    {
+      "name": "runtime_config",
+      "ok": true,
+      "summary": "project and policy config present",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "plugins",
+      "ok": true,
+      "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off.",
+      "severity": "warning",
+      "error_type": "plugin"
+    },
+    {
+      "name": "git",
+      "ok": false,
+      "summary": "no git worktree; sandbox falls back to temp copy",
+      "severity": "warning",
+      "error_type": "candidate_workspace"
+    },
+    {
+      "name": "model_strong",
+      "ok": true,
+      "summary": "glm/glm-5 at https://open.bigmodel.cn/api/coding/paas/v4 via tier",
+      "severity": "info",
+      "error_type": "provider"
+    },
+    {
+      "name": "model_medium",
+      "ok": true,
+      "summary": "minimax/MiniMax-M2.7 at https://api.minimaxi.com/v1 via global",
+      "severity": "info",
+      "error_type": "provider"
+    },
+    {
+      "name": "real_model_gate",
+      "ok": false,
+      "summary": "real model gate report missing",
+      "severity": "warning",
+      "error_type": "provider"
     }
   ],
-  "failed_checks": [],
+  "failed_checks": [
+    "git",
+    "real_model_gate"
+  ],
   "routes": {
     "strong": {
       "configured": true,
+      "missing": [],
       "provider": "glm",
-      "model_name": "glm-4.7",
-      "source": "tier"
+      "model": "glm-5",
+      "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "env_prefix": "AGENT_MODEL_STRONG",
+      "source": "tier",
+      "api_key_present": true,
+      "streaming": {
+        "enabled": true,
+        "idle_timeout_seconds": null,
+        "deadline_seconds": null
+      }
     },
     "medium": {
       "configured": true,
+      "missing": [],
       "provider": "minimax",
-      "model_name": "MiniMax-M2.7",
-      "source": "tier"
+      "model": "MiniMax-M2.7",
+      "base_url": "https://api.minimaxi.com/v1",
+      "env_prefix": "AGENT_MODEL",
+      "source": "global",
+      "api_key_present": true,
+      "streaming": {
+        "enabled": true,
+        "idle_timeout_seconds": null,
+        "deadline_seconds": null
+      }
+    },
+    "cheap": {
+      "configured": true,
+      "missing": [],
+      "provider": "minimax",
+      "model": "MiniMax-M2.7",
+      "base_url": "https://api.minimaxi.com/v1",
+      "env_prefix": "AGENT_MODEL",
+      "source": "global",
+      "api_key_present": true,
+      "streaming": {
+        "enabled": true,
+        "idle_timeout_seconds": null,
+        "deadline_seconds": null
+      }
     }
   },
   "route_requirements": {
     "strong": [
-      "AGENT_MODEL_STRONG_PROVIDER or AGENT_MODEL_PROVIDER"
+      "AGENT_MODEL_STRONG_PROVIDER or AGENT_MODEL_PROVIDER",
+      "AGENT_MODEL_STRONG_NAME or provider default",
+      "AGENT_MODEL_STRONG_API_KEY or provider/global API key"
     ],
     "medium": [
-      "AGENT_MODEL_MEDIUM_PROVIDER or AGENT_MODEL_PROVIDER"
+      "AGENT_MODEL_MEDIUM_PROVIDER or AGENT_MODEL_PROVIDER",
+      "AGENT_MODEL_MEDIUM_NAME or provider default",
+      "AGENT_MODEL_MEDIUM_API_KEY or provider/global API key"
+    ],
+    "cheap": [
+      "AGENT_MODEL_CHEAP_PROVIDER",
+      "or AGENT_MODEL_PROVIDER"
     ]
   },
   "sandbox": {
-    "preferred_backend": "git_worktree"
+    "git_available": false,
+    "tracked_worktree_clean": false,
+    "preferred_backend": "temp_workspace",
+    "fallback_backend": "temp_workspace",
+    "reason": "git unavailable or tracked files are dirty; use copied temp workspace"
   },
   "gray_task_limits": {
     "max_iterations": 3,
     "max_tasks_per_iteration": 1,
-    "max_repairs": 1
+    "max_repairs": 1,
+    "max_replans": 1,
+    "recommended_run_flags": [
+      "--max-iterations 3",
+      "--max-tasks-per-iteration 1",
+      "--no-research"
+    ],
+    "allowed_task_types": [
+      "file_artifact",
+      "small_cli_or_script",
+      "multi_file_small_tool",
+      "test_repair",
+      "controlled_refactor",
+      "documentation_update"
+    ],
+    "stop_conditions": [
+      "cost_status near_limit or hard_stop",
+      "repeated schema-invalid provider responses",
+      "merge gate promotion risk",
+      "protected path risk",
+      "session cannot resume"
+    ]
   },
   "plugin_control": {
+    "initialized": true,
     "ok": true,
-    "summary": "Plugin control surface is available."
+    "plugin_dir": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmp10jn0r3d\\.asteria\\plugins",
+    "hook_policy": {
+      "enabled": true,
+      "plugins_enabled": false,
+      "allowed_hook_names": [
+        "before_worker",
+        "after_worker",
+        "worker_error",
+        "before_tool_call",
+        "after_tool_call",
+        "tool_call_error"
+      ],
+      "redacted_data_keys": [
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "authorization",
+        "password",
+        "credential",
+        "raw_context"
+      ],
+      "handler_timeout_ms": 1000
+    },
+    "plugins": [],
+    "status_counts": {},
+    "warnings": [],
+    "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off."
   },
   "error_taxonomy": {
+    "schema_version": "0.1.0",
     "categories": [
-      "config",
+      "candidate_workspace",
+      "configuration",
+      "internal",
       "plugin",
-      "runtime_state"
+      "promotion",
+      "provider",
+      "schema"
     ]
   },
   "next_actions": [
-    "Run `asteria gate-status --json` before gray validation."
+    "Run `asteria real-model-gate --summary-json .asteria/model/real_model_gate_report.json`.",
+    "Use `docs/zh/灰度试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
   ]
 }

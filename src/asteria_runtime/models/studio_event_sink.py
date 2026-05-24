@@ -22,14 +22,15 @@ class StudioModelEventSink:
         self.session_id = os.getenv("ASTERIA_STUDIO_SESSION_ID")
         self.phase = os.getenv("ASTERIA_STUDIO_PHASE") or "plan"
         self.enabled = self.path is not None and bool(self.session_id)
+        self._start_event_id: str | None = None
 
     def model_start(self, *, provider: str, model: str | None, mode: str) -> None:
-        self._append(
+        event = self._append(
             {
                 "type": "model_start",
                 "status": "running",
                 "title": _title_for_phase(self.phase, "start"),
-                "summary": f"{provider}/{model or 'unknown'} 正在返回{_label_for_phase(self.phase)}。",
+                "summary": f"{provider}/{model or 'unknown'} is returning {_label_for_phase(self.phase)}.",
                 "content_delta": "",
                 "phase": self.phase,
                 "display_level": "main",
@@ -38,6 +39,7 @@ class StudioModelEventSink:
                 "streaming_mode": mode,
             }
         )
+        self._start_event_id = str(event["event_id"]) if event else None
 
     def model_delta(self, text: str, *, provider: str, model: str | None) -> None:
         if not text:
@@ -47,10 +49,11 @@ class StudioModelEventSink:
                 "type": "model_delta",
                 "status": "running",
                 "title": _title_for_phase(self.phase, "delta"),
-                "summary": f"正在接收{_label_for_phase(self.phase)}内容。",
+                "summary": f"Receiving {_label_for_phase(self.phase)} content.",
                 "content_delta": text,
                 "phase": self.phase,
                 "display_level": "main",
+                "parent_event_id": self._start_event_id,
                 "model_provider": provider,
                 "model_name": model,
             }
@@ -69,10 +72,11 @@ class StudioModelEventSink:
                 "type": "model_end",
                 "status": "completed",
                 "title": _title_for_phase(self.phase, "end"),
-                "summary": " / ".join(summary_parts) if summary_parts else f"{_label_for_phase(self.phase)}已返回。",
+                "summary": " / ".join(summary_parts) if summary_parts else f"{_label_for_phase(self.phase)} completed.",
                 "content_delta": "",
                 "phase": self.phase,
                 "display_level": "main",
+                "parent_event_id": self._start_event_id,
                 "model_provider": provider,
                 "model_name": model,
                 "telemetry": telemetry or {},
@@ -84,19 +88,20 @@ class StudioModelEventSink:
             {
                 "type": "model_error",
                 "status": "failed",
-                "title": "模型响应异常",
+                "title": "Model response failed",
                 "summary": error[:240],
                 "content_delta": error,
                 "phase": self.phase,
                 "display_level": "main",
+                "parent_event_id": self._start_event_id,
                 "model_provider": provider,
                 "model_name": model,
             }
         )
 
-    def _append(self, event: dict[str, Any]) -> None:
+    def _append(self, event: dict[str, Any]) -> dict[str, Any] | None:
         if not self.enabled or self.path is None:
-            return
+            return None
         full = {
             "schema_version": "0.1.0",
             "event_id": f"evt-model-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}",
@@ -111,9 +116,9 @@ class StudioModelEventSink:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 with self.path.open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps(full, ensure_ascii=False) + "\n")
+            return full
         except OSError:
-            return
-
+            return None
 
 def studio_model_event_sink() -> StudioModelEventSink:
     return StudioModelEventSink()
@@ -139,25 +144,27 @@ def _is_secret_key(key: str) -> bool:
 
 def _label_for_phase(phase: str) -> str:
     return {
-        "understand": "目标理解",
-        "plan": "计划",
-        "execute": "执行反馈",
-        "review": "核对结果",
-        "resume": "继续推进反馈",
-        "result": "结果",
-        "next": "下一步建议",
-    }.get(phase, "任务反馈")
+        "understand": "goal understanding",
+        "chat": "chat response",
+        "plan": "plan",
+        "execute": "execution feedback",
+        "review": "review result",
+        "resume": "resume feedback",
+        "result": "result",
+        "next": "next-step advice",
+    }.get(phase, "task feedback")
 
 
 def _title_for_phase(phase: str, event: str) -> str:
     labels = {
-        "understand": "理解目标",
-        "plan": "制定计划",
-        "execute": "执行任务",
-        "review": "核对结果",
-        "resume": "继续推进",
-        "result": "整理结果",
-        "next": "下一步",
+        "understand": "Understanding goal",
+        "chat": "Chat response",
+        "plan": "Planning",
+        "execute": "Executing task",
+        "review": "Reviewing result",
+        "resume": "Resuming",
+        "result": "Preparing result",
+        "next": "Next step",
     }
-    suffix = {"start": "开始", "delta": "更新", "end": "完成"}.get(event, "")
-    return f"{labels.get(phase, '任务进展')}{suffix}"
+    suffix = {"start": " started", "delta": " update", "end": " completed"}.get(event, "")
+    return f"{labels.get(phase, 'Task progress')}{suffix}"

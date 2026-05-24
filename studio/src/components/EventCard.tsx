@@ -117,7 +117,12 @@ export function EventCard({
         <div className="eventFacts">
           {event.model_provider && (
             <span>
-              {event.model_provider}/{event.model_name ?? "unknown"}
+              {event.model_provider}/{event.model_name ?? "unknown"}{event.model_tier ? ` ? ${event.model_tier}` : ""}
+            </span>
+          )}
+          {event.model_route && !event.model_provider && (
+            <span>
+              {String((event.model_route as AnyRecord).provider ?? "model")}/{String((event.model_route as AnyRecord).model ?? "unknown")}
             </span>
           )}
           {(event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} evidence</span>}

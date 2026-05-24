@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 import time
@@ -883,6 +884,10 @@ def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]
     from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
     from asteria_runtime.commands.execute_command import ExecuteCommand
 
+    previous_provider = os.environ.get("AGENT_MODEL_PROVIDER")
+    previous_name = os.environ.get("AGENT_MODEL_NAME")
+    os.environ["AGENT_MODEL_PROVIDER"] = "fake"
+    os.environ["AGENT_MODEL_NAME"] = "medium-route"
     run_id = _seed_runtime_run(
         workspace,
         [
@@ -896,21 +901,31 @@ def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]
             ),
         ],
     )
-    result = ExecuteCommand(
-        workspace,
-        run_id=run_id,
-        max_tasks=2,
-        model_client=RuntimeAcceptanceClient("feedback"),
-    ).run()
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    _append_merge_gate_feedback(run_dir, run_id)
-    report = CapabilityReportCommand(workspace).run()
+    try:
+        result = ExecuteCommand(
+            workspace,
+            run_id=run_id,
+            max_tasks=2,
+            model_client=RuntimeAcceptanceClient("feedback"),
+        ).run()
+        run_dir = workspace / ".asteria" / "runs" / run_id
+        _append_merge_gate_feedback(run_dir, run_id)
+        report = CapabilityReportCommand(workspace).run()
+    finally:
+        if previous_provider is None:
+            os.environ.pop("AGENT_MODEL_PROVIDER", None)
+        else:
+            os.environ["AGENT_MODEL_PROVIDER"] = previous_provider
+        if previous_name is None:
+            os.environ.pop("AGENT_MODEL_NAME", None)
+        else:
+            os.environ["AGENT_MODEL_NAME"] = previous_name
     profiles = report.model_profiles
     profile = next(
         (
             item
             for item in profiles
-            if item.get("provider") == "runtime"
+            if item.get("provider") == "fake"
             and item.get("model") == "medium-route"
             and item.get("purpose") == "coding"
         ),

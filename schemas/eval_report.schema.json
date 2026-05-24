@@ -28,6 +28,15 @@
         "score": { "type": "number" },
         "reason": { "type": "string" }
       }
+    },
+    "failure_classification": {
+      "type": "object",
+      "required": ["category", "recommended_command", "reason"],
+      "properties": {
+        "category": { "type": "string" },
+        "recommended_command": { "type": "string" },
+        "reason": { "type": "string" }
+      }
     }
   }
 }

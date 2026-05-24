@@ -13,17 +13,21 @@ from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.commands.research_command import ResearchCommand
 from asteria_runtime.commands.review_command import ReviewCommand
+from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.commands.status_command import StatusCommand, StatusResult
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
+from asteria_runtime.utils.time import now_iso
 
 
 @dataclass(frozen=True)
@@ -38,7 +42,15 @@ class RunResult:
     run_id: str
     status: str
     final_report_path: Path
+    final_report_summary_path: Path | None = None
+    final_report_summary: dict = field(default_factory=dict)
     steps: list[RunStepSummary] = field(default_factory=list)
+    run_loop_summary_path: Path | None = None
+    workflow_state: str | None = None
+    current_phase: str | None = None
+    current_blocker: str | None = None
+    recommended_next_command: str | None = None
+    next_actions: list[str] = field(default_factory=list)
 
     def to_text(self) -> str:
         lines = [
@@ -46,9 +58,50 @@ class RunResult:
             f"Status: {self.status}",
             f"Final report: {self.final_report_path}",
         ]
+        if self.final_report_summary_path:
+            lines.append(f"Final report summary: {self.final_report_summary_path}")
+        if self.run_loop_summary_path:
+            lines.append(f"Run loop summary: {self.run_loop_summary_path}")
+        if self.workflow_state:
+            lines.append(f"Workflow: {self.workflow_state}")
+        if self.current_phase:
+            lines.append(f"Current phase: {self.current_phase}")
+        if self.current_blocker:
+            lines.append(f"Current blocker: {self.current_blocker}")
+        if self.recommended_next_command:
+            lines.append(f"Recommended next command: asteria {self.recommended_next_command}")
+        elif self.next_actions:
+            lines.append("Next actions:")
+            lines.extend(f"- {action}" for action in self.next_actions)
+        if self.steps:
+            lines.append("Loop steps:")
         for step in self.steps:
             lines.append(f"- {step.name}: {step.status} - {step.summary}")
         return "\n".join(lines)
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": "0.1.0",
+            "run_id": self.run_id,
+            "status": self.status,
+            "final_report_path": str(self.final_report_path),
+            "final_report_summary_path": (
+                str(self.final_report_summary_path) if self.final_report_summary_path else None
+            ),
+            "final_report_summary": self.final_report_summary,
+            "run_loop_summary_path": (
+                str(self.run_loop_summary_path) if self.run_loop_summary_path else None
+            ),
+            "workflow_state": self.workflow_state,
+            "current_phase": self.current_phase,
+            "current_blocker": self.current_blocker,
+            "recommended_next_command": self.recommended_next_command,
+            "next_actions": self.next_actions,
+            "steps": [
+                {"name": step.name, "status": step.status, "summary": step.summary}
+                for step in self.steps
+            ],
+        }
 
 
 class RunCommand:
@@ -67,6 +120,9 @@ class RunCommand:
         research_model_client: ModelClient | None = None,
         enable_research: bool = True,
         parallel_writes: bool = False,
+        mode: str = "goal",
+        permission_level: str = "balanced",
+        model_strategy: str = "auto",
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -81,6 +137,9 @@ class RunCommand:
         self.research_model_client = research_model_client
         self.enable_research = enable_research
         self.parallel_writes = parallel_writes
+        self.mode = mode
+        self.permission_level = permission_level
+        self.model_strategy = model_strategy
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -126,6 +185,9 @@ class RunCommand:
             self.root,
             plan_goal,
             model_client=self.plan_model_client or self.model_client,
+            mode=self.mode,
+            permission_level=self.permission_level,
+            model_strategy=self.model_strategy,
         ).run()
         steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
@@ -169,16 +231,31 @@ class RunCommand:
             steps.append(
                 RunStepSummary("compact", "completed", f"Snapshot: {compact.snapshot_path.name}.")
             )
+            review_status = self._latest_review_status(run_id)
             final_report_path = self._write_final_report(
                 run_id,
-                self._latest_review_status(run_id),
+                review_status,
                 steps,
             )
-            return RunResult(
+            self._write_final_report_summary(
+                run_id=run_id,
+                status=self._run_status(run_id),
+                review_status=review_status,
+                final_report_path=final_report_path,
+                status_payload=self._status_payload(run_id),
+            )
+            run_loop_summary_path = self._write_run_loop_summary(
+                run_id=run_id,
+                steps=steps,
+                status_payload=self._status_payload(run_id),
+                stop_reason=self._stop_reason(steps, max_iterations=0),
+            )
+            return self._build_run_result(
                 run_id=run_id,
                 status=self._run_status(run_id),
                 final_report_path=final_report_path,
                 steps=steps,
+                run_loop_summary_path=run_loop_summary_path,
             )
         max_iterations = (
             self.max_iterations if self.max_iterations is not None else self._policy_iterations()
@@ -239,9 +316,39 @@ class RunCommand:
                 ),
                 display_level="main",
             )
-            if review.decision_count:
+            goal_decision = self._goal_loop_decision(
+                run_id=run_id,
+                review_status=review.status,
+                follow_up_count=review.follow_up_count,
+                decision_count=review.decision_count,
+                iteration=index + 1,
+                max_iterations=max_iterations,
+            )
+            steps.append(
+                RunStepSummary(
+                    "goal-policy",
+                    str(goal_decision["action"]),
+                    str(goal_decision["reason"]),
+                )
+            )
+            if goal_decision["action"] == "auto_accept":
+                from asteria_runtime.commands.accept_command import AcceptCommand
+
+                accept = AcceptCommand(
+                    self.root,
+                    run_id=run_id,
+                    skip_review=True,
+                    promote_all=False,
+                ).run()
+                steps.append(
+                    RunStepSummary(
+                        "accept",
+                        "accepted" if accept.accepted else "blocked",
+                        accept.primary_blocker or "Accepted automatically by goal loop policy.",
+                    )
+                )
                 break
-            if review.status == "pass" or review.follow_up_count == 0:
+            if goal_decision["action"] in {"stop_for_decision", "stop_for_accept", "stop_for_repair"}:
                 break
             if index == max_iterations - 1:
                 break
@@ -258,18 +365,244 @@ class RunCommand:
             run_id=run_id,
             phase="result",
             title="运行完成" if run_status == "completed" else "运行结束",
-            summary=(
-                f"Run {run_id} 已完成，状态：{run_status}。"
-                f"共 {len(steps)} 个执行步骤。"
-            ),
+            summary=(f"Run {run_id} 已完成，状态：{run_status}。共 {len(steps)} 个执行步骤。"),
             artifact_refs=[str(final_report_path)],
         )
-        return RunResult(
+        status_payload = self._status_payload(run_id)
+        self._write_final_report_summary(
+            run_id=run_id,
+            status=run_status,
+            review_status=review_status,
+            final_report_path=final_report_path,
+            status_payload=status_payload,
+        )
+        run_loop_summary_path = self._write_run_loop_summary(
+            run_id=run_id,
+            steps=steps,
+            status_payload=status_payload,
+            stop_reason=self._stop_reason(steps, max_iterations=max_iterations),
+        )
+        return self._build_run_result(
             run_id=run_id,
             status=run_status,
             final_report_path=final_report_path,
             steps=steps,
+            status_payload=status_payload,
+            run_loop_summary_path=run_loop_summary_path,
         )
+
+    def _build_run_result(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        final_report_path: Path,
+        steps: list[RunStepSummary],
+        status_payload: dict | None = None,
+        run_loop_summary_path: Path | None = None,
+    ) -> RunResult:
+        status_payload = status_payload or self._status_payload(run_id)
+        final_summary_path = self.root / ".asteria" / "runs" / run_id / "final_report_summary.json"
+        final_summary = self._read_final_report_summary(final_summary_path)
+        return RunResult(
+            run_id=run_id,
+            status=status,
+            final_report_path=final_report_path,
+            final_report_summary_path=final_summary_path if final_summary else None,
+            final_report_summary=final_summary,
+            steps=steps,
+            run_loop_summary_path=run_loop_summary_path,
+            workflow_state=self._optional_str(status_payload.get("workflow_state")),
+            current_phase=self._optional_str(status_payload.get("current_phase")),
+            current_blocker=self._optional_str(status_payload.get("current_blocker")),
+            recommended_next_command=self._optional_str(
+                status_payload.get("recommended_next_command")
+            ),
+            next_actions=self._string_list(status_payload.get("next_actions")),
+        )
+
+    def _status_payload(self, run_id: str) -> dict:
+        try:
+            payload = StatusCommand(self.root).run().to_dict()
+        except Exception:  # noqa: BLE001
+            payload = {}
+        if payload.get("current_session_id") != run_id:
+            return self._status_payload_for_session(run_id)
+        return payload
+
+    def _status_payload_for_session(self, run_id: str) -> dict:
+        try:
+            sessions = SessionsCommand(
+                self.root,
+                session_id=run_id,
+                include_context=True,
+            ).run()
+            context = sessions.context.get(run_id) or {}
+            return StatusResult(
+                root=self.root,
+                initialized=True,
+                current_session_id=run_id,
+                current_context=context,
+                recent_sessions=sessions.sessions,
+                plugin_control=plugin_control_summary(self.root, self.validator),
+            ).to_dict()
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def _optional_str(self, value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    def _string_list(self, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [str(item) for item in value if str(item).strip()]
+
+
+    def _read_final_report_summary(self, path: Path) -> dict:
+        if not path.exists():
+            return {}
+        return self.store.read(path, "final_report_summary")
+
+    def _write_final_report_summary(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        review_status: str,
+        final_report_path: Path,
+        status_payload: dict,
+    ) -> Path:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        current_blocker = self._optional_str(status_payload.get("current_blocker"))
+        recommended = self._optional_str(status_payload.get("recommended_next_command"))
+        model_route_timeline_path = self._write_model_route_timeline(run_id)
+        model_route_timeline = self._model_route_timeline(run_dir, limit=20)
+        summary = {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "status": status,
+            "review_status": review_status,
+            "final_report_path": final_report_path.relative_to(self.root).as_posix(),
+            "workflow_state": self._optional_str(status_payload.get("workflow_state")),
+            "current_blocker": current_blocker,
+            "recommended_next_command": recommended,
+            "model_selection": self._latest_model_selection(run_dir),
+            "model_route_timeline_path": (
+                model_route_timeline_path.relative_to(self.root).as_posix()
+                if model_route_timeline_path
+                else None
+            ),
+            "model_route_timeline": model_route_timeline,
+            "blockers": self._string_list(status_payload.get("blockers")),
+            "next_actions": self._string_list(status_payload.get("next_actions")),
+            "goal_policy": self._goal_policy_summary(run_dir, status_payload),
+            "updated_at": now_iso(),
+        }
+        path = run_dir / "final_report_summary.json"
+        self.store.write(path, summary, "final_report_summary")
+        return path
+
+    def _write_model_route_timeline(self, run_id: str) -> Path | None:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        timeline = self._model_route_timeline(run_dir, limit=None)
+        if not timeline:
+            return None
+        path = run_dir / "model_route_timeline.json"
+        self.store.write(
+            path,
+            {
+                "schema_version": "0.1.0",
+                "run_id": run_id,
+                "record_count": len(timeline),
+                "timeline": timeline,
+                "updated_at": now_iso(),
+            },
+            "model_route_timeline",
+        )
+        return path
+
+    def _write_run_loop_summary(
+        self,
+        *,
+        run_id: str,
+        steps: list[RunStepSummary],
+        status_payload: dict,
+        stop_reason: str,
+    ) -> Path:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        summary = {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "iteration_count": self._iteration_count(steps),
+            "stop_reason": stop_reason,
+            "latest_evidence": self._latest_evidence_pointer(run_dir),
+            "workflow_state": self._optional_str(status_payload.get("workflow_state")),
+            "current_blocker": self._optional_str(status_payload.get("current_blocker")),
+            "recommended_next_command": self._optional_str(
+                status_payload.get("recommended_next_command")
+            ),
+            "updated_at": now_iso(),
+        }
+        path = run_dir / "run_loop_summary.json"
+        self.store.write(path, summary, "run_loop_summary")
+        return path
+
+    def _iteration_count(self, steps: list[RunStepSummary]) -> int:
+        iterations = set()
+        for step in steps:
+            if step.name != "execute":
+                continue
+            prefix = "Iteration "
+            if not step.summary.startswith(prefix):
+                continue
+            raw = step.summary[len(prefix) :].split(":", 1)[0]
+            if raw.isdigit():
+                iterations.add(int(raw))
+        return len(iterations)
+
+    def _stop_reason(self, steps: list[RunStepSummary], *, max_iterations: int) -> str:
+        if not steps:
+            return "no_steps_recorded"
+        last = steps[-1]
+        if any(step.name == "decide" and step.status == "paused" for step in steps):
+            return "decision_required"
+        if any(step.name == "observe" and step.status in {"ask", "stop"} for step in steps):
+            return "agent_observation_requires_user"
+        if any(step.status == "budget_guard" for step in steps):
+            return "budget_guard_compacted"
+        if any(step.name == "execute" and step.status == "stopped" for step in steps):
+            return "no_ready_task_progress"
+        review_steps = [step for step in steps if step.name == "review"]
+        if review_steps:
+            review = review_steps[-1]
+            if review.status == "pass":
+                return "review_passed"
+            if "0 follow-up task(s)" in review.summary:
+                return "review_no_followups"
+        if self._iteration_count(steps) >= max_iterations and max_iterations > 0:
+            return "max_iterations_reached"
+        if last.name == "compact":
+            return "handoff_written"
+        return f"{last.name}_{last.status}"
+
+    def _latest_evidence_pointer(self, run_dir: Path) -> dict | None:
+        path = run_dir / "task_execution_evidence.jsonl"
+        if not path.exists():
+            return None
+        evidence_items = self.jsonl.read_all(path, "task_execution_evidence")
+        if not evidence_items:
+            return None
+        latest = evidence_items[-1]
+        return {
+            "path": path.relative_to(self.root).as_posix(),
+            "task_id": str(latest.get("task_id") or ""),
+            "status": str(latest.get("status") or ""),
+            "summary": str(latest.get("summary") or ""),
+            "evidence_id": latest.get("evidence_id"),
+        }
 
     def _execute_until_no_ready(
         self,
@@ -417,11 +750,31 @@ class RunCommand:
             return False
         if self._pending_budget_decision(run_id):
             self._pause_run_for_budget(run_id, "Budget guard waiting for an existing decision.")
+            self._write_goal_policy_marker(
+                run_id,
+                {
+                    "category": "budget_guard",
+                    "recommended_command": "decide --list",
+                    "reason": "Budget guard is waiting for an existing DecisionPoint.",
+                },
+            )
             return True
         decision = self._create_budget_decision(run_id, pressure, phase)
         self._pause_run_for_budget(
             run_id,
             f"Budget guard paused before {phase}: {decision['decision_id']}.",
+        )
+        self._write_goal_policy_marker(
+            run_id,
+            {
+                "category": "budget_guard",
+                "recommended_command": "decide --list",
+                "reason": (
+                    f"Budget guard reached {pressure['status']} before {phase}; "
+                    f"{pressure['highest_label']} at {pressure['highest_ratio']:.0%}."
+                ),
+                "decision_id": decision["decision_id"],
+            },
         )
         steps.append(
             RunStepSummary(
@@ -611,6 +964,126 @@ class RunCommand:
         run["summary"] = summary
         run_store.update_run(run)
 
+
+    def _goal_loop_decision(
+        self,
+        *,
+        run_id: str,
+        review_status: str,
+        follow_up_count: int,
+        decision_count: int,
+        iteration: int,
+        max_iterations: int,
+    ) -> dict[str, object]:
+        failure_classification = self._review_failure_classification(run_id)
+        if decision_count or self._pending_decisions(self.root / ".asteria" / "runs" / run_id):
+            return {
+                "action": "stop_for_decision",
+                "reason": "DecisionPoint is pending; stop instead of guessing or continuing.",
+                "category": "decision_required",
+                "recommended_command": "decide --list",
+            }
+        if self._pending_budget_decision(run_id):
+            return {
+                "action": "stop_for_decision",
+                "reason": "Budget guard DecisionPoint is pending; user approval is required.",
+                "category": "decision_required",
+                "recommended_command": "decide --list",
+            }
+        pending_promotions = CandidatePromotionQueue(self.validator).summary(
+            self.root / ".asteria" / "runs" / run_id
+        )
+        promotion_blockers = list(pending_promotions.get("pending") or []) + list(
+            pending_promotions.get("blocked") or []
+        )
+        if review_status == "pass":
+            if self.permission_level == "auto" and not promotion_blockers:
+                return {
+                    "action": "auto_accept",
+                    "reason": "Review passed, permission level is auto, and no candidate promotion requires approval.",
+                    "category": "none",
+                    "recommended_command": "accept",
+                }
+            if promotion_blockers:
+                return {
+                    "action": "stop_for_accept",
+                    "reason": "Review passed but candidate promotion still requires explicit accept/promotion handling.",
+                    "category": "acceptance_required",
+                    "recommended_command": "accept",
+                }
+            return {
+                "action": "stop_for_accept",
+                "reason": "Review passed; ask/balanced permission requires explicit `asteria accept`.",
+                "category": "acceptance_required",
+                "recommended_command": "accept",
+            }
+        if failure_classification.get("recommended_command") == "decide --list":
+            return {
+                "action": "stop_for_decision",
+                "reason": str(failure_classification.get("reason") or "Decision is required."),
+                "category": failure_classification.get("category") or "decision_required",
+                "recommended_command": "decide --list",
+            }
+        if failure_classification.get("recommended_command") == "replan":
+            return {
+                "action": "stop_for_replan",
+                "reason": str(
+                    failure_classification.get("reason") or "Review identified a plan gap."
+                ),
+                "category": failure_classification.get("category") or "plan_gap",
+                "recommended_command": "replan",
+            }
+        if follow_up_count > 0 and iteration < max_iterations:
+            return {
+                "action": "continue_repair",
+                "reason": "Review created follow-up tasks; continue bounded repair loop.",
+                "category": failure_classification.get("category") or "repairable_follow_up",
+                "recommended_command": "debug",
+            }
+        return {
+            "action": "stop_for_repair",
+            "reason": str(
+                failure_classification.get("reason")
+                or f"Review status is {review_status}; run debug before continuing."
+            ),
+            "category": failure_classification.get("category") or "review_failed",
+            "recommended_command": failure_classification.get("recommended_command") or "debug",
+        }
+
+    def _review_failure_classification(self, run_id: str) -> dict:
+        eval_path = self.root / ".asteria" / "runs" / run_id / "eval_report.json"
+        if not eval_path.exists():
+            return {}
+        report = self.store.read(eval_path, "eval_report")
+        classification = (report.get("trajectory_eval") or {}).get("failure_classification")
+        return classification if isinstance(classification, dict) else {}
+
+    def _goal_policy_summary(self, run_dir: Path, status_payload: dict) -> dict:
+        context_policy = (
+            (status_payload.get("current_context") or {}).get("goal_policy")
+            if isinstance(status_payload.get("current_context"), dict)
+            else None
+        )
+        if isinstance(context_policy, dict) and context_policy:
+            return context_policy
+        marker = self._read_unvalidated_json(run_dir / "goal_policy.json")
+        marker_policy = marker.get("goal_policy")
+        if isinstance(marker_policy, dict) and marker_policy:
+            return marker_policy
+        report = self._read_json_if_exists(run_dir / "eval_report.json", "eval_report")
+        policy = (report.get("trajectory_eval") or {}).get("failure_classification")
+        return policy if isinstance(policy, dict) else {}
+
+    def _read_json_if_exists(self, path: Path, schema_name: str) -> dict:
+        if not path.exists():
+            return {}
+        return self.store.read(path, schema_name)
+
+    def _read_unvalidated_json(self, path: Path) -> dict:
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def _ready_count(self, run_id: str) -> int:
         task_plan = self.store.read(
             self.root / ".asteria" / "runs" / run_id / "task_plan.json",
@@ -724,6 +1197,17 @@ class RunCommand:
         run["summary"] = summary
         run_store.update_run(run)
 
+    def _write_goal_policy_marker(self, run_id: str, goal_policy: dict) -> Path:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        marker = {
+            "schema_version": "0.1.0",
+            "goal_policy": goal_policy,
+            "updated_at": now_iso(),
+        }
+        path = run_dir / "goal_policy.json"
+        path.write_text(json.dumps(marker, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return path
+
     def _run_status(self, run_id: str) -> str:
         run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)
         return run["status"]
@@ -762,6 +1246,7 @@ class RunCommand:
         accepted_decisions = self._accepted_decisions(run_dir)
         artifacts = self._artifact_paths(run_dir)
         execution_evidence = self._execution_evidence(run_dir)
+        latest_model_selection = self._latest_model_selection(run_dir)
         latest_observation_plan = self._latest_observation_plan(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         acceptance = self._latest_acceptance_report()
@@ -827,6 +1312,8 @@ class RunCommand:
                 )
                 for item in execution_evidence[-10:]
             )
+        lines.extend(["", "## Model Selection", ""])
+        lines.extend(self._model_selection_report_lines(latest_model_selection))
         if promotion_summary["total"]:
             lines.extend(["", "## Promotion Queue", ""])
             counts = promotion_summary["status_counts"]
@@ -859,7 +1346,9 @@ class RunCommand:
             actions = latest_observation_plan.get("actions") or []
             if actions:
                 action_names = ", ".join(
-                    sorted({str(action.get("action")) for action in actions if action.get("action")})
+                    sorted(
+                        {str(action.get("action")) for action in actions if action.get("action")}
+                    )
                 )
                 lines.append(f"- Candidate actions: {action_names}")
         if blocked_tasks:
@@ -979,6 +1468,87 @@ class RunCommand:
                 }
             )
         return items
+
+
+    def _latest_model_selection(self, run_dir: Path) -> dict:
+        path = run_dir / "task_execution_evidence.jsonl"
+        if path.exists():
+            for evidence in reversed(self.jsonl.read_all(path, "task_execution_evidence")):
+                selection = (evidence.get("action") or {}).get("model_selection")
+                if isinstance(selection, dict) and selection:
+                    return selection
+        eval_path = run_dir / "eval_report.json"
+        if eval_path.exists():
+            report = self.store.read(eval_path, "eval_report")
+            selection = (report.get("trajectory_eval") or {}).get("model_selection")
+            if isinstance(selection, dict) and selection:
+                return selection
+        return {}
+
+    def _model_route_timeline(self, run_dir: Path, *, limit: int | None = 20) -> list[dict]:
+        path = run_dir / "task_execution_evidence.jsonl"
+        if not path.exists():
+            return []
+        timeline = []
+        for evidence in self.jsonl.read_all(path, "task_execution_evidence"):
+            selection = (evidence.get("action") or {}).get("model_selection")
+            if not isinstance(selection, dict) or not selection:
+                continue
+            timeline.append(
+                {
+                    "task_id": evidence.get("task_id"),
+                    "purpose": selection.get("purpose"),
+                    "task_kind": selection.get("task_kind"),
+                    "selected_tier": selection.get("selected_tier"),
+                    "default_tier": selection.get("default_tier"),
+                    "strategy_tier": selection.get("strategy_tier"),
+                    "strategy": selection.get("strategy"),
+                    "reason": selection.get("reason"),
+                    "tier_pressure": selection.get("tier_pressure") or {},
+                    "capability_feedback": selection.get("capability_feedback") or {},
+                    "evidence_path": path.relative_to(self.root).as_posix(),
+                    "created_at": evidence.get("created_at"),
+                }
+            )
+        if limit is None:
+            return timeline
+        return timeline[-limit:]
+
+    def _model_selection_report_lines(self, model_selection: dict) -> list[str]:
+        if not model_selection:
+            return ["- No model selection recorded for accepted artifacts."]
+        lines = [
+            f"- Purpose: {model_selection.get('purpose', 'unknown')}",
+            f"- Selected tier: {model_selection.get('selected_tier', 'unknown')}",
+            f"- Reason: {model_selection.get('reason', 'No reason recorded.')}",
+        ]
+        pressure = model_selection.get("tier_pressure") or {}
+        if pressure:
+            lines.append(
+                "- Tier pressure: "
+                f"{pressure.get('default_tier', 'unknown')} -> "
+                f"{pressure.get('selected_tier', 'unknown')} "
+                f"direction={pressure.get('direction', 'unknown')} "
+                f"delta={pressure.get('delta', 0)}"
+            )
+        feedback = model_selection.get("capability_feedback") or {}
+        if feedback:
+            lines.append(
+                "- Capability feedback: "
+                f"{feedback.get('status', 'unknown')} "
+                f"decision={feedback.get('decision', 'unknown')} "
+                f"blocking={feedback.get('blocking_count', 0)} "
+                f"review={feedback.get('review_count', 0)}"
+            )
+            matched = feedback.get("matched_route") or {}
+            if matched:
+                lines.append(
+                    "- Matched route: "
+                    f"{matched.get('purpose', 'unknown')}/"
+                    f"{matched.get('model_tier', 'unknown')} "
+                    f"action={matched.get('recommended_action', 'unknown')}"
+                )
+        return lines
 
     def _latest_observation_plan(self, run_dir: Path) -> dict:
         path = run_dir / "observation_plans.jsonl"

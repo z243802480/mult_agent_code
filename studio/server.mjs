@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, promises as fs } from "node:fs";
+import { existsSync, statSync, readFileSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { outcomeAnswerContract } from "./prompt-contract.mjs";
+import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, routeUserIntent } from "./intent-router.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -11,6 +13,7 @@ const workspace = path.resolve(args.workspace || repoRoot);
 const runtimeRoot = path.resolve(args.runtimeRoot || repoRoot);
 const port = Number(args.port || process.env.ASTERIA_STUDIO_PORT || 8787);
 const python = args.python || process.env.ASTERIA_PYTHON || "python";
+const chatBackend = String(args.chatBackend || process.env.ASTERIA_STUDIO_CHAT_BACKEND || "model").toLowerCase();
 const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
@@ -53,6 +56,11 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/studio/sessions") {
     sendJson(response, 200, { ok: true, session: await createSession() });
+    return;
+  }
+  if (request.method === "DELETE" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").pop() || "");
+    sendJson(response, 200, await deleteSession(sessionId));
     return;
   }
   if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
@@ -138,13 +146,30 @@ async function handleApi(request, response, url) {
 async function submitUserGoal(sessionId, body) {
   const session = await ensureSession(sessionId);
   const goal = redactText(String(body?.message || "")).trim();
-  const mode = String(body?.mode || "plan");
+  const requestedMode = String(body?.mode || "auto");
   const permission = String(body?.permission || "ask");
   if (!goal) return { ok: false, error: "message is required" };
+  const route = routeUserIntent(goal, requestedMode, permission);
+  const audit = intentAuditFor(goal, requestedMode, permission, route);
+  const mode = route.mode;
 
-  // Chat mode: instant local response, no CLI spawn
+  if (route.reason) {
+    await appendEvent(session.session_id, {
+      type: "intent_route",
+      status: "completed",
+      title: "Intent routing",
+      summary: route.reason,
+      phase: "route",
+      display_level: "inspector",
+      content_delta: "",
+      intent_route: route,
+      intent_audit: audit,
+    });
+  }
+
+  // Chat mode stays conversational by default, but auto-routing may hand off task-like input to plan/run.
   if (mode === "chat") {
-    return handleChatMode(session.session_id, goal);
+    return handleChatMode(session.session_id, goal, route, audit);
   }
 
   await appendEvent(session.session_id, {
@@ -157,9 +182,12 @@ async function submitUserGoal(sessionId, body) {
   await appendEvent(session.session_id, {
     type: "assistant_delta",
     status: "completed",
-    title: "理解目标",
-    summary: "我已收到目标，会先核对意图和边界，再进入计划或执行。",
-    content_delta: acknowledgementFor(mode, goal)
+    title: "Understanding goal",
+    summary: "Received the goal and selected the next controlled step.",
+    content_delta: acknowledgementFor(mode, goal),
+    phase: "understand",
+    display_level: "main",
+    intent_audit: audit,
   });
   await appendEvent(session.session_id, progressEventForMode(mode, goal));
 
@@ -170,11 +198,11 @@ async function submitUserGoal(sessionId, body) {
     await appendEvent(session.session_id, {
       type: "permission_request",
       status: "waiting_user",
-      title: "需要权限确认",
-      summary: "这个动作可能写文件或调用工具，请确认是否允许。",
+      title: "\u9700\u8981\u4f60\u786e\u8ba4",
+      summary: "\u8fd9\u4e2a\u8bf7\u6c42\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
       command,
       job_id: pendingJobId,
-      content_delta: "允许后将立即启动，或取消后切回 plan 模式先查看计划。"
+      content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002"
     });
     return { ok: true, session, started: false, needs_permission: true, job_id: pendingJobId };
   }
@@ -183,9 +211,52 @@ async function submitUserGoal(sessionId, body) {
   return { ok: true, session, started: true };
 }
 
-// ─── Chat mode: instant local answer, zero CLI overhead ─────────────────────
+// Chat mode: instant local answer, zero CLI overhead
 
-async function handleChatMode(sessionId, goal) {
+function acknowledgementFor(mode, goal) {
+  if (mode === "plan") return `\u6211\u4f1a\u5148\u7ed9\u4f60\u6574\u7406\u4e00\u4efd\u53ea\u8bfb\u8ba1\u5212\uff1a${goal}`;
+  if (mode === "run") return `\u6211\u4f1a\u6309\u53d7\u63a7\u6d41\u7a0b\u5904\u7406\u8fd9\u4e2a\u76ee\u6807\uff1a${goal}`;
+  if (mode === "review") return `\u6211\u4f1a\u68c0\u67e5\u5f53\u524d\u7ed3\u679c\uff0c\u5e76\u7528\u4f60\u80fd\u76f4\u63a5\u5224\u65ad\u7684\u65b9\u5f0f\u603b\u7ed3\uff1a${goal}`;
+  if (mode === "resume") return `\u6211\u4f1a\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\uff1a${goal}`;
+  return `\u6211\u5df2\u6536\u5230\u4f60\u7684\u8bf7\u6c42\uff1a${goal}`;
+}
+
+function progressEventForMode(mode, goal) {
+  const labels = {
+    plan: ["Planning", "\u6b63\u5728\u6574\u7406\u53ea\u8bfb\u8ba1\u5212\uff0c\u4e0d\u4f1a\u4fee\u6539\u4f60\u7684\u6587\u4ef6\u3002"],
+    run: ["Starting", "\u6b63\u5728\u5f00\u59cb\u53d7\u63a7\u5904\u7406\u3002"],
+    review: ["Reviewing", "\u6b63\u5728\u68c0\u67e5\u7ed3\u679c\u5e76\u51c6\u5907\u603b\u7ed3\u3002"],
+    resume: ["Resuming", "\u6b63\u5728\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\u3002"],
+  };
+  const [title, summary] = labels[mode] || ["Processing", "Working on the request."];
+  return {
+    type: "assistant_delta",
+    status: "running",
+    title,
+    summary,
+    phase: mode === "review" ? "review" : mode === "plan" ? "plan" : "execute",
+    display_level: "main",
+    content_delta: summary,
+  };
+}
+
+function runtimeCommand(mode, goal) {
+  if (mode === "run") {
+    return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1", "--no-research", goal];
+  }
+  if (mode === "review") return [python, "-m", moduleName, "review", "--root", workspace];
+  if (mode === "resume") return [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1"];
+  return [python, "-m", moduleName, "plan", "--root", workspace, goal];
+}
+
+function phaseForMode(mode) {
+  if (mode === "run") return "execute";
+  if (mode === "review") return "review";
+  if (mode === "resume") return "resume";
+  return "plan";
+}
+
+async function handleChatMode(sessionId, goal, route = null, audit = null) {
   await appendEvent(sessionId, {
     type: "user_message",
     status: "completed",
@@ -195,177 +266,645 @@ async function handleChatMode(sessionId, goal) {
     phase: "understand",
     display_level: "main",
   });
-  const content = await buildChatAnswer(goal, sessionId);
-  await appendEvent(sessionId, {
-    type: "final_answer",
-    status: "completed",
-    title: "Asteria",
-    summary: "即时回复，未调用 CLI。",
-    phase: "result",
-    display_level: "main",
-    content_delta: content,
-  });
-  return { ok: true, chat: true };
+  startChatJob(sessionId, goal, route, audit);
+  return { ok: true, chat: true, started: true };
 }
 
-async function buildChatAnswer(message, sessionId) {
+function startChatJob(sessionId, goal, route = null, audit = null) {
+  const jobId = `chat-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const job = {
+    job_id: jobId,
+    session_id: sessionId,
+    status: "running",
+    mode: "chat",
+    goal,
+    started_at_ms: Date.now(),
+  };
+  liveJobs.set(jobId, job);
+  const stopTail = tailSessionEvents(sessionId, jobId);
+  let lifecycleStarted = false;
+  const markLifecycleStarted = () => { lifecycleStarted = true; };
+
+  void (async () => {
+    try {
+      const answer = await buildChatAnswer(goal, sessionId, route, markLifecycleStarted);
+      if (answer.usedModel) await hideManualChatModelStart(sessionId);
+      else if (!lifecycleStarted) await appendChatFallbackLifecycle(sessionId, answer);
+      await appendEvent(sessionId, {
+        type: "final_answer",
+        status: "completed",
+        title: "Asteria",
+        summary: "Answer prepared.",
+        phase: "chat",
+        display_level: "main",
+        content_delta: answer.content,
+        model_provider: answer.route?.provider,
+        model_name: answer.route?.model,
+        model_tier: answer.route?.tier,
+        model_route: answer.route,
+        intent_audit: audit,
+      });
+      job.status = "completed";
+    } catch (error) {
+      job.status = "failed";
+      const rawError = String(error?.stack || error);
+      const friendly = friendlyErrorText(rawError);
+      await appendEvent(sessionId, {
+        type: "error",
+        status: "failed",
+        title: friendly ? "???????" : "Chat failed",
+        summary: friendlyErrorSummary(rawError) || String(error?.message || error),
+        phase: "chat",
+        display_level: "main",
+        content_delta: friendly || redactText(rawError),
+      });
+    } finally {
+      stopTail();
+      liveJobs.set(jobId, job);
+    }
+  })();
+}
+
+function tailSessionEvents(sessionId, jobId) {
+  const file = sessionPath(sessionId, "events.jsonl");
+  const seen = new Set();
+  let stopped = false;
+  let offset = 0;
+  try {
+    if (existsSync(file)) offset = statSync(file).size || 0;
+  } catch {}
+  const poll = async () => {
+    if (stopped) return;
+    try {
+      if (existsSync(file)) {
+        const stat = await fs.stat(file);
+        if (stat.size < offset) offset = 0;
+        if (stat.size > offset) {
+          const handle = await fs.open(file, "r");
+          try {
+            const buffer = Buffer.alloc(stat.size - offset);
+            await handle.read(buffer, 0, buffer.length, offset);
+            offset = stat.size;
+            for (const line of buffer.toString("utf8").split(/\r?\n/).filter(Boolean)) {
+              try {
+                const event = JSON.parse(line);
+                if (!event.event_id || seen.has(event.event_id)) continue;
+                seen.add(event.event_id);
+                notifySSE(sessionId, redact(event));
+              } catch {}
+            }
+          } finally {
+            await handle.close();
+          }
+        }
+      }
+    } catch {}
+    if (!stopped) setTimeout(poll, 180);
+  };
+  setTimeout(poll, 100);
+  return () => { stopped = true; };
+}
+
+async function appendChatFallbackLifecycle(sessionId, answer) {
+  const lifecycle = await appendChatModelStart(sessionId, answer.route, "local_fallback");
+  await appendChatFallbackDelta(sessionId, lifecycle, answer.content, answer.route);
+}
+
+async function hideManualChatModelStart(sessionId) {
+  if (!isSafeId(sessionId)) return;
+  const file = sessionPath(sessionId, "events.jsonl");
+  if (!existsSync(file)) return;
+  let rows;
+  try {
+    rows = (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  } catch {
+    return;
+  }
+  const hasProviderStart = rows.some((event) =>
+    event.type === "model_start"
+    && event.phase === "chat"
+    && String(event.event_id || "").startsWith("evt-model-")
+  );
+  if (!hasProviderStart) return;
+  let changed = false;
+  const nextRows = rows.map((event) => {
+    if (
+      event.type === "model_start"
+      && event.phase === "chat"
+      && !String(event.event_id || "").startsWith("evt-model-")
+      && event.status === "running"
+    ) {
+      changed = true;
+      return { ...event, display_level: "hidden", status: "completed", summary: "Replaced by provider streaming lifecycle." };
+    }
+    return event;
+  });
+  if (changed) await fs.writeFile(file, `${nextRows.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
+}
+
+async function appendChatModelStart(sessionId, route, streamingMode = "streaming") {
+  const start = await appendEvent(sessionId, {
+    type: "model_start",
+    status: "running",
+    title: "Thinking",
+    summary: "Asteria is preparing a chat answer.",
+    phase: "chat",
+    display_level: "main",
+    content_delta: "",
+    model_provider: route?.provider,
+    model_name: route?.model,
+    model_tier: route?.tier,
+    model_route: route,
+    streaming_mode: streamingMode,
+  });
+  return { start, startedAt: Date.now() };
+}
+
+async function appendChatFallbackDelta(sessionId, lifecycle, content, route) {
+  const parentId = lifecycle?.start?.event_id;
+  await appendEvent(sessionId, {
+    type: "model_delta",
+    status: "running",
+    title: "Chat response update",
+    summary: "Receiving chat response content.",
+    phase: "chat",
+    display_level: "main",
+    content_delta: content,
+    parent_event_id: parentId,
+    model_provider: route?.provider,
+    model_name: route?.model,
+    model_tier: route?.tier,
+    model_route: route,
+  });
+  await appendEvent(sessionId, {
+    type: "model_end",
+    status: "completed",
+    title: "Chat response completed",
+    summary: "Chat response completed.",
+    phase: "chat",
+    display_level: "main",
+    content_delta: "",
+    parent_event_id: parentId,
+    model_provider: route?.provider,
+    model_name: route?.model,
+    model_tier: route?.tier,
+    model_route: route,
+    telemetry: { duration_ms: lifecycle?.startedAt ? Date.now() - lifecycle.startedAt : null },
+  });
+}
+
+async function buildChatAnswer(message, sessionId, route = null, onLifecycleStart = null) {
   const m = message.trim();
   const lower = m.toLowerCase();
 
-  if (/你是谁|who are you|自我介绍|介绍.{0,4}自己|你叫什么/.test(lower)) return CHAT_INTRO;
-  if (/帮助|help|怎么用|如何使用|使用说明|教程/.test(lower)) return CHAT_HELP;
-  if (/状态|status|当前|现在怎样|运行情况/.test(lower)) return await chatStatusAnswer(sessionId);
-  if (/你好|hello|hi\b|嗨|早|晚上好|下午好/.test(lower)) return CHAT_GREETING;
-  if (/plan|run|review|resume|什么模式|模式区别|怎么选/.test(lower)) return CHAT_MODES;
-  if (/chat|对话.*模式|聊天模式/.test(lower)) return CHAT_ABOUT_CHAT;
-  if (/证据|evidence|inspector|产物|artifact/.test(lower)) return CHAT_EVIDENCE;
+  if (isRuntimeMetaQuestion(lower)) return chatAnswer(await chatRuntimeAnswer(m, sessionId));
+  if (hasAny(lower, ["who are you", "\u4f60\u662f\u8c01", "\u81ea\u6211\u4ecb\u7ecd"])) return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
+  if (isModeHelpQuestion(lower)) return chatAnswer(CHAT_MODES);
 
-  // Looks like a task accidentally sent in chat mode → suggest switching
-  const looksLikeTask = m.length > 15 && /[。！？，]|实现|修复|重构|添加|生成|补全|创建|更新|检查|分析/.test(m);
-  if (looksLikeTask) return chatTaskSuggestion(m);
+  const looksLikeTask = m.length > 15 && hasAny(m, ["\u5b9e\u73b0", "\u4fee\u590d", "\u91cd\u6784", "\u6dfb\u52a0", "\u521b\u5efa", "\u66f4\u65b0"]);
+  if (looksLikeTask) return chatAnswer(chatTaskSuggestion(m));
 
-  return chatDefault(m);
+  return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
 }
 
-async function chatStatusAnswer(sessionId) {
+function chatAnswer(content, route = null, usedModel = false) {
+  return {
+    content,
+    usedModel,
+    route,
+    routeLabel: routeLabel(route),
+  };
+}
+
+async function chatRuntimeAnswer(message, sessionId) {
+  const lower = message.toLowerCase();
+  if (hasAny(lower, ["model route", "route rationale", "cheap mode", "cost mode", "why this model", "\u4e3a\u4ec0\u4e48\u7528", "\u6a21\u578b\u8def\u7ebf", "\u7701\u94b1", "\u6210\u672c"])) {
+    return await chatModelRouteAnswer(sessionId);
+  }
+  return await chatStatusAnswer(sessionId);
+}
+
+async function chatGeneralAnswer(message, sessionId, onLifecycleStart = null) {
+  const context = await readChatContext(sessionId).catch(() => ({}));
+  const kind = classifyChatRequest(message);
+  const prompt = [
+    ...outcomeAnswerContract(kind),
+    `Internal intent hint: ${kind}. Use this only to choose answer shape; do not show the label.`,
+    context.latestRunId ? `Background only if relevant: latest_run=${context.latestRunId}, state=${firstRuntimeText(context.run?.status, "unknown")}/${firstRuntimeText(context.run?.current_phase, "unknown")}.` : "No run context is needed unless asked.",
+  ].join("\n");
+  const route = await preferredChatRoute();
+  if (chatBackend === "model") {
+    const lifecycle = await appendChatModelStart(sessionId, route, "streaming");
+    if (onLifecycleStart) onLifecycleStart();
+    const answered = await chatModelAnswer(prompt, message, sessionId);
+    const streamedAnswer = extractVisibleChatAnswerFromEvents(sessionId);
+    const finalAnswer = streamedAnswer || answered;
+    if (finalAnswer) return chatAnswer(appendModelNotice(finalAnswer, route, true), route, true);
+    await appendChatFallbackDelta(sessionId, lifecycle, localGeneralAnswer(message), route);
+  }
+  return chatAnswer(appendModelNotice(localGeneralAnswer(message), route, false), route, false);
+}
+
+function appendModelNotice(answer, route, usedModel) {
+  void route;
+  void usedModel;
+  return String(answer || "").trim();
+}
+
+async function preferredChatRoute() {
+  const routes = await modelRouteSummary().catch(() => []);
+  const chatRoute = routes.find((item) => String(item.purpose || "").toLowerCase() === "chat")
+    || routes.find((item) => String(item.tier || "").toLowerCase() === "medium")
+    || routes[0]
+    || null;
+  return chatRoute ? {
+    provider: firstRuntimeText(chatRoute.provider, "unknown"),
+    model: firstRuntimeText(chatRoute.model, "unknown"),
+    tier: firstRuntimeText(chatRoute.tier, "unknown"),
+    purpose: firstRuntimeText(chatRoute.purpose, "chat"),
+  } : null;
+}
+
+function routeLabel(route) {
+  if (!route) return "configured chat route";
+  return `${firstRuntimeText(route.provider, "unknown")}/${firstRuntimeText(route.model, "unknown")} - ${firstRuntimeText(route.tier, "unknown")} - ${firstRuntimeText(route.purpose, "chat")}`;
+}
+
+async function chatModelAnswer(systemPrompt, message, sessionId) {
+  if (process.env.ASTERIA_STUDIO_FAKE_CHAT_ERROR) {
+    throw new Error(process.env.ASTERIA_STUDIO_FAKE_CHAT_ERROR);
+  }
   try {
-    const runsDir = path.join(workspace, ".asteria", "runs");
-    let latestRunLine = "暂无运行记录。";
-    if (existsSync(runsDir)) {
-      const dirs = (await fs.readdir(runsDir)).filter((d) => /^run-\d{8}-\d{4}/.test(d)).sort().reverse();
-      if (dirs.length) {
-        const runJson = await readJson(path.join(runsDir, dirs[0], "run.json")).catch(() => ({}));
-        const status = firstRuntimeText(runJson.status, "unknown");
-        const goal = firstRuntimeText(runJson.goal, runJson.original_goal, "未记录目标");
-        latestRunLine = `最近 run：**${dirs[0]}**（${status}）\n目标：${goal.slice(0, 100)}`;
-      }
+    const payload = Buffer.from(JSON.stringify({
+      question: `System instruction:\n${systemPrompt}\n\nUser question:\n${message}`,
+    }), "utf8").toString("base64");
+    const script = [
+      "import base64, json, os",
+      "from pathlib import Path",
+      "from asteria_runtime.commands.chat_command import ChatCommand",
+      "data = json.loads(base64.b64decode(os.environ['ASTERIA_STUDIO_CHAT_PAYLOAD']).decode('utf-8'))",
+      "result = ChatCommand(root=Path(os.environ['ASTERIA_STUDIO_ROOT']), question=data['question']).run()",
+      "print(json.dumps(result.to_dict(), ensure_ascii=False))",
+    ].join("; ");
+    const completed = await runCommand([
+      python,
+      "-c",
+      script,
+    ], runtimeRoot, {
+      PYTHONIOENCODING: "utf-8",
+      ASTERIA_STUDIO_CHAT_BACKEND: undefined,
+      ASTERIA_STUDIO_CHAT_PAYLOAD: payload,
+      ASTERIA_STUDIO_ROOT: workspace,
+      ASTERIA_STUDIO_EVENT_SINK: sessionPath(sessionId, "events.jsonl"),
+      ASTERIA_STUDIO_SESSION_ID: sessionId,
+      ASTERIA_STUDIO_PHASE: "chat",
+    });
+    if (completed.code !== 0) return "";
+    const raw = String(completed.stdout || "").replace(/^\uFEFF/, "").trim();
+    try {
+      const parsed = JSON.parse(raw);
+      const answer = cleanAssistantText(stripCliContextNoise(parsed.answer || ""));
+      return answer || localGeneralAnswer(message);
+    } catch {
+      return stripCliChatEnvelope(raw) || localGeneralAnswer(message);
     }
-    return `## 当前状态\n\n工作区：\`${workspace}\`\n\n${latestRunLine}\n\n使用 Inspector 右侧面板查看完整证据，或切换 **review** 模式出具质量评审。`;
   } catch {
-    return `## 当前状态\n\n工作区：\`${workspace}\`\n\n无法读取运行记录，请刷新后重试。`;
+    return "";
   }
 }
 
+function stripCliChatEnvelope(stdout) {
+  const lines = String(stdout || "").split(/\r?\n/);
+  const useful = [];
+  let skippingHeader = true;
+  for (const line of lines) {
+    if (skippingHeader && (/^Chat\s*$/.test(line) || /^Permission level:/.test(line) || /^Model strategy:/.test(line))) continue;
+    skippingHeader = false;
+    useful.push(line);
+  }
+  return cleanAssistantText(stripCliContextNoise(useful.join("\n").trim()));
+}
+
+function stripCliContextNoise(text) {
+  return String(text || "")
+    .split(/\nContext refs:|\nCurrent session:|\nNext actions:/i)[0]
+    .trim();
+}
+
+
+function stripThinkingBlocks(text) {
+  return String(text || "")
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .trim();
+}
+
+function extractVisibleChatAnswerFromEvents(sessionId) {
+  if (!isSafeId(sessionId)) return "";
+  const file = sessionPath(sessionId, "events.jsonl");
+  if (!existsSync(file)) return "";
+  let rows = [];
+  try {
+    rows = fsSyncReadJsonl(file);
+  } catch {
+    return "";
+  }
+  let latestStartIndex = -1;
+  for (let i = rows.length - 1; i >= 0; i -= 1) {
+    const event = rows[i];
+    if (event.type === "model_start" && event.phase === "chat" && String(event.event_id || "").startsWith("evt-model-")) {
+      latestStartIndex = i;
+      break;
+    }
+  }
+  if (latestStartIndex < 0) return "";
+  const start = rows[latestStartIndex];
+  const parentId = start.event_id;
+  const chunks = [];
+  for (const event of rows.slice(latestStartIndex + 1)) {
+    if (event.phase !== "chat") continue;
+    if (event.type === "model_start" && event.event_id !== parentId) break;
+    if (event.type === "model_delta" && (!event.parent_event_id || event.parent_event_id === parentId)) {
+      chunks.push(String(event.content_delta || ""));
+    }
+    if (event.type === "model_end" && (!event.parent_event_id || event.parent_event_id === parentId)) break;
+  }
+  return cleanAssistantText(stripCliContextNoise(stripThinkingBlocks(chunks.join(""))));
+}
+
+function fsSyncReadJsonl(file) {
+  try {
+    const raw = requireReadFileSync(file);
+    return raw.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
+function requireReadFileSync(file) {
+  return Buffer.from(readFileSync(file)).toString("utf8");
+}
+
+function cleanAssistantText(text) {
+  const value = repairMojibake(String(text || ""))
+    .replace(/\uFFFD/g, "-")
+    .replace(/\s+-\s+/g, " - ")
+    .trim();
+  return isLikelyGarbledAnswer(value) ? "" : value;
+}
+
+function repairMojibake(text) {
+  const value = String(text || "");
+  const cjkCount = (value.match(/[㐀-鿿]/g) || []).length;
+  const replacementCount = (value.match(/�/g) || []).length;
+  const latin1ControlCount = (value.match(/[-ÿ]/g) || []).length;
+  // Markdown tables and separators contain many dashes; that is not mojibake.
+  // If the text already contains substantial CJK and no replacement/control bytes,
+  // keep it exactly as streamed so Chinese answers are not stripped to ASCII.
+  if (cjkCount >= 5 && replacementCount === 0 && latin1ControlCount === 0) return value;
+  const suspicious = replacementCount + latin1ControlCount;
+  if (suspicious < 3) return value;
+  try {
+    const bytes = Uint8Array.from([...value].map((ch) => ch.charCodeAt(0) & 0xff));
+    const repaired = new TextDecoder("utf-8", { fatal: false }).decode(bytes).trim();
+    return repaired.length >= Math.max(20, value.length * 0.35) ? repaired : value;
+  } catch {
+    return value;
+  }
+}
+
+function isLikelyGarbledAnswer(text) {
+  const value = String(text || "").trim();
+  if (!value) return true;
+  const controlChars = (value.match(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g) || []).length;
+  if (controlChars > 0) return true;
+  const asciiLetters = (value.match(/[A-Za-z]/g) || []).length;
+  const cjkLetters = (value.match(/[\u3400-\u9fff]/g) || []).length;
+  const markdownNoise = (value.match(/[#*|_-]/g) || []).length;
+  const visible = value.replace(/\s/g, "").length || 1;
+  return asciiLetters + cjkLetters < 12 && markdownNoise / visible > 0.35;
+}
+
+function localGeneralAnswer(message) {
+  const kind = classifyChatRequest(message);
+  if (String(kind || "").endsWith("_plan")) return localOutcomePlanAnswer(message, kind);
+  return [
+    "## Quick answer",
+    "",
+    "I could not reach a configured model for this message, so here is a safe general way to move forward without inventing details.",
+    "",
+    "- Restate the exact result you want: explanation, checklist, comparison, draft, or step-by-step plan.",
+    "- Add the important constraints: time, budget, audience, location, difficulty, format, or things to avoid.",
+    "- If you want a concise answer, ask for a short version; if you want depth, ask for tradeoffs and examples.",
+    "",
+    "Next step: send the missing constraints and I can turn this into a more complete answer."
+  ].join("\n");
+}
+
+function localOutcomePlanAnswer(message, kind) {
+  const goal = String(message || "").trim() || "your goal";
+  const domainNote = kind === "travel_plan"
+    ? "Assumption: you want a balanced itinerary with room for rest, local food, and one backup option per day."
+    : kind === "learning_plan"
+      ? "Assumption: you want steady progress with clear practice loops and checkpoints."
+      : kind === "content_plan"
+        ? "Assumption: you want a practical outline that can become a draft or production checklist."
+        : "Assumption: you want a practical plan that can be adjusted after you add constraints.";
+  const focus = kind === "travel_plan"
+    ? ["Confirm dates, budget, travel companions, pace, and must-see constraints.", "Group activities by geography so each day has one primary area and one optional backup.", "Reserve high-demand transport, hotels, restaurants, or tickets first."]
+    : kind === "learning_plan"
+      ? ["Define the target level and one measurable outcome.", "Split the plan into input, deliberate practice, feedback, and review.", "Schedule small daily actions and a weekly checkpoint."]
+      : kind === "content_plan"
+        ? ["Clarify audience, promise, tone, and final format.", "Draft the core structure before polishing details.", "Review against usefulness, specificity, and clarity before publishing or sharing."]
+        : ["Clarify the target result and constraints.", "Break the work into phases with a visible checkpoint after each phase.", "Decide what can be simplified if time, budget, or confidence drops."];
+  return [
+    "## Goal understanding",
+    `You want a usable plan for: ${goal}`,
+    "",
+    "## Working assumptions",
+    domainNote,
+    "",
+    "## Recommended plan",
+    ...focus.map((item, index) => `${index + 1}. ${item}`),
+    "",
+    "## Suggested sequence",
+    "1. Set the non-negotiables: deadline, budget, scope, audience, and success criteria.",
+    "2. Build the first complete version with only the necessary details.",
+    "3. Add alternatives for the riskiest parts instead of over-planning everything.",
+    "4. Review the plan once from the user's point of view: what is unclear, unrealistic, or missing?",
+    "5. Convert the plan into the next concrete action you can do today.",
+    "",
+    "## Risks and tradeoffs",
+    "- Too many details too early can make the plan rigid.",
+    "- Too few constraints can make the recommendation generic.",
+    "- The best next version should add the few details that affect the decision most.",
+    "",
+    "## Next action",
+    "Send the key constraints you already know, and I can turn this into a more specific final plan."
+  ].join("\n");
+}
+
+function isModeHelpQuestion(lower) {
+  return hasAny(lower, [
+    "which mode", "what mode", "choose mode", "how to choose mode", "plan/run", "chat/plan", "review mode", "resume mode",
+    "\u6a21\u5f0f", "\u600e\u4e48\u9009\u6a21\u5f0f", "\u9009\u62e9\u54ea\u4e2a\u6a21\u5f0f", "plan \u6a21\u5f0f", "run \u6a21\u5f0f", "review \u6a21\u5f0f", "resume \u6a21\u5f0f",
+  ]);
+}
+
+async function chatStatusAnswer(sessionId) {
+  const context = await readChatContext(sessionId);
+  if (!context.latestRunId) {
+    return [
+      "## \u5f53\u524d\u72b6\u6001",
+      "",
+      "\u73b0\u5728\u6ca1\u6709\u9700\u8981\u4f60\u5904\u7406\u7684\u8fdb\u884c\u4e2d\u4efb\u52a1\u3002",
+      "",
+      "## \u4f60\u53ef\u4ee5\u7ee7\u7eed\u505a\u4ec0\u4e48",
+      "- \u76f4\u63a5\u95ee\u4e00\u4e2a\u95ee\u9898\uff0c\u6211\u4f1a\u81ea\u7136\u56de\u7b54\u3002",
+      "- \u63cf\u8ff0\u4e00\u4e2a\u76ee\u6807\uff0c\u6211\u53ef\u4ee5\u5148\u5e2e\u4f60\u6574\u7406\u6210\u8ba1\u5212\u3002",
+      "- \u5982\u679c\u9700\u8981\u771f\u6b63\u6267\u884c\uff0c\u6211\u4f1a\u5728\u654f\u611f\u52a8\u4f5c\u524d\u8bf7\u4f60\u786e\u8ba4\u3002",
+    ].join("\n");
+  }
+  const status = context.status;
+  const run = context.run;
+  const summary = context.finalSummary;
+  const loop = context.runLoopSummary;
+  const policy = context.goalPolicy;
+  const next = commandFromStatus(status, summary, loop, policy);
+  const decisionId = context.latestDecision ? (context.latestDecision.decision_id || context.latestDecision.id) : "";
+  const blocker = firstRuntimeText(
+    summary.current_blocker,
+    loop.current_blocker,
+    status.current_blocker,
+    decisionId ? "\u6709\u4e00\u4e2a\u9700\u8981\u4f60\u786e\u8ba4\u7684\u51b3\u7b56\u70b9\u3002" : "none"
+  );
+  const workflow = firstRuntimeText(summary.workflow_state, loop.workflow_state, status.workflow_state, run.current_phase, "unknown");
+  const canReview = Boolean(status.can_review);
+  const canAccept = Boolean(status.can_accept);
+  const goal = firstRuntimeText(run.goal, run.original_goal, context.goalSpec.normalized_goal, context.goalSpec.original_goal, "\u672a\u8bb0\u5f55\u76ee\u6807");
+  const lines = [
+    "## \u5f53\u524d\u72b6\u6001",
+    "",
+    `\u4efb\u52a1\u76ee\u6807\uff1a${goal}`,
+    `\u8fdb\u5c55\uff1a${friendlyWorkflow(workflow)}`,
+    "",
+    "## \u662f\u5426\u6709\u963b\u585e",
+    blocker && blocker !== "none" ? `- ${blocker}` : "- \u6682\u65f6\u6ca1\u6709\u770b\u5230\u9700\u8981\u4f60\u5904\u7406\u7684\u963b\u585e\u3002",
+    "",
+    "## \u5efa\u8bae\u4e0b\u4e00\u6b65",
+  ];
+  if (canAccept) lines.push("- \u7ed3\u679c\u770b\u8d77\u6765\u5df2\u7ecf\u53ef\u4ee5\u63a5\u53d7\u3002\u5982\u679c\u4f60\u5bf9\u4ea7\u7269\u6ee1\u610f\uff0c\u53ef\u4ee5\u786e\u8ba4\u63a5\u53d7\u3002");
+  else if (canReview) lines.push("- \u5efa\u8bae\u5148\u8fdb\u884c\u5ba1\u67e5\uff0c\u786e\u8ba4\u7ed3\u679c\u662f\u5426\u7b26\u5408\u76ee\u6807\u3002");
+  else if (decisionId) lines.push("- \u9700\u8981\u4f60\u5148\u5904\u7406\u4e00\u4e2a\u51b3\u7b56\u70b9\uff0c\u518d\u7ee7\u7eed\u63a8\u8fdb\u3002");
+  else if (next) lines.push("- \u53ef\u4ee5\u7ee7\u7eed\u63a8\u8fdb\u4e0b\u4e00\u6b65\u3002\u6211\u4f1a\u5728\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u524d\u8bf7\u4f60\u786e\u8ba4\u3002");
+  else lines.push("- \u5efa\u8bae\u5148\u8ba9\u6211\u628a\u76ee\u6807\u518d\u6574\u7406\u6210\u4e00\u4e2a\u6e05\u6670\u8ba1\u5212\u3002");
+  return lines.join("\n");
+}
+
+function friendlyWorkflow(value) {
+  const text = String(value || "").toLowerCase();
+  if (/accept|accepted|done|completed|pass/.test(text)) return "\u5df2\u5b8c\u6210\u6216\u7b49\u5f85\u6700\u7ec8\u786e\u8ba4";
+  if (/review/.test(text)) return "\u7b49\u5f85\u5ba1\u67e5";
+  if (/block|decision|pause|wait/.test(text)) return "\u6682\u505c\uff0c\u7b49\u5f85\u786e\u8ba4\u6216\u5904\u7406\u963b\u585e";
+  if (/run|exec|work|progress/.test(text)) return "\u6b63\u5728\u63a8\u8fdb";
+  if (/plan/.test(text)) return "\u6b63\u5728\u6574\u7406\u8ba1\u5212";
+  return "\u72b6\u6001\u4e0d\u660e\uff0c\u5efa\u8bae\u5148\u505a\u4e00\u6b21\u7b80\u77ed\u68c0\u67e5";
+}
+
+async function chatModelRouteAnswer(sessionId) {
+  void sessionId;
+  return [
+    "## \u6a21\u578b\u4f7f\u7528\u539f\u5219",
+    "",
+    "\u666e\u901a\u7528\u6237\u4fa7\u4e0d\u5c55\u793a\u5177\u4f53\u540e\u53f0\u8def\u7531\u548c\u8bc1\u636e\u7ec6\u8282\u3002\u4f60\u53ea\u9700\u8981\u77e5\u9053\uff1a",
+    "",
+    "- \u7b80\u5355\u95ee\u7b54\u4f1a\u5c3d\u91cf\u7528\u4f4e\u6210\u672c\u8def\u5f84\u3002",
+    "- \u9700\u8981\u63a8\u7406\u3001\u89c4\u5212\u6216\u68c0\u67e5\u65f6\uff0c\u4f1a\u4f7f\u7528\u66f4\u7a33\u7684\u80fd\u529b\u3002",
+    "- \u9700\u8981\u4fee\u6539\u3001\u6267\u884c\u6216\u9ad8\u6210\u672c\u52a8\u4f5c\u65f6\uff0c\u6211\u4f1a\u5148\u8bf4\u660e\u5e76\u7b49\u5f85\u786e\u8ba4\u3002",
+    "",
+    "\u5982\u679c\u4f60\u60f3\u7701\u94b1\uff0c\u53ef\u4ee5\u76f4\u63a5\u8bf4\u201c\u7528\u7701\u94b1\u6a21\u5f0f\u201d\u6216\u201c\u5148\u7ed9\u7b80\u7248\u201d\u3002"
+  ].join("\n");
+}
+
+async function readChatContext(sessionId) {
+  const overviewData = await overview();
+  const latestRunId = firstRuntimeText(overviewData.runs?.[0]?.run_id, "");
+  const detail = latestRunId ? await readRunDetail(latestRunId) : {};
+  const status = await commandJson(["status", "--root", workspace, "--json"]).catch(() => ({}));
+  const runDir = latestRunId ? path.join(workspace, ".asteria", "runs", latestRunId) : null;
+  const decisions = runDir ? await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20) : [];
+  const pendingDecision = [...decisions].reverse().find((item) => /pending|open|waiting/i.test(String(item.status ?? item.state ?? "pending"))) || decisions.at(-1);
+  return {
+    sessionId,
+    overview: overviewData,
+    latestRunId,
+    detail,
+    status,
+    run: detail.run || {},
+    goalSpec: detail.goal_spec || {},
+    finalSummary: detail.final_report_summary || {},
+    runLoopSummary: detail.run_loop_summary || {},
+    goalPolicy: detail.goal_policy || (detail.final_report_summary || {}).goal_policy || {},
+    modelRouteTimeline: detail.model_route_timeline || {},
+    latestDecision: pendingDecision || null,
+  };
+}
+
+function commandFromStatus(status, summary, loop, policy) {
+  const raw = firstRuntimeText(
+    summary.recommended_next_command,
+    loop.recommended_next_command,
+    policy.recommended_command,
+    status.recommended_next_command,
+    ""
+  );
+  return raw.replace(/^asteria\s+/, "").trim();
+}
+
+function latestRouteDecision(context) {
+  const artifact = context.modelRouteTimeline || {};
+  const finalSummary = context.finalSummary || {};
+  const timeline = Array.isArray(artifact.timeline)
+    ? artifact.timeline
+    : Array.isArray(artifact.route_timeline)
+      ? artifact.route_timeline
+      : Array.isArray(finalSummary.model_route_timeline)
+        ? finalSummary.model_route_timeline
+        : [];
+  if (timeline.length) return timeline.at(-1);
+  const modelSelection = finalSummary.model_selection || context.status?.model_selection;
+  return modelSelection && Object.keys(modelSelection).length ? modelSelection : null;
+}
+
+function modelRouteSummaryLine(context) {
+  const route = latestRouteDecision(context);
+  if (!route) return "- No model route timeline is recorded for this run yet.";
+  return `- ${firstRuntimeText(route.purpose, "unknown")} used ${firstRuntimeText(route.selected_tier, route.tier, "unknown")}: ${firstRuntimeText(route.reason, route.model_selection_reason, "No reason recorded.")}`;
+}
+
 function chatTaskSuggestion(message) {
-  return `## 看起来是一个任务
-
-你的消息：**${message.slice(0, 80)}**
-
-当前是 **chat** 模式（即时问答），不会调用 CLI。
-
-如果你想执行这个任务：
-- 切换到 **plan** → 先出执行计划
-- 切换到 **run** → 直接执行（plan + execute + review）
-
-切换方式：点击下方模式选择器，再重新发送。`;
+  return [
+    "## \u8fd9\u770b\u8d77\u6765\u662f\u4e00\u4e2a\u9700\u8981\u63a8\u8fdb\u7684\u4efb\u52a1",
+    "",
+    `\u4f60\u7684\u76ee\u6807\uff1a${message.slice(0, 120)}`,
+    "",
+    "\u6211\u5efa\u8bae\u5148\u628a\u5b83\u6574\u7406\u6210\u4e00\u4e2a\u53ef\u6267\u884c\u8ba1\u5212\uff0c\u786e\u8ba4\u8303\u56f4\u3001\u4ea7\u7269\u548c\u98ce\u9669\u540e\u518d\u5f00\u59cb\u6267\u884c\u3002",
+    "",
+    "\u4e0b\u4e00\u6b65\uff1a\u4f60\u53ef\u4ee5\u76f4\u63a5\u8bf4\u201c\u5148\u5236\u5b9a\u8ba1\u5212\u201d\uff0c\u6216\u8005\u8865\u5145\u4f60\u7684\u9a8c\u6536\u6807\u51c6\u3002"
+  ].join("\n");
 }
 
-function chatDefault(message) {
-  return `## 收到
+const CHAT_INTRO = `\u4f60\u597d\uff0c\u6211\u662f Asteria\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u95ee\u9898\u3001\u8ba9\u6211\u8981\u70b9\u5206\u6790\u3001\u5199\u4e00\u4efd\u8ba1\u5212\uff0c\u6216\u63cf\u8ff0\u4e00\u4e2a\u4f60\u60f3\u5b8c\u6210\u7684\u76ee\u6807\u3002`;
 
-你问的是：**${message.slice(0, 100)}**
+const CHAT_GREETING = `\u4f60\u597d\u3002\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u60f3\u89e3\u51b3\u4ec0\u4e48\u95ee\u9898\uff0c\u6211\u4f1a\u5148\u7ed9\u51fa\u81ea\u7136\u56de\u7b54\uff1b\u5982\u679c\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u5185\u5bb9\uff0c\u6211\u4f1a\u5728\u884c\u52a8\u524d\u8bf4\u660e\u5e76\u7b49\u5f85\u786e\u8ba4\u3002`;
 
-我暂时没有针对这个问题的内置回答。你可以：
-- 切换 **plan** 或 **run** 模式，把它变成一个任务让我执行
-- 换个关键词再问（支持：你是谁 / 怎么用 / 当前状态 / 模式区别 / 证据）`;
-}
+const CHAT_HELP = `## \u53ef\u4ee5\u8fd9\u6837\u95ee\u6211\n\n- \u5e2e\u6211\u89e3\u91ca\u4e00\u4e2a\u6982\u5ff5\u3002\n- \u5e2e\u6211\u5236\u5b9a\u4e00\u4e2a\u65c5\u884c\u3001\u5b66\u4e60\u6216\u5199\u4f5c\u8ba1\u5212\u3002\n- \u5e2e\u6211\u5206\u6790\u4e00\u6bb5\u9700\u6c42\uff0c\u6574\u7406\u6210\u65b9\u6848\u3002\n- \u5e2e\u6211\u5224\u65ad\u4e0b\u4e00\u6b65\u600e\u4e48\u505a\u3002\n\n\u5982\u679c\u4f60\u7684\u8bf7\u6c42\u9700\u8981\u4fee\u6539\u6587\u4ef6\u3001\u8fd0\u884c\u547d\u4ee4\u6216\u957f\u671f\u6267\u884c\uff0c\u6211\u4f1a\u5148\u8bf4\u660e\u5f71\u54cd\uff0c\u518d\u8bf7\u6c42\u786e\u8ba4\u3002`;
 
-const CHAT_INTRO = `## 我是 Asteria
+const CHAT_MODES = `## \u4f7f\u7528\u65b9\u5f0f\n\n\u4f60\u4e0d\u9700\u8981\u5148\u7406\u89e3\u6a21\u5f0f\u3002\u76f4\u63a5\u8f93\u5165\u76ee\u6807\u5373\u53ef\uff1a\n\n- \u666e\u901a\u95ee\u9898\uff1a\u6211\u4f1a\u76f4\u63a5\u56de\u7b54\u3002\n- \u9700\u8981\u65b9\u6848\uff1a\u6211\u4f1a\u5148\u7ed9\u51fa\u53ea\u8bfb\u8ba1\u5212\u3002\n- \u9700\u8981\u6267\u884c\uff1a\u6211\u4f1a\u8bf4\u660e\u5c06\u8981\u505a\u4ec0\u4e48\uff0c\u5e76\u5728\u654f\u611f\u52a8\u4f5c\u524d\u8bf7\u6c42\u786e\u8ba4\u3002`;
 
-本地优先的多智能体自主开发运行时。
+const CHAT_ABOUT_CHAT = `\u53ef\u4ee5\u628a\u8fd9\u91cc\u5f53\u6210\u666e\u901a AI \u52a9\u624b\u5165\u53e3\u3002\u4f60\u5148\u63cf\u8ff0\u95ee\u9898\uff0c\u6211\u4f1a\u6839\u636e\u610f\u56fe\u51b3\u5b9a\u662f\u76f4\u63a5\u56de\u7b54\u3001\u6574\u7406\u8ba1\u5212\uff0c\u8fd8\u662f\u5efa\u8bae\u8fdb\u5165\u53ef\u63a7\u6267\u884c\u3002`;
 
-**核心定位**
-把你的目标转化为可验证的工作产物——计划、代码补丁、测试、报告。每一步都有证据，失败时硬停，不盲目修复。
-
-**四个工作模式**
-| 模式 | 做什么 |
-|------|--------|
-| plan | 分析目标 → 拆解结构化任务计划（不执行）|
-| run | 完整执行：plan + execute + debug + review |
-| review | 对最近一次 run 出具独立质量评审 |
-| resume | 恢复被中断的 run |
-
-**当前模式 chat** 是即时问答，不调用 CLI，没有延迟。
-
-想开始一个任务？切换到 **plan** 或 **run** 然后描述目标。`;
-
-const CHAT_GREETING = `你好！我是 Asteria，本地多智能体开发运行时。
-
-现在是 **chat** 模式——问我任何问题都会即时回答，没有等待。
-
-想让我执行任务，切换到 **plan**（先看计划）或 **run**（直接执行）。`;
-
-const CHAT_HELP = `## 使用指南
-
-**模式选择**（下方选择器）
-| 模式 | 适合场景 |
-|------|---------|
-| **chat** | 快速问答，了解 Asteria，查看状态 |
-| **plan** | 先看任务拆解再决定是否执行 |
-| **run** | 直接完整执行，包含 debug 和 review |
-| **review** | 评审最近一次 run 的质量 |
-| **resume** | 恢复因超预算/pending decision 中断的 run |
-
-**权限控制**（plan/run/resume 模式下显示）
-- 写入前询问 → 每次写文件前弹出确认卡片
-- 直接允许 → 自动放行（适合信任的工作区）
-
-**快捷键**：Ctrl+Enter 发送
-
-**Inspector**（右侧面板）：查看原始事件、模型调用、证据文件和产物引用。`;
-
-const CHAT_MODES = `## 模式说明
-
-**chat** — 当前模式。即时本地回复，不调用 CLI，零等待。适合问答和了解状态。
-
-**plan** — 只分析目标、生成任务计划，不执行任何代码。适合先看思路再决定。
-
-**run** — 完整执行：制定计划 → 执行任务 → 调试失败 → 评审结果。一步到位。
-
-**review** — 对最近一次 run 出具独立质量评审，判断是否达标、有无遗漏。
-
-**resume** — 从上次中断处恢复。run 因超预算、待确认决策或权限等待暂停时使用。
-
----
-**怎么选？**
-- 第一次跑某个目标 → **plan** 先看拆解
-- 目标清晰、工作区干净 → **run** 直接执行
-- 上次没跑完 → **resume**
-- 不确定质量 → **review**`;
-
-const CHAT_ABOUT_CHAT = `## chat 模式
-
-即时本地问答，不调用任何 CLI 命令，没有模型 API 调用，回复是瞬时的。
-
-**支持的问题类型**
-- 你是谁 / 自我介绍
-- 怎么用 / 使用帮助
-- 当前状态 / 最近运行
-- 模式区别 / 怎么选
-- 证据 / Inspector / 产物
-
-**不支持的**：实际任务执行（请切换到 plan / run / review / resume）。`;
-
-const CHAT_EVIDENCE = `## 证据与 Inspector
-
-**Inspector（右侧面板）** 是 Asteria 的证据中心，包含：
-
-- **Shell** — 原始命令输出（stdout/stderr）
-- **Diff** — 文件变化对比
-- **产物** — 生成的文件、报告引用
-- **诊断** — 模型调用记录、worker 结果、验证结果、任务执行证据
-
-**证据文件位置**（工作区 .asteria/runs/run-YYYYMMDD-XXXX/）
-- \`goal_spec.json\` — 目标规格
-- \`task_plan.json\` — 任务计划
-- \`eval_report.json\` — 评审评分
-- \`final_report.md\` — 完整运行报告
-- \`worker_results.jsonl\` — 各 worker 执行结果
-- \`model_calls.jsonl\` — 全部模型调用记录
-
-点击 Thread 中的任意事件卡片，Inspector 会跳到对应细节。`;
-
-// ─────────────────────────────────────────────────────────────────────────────
+const CHAT_EVIDENCE = `\u666e\u901a\u4f7f\u7528\u65f6\u4e0d\u9700\u8981\u67e5\u770b\u540e\u53f0\u7ec6\u8282\u3002\u4f60\u53ea\u9700\u8981\u770b\u8fd9\u91cc\u7684\u56de\u7b54\u3001\u8ba1\u5212\u3001\u786e\u8ba4\u8bf7\u6c42\u548c\u6700\u7ec8\u7ed3\u679c\u3002`;
 
 async function handlePermission(sessionId, jobId, body) {
   const action = String(body?.action || "");
@@ -376,8 +915,8 @@ async function handlePermission(sessionId, jobId, body) {
     await appendEvent(sessionId, {
       type: "assistant_delta",
       status: "completed",
-      title: "已授权",
-      summary: "权限已批准，正在启动 runtime...",
+      title: "\u5df2\u786e\u8ba4",
+      summary: "\u5df2\u786e\u8ba4\uff0c\u6b63\u5728\u5f00\u59cb\u5904\u7406...",
       phase: "execute",
       display_level: "main"
     });
@@ -389,8 +928,8 @@ async function handlePermission(sessionId, jobId, body) {
     await appendEvent(sessionId, {
       type: "assistant_delta",
       status: "completed",
-      title: "已取消",
-      summary: "操作已取消。如需继续，可以选择 plan 模式先查看计划，再决定是否执行。",
+      title: "\u5df2\u53d6\u6d88",
+      summary: "\u5df2\u53d6\u6d88\u3002\u672c\u6b21\u4e0d\u4f1a\u7ee7\u7eed\u6267\u884c\u3002",
       phase: "next",
       display_level: "main"
     });
@@ -515,8 +1054,8 @@ function startRuntimeJob(sessionId, mode, goal) {
   void appendEvent(sessionId, {
     type: "tool_start",
     status: "running",
-    title: "Runtime 已启动",
-    summary: "正在运行命令。主线程会显示模型反馈，原始命令输出放在 Inspector。",
+    title: "Processing started",
+    summary: "Processing started.",
     display_level: "inspector",
     command
   });
@@ -538,13 +1077,13 @@ function startRuntimeJob(sessionId, mode, goal) {
   let stdout = "";
   let stderr = "";
   child.stdout.on("data", (chunk) => {
-    const text = redactText(chunk.toString());
+    const text = redactText(chunk.toString("utf8"));
     stdout = tailText(stdout + text, 24000);
     rememberJobRunId(jobId, extractRunId(text) || extractRunId(stdout));
     void appendEvent(sessionId, {
       type: "tool_delta",
       status: "running",
-      title: "Runtime 输出",
+      title: "Runtime output",
       summary: summarizeRuntimeChunk(text),
       content_delta: text,
       display_level: "inspector",
@@ -552,13 +1091,13 @@ function startRuntimeJob(sessionId, mode, goal) {
     });
   });
   child.stderr.on("data", (chunk) => {
-    const text = redactText(chunk.toString());
+    const text = redactText(chunk.toString("utf8"));
     stderr = tailText(stderr + text, 16000);
     rememberJobRunId(jobId, extractRunId(text) || extractRunId(stderr));
     void appendEvent(sessionId, {
       type: "tool_delta",
       status: "running",
-      title: "Runtime 诊断",
+      title: "Runtime diagnostics",
       summary: summarizeRuntimeChunk(text),
       content_delta: text,
       display_level: "inspector",
@@ -573,17 +1112,18 @@ function startRuntimeJob(sessionId, mode, goal) {
     void appendEvent(sessionId, {
       type: "tool_end",
       status: job.status,
-      title: code === 0 ? "Runtime 完成" : "Runtime 失败",
-      summary: code === 0 ? "执行完成，正在整理最终回复。" : "执行没有成功完成，需要查看失败原因。",
+      title: code === 0 ? "Processing completed" : "Processing needs attention",
+      summary: code === 0 ? "Processing completed; preparing the result." : "The task needs attention; preparing the reason and next step.",
       command,
       display_level: "inspector",
-      content_delta: stderr ? `stderr:\n${stderr}` : stdout.slice(-4000)
+      content_delta: stderr ? `stderr:
+${stderr}` : stdout.slice(-4000)
     });
     void appendEvent(sessionId, {
       type: code === 0 ? "final_answer" : "error",
       status: code === 0 ? "completed" : "failed",
-      title: code === 0 ? "正式回复" : "需要处理的问题",
-      summary: code === 0 ? "这是根据真实模型和 runtime 结果整理出的回复。" : "这次没有完成，我会给出失败原因和可选下一步。",
+      title: code === 0 ? "Result" : "Needs attention",
+      summary: code === 0 ? "Result prepared." : "The task needs attention; here is the reason and suggestion.",
       phase: code === 0 ? "result" : "review",
       display_level: "main",
       content_delta: await finalTextFor(mode, code, stdout, stderr),
@@ -595,84 +1135,52 @@ function startRuntimeJob(sessionId, mode, goal) {
     stopTail();
     job.status = "failed";
     liveJobs.set(jobId, job);
+    const rawError = String(error);
+    const friendly = friendlyErrorText(rawError);
     void appendEvent(sessionId, {
       type: "error",
       status: "failed",
-      title: "Runtime 启动失败",
-      summary: String(error),
-      content_delta: redactText(String(error)),
+      title: friendly ? "???????" : "Task failed to start",
+      summary: friendlyErrorSummary(rawError) || rawError,
+      content_delta: friendly || redactText(rawError),
       command
     });
   });
 }
 
-function runtimeCommand(mode, goal) {
-  if (mode === "run") {
-    return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1", "--no-research", goal];
+
+function friendlyErrorText(text) {
+  const raw = String(text || "");
+  const lower = raw.toLowerCase();
+  if (/ssl|_ssl|handshake|urlopen|tls/.test(lower) && /timed out|timeout/.test(lower)) {
+    return [
+      "## Connection timed out",
+      "The model service did not finish the HTTPS security handshake in time. This is usually caused by network, proxy/VPN, firewall, or a temporarily slow provider, not by your prompt.",
+      "",
+      "## What you can do",
+      "- Retry once.",
+      "- If it keeps happening, check your proxy/VPN and network stability.",
+      "- Try again later, or switch to another available model route.",
+    ].join("\n");
   }
-  if (mode === "review") return [python, "-m", moduleName, "review", "--root", workspace];
-  if (mode === "resume") return [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1"];
-  return [python, "-m", moduleName, "plan", "--root", workspace, goal];
+  if (/timed out|timeout|deadline/.test(lower)) {
+    return [
+      "## Request timed out",
+      "This request waited too long. The network or model service may be temporarily unstable.",
+      "",
+      "## What you can do",
+      "- Retry once.",
+      "- Shorten the request or reduce the task scope.",
+      "- If it keeps failing, try again later or switch models.",
+    ].join("\n");
+  }
+  return "";
 }
 
-function acknowledgementFor(mode, goal) {
-  if (mode === "plan") return `收到。我会先用真实模型为这个目标制定计划：${goal}`;
-  if (mode === "run") return `收到。我会在受控范围内推进这个任务：${goal}`;
-  if (mode === "review") return "收到。我会审查当前运行结果，并总结问题和下一步。";
-  if (mode === "resume") return "收到。我会在受限条件下恢复当前任务。";
-  return `收到。我会围绕这个目标推进：${goal}`;
-}
-
-function progressEventForMode(mode, goal) {
-  if (mode === "run") {
-    return {
-      type: "reasoning_delta",
-      status: "running",
-      title: "执行",
-      summary: "我会按受控范围推进任务，并把需要你确认的权限、文件变化和结果放回同一条任务线。",
-      phase: "execute",
-      display_level: "main",
-      content_delta: `目标：${goal}\n当前阶段：准备执行。`
-    };
-  }
-  if (mode === "review") {
-    return {
-      type: "reasoning_delta",
-      status: "running",
-      title: "核对",
-      summary: "我会检查已有结果、失败证据和下一步风险。",
-      phase: "review",
-      display_level: "main",
-      content_delta: "当前阶段：核对结果与证据。"
-    };
-  }
-  if (mode === "resume") {
-    return {
-      type: "reasoning_delta",
-      status: "running",
-      title: "继续",
-      summary: "我会接上已有上下文继续推进，并避免重复已经完成的步骤。",
-      phase: "resume",
-      display_level: "main",
-      content_delta: "当前阶段：恢复任务上下文。"
-    };
-  }
-  return {
-    type: "reasoning_delta",
-    status: "running",
-    title: "制定计划",
-    summary: "我会把目标拆成可执行步骤，并标出约束、风险和下一步。",
-    phase: "plan",
-    display_level: "main",
-    content_delta: `目标：${goal}\n当前阶段：制定计划。`
-  };
-}
-
-function phaseForMode(mode) {
-  if (mode === "run") return "execute";
-  if (mode === "review") return "review";
-  if (mode === "resume") return "resume";
-  return "plan";
+function friendlyErrorSummary(text) {
+  const friendly = friendlyErrorText(text);
+  if (/HTTPS|Connection timed out|Request timed out/.test(friendly)) return friendly.split("\n").find((line) => line && !line.startsWith("##")) || "The connection is temporarily unavailable.";
+  return "";
 }
 
 function summarizeRuntimeChunk(text) {
@@ -688,37 +1196,56 @@ function summarizeRuntimeChunk(text) {
 async function finalTextFor(mode, code, stdout, stderr) {
   if (code !== 0) {
     return [
-      "## 结果",
-      "这次任务没有成功完成。",
+      "## \u7ed3\u679c",
+      "\u8fd9\u6b21\u4efb\u52a1\u6ca1\u6709\u987a\u5229\u5b8c\u6210\u3002",
       "",
-      "## 需要处理",
-      trimForUser(stderr || stdout || "没有捕获到输出。"),
+      "## \u53ef\u80fd\u539f\u56e0",
+      summarizeUserFacingFailure(stderr || stdout),
       "",
-      "## 下一步",
-      "可以重试、切换模型/路由，或把失败证据导出后继续诊断。"
+      "## \u4e0b\u4e00\u6b65",
+      "\u4f60\u53ef\u4ee5\u8ba9\u6211\u91cd\u8bd5\u3001\u7f29\u5c0f\u8303\u56f4\uff0c\u6216\u5148\u91cd\u65b0\u5236\u5b9a\u8ba1\u5212\u3002"
     ].join("\n");
   }
   const runId = extractRunId(stdout) || extractRunId(stderr);
-  if (mode === "plan" && runId) return withProcessDigest(runId, await planFinalTextForRun(runId, stdout));
+  if (mode === "plan" && runId) return await planFinalTextForRun(runId, stdout);
   if ((mode === "run" || mode === "resume") && runId) return withProcessDigest(runId, await runFinalTextForRun(runId, stdout));
   if (mode === "review" && runId) return withProcessDigest(runId, await reviewFinalTextForRun(runId, stdout));
-  const text = stdout.trim();
-  const result = text ? trimForUser(text) : "Runtime 已完成，但没有返回文本输出。可以在 Inspector 查看证据和产物。";
+  const text = cleanUserFacingRuntimeText(stdout);
+  const result = text || "The task finished, but there was no clear user-facing result to show.";
   return [
-    "## 结果",
+    "## \u7ed3\u679c",
     result,
     "",
-    "## 下一步",
+    "## \u4e0b\u4e00\u6b65",
     nextStepForMode(mode)
   ].join("\n");
 }
 
+function summarizeUserFacingFailure(text) {
+  const clean = cleanUserFacingRuntimeText(text);
+  const friendly = friendlyErrorText(text) || friendlyErrorText(clean);
+  if (friendly) return friendly;
+  if (!clean) return "The task did not provide enough readable detail to explain the failure.";
+  if (/timeout|deadline|timed out/i.test(clean)) return "The task appears to have timed out before finishing.";
+  if (/permission|denied|not allowed/i.test(clean)) return "The task needs permission or policy approval before it can continue.";
+  if (/traceback|exception|error|failed/i.test(clean)) return "The task hit an execution error and needs a smaller retry or debugging step.";
+  return clean.slice(0, 800);
+}
+
+function cleanUserFacingRuntimeText(text) {
+  return String(text || "")
+    .replace(/stderr:\s*/gi, "")
+    .replace(/\b(run-\d{8}-\d{4})\b/g, "")
+    .replace(/.*(?:Inspector|Evidence Explorer|status --json|stdout|stderr|traceback path|\.asteria).*/gi, "")
+    .trim();
+}
+
 function nextStepForMode(mode) {
-  if (mode === "plan") return "你可以直接要求执行计划，或指出要调整的范围、风格和约束。";
-  if (mode === "run") return "你可以检查产物、继续迭代，或要求我进入 review。";
-  if (mode === "review") return "你可以选择修复问题、继续执行，或导出证据。";
-  if (mode === "resume") return "你可以继续推进当前任务，或要求我先总结当前状态。";
-  return "你可以继续给出下一步要求。";
+  if (mode === "plan") return "Review the plan and tell me what to refine or execute next.";
+  if (mode === "run") return "Review the result, then ask me to continue, revise, or summarize.";
+  if (mode === "review") return "Use the review result to decide whether to accept or revise.";
+  if (mode === "resume") return "Check the latest result and decide whether to continue.";
+  return "Tell me what you want to do next.";
 }
 
 async function userProgressDigestLines(runId) {
@@ -736,15 +1263,14 @@ async function userProgressDigestLines(runId) {
     }
   }
   const lines = [];
-  if (counts.model) lines.push(`- 模型流式输出 ${counts.model} 段，用于理解目标、生成结构化计划或评审结论。`);
-  if (counts.tool) lines.push(`- Runtime 记录 ${counts.tool} 个工具/内部执行事件，过程细节已收进 Inspector。`);
-  if (counts.execution_chain) lines.push(`- Harness 记录 ${counts.execution_chain} 条工具观察事件，用于把工具结果回灌到下一轮判断。`);
+  if (counts.model) lines.push("- I analyzed the request and prepared the response.");
+  if (counts.tool || counts.execution_chain) lines.push("- I checked the relevant steps before producing the result.");
   if (counts.file) {
-    const names = fileNames.slice(0, 4).join("、");
-    lines.push(`- 写入或更新 ${counts.file} 个文件事件${names ? `：${names}` : ""}。`);
+    const names = fileNames.slice(0, 4).join(", ");
+    lines.push(`- I updated: ${names || "the requested files"}.`);
   }
-  if (counts.evidence) lines.push(`- 沉淀 ${counts.evidence} 条证据引用，可回溯到 run 目录里的 JSON/Markdown 产物。`);
-  return lines.length ? lines : ["- Runtime 已完成任务并保留原始事件；当前 run 暂无可折叠的用户进展摘要。"];
+  if (counts.evidence) lines.push("- I kept verification details available for debugging.");
+  return lines.length ? [...new Set(lines)] : ["- I completed the requested step."];
 }
 
 function userProgressChannelToEventType(channel, eventType, phase) {
@@ -760,7 +1286,7 @@ async function withProcessDigest(runId, text) {
   return [
     body,
     "",
-    "## 过程摘要",
+    "## Process summary",
     digest.join("\n"),
   ].filter(Boolean).join("\n");
 }
@@ -770,34 +1296,27 @@ async function planFinalTextForRun(runId, fallbackStdout) {
   const goalSpec = await readJson(path.join(runDir, "goal_spec.json"));
   const taskPlan = await readJson(path.join(runDir, "task_plan.json"));
   const taskEval = await readJson(path.join(runDir, "task_plan_eval.json"));
-  const costReport = await readJson(path.join(runDir, "cost_report.json"));
   const tasks = Array.isArray(taskPlan.tasks) ? taskPlan.tasks : [];
   if (!Object.keys(goalSpec).length && !tasks.length) {
     return [
-      "## 结果",
-      "Runtime 已完成计划生成，但 Studio 暂时只能读取到产物收据，没能解析出计划内容。",
+      "## Plan result",
+      cleanUserFacingRuntimeText(fallbackStdout) || "I could not produce a complete plan from the available information.",
       "",
-      "## 证据",
-      trimForUser(fallbackStdout),
-      "",
-      "## 下一步",
-      "请在 Inspector 或 Evidence Explorer 查看原始产物后重试。"
+      "## Next step",
+      "Share the missing constraints or ask me to create a smaller first version."
     ].join("\n");
   }
-  const goal = firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, "已生成一份结构化计划。");
-  const requirements = Array.isArray(goalSpec.expanded_requirements) ? goalSpec.expanded_requirements.length : 0;
+  const goal = firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, "the requested goal");
   const warnings = Array.isArray(taskEval.issues) ? taskEval.issues.filter((issue) => issue.severity !== "error") : [];
   const recommendations = Array.isArray(taskEval.recommendations) ? taskEval.recommendations : [];
-  const taskLines = tasks.slice(0, 5).map((task, index) => {
-    const title = firstRuntimeText(task.title, task.task_id, `Task ${index + 1}`);
+  const taskLines = tasks.slice(0, 6).map((task, index) => {
+    const title = firstRuntimeText(task.title, task.task_id, `Step ${index + 1}`);
     const description = firstRuntimeText(task.description).replace(/\s+/g, " ");
-    const acceptance = Array.isArray(task.acceptance) ? task.acceptance.slice(0, 3) : [];
-    const artifacts = Array.isArray(task.expected_artifacts) ? task.expected_artifacts.slice(0, 3) : [];
+    const acceptance = Array.isArray(task.acceptance) ? task.acceptance.slice(0, 2) : [];
     return [
       `- ${title}`,
-      description ? `  目标：${description}` : "",
-      acceptance.length ? `  验收：${acceptance.join("；")}` : "",
-      artifacts.length ? `  产物：${artifacts.join("、")}` : "",
+      description ? `  Why: ${description}` : "",
+      acceptance.length ? `  Done when: ${acceptance.join("; ")}` : "",
     ].filter(Boolean).join("\n");
   });
   const riskLines = [
@@ -805,27 +1324,25 @@ async function planFinalTextForRun(runId, fallbackStdout) {
     ...recommendations.slice(0, 3).map((item) => `- ${item}`)
   ];
   return [
-    "## 答案",
-    `我给你的规划结论是：围绕「${goal}」生成 ${tasks.length || 0} 个可执行任务，先按下面任务顺序推进。`,
+    "## Plan result",
+    `Goal: ${goal}`,
     "",
-    "## 任务计划",
-    taskLines.length ? taskLines.join("\n") : "- 未生成可展示的任务条目。",
+    "## Recommended work plan",
+    taskLines.length ? taskLines.join("\n") : "- Start by clarifying the goal, constraints, and success criteria.",
     "",
-    "## 验收与风险",
-    firstRuntimeText(taskEval.summary, `共 ${tasks.length} 个任务，${requirements} 条需求。`),
-    riskLines.length ? [...new Set(riskLines)].join("\n") : "- 暂无明确阻断项；执行前仍应核对写入范围和验证命令。",
+    "## Notes and tradeoffs",
+    riskLines.length ? [...new Set(riskLines)].join("\n") : "- Keep the first version small enough to review, then expand after feedback.",
     "",
-    "## 下一步",
-    nextPlanAction(tasks, taskEval, costReport)
+    "## Next step",
+    nextPlanAction(tasks, taskEval)
   ].join("\n");
 }
 
-function nextPlanAction(tasks, taskEval, costReport) {
+function nextPlanAction(tasks, taskEval) {
   const status = String(taskEval.status || "").toLowerCase();
-  const modelCalls = costReport.model_calls ?? costReport.total_model_calls;
-  if (status === "warn") return "先把过大的任务拆成 3-5 个可独立验证的实现切片，再进入 run。模型调用和成本证据已记录在 Evidence Explorer。";
-  if (tasks.length > 1) return `可以选择第一个切片进入 run，继续使用受控限制。${modelCalls != null ? `本次计划用了 ${modelCalls} 次模型调用。` : ""}`;
-  return "可以直接要求执行该计划，或先调整范围、验收标准和风险边界。";
+  if (status === "warn") return "Review the assumptions and adjust the plan before execution.";
+  if (tasks.length > 1) return "Choose the first task you want to execute, or ask me to refine the plan.";
+  return "Confirm this plan or ask for a narrower version before execution.";
 }
 
 /** Build final text for run/resume modes — reads final_report.md and eval_report.json */
@@ -835,35 +1352,23 @@ async function runFinalTextForRun(runId, fallbackStdout) {
   const taskPlan = await readJson(path.join(runDir, "task_plan.json"));
   const runJson = await readJson(path.join(runDir, "run.json"));
   const evalReport = await readJson(path.join(runDir, "eval_report.json"));
-  const executionEvidence = await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 30);
   const validationResults = await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 30);
   const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20);
-  const workerLines = await readWorkerSummaryLines(runDir);
   const taskRows = Array.isArray(taskPlan.tasks) ? taskPlan.tasks : [];
   const doneTasks = taskRows.filter((task) => task.status === "done");
   const blockedTasks = taskRows.filter((task) => task.status === "blocked");
   const pendingDecisions = decisions.filter((decision) => decision.status === "pending");
   const status = firstRuntimeText(runJson.status, evalReport?.overall?.status, "completed");
-  const score = evalReport?.overall?.score != null ? `评分 ${Number(evalReport.overall.score).toFixed(2)}` : null;
   const reason = firstRuntimeText(evalReport?.overall?.reason);
-  const costReport = await readJson(path.join(runDir, "cost_report.json"));
-  const modelCalls = costReport.model_calls ?? costReport.total_model_calls;
-  const artifacts = await runArtifactLines(runDir);
-  const evidenceLines = executionEvidence.slice(-5).map((item) => {
-    const taskId = firstRuntimeText(item.task_id, item.task?.task_id, "task");
-    const itemStatus = firstRuntimeText(item.status, "unknown");
-    const summary = firstRuntimeText(item.summary, item.failure_type, "").replace(/\s+/g, " ");
-    return `- ${taskId}: ${itemStatus}${summary ? ` - ${summary}` : ""}`;
-  });
+  const artifactLines = await runArtifactLines(runDir);
   const validationLines = validationResults.slice(-5).map((item) => {
-    const label = firstRuntimeText(item.name, item.command, item.validation_result_id, "validation");
+    const label = firstRuntimeText(item.name, item.command, item.validation_result_id, "???");
     const itemStatus = firstRuntimeText(item.status, item.outcome, "unknown");
     const summary = firstRuntimeText(item.summary, item.error, "");
-    return `- ${label}: ${itemStatus}${summary ? ` - ${summary}` : ""}`;
+    return `- ${label}: ${friendlyCheckStatus(itemStatus)}${summary ? ` - ${summary}` : ""}`;
   });
   const answerLine = runAnswerLine({
-    runId,
-    goal: firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, runJson.goal, "本次目标"),
+    goal: firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, runJson.goal, "????"),
     status,
     done: doneTasks.length,
     total: taskRows.length,
@@ -871,25 +1376,37 @@ async function runFinalTextForRun(runId, fallbackStdout) {
     decisions: pendingDecisions.length,
   });
   return [
-    "## 答案",
+    "## ??",
     answerLine,
     "",
-    "## 完成情况",
-    `- 状态：${status}`,
-    `- 任务：${doneTasks.length}/${taskRows.length} 完成，${blockedTasks.length} 个阻断`,
-    pendingDecisions.length ? `- 待决策：${pendingDecisions.length} 个，需要你选择后继续` : "- 待决策：无",
-    score || reason ? `- 评审：${[score, reason].filter(Boolean).join("；")}` : "",
+    "## ????",
+    `- ???${friendlyRunStatus(status)}`,
+    `- ???${doneTasks.length}/${taskRows.length || doneTasks.length} ???${blockedTasks.length ? `?${blockedTasks.length} ?????` : ""}`,
+    pendingDecisions.length ? `- ??????${pendingDecisions.length} ?` : "- ??????????",
+    reason ? `- ???${reason}` : "",
     "",
-    ...(artifacts.length ? ["## 产物", ...artifacts, ""] : []),
-    ...(validationLines.length ? ["## 验证", ...validationLines, ""] : []),
-    ...(evidenceLines.length ? ["## 执行证据", ...evidenceLines, ""] : []),
-    ...(workerLines.length ? ["## Worker 摘要", ...workerLines, ""] : []),
-    "## 证据入口",
-    `已记录 ${modelCalls != null ? modelCalls + " 次模型调用" : "若干模型调用"}。完整证据在 Inspector → Evidence Explorer 查看。`,
-    "",
-    "## 下一步",
+    ...(artifactLines.length ? ["## ??", ...artifactLines, ""] : []),
+    ...(validationLines.length ? ["## ????", ...validationLines, ""] : []),
+    "## ???",
     nextRunAction({ status, blocked: blockedTasks.length, decisions: pendingDecisions.length })
-  ].join("\n");
+  ].filter(Boolean).join("\n");
+}
+
+function friendlyCheckStatus(status) {
+  const text = String(status || "").toLowerCase();
+  if (/pass|ok|success|completed/.test(text)) return "??";
+  if (/fail|error|blocked/.test(text)) return "???";
+  if (/skip/.test(text)) return "???";
+  return status || "??";
+}
+
+function friendlyRunStatus(status) {
+  const text = String(status || "").toLowerCase();
+  if (/completed|success|accepted|pass/.test(text)) return "???";
+  if (/blocked|paused|decision|waiting/.test(text)) return "????";
+  if (/failed|error/.test(text)) return "???";
+  if (/running|progress/.test(text)) return "???";
+  return status || "??";
 }
 
 /** Build final text for review mode — reads review_report.md and eval_report.json */
@@ -899,30 +1416,21 @@ async function reviewFinalTextForRun(runId, fallbackStdout) {
   const status = firstRuntimeText(evalReport?.overall?.status, "reviewed");
   const score = evalReport?.overall?.score != null ? Number(evalReport.overall.score).toFixed(2) : null;
   const reason = firstRuntimeText(evalReport?.overall?.reason);
-  // Try review_report.md for body
   const reviewMdPath = path.join(runDir, "review_report.md");
   let reviewBody = "";
   if (existsSync(reviewMdPath)) {
-    try { reviewBody = (await fs.readFile(reviewMdPath, "utf8")).trim(); } catch {}
+    try { reviewBody = cleanUserFacingRuntimeText(await fs.readFile(reviewMdPath, "utf8")); } catch {}
   }
-  if (reviewBody.length > 80) {
-    return [
-      `## 评审结果 — ${status}${score ? `（评分 ${score}）` : ""}`,
-      reason ? reason : "",
-      "",
-      reviewBody,
-      "",
-      "## 下一步",
-      nextStepForMode("review")
-    ].filter((l, i, arr) => !(l === "" && arr[i - 1] === "")).join("\n");
-  }
-  return [
-    "## 评审结果",
-    `Run ${runId} 评审完成（${status}）。${score ? "评分 " + score + "。" : ""}${reason}`,
+  const lines = [
+    "## ????",
+    `?????${friendlyRunStatus(status)}${score ? `??? ${score}?` : ""}`,
+    reason ? `???${reason}` : "",
     "",
-    "## 下一步",
-    nextStepForMode("review")
-  ].join("\n");
+  ];
+  if (reviewBody.length > 80) lines.push(reviewBody.slice(0, 3000), "");
+  else lines.push(cleanUserFacingRuntimeText(fallbackStdout) || "??????????????????", "");
+  lines.push("## ???", nextStepForMode("review"));
+  return lines.filter(Boolean).join("\n");
 }
 
 async function readWorkerSummaryLines(runDir) {
@@ -945,28 +1453,29 @@ async function readWorkerSummaryLines(runDir) {
 async function runArtifactLines(runDir) {
   const artifacts = await readJsonlTail(path.join(runDir, "artifacts.jsonl"), 20);
   return artifacts.slice(-8).map((item) => {
-    const artifactPath = firstRuntimeText(item.path, item.artifact_id, "artifact");
+    const artifactPath = firstRuntimeText(item.path, item.artifact_id, "??");
     const summary = firstRuntimeText(item.summary, item.type, "");
-    return `- ${artifactPath}${summary ? `：${summary}` : ""}`;
+    const name = path.basename(String(artifactPath || "??"));
+    return `- ${name}${summary ? `?${summary}` : ""}`;
   });
 }
 
-function runAnswerLine({ runId, goal, status, done, total, blocked, decisions }) {
+function runAnswerLine({ goal, status, done, total, blocked, decisions }) {
   if (decisions > 0) {
-    return `本次目标「${goal}」还没有最终完成。Run ${runId} 已推进到需要人工决策的位置：完成 ${done}/${total} 个任务，当前有 ${blocked} 个阻断和 ${decisions} 个待决策项。`;
+    return `?${goal}?????????????????? ${done}/${total || done} ???? ${decisions} ??????????????`;
   }
   if (blocked > 0 || /blocked|paused|failed/i.test(status)) {
-    return `本次目标「${goal}」暂未完成。Run ${runId} 已产出执行证据，但仍有 ${blocked} 个阻断，需要先处理后才能给出完成结论。`;
+    return `?${goal}????????????? ${done}/${total || done} ???? ${blocked} ?????????`;
   }
-  return `本次目标「${goal}」已完成。Run ${runId} 完成 ${done}/${total} 个任务，并留下了产物、验证和执行证据。`;
+  return `?${goal}????????? ${done}/${total || done} ?????????`;
 }
 
 function nextRunAction({ status, blocked, decisions }) {
-  if (decisions > 0) return "先处理待决策项；通过后继续 resume，让 runtime 接着完成剩余任务。";
+  if (decisions > 0) return "?????????????????????";
   if (blocked > 0 || /blocked|paused|failed/i.test(String(status))) {
-    return "先运行 debug 或 replan 处理阻断，再继续 resume。";
+    return "????????????????????????";
   }
-  return "可以进入 review 检查产物质量，或基于当前结果继续提出下一轮目标。";
+  return "?????????????????????????????????????????";
 }
 
 function extractRunId(text) {
@@ -1034,8 +1543,8 @@ async function createSession() {
     type: "assistant_delta",
     status: "completed",
     title: "Asteria Ready",
-    summary: "告诉我你要完成什么任务。",
-    content_delta: "我会在主线程展示模型反馈、计划、权限请求和最终结果；命令细节会放在 Inspector。"
+    summary: "Tell me what you want to do.",
+    content_delta: "\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u60f3\u505a\u4ec0\u4e48\u3002\u6211\u4f1a\u5148\u7ed9\u51fa\u81ea\u7136\u56de\u7b54\uff1b\u5982\u679c\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u5185\u5bb9\uff0c\u4f1a\u5728\u884c\u52a8\u524d\u8bf7\u4f60\u786e\u8ba4\u3002"
   });
   return session;
 }
@@ -1051,7 +1560,21 @@ async function readSession(sessionId) {
   if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
   const file = sessionPath(sessionId, "session.json");
   if (!existsSync(file)) return { ok: false, error: "session not found" };
-  return { ok: true, session: JSON.parse(await fs.readFile(file, "utf8")), events: await readSessionEvents(sessionId) };
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    if (!raw.trim()) return { ok: false, error: "empty session" };
+    return { ok: true, session: JSON.parse(raw), events: await readSessionEvents(sessionId) };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
+async function deleteSession(sessionId) {
+  if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
+  const dir = sessionPath(sessionId);
+  if (!existsSync(dir)) return { ok: false, error: "session not found" };
+  await fs.rm(dir, { recursive: true, force: true });
+  return { ok: true, deleted: sessionId };
 }
 
 async function listSessions() {
@@ -1082,9 +1605,15 @@ async function appendEvent(sessionId, event) {
   await fs.appendFile(sessionPath(sessionId, "events.jsonl"), `${JSON.stringify(full)}\n`, "utf8");
   const sessionFile = sessionPath(sessionId, "session.json");
   if (existsSync(sessionFile)) {
-    const session = JSON.parse(await fs.readFile(sessionFile, "utf8"));
+    let session = {};
+    try {
+      const rawSession = await fs.readFile(sessionFile, "utf8");
+      session = rawSession.trim() ? JSON.parse(rawSession) : {};
+    } catch {
+      session = {};
+    }
     session.updated_at = full.created_at;
-    if (full.type === "user_message") session.title = String(full.summary || session.title).slice(0, 64);
+    if (full.type === "user_message") session.title = String(full.summary || session.title || "New task").slice(0, 64);
     await fs.writeFile(sessionFile, JSON.stringify(session, null, 2), "utf8");
   }
   notifySSE(sessionId, full);
@@ -1104,7 +1633,7 @@ async function readSessionEvents(sessionId) {
   });
   const runIds = new Set();
   for (const event of events) {
-    if (event.type !== "final_answer") continue;
+    if (event.type !== "final_answer" || event.phase === "chat") continue;
     const runId = extractRunId(event.content_delta) || extractRunId((event.artifact_refs || []).join("\n"));
     if (!runId) continue;
     runIds.add(runId);
@@ -1191,7 +1720,7 @@ async function readRuntimeUserProgressEvents(runId, sessionId) {
   const rows = await readJsonlTail(file, 500);
   const events = rows.map((event) => userProgressToStudioEvent(event, sessionId, runId)).filter(Boolean);
   for (const event of events) {
-    if (event.type !== "final_answer") continue;
+    if (event.type !== "final_answer" || event.phase === "chat") continue;
     await enrichFinalAnswerEvent(event, runId);
   }
   return events;
@@ -1296,16 +1825,16 @@ async function commandJson(commandArgs) {
   }
 }
 
-function runCommand(command, cwd) {
+function runCommand(command, cwd, envOverrides = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command[0], command.slice(1), { cwd, env: process.env, windowsHide: true });
+    const child = spawn(command[0], command.slice(1), { cwd, env: { ...process.env, ...envOverrides }, windowsHide: true });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
+      stdout += chunk.toString("utf8");
     });
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
+      stderr += chunk.toString("utf8");
     });
     child.on("close", (code) => resolve({ code, stdout, stderr }));
     child.on("error", (error) => resolve({ code: 1, stdout, stderr: String(error) }));
@@ -1336,7 +1865,11 @@ async function readRunDetail(runId) {
     goal_spec: "goal_spec.json",
     task_plan: "task_plan.json",
     task_plan_eval: "task_plan_eval.json",
-    agent_run_graph: "agent_run_graph.json"
+    agent_run_graph: "agent_run_graph.json",
+    run_loop_summary: "run_loop_summary.json",
+    final_report_summary: "final_report_summary.json",
+    model_route_timeline: "model_route_timeline.json",
+    goal_policy: "goal_policy.json"
   };
   const payload = { ok: true, run_id: runId };
   for (const [key, file] of Object.entries(jsonFiles)) {
@@ -1493,13 +2026,16 @@ async function serveStatic(response, pathname) {
 
 function readRequestJson(request) {
   return new Promise((resolve) => {
-    let raw = "";
+    const chunks = [];
+    let size = 0;
     request.on("data", (chunk) => {
-      raw += chunk.toString();
-      if (raw.length > 64_000) request.destroy();
+      chunks.push(Buffer.from(chunk));
+      size += chunk.length;
+      if (size > 64_000) request.destroy();
     });
     request.on("end", () => {
       try {
+        const raw = Buffer.concat(chunks).toString("utf8");
         resolve(raw ? JSON.parse(raw) : {});
       } catch {
         resolve({});

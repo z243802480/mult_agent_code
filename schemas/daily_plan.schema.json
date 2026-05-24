@@ -28,6 +28,7 @@
     "summary": { "type": "string" },
     "budget": { "type": "object" },
     "signals": { "type": "object" },
-    "actions": { "type": "array", "items": { "type": "object" } }
+    "actions": { "type": "array", "items": { "type": "object" } },
+    "automation_manifest": { "type": "object" }
   }
 }

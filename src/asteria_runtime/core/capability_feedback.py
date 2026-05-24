@@ -74,6 +74,8 @@ class CapabilityFeedbackAdvisor:
         profile = JsonStore(self.validator).read(profile_path, "model_capability_profile")
         profiles = [item for item in profile.get("profiles", []) if isinstance(item, dict)]
         hints = [self._hint(item) for item in profiles]
+        matrix_hints = [self._matrix_hint(item) for item in profiles]
+        hints.extend(matrix_hints)
         strategy_hint = self._provider_route_strategy_hint(agent_dir, profiles)
         if strategy_hint:
             hints.append(strategy_hint)
@@ -110,6 +112,43 @@ class CapabilityFeedbackAdvisor:
             "severity": severity,
         }
 
+
+    def _matrix_hint(self, profile: dict) -> dict:
+        total = int(profile.get("matrix_signal_total") or 0)
+        if total <= 0:
+            return {}
+        success_rate = float(profile.get("matrix_signal_success_rate") or 0.0)
+        if success_rate >= 0.8:
+            return {}
+        provider = str(profile.get("provider") or "unknown")
+        model = str(profile.get("model") or "unknown")
+        purpose = str(profile.get("purpose") or "unknown")
+        tier = str(profile.get("model_tier") or "unknown")
+        raw_routes = profile.get("matrix_routes")
+        routes: dict[str, Any] = raw_routes if isinstance(raw_routes, dict) else {}
+        raw_task_kinds = profile.get("matrix_task_kinds")
+        task_kinds: dict[str, Any] = raw_task_kinds if isinstance(raw_task_kinds, dict) else {}
+        dominant_route = _top_counter_key(routes)
+        dominant_task_kind = _top_counter_key(task_kinds)
+        message = (
+            f"real-provider matrix is weak for {dominant_task_kind}/{dominant_route}; "
+            "review route before widening gray or long-run budget"
+        )
+        severity = 3 if total >= 3 and success_rate < 0.5 else 2
+        return {
+            "purpose": purpose,
+            "provider": provider,
+            "model": model,
+            "model_tier": tier,
+            "recommended_action": "review_real_provider_matrix_before_scaling",
+            "message": message,
+            "severity": severity,
+            "matrix_signal_total": total,
+            "matrix_signal_success_rate": success_rate,
+            "matrix_routes": routes,
+            "matrix_task_kinds": task_kinds,
+        }
+
     def _route_actions(
         self,
         blocking: list[dict],
@@ -117,11 +156,24 @@ class CapabilityFeedbackAdvisor:
         strategy: dict[str, Any] | None = None,
     ) -> list[str]:
         strategy = strategy or {}
+        matrix_blocking = any(
+            item.get("recommended_action") == "review_real_provider_matrix_before_scaling"
+            for item in blocking
+        )
+        matrix_review = any(
+            item.get("recommended_action") == "review_real_provider_matrix_before_scaling"
+            for item in review
+        )
         if blocking:
             actions = [
                 "Pause scaling affected routes until provider, worker, or budget issues are resolved.",
                 "Run `asteria capability-report` after collecting fresh evidence.",
             ]
+            if matrix_blocking:
+                actions.insert(
+                    0,
+                    "Do not widen real-provider matrix routes until failed task_kind/route evidence is repaired or rerun.",
+                )
             if strategy.get("decision") == "block_gray":
                 actions.insert(
                     0,
@@ -133,6 +185,11 @@ class CapabilityFeedbackAdvisor:
                 "Review affected route purposes before increasing long-run budget.",
                 "Prefer smaller scoped tasks or stronger verification for matching work.",
             ]
+            if matrix_review:
+                actions.insert(
+                    0,
+                    "Review real-provider matrix task_kind/route failures before increasing gray batch size.",
+                )
             if strategy.get("decision") == "retry_or_downgrade":
                 actions.append(
                     "Use the configured retry/downgrade path for strong goal_spec before increasing batch size."
@@ -275,6 +332,12 @@ class CapabilityFeedbackAdvisor:
         route_strategy = route_strategy if isinstance(route_strategy, dict) else {}
         strategy = route_strategy.get("strong_goal_spec")
         return strategy if isinstance(strategy, dict) else {}
+
+
+def _top_counter_key(counter: dict[str, Any]) -> str:
+    if not counter:
+        return "unknown"
+    return max(counter.items(), key=lambda item: int(item[1] or 0))[0]
 
 
 def _hard_provider_failure(evaluation: dict[str, Any]) -> bool:

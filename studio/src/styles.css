@@ -27,10 +27,11 @@ button {
 
 .appShell {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 380px;
+  grid-template-columns: 260px minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
 }
+
 
 .sidebar {
   background: #181c1f;
@@ -77,9 +78,53 @@ button {
 }
 
 .newButton,
-.session.active,
-.session:hover {
+.sessionRow.active,
+.sessionRow:hover {
   background: #283139;
+}
+
+.sessionRow {
+  align-items: center;
+  border-radius: 7px;
+  display: flex;
+  gap: 4px;
+}
+
+.sessionRow .session {
+  flex: 1;
+  min-width: 0;
+}
+
+.sessionRow .session span,
+.sessionRow .session small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionDelete {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #8f9ba5;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  margin-right: 4px;
+  opacity: 0;
+  width: 30px;
+}
+
+.sessionRow:hover .sessionDelete,
+.sessionRow.active .sessionDelete,
+.sessionDelete:focus-visible {
+  opacity: 1;
+}
+
+.sessionDelete:hover {
+  background: #3a2528;
+  color: #ff9aa8;
 }
 
 .sideSection,
@@ -190,7 +235,7 @@ h2 {
   gap: 10px;
 }
 
-.topActions span {
+.topActions .routePill {
   align-items: center;
   background: #1e252b;
   border: 1px solid #313b44;
@@ -680,6 +725,10 @@ h2 {
   padding: 9px 13px 6px;
 }
 
+.turnUserBubble.optimistic {
+  opacity: 0.82;
+}
+
 .turnUserBubble p {
   color: #d4eaf5;
   font-size: 14px;
@@ -741,6 +790,53 @@ h2 {
   font-size: 13px;
   gap: 8px;
   padding: 4px 8px;
+}
+
+.turnWaiting {
+  align-items: center;
+  background: #0d1419;
+  border: 1px solid #1a3348;
+  border-radius: 4px 12px 12px 12px;
+  color: #9fb4c4;
+  display: inline-flex;
+  gap: 8px;
+  max-width: fit-content;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.turnWaiting strong {
+  color: #d5e8f2;
+  font-size: 13px;
+}
+
+.turnWaiting small {
+  color: #6f8491;
+  font-size: 12px;
+  min-width: 24px;
+}
+
+.waitingDots {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.waitingDots i {
+  animation: pulse 1.2s ease-in-out infinite;
+  background: #3a9ec8;
+  border-radius: 50%;
+  display: block;
+  height: 4px;
+  width: 4px;
+}
+
+.waitingDots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.waitingDots i:nth-child(3) {
+  animation-delay: 0.36s;
 }
 
 /* ── LiveStream: real-time output while turn is running ─────────────────── */
@@ -903,12 +999,53 @@ h2 {
   word-break: break-word;
 }
 
+.chatStreamPreview {
+  background: #10171d;
+  border: 1px solid #1d3a52;
+  border-radius: 4px 14px 14px 14px;
+  display: grid;
+  gap: 8px;
+  max-width: min(92%, 860px);
+  padding: 11px 13px;
+}
+
+.chatStreamHeader {
+  align-items: center;
+  color: #8bc8e8;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.chatStreamHeader strong {
+  color: #d8eef6;
+}
+
+.chatStreamHeader span {
+  color: #6e8391;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.chatStreamPreview pre,
+.chatStreamPreview p {
+  color: #c8d6df;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ── Asteria response card */
 .turnFinal {
   background: #141a20;
   border: 1px solid #2a3a46;
   border-radius: 4px 14px 14px 14px;
-  max-width: 92%;
+  max-width: min(92%, 860px);
   padding: 12px 14px;
 }
 
@@ -1309,7 +1446,7 @@ h2 {
   border-top: 1px solid #252b30;
   display: grid;
   gap: 10px;
-  padding: 14px 22px 18px;
+  padding: 10px 16px 12px;
   transition: background 0.15s;
 }
 
@@ -1318,13 +1455,18 @@ h2 {
   border-top-color: #1e3a48;
 }
 
+.composer.autoMode {
+  background: linear-gradient(180deg, #11161b 0%, #111518 100%);
+  border-top-color: #2f4c6a;
+}
+
 .composer textarea {
   background: #171b1f;
   border: 1px solid #364149;
   border-radius: 7px;
   color: #eef2f4;
-  min-height: 72px;
-  padding: 10px 12px;
+  min-height: 54px;
+  padding: 9px 12px;
   resize: vertical;
 }
 
@@ -1333,11 +1475,63 @@ h2 {
   min-height: 52px;
 }
 
+.composer.autoMode textarea {
+  border-color: #2e5b83;
+}
+
 .composerBar {
   align-items: center;
   display: flex;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
+}
+
+.modeControls {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.modeHint {
+  color: #8fa3b3;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.advancedModes {
+  max-width: 100%;
+}
+
+
+.advancedModeDetails {
+  color: #8fa3b3;
+  font-size: 12px;
+  position: relative;
+}
+
+.advancedModeDetails summary {
+  border: 1px solid #303a42;
+  border-radius: 999px;
+  cursor: pointer;
+  list-style: none;
+  padding: 6px 10px;
+  user-select: none;
+}
+
+.advancedModeDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.advancedModeDetails[open] summary {
+  background: #1e252b;
+  color: #eaf2f7;
+}
+
+.advancedModeDetails .segmented {
+  margin-top: 6px;
 }
 
 .segmented {
@@ -1353,7 +1547,8 @@ h2 {
   border: 0;
   color: #aeb8bf;
   min-height: 34px;
-  padding: 0 11px;
+  font-size: 12px;
+  padding: 0 9px;
 }
 
 .segmented button.active {
@@ -1365,6 +1560,11 @@ h2 {
 .composer.chatMode .segmented button.active {
   background: #1b4a5a;
   color: #7dd8f0;
+}
+
+.composer.autoMode .segmented button.active {
+  background: #2e7bb8;
+  color: #f2f7fb;
 }
 
 .composerBar select,
@@ -1403,6 +1603,100 @@ h2 {
   display: grid;
   gap: 10px;
   padding: 12px;
+}
+
+.opsIntro {
+  background: linear-gradient(180deg, #17202a, #15191d) !important;
+  border-color: #31506b !important;
+}
+
+.opsIntro h2,
+.debugAgentHeader h2 {
+  margin: 0;
+}
+
+.opsIntro p:not(.eyebrow),
+.debugAgentHeader p,
+.debugAgentNote {
+  color: #9aa6af;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.debugAgentCard {
+  border-color: #3d4d5c !important;
+}
+
+.debugAgentHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+}
+
+.debugAgentIcon {
+  align-items: center;
+  background: #17314a;
+  border: 1px solid #2e7bb8;
+  border-radius: 7px;
+  color: #d9efff;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.debugAgentHints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.debugAgentHints button {
+  background: #111820;
+  border: 1px solid #303a42;
+  border-radius: 999px;
+  color: #c8d0d6;
+  font-size: 11px;
+  padding: 5px 8px;
+}
+
+.debugAgentHints button:hover {
+  border-color: #2e7bb8;
+  color: #eef8ff;
+}
+
+.debugAgentComposer {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.debugAgentComposer textarea {
+  background: #101417;
+  border: 1px solid #303a42;
+  border-radius: 7px;
+  color: #eef2f4;
+  min-height: 56px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.debugAgentComposer button {
+  align-items: center;
+  align-self: stretch;
+  background: #1e252b;
+  border: 1px solid #313b44;
+  border-radius: 7px;
+  color: #9aa6af;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.debugAgentComposer button:hover {
+  background: #244d68;
+  color: #f2f7fb;
 }
 
 .detail,
@@ -1471,6 +1765,18 @@ h2 {
   color: #9aa6af;
   display: block;
   margin-bottom: 5px;
+}
+
+
+.intentAudit {
+  display: grid;
+  gap: 9px;
+}
+
+.intentAuditGrid {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .recordList details {
@@ -1746,9 +2052,15 @@ h2 {
     padding-left: 12px;
   }
 
+  .modeControls,
   .segmented,
   .composerBar select,
   .composerBar > button {
     width: 100%;
+  }
+
+  .modeControls {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

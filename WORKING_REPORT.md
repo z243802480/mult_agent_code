@@ -1,3 +1,357 @@
+## 2026-05-24 13:40 CST - ?? model-check/status/review ????
+
+### ??????
+- ? `docs/zh/??????.md` 10.2 ? 4 ????? `model-check`?`status`?`review` ????? route readiness ??????????????????????????
+
+### ????????
+- ? `route_resolver.py` ????? `route_readiness_for_tiers` ? `route_readiness_from_records`?`model-check`?`status/sessions`?`review` ???????`status/summary/routes/blockers/current_blocker/recommended_next_command`?
+
+### ????????
+- `src/asteria_runtime/models/route_resolver.py`
+- `src/asteria_runtime/commands/model_check_command.py`
+- `src/asteria_runtime/commands/sessions_command.py`
+- `src/asteria_runtime/commands/review_command.py`
+- `tests/unit/test_model_check_command.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `route_resolver.py`????? route readiness ??????? status/review/model-check ??? route blocker ????
+- `model_check_command.py`?`to_dict()` ???? `route_readiness`???????????? blocker???????? provider client ???????????
+- `sessions_command.py`?status ? route readiness ???? resolver ???????? `model_route_resolutions.jsonl` ?????????
+- `review_command.py`?review ? route readiness ???? resolver ?????? model-check/status ???????
+- `test_model_check_command.py`??? model-check ??? status/review ????????
+
+### ????
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py::test_status_reports_blocked_model_route_readiness tests/unit/test_user_workflow_loop.py::test_review_report_includes_model_route_readiness_blocker -q`?14 passed?
+- `ruff check src/asteria_runtime/models/route_resolver.py src/asteria_runtime/commands/model_check_command.py src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/review_command.py tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py`?All checks passed?
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`?78 passed?
+
+### ?????
+- `goal` ??????? bounded loop??????? plan/start ???
+- route readiness snapshot ????? model_profiles/env ??????? runtime profile mounted ??? `model_route_resolutions.jsonl` ????????
+
+### ???????????????
+- ??? 10.3 ???? Goal loop?? `goal` ??? plan ?????? bounded `execute -> status/review` ????????/??/??????? blocker?
+
+### ??????????
+- ????????? `model-check/status/review` ??????????????????????
+
+## 2026-05-24 13:18 CST - ???? Route Readiness ?? Review Evidence
+
+### ??????
+- ? `docs/zh/??????.md` 10.2 P1 ?????? `review` ??????????? route readiness?????? status ????
+
+### ????????
+- ReviewCommand ?????????????? review context?eval_report ? `trajectory_eval.route_readiness`??? `review_report.md` ??? ?Model Route Readiness? ?????????? Blocking Reasons ? Evidence Chain?
+
+### ????????
+- `src/asteria_runtime/commands/review_command.py`
+- `tests/unit/test_user_workflow_loop.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `review_command.py`????? run ? `model_profiles.jsonl`???? route resolver ???? provider/model ?????????? review context??? eval_report ????? review report?
+- `test_user_workflow_loop.py`?????????? strong route ? API key??? review report ???? route blocked????? evidence?
+
+### ????
+- `pytest tests/unit/test_user_workflow_loop.py::test_review_report_includes_model_route_readiness_blocker -q`?1 passed?
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py::test_status_reports_blocked_model_route_readiness tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py -q`?21 passed?
+- `ruff check src/asteria_runtime/commands/review_command.py tests/unit/test_user_workflow_loop.py src/asteria_runtime/commands/status_command.py src/asteria_runtime/commands/sessions_command.py`?All checks passed?
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`?66 passed?
+
+### ?????
+- `model-check` ? status/review ????????????????? resolver ????
+- `goal` ??? plan-only ????? bounded loop?
+- route readiness ???? model_profiles ???????????????? resolution snapshot????????????????
+
+### ???????????????
+- ??? 10.2 ? 4 ???? `model-check` ? status/review ? route readiness ??????????? blocker ?????
+
+### ??????????
+- ?? review report ????????????????????????????????????????????
+
+## 2026-05-24 12:58 CST - ??????????? Status ?????
+
+### ??????
+- ? `docs/zh/??????.md` 10.2 P1 ????????????? route resolution ??? runtime profile ??? `status/status --json` ???????
+
+### ????????
+- `status --json` ???? `route_readiness`?`status` ????????????provider/model???????????????????
+
+### ????????
+- `src/asteria_runtime/commands/sessions_command.py`
+- `src/asteria_runtime/commands/status_command.py`
+- `tests/unit/test_control_surface_commands.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `sessions_command.py`????? run ? `model_profiles.jsonl` ? `model_route_resolutions.jsonl`??? `route_readiness`?????????? blockers?
+- `status_command.py`?? JSON stable fields ???????? `route_readiness`?????????? `current_blocker` ?????? `model-check` ?????
+- `test_control_surface_commands.py`??? status ????????? JSON ???workflow_state?current_blocker ??????
+
+### ????
+- `pytest tests/unit/test_control_surface_commands.py::test_status_reports_blocked_model_route_readiness -q`?1 passed?
+- `pytest tests/unit/test_control_surface_commands.py::test_status_reports_uninitialized_workspace tests/unit/test_control_surface_commands.py::test_status_reports_initialized_workspace_without_sessions tests/unit/test_control_surface_commands.py::test_status_recommends_review_after_completed_done_tasks tests/unit/test_control_surface_commands.py::test_status_recommends_accept_after_reviewed_pass tests/unit/test_control_surface_commands.py::test_status_reports_blocked_model_route_readiness tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py -q`?22 passed?
+- `ruff check src/asteria_runtime/commands/status_command.py src/asteria_runtime/commands/sessions_command.py tests/unit/test_control_surface_commands.py src/asteria_runtime/models/route_resolver.py src/asteria_runtime/core/runtime_profile_builder.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py`?All checks passed?
+- `pytest tests/unit/test_control_surface_commands.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py -q`?65 passed?
+
+### ?????
+- `review` ???? route readiness ???? review evidence ???
+- `model-check` ? status ??? resolver ????????????????????
+- `goal` ???????? plan????? bounded loop?
+
+### ???????????????
+- ??? 10.2 ???? route readiness ?? review evidence??? review ??????????????????? generic failure?
+
+### ??????????
+- ?? status ??????????????????????????????????????????
+
+## 2026-05-24 12:34 CST - ??????? Provider/Model Route Resolver
+
+### ??????
+- ??????????????? `docs/zh/??????.md` ????????? P0 ?????? provider/model route resolver??? runtime profile ?????????
+
+### ????????
+- ???? `resolve_model_route(tier)`?RuntimeProfileBuilder ???? selected tier ??? provider/model/source/configured/missing/next_action???? `ModelProfile` ? runtime context?
+
+### ????????
+- `docs/zh/??????.md`
+- `src/asteria_runtime/models/route_resolver.py`
+- `src/asteria_runtime/core/runtime_profile_builder.py`
+- `tests/unit/test_runtime_profiles.py`
+- `tests/unit/test_model_routing.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `docs/zh/??????.md`??? P0/P1/P2 ????????????????????? provider route resolver?status ??? goal loop ?????
+- `route_resolver.py`????? route diagnostics/env/local route config ??????? route resolution ?????? next_action?
+- `runtime_profile_builder.py`?? `cheap/medium/strong` ? selected tier ????? provider/model?????? `runtime` + `medium-route` ??????? `model_route_resolution` ?? runtime context ???? status/review ???
+- `test_runtime_profiles.py`??? resolved model route ?? ModelProfile?runtime context??????????? route ???
+- `test_model_routing.py`????? API key ? resolver ?????????? missing ?????????
+
+### ????
+- `pytest tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py -q`?17 passed?
+- `ruff check src/asteria_runtime/models/route_resolver.py src/asteria_runtime/core/runtime_profile_builder.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py src/asteria_runtime/core/run_config.py tests/unit/test_run_config.py`?All checks passed?
+- `pytest tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py -q`?32 passed?
+
+### ?????
+- `status/review` ???? `model_route_resolution` ??????? blocker?
+- provider route resolver ???? env/local ?????????? `.asteria` route ???
+- `goal` ???????? loop????????????????????
+
+### ???????????????
+- P1?? `model_route_resolution` ?? `status --json/status`?? selected route ???????????????????????
+
+### ??????????
+- ???????????????????? + ???? + ???? goal loop????????? control surface?
+
+## 2026-05-24 12:08 CST - Claude-style ??????
+
+### ??????
+- ???? `claude_code` ?????? + ????? + agent/task ?? + ????????????? `model_strategy` ???????? purpose->tier ??????
+
+### ????????
+- ? `quality/economy/local/auto` ???????????? run-level `model_strategy_profile` ???RuntimeProfileBuilder ??? ModelProfile ??????????? hint???/???? capability feedback ???? tier?
+
+### ????????
+- `docs/zh/??????.md`
+- `schemas/run_config.schema.json`
+- `src/asteria_runtime/core/run_config.py`
+- `src/asteria_runtime/core/runtime_profile_builder.py`
+- `tests/unit/test_run_config.py`
+- `tests/unit/test_runtime_profiles.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `docs/zh/??????.md`??? Claude-style ?????????????????????????????????????/???
+- `schemas/run_config.schema.json`?? `model_strategy_profile` ????? schema??? `model_routing_overrides` ??????????
+- `src/asteria_runtime/core/run_config.py`???? `model_strategy` ???? `model_routing_overrides`?????????? profile?
+- `src/asteria_runtime/core/runtime_profile_builder.py`??? `model_selection` ??????? hint ????????? tier????????? capability feedback????????? runtime context?
+- `tests/unit/test_run_config.py`????????? clobber ?????????? profile?
+- `tests/unit/test_runtime_profiles.py`??? quality ?????????????? task model_tier ??? economy ???
+
+### ????
+- `pytest tests/unit/test_run_config.py tests/unit/test_runtime_profiles.py -q`?9 passed?
+- `ruff check src/asteria_runtime/core/run_config.py src/asteria_runtime/core/runtime_profile_builder.py tests/unit/test_run_config.py tests/unit/test_runtime_profiles.py`?All checks passed?
+- `pytest tests/unit/test_run_config.py tests/unit/test_runtime_profiles.py tests/unit/test_cli.py tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py -q`?24 passed?
+
+### ?????
+- ????? provider route resolver?`cheap/medium/strong` ?????? runtime route ???
+- `local` ??????????????? provider route???????????????? local tier?
+- ?????????? `model_selection`?????? task shape ? capability feedback?
+
+### ???????????????
+- ?? provider/model route resolver ?????????? `cheap/medium/strong` ??? provider/model ??????????????????????
+
+### ??????????
+- ?? `model_strategy_profile` ???????????????????? hint/????/???????????????????????
+
+## 2026-05-24 11:44 CST - goal ???????????
+
+### ??????
+- ??????????? `goal/plan` ?????????????????????????????? CLI ???
+
+### ????????
+- ? `docs/zh/??????.md` ??? 9 ???????? run_config??????effective policy ?????
+- ?? `run_config` schema ?????/??/?????
+- `PlanCommand` ?? run ??? `run_config.json`??????? effective policy?
+- `RunCommand` ? `goal` ??? `permission_level/model_strategy` ??? planning ???
+- `ExecuteCommand` ? `ReviewCommand` ???? run-level effective policy?????????????????????
+
+### ????????
+- `docs/zh/??????.md`
+- `schemas/run_config.schema.json`
+- `src/asteria_runtime/core/run_config.py`
+- `src/asteria_runtime/commands/plan_command.py`
+- `src/asteria_runtime/commands/run_command.py`
+- `src/asteria_runtime/commands/execute_command.py`
+- `src/asteria_runtime/commands/review_command.py`
+- `src/asteria_runtime/cli.py`
+- `tests/unit/test_run_config.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `run_config.schema.json` / `run_config.py`????????????? policy/runtime ??????
+- `plan_command.py`???? goal ?????????????? run ????????????
+- `run_command.py`?`goal` ?????????????????? run ???
+- `execute_command.py` / `review_command.py`??????????????????????????? effective policy?
+- `test_run_config.py`??????????/????????????? CLI?
+
+### ????
+- `pytest tests/unit/test_run_config.py -q`?2 passed?
+- `ruff check src/asteria_runtime/core/run_config.py src/asteria_runtime/commands/plan_command.py src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/execute_command.py src/asteria_runtime/commands/review_command.py src/asteria_runtime/cli.py tests/unit/test_run_config.py`?All checks passed?
+- `pytest tests/unit/test_run_config.py tests/unit/test_cli.py::test_top_level_help_groups_command_surface tests/unit/test_cli.py::test_user_mode_help_explains_permission_and_model_strategy tests/unit/test_cli.py::test_start_workflow_commands_keep_plain_and_slash_forms tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py -q`?9 passed?
+
+### ?????
+- RuntimeProfileBuilder ???? effective policy?? model tier ??????? task_kind ? capability feedback ???????? `policy["model_routing"]` ?????????
+- ???????? policy?? ToolPermissionPolicy/RuntimeRequestPolicy ? `manual/autopilot` ????????????????
+
+### ???????????????
+- ? RuntimeProfileBuilder ??? tier ?????? effective `model_routing`??? runtime_profiles/model_profiles ??? `quality/economy/local` ?????
+
+### ??????????
+- ?? run_config ?????????`ask -> manual`?`balanced -> balanced`?`auto -> autopilot`??? `quality/economy/local` ????????????????
+
+## 2026-05-24 11:20 CST - ??????????????
+
+### ??????
+- ???????????????????? `goal / plan / chat` ??????????????????????????? runtime ???????/?????
+
+### ????????
+- ?? `docs/zh/??????.md`???????`goal` ????????`plan` ???????`chat` ?????
+- CLI ?? help ? Start ???? `goal / plan / chat`?`run/status/review/accept` ??? Advanced?
+- `run` ?? `goal`/`/goal` alias??????????????? `--permission-level` ? `--model-strategy` ?????
+- `plan` ?????????????????/????????????
+- ?? `chat` ????????????????????????????????????????????????????
+
+### ????????
+- `docs/zh/??????.md`
+- `src/asteria_runtime/cli.py`
+- `src/asteria_runtime/commands/chat_command.py`
+- `tests/unit/test_cli.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `??????.md`???????? source-of-truth???????? runtime phase ??????????
+- `cli.py`??????????????????????????????
+- `chat_command.py`?????????????????????????/??/????????
+- `test_cli.py`??? help ? alias ????????????
+- `WORKING_REPORT.md`???????????????
+
+### ????
+- `python -m asteria_runtime --help`?Start ??? `goal / plan / chat`?
+- `python -m asteria_runtime chat "hello" --root H:\mult_agent_code\_tmp_no_workspace --json`????? workspace ????? JSON ???
+- `pytest tests/unit/test_cli.py::test_top_level_help_groups_command_surface tests/unit/test_cli.py::test_user_mode_help_explains_permission_and_model_strategy tests/unit/test_cli.py::test_start_workflow_commands_keep_plain_and_slash_forms -q`?3 passed?
+- `ruff check src/asteria_runtime/cli.py src/asteria_runtime/commands/chat_command.py tests/unit/test_cli.py`?All checks passed?
+- `pytest tests/unit/test_cli.py::test_top_level_help_groups_command_surface tests/unit/test_cli.py::test_user_mode_help_explains_permission_and_model_strategy tests/unit/test_cli.py::test_start_workflow_commands_keep_plain_and_slash_forms tests/unit/test_accept_command.py tests/unit/test_user_workflow_loop.py -q`?7 passed?
+
+### ?????
+- `goal` ????? `RunCommand`?????/??????? CLI ????????? policy override ? runtime profile?
+- `plan` ?????? `.asteria/runs/<id>` ?? artifact?????????????????????????????????
+- `chat` ????????????????????? fallback ??????????????
+
+### ???????????????
+- ? `goal --permission-level/--model-strategy` ??????? run ? RuntimeProfile/Policy override?????????????? CLI ???
+
+### ??????????
+- ??????????????????????????????? `goal / plan / chat`??????? `ask/balanced/auto` ????? `auto/quality/economy/local` ???????
+
+## 2026-05-24 10:52 CST - Review/accept ?????????
+
+### ??????
+- ?? Claude-style ??????? `review` / `accept` ???????????? blocked??????????????????????
+
+### ????????
+- `ReviewResult` ????? `to_dict()`?`primary_blocker`?`next_actions`?`recommended_next_command`?review partial/fail ???????? debug/replan/decide?pass ??? accept?
+- `AcceptResult` ?? `primary_blocker` ? `recommended_next_command`?accept blocked ????????????????? CLI?
+- ? review partial ? accept blocked ????????????????????? blocked?
+
+### ????????
+- `src/asteria_runtime/commands/review_command.py`
+- `src/asteria_runtime/commands/accept_command.py`
+- `tests/unit/test_user_workflow_loop.py`
+- `tests/unit/test_accept_command.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `review_command.py`?? review agent ? verdict/reason ????????????????????? review -> repair/decide/accept ??????
+- `accept_command.py`?accept ????????blocked ??????????????????????????????
+- `test_user_workflow_loop.py`?? review partial ????? primary blocker ? recommended command?
+- `test_accept_command.py`?? accept blocked ????? JSON/text ????????????
+- `WORKING_REPORT.md`?????????????????
+
+### ????
+- `pytest tests/unit/test_accept_command.py tests/unit/test_user_workflow_loop.py -q`?4 passed?
+- `ruff check src/asteria_runtime/commands/accept_command.py src/asteria_runtime/commands/review_command.py src/asteria_runtime/commands/status_command.py tests/unit/test_accept_command.py tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py`?All checks passed?
+- `pytest tests/unit/test_accept_command.py tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py::test_status_reports_uninitialized_workspace tests/unit/test_control_surface_commands.py::test_status_recommends_review_after_completed_done_tasks tests/unit/test_control_surface_commands.py::test_status_recommends_accept_after_reviewed_pass tests/unit/test_control_surface_commands.py::test_status_has_no_next_command_after_acceptance -q`?8 passed?
+
+### ?????
+- `ReviewResult.to_dict()` ???????????? CLI ???? review `--json` ???????????????????
+- review/accept ? recommended command ??????????review failure ?? debug?decision ?? decide?promotion-only accept failure ?? promotions list?
+
+### ???????????????
+- ?? CLI ??? `review/status/accept --json` ?????????????? CLI ?????????? CLI-level workflow ???
+
+### ??????????
+- ?? review/accept ????????????????partial/fail ??? `debug` ??????????? evidence ?????? `replan` / `decide` / `run`?
+
+## 2026-05-24 10:34 CST - Claude-style run/status/review/accept ????
+
+### ??????
+- ?????????? control surface ?????????`run -> status -> review -> accept`?????????????status ??????/??/?????/??? review/accept??? workflow ???? review ?? evidence ? accept ????
+
+### ????????
+- `status --json` ?????????`workflow_state`?`current_phase`?`current_blocker`?`can_review`?`can_accept`?
+- `status` ?????? Workflow?Current phase?Can review?Can accept?Current blocker?? blocked/ready ????????????
+- ??????? unit workflow ???????? workspace??? completed run?status ready_for_review?review ?? task_execution_evidence?status ready_for_accept?accept accepted??? status accepted?
+
+### ????????
+- `src/asteria_runtime/commands/status_command.py`
+- `tests/unit/test_control_surface_commands.py`
+- `tests/unit/test_user_workflow_loop.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `status_command.py`???? session context ????????? workflow ???????? blocked/completed ??????????????
+- `test_control_surface_commands.py`??? status JSON/text ??????????????????? control surface?
+- `test_user_workflow_loop.py`?? fake review model ?? ReviewCommand ??? task execution evidence ?? review context???? review pass ? accept ???????????
+- `WORKING_REPORT.md`?????????????????
+
+### ????
+- `pytest tests/unit/test_control_surface_commands.py::test_status_reports_uninitialized_workspace tests/unit/test_control_surface_commands.py::test_status_recommends_review_after_completed_done_tasks tests/unit/test_control_surface_commands.py::test_status_recommends_accept_after_reviewed_pass tests/unit/test_control_surface_commands.py::test_status_has_no_next_command_after_acceptance tests/unit/test_user_workflow_loop.py -q`?5 passed?
+- `ruff check src/asteria_runtime/commands/status_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py`?All checks passed?
+- `pytest tests/unit/test_accept_command.py tests/unit/test_user_workflow_loop.py -q`?3 passed?
+
+### ?????
+- ?? workflow ?????????? run???????? `/run` ?????/???????????????????????? review/accept ?????
+- `review_command.py` ????? progress ????????????????????????? UTF-8 ????????
+
+### ???????????????
+- ?? `review` / `accept` ? CLI ???????? review partial/fail ? accept blocked ?????????????????????????????????
+
+### ??????????
+- ?? `status --json` ?????????????`workflow_state` ???`can_review/can_accept` ????????????????? `status` ????????????? `review` ?? `accept`?
+
 ## 2026-05-24 07:52 CST - Gray-run persisted summary control_surface
 
 ### ??????
@@ -927,3 +1281,2153 @@
 
 ### Suggested review focus for tomorrow
 - Review whether `control_surface` should remain a shared embedded metadata object or become part of each command's full JSON schema later.
+
+
+## 2026-05-24 13:08:25 +08:00 development iteration
+
+### Iteration goal
+- Follow `docs/zh/??????.md` section 10.3 and make `goal`/`run` present the bounded loop result as a user-facing workflow state instead of only an internal step list.
+
+### Substantive artifact change this round
+- `RunResult` now carries `workflow_state`, `current_phase`, `current_blocker`, `recommended_next_command`, and `next_actions` from `status`, so a completed `goal` run tells the user whether to review, accept, debug, or resolve a blocker.
+- `RunResult.to_text()` now highlights workflow/blocker/next command before loop steps, matching the Claude-style result-oriented loop direction.
+
+### Modified files
+- `src/asteria_runtime/commands/run_command.py`: enriches run results from status payload and prints user-oriented next actions.
+- `tests/unit/test_user_workflow_loop.py`: adds coverage that a bounded goal/run loop surfaces `ready_for_review` and `asteria review` after a completed run.
+- `WORKING_REPORT.md`: records this implementation, validation, open issues, and next target.
+
+### Reasons
+- The plan says users should see phase progress, current blocker, and next action, not just internal command lists.
+- This keeps `goal -> status -> review -> accept` aligned around one shared workflow contract instead of adding another hardcoded route table.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_surfaces_user_workflow_state -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py -q`: passed, 48 passed.
+
+### DecisionPoint / unresolved issues
+- `_status_payload` currently enriches only the current session; if a non-current `run_id` is resumed later, a future iteration should either make `StatusCommand` accept an explicit session id or build the status result from `SessionsCommand` context.
+- This round improves the user-facing loop result, but does not yet auto-run `accept`; acceptance remains an explicit user command as planned.
+
+### Suggested next medium-granularity target
+- Implement explicit-session status enrichment for resumed runs, then add a CLI workflow test for `goal` output text showing `Workflow`, `Current phase`, and `Recommended next command`.
+
+### Suggested review focus for tomorrow
+- Review whether `goal` should stop at `ready_for_review` by default or optionally continue through `review` automatically when permission/model policy allows it.
+
+
+## 2026-05-24 13:14:50 +08:00 development iteration
+
+### Iteration goal
+- Continue section 10.3 of `docs/zh/??????.md` by making resumed/explicit `goal` runs reliably report the correct user workflow state and verifying CLI output shows that state.
+
+### Substantive artifact change this round
+- `RunCommand` now falls back to explicit-session context via `SessionsCommand` + `StatusResult` when the target run is not the current session.
+- `goal` CLI output is covered so user-visible text includes workflow state, current phase, recommended command, and loop steps.
+
+### Modified files
+- `src/asteria_runtime/commands/run_command.py`: enriches `RunResult` from explicit session status when current-session status does not match the target run id.
+- `tests/unit/test_user_workflow_loop.py`: covers explicit non-current session run-result enrichment.
+- `tests/unit/test_cli.py`: covers `asteria goal ...` output shape for workflow/phase/next command.
+- `WORKING_REPORT.md`: records this iteration, verification, and next target.
+
+### Reasons
+- Long-running `goal` can resume older runs; its result should not silently describe the wrong current session.
+- The plan requires ordinary users to see current phase/blocker/next action, so the CLI text path needed an executable check, not just dataclass coverage.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_uses_explicit_session_status_when_not_current -q`: passed, 1 passed.
+- `pytest tests/unit/test_cli.py::test_goal_cli_output_surfaces_workflow_state -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_control_surface_commands.py -q`: passed, 50 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 81 passed.
+
+### DecisionPoint / unresolved issues
+- `goal` still stops before explicit `accept`; whether review/accept should be auto-advanced depends on permission policy and should remain a product decision.
+- The current CLI test uses a patched `RunCommand.run` to avoid expensive real planning/execution; a future integration test can use a deterministic fake model client if the CLI supports injection.
+
+### Suggested next medium-granularity target
+- Add a bounded `goal` loop summary object to JSON/report artifacts, including iteration count, stop reason, latest evidence pointer, and recommended next command, so Studio/automation can display progress without parsing text.
+
+### Suggested review focus for tomorrow
+- Review whether `goal` should produce a machine-readable run summary artifact under `.asteria/runs/<id>/run_loop_summary.json` as the stable UI contract.
+
+
+## 2026-05-24 13:21:54 +08:00 development iteration
+
+### Iteration goal
+- Add a machine-readable `run_loop_summary.json` for the goal loop so Studio/automation can read progress without parsing CLI text.
+
+### Substantive artifact change this round
+- `RunCommand` now writes `.asteria/runs/<run_id>/run_loop_summary.json` at the end of a bounded run loop.
+- The summary includes `iteration_count`, `stop_reason`, `latest_evidence`, `workflow_state`, `current_blocker`, and `recommended_next_command`.
+- Added schema validation for the new artifact.
+
+### Modified files
+- `schemas/run_loop_summary.schema.json`: new schema for the goal-loop summary artifact.
+- `src/asteria_runtime/commands/run_command.py`: writes the summary, returns its path in `RunResult`, and prints it in CLI text.
+- `tests/unit/test_user_workflow_loop.py`: validates summary content and schema for the user workflow loop.
+- `WORKING_REPORT.md`: records this iteration, validation, and next target.
+
+### Reasons
+- The user explicitly asked for a machine-readable summary for Studio/automation.
+- This supports the plan direction: users and UI should see phase, blocker, evidence, and next action as a product contract rather than scraping internal step text.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_surfaces_user_workflow_state -q`: passed, 1 passed.
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_uses_explicit_session_status_when_not_current tests/unit/test_cli.py::test_goal_cli_output_surfaces_workflow_state -q`: passed, 2 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_control_surface_commands.py -q`: passed, 50 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 81 passed.
+
+### DecisionPoint / unresolved issues
+- `stop_reason` is derived from loop step summaries. If future loops need stricter semantics, introduce explicit stop-reason state instead of inferring from steps.
+- `latest_evidence` currently points to the latest `task_execution_evidence.jsonl` item; future versions may add latest review/eval evidence if Studio needs it.
+
+### Suggested next medium-granularity target
+- Surface `run_loop_summary.json` from `status --json`/sessions context so Studio can discover it from one status call.
+
+### Suggested review focus for tomorrow
+- Review the `run_loop_summary.schema.json` field names as a stable UI contract before more clients depend on it.
+
+
+## 2026-05-24 13:24:44 +08:00 development iteration
+
+### Iteration goal
+- Expose `run_loop_summary.json` through `status --json` and `sessions --context` so Studio/automation can discover goal-loop progress with one control-surface call.
+
+### Substantive artifact change this round
+- Sessions context now includes both `run_loop_summary_path` and validated `run_loop_summary` content when the artifact exists.
+- Because `StatusCommand` is built from sessions context, `status --json` now exposes the same summary under `current_context`.
+- Human `sessions --context` text now includes the run loop summary path.
+
+### Modified files
+- `src/asteria_runtime/commands/sessions_command.py`: reads `run_loop_summary.json`, exposes path/content in context, and prints the path in text output.
+- `tests/unit/test_user_workflow_loop.py`: verifies both `status --json` payload and `sessions --context` share the same run-loop summary.
+- `WORKING_REPORT.md`: records this iteration, validation, and next target.
+
+### Reasons
+- Studio/automation should not parse CLI text or manually locate `.asteria/runs/<id>/run_loop_summary.json`.
+- Reusing sessions context keeps `status --json` and `sessions --context` aligned around one source of truth.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_status_and_sessions_context_expose_run_loop_summary -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/sessions_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py -q`: passed, 51 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 82 passed.
+
+### DecisionPoint / unresolved issues
+- `status --json` exposes the summary under `current_context`; if Studio needs a top-level alias such as `run_loop_summary`, that should be treated as a small additive contract decision.
+- Existing runs without `run_loop_summary.json` return `None` path/content rather than synthesizing a summary; this avoids inventing history.
+
+### Suggested next medium-granularity target
+- Add a top-level `status --json` stable field for `run_loop_summary` if Studio wants direct access without traversing `current_context`.
+
+### Suggested review focus for tomorrow
+- Review whether `current_context.run_loop_summary` is sufficient for Studio, or whether a top-level additive alias should be standardized now.
+
+
+## 2026-05-24 13:28:11 +08:00 development iteration
+
+### Iteration goal
+- Continue the user-workflow plan by making `status --json` expose `run_loop_summary` as a top-level stable control-surface field for Studio.
+
+### Substantive artifact change this round
+- `status --json` now includes top-level `run_loop_summary_path` and `run_loop_summary` fields while preserving the same data under `current_context`.
+- The status control-surface contract now lists both fields in `stable_fields`.
+
+### Modified files
+- `src/asteria_runtime/commands/status_command.py`: adds top-level summary fields and stable-field metadata.
+- `tests/unit/test_user_workflow_loop.py`: asserts status top-level summary and sessions context stay aligned.
+- `WORKING_REPORT.md`: records this iteration, verification, and next target.
+
+### Reasons
+- Studio/automation should be able to read the long-task goal-loop summary directly from one `status --json` call without traversing nested context.
+- This is additive and keeps compatibility with the previous `current_context` location.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_status_and_sessions_context_expose_run_loop_summary -q`: passed, 1 passed.
+- `pytest tests/unit/test_control_surface_commands.py::test_status_reports_uninitialized_workspace -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/status_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py -q`: passed, 51 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 82 passed.
+
+### DecisionPoint / unresolved issues
+- `run_loop_summary` is now a top-level additive status contract. Future breaking changes to its schema or field names should be treated as a DecisionPoint.
+- Old runs without a summary still return an empty top-level object and null path.
+
+### Suggested next medium-granularity target
+- Move section 10.4 forward: expose model-selection/capability feedback in the same user workflow surface, especially `model_selection.reason` and cheap/medium/strong pressure.
+
+### Suggested review focus for tomorrow
+- Review whether Studio wants `run_loop_summary` duplicated top-level and nested, or whether nested should remain an implementation detail only.
+
+
+## 2026-05-24 13:39:38 +08:00 development iteration
+
+### Iteration goal
+- Start section 10.4 by exposing model-selection reason, cheap/medium/strong pressure, and capability feedback in the user workflow surface.
+
+### Substantive artifact change this round
+- `RuntimeProfileBuilder` now records `tier_pressure` and structured `capability_feedback` alongside `model_selection.reason`.
+- `TaskExecutionEvidenceRecorder` persists the mounted task `model_selection` into task execution evidence.
+- Sessions context and `status --json` now expose the latest model selection as `model_selection`.
+
+### Modified files
+- `src/asteria_runtime/core/runtime_profile_builder.py`: adds model tier pressure and capability feedback summary to model selection.
+- `src/asteria_runtime/core/task_execution_evidence.py`: persists model selection into execution evidence action metadata.
+- `src/asteria_runtime/core/task_attempt_runner.py`: passes mounted runtime model selection into task evidence for success and blocked paths.
+- `src/asteria_runtime/commands/sessions_command.py`: extracts latest model selection from task execution evidence into session context.
+- `src/asteria_runtime/commands/status_command.py`: exposes top-level `model_selection` and adds it to status stable fields.
+- `tests/unit/test_runtime_profiles.py`: covers tier pressure and capability feedback decisions.
+- `tests/unit/test_user_workflow_loop.py`: covers status exposure of model selection reason/pressure/feedback.
+- `WORKING_REPORT.md`: records this iteration and verification.
+
+### Reasons
+- The plan requires model routing not to be a black box: users should see why a model tier was selected and whether capability feedback forced escalation.
+- Persisting selection into task evidence makes the decision auditable and lets Studio display it from `status --json` without reconstructing planner/runtime internals.
+
+### Test/build results
+- `pytest tests/unit/test_runtime_profiles.py::test_runtime_profile_builder_upgrades_weak_capability_route tests/unit/test_runtime_profiles.py::test_runtime_profile_builder_uses_strategy_bias_without_clobbering_routes tests/unit/test_user_workflow_loop.py::test_status_exposes_latest_model_selection_pressure_and_feedback -q`: passed after expectation update, 3 passed.
+- `ruff check src/asteria_runtime/core/runtime_profile_builder.py src/asteria_runtime/core/task_execution_evidence.py src/asteria_runtime/core/task_attempt_runner.py src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/status_command.py tests/unit/test_runtime_profiles.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_runtime_profiles.py tests/unit/test_user_workflow_loop.py -q`: passed, 15 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 83 passed.
+
+### DecisionPoint / unresolved issues
+- `model_selection` is currently persisted in task execution evidence, not in a dedicated JSONL artifact. If Studio needs historical model selection timelines independent of execution evidence, add a dedicated `model_selections.jsonl` schema later.
+- DebugCommand evidence does not yet receive a mounted `model_selection`; this round covers the main execute worker path and status extraction from task evidence.
+
+### Suggested next medium-granularity target
+- Add human `status` text lines summarizing model selection reason and tier pressure, so CLI users see the same routing rationale without using `--json`.
+
+### Suggested review focus for tomorrow
+- Review whether `tier_pressure.delta` should be relative to default tier, strategy tier, or both before depending on it in Studio visuals.
+
+
+## 2026-05-24 13:48:11 +08:00 development iteration
+
+### Iteration goal
+- Show model selection reason, tier pressure, and capability feedback in normal `status` text output, not only `status --json`.
+
+### Substantive artifact change this round
+- `status` text now includes a `Model selection` section with selected tier, purpose, reason, pressure direction/delta, capability feedback state, matched route, and first recommended action.
+
+### Modified files
+- `src/asteria_runtime/commands/status_command.py`: adds human-readable model selection summary lines.
+- `tests/unit/test_user_workflow_loop.py`: covers normal text output for reason, pressure, capability feedback, and matched route.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The plan asks for Claude-style transparency: normal users should understand why the runtime selected a model route without needing JSON.
+- This keeps the CLI and Studio surfaces aligned: JSON remains structured, text gives the same essential rationale.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_status_exposes_latest_model_selection_pressure_and_feedback -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/status_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 60 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 83 passed.
+
+### DecisionPoint / unresolved issues
+- The text currently shows only the first recommended capability action to keep `status` concise. If users need full guidance, add a verbose flag or expand `sessions --context`.
+- `DebugCommand` still does not persist mounted model selection into repair evidence; this is outside the main execute worker path and can be handled in a follow-up.
+
+### Suggested next medium-granularity target
+- Add `model_selection` to review evidence/report output so `review` explains whether the latest result was produced under an escalated or downgraded model route.
+
+### Suggested review focus for tomorrow
+- Review whether the text labels `pressure` and `capability feedback` are understandable for non-technical users, or should be renamed to `model route pressure` and `route health feedback`.
+
+
+## 2026-05-24 13:53:03 +08:00 development iteration
+
+### Iteration goal
+- Continue docs/zh user-interaction plan section 10.4 by making `review` consume and report latest `model_selection` rationale, not only `status`.
+
+### Substantive artifact change this round
+- Review context now carries latest execution `model_selection` at top level and inside trajectory context.
+- `eval_report.json` now embeds `trajectory_eval.model_selection` for durable machine-readable review evidence.
+- `review_report.md` now includes a human `Model Selection` section plus evidence-chain lines for selected tier, reason, tier pressure, and capability feedback.
+
+### Modified files
+- `src/asteria_runtime/commands/review_command.py`: extracts latest model selection from task execution evidence, passes it into reviewer context, eval report, markdown report, and human evidence chain.
+- `tests/unit/test_user_workflow_loop.py`: verifies review model receives model-selection context and review/eval reports expose reason, pressure, and capability feedback.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The user workflow should be outcome-oriented but auditable: when review judges a run, it should explain whether the artifacts came from an escalated/downgraded model route and why.
+- Studio/automation can now read `eval_report.json` for review-time model-selection rationale without parsing status text.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_run_status_review_accept_user_loop -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/review_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 60 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 83 passed.
+
+### DecisionPoint / unresolved issues
+- `review_report.md` currently shows the latest model selection only. If Studio needs a full per-task model route timeline, add a dedicated timeline or include multiple evidence entries.
+- `DebugCommand` repair evidence still does not persist a mounted `model_selection`; this remains a follow-up outside the main goal/run/review path.
+
+### Suggested next medium-granularity target
+- Continue section 10.4 by adding model-selection/routing rationale to `accept` or final handoff artifacts, so the accepted result carries the same audit trail as status/review.
+
+### Suggested review focus for tomorrow
+- Review whether `Model Selection` belongs in the main report body for normal users, or should be summarized as `Model route used` with detailed rationale in a collapsible/advanced section later.
+
+
+## 2026-05-24 13:56:26 +08:00 development iteration
+
+### Iteration goal
+- Carry the model-selection / route rationale audit chain into `accept` final handoff artifacts.
+
+### Substantive artifact change this round
+- `final_report.md` now includes a `Model Selection` section generated from the latest execution evidence or review eval fallback.
+- Accepted handoff now records selected tier, reason, tier pressure, capability feedback, and matched route, so users can audit why the accepted artifacts used that model route.
+
+### Modified files
+- `src/asteria_runtime/commands/run_command.py`: reads latest model selection and renders it in final reports used by goal/accept handoff.
+- `tests/unit/test_user_workflow_loop.py`: verifies the run -> status -> review -> accept loop carries model-selection rationale into the final report.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- `accept` is the user-visible closure point; the final handoff should not lose the routing rationale already visible in status/review.
+- This supports Studio/automation and human review by preserving model route auditability all the way to accepted output.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_run_status_review_accept_user_loop -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 62 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 83 passed.
+
+### DecisionPoint / unresolved issues
+- Final report currently records the latest model selection only. If a run uses mixed model routes across multiple tasks, a future report section should summarize per-tier/per-purpose counts.
+- The final report remains markdown-only; if Studio needs machine-readable final handoff metadata, add a sibling `final_report_summary.json` rather than parsing markdown.
+
+### Suggested next medium-granularity target
+- Add a machine-readable final handoff summary JSON that includes final status, review status, final report path, model_selection, blockers, and recommended next command.
+
+### Suggested review focus for tomorrow
+- Review whether accepted handoff should display model-selection rationale in the default final report or reserve full route details for an advanced/audit subsection.
+
+
+## 2026-05-24 14:01:31 +08:00 development iteration
+
+### Iteration goal
+- Add a machine-readable final handoff summary so Studio/automation can read accepted outcome and model route audit data without parsing markdown.
+
+### Substantive artifact change this round
+- Added `final_report_summary.json` with schema validation.
+- `goal`/`run` and `accept` finalization now write the summary next to `final_report.md`.
+- `sessions --context` and `status --json` expose `final_report_summary_path` and `final_report_summary`.
+
+### Modified files
+- `schemas/final_report_summary.schema.json`: defines durable machine-readable final handoff fields.
+- `src/asteria_runtime/commands/run_command.py`: writes final report summary with status, review status, final report path, model selection, blockers, next actions, and recommendation.
+- `src/asteria_runtime/commands/accept_command.py`: writes final summary after accept outcome is known.
+- `src/asteria_runtime/commands/sessions_command.py`: loads final summary into session context.
+- `src/asteria_runtime/commands/status_command.py`: exposes final summary in top-level status JSON stable fields.
+- `tests/unit/test_user_workflow_loop.py`: verifies accepted workflow writes/validates final summary and status exposes it.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The project direction favors product/user loop artifacts over control-surface-only output; accepted handoff should be readable by Studio and automations in one status call.
+- Keeping model route rationale in final summary preserves the audit chain from execution evidence -> review -> accept/final handoff.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_run_status_review_accept_user_loop -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/accept_command.py src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/status_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 62 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 83 passed.
+
+### DecisionPoint / unresolved issues
+- `final_report_summary.json` intentionally records latest `model_selection` only. A multi-task route timeline is still a future enhancement.
+- Summary is now exposed in `status --json`, but plain `status` text does not yet mention final summary path; add this only if users need it, to avoid clutter.
+
+### Suggested next medium-granularity target
+- Add final summary path/content to `AcceptResult.to_dict()` or accept text output, so direct `asteria accept --json` consumers do not need a separate status call.
+
+### Suggested review focus for tomorrow
+- Review final summary field names before Studio depends on them: especially `workflow_state`, `current_blocker`, `recommended_next_command`, and `model_selection`.
+
+
+## 2026-05-24 14:04:18 +08:00 development iteration
+
+### Iteration goal
+- Expose final handoff summary directly from `AcceptResult` so `asteria accept --json` consumers do not need a follow-up status call.
+
+### Substantive artifact change this round
+- `AcceptResult.to_dict()` now includes `final_report_summary_path` and `final_report_summary`.
+- `AcceptResult.to_text()` now prints the final summary path and concise model-selection rationale when available.
+- `AcceptCommand.run()` reads the validated final summary after writing it and returns it in the result object.
+
+### Modified files
+- `src/asteria_runtime/commands/accept_command.py`: adds final summary fields to accept result and text/json output.
+- `tests/unit/test_user_workflow_loop.py`: verifies accepted workflow exposes final summary path/content from direct accept result.
+- `tests/unit/test_accept_command.py`: verifies direct accept JSON/text outputs include final summary for accepted and blocked paths.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Direct `accept --json` is a natural Studio/automation integration point; requiring a second `status --json` call after accept is unnecessary friction.
+- Keeping final summary in the result object aligns accept text, accept JSON, status JSON, and sessions context around the same durable artifact.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_run_status_review_accept_user_loop tests/unit/test_accept_command.py -q`: passed, 3 passed.
+- `ruff check src/asteria_runtime/commands/accept_command.py tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 62 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 83 passed.
+
+### DecisionPoint / unresolved issues
+- Accept text prints a concise one-line model selection only. Full details remain in `final_report_summary` and `final_report.md` to avoid clutter.
+- `AcceptResult` now carries the full summary dict; if this becomes too large after future fields, consider a `--brief`/`--full` split for JSON output.
+
+### Suggested next medium-granularity target
+- Continue the Claude-style user loop by making `goal` automatically surface final summary path/content at completion, matching direct accept output.
+
+### Suggested review focus for tomorrow
+- Review whether `accept` JSON should include both absolute result paths and relative summary paths, or standardize on one path style before Studio depends on it.
+
+
+## 2026-05-24 14:08:45 +08:00 development iteration
+
+### Iteration goal
+- Continue the plan by surfacing final handoff summary directly from `goal`/`run` completion, and reassess remaining progress.
+
+### Substantive artifact change this round
+- `RunResult` now carries `final_report_summary_path` and `final_report_summary` like `AcceptResult`.
+- `RunResult.to_dict()` now provides machine-readable run completion output, including workflow state, next command, run loop summary path, final summary path/content, and loop steps.
+- `asteria goal/run --json` now prints `RunResult.to_dict()` so Studio/automation can read goal-loop completion without parsing text or making a second status call.
+
+### Modified files
+- `src/asteria_runtime/commands/run_command.py`: adds final summary fields and JSON result serialization for goal/run results.
+- `src/asteria_runtime/cli.py`: adds `--json` to goal/run and emits run result JSON.
+- `tests/unit/test_user_workflow_loop.py`: verifies goal run result exposes final summary path/content.
+- `tests/unit/test_cli.py`: verifies goal text still shows final summary and `goal --json` includes final summary content.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The user-facing goal loop should expose its durable completion artifact directly, matching the direct `accept --json` path.
+- This reduces control-surface friction: Studio and automations can call `goal --json` or `accept --json` and receive the same final handoff summary data.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_surfaces_user_workflow_state tests/unit/test_cli.py::test_goal_cli_output_surfaces_workflow_state tests/unit/test_cli.py::test_goal_cli_json_output_includes_final_summary -q`: passed, 3 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py src/asteria_runtime/cli.py tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 63 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 84 passed.
+
+### Current progress estimate
+- User-facing 3-mode surface (`goal/plan/chat`), permissions/model strategy config, dynamic model route resolver, status/review/accept/final summary audit chain: about 85% complete for the documented P0/P1/P2 CLI/runtime loop.
+- Remaining before this can be called product-complete for the current plan: about 15%.
+
+### Remaining gaps
+- Goal loop still needs a stronger automatic repair/accept policy boundary: when to auto-debug, when to auto-accept, and when to stop for DecisionPoint should be tightened and tested.
+- `plan` is read-only by intent, but its no-business-file-write guarantee should be covered by a stronger regression test.
+- `chat` remains a safe Q&A skeleton; it should better summarize current session/context without drifting into execution.
+- Model route audit currently records latest route, not a per-task/per-purpose route timeline.
+
+### Suggested next medium-granularity target
+- Add a bounded goal-loop policy test and implementation for the stop/continue decision: pass review -> recommend/optionally accept; partial/fail -> recommend debug/replan; protected/high-risk blocker -> DecisionPoint instead of looping.
+
+### Suggested review focus for tomorrow
+- Review whether the remaining 15% should prioritize automatic goal-loop accept/repair behavior or richer chat/session context, because both affect user experience but have different risk profiles.
+
+
+## 2026-05-24 14:16:22 +08:00 development iteration
+
+### Iteration goal
+- Productize the first slice of goal-loop automatic policy: decide when to auto-accept, stop for explicit accept, stop for repair, or stop for DecisionPoint.
+
+### Substantive artifact change this round
+- Goal loop now records a `goal-policy` step after review with one of: `auto_accept`, `stop_for_accept`, `stop_for_repair`, `stop_for_decision`, or `continue_repair`.
+- In `--permission-level auto`, a passed review with no pending/blocked promotions is accepted automatically via `AcceptCommand(skip_review=True, promote_all=False)`.
+- In `balanced`/`ask`, a passed review stops at `ready_for_accept` and recommends `asteria accept`.
+- Partial/failing review without follow-up capacity stops for repair and status recommends `debug`.
+- Pending DecisionPoint or budget decision stops instead of guessing.
+- Session recommendation now treats latest `eval_report` partial/fail as `debug`, avoiding the previous misleading `review` recommendation.
+
+### Modified files
+- `src/asteria_runtime/commands/run_command.py`: adds `_goal_loop_decision` and applies it after review.
+- `src/asteria_runtime/commands/sessions_command.py`: uses latest eval report to recommend `debug` for partial/fail reviews.
+- `tests/unit/test_user_workflow_loop.py`: covers auto-accept, explicit accept stop, and repair stop policies.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The documented user experience says ordinary users should be able to use only `goal`; internal review/accept/debug should become a product policy, not a required manual phase chain.
+- Auto-accept is intentionally limited to `permission_level=auto` and no promotion blockers, preserving safety for ask/balanced modes.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_auto_accepts_passed_review_in_auto_mode tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_stops_for_explicit_accept_in_balanced_mode tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_stops_for_repair_after_failed_review -q`: passed, 3 passed.
+- `ruff check src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/sessions_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_accept_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py tests/unit/test_runtime_profiles.py -q`: passed, 66 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 87 passed.
+
+### Current progress estimate
+- Documented `goal/plan/chat` + route transparency + status/review/accept/final summaries + first automatic goal policy: about 88% complete for the current plan.
+- Remaining before product-complete for this plan: about 12%.
+
+### DecisionPoint / unresolved issues
+- Auto-accept currently uses `promote_all=False` for safety; if product wants auto promotion under `auto`, that needs explicit approval because it can write candidate changes into the main workspace.
+- `continue_repair` currently relies on review-created follow-up tasks and the next bounded iteration; deeper debug/replan automation is still a follow-up.
+
+### Suggested next medium-granularity target
+- Strengthen `plan` read-only guarantees with regression tests that ensure plan mode writes only runtime metadata under `.asteria/` and never modifies user business files.
+
+### Suggested review focus for tomorrow
+- Review whether `permission_level=auto` should ever auto-promote candidate files during accept, or whether promotion should always remain explicit regardless of permission level.
+
+
+## 2026-05-24 14:19:06 +08:00 development iteration
+
+### Iteration goal
+- Strengthen the `plan` mode read-only guarantee with a regression test that protects user-authored workspace files.
+
+### Substantive artifact change this round
+- Added a `PlanCommand` regression test that creates representative business files, runs `mode="plan"`, and asserts every non-`.asteria/` file remains byte-for-byte unchanged.
+- The test also verifies plan artifacts are persisted under `.asteria/`, keeping runtime metadata separate from user project content.
+
+### Modified files
+- `tests/unit/test_run_config.py`: adds a non-runtime workspace snapshot helper and the plan read-only regression test.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The documented user model says `plan` is a read-only analysis mode; this must be protected by tests, not only by intent.
+- `plan` may write runtime metadata for auditability, but it must not create or modify user business files before the user chooses `goal`/execution.
+
+### Test/build results
+- `pytest tests/unit/test_run_config.py::test_plan_mode_does_not_modify_workspace_files_outside_runtime -q`: passed, 1 passed.
+- `ruff check tests/unit/test_run_config.py`: passed, All checks passed.
+- `pytest tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_user_workflow_loop.py -q`: passed, 26 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 88 passed.
+
+### Current progress estimate
+- Current documented `goal/plan/chat` + route transparency + automatic goal policy + plan read-only regression coverage: about 89% complete for the present plan.
+- Remaining before product-complete for this plan: about 11%.
+
+### DecisionPoint / unresolved issues
+- The test defines read-only as ?no writes outside `.asteria/`?; `plan` still refreshes `.asteria/tasks/backlog.json` and run metadata for auditability. If the product wants zero persisted runtime writes for `plan`, that is a separate product decision.
+- `chat` still needs richer session/context summary behavior while preserving no-execution semantics.
+- Model route audit still records latest/summary rationale, not a full per-task/per-purpose route timeline.
+
+### Suggested next medium-granularity target
+- Improve `chat` as a safe product-mode assistant: summarize current session/context and recommend `plan` or `goal` when execution is needed, without writing business files or entering execution.
+
+### Suggested review focus for tomorrow
+- Review whether `plan` should be allowed to update global runtime backlog under `.asteria/tasks/backlog.json`, or whether it should keep plan artifacts isolated per run only.
+
+
+## 2026-05-24 14:28:04 +08:00 development iteration
+
+### Iteration goal
+- Productize the first concrete `chat` mode slice: safe current-session/context summary, no execution, and clear handoff to `plan`/`goal` or the current workflow command.
+
+### Substantive artifact change this round
+- `ChatResult` now exposes `session_context` and `execution_allowed=false` in text and JSON output.
+- `ChatCommand` now builds a safe session summary from `.asteria` runtime metadata: current run status/phase, workflow state, blocker/next command, latest evidence pointer, final/run-loop summary paths, and latest model-selection rationale.
+- Chat next-actions now use both the user question/answer and current workflow recommendation, so execution-like requests point users to `plan`/`goal`, while an active run can recommend `review`/`accept`/`debug` without executing anything.
+- Added a regression test proving chat reads safe context and leaves all non-`.asteria/` workspace files unchanged.
+
+### Modified files
+- `src/asteria_runtime/commands/chat_command.py`: adds safe session context, execution guard output, latest model-selection fallback, and workflow-aware next actions.
+- `tests/unit/test_user_workflow_loop.py`: adds a context-aware chat model test that verifies chat sees current session/evidence/model-selection data and does not modify business files.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The intended Claude-style surface is `goal / plan / chat`; chat must feel useful for everyday questions without accidentally entering the execution loop.
+- Studio/automation consumers need machine-readable chat context just like status/sessions, but chat must remain read-only and advisory.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_chat_safely_summarizes_current_session_without_execution -q`: passed, 1 passed.
+- `ruff check src/asteria_runtime/commands/chat_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_run_config.py -q`: passed, 27 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 89 passed.
+
+### Current progress estimate
+- `goal/plan/chat` product surface, route transparency, final summaries, first automatic goal policy, plan read-only guarantee, and chat safe-session context: about 91% complete for the present documented plan.
+- Remaining before product-complete for this plan: about 9%.
+
+### DecisionPoint / unresolved issues
+- Chat currently returns a compact latest model-selection rationale, not a full route timeline.
+- Chat is advisory only and does not persist chat history; if persistent chat threads are desired, define privacy/storage policy first.
+- Goal-loop partial/fail policy still needs a stronger debug-vs-replan distinction and high-risk DecisionPoint creation tests.
+
+### Suggested next medium-granularity target
+- Implement model route audit timeline: collect per-task/per-purpose model-selection entries from execution evidence and expose it through status/sessions/final summaries, then have chat summarize it when relevant.
+
+### Suggested review focus for tomorrow
+- Review whether `chat` should show current workflow next action by default in text output, or only when the user asks about task status.
+
+
+## 2026-05-24 14:33:07 +08:00 development iteration
+
+### Iteration goal
+- Add a machine-readable model route audit timeline from execution evidence and expose it through status/sessions/final summaries/chat.
+
+### Substantive artifact change this round
+- `model_route_timeline` now collects per-task/per-purpose model selection decisions from task execution evidence.
+- `sessions --context` and `status --json` expose the route timeline alongside latest `model_selection`.
+- Plain `status` shows a concise model route timeline count and latest decisions so users can see why a route was chosen without JSON parsing.
+- `final_report_summary.json` now includes `model_route_timeline`, preserving the model route audit chain in the final handoff artifact.
+- `chat` safe session context now includes the route timeline and its system prompt explicitly answers model-route rationale questions from that timeline.
+
+### Modified files
+- `schemas/final_report_summary.schema.json`: allows `model_route_timeline` in final summary artifacts.
+- `src/asteria_runtime/commands/sessions_command.py`: builds route timeline from normalized execution evidence.
+- `src/asteria_runtime/commands/status_command.py`: exposes route timeline in JSON and plain text.
+- `src/asteria_runtime/commands/run_command.py`: writes route timeline into final report summary.
+- `src/asteria_runtime/commands/chat_command.py`: includes route timeline in safe chat context.
+- `tests/unit/test_user_workflow_loop.py`: verifies status/sessions/final summary/chat all expose the same route rationale timeline.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Latest-only model selection is insufficient for auditability once a long goal spans multiple tasks and purposes.
+- Studio and chat need a structured timeline to answer ?why did it use this model route?? without scraping final reports.
+
+### Test/build results
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_surfaces_user_workflow_state tests/unit/test_user_workflow_loop.py::test_status_and_sessions_context_expose_run_loop_summary tests/unit/test_user_workflow_loop.py::test_chat_safely_summarizes_current_session_without_execution tests/unit/test_user_workflow_loop.py::test_status_exposes_latest_model_selection_pressure_and_feedback -q`: passed, 4 passed.
+- `ruff check src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/status_command.py src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/chat_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_run_config.py tests/unit/test_accept_command.py -q`: passed, 29 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 89 passed.
+
+### Current progress estimate
+- Three-mode product surface, safe chat context, model route transparency/timeline, final summaries, and first goal-loop policy: about 93% complete for the present documented plan.
+- Remaining before product-complete for this plan: about 7%.
+
+### DecisionPoint / unresolved issues
+- Timeline currently comes from task execution evidence; route decisions made before task execution, such as goal-spec/planning/review model calls, are not yet represented in the same per-purpose audit chain.
+- The timeline is capped to the latest 20 entries to keep status/chat payloads compact; if Studio needs the full history, add a dedicated artifact path.
+- Goal-loop partial/fail still needs stronger debug-vs-replan policy and high-risk DecisionPoint tests.
+
+### Suggested next medium-granularity target
+- Improve goal-loop partial/fail policy: classify review failures into `debug`, `replan`, or `DecisionPoint`, expose the reason in run-loop/final summary, and test high-risk/permission/cost blockers.
+
+### Suggested review focus for tomorrow
+- Review whether route timeline should include model calls for `goal_spec`, `plan`, and `review` purposes, or remain scoped to execution evidence for MVP.
+
+
+## 2026-05-24 14:41:26 +08:00 development iteration
+
+### Iteration goal
+- Productize goal-loop partial/fail handling: classify review failures into debug, replan, or decide instead of a generic repair recommendation.
+
+### Substantive artifact change this round
+- Review now writes `trajectory_eval.failure_classification` into `eval_report.json`.
+- Failure classification maps review outcomes to:
+  - `verification_failed` / `execution_blocked` -> `debug`
+  - `plan_gap` -> `replan`
+  - `decision_required` -> `decide --list`
+- Goal loop now uses the classification for `goal-policy` steps, including `stop_for_replan` and `stop_for_decision`.
+- `final_report_summary.json`, `status --json`, sessions context, and plain status now expose `goal_policy` so Studio/users can see why the loop stopped.
+- High-risk follow-ups such as production deploy/network credentials create a pending DecisionPoint and stop the loop instead of continuing automatically.
+
+### Modified files
+- `schemas/final_report_summary.schema.json`: adds required `goal_policy` field.
+- `src/asteria_runtime/commands/review_command.py`: classifies partial/fail review results and stores the classification in eval reports.
+- `src/asteria_runtime/commands/run_command.py`: consumes classification in goal-loop policy and writes it into final summary.
+- `src/asteria_runtime/commands/sessions_command.py`: exposes `goal_policy` and routes partial/fail recommendations through classification.
+- `src/asteria_runtime/commands/status_command.py`: exposes `goal_policy` in JSON and text output.
+- `tests/unit/test_user_workflow_loop.py`: adds regression tests for debug, replan, and high-risk decide paths.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- A Claude-style goal loop should be outcome-oriented: users should see the next useful action, not an ambiguous ?debug or replan?.
+- High-risk, high-cost, permission-sensitive, or unclear follow-ups must become DecisionPoints before the autonomous loop continues.
+
+### Test/build results
+- `ruff check src/asteria_runtime/commands/review_command.py src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/status_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_stops_for_repair_after_failed_review tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_recommends_replan_for_plan_gap tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_creates_decision_for_high_risk_follow_up -q`: passed, 3 passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_run_config.py tests/unit/test_accept_command.py -q`: passed, 31 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 91 passed.
+
+### Current progress estimate
+- Current documented plan is about 95% complete for the CLI/runtime MVP: three user modes, safe chat, model route audit timeline, final summaries, and classified goal-loop policy are in place.
+- Remaining before product-complete for this plan: about 5%.
+
+### DecisionPoint / unresolved issues
+- Classification is heuristic over eval_report fields. It is intentionally conservative but should eventually be backed by an explicit schema section emitted by the reviewer.
+- High-risk DecisionPoint creation currently depends on follow-up task signals. Direct tool permission violations already have lower-level guards, but should be connected into this same `goal_policy` summary in a future pass.
+- Cost hard-stop DecisionPoints exist via budget guard; status/final summaries now expose decision state, but the failure classification does not yet label cost-only cases unless they appear as follow-ups or budget decisions.
+
+### Suggested next medium-granularity target
+- Add explicit `failure_classification` schema fields to eval_report and review report text, then connect budget/permission guard DecisionPoints into the same `goal_policy` shape for complete audit consistency.
+
+### Suggested review focus for tomorrow
+- Review the debug/replan/decide classification thresholds, especially whether requirement coverage below 0.8 should always trigger replan or sometimes debug.
+
+## 2026-05-24 14:53:40 +08:00 development iteration
+
+### Iteration goal
+- Close the final audit-chain gap: make review failure classification schema-backed, visible in human review reports, and unify budget/permission DecisionPoints under the same `goal_policy` shape.
+
+### Substantive artifact change this round
+- `eval_report.json` now has an explicit schema section for `failure_classification` with `category`, `recommended_command`, and `reason`.
+- Review text/markdown now prints a `Failure Classification` section, so users can see whether the next step is `debug`, `replan`, or `decide` without reading JSON.
+- Budget guard stops now write/read a `goal_policy.json` marker, and sessions/status/final summary can also derive `goal_policy` from pending permission/budget DecisionPoints.
+
+### Modified files
+- `schemas/eval_report.schema.json`: adds explicit `failure_classification` object constraints.
+- `src/asteria_runtime/commands/review_command.py`: stores top-level and trajectory failure classification and renders it in text/markdown reports.
+- `src/asteria_runtime/commands/run_command.py`: writes budget-guard `goal_policy` markers and reads them into final summaries.
+- `src/asteria_runtime/commands/sessions_command.py`: exposes pending budget/permission DecisionPoints as normalized `goal_policy` when no final marker exists.
+- `tests/unit/test_user_workflow_loop.py`: adds/updates regressions for schema-backed failure classification, review text visibility, budget guard summary exposure, and high-risk decision routing.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Studio/automation should not parse free text to understand why a goal loop stopped.
+- Users need the same rationale in normal review text, not only `--json`.
+- Budget and permission guards must produce the same audit-chain shape as review-driven debug/replan/decide policy.
+
+### Test/build results
+- `ruff check src/asteria_runtime/commands/review_command.py src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/status_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py::test_review_failure_text_names_primary_blocker_and_next_command tests/unit/test_user_workflow_loop.py::test_budget_guard_goal_policy_is_exposed_in_final_summary tests/unit/test_user_workflow_loop.py::test_goal_loop_policy_creates_decision_for_high_risk_follow_up -q`: passed, 3 passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_run_config.py tests/unit/test_accept_command.py -q`: passed, 32 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 92 passed.
+
+### Current progress estimate
+- Current documented CLI/runtime MVP plan is about 98-99% complete: three-mode surface, safe chat context, run/status/review/accept loop, model-route audit timeline, classified goal-loop policy, and guard DecisionPoint audit shape are implemented and tested.
+- Remaining work is mostly polish/hardening rather than architecture: full-history route artifacts, broader end-to-end dogfooding, and UX wording review.
+
+### DecisionPoint / unresolved issues
+- `failure_classification` remains heuristic over review/eval fields; future reviewers can emit richer typed causes directly.
+- Pending DecisionPoint goal policy uses conservative text/metadata inference for permission/budget categories; deeper tool-layer permission events could add explicit metadata for stronger classification.
+- Route timeline still focuses on execution evidence and latest summary surfaces; non-execution model calls can be added as a separate artifact if Studio needs complete model-call lineage.
+
+### Suggested next medium-granularity target
+- Do a final product dogfood pass of `goal -> status -> review -> accept -> chat question`, polish plain-text UX, and only fix issues discovered by that path.
+
+### Suggested review focus for tomorrow
+- Review whether the current `debug/replan/decide` classifications match expected user mental model and whether Studio should display `goal_policy.json` as a first-class artifact.
+
+## 2026-05-24 15:10:35 +08:00 development iteration
+
+### Iteration goal
+- Dogfood the real `goal -> status -> review -> accept -> chat` path, preview Studio, and close UX gaps found from that path.
+
+### Substantive artifact change this round
+- Ran a real temporary workspace through goal/status/review/accept/chat and found two user-facing issues: chat leaked model thinking text on stdout, and Studio could not fetch first-class run summary/timeline artifacts from run detail.
+- Added full `model_route_timeline.json` artifact per run while keeping status/final summary compact with a recent timeline slice and artifact path.
+- Improved plain status text for model tier pressure so it explains whether the route stayed default, escalated stronger, or chose cheaper.
+- Chat now strips `<think>...</think>` sections before display, reports accepted session state from final summary, and shows latest route rationale in the session footer.
+- Studio run detail API now exposes `run_loop_summary`, `final_report_summary`, `model_route_timeline`, and `goal_policy`; Evidence Explorer renders run summary, policy, and model route timeline.
+
+### Modified files
+- `schemas/model_route_timeline.schema.json`: new machine-readable full route timeline artifact schema.
+- `schemas/final_report_summary.schema.json`: adds `model_route_timeline_path`.
+- `src/asteria_runtime/commands/run_command.py`: writes full route timeline artifact and links it from final summary.
+- `src/asteria_runtime/commands/sessions_command.py`: exposes `model_route_timeline_path` in session context.
+- `src/asteria_runtime/commands/status_command.py`: improves model route pressure wording and prints the full timeline artifact path.
+- `src/asteria_runtime/commands/chat_command.py`: removes leaked thinking blocks and uses final summary for accepted-state chat context.
+- `studio/server.mjs`: includes summary/policy/timeline artifacts in `/api/runs/:id`.
+- `studio/src/types.ts`: types the new run detail fields.
+- `studio/src/components/Inspector.tsx`: renders run summary, goal policy, and model route timeline in Evidence Explorer.
+- `tests/unit/test_user_workflow_loop.py`: updates/adds assertions for route timeline artifact/path and improved status wording.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Dogfood / preview results
+- Real temporary workspace path completed `goal -> status -> review -> accept -> chat`.
+- Studio server preview: `node studio/server.mjs` served `http://127.0.0.1:8787`; `/api/overview` and `/api/runs/<run_id>` returned successfully with new summary/timeline fields.
+- PowerShell `npm.ps1` is blocked by execution policy; used `cmd /c npm ...` for Studio validation.
+
+### Test/build results
+- `ruff check src/asteria_runtime/commands/chat_command.py src/asteria_runtime/commands/run_command.py src/asteria_runtime/commands/sessions_command.py src/asteria_runtime/commands/status_command.py tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `cmd /c npm run typecheck` in `studio/`: passed.
+- `pytest tests/unit/test_user_workflow_loop.py::test_goal_run_result_surfaces_user_workflow_state tests/unit/test_user_workflow_loop.py::test_status_and_sessions_context_expose_run_loop_summary tests/unit/test_user_workflow_loop.py::test_chat_safely_summarizes_current_session_without_execution -q`: passed, 3 passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_run_config.py tests/unit/test_accept_command.py -q`: passed, 32 passed.
+- `pytest tests/unit/test_model_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_user_workflow_loop.py tests/unit/test_runtime_profiles.py tests/unit/test_model_routing.py tests/unit/test_run_config.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 92 passed.
+- `cmd /c npm run build` in `studio/`: passed.
+
+### Current progress estimate
+- CLI/runtime MVP plus Studio evidence summary path is effectively feature-complete for this documented plan: about 99%.
+- Remaining work is final polish, localization/encoding cleanup in older Studio labels, and broader manual UX review.
+
+### DecisionPoint / unresolved issues
+- Studio has existing mojibake Chinese labels unrelated to this change; fixing them should be a separate UI-localization pass to avoid mixing scope.
+- `model_route_timeline.json` currently records execution-evidence route decisions. Non-execution calls such as planning/review can be added later if full model-call lineage becomes a Studio requirement.
+- Real dogfood used a temp workspace and current configured providers; no production deploy or remote push was performed.
+
+### Suggested next medium-granularity target
+- Final UX polish pass: clean Studio mojibake labels, align command copy around the three modes (`goal`, `plan`, `chat`), and add one Studio smoke test for run detail artifact rendering.
+
+### Suggested review focus for tomorrow
+- Review the user-facing wording of status/chat route rationale and whether Studio should default-open the route timeline or keep it under Evidence Explorer.
+
+
+## 2026-05-24 15:31:00 +08:00 development iteration
+
+### Iteration goal
+- Clean Studio user-facing mojibake/copy, make the run detail panel show the long-task loop state by default, and add a run detail API smoke test for first-class summary artifacts.
+
+### Substantive artifact change this round
+- Studio now presents clean English labels in the main shell, composer, sidebar, thread, and Evidence Explorer/Inspector surfaces.
+- Evidence Explorer now opens with a long-task status panel showing workflow state, blocker, recommended next command, goal policy, run loop summary, and latest model route rationale without forcing users into nested raw details.
+- Added a deterministic Studio smoke test that starts the Studio server against a temporary workspace fixture and verifies `/api/runs/:id` returns `run_loop_summary`, `final_report_summary`, `model_route_timeline`, and `goal_policy`.
+
+### Modified files
+- `studio/src/components/Inspector.tsx`: cleans user-facing labels and adds the default run status/goal policy/run loop/model route summary panel.
+- `studio/src/components/Composer.tsx`: cleans mode, permission, placeholder, and send-button copy.
+- `studio/src/components/Sidebar.tsx`: cleans navigation/session/workspace/system status copy.
+- `studio/src/components/Thread.tsx`: replaces corrupted thread/empty/live/final-answer copy with clean English while preserving the existing event rendering flow.
+- `studio/src/components/Shared.tsx`: cleans the empty evidence fallback text.
+- `studio/src/App.tsx`: cleans shell fallback/refresh copy.
+- `studio/package.json`: adds `smoke:run-detail`.
+- `studio/scripts/run-detail-smoke.mjs`: new deterministic server smoke test for run detail summary artifacts.
+- `WORKING_REPORT.md`: records this iteration and verification.
+
+### Reasons
+- Mojibake in Evidence Explorer/Inspector directly blocks trustworthy Studio preview and lowers perceived product quality.
+- Long-task users need the next action, blocker, policy, and model-route rationale visible immediately, not buried under raw JSON.
+- Studio's data contract for run detail needs a smoke test so future UI/server changes do not drop machine-readable runtime artifacts.
+
+### Dogfood / preview results
+- Real temporary workspace path executed: `goal -> status -> review -> accept -> chat`.
+- The dogfood run correctly surfaced a blocked workflow with pending DecisionPoint, review failure classification `plan_gap -> replan`, accept blocked with `asteria debug`, and chat summarized the blocked session without entering execution.
+- Studio preview server on port 18787 returned `/api/health` and `/api/runs/run-20260524-0001` with all four required summary artifacts present.
+
+### Test/build results
+- `cmd /c npm run typecheck` in `studio/`: passed.
+- `cmd /c npm run smoke:run-detail` in `studio/`: passed, `Studio run detail smoke passed`.
+- `cmd /c npm run build` in `studio/`: passed.
+- `ruff check src tests/unit/test_user_workflow_loop.py`: passed, All checks passed.
+- `pytest tests/unit/test_user_workflow_loop.py tests/unit/test_cli.py tests/unit/test_run_config.py tests/unit/test_accept_command.py -q`: passed, 32 passed.
+
+### Current progress estimate
+- Documented CLI/runtime + Studio run evidence loop is about 99% complete for the current plan.
+- Remaining work is mostly final product polish: broader manual Studio UX review, optional route timeline artifact rendering refinements, and cleanup of older server-side chat strings if any user-facing copy still appears inconsistent.
+
+### DecisionPoint / unresolved issues
+- The dogfood goal intentionally used a temp workspace and hit a conservative DecisionPoint before writing README content; this confirms guard behavior but did not demonstrate a fully accepted write path in that temp run.
+- `model_route_timeline` was present through the API, but the temp dogfood route timeline content was empty because that blocked path did not reach an execution route decision.
+- Existing broader uncommitted runtime changes from previous iterations remain in the working tree; this round did not push or delete branches per AGENTS safety rules.
+
+### Suggested next medium-granularity target
+- Do one final Studio browser pass on the currently open app: inspect the run detail panel visually, then clean any remaining server-generated chat/final-answer wording that appears inconsistent with the new Studio copy.
+
+### Suggested review focus for tomorrow
+- Review whether the default run status panel gives enough information for a normal user to choose between `decide`, `debug`, `replan`, `review`, and `accept` without opening raw JSON.
+
+### Follow-up adjustment
+- Updated Studio route timeline rendering to accept both the persisted schema field `timeline` and legacy/fixture field `route_timeline`; re-ran Studio validation after the fix.
+
+### Additional validation
+- `cmd /c npm run typecheck` in `studio/`: passed after the route timeline compatibility fix.
+- `cmd /c npm run smoke:run-detail` in `studio/`: passed after the route timeline compatibility fix.
+- `cmd /c npm run build` in `studio/`: passed after the route timeline compatibility fix.
+- Studio source/server mojibake scan for common corrupted glyph patterns: no matches found.
+
+## 2026-05-24 16:05:00 +08:00 Studio visual polish iteration
+
+### Iteration goal
+- Manually inspect the Studio run detail view in a browser and fix only the obvious first-glance copy/layout issues.
+
+### Substantive artifact change this round
+- Started Studio locally on `http://127.0.0.1:8787/`, opened it with headless Chrome DevTools, captured `studio-run-detail-preview.png`, and inspected the rendered run detail panel.
+- Moved Evidence Explorer above generic event/model sections when no event is selected, so the long-task loop state is immediately visible in the Inspector first screen.
+- Replaced visible separator mojibake/question marks in step summaries and model-route cards with clean dot separators.
+- Sanitized corrupted historical session titles containing repeated `????` so they no longer dominate the left navigation.
+- Kept Chinese user/runtime content as-is where it is legitimate historical content, while cleaning Studio shell/metadata copy.
+
+### Modified files
+- `studio/src/components/Inspector.tsx`: defaults run evidence/loop state to the top of Inspector when no event is selected; keeps route cards clean.
+- `studio/src/components/Thread.tsx`: cleans middle-step summary separators.
+- `studio/src/components/Sidebar.tsx`: sanitizes repeated-question-mark mojibake in session titles and cleans latest-run detail separator.
+- `studio/src/App.tsx`: restores clean connection/refresh copy from earlier polish.
+- `WORKING_REPORT.md`: records this browser-preview pass.
+
+### Browser preview result
+- Screenshot artifact: `studio-run-detail-preview.png`.
+- First screen now shows `Evidence Explorer` and `Long-task loop` directly at the top of Inspector.
+- Browser text scan after reload: no hard mojibake glyphs/repeated `????` remained in Studio chrome; remaining Chinese text is historical user/runtime content from existing sessions.
+
+### Validation
+- `cmd /c npm run build` in `studio/`: passed.
+- `cmd /c npm run smoke:run-detail` in `studio/`: passed.
+- Live Studio API health check on port 8787: passed.
+
+### Unresolved issues
+- The current selected historical run predates `run_loop_summary.json`, so its loop fields show `n/a`/`none`; newer runs with summary artifacts display richer state.
+- Some historical runtime final-answer content is Chinese because the original task/user content was Chinese; this is not mojibake and was left untouched.
+
+### Suggested next target
+- Use a fresh current run that includes `run_loop_summary.json` and `model_route_timeline.json` to confirm the top Inspector panel displays populated next command, blocker, policy, and route rationale.
+
+
+## 2026-05-24 17:20:00 +08:00 Studio chat product-direction iteration
+
+### Iteration goal
+- Reframe Studio chat to behave like a normal Claude/Codex-style assistant first: answer ordinary user questions directly, and only expose runtime/status/model-route details when the user explicitly asks for them.
+
+### Substantive artifact change this round
+- Changed Studio chat routing so ordinary questions go through general chat instead of defaulting to backend run/status explanations.
+- Kept project-status, blocker, next-command, and model-route explanations available as explicit meta questions.
+- Marked Studio chat final answers with `phase: "chat"` and prevented final-answer enrichment from replacing chat answers with older run final reports.
+- Added a small response cleanup step for model-generated replacement glyphs so Studio chat copy does not show mojibake in common bullet/dash output.
+
+### Modified files
+- `studio/server.mjs`: updates chat intent routing, model-backed general answers, explicit runtime-meta answers, chat final-answer handling, and output cleanup.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Normal users will ask everyday questions, not internal runtime questions. Chat must feel like a safe assistant entry point, not a dashboard parser.
+- Claude/Codex-style UX hides orchestration by default: the agent should use runtime context only when helpful, and explain internals only on request.
+- Chat must remain read-only: no run, no business file writes, no permission prompt.
+
+### Validation
+- `node --check studio\server.mjs`: passed.
+- Temporary Studio API smoke with chat messages: ordinary English-learning question, Chinese project-status question, and model-route question returned 3 chat final answers and `permission_requests=0`.
+- `cmd /c "npm run build && npm run smoke:run-detail"` in `studio/`: passed.
+
+### Unresolved issues
+- The model-backed CLI chat path can still return provider text in English for general Q&A; that is acceptable for now, but future Studio settings should expose language preference and model strategy.
+- Some historical runs lack `model_route_timeline`, so model-route answers correctly say the timeline is not recorded yet.
+
+### Suggested next target
+- Add a dedicated Studio chat smoke test that asserts: ordinary Q&A does not include run final reports, explicit status questions include next command/blocker, model-route questions include rationale, and no permission request is emitted.
+
+### Suggested review focus for tomorrow
+- Review whether chat should default to the user's input language and whether Studio needs visible toggles for model strategy/permission level in the chat header.
+
+
+## 2026-05-24 18:05:00 +08:00 Studio intent routing iteration
+
+### Iteration goal
+- Make chat/goal behave more like Claude Code/Codex: natural language is the primary interface, and Studio chooses chat, plan, or run from intent plus permission instead of treating chat as a permanent non-execution silo.
+
+### Substantive artifact change this round
+- Added Studio-side `routeUserIntent` for auto mode: ordinary Q&A stays in chat; runtime/status questions stay in chat; workspace-changing requests route to plan first unless write permission is pre-approved; explicit user-selected modes are never overridden.
+- Recorded `intent_route` evidence in session events so route decisions are auditable without exposing route noise in ordinary chat.
+- Updated the Studio user-side design philosophy document with the Chat / Goal smart-transfer principle and the current routing baseline.
+
+### Modified files
+- `studio/server.mjs`: introduces intent routing, auto mode handling, route evidence, and permission-aware transfer from chat-like input to plan/run.
+- `docs/zh/Asteria Studio ?????????.md`: documents the Claude-style routing principle and future model-backed `IntentRoute` target.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Users should not need to understand backend modes before typing. Like Claude Code/Codex, the product should infer whether the user wants a normal answer, a read-only plan, or controlled execution.
+- Chat can remain conversational by default while still handing off task-like input when appropriate.
+- Permission and policy remain separate from intent detection: routing recommends a mode; runtime gates still decide whether writes/commands are allowed.
+
+### Validation
+- `node --check studio\server.mjs`: passed.
+- Temporary Studio API smoke with `mode=auto`:
+  - `How do I learn English effectively?` routed to `chat` and returned a chat final answer.
+  - `fix the typo in README and run tests` with `permission=ask` routed to `plan` and emitted no permission request.
+- `cmd /c "npm run build && npm run smoke:run-detail"` in `studio/`: passed.
+
+### Unresolved issues
+- Current intent routing is still heuristic. The documented next step is a model-backed `IntentRoute` artifact with confidence, permission pressure, risk reason, and recommended next action.
+- Studio UI may still default the selected button to a specific mode; the server now supports `auto`, but the visible launcher should eventually make ?auto/natural language? the primary path.
+
+### Suggested next target
+- Add a dedicated Studio intent-routing smoke test and expose the route summary subtly in the UI only when Studio auto-transfers from chat-like input to plan/run.
+
+### Suggested review focus for tomorrow
+- Review whether the default Studio input should submit `mode=auto` instead of requiring users to choose chat/plan/run first.
+
+
+## 2026-05-24 18:25:00 +08:00 Studio default Auto composer iteration
+
+### Iteration goal
+- Make Studio's primary input feel like a product-grade natural language assistant: users type what they want first, while chat/plan/run/review/resume become advanced overrides instead of mandatory first choices.
+
+### Substantive artifact change this round
+- Changed Composer default mode from `chat` to `auto`.
+- Added an `Auto` mode option and placeholder that explains Studio will answer, plan, or route to controlled goal run based on intent and permissions.
+- Reframed existing mode buttons as an advanced override cluster with a subtle hint: `Auto routes your message`.
+- Shows permission selection in Auto so the router can decide between plan-first and controlled run when a workspace-changing task is detected.
+- Added Auto-specific composer styling so the default path is visually distinct from manual chat mode.
+
+### Modified files
+- `studio/src/components/Composer.tsx`: default mode, labels, placeholders, permission visibility, and mode override presentation.
+- `studio/src/styles.css`: Auto composer styling and responsive layout for the mode override controls.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The product should not force users to understand `chat/plan/run` before they type. Natural language + auto routing is closer to Claude/Codex user experience.
+- Manual modes remain available, but as explicit overrides for users who know what they want.
+- Permission level stays visible in Auto because intent routing must remain permission-aware.
+
+### Validation
+- `cmd /c npm run typecheck` in `studio/`: passed.
+- `cmd /c "npm run build && npm run smoke:run-detail"` in `studio/`: passed.
+
+### Unresolved issues
+- Auto routing is server-backed but still heuristic; next step should add a Studio intent-routing smoke test and, later, model-backed `IntentRoute`.
+- Current UI labels are English; future pass can localize the composer chrome once the interaction shape is stable.
+
+### Suggested next target
+- Add `studio/scripts/intent-routing-smoke.mjs` to verify Auto sends ordinary questions to chat, edit-like requests to plan/run depending on permission, and never emits permission requests for plan-first routing.
+
+### Suggested review focus for tomorrow
+- Manually preview the open Studio page and confirm the composer now reads as ?type naturally first,? with mode buttons clearly secondary.
+
+
+## 2026-05-24 18:45:00 +08:00 Studio intent-routing smoke test iteration
+
+### Iteration goal
+- Add a regression smoke test so Studio Auto routing does not degrade: ordinary questions stay in chat, edit-like tasks route to plan under ask permission, and edit-like tasks route to run under allow permission.
+
+### Substantive artifact change this round
+- Added `studio/scripts/intent-routing-smoke.mjs`, which starts a temporary Studio server with local chat backend, creates a session, submits three Auto-mode messages, and asserts the emitted `intent_route` events.
+- Added `smoke:intent-routing` to `studio/package.json`.
+- Tightened Studio intent routing so explicit read-only planning requests route to plan before the generic chat fallback.
+
+### Modified files
+- `studio/scripts/intent-routing-smoke.mjs`: new regression smoke test for Auto intent routing.
+- `studio/package.json`: exposes `npm run smoke:intent-routing`.
+- `studio/server.mjs`: routes read-only analysis/planning intent to plan and keeps edit-like ask/allow behavior stable.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Auto mode is now the default product path, so its routing contract needs a cheap deterministic smoke test.
+- The test protects the user-facing Claude/Codex-style interaction model from regressing back into hard mode selection.
+
+### Validation
+- `cmd /c npm run smoke:intent-routing` in `studio/`: passed.
+- `cmd /c "npm run build && npm run smoke:run-detail && npm run smoke:intent-routing"` in `studio/`: passed.
+
+### Unresolved issues
+- The smoke test validates server routing and emitted events, not browser visual layout.
+- Future model-backed `IntentRoute` should keep this test as the deterministic baseline and add separate model-router evals.
+
+### Suggested next target
+- Surface auto-transfer feedback in the main thread only when Auto routes away from chat, with copy like ?I?ll start with a read-only plan because this may change files.?
+
+### Suggested review focus for tomorrow
+- In the live Studio browser, confirm Auto mode plus route feedback makes mode buttons feel secondary rather than required.
+
+
+## 2026-05-24 19:05:00 +08:00 Studio model visibility and session delete iteration
+
+### Iteration goal
+- Make it visible when Studio chat used the configured model route, and add a left-sidebar session deletion affordance.
+
+### Substantive artifact change this round
+- Added `DELETE /api/studio/sessions/:id` to remove a Studio conversation directory under `.asteria/studio/sessions`.
+- Added `api.deleteSession` and wired the left Sidebar to show a delete button for each session, with confirmation and active-session fallback behavior.
+- Added model/fallback notice to general chat answers: model-backed replies now end with ?Answered with the configured model route,? while local fallback replies say model backend was unavailable/disabled.
+- Added sidebar row/delete styling so deletion is discoverable on hover/active state without dominating the session list.
+
+### Modified files
+- `studio/server.mjs`: session delete API and chat model/fallback notice.
+- `studio/src/api.ts`: delete session client method.
+- `studio/src/App.tsx`: delete-session flow, refresh, and active-session recovery.
+- `studio/src/components/Sidebar.tsx`: per-session delete button.
+- `studio/src/styles.css`: session row and delete affordance styling.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- Users could not tell whether a chat answer came from a model route or a local fallback, making Studio feel like it was not returning model output.
+- Session history accumulated with no delete option, which hurts day-to-day Studio use and product polish.
+
+### Validation
+- Temporary Studio API smoke: model-backed chat answer included the configured-model notice; deleting the created session returned `ok` and removed it from `/api/studio/sessions`.
+- `cmd /c npm run typecheck` in `studio/`: passed.
+- `cmd /c "npm run build && npm run smoke:run-detail && npm run smoke:intent-routing"` in `studio/`: passed.
+
+### Unresolved issues
+- The model notice confirms the configured route was used, but it does not yet show provider/model name inline in the chat message.
+- Delete is immediate after browser confirmation; a future pass can add undo/archive if users want safer history management.
+
+### Suggested next target
+- Include provider/model/tier metadata in chat answers or adjacent event chips, so the user can see which route answered without opening Inspector.
+
+### Suggested review focus for tomorrow
+- In the live Studio browser, verify the delete icon is discoverable and that a normal chat answer visibly indicates model-backed vs local fallback response.
+
+
+## 2026-05-24 19:15:00 +08:00 Studio live server restart for session delete
+
+### Iteration goal
+- Diagnose why the left-sidebar session delete appeared ineffective in the live browser on `localhost:8787`.
+
+### Finding
+- Source code and build already contained the DELETE session implementation, but the live process on port 8787 was an older `server.mjs` instance started before the change.
+- Direct DELETE against the old live process returned 404 and the created session remained in `/api/studio/sessions`.
+
+### Action taken
+- Restarted the Studio server on port 8787 using the current `studio/server.mjs`.
+- Updated the temp pid file to the new process id.
+- Re-ran a live API check on `http://127.0.0.1:8787`: create session -> DELETE session -> list sessions.
+
+### Validation
+- Live health check on port 8787: passed.
+- Live DELETE validation: created `session-1779615853125-0580c3`, deleted it, and confirmed `stillExists=False`.
+
+### User-facing note
+- The browser may need a hard refresh to load the rebuilt frontend bundle and show the delete icon/updated behavior.
+
+
+## 2026-05-24 19:55:00 +08:00 Studio chat model route metadata iteration
+
+### Iteration goal
+- Continue the Studio product polish plan by making model-backed chat visibly auditable without forcing users to open Inspector.
+
+### Substantive artifact change this round
+- Chat final answers now carry `model_provider`, `model_name`, `model_tier`, and `model_route` metadata when Studio used the configured model backend.
+- Chat answer summaries now say `Model reply via provider/model ? tier ? purpose` when model-backed, or explicitly indicate local fallback when the model backend is unavailable/disabled.
+- Chat answer text now includes the same route label in its footer.
+- Event cards show provider/model plus tier for model-backed chat final answers.
+- Restarted the live Studio server on `localhost:8787` so the browser can load the current server/frontend bundle.
+
+### Modified files
+- `studio/server.mjs`: returns structured chat answer objects and attaches model route metadata to chat final-answer events.
+- `studio/src/types.ts`: adds optional model tier/route fields to Studio events.
+- `studio/src/components/EventCard.tsx`: displays model tier in event facts.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Reasons
+- The previous ?configured model route? footer did not show which provider/model actually answered, so users could still feel like there was no visible model output.
+- Studio should make the model route obvious in the main thread while leaving deeper route evidence in Inspector.
+
+### Validation
+- Temporary Studio API smoke: Auto chat produced a final-answer event with provider/model/tier/route metadata and a model-route footer.
+- `cmd /c "npm run build && npm run smoke:run-detail && npm run smoke:intent-routing"` in `studio/`: passed.
+- Live Studio `localhost:8787` restarted and `/api/health` passed.
+
+### Unresolved issues
+- The selected route is currently inferred from recent route telemetry; a future model-backed `IntentRoute` should record the exact route decision for chat itself.
+- Some older events still lack route metadata because they were created before this change.
+
+### Suggested next target
+- Add a small visual chip for `Model: provider/model ? tier` near chat final answers, instead of relying only on the event facts row/footer.
+
+### Suggested review focus for tomorrow
+- In the open browser, hard refresh and check whether a new chat answer clearly shows the provider/model/tier without opening Inspector.
+
+
+## 2026-05-24 20:20:00 +08:00 Studio chat return and layout fix iteration
+
+### Iteration goal
+- Fix the live Studio issues reported from the browser screenshot: composer layout felt broken and chat answers appeared not to return in the visible thread.
+
+### Findings
+- The latest session did contain a `final_answer` event, but the thread was not making model metadata obvious and the final answer included noisy CLI context blocks.
+- Chinese model output from the CLI path can still be mojibake on Windows provider output; this is now partially guarded at the CLI cleanup layer, but provider/terminal encoding remains a risk for Chinese prompts.
+- The composer controls were too wide and bottom-heavy for the current three-column Studio layout.
+
+### Substantive artifact change this round
+- Compact composer spacing, textarea height, and mode-control wrapping so the input bar fits the Studio layout better.
+- Make final answers use their own model metadata when rendering model chips, so chat final answers can show provider/model without relying on intermediate model events.
+- Strip CLI-only context blocks (`Context refs`, `Current session`, `Next actions`) from the visible final answer card while preserving the raw event in evidence.
+- Set `PYTHONIOENCODING=utf-8` for Studio's chat CLI subprocess and decode subprocess output as UTF-8.
+- Add a defensive mojibake repair pass in `ChatCommand._clean_answer` for common Windows/UTF-8 corruption patterns.
+- Restarted live Studio on `localhost:8787` with the new bundle/server.
+
+### Modified files
+- `studio/server.mjs`: UTF-8 subprocess handling, chat route label cleanup, structured chat final-answer metadata.
+- `studio/src/components/Thread.tsx`: final-answer model chip extraction and visible noise stripping.
+- `studio/src/styles.css`: compact composer and answer-card layout adjustments.
+- `src/asteria_runtime/commands/chat_command.py`: defensive mojibake repair for chat answers.
+- `WORKING_REPORT.md`: records this iteration and validation.
+
+### Validation
+- `cmd /c npm run typecheck` in `studio/`: passed.
+- `cmd /c "npm run build && npm run smoke:run-detail && npm run smoke:intent-routing"` in `studio/`: passed.
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 13 passed.
+- Live Studio `localhost:8787` restarted and `/api/health` passed.
+
+### Unresolved issues
+- Chinese prompt output may still depend on provider/client encoding; if it persists, next fix should make Studio call a JSON chat endpoint/command instead of parsing human CLI text.
+- Need a browser visual pass after hard refresh to confirm the composer and final answer card look right at actual viewport size.
+
+### Suggested next target
+- Add a JSON-mode chat invocation in Studio (`asteria chat --json`) and parse `answer` directly, avoiding human CLI envelope/context text and reducing encoding/layout problems.
+
+### Suggested review focus for tomorrow
+- Verify in the open browser that a fresh English and Chinese Auto chat both display a visible assistant answer in the thread, not only the user bubble.
+
+
+## 2026-05-24 Studio chat ??????
+
+### ??????
+- ?? Studio Chat ????/????? mojibake?CLI envelope ???????????????????????
+
+### ????????
+- `studio/server.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`
+  - ? Chat ????? CLI ????????? JSON ??????? `Context refs`?`Current session`?`Next actions` ? CLI ???????????
+  - ?? base64 ????? Studio ??? Unicode prompt ?? Python??? Windows argv ?????? `????` ???
+  - ?? API ?????????? Buffer ? UTF-8 ???????????? Node ??????
+  - ?????????????? CLI context noise???????/??? Markdown ?????????????????????????????
+  - ????????????? ASCII ` - `?????/??????????
+
+### ????
+- `node --check .\studio\server.mjs`????
+- ?? Studio API ?????? `???????`????`user_message` ?????`final_answer` ??????????????? Context refs/Current session ???
+- `cmd /c "npm run build && npm run smoke:run-detail && npm run smoke:intent-routing"`?`studio/`?????
+- `python -m pytest tests/unit/test_cli.py -q`?13 passed?
+- ????? Studio?`http://127.0.0.1:8787/`??? PID ??? `%TEMP%\asteria_studio_pid.txt`?
+
+### ?????
+- ?????????????????Studio ?????????????????????? provider/HTTP ??????
+- ?????? session/event ???????????????????????????????????
+
+### ???????????????
+- ??? Studio chat ?? smoke?POST ??????? events ? `user_message` ?????`final_answer` ??? `Context refs`/????/?? mojibake?
+
+### ??????????
+- ???? Ctrl+F5 ????????????? Chat ???????????????????????????
+
+
+## 2026-05-24 Studio ???????
+
+### ??????
+- ??????????????????????????????/????????????????
+
+### ????????
+- `studio/src/App.tsx`
+- `studio/src/components/Thread.tsx`
+- `studio/src/styles.css`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/App.tsx`
+  - ?? `pendingTurn` ????????????????????????? API ??????
+- `studio/src/components/Thread.tsx`
+  - ?? `PendingTurn` UI???????????? `Routing intent / Thinking / Starting run`?????????????????
+  - ??????????????????????????????
+- `studio/src/styles.css`
+  - ?? pending ???????????? pulse ?????
+
+### ????
+- `cmd /c npm run build`?`studio/`?????
+- ????? Studio?`http://127.0.0.1:8787/`?
+
+### ?????
+- ???????????????? Claude Code ???????????????? intent-routing?model-start?tool-start ????? SSE ?????? chat ??????
+
+### ???????????????
+- ? chat ?????? append ?? `assistant_delta running`/`model_start` ???????????????????????? loading lifecycle?
+
+### ??????????
+- ???? chat?auto plan?allow run ?????????????? 0 ????????? + ???????
+
+
+## 2026-05-24 Studio chat ??? lifecycle ??
+
+### ??????
+- ? chat ??????????? UI ????????? lifecycle?????????? `model_start`???/??????????????? `final_answer`?
+
+### ????????
+- `studio/server.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`
+  - ? `handleChatMode` ??? `model_start running` ????? chat ?????????? SSE ????????????????Thinking??
+  - ???????? `model_end completed` ? hidden fallback `assistant_delta completed`???? `duration_ms`?????????/?????
+  - ?????????? `final_answer` ?????????????????
+
+### ????
+- `cmd /c "npm run build && npm run smoke:intent-routing"`?`studio/`?????
+- ?? Studio API ???chat ?????? `user_message -> model_start(running) -> model_end(completed) -> final_answer(completed)`?
+- ????? Studio?`http://127.0.0.1:8787/`?
+
+### ?????
+- ?? `model_end` ??????????????? token delta ??????????????????? streaming delta ?? Studio SSE?
+
+### ???????????????
+- ?? narrative ??? mojibake ????? chat waiting ?????????/???
+
+### ??????????
+- ?? chat ??????????????? Thinking ????? Inspector/??????? model_start/model_end ????
+
+
+## 2026-05-24 Studio chat lifecycle ?????????
+
+### ??????
+- ????? chat ??? lifecycle????? smoke???? narrative ??????? mojibake ???
+
+### ????????
+- `studio/src/narrative.ts`
+- `studio/scripts/chat-lifecycle-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/narrative.ts`
+  - ? narrative step ???headline????????????????? Thread/Inspector ????? mojibake?
+  - ?? model_start ???????????????????
+- `studio/scripts/chat-lifecycle-smoke.mjs`
+  - ?? Studio chat lifecycle smoke????? user_message ?? round-trip??? `model_start running`???????? completed lifecycle ????? chat final_answer?
+  - ?? final answer ??? `Context refs`/`Current session`/`Next actions` ? CLI ????????????
+- `studio/package.json`
+  - ?? `smoke:chat-lifecycle` ??????????
+
+### ????
+- `cmd /c "npm run build && npm run smoke:chat-lifecycle && npm run smoke:intent-routing"`?`studio/`?????
+- ????? Studio?`http://127.0.0.1:8787/`?
+
+### ?????
+- ?? lifecycle ?? start/end???? token ? streaming delta ?????????? Claude Code??????????????? delta?
+
+### ???????????????
+- ??? streaming?? chat ????? `model_delta` ???? SSE???? final_answer ??????
+
+### ??????????
+- ? Studio ???? chat??????? Inspector ?????? mojibake???????????
+
+
+## 2026-05-24 Studio chat model_delta streaming ??
+
+### ??????
+- ???? chat ???? lifecycle ? start/end ??? `model_start -> model_delta -> model_end -> final_answer`?? Studio ?????/???????????
+
+### ????????
+- `studio/server.mjs`
+- `src/asteria_runtime/models/studio_event_sink.py`
+- `src/asteria_runtime/models/fake.py`
+- `studio/scripts/chat-lifecycle-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`
+  - chat ?????? Python ????? `ASTERIA_STUDIO_EVENT_SINK`?`ASTERIA_STUDIO_SESSION_ID`?`ASTERIA_STUDIO_PHASE=chat`????????? start/delta/end ???? Studio session events?
+  - ????????????? start ??????????? Thinking?????????????? lifecycle???? `model_delta`/`model_end`?
+- `src/asteria_runtime/models/studio_event_sink.py`
+  - ?? sink ????????????????
+  - ? `model_delta`/`model_end`/`model_error` ?? `parent_event_id`?????????
+  - `_append` ??????????? start/delta/end ???
+- `src/asteria_runtime/models/fake.py`
+  - fake ???? Studio event sink??? smoke ????/?????????? streaming lifecycle?
+- `studio/scripts/chat-lifecycle-smoke.mjs`
+  - ?? smoke??????? `.asteria/project.json` ? `policies.json`?? fake provider ?? `model_start`??? `model_delta`??? `model_end`?`final_answer`?
+- `studio/package.json`
+  - ?? `smoke:chat-lifecycle` ?????????
+
+### ????
+- `python -m py_compile src/asteria_runtime/models/studio_event_sink.py`????
+- `node --check studio/server.mjs`????
+- `cmd /c "npm run smoke:chat-lifecycle && npm run smoke:intent-routing"`?`studio/`?????
+- `cmd /c npm run build`?`studio/`?????
+- `python -m pytest tests/unit/test_cli.py -q`?13 passed?
+- ????? Studio?`http://127.0.0.1:8787/`?
+
+### ?????
+- ?? provider ? token ? delta ????????????? provider ???/??????????????? delta?
+- ?? UI ???? model_delta????????????????
+
+### ???????????????
+- ?? Thread ? model_delta ???????????????? Claude Code ???????????????????
+
+### ??????????
+- ??????? chat???????? Thinking?????????????? final answer?
+
+
+## 2026-05-24 Thread chat streaming ????
+
+### ??????
+- ?? Thread ? chat `model_delta` ??????? Claude Code ?????????????????????????? final answer ???
+
+### ????????
+- `studio/src/components/Thread.tsx`
+- `studio/src/narrative.ts`
+- `studio/src/styles.css`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/components/Thread.tsx`
+  - ?? chat stream ?????? turn ?? chat final answer????? chat thinking/model_delta ?? step???????????
+  - ?? `ChatStreamPreview`?????? chat ???????????????????????/??????
+  - ?? middle summary ??????????? `step(s): thinking / tool`?
+- `studio/src/narrative.ts`
+  - ?? `model_start` ?? summary ?? mojibake??? `Waiting for model response...`?
+- `studio/src/styles.css`
+  - ?? `chatStreamPreview` ???? chat ?????????? Thinking ???
+
+### ????
+- `cmd /c "npm run build && npm run smoke:chat-lifecycle"`?`studio/`?????
+- ????? Studio?`http://127.0.0.1:8787/`?
+
+### ?????
+- ???????????????Inspector ?????? model events??????????????????????Show generation trace?????
+
+### ???????????????
+- ????????? narrative ???/??? smoke??? chat final ??????? model_delta???????? ChatStreamPreview?
+
+### ??????????
+- ??? chat??????????? Thinking ????????????????????????????
+
+
+## 2026-05-24 Chat ???????????
+
+### ??????
+- ???? chat ?????????????????????????????HTTP ??????????????????? SSE/??? model_delta ?????
+
+### ????????
+- `studio/server.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`
+  - `handleChatMode` ????? user_message??????? chat job ????? `{ started: true }`????? submit ????????
+  - ?? `startChatJob`????? `buildChatAnswer`???????? final_answer????? error?
+  - ?? `tailSessionEvents`????? session ? `events.jsonl`?? Python ???/?? sink ??? `model_start/model_delta/model_end` ?? SSE ????????
+  - ????????? chat stream ? UI ????? final answer ????????
+
+### ????
+- `node --check studio/server.mjs`????
+- `cmd /c "npm run build && npm run smoke:chat-lifecycle"`?`studio/`?????
+- ?? Studio API ???`POST /messages` ? 28ms ?? `{ ok: true, chat: true, started: true }`????????????
+- ????? Studio?`http://127.0.0.1:8787/`?
+
+### ?????
+- ??? provider ???? token ? streaming ????????????????????? delta?? HTTP ????????
+- ?????????????????????????? event bus?
+
+### ???????????????
+- ???????????????? Intent routing hidden ???optimistic pending turn ???? model_start ??????? UI ???????? Thinking ???
+
+### ??????????
+- ??????????????????? Thinking???????????? provider ?? streaming??????????
+## 2026-05-24 Studio chat streaming polish
+
+### 本轮完整目标
+清理 Studio/测试残留乱码检测噪音，并把 Chat 发送后的乐观 pending 与服务端 model_start/model_delta 生命周期合并成更顺滑的单一 Thinking 体验。
+
+### 本次修改文件列表
+- `studio/server.mjs`
+- `studio/src/components/Thread.tsx`
+- `studio/scripts/intent-routing-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### 每项改动原因
+- `studio/server.mjs`: 修正 mojibake 修复器里的错误 `????` 字符类，改为明确匹配 `\uFFFD/latin-1` 可疑字符；为 chat 后台任务记录 lifecycleStarted，避免 model backend fallback 路径重复补一套 model_start/model_delta；把 chatGeneralAnswer 接入 lifecycle 回调，让服务端在模型调用前就有可审计 running 事件。
+- `studio/src/components/Thread.tsx`: 当服务端 user_message 已到达时隐藏本地 optimistic pending，避免用户发送后看到两个气泡；给 ChatStreamPreview 增加平滑文本显示，即使 provider 一次性返回大块 delta，页面也不会突兀整段跳出。
+- `studio/scripts/intent-routing-smoke.mjs`: 等待 chat final_answer 后再断言，适配 chat 改成后台异步生命周期后的真实时序，避免 smoke 测试过早读取导致误报。
+
+### 验证结果
+- `npm run build`：通过。
+- `npm run smoke:intent-routing`：通过。
+- `npm run smoke:chat-lifecycle`：通过。
+- Studio 源码/脚本/server mojibake pattern 扫描：未发现命中。
+- 已重启 Studio：`http://127.0.0.1:8787/api/health` 返回 ok。
+
+### 未解决问题
+- 前端平滑显示可以掩盖一次性大块 delta 的突兀感，但真正 token 级流式仍取决于具体模型 provider 是否持续写入 model_delta。
+
+### 下一轮建议继续的中等颗粒度目标
+做一次浏览器端人工回归：发送普通中文问题，确认只出现一个用户气泡、一个 Thinking 区域、最终答案不乱码；如仍有 provider 粗粒度输出，再把服务端 delta chunking 改成可审计的分片事件。
+
+### 明天建议用户审核重点
+重点看 Chat 首屏体验：发送后是否立即有状态、是否重复弹块、中文是否稳定、最终回答是否像普通大模型助手而不是后台日志。
+
+## 2026-05-24 Studio plan/run visible output polish
+
+### 本轮完整目标
+修复 Studio plan/run 过程中用户看到的中间态体验：不要把结构化模型 JSON/碎片 token 当成最终可读内容展示；同时继续清理残留乱码文案。
+
+### 本次修改文件列表
+- `studio/src/components/Thread.tsx`
+- `studio/src/styles.css`
+- `studio/server.mjs`
+- `studio/scripts/intent-routing-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### 每项改动原因
+- `studio/src/components/Thread.tsx`: 已有 final_answer 时隐藏同一 phase 的 model_delta 中间流，避免截图中 Planning 卡片长期展示结构化 JSON/token 和 `Model streamed a response chunk.`；运行中非 chat 模型流改成用户可读的“正在生成结构化输出，完成校验后展示可读结果”。
+- `studio/src/styles.css`: 清理一处 CSS 注释 mojibake。
+- `studio/server.mjs`: 恢复并英文化 acknowledgement/progress/runtime command 相关函数；清理 plan/run 权限与 runtime 启动/完成文案的乱码；增强 session.json 空文件/半写入容错，避免 appendEvent 因空 JSON 崩溃。
+- `studio/scripts/intent-routing-smoke.mjs`: 适配 plan/run 起始事件使用 assistant_delta 的新 UI 语义；延长异步等待并保留失败诊断。
+
+### 验证结果
+- `npm run build`：通过。
+- `npm run smoke:chat-lifecycle`：通过。
+- `npm run smoke:intent-routing`：通过。
+- Studio source/scripts/server mojibake pattern 扫描：未发现命中。
+- 已重启 Studio，`/api/health` 返回 ok。
+
+### 未解决问题
+- 当前页面中旧会话已经记录过的历史 model_delta 事件仍会存在于 events.jsonl；刷新后 UI 会隐藏同 phase 已完成的 model stream，但历史原始事件仍可在 Inspector/Evidence 中看到，这是审计链的一部分。
+
+### 下一轮建议继续的中等颗粒度目标
+做 Studio 浏览器人工回归：新建 session，分别发送普通 chat 问题和 plan 请求，确认 chat 有自然回答、plan 最终展示可读计划，中间只显示简洁进度，不展示结构化 JSON 碎片。
+
+### 明天建议用户审核重点
+重点看用户一眼看到的主线程：模式自动路由是否自然，plan/run 中间态是否像产品进度，而不是后台日志或模型 token dump。
+
+## 2026-05-24 Studio content-plan routing guardrail
+
+### 本轮完整目标
+修正用户要求“做旅游/学习/内容计划”时误进入开发 runtime 的问题，避免把后台 evidence、task_plan、md 产物当成普通用户期望的回答。
+
+### 本次修改文件列表
+- `studio/server.mjs`
+- `studio/scripts/intent-routing-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### 每项改动原因
+- `studio/server.mjs`: 调整 intent router：普通内容规划（如旅行计划、学习计划、行程方案）默认留在 chat 直接回答；即使用户点了 Plan override，只要没有 workspace edit/analysis 意图，也用 guardrail 转回 chat，不启动 development runtime，不写 md 产物。保留真正代码/仓库任务的 ask->plan、allow->run 行为。
+- `studio/server.mjs`: 清理 createSession 欢迎文案乱码，并增强 readSession 空/坏 JSON 容错；保留错误堆栈日志以便本地诊断。
+- `studio/scripts/intent-routing-smoke.mjs`: 增加 content planning 覆盖：普通旅行计划 auto 必须进 chat；plan override 的内容计划也必须被 guardrail 转回 chat；编辑任务仍按权限进入 plan/run。
+
+### 验证结果
+- `npm run build`：通过。
+- `npm run smoke:intent-routing`：通过。
+- `npm run smoke:chat-lifecycle`：通过。
+- Studio 已重启，`/api/health` 返回 ok。
+
+### 未解决问题
+- Chat 的内容计划质量仍取决于当前 chat backend/provider；但产品路径已改为普通回答，不再写 runtime md artifact。
+
+### 下一轮建议继续的中等颗粒度目标
+补一个前端/端到端 smoke：发送“设计一个青岛3天旅游计划”，断言不出现 runtime run_id、task_plan artifact、permission request，只出现 chat final_answer。
+
+### 明天建议用户审核重点
+确认普通用户的“计划/规划”是否按语义区分：生活/内容计划走 chat；项目/代码/仓库计划才走 development plan。
+
+
+
+## 2026-05-24 Studio intent-aware chat prompt enrichment
+
+### ??????
+?????????/??/?????????????? runtime ???????????? Claude/Codex ??????????????? prompt ???????????????????????????????????? chat ??????????
+
+### ????????
+- `studio/server.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ???????? JS ???????????? Studio server ????
+- `studio/server.mjs`: ?? `classifyChatRequest` ?????/????????????????????????????
+- `studio/server.mjs`: ????? `chatPromptForKind` / `chatGeneralAnswer` ????? prompt ?????travel_plan?learning_plan?content_plan ?????????????????????????????? run/status/evidence/task graph ??????
+- `studio/server.mjs`: ?? fallback ?????????????????????????????????
+
+### ????
+- `node --check studio/server.mjs`: ???
+- `npm run build`: ???
+- `npm run smoke:intent-routing`: ???
+- `npm run smoke:chat-lifecycle`: ???
+- Studio source/scripts/server mojibake pattern ?????????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- ???????? + prompt enrichment????? intent classifier ???????/??????????????????
+- ?????????? chat backend/provider????????????????? development runtime?
+
+### ???????????????
+? intent routing ????????????????? metadata??????????????/Inspector ??? route=chat?intent_kind=travel_plan/learning_plan/content_plan?permission_effect=read_only?
+
+### ??????????
+? Studio ?????????????????????????????? Auto ??? Claude/Codex ???????????????????????????????????????/??/??????? plan/run?
+
+
+## 2026-05-24 Studio intent routing audit metadata
+
+### ??????
+? Auto/Chat ? intent routing ??????????Inspector ????? metadata???????????????????? route?intent_kind?permission_effect?prompt_enrichment ??????
+
+### ????????
+- `studio/server.mjs`
+- `studio/src/types.ts`
+- `studio/src/narrative.ts`
+- `studio/src/components/Inspector.tsx`
+- `studio/src/styles.css`
+- `studio/scripts/intent-routing-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ?? `intentAuditFor`?`permissionEffectFor`?`promptEnrichmentFor`?????????????????? `route=chat`?`intent_kind=travel_plan`?`permission_effect=read_only`?
+- `studio/server.mjs`: ???????? `assistant_delta` ?? `intent_route`???? `display_level=inspector`????? Thread ????????
+- `studio/server.mjs`: ? chat ???????????? `intent_audit`????????????? Inspector ??????????????
+- `studio/src/types.ts` / `studio/src/narrative.ts`: ?? `intent_route`?`intent_route` metadata?`intent_audit` ?????????????????
+- `studio/src/components/Inspector.tsx` / `studio/src/styles.css`: ?? Intent tab????? Route / Intent / Permission ?????????? raw metadata?
+- `studio/scripts/intent-routing-smoke.mjs`: ????????? content planning ?? chat?travel_plan metadata ???permission_effect=read_only?? intent_route ??????? Thread?
+
+### ????
+- `node --check server.mjs`?studio/?????
+- `npm run build`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio source/scripts/server mojibake pattern ?????????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- ?? intent classifier ?????????????????????????????????????
+- Inspector ??? metadata?????? session ? route history ????????
+
+### ???????????????
+? intent routing ??? server ???????????????????????????????????????????????/???????????? server.mjs ?????
+
+### ??????????
+? Studio ??????????3????????? Thread ????????????????? Inspector ? Intent tab?????? route=chat?intent_kind=travel_plan?permission_effect=read_only?
+
+
+## 2026-05-24 Studio generic chat prompt contract
+
+### ??????
+? Claude Code/Codex ??????? chat prompt???????????????????? prompt?????????????? intent hint ?????????? metadata?
+
+### ????????
+- `studio/server.mjs`
+- `studio/scripts/intent-routing-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ? `chatPromptForKind` ???? `chatPromptContract`???????????????????????????????????????????/??/??/??/?????
+- `studio/server.mjs`: ?? travel/learning/content ?????? prompt???????????????????
+- `studio/server.mjs`: ?? `intent_kind` ?? internal hint ? Inspector ??????????????????????????
+- `studio/server.mjs`: ? `prompt_enrichment` ??? `outcome_oriented_answer_contract`?????????????????????
+- `studio/scripts/intent-routing-smoke.mjs`: ??????? travel_plan ? audit metadata ???? prompt contract?????? travel prompt?
+
+### ????
+- `node --check server.mjs`?studio/?????
+- `npm run build`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio source/scripts/server mojibake pattern ?????????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- intent classifier ?? `server.mjs` ?????????? routing policy ?????????????????????
+- ??????? PromptEnvelope section ?????? Studio chat ????? contract????? runtime PromptEnvelope ???
+
+### ???????????????
+?? `intent-router` / `prompt-contract` ???????????????????????????? route/permission/context?????????
+
+### ??????????
+????????????????????????????????????????????/??????? plan/run?Inspector ????? metadata??????????
+
+
+## 2026-05-24 Studio intent router module extraction
+
+### ??????
+????????????? Studio ??? intent routing ? chat prompt contract ? `server.mjs` ??????????? Claude Code/Codex ????????????????????? mode/permission/context?prompt ???????????????
+
+### ????????
+- `studio/intent-router.mjs`
+- `studio/prompt-contract.mjs`
+- `studio/server.mjs`
+- `studio/scripts/intent-router-unit.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/intent-router.mjs`: ???? intent router ??????? `routeUserIntent`?`classifyChatRequest`?`intentAuditFor`?`permissionEffectFor` ??????????? server ????????
+- `studio/prompt-contract.mjs`: ???? chat prompt contract???????????????????????????????????????????????/??/?????? prompt?
+- `studio/server.mjs`: ???? router/contract ??????? routing/prompt ????? server ?? HTTP?session?event lifecycle ??????
+- `studio/intent-router.mjs`: ?????????????? `Analyze this project ... without changing files` ? `asksGeneral` ????? chat?????? plan?
+- `studio/scripts/intent-router-unit.mjs`: ?????????????????????????? ask/allow???????????? prompt contract ???????????
+- `studio/package.json`: ?? `npm run test:intent-router`?????????????????
+
+### ????
+- `node --check server.mjs`????
+- `node --check intent-router.mjs`????
+- `node --check prompt-contract.mjs`????
+- `npm run test:intent-router`????
+- `npm run build`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio source/scripts/server/router/contract mojibake pattern ?????????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- router ???????????????????????? evidence ???? schema??? Studio/CLI ???
+- chat local fallback ?????? fallback ???????????????????????? fallback module?
+
+### ???????????????
+? `localGeneralAnswer` ??????????? fallback ????/?????????????????????????????????????????/???????? agent ?????
+
+### ??????????
+??? Auto ????????????????????????????? plan?????? ask ?? plan?allow ? run?Inspector ??? metadata??? Thread ??????????
+
+
+## 2026-05-24 Studio generic local chat fallback
+
+### ??????
+? `localGeneralAnswer` ???????? backend ?????????????Studio ??????/??????????????????????????????? chat ?????????
+
+### ????????
+- `studio/server.mjs`
+- `studio/scripts/chat-fallback-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ?? `localGeneralAnswer` ?? `travel_plan` / `learning_plan` ????????? fallback??????????????????? request type?????? run/??????????????/?????
+- `studio/server.mjs`: ?? `CHAT_MODES` ????????????? `Plan a 3-day ...` ????????????? `plan` ???????????
+- `studio/scripts/chat-fallback-smoke.mjs`: ?? fallback ????????? fallback ?? Zhanqiao/Laoshan/Beer Museum/shadowing ??????????? CLI context noise?
+- `studio/package.json`: ?? `npm run smoke:chat-fallback`???? fallback ????????
+
+### ????
+- `node --check server.mjs`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run build`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio source/scripts/server/router/contract mojibake pattern ?????????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- local fallback ????????????????????????????? model streaming ?????????????????????????????
+- ???? fallback ???? `prompt-contract.mjs` ??? `chat-fallback.mjs`?????? server ???
+
+### ???????????????
+???? Studio UI??????????3??????????????????????????? backend ????????? fallback?? Inspector ??? intent_audit?
+
+### ??????????
+??? chat ?????????????????????????????????????????????????????????? runtime ?????
+
+
+## 2026-05-24 Studio Product/Ops separation roadmap
+
+### ??????
+?????????????????Studio ?????????????????/?????????????????????run/status/evidence/model route/goal_policy ????????? Ops / Debug Console??? AI Debug Agent ???
+
+### ????????
+- `docs/zh/???????.md`
+- `docs/zh/Asteria Studio ?????.md`
+- `docs/zh/Asteria Studio ????.md`
+- `WORKING_REPORT.md`
+
+### ??????
+- `docs/zh/???????.md`: ?? 2026-05-24 Studio ?????????????? `Product Workspace + Ops / Debug Console`?????????????
+- `docs/zh/Asteria Studio ?????.md`: ?? Product/Ops separation principle??? Product Workspace ? Ops/Debug Console ???????????????????
+- `docs/zh/Asteria Studio ????.md`: ?? Product Workspace P0?Ops / Debug Console P0 ???????????????????????? AI Debug Agent?
+
+### ????
+- ??? Python `utf-8` ????????????
+- ? 3 ??????? mojibake pattern ?????????
+- ???????????? build/pytest?
+
+### ?????
+- ?? Studio UI ??? Inspector/Evidence Explorer ?????????????????????/Ops ???
+- ???? AI Debug Agent ????????
+- ???????????????????? smoke test?
+
+### ???????????????
+?? Studio ?????????????/???? Evidence Explorer??????? Product Workspace???????? Debug/Ops ???????????? Inspector?Evidence Explorer ??? AI ?????
+
+### ??????????
+??????????????????????? AI/Agent ????? run/status/evidence/model route ?? Ops/Debug Console ????????????
+
+
+## 2026-05-24 Studio Debug/Ops panel toggle
+
+### ??????
+????/???????? UI??????? Evidence Explorer / Inspector????????????? Debug/Ops ???????????????????
+
+### ????????
+- `studio/src/App.tsx`
+- `studio/src/styles.css`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/App.tsx`: ?? `opsOpen` ????? `false`??????? `Debug/Ops` ?????? `Inspector`??????????????? Evidence Explorer?
+- `studio/src/App.tsx`: ???? Debug/Ops ????? `aria-pressed` ??????? Refresh ? route pill?
+- `studio/src/styles.css`: ?? `.appShell` ?????????? `.opsOpen` ??????????? Debug/Ops ?????????
+- `studio/src/styles.css`: ??????? Ops ?????? Inspector???????????
+
+### ????
+- `npm run build`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- Debug/Ops ??????/???? Inspector/Evidence Explorer????????????? AI Debug Agent ???
+- ????????????????? backend ????????????????????
+
+### ???????????????
+? Debug/Ops ????????????????? AI Debug Agent ???????? UI smoke/DOM ???????????? Evidence Explorer??? Debug/Ops ?????
+
+### ??????????
+?? Studio ??????? Evidence Explorer ????????? Debug/Ops ?????? Inspector/Evidence Explorer??????????????????? AI/Agent ???
+
+
+## 2026-05-24 Studio Debug/Ops console framing
+
+### ??????
+??????????????????? Debug/Ops Console????????? AI Debug Agent ???????????/???????????????????????
+
+### ????????
+- `studio/src/components/Inspector.tsx`
+- `studio/src/styles.css`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/components/Inspector.tsx`: ? Inspector ???? `Debug / Ops Console` ??????????? backend observability?evidence?route decisions?runtime state?raw artifacts???????????
+- `studio/src/components/Inspector.tsx`: ?? `AI Debug Agent` ??????????? chip?Why blocked / Model route / Next action??textarea ????????? skeleton????????????????????
+- `studio/src/styles.css`: ?? Ops intro?Debug Agent card?hint chips?composer ?????????????????????????
+
+### ????
+- `npm run build`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio ????`http://127.0.0.1:8787/api/health` ?? ok?
+
+### ?????
+- AI Debug Agent ??????????????? debug answer API?
+- ???? DOM/UI smoke????????? Evidence Explorer??? Debug/Ops ???? Debug Agent?
+
+### ???????????????
+?? AI Debug Agent ???????????? session/latest run/status/run detail??? blocked/model route/next backend action???? run?????????????? Debug/Ops Console ??
+
+### ??????????
+?? Debug/Ops ??????????????????????AI Debug Agent ???Evidence Explorer ??????????/????????????????????
+
+## 2026-05-24 Studio homepage product-only cleanup
+
+### ??????
+?????? Debug/Ops ?????? Studio ????????????????? Product Workspace???/????????????? URL ??????
+
+### ????????
+- `studio/src/App.tsx`
+- `studio/src/styles.css`
+- `docs/zh/Asteria Studio ?????.md`
+- `docs/zh/Asteria Studio ????.md`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/App.tsx`: ???? `Debug/Ops` ???`opsOpen` ???Inspector ?????????? run/file detail ?????????????????????
+- `studio/src/styles.css`: ?????? `opsOpen` ??? Debug/Ops ???????????????? + ?????
+- `docs/zh/Asteria Studio ?????.md`: ???????????Debug/Ops ???? Product Workspace ??????????? `/ops` ??????
+- `docs/zh/Asteria Studio ????.md`: ???????????????????Ops Console ??????????
+
+### ????
+- `npm run build`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio ??????`GET http://127.0.0.1:8787/api/health` ?? 200 / ok?
+
+### ?????
+- `Inspector.tsx` ? Debug/Ops ????????????????????? `/ops` ??????
+- ????????????????????????????
+
+### ???????????????
+???????????? plan/chat ?????????????????? metadata???? intent audit ????? metadata ??? `/ops`?
+
+### ??????????
+?? `http://localhost:8787/`???????????? AI ????????????????????????/??????? Debug/Ops?Evidence Explorer ????????
+
+## 2026-05-24 Studio productized plan/chat output
+
+### ??????
+? Studio ??? plan/chat ??????????????????????????????????????? model route?run id?status/evidence/Inspector ??? metadata?
+
+### ????????
+- `studio/server.mjs`
+- `studio/src/components/Thread.tsx`
+- `studio/scripts/chat-fallback-smoke.mjs`
+- `studio/scripts/chat-lifecycle-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ?? chat final answer ?? ?Answered with model route / Local fallback route? ?????? fallback ????????????? request type?run started?file changed ??????
+- `studio/server.mjs`: ???????????????????????????? run id????route telemetry?Evidence Explorer ?????????
+- `studio/src/components/Thread.tsx`: ?????????? provider/model/tokens/latency??????????????/?????? Context refs?Latest run?Inspector?Evidence Explorer?route notice ???????
+- `studio/scripts/chat-fallback-smoke.mjs`: ?? smoke test??? fallback ?????????????? backend metadata?
+- `studio/scripts/chat-lifecycle-smoke.mjs`: ?????? smoke test????????? runtime metadata?Inspector/Evidence Explorer?route notice ? run id?
+
+### ????
+- `npm run build`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio ??????`GET http://127.0.0.1:8787/api/health` ?? 200 / ok?
+
+### ?????
+- run/review ??????????????????? Inspector/Evidence Explorer ??????????????????????????????????
+- ?? session ???????????????????????????
+
+### ???????????????
+???? run/review/permission ?????????????/?????????? metadata ??? `/ops`?????????????????
+
+### ??????????
+????????????????????????????????????????? AI ??????????? run id?Evidence Explorer?Inspector???????? token ???
+
+## 2026-05-24 Studio run/review/permission user-facing copy cleanup
+
+### ??????
+???? Studio ?????????? run/review/permission ???? Inspector?Evidence Explorer????????????????????????????????????????????????
+
+### ????????
+- `studio/server.mjs`
+- `studio/src/components/PermissionCard.tsx`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ?? permission request?allow/deny ???plan/run/review/resume acknowledgement ? progress ??????? runtime/Inspector/evidence ??????
+- `studio/server.mjs`: ?? `finalTextFor`?`nextStepForMode`?`userProgressDigestLines`?`withProcessDigest`???/??/??????????????????? stdout/stderr?run id?.asteria?Inspector/Evidence Explorer ??????
+- `studio/server.mjs`: ?? plan/run/review final text ??????????????????????????????????????????
+- `studio/src/components/PermissionCard.tsx`: ???????????????? resolved ?????????????
+
+### ????
+- `node --check server.mjs`????
+- `npm run build`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio ??????`GET http://127.0.0.1:8787/api/health` ?? 200 / ok?
+
+### ?????
+- `server.mjs` ?? inspector/debug API ????????????????????????????????????
+- ?? session ?????????????????????????
+
+### ???????????????
+?????? Studio smoke??? API ?? session??? ask ?? run?????? permission/final/error ????? command?Inspector?Evidence Explorer?run id?stdout/stderr ??????
+
+### ??????????
+?????????????????????????????????/?????????????????/???????????????????????????????
+
+## 2026-05-24 Studio user-thread copy smoke test
+
+### ??????
+????? Studio smoke test????????????????????????? command?Inspector?Evidence Explorer?run id?stdout?stderr ???/?????
+
+### ????????
+- `studio/scripts/user-thread-copy-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/scripts/user-thread-copy-smoke.mjs`: ???? Studio ????? workspace??? session??? run/review ? ask ????????? main-thread ??????? command?Inspector?Evidence Explorer?run id?stdout?stderr?status --json?.asteria?model route?token ?????
+- `studio/scripts/user-thread-copy-smoke.mjs`: ???? permission event ???? `command` metadata ??????? `PermissionCard.tsx` ???? `event.command`???????????????
+- `studio/package.json`: ?? `smoke:user-thread-copy` ??????? CI/???????
+
+### ????
+- `npm run smoke:user-thread-copy`????
+- `npm run build`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+
+### ?????
+- ? smoke ???? ask-permission ? run/review ???? PermissionCard ????????????? final/error ????? UI ?????
+
+### ???????????????
+? `smoke:user-thread-copy` ???? Studio smoke ????????? browser-level/DOM-level smoke????????????????????
+
+### ??????????
+? Studio ????????????????????????????????????????????????
+
+## 2026-05-24 Studio homepage product-first cleanup and smoke
+
+### ??????
+?????????????????????????????? homepage copy smoke????????? Inspector/Evidence Explorer/Route/run id/stdout/stderr/token ?????
+
+### ????????
+- `studio/src/App.tsx`
+- `studio/src/components/Sidebar.tsx`
+- `studio/src/components/Composer.tsx`
+- `studio/src/components/Thread.tsx`
+- `studio/src/styles.css`
+- `studio/scripts/homepage-copy-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/App.tsx`: ???? route pill????????? ?Ask, plan, or continue a goal.???????? workspace ??/route ???
+- `studio/src/components/Sidebar.tsx`: ?????? `Local Runtime OS` ?? `AI workspace`?System status ????? Workspace health??????? Gate/Route ??? latest run id?
+- `studio/src/components/Composer.tsx`: ????????????????????? Advanced details ???????? Auto?
+- `studio/src/components/Thread.tsx`: empty state ???? AI ??????????? execute/verify/evidence?
+- `studio/src/styles.css`: ? Advanced mode ????????
+- `studio/scripts/homepage-copy-smoke.mjs`: ????/??? copy smoke??????????????? Local Runtime?System Status?Route?Inspector?Evidence Explorer?run id?stdout/stderr?token?model calls?command ?????
+- `studio/package.json`: ?? `smoke:homepage-copy` ???
+
+### ????
+- `npm run build`????
+- `npm run smoke:homepage-copy`????
+- `npm run smoke:user-thread-copy`????
+- `npm run smoke:chat-fallback`????
+- `npm run test:intent-router`????
+- `npm run smoke:intent-routing`????
+- `npm run smoke:chat-lifecycle`????
+- Studio ??????`GET http://127.0.0.1:8787/api/health` ?? 200 / ok?
+
+### ?????
+- ?? homepage smoke ???????/?????????????? DOM ???????? Playwright ??? DOM ?????
+- Advanced ??????? chat/plan/run/review/resume???????????????????????????
+
+### ???????????????
+?? plan ???????????????????????????????????????????????????????????????????????
+
+### ??????????
+?? Studio ??????????????? AI ????? Auto ???Advanced ???? Route/Gate/run id/Evidence Explorer/Inspector ??????
+
+
+## 2026-05-24 Studio plan output quality hardening
+
+### ??????
+?? plan ??????????????????????????????????????route?run/status/evidence ???
+
+### ????????
+- `studio/prompt-contract.mjs`
+- `studio/server.mjs`
+- `studio/scripts/plan-output-smoke.mjs`
+- `studio/scripts/chat-fallback-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/prompt-contract.mjs`: ???? plan answer contract??? travel/learning/content/general plan ???????????????????????????????????????? runtime metadata?
+- `studio/server.mjs`: chat ? prompt ?? outcome-oriented contract?plan-like ??????????????runtime `plan` ???????????????????????????????????????????
+- `studio/scripts/plan-output-smoke.mjs`: ?? Studio smoke????? plan ??????????????????????????? command/run id/stdout/stderr/Inspector/Evidence Explorer ??????
+- `studio/scripts/chat-fallback-smoke.mjs`: ?????????????????????????????????????
+- `studio/package.json`: ?? `smoke:plan-output`????????
+
+### ????
+- `npm run build`: ???
+- `npm run smoke:plan-output`: ???
+- `npm run smoke:chat-fallback`: ???
+- `npm run test:intent-router`: ???
+- `npm run smoke:intent-routing`: ???
+- `npm run smoke:chat-lifecycle`: ???
+- `npm run smoke:homepage-copy`: ???
+- `npm run smoke:user-thread-copy`: ???
+- Studio ????`GET http://127.0.0.1:8787/api/health` ?? 200/ok?
+
+### ?????
+- ?? smoke ?????????????????????? DOM ??????
+- ??????????????????????? prompt contract ?????????????????????????
+
+### ???????????????
+????? Studio ????????????????????????????????? Auto ?????????????????????????????????
+
+### ??????????
+??? plan/chat ??????????????????????????????? run/status/evidence/command ??????????????????????
+
+
+## 2026-05-24 Studio chat stream final-answer consistency fix
+
+### ??????
+?? Studio chat ??thinking/?????????????????????????????????????????????????????? `<think>` ?????
+
+### ????????
+- `studio/server.mjs`
+- `studio/scripts/chat-stream-final-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ??????????? session events ????? chat `model_delta` ?????? final answer??????????????? CLI JSON answer ????????????????
+- `studio/server.mjs`: ?? `<think>...</think>` ?????????????????????????????
+- `studio/scripts/chat-stream-final-smoke.mjs`: ???????????????????????????? answer??? final answer ?????????????????? fallback?????? `<think>`?
+- `studio/package.json`: ?? `smoke:chat-stream-final`?
+
+### ????
+- `npm run build`: ???
+- `npm run smoke:chat-stream-final`: ???
+- `npm run smoke:plan-output`: ???
+- `npm run smoke:chat-fallback`: ???
+- `npm run smoke:chat-lifecycle`: ???
+- `npm run smoke:homepage-copy`: ???
+- `npm run smoke:user-thread-copy`: ???
+- Studio ????`GET http://127.0.0.1:8787/api/health` ?? 200/ok?
+
+### ?????
+- ???????????? MiniMax/GLM ??? UI ???????????????? thinking ???
+- ???????? chat?runtime plan/run ???????????????????????
+
+### ???????????????
+??????????????????? 3 ??????????????????????? UI ????? thinking ? final ?????? Thread ?????
+
+### ??????????
+?????????????? thinking ???????????????????????? `<think>` ?????????????????
+
+
+## 2026-05-24 Studio Chinese mojibake regression fix
+
+### ??????
+?? chat final answer ??????? mojibake ???????????????????????????????
+
+### ????????
+- `studio/server.mjs`
+- `studio/scripts/chat-stream-final-smoke.mjs`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ?? `repairMojibake` ???????? Markdown ?????????????????????????????????/latin1 ?????????????????
+- `studio/scripts/chat-stream-final-smoke.mjs`: ?????????????????????????????? / ?? / ?????????????????????
+
+### ????
+- `npm run build`: ???
+- `npm run smoke:chat-stream-final`: ???
+- `npm run smoke:plan-output`: ???
+- `npm run smoke:chat-fallback`: ???
+- `npm run smoke:chat-lifecycle`: ???
+- `npm run smoke:homepage-copy`: ???
+- `npm run smoke:user-thread-copy`: ???
+- Studio ????`GET http://127.0.0.1:8787/api/health` ?? 200/ok?
+
+### ?????
+- ?????????????????????????? session ???????????????????
+
+### ???????????????
+?? Thread ?? chat streaming ?????? `<think>` ???????????????????????????????????
+
+### ??????????
+?????????????????????????????????????
+
+
+## 2026-05-24 Studio composer Enter-to-send
+
+### ??????
+? Studio ??????? Enter ??????????? Shift+Enter ???????????????
+
+### ????????
+- `studio/src/components/Composer.tsx`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/src/components/Composer.tsx`: ? textarea ????? Ctrl/Cmd+Enter ?? Enter ???Shift+Enter ??????? placeholder ???????????? Ctrl+Enter?
+
+### ????
+- `npm run build`: ???
+- Studio ????`GET http://127.0.0.1:8787/api/health` ?? 200/ok?
+
+### ?????
+- ???? DOM ????? smoke????? TypeScript/Vite ?????
+
+### ???????????????
+??????? smoke ?????????? Enter ???Shift+Enter ??????????
+
+### ??????????
+????????? Enter ???????????????????
+
+
+## 2026-05-24 Studio friendly SSL timeout message
+
+### ??????
+? `<urlopen error _ssl.c:1015: The handshake operation timed out>` ???? SSL/TLS ??????????????????????
+
+### ????????
+- `studio/server.mjs`
+- `studio/scripts/friendly-ssl-error-smoke.mjs`
+- `studio/package.json`
+- `WORKING_REPORT.md`
+
+### ??????
+- `studio/server.mjs`: ?? `friendlyErrorText` / `friendlyErrorSummary`??? SSL/TLS handshake timeout ??? timeout??????????/??????/????????
+- `studio/server.mjs`: chat ??? runtime ?????????????????????????? `_ssl.c:1015`?`urlopen error` ??????????????
+- `studio/scripts/friendly-ssl-error-smoke.mjs`: ?? smoke???? SSL handshake timeout ???????????????????? `_ssl.c:1015` / `urlopen error`?
+- `studio/package.json`: ?? `smoke:friendly-ssl-error`?
+
+### ????
+- `npm run build`: ???
+- `npm run smoke:friendly-ssl-error`: ???
+- `npm run smoke:chat-stream-final`: ???
+- `npm run smoke:chat-fallback`: ???
+- Studio ????`GET http://127.0.0.1:8787/api/health` ?? 200/ok?
+
+### ?????
+- ??????????????? Studio ????????/???
+
+### ???????????????
+??? provider ????????401/403 ?????429 ???DNS ????????provider ??????
+
+### ??????????
+???????????????????????????? + ?????????? Python/SSL ???

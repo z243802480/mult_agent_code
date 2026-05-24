@@ -9,7 +9,17 @@
     "start:studio": "powershell -ExecutionPolicy Bypass -File ./start-studio.ps1",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "smoke:run-detail": "node scripts/run-detail-smoke.mjs",
+    "test:intent-router": "node scripts/intent-router-unit.mjs",
+    "smoke:intent-routing": "node scripts/intent-routing-smoke.mjs",
+    "smoke:chat-fallback": "node scripts/chat-fallback-smoke.mjs",
+    "smoke:chat-lifecycle": "node scripts/chat-lifecycle-smoke.mjs",
+    "smoke:user-thread-copy": "node scripts/user-thread-copy-smoke.mjs",
+    "smoke:homepage-copy": "node scripts/homepage-copy-smoke.mjs",
+    "smoke:plan-output": "node scripts/plan-output-smoke.mjs",
+    "smoke:chat-stream-final": "node scripts/chat-stream-final-smoke.mjs",
+    "smoke:friendly-ssl-error": "node scripts/friendly-ssl-error-smoke.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",

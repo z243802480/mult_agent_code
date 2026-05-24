@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_profile import (
     AccountProfile,
@@ -229,7 +231,171 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) 
     assert mount.runtime_context["route_guidance"]["purpose"] == "coding"
     assert mount.runtime_context["route_guidance"]["relevant"][0]["model_tier"] == "medium"
     run_dir = tmp_path / ".asteria" / "runs" / "run-0001"
-    assert "strong-route" in (run_dir / "model_profiles.jsonl").read_text(encoding="utf-8")
+    model_profiles = (run_dir / "model_profiles.jsonl").read_text(encoding="utf-8")
+    assert '"model_tier": "strong"' in model_profiles
+    assert '"provider": "minimax"' in model_profiles
+    assert mount.runtime_context["model_route_resolution"]["tier"] == "strong"
+    selection = mount.runtime_context["model_selection"]
+    assert selection["reason"] == "capability_feedback_escalated_from_medium"
+    assert selection["tier_pressure"] == {
+        "default_tier": "medium",
+        "strategy_tier": "medium",
+        "selected_tier": "strong",
+        "direction": "up",
+        "delta": 1,
+        "uses_stronger_than_default": True,
+        "uses_cheaper_than_default": False,
+    }
+    assert selection["capability_feedback"]["status"] == "blocked"
+    assert selection["capability_feedback"]["decision"] == "escalated_to_strong"
+    assert selection["capability_feedback"]["matched_route"]["recommended_action"] == (
+        "review_worker_route_before_scaling"
+    )
     sandbox_profile = (run_dir / "sandbox_profiles.jsonl").read_text(encoding="utf-8")
     assert "temp_workspace" in sandbox_profile
     assert "use copied temp workspace" in sandbox_profile
+
+
+def test_runtime_profile_builder_uses_strategy_bias_without_clobbering_routes(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(SCHEMA_DIR)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-0002",
+        policy={
+            "permissions": {},
+            "protected_paths": [],
+            "model_strategy_profile": {
+                "strategy": "quality",
+                "selection_policy": "prefer_capability_fit_with_budget",
+            },
+        },
+        validator=validator,
+    )
+    task = {
+        "task_id": "task-0002",
+        "role": "CoderAgent",
+        "allowed_tools": ["read_file"],
+        "task_kind": "implementation",
+        "priority": "high",
+        "read_scope": ["src/"],
+        "write_scope": ["src/output.py"],
+    }
+
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=context,
+        task=task,
+        worker_id="worker-0002",
+        runtime_context={},
+    )
+
+    selection = mount.runtime_context["model_selection"]
+    assert selection == {
+        "purpose": "coding",
+        "task_kind": "implementation",
+        "default_tier": "medium",
+        "strategy_tier": "strong",
+        "selected_tier": "strong",
+        "strategy": "quality",
+        "reason": "quality_strategy_escalated_high_risk_or_complex_task",
+        "tier_pressure": {
+            "default_tier": "medium",
+            "strategy_tier": "strong",
+            "selected_tier": "strong",
+            "direction": "up",
+            "delta": 1,
+            "uses_stronger_than_default": True,
+            "uses_cheaper_than_default": False,
+        },
+        "capability_feedback": {
+            "status": "healthy",
+            "decision": "no_escalation",
+            "matched_route": None,
+            "blocking_count": 0,
+            "review_count": 0,
+            "recommended_actions": [
+                "Keep current model routes and continue collecting capability evidence."
+            ],
+            "provider_route_strategy": {"decision": "not_configured"},
+        },
+    }
+
+
+def test_runtime_profile_builder_honors_explicit_task_model_tier(tmp_path: Path) -> None:
+    validator = SchemaValidator(SCHEMA_DIR)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-0003",
+        policy={
+            "permissions": {},
+            "protected_paths": [],
+            "model_strategy_profile": {
+                "strategy": "economy",
+                "selection_policy": "prefer_low_cost_with_safety_escalation",
+            },
+        },
+        validator=validator,
+    )
+    task = {
+        "task_id": "task-0003",
+        "role": "CoderAgent",
+        "allowed_tools": ["read_file"],
+        "task_kind": "implementation",
+        "runtime_profile_hints": {"model_tier": "strong"},
+        "read_scope": ["src/"],
+        "write_scope": ["src/output.py"],
+    }
+
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=context,
+        task=task,
+        worker_id="worker-0003",
+        runtime_context={},
+    )
+
+    assert mount.runtime_context["model_selection"]["selected_tier"] == "strong"
+    assert mount.runtime_context["model_selection"]["reason"] == "explicit_task_model_tier"
+
+
+def test_runtime_profile_builder_records_resolved_model_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "medium-key")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_BASE_URL", "https://example.invalid/v1")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_NAME", "medium-model")
+    validator = SchemaValidator(SCHEMA_DIR)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-0004",
+        policy={"permissions": {}, "protected_paths": []},
+        validator=validator,
+    )
+    task = {
+        "task_id": "task-0004",
+        "role": "CoderAgent",
+        "allowed_tools": ["read_file"],
+        "task_kind": "implementation",
+        "read_scope": ["src/"],
+        "write_scope": ["src/output.py"],
+    }
+
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=context,
+        task=task,
+        worker_id="worker-0004",
+        runtime_context={},
+    )
+
+    route = mount.runtime_context["model_route_resolution"]
+    assert route["configured"] is True
+    assert route["tier"] == "medium"
+    assert route["provider"] == "openai-compatible"
+    assert route["model_name"] == "medium-model"
+    assert route["next_action"] == "Model route is configured."
+    model_profiles = (tmp_path / ".asteria" / "runs" / "run-0004" / "model_profiles.jsonl")
+    assert '"provider": "openai-compatible"' in model_profiles.read_text(encoding="utf-8")
+    assert '"model_name": "medium-model"' in model_profiles.read_text(encoding="utf-8")

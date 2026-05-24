@@ -110,9 +110,35 @@ def test_model_check_reports_missing_provider_config(tmp_path: Path, monkeypatch
 
     assert not result.config_ok
     assert not result.call_ok
-    assert "api key" in result.summary.lower()
+    assert "api_key" in result.summary.lower()
     assert result.failure_type == "configuration"
-    assert result.failure_report_path is not None
+    assert result.failure_report_path is None
+    payload = result.to_dict()
+    assert payload["route_readiness"]["status"] == "blocked"
+    assert payload["route_readiness"]["recommended_next_command"] == "model-check"
+    assert "Route readiness: blocked" in result.to_text()
+
+
+def test_model_check_route_readiness_matches_status_review_shape(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "openai-compatible")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_NAME", "strong-model")
+    monkeypatch.delenv("AGENT_MODEL_STRONG_API_KEY", raising=False)
+    monkeypatch.delenv("AGENT_MODEL_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    payload = ModelCheckCommand(tmp_path, model_tier="strong").run().to_dict()
+    readiness = payload["route_readiness"]
+
+    assert readiness["status"] == "blocked"
+    assert readiness["routes"][0]["tier"] == "strong"
+    assert readiness["routes"][0]["provider"] == "openai-compatible"
+    assert readiness["routes"][0]["model_name"] == "strong-model"
+    assert readiness["routes"][0]["configured"] is False
+    assert readiness["current_blocker"] == readiness["blockers"][0]
+    assert readiness["recommended_next_command"] == "model-check"
 
 
 def test_model_check_reports_local_provider_defaults(tmp_path: Path, monkeypatch) -> None:

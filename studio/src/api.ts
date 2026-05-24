@@ -9,6 +9,7 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   sessions: () => requestJson<{ ok: boolean; sessions: StudioSession[] }>("/api/studio/sessions"),
   createSession: () => requestJson<{ ok: boolean; session: StudioSession }>("/api/studio/sessions", { method: "POST" }),
+  deleteSession: (id: string) => requestJson<{ ok: boolean; deleted: string }>(`/api/studio/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   events: (id: string) => requestJson<{ ok: boolean; events: StudioEvent[] }>(`/api/studio/sessions/${encodeURIComponent(id)}/events`),
   send: (id: string, message: string, mode: string, permission: string) =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/messages`, {

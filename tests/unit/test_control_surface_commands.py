@@ -1,4 +1,4 @@
-﻿import json
+import json
 from pathlib import Path
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
@@ -6,11 +6,15 @@ from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gray_command import GrayCommand
 from asteria_runtime.commands.gray_run_command import GrayRunCommand
-from asteria_runtime.commands.gate_status_command import _validation_recommendation_for_changed_files
+from asteria_runtime.commands.gate_status_command import (
+    _validation_recommendation_for_changed_files,
+)
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
+from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.core.real_provider_matrix import summarize_real_provider_matrix
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -70,7 +74,9 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "pass"
     assert any(check["name"] == "version_sync" for check in payload["checks"])
-    gray_modules = next(check for check in payload["checks"] if check["name"] == "gray_command_modules")
+    gray_modules = next(
+        check for check in payload["checks"] if check["name"] == "gray_command_modules"
+    )
     assert "gray-run" in gray_modules["summary"]
     assert any(check["name"] == "gray_route_template" for check in payload["checks"])
     assert any(check["name"] == "gray_runbook" for check in payload["checks"])
@@ -112,6 +118,14 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
     payload = result.to_dict()
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "uninitialized"
+    assert payload["workflow_state"] == "needs_init"
+    assert payload["current_phase"] == "UNINITIALIZED"
+    assert (
+        payload["current_blocker"]
+        == "Workspace is not initialized; run `asteria /init --root .` first."
+    )
+    assert payload["can_review"] is False
+    assert payload["can_accept"] is False
     assert payload["next_actions"] == ["Run `asteria /init --root .`."]
     _assert_control_surface_contract(
         payload,
@@ -120,6 +134,11 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
         required_fields={
             "schema_version",
             "status",
+            "workflow_state",
+            "current_phase",
+            "current_blocker",
+            "can_review",
+            "can_accept",
             "current_session_id",
             "recommended_next_command",
             "next_actions",
@@ -163,10 +182,19 @@ def test_status_recommends_review_after_completed_done_tasks(tmp_path: Path) -> 
         "task_board",
     )
 
-    payload = StatusCommand(tmp_path).run().to_dict()
+    result = StatusCommand(tmp_path).run()
+    payload = result.to_dict()
 
     assert payload["recommended_next_command"] == "review"
+    assert payload["workflow_state"] == "ready_for_review"
+    assert payload["current_phase"] == "DONE"
+    assert payload["current_blocker"] is None
+    assert payload["can_review"] is True
+    assert payload["can_accept"] is False
     assert payload["next_actions"] == ["Run `asteria review`."]
+    assert "Workflow: ready_for_review" in result.to_text()
+    assert "Current phase: DONE" in result.to_text()
+    assert "Can review: yes" in result.to_text()
 
 
 def test_status_recommends_accept_after_reviewed_pass(tmp_path: Path) -> None:
@@ -186,10 +214,18 @@ def test_status_recommends_accept_after_reviewed_pass(tmp_path: Path) -> None:
         "task_board",
     )
 
-    payload = StatusCommand(tmp_path).run().to_dict()
+    result = StatusCommand(tmp_path).run()
+    payload = result.to_dict()
 
     assert payload["recommended_next_command"] == "accept"
+    assert payload["workflow_state"] == "ready_for_accept"
+    assert payload["current_phase"] == "REVIEWED"
+    assert payload["current_blocker"] is None
+    assert payload["can_review"] is False
+    assert payload["can_accept"] is True
     assert payload["next_actions"] == ["Run `asteria accept`."]
+    assert "Workflow: ready_for_accept" in result.to_text()
+    assert "Can accept: yes" in result.to_text()
 
 
 def test_status_has_no_next_command_after_acceptance(tmp_path: Path) -> None:
@@ -212,10 +248,46 @@ def test_status_has_no_next_command_after_acceptance(tmp_path: Path) -> None:
     payload = StatusCommand(tmp_path).run().to_dict()
 
     assert payload["recommended_next_command"] is None
+    assert payload["workflow_state"] == "accepted"
+    assert payload["current_phase"] == "ACCEPTED"
+    assert payload["can_review"] is False
+    assert payload["can_accept"] is False
     assert payload["next_actions"] == []
 
 
+def test_status_reports_blocked_model_route_readiness(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "running", "current_phase": "EXECUTE", "summary": "executing"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "model_route_resolutions.jsonl",
+        {
+            "tier": "strong",
+            "purpose": "coding",
+            "provider": "unknown",
+            "model_name": "unknown",
+            "configured": False,
+            "missing": ["AGENT_MODEL_STRONG_PROVIDER or AGENT_MODEL_PROVIDER"],
+            "next_action": "Configure model route requirements: AGENT_MODEL_STRONG_PROVIDER.",
+        },
+    )
 
+    result = StatusCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    assert payload["status"] == "blocked"
+    assert payload["workflow_state"] == "blocked"
+    assert payload["route_readiness"]["status"] == "blocked"
+    assert payload["route_readiness"]["recommended_next_command"] == "model-check"
+    assert "Configure model route requirements" in payload["current_blocker"]
+    assert payload["next_actions"] == ["Run `asteria debug`."]
+    assert "Model routes: blocked" in result.to_text()
+    assert "strong: unknown/unknown configured=False" in result.to_text()
 
 
 def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> None:
@@ -238,6 +310,7 @@ def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> N
             "next_actions",
         },
     )
+
 
 def test_gray_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
@@ -311,7 +384,9 @@ def test_gate_release_stage_blocks_without_acceptance_report(tmp_path: Path) -> 
 
     assert not result.ok
     assert result.status == "blocked"
-    gate_stage = next(stage for stage in result.stages["release"] if stage["name"] == "acceptance-gate")
+    gate_stage = next(
+        stage for stage in result.stages["release"] if stage["name"] == "acceptance-gate"
+    )
     assert gate_stage["ok"] is False
     assert "No acceptance report provided" in gate_stage["summary"]
     text = result.to_text()
@@ -487,7 +562,10 @@ def test_status_reports_worker_tree_summary(tmp_path: Path) -> None:
             "type": "task_graph_selection",
             "actor": "ExecutionCoordinator",
             "summary": "Selected workers",
-            "data": {"reason": "parallel_safe_batch_selection", "task_ids": ["task-0001", "task-0002"]},
+            "data": {
+                "reason": "parallel_safe_batch_selection",
+                "task_ids": ["task-0001", "task-0002"],
+            },
         },
         "event",
     )
@@ -502,9 +580,7 @@ def test_status_reports_worker_tree_summary(tmp_path: Path) -> None:
     assert worker_tree["total_model_calls"] == 2
     assert worker_tree["agent_run_graph"]["status"] == "blocked"
     assert worker_tree["agent_run_graph"]["max_concurrency_observed"] == 2
-    assert worker_tree["collaboration_summary"]["failure_evidence_refs"] == [
-        "task-failure-0001"
-    ]
+    assert worker_tree["collaboration_summary"]["failure_evidence_refs"] == ["task-failure-0001"]
     assert "Workers: 1 succeeded / 2 total" in result.to_text()
 
 
@@ -535,9 +611,10 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     assert payload["gray_task_limits"]["max_iterations"] == 3
     assert payload["plugin_control"]["hook_policy"]["plugins_enabled"] is False
     assert "plugin" in payload["error_taxonomy"]["categories"]
-    assert next(check for check in payload["checks"] if check["name"] == "plugins")[
-        "error_type"
-    ] == "plugin"
+    assert (
+        next(check for check in payload["checks"] if check["name"] == "plugins")["error_type"]
+        == "plugin"
+    )
     _assert_control_surface_contract(
         payload,
         command="doctor",
@@ -726,9 +803,7 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     }
 
 
-def test_gate_status_uses_latest_gray_acceptance_summary(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_gate_status_uses_latest_gray_acceptance_summary(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
@@ -781,9 +856,7 @@ def test_gate_status_uses_latest_gray_acceptance_summary(
     )
 
 
-def test_gate_status_prefers_passing_canonical_gray_summary(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_gate_status_prefers_passing_canonical_gray_summary(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
@@ -1036,7 +1109,9 @@ def _configure_release_routes(monkeypatch) -> None:
 def _write_release_ready_gate_files(tmp_path: Path) -> None:
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
-    (gate_dir / "real_model_gate_report.json").write_text(json.dumps({"ok": True}), encoding="utf-8")
+    (gate_dir / "real_model_gate_report.json").write_text(
+        json.dumps({"ok": True}), encoding="utf-8"
+    )
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
     (verification_dir / "real_model_acceptance_gray.json").write_text(
@@ -1126,14 +1201,16 @@ def test_gate_status_blocks_release_when_plugin_manifests_are_blocked(
     _configure_release_routes(monkeypatch)
     _write_release_ready_gate_files(tmp_path)
     (tmp_path / ".asteria" / "policies.json").write_text(
-        json.dumps({
-            "schema_version": "0.1.0",
-            "hooks": {
-                "enabled": True,
-                "plugins_enabled": False,
-                "allowed_hook_names": ["before_tool_call", "after_tool_call"],
-            },
-        }),
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "hooks": {
+                    "enabled": True,
+                    "plugins_enabled": False,
+                    "allowed_hook_names": ["before_tool_call", "after_tool_call"],
+                },
+            }
+        ),
         encoding="utf-8",
     )
     _write_plugin_manifest(tmp_path, hook_subscriptions=["unknown_hook"])
@@ -1144,3 +1221,122 @@ def test_gate_status_blocks_release_when_plugin_manifests_are_blocked(
     assert payload["plugin_risks"]["blocked"] is True
     assert len(payload["plugin_risks"]["blocked_manifests"]) > 0
 
+
+def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    InitCommand(tmp_path).run()
+    _write_real_provider_matrix_summary(tmp_path)
+
+    status_result = StatusCommand(tmp_path).run()
+    status_payload = status_result.to_dict()
+    assert status_payload["latest_real_provider_matrix"]["latest_route"] == "repair"
+    assert "Latest real-provider matrix: 1/2 passed" in status_result.to_text()
+    assert "route=repair" in "\n".join(status_payload["evidence_chain"])
+
+    gate_status_result = GateStatusCommand(tmp_path).run()
+    gate_status_payload = gate_status_result.to_dict()
+    assert gate_status_payload["latest_real_provider_matrix"]["latest_task_kind"] == "bugfix"
+    assert "Latest real-provider matrix: 1/2 passed" in gate_status_result.to_text()
+    assert "Latest real-provider P0 matrix failed" in gate_status_payload["next_actions"][0]
+    assert "requires repair" in gate_status_payload["next_actions"][0]
+    assert "asteria debug" in gate_status_payload["next_actions"][1]
+
+    gate_result = GateCommand(tmp_path).run()
+    gate_payload = gate_result.to_dict()
+    assert gate_payload["latest_real_provider_matrix"]["latest_case"] == "single_file_bugfix"
+    assert "Latest real-provider matrix: 1/2 passed" in gate_result.to_text()
+    assert "real_provider_matrix=1/2 route=repair" in "\n".join(
+        gate_result._evidence_chain()
+    )
+
+
+def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: Path) -> None:
+    report = ReviewCommand(tmp_path)._markdown_report(
+        _minimal_eval_report(),
+        latest_real_provider_matrix=summarize_real_provider_matrix(
+            _real_provider_matrix_payload(),
+            tmp_path / ".asteria" / "verification" / "real_provider_matrix" / "run-1"
+            / "matrix_summary.json",
+        ),
+    )
+
+    assert "## Latest Real Provider Matrix" in report
+    assert "Latest real-provider matrix: 1/2 passed" in report
+    assert "single_file_bugfix" in report
+    assert "repair" in report
+
+
+def _write_real_provider_matrix_summary(root: Path) -> Path:
+    path = root / ".asteria" / "verification" / "real_provider_matrix" / "run-1"
+    path.mkdir(parents=True)
+    summary_path = path / "matrix_summary.json"
+    summary_path.write_text(json.dumps(_real_provider_matrix_payload()), encoding="utf-8")
+    return summary_path
+
+
+def _real_provider_matrix_payload() -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "matrix": "p0",
+        "created_at": "2026-05-24T19:00:00Z",
+        "ok": False,
+        "case_count": 2,
+        "passed": 1,
+        "failed": 1,
+        "duration_seconds": 12.3,
+        "output_dir": "matrix-output",
+        "cases": [
+            {
+                "name": "file_output",
+                "task_kind": "file_output",
+                "route": "artifact_creation",
+                "reason": "Create requested file.",
+                "ok": True,
+                "workspace": "matrix-output/file_output",
+                "summary_json": "matrix-output/file_output_summary.json",
+                "expected_file": "hello.txt",
+                "expected_text": "hello",
+                "run_id": "run-file",
+                "final_report": "matrix-output/file_output/.asteria/runs/run-file/final_report.md",
+                "diagnostics": {},
+                "failure_type": None,
+                "failure_summary": None,
+                "evidence_refs": ["file-output/final_report.json"],
+            },
+            {
+                "name": "single_file_bugfix",
+                "task_kind": "bugfix",
+                "route": "repair",
+                "reason": "Verification failed and needs repair.",
+                "ok": False,
+                "workspace": "matrix-output/single_file_bugfix",
+                "summary_json": "matrix-output/single_file_bugfix_summary.json",
+                "expected_file": "calc.py",
+                "expected_text": "def add",
+                "run_id": None,
+                "final_report": None,
+                "diagnostics": {},
+                "failure_type": "SmokeFailure",
+                "failure_summary": "pytest failed",
+                "evidence_refs": ["bugfix/eval_report.json", "bugfix/tool_calls.jsonl"],
+            },
+        ],
+    }
+
+
+def _minimal_eval_report() -> dict:
+    return {
+        "overall": {"status": "partial", "score": 0.5, "reason": "needs repair"},
+        "goal_eval": {"requirement_coverage": 0.8},
+        "artifact_eval": {"artifacts_present": True},
+        "outcome_eval": {"verification_pass_rate": 0.5},
+        "trajectory_eval": {},
+        "cost_eval": {},
+        "failure_classification": {
+            "category": "verification_failed",
+            "recommended_command": "debug",
+            "reason": "Verification failed.",
+        },
+    }

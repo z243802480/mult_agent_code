@@ -17,6 +17,7 @@ from asteria_runtime.core.plugin_manifest import PluginManifestLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_state_finalizer import RunStateFinalizer
+from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
@@ -152,7 +153,11 @@ class ExecuteCommand:
             raise RuntimeError("No run found. Run `asteria plan` first.")
         run_dir = run_store.run_dir(run_id)
         run = run_store.load_run(run_id)
-        policy = load_policy_config(agent_dir, self.validator)
+        policy = effective_policy_for_run(
+            policy=load_policy_config(agent_dir, self.validator),
+            run_dir=run_dir,
+            validator=self.validator,
+        )
         self.hook_manager.configure(policy)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")
