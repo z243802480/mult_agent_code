@@ -4,6 +4,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.core.error_taxonomy import classify_check, taxonomy_summary
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.models.route_diagnostics import (
@@ -49,6 +50,26 @@ class DoctorResult:
         failed = [check.name for check in self.checks if not check.ok]
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="doctor",
+                audience="maintainer_preflight",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "ok",
+                    "status",
+                    "summary",
+                    "checks",
+                    "failed_checks",
+                    "routes",
+                    "route_requirements",
+                    "sandbox",
+                    "gray_task_limits",
+                    "plugin_control",
+                    "error_taxonomy",
+                    "next_actions",
+                ],
+            ),
             "root": str(self.root),
             "ok": self.ok,
             "status": "pass" if self.ok else "fail",

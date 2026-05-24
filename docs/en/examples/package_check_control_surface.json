@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.1.0",
+  "control_surface": {
+    "schema_version": "0.1.0",
+    "command": "package-check",
+    "audience": "maintainer_preflight",
+    "stability": "additive",
+    "stable_fields": [
+      "schema_version",
+      "root",
+      "ok",
+      "status",
+      "summary",
+      "checks",
+      "failed_checks",
+      "artifacts",
+      "runbook",
+      "error_taxonomy",
+      "next_actions"
+    ]
+  },
+  "root": "H:/mult_agent_code",
+  "ok": true,
+  "status": "pass",
+  "summary": "Package preflight checks passed.",
+  "checks": [
+    {
+      "name": "pyproject",
+      "ok": true,
+      "summary": "name=asteria-runtime, version=0.1.0",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "build_backend",
+      "ok": true,
+      "summary": "build-backend=setuptools.build_meta",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "console_script",
+      "ok": true,
+      "summary": "asteria=asteria_runtime.cli:main",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "version_sync",
+      "ok": true,
+      "summary": "pyproject=0.1.0, runtime=0.1.0",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "gray_command_modules",
+      "ok": true,
+      "summary": "real-model smoke/gate/acceptance package modules present and gate/gray/gray-run command modules present",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "hook_plugin_control_surface",
+      "ok": true,
+      "summary": "hook/plugin schemas, control command, defaults, and docs present",
+      "severity": "error",
+      "error_type": "plugin"
+    },
+    {
+      "name": "gray_route_template",
+      "ok": true,
+      "summary": "templates\\model.routes.gray.example.ps1",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "gray_docs",
+      "ok": true,
+      "summary": "gray rollout docs present",
+      "severity": "error",
+      "error_type": "configuration"
+    },
+    {
+      "name": "gray_runbook",
+      "ok": true,
+      "summary": "docs\\zh\\\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+      "severity": "error",
+      "error_type": "configuration"
+    }
+  ],
+  "failed_checks": [],
+  "artifacts": [
+    "dist\\asteria_runtime-0.1.0-py3-none-any.whl",
+    "dist\\asteria_runtime-0.1.0.tar.gz",
+    "dist\\tzdata-2026.2-py2.py3-none-any.whl"
+  ],
+  "runbook": {
+    "path": "docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md",
+    "required_sections": [
+      "install",
+      "route_config",
+      "self_check",
+      "upgrade",
+      "rollback",
+      "failure_collection",
+      "pause_resume"
+    ]
+  },
+  "error_taxonomy": {
+    "schema_version": "0.1.0",
+    "categories": [
+      "candidate_workspace",
+      "configuration",
+      "internal",
+      "plugin",
+      "promotion",
+      "provider",
+      "schema"
+    ]
+  },
+  "next_actions": [
+    "Follow `docs/zh/\u7070\u5ea6\u8bd5\u8fd0\u884c\u624b\u518c.md` for install, route config, self-check, rollback, and failure collection.",
+    "Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.",
+    "Run `asteria version --json` from the installed package before gray rollout."
+  ]
+}

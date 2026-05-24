@@ -11,13 +11,40 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
 
+def _assert_gray_run_result_control_surface(payload: dict) -> None:
+    contract = payload["control_surface"]
+
+    assert payload["schema_version"] == "0.1.0"
+    assert contract["schema_version"] == "0.1.0"
+    assert contract["command"] == "gray-run"
+    assert contract["audience"] == "maintainer_gray_execution"
+    assert contract["stability"] == "additive"
+    assert {
+        "schema_version",
+        "gray_run_id",
+        "status",
+        "summary_path",
+        "run_id",
+        "next_actions",
+    } <= set(contract["stable_fields"])
+    assert set(contract["stable_fields"]) <= set(payload)
+    SchemaValidator(Path("schemas")).validate("control_surface", contract)
+
+
+
+def _assert_gray_run_summary_control_surface(summary: dict) -> None:
+    _assert_gray_run_result_control_surface(summary)
+    SchemaValidator(Path("schemas")).validate("gray_run", summary)
+
 def test_gray_run_blocks_until_release_gates_are_ready(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 
     result = GrayRunCommand(tmp_path, dry_run=True).run()
 
     assert result.status == "blocked"
+    _assert_gray_run_result_control_surface(result.to_dict())
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    _assert_gray_run_summary_control_surface(summary)
     assert summary["status"] == "blocked"
     assert summary["preflight"]["gate_status"]["stage"] == "missing_real_model_gate"
     assert summary["next_actions"]
@@ -31,7 +58,9 @@ def test_gray_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatch) -> 
     result = GrayRunCommand(tmp_path, dry_run=True).run()
 
     assert result.status == "dry_run"
+    _assert_gray_run_result_control_surface(result.to_dict())
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    _assert_gray_run_summary_control_surface(summary)
     assert summary["dry_run"] is True
     assert summary["preflight"]["sequence"] == [
         "version",
@@ -114,8 +143,10 @@ def test_gray_run_executes_small_task_and_collects_route_evidence(
     ).run()
 
     assert result.status == "completed"
+    _assert_gray_run_result_control_surface(result.to_dict())
     assert result.run_id == "run-gray-0001"
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    _assert_gray_run_summary_control_surface(summary)
     assert summary["status"] == "completed"
     assert summary["run_result"]["run_id"] == "run-gray-0001"
     assert summary["evidence"]["route_evidence"]["strong_used"] is True

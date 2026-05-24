@@ -18,6 +18,19 @@ asteria init --root .
 asteria status --root .
 ```
 
+The default user workflow is `init -> run -> status -> resume -> review -> accept`:
+start a goal with `asteria run "goal"`, inspect progress with `asteria status`, resolve
+runtime decisions with `asteria resume` after `asteria decide`, verify the result with
+`asteria review`, then finalize reviewed candidate outputs with `asteria accept`.
+`asteria accept` finalizes one reviewed run; `asteria acceptance` runs validation
+suites for maintainers and CI, so it is not part of the ordinary user completion
+path. Use plain command names in new docs and scripts; slash-prefixed forms such as
+`asteria /run` remain compatibility aliases for older automation.
+
+Maintainer-facing validation commands stay separate from that completion path: `asteria gate`,
+`asteria gray`, `asteria acceptance`, and `asteria acceptance-gate` are for rollout checks,
+gray validation, acceptance history, and CI/release gates after or around a completed run.
+
 `asteria run "goal"` writes run artifacts under `.asteria/runs/<run_id>/`, including
 `goal_spec.json`, `task_plan.json`, `task_plan_eval.json`, logs, `review_report.md`, and
 `final_report.md`.

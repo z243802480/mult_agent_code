@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime import __version__
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.core.error_taxonomy import classify_check, taxonomy_summary
 
 
@@ -40,6 +41,23 @@ class PackageCheckResult:
         failed = [check.name for check in self.checks if not check.ok]
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="package-check",
+                audience="maintainer_preflight",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "ok",
+                    "status",
+                    "summary",
+                    "checks",
+                    "failed_checks",
+                    "artifacts",
+                    "runbook",
+                    "error_taxonomy",
+                    "next_actions",
+                ],
+            ),
             "root": str(self.root),
             "ok": self.ok,
             "status": "pass" if self.ok else "fail",

@@ -1,0 +1,84 @@
+{
+  "schema_version": "0.1.0",
+  "control_surface": {
+    "schema_version": "0.1.0",
+    "command": "gate-status",
+    "audience": "maintainer_release_readiness",
+    "stability": "additive",
+    "stable_fields": [
+      "schema_version",
+      "root",
+      "stage",
+      "rollout_state",
+      "release_ready",
+      "blocking_reason",
+      "gates",
+      "route_environment",
+      "route_guidance",
+      "latest_observation_plan",
+      "promotion_release_risks",
+      "plugin_risks",
+      "feature_flags",
+      "capability_flags",
+      "evidence_sources",
+      "gray_task_limits",
+      "validation_recommendation",
+      "next_actions"
+    ]
+  },
+  "root": "H:/mult_agent_code",
+  "stage": "ready_for_gray_suite",
+  "rollout_state": "conditional",
+  "release_ready": false,
+  "blocking_reason": "Run gray real-model acceptance before small real-task gray.",
+  "gates": {
+    "real_model_gate": {
+      "present": true,
+      "ok": true,
+      "status": "pass"
+    },
+    "gray_suite": {
+      "present": false,
+      "ok": null,
+      "status": "missing"
+    },
+    "core_acceptance": {
+      "present": false,
+      "ok": null,
+      "status": "missing"
+    }
+  },
+  "route_environment": {
+    "ready": true,
+    "missing_required": []
+  },
+  "route_guidance": {
+    "status": "healthy"
+  },
+  "latest_observation_plan": {},
+  "promotion_release_risks": {
+    "pending": 0,
+    "blocked": 0
+  },
+  "plugin_risks": {
+    "blocked": false,
+    "actions": []
+  },
+  "feature_flags": {},
+  "capability_flags": {},
+  "evidence_sources": {
+    "real_model_gate": ".asteria/model/real_model_gate_report.json"
+  },
+  "gray_task_limits": {
+    "max_iterations": 3,
+    "max_tasks_per_iteration": 1,
+    "max_repairs": 1
+  },
+  "validation_recommendation": {
+    "level": "targeted",
+    "command": "python -m pytest tests/unit/test_control_surface_commands.py -q"
+  },
+  "next_actions": [
+    "Run `asteria real-model-acceptance --suite gray`."
+  ]
+}

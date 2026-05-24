@@ -1,3 +1,378 @@
+## 2026-05-24 07:52 CST - Gray-run persisted summary control_surface
+
+### ??????
+- ? `gray-run` ? persisted `.asteria/gray_runs/<id>/summary.json` ??? `control_surface` ????? CLI/result JSON?docs fixture??? summary schema ??????
+
+### ????????
+- `GrayRunCommand._build_summary()` ?? `control_surface`?`schemas/gray_run.schema.json` ????????????? blocked/dry-run/completed summary schema?
+
+### ????????
+- `src/asteria_runtime/commands/gray_run_command.py`
+- `schemas/gray_run.schema.json`
+- `tests/unit/test_gray_run_command.py`
+- `tests/unit/test_documentation_contracts.py`
+- `WORKING_REPORT.md`
+
+### ??????
+- `gray_run_command.py`?????? `_gray_run_control_surface()` ?? result JSON ? summary JSON?????????????
+- `gray_run.schema.json`?? `control_surface` ?? gray_run persisted schema ? required/properties?????????????????????
+- `test_gray_run_command.py`?? blocked?dry_run?completed ???????? summary ??? control_surface + gray_run schema??????????
+- `test_documentation_contracts.py`??? schema contract ????? gray_run schema ?????? control_surface ???
+- `WORKING_REPORT.md`????????????????
+
+### ????
+- `python -m pytest tests/unit/test_gray_run_command.py tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py tests/unit/test_schema_validator.py -q`?49 passed?
+- `ruff check src/asteria_runtime/commands/gray_run_command.py tests/unit/test_gray_run_command.py tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- ???? `.asteria/gray_runs/*/summary.json` ??? `control_surface`???? schema ??????????????????????????????? schema_version ?? 0.1.0????? schema_version ???????
+
+### ???????????????
+- ?? gray_run summary ????/????????? `control_surface` schema ?????????/??????
+
+### ??????????
+- ?? persisted gray_run summary ?? `control_surface` ????????????? gray_run summary ?? schema migration ????????
+
+## 2026-05-24 07:36 CST - Gray-run control_surface fixture contract
+
+### ??????
+- ? `gray-run --json` ?????? fixture ? documentation contract???????? `maintainer_gray_execution` ???? runtime ????????????????
+
+### ????????
+- ?? `docs/en/examples/gray_run_control_surface.json`???????????? fixture ? command/audience/stable_fields ? runtime payload ?????
+
+### ????????
+- `docs/en/examples/gray_run_control_surface.json`
+- `tests/unit/test_documentation_contracts.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ??????
+- `gray_run_control_surface.json`?? Studio/CI/?????????????????? `gray-run --json` ??????
+- `test_documentation_contracts.py`?? gray-run ???? runtime stable_fields ????? documented audience ????? fixture ?????????
+- `docs/zh/????.md`?? gray-run fixture ?????????????? source-of-truth ????????
+- `WORKING_REPORT.md`????????????????
+
+### ????
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_gray_run_command.py tests/unit/test_control_surface_commands.py -q`?44 passed?
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_gray_run_command.py tests/unit/test_control_surface_commands.py`?All checks passed?
+
+### ?????
+- `gray-run` ??? persisted summary JSON ???? `control_surface`?????? CLI/result JSON ? docs fixture????? schema ?????
+- `docs/zh/????.md` ????????????????? Windows/PowerShell ????????????????? UTF-8 ???
+
+### ???????????????
+- ????? persisted `.asteria/gray_runs/<id>/summary.json` ?????? `control_surface`????????? `schemas/gray_run.schema.json` ???/?????
+
+### ??????????
+- ?? `gray_run_control_surface.json` ?????? Studio/CI ????????????? gray-run summary ???????? control_surface?
+
+## 2026-05-24 07:21 CST - Gray-run execution control_surface
+
+### ??????
+- ? `gray-run --json` ???????? `control_surface` ????? `gray` dry-run readiness ???/?? gray execution ????????????????
+
+### ????????
+- `GrayRunResult.to_dict()` ???? `schema_version` ? `control_surface`?audience ? `maintainer_gray_execution`?stable_fields ?? gray_run_id/status/summary_path/run_id/next_actions?
+
+### ????????
+- `src/asteria_runtime/commands/gray_run_command.py`
+- `tests/unit/test_gray_run_command.py`
+- `tests/unit/test_control_surface_commands.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ??????
+- `gray_run_command.py`?? `asteria gray-run --json` ? version/package-check/status/doctor/gate/gray ???????????? CI?Studio ???????????????? gray readiness ? gray execution?
+- `test_gray_run_command.py`??? blocked?dry_run?completed ?????????????? control_surface schema?audience ? stable_fields ?????
+- `test_control_surface_commands.py`?? `GrayRunCommand` ???? control_surface ????????????? gray-run ???
+- `docs/zh/????.md`????????????? `gray-run` ?? `maintainer_gray_execution`???????? `gray` readiness ????????
+- `WORKING_REPORT.md`?????????????????
+
+### ????
+- `python -m pytest tests/unit/test_gray_run_command.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py -q`?44 passed?
+- `ruff check src/asteria_runtime/commands/gray_run_command.py tests/unit/test_gray_run_command.py tests/unit/test_control_surface_commands.py`?All checks passed?
+
+### ?????
+- `gray-run` ?????? example fixture?????????? control_surface ???????????? gray-run payload ??? docs/en/examples?
+- `gray-run` ??? summary JSON ?? gray_run schema???? control_surface?????? CLI/result JSON????? persisted schema ?????
+
+### ???????????????
+- ? `gray-run --json` ???? example fixture ? documentation contract????????? persisted summary ???? `control_surface` ??? schema?
+
+### ??????????
+- ?? `maintainer_gray_execution` audience ????? `maintainer_gray_readiness` ??????????? `gray-run` summary ????????? control_surface ???
+
+
+## 2026-05-24 07:06 CST - Gray readiness control_surface
+
+### ??????
+- ? `gray --json` dry-run ???????? control_surface ???????? fixture???????????? `doctor -> gate -> gray` ????????
+
+### ????????
+- `GrayCommandResult.to_dict()` ???? `control_surface`??? `gray_control_surface.json` ??????????????? `gray --json` ? audience ? stable_fields?
+
+### ????????
+- `src/asteria_runtime/commands/gray_command.py`
+- `docs/en/examples/gray_control_surface.json`
+- `tests/unit/test_control_surface_commands.py`
+- `tests/unit/test_documentation_contracts.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ???????
+- `gray_command.py`?? `gray --json` ?? `maintainer_gray_readiness` control_surface??????? root/status/ok/mode/gate_status/gray_run/next_actions?
+- `gray_control_surface.json`??? dry-run ??????? payload?? Studio/CI/?????
+- `test_control_surface_commands.py`??? GrayCommand ??????????????????? dry-run blocked/ready ???
+- `test_documentation_contracts.py`?? gray ?????? schema ??? runtime stable_fields ?????
+- `docs/zh/????.md`??? `gray --json` ?? control_surface??? gray ?????????
+- `WORKING_REPORT.md`??????????????????
+
+### ????
+- `python -m pytest tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py tests/unit/test_schema_validator.py -q`?43 passed?
+- `ruff check src/asteria_runtime/commands/gray_command.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- `gray_control_surface.json` ????? gate_status/gray_run ???????????? gray contract ? stable_fields ?????????? gate_status contract ???
+
+### ???????????????
+- ? `gray_control_surface.json` ???? `gate_status.control_surface` ? `gray_run` summary ??????????? `gray-run --dry-run` ??? control_surface?
+
+### ??????????
+- ?? `maintainer_gray_readiness` audience ????????????? gray stable_fields ?????? Studio ??????
+
+## 2026-05-24 06:51 CST - Gate nested stage contract guard
+
+### ??????
+- ? `gate_control_surface.json` ???? stage control_surface ??????? gate ?? payload ?? version/package-check/doctor/gate-status ????????????????????
+
+### ????????
+- documentation contract ?????? `gate_control_surface.json.stages` ???? payload ? `control_surface` ?????????????????? stable_field ??????
+
+### ????????
+- `tests/unit/test_documentation_contracts.py`
+- `WORKING_REPORT.md`
+
+### ???????
+- `tests/unit/test_documentation_contracts.py`??? `test_gate_control_surface_example_keeps_nested_stage_contracts_in_sync`?? gate ????????? payload ?????????????? gate contract ??????????
+- `WORKING_REPORT.md`??????????????????
+
+### ????
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py tests/unit/test_schema_validator.py -q`?42 passed?
+- `ruff check tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- ??????? stage ? control_surface ???? stable_fields ???????????????????? root/path/check ???????????
+
+### ???????????????
+- ? `gray --json` dry-run ???? control_surface ?????? fixture????? `doctor -> gate -> gray -> evidence-bundle` ?????????????????
+
+### ??????????
+- ?? gate ??????? payload ????????????? fixture ???????? `gate_summary_control_surface.json` ? full fixture?
+
+## 2026-05-24 06:36 CST - Gate control_surface example fixture
+
+### ??????
+- ?? `gate --json` ????? control_surface ?? fixture?????/runtime ???????????? JSON ????
+
+### ????????
+- ?? `gate_control_surface.json`???? documentation contract ?????????????? `version/package-check/status/doctor/gate-status/gate --json` ??????
+
+### ????????
+- `docs/en/examples/gate_control_surface.json`
+- `tests/unit/test_documentation_contracts.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ???????
+- `docs/en/examples/gate_control_surface.json`??? `gate --json` ?????????? version/package-check/doctor/gate-status ?? payload ??? gate control_surface??? Studio/CI ???
+- `tests/unit/test_documentation_contracts.py`?? `gate_control_surface.json` ????????? `GateCommand` runtime ??????? gate ???????
+- `docs/zh/????.md`?? gate ???????????????? JSON ??????? stable_fields ????????
+- `WORKING_REPORT.md`??????????????????
+
+### ????
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py tests/unit/test_schema_validator.py -q`?41 passed?
+- `ruff check tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- `gate_control_surface.json` ?????? payload ?????????? gate contract?????? stages ?????????? control_surface ????
+
+### ???????????????
+- ? `gate_control_surface.json` ???? stage control_surface ????? version/package-check/doctor/gate-status ? payload ? command/audience/stable_fields ?????/runtime ???
+
+### ??????????
+- ?? `gate_control_surface.json` ?????????????? Studio/CI fixture??????????? summary fixture ? full fixture?
+
+## 2026-05-24 06:21 CST - Gate wrapper control_surface metadata
+
+### ??????
+- ? `gate --json` ????????????? control_surface ???????? release readiness ?????????????
+
+### ????????
+- `GateCommandResult.to_dict()` ???? `control_surface`??? `gate` ?? `maintainer_release_readiness` audience?????????????????????
+
+### ????????
+- `src/asteria_runtime/commands/gate_command.py`
+- `tests/unit/test_control_surface_commands.py`
+- `tests/unit/test_documentation_contracts.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ???????
+- `gate_command.py`?? `gate --json` ?? control_surface ?????????? schema/root/status/ok/mode/stages/latest_observation_plan/next_actions??? Studio/CI ??????????????
+- `test_control_surface_commands.py`?? release gate ????? `gate` ? control_surface schema?audience ? stable_fields????? payload ?????
+- `test_documentation_contracts.py`????????????? `gate --json` ? control_surface ? audience?
+- `docs/zh/????.md`?? `gate --json` ??????????? `gate-status` / `gate` ?? release readiness ????
+- `WORKING_REPORT.md`??????????????????
+
+### ????
+- `python -m pytest tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py tests/unit/test_schema_validator.py -q`?41 passed?
+- `ruff check src/asteria_runtime/commands/gate_command.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- `gate --json` ????? docs/en/examples fixture???????????????????? `gate_control_surface.json` ????????
+
+### ???????????????
+- ?? `docs/en/examples/gate_control_surface.json`???? documentation contract ???/runtime ?????? `gate --json` ?? payload?
+
+### ??????????
+- ?? `gate` stable_fields ?????? Studio/CI release readiness ???????? `stages` ???????????????
+
+## 2026-05-24 06:06 CST - Five-command control_surface examples
+
+### ??????
+- ?? `version/package-check/status/doctor/gate-status --json` ??????????? preflight ???????????? fixture???????????????
+
+### ????????
+- ?? `version_control_surface.json` ? `package_check_control_surface.json`??? documentation contract ??????????????????????? JSON ????
+
+### ????????
+- `docs/en/examples/version_control_surface.json`
+- `docs/en/examples/package_check_control_surface.json`
+- `tests/unit/test_documentation_contracts.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ???????
+- `docs/en/examples/version_control_surface.json`??? `version --json` ?????? control_surface ???????????bug report ?????????????
+- `docs/en/examples/package_check_control_surface.json`??? `package-check --json` ??? preflight ????? checks?runbook?error_taxonomy ? next_actions?
+- `tests/unit/test_documentation_contracts.py`????????? version/package-check/status/doctor/gate-status????????????? `control_surface` ????????????stable_fields ???????
+- `docs/zh/????.md`?????????????? JSON ???????? `stable_fields` ????????
+- `WORKING_REPORT.md`???????????????????
+
+### ????
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py tests/unit/test_schema_validator.py -q`?41 passed?
+- `ruff check tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- ?????? fixture??? contract ????????????????????????? fixture ???????
+
+### ???????????????
+- ? `gate --json` ???????????? control_surface ???????? payload contract????? Studio/CI ???????????
+
+### ??????????
+- ???? control_surface ???? stable_fields ????? Studio/CI ???????????????????? package-check ? runbook/error_taxonomy/next_actions?
+
+## 2026-05-24 05:51 CST - Preflight JSON control_surface metadata
+
+### ??????
+- ? `version --json` ? `package-check --json` ???? control_surface ??????????/?? preflight JSON ??? `status/doctor/gate-status` ?????????????
+
+### ????????
+- ? `VersionResult.to_dict()` ? `PackageCheckResult.to_dict()` ???? `control_surface` ???????????????????????
+
+### ????????
+- `src/asteria_runtime/commands/version_command.py`
+- `src/asteria_runtime/commands/package_check_command.py`
+- `tests/unit/test_control_surface_commands.py`
+- `tests/unit/test_documentation_contracts.py`
+- `docs/zh/????.md`
+- `WORKING_REPORT.md`
+
+### ???????
+- `version_command.py`?? `version --json` ?? `control_surface`????? `maintainer_preflight` ?????????? package/version/python/executable?
+- `package_check_command.py`?? `package-check --json` ?? `control_surface`??????? root?ok/status?checks?runbook?error taxonomy ? next_actions?????/??????????
+- `test_control_surface_commands.py`??? version/package-check ? control_surface schema?audience ? stable_fields??????????
+- `test_documentation_contracts.py`????????????? version/package-check ??? `maintainer_preflight` audience?
+- `docs/zh/????.md`??? control_surface ??????? version/package-check ???? preflight ????????????? status?
+- `WORKING_REPORT.md`????????????????
+
+### ????
+- `python -m pytest tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py tests/unit/test_schema_validator.py -q`?41 passed?
+- `ruff check src/asteria_runtime/commands/version_command.py src/asteria_runtime/commands/package_check_command.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- `version` / `package-check` ????? docs/en/examples fixture????????? JSON ??????????? fixture/runtime ?????
+
+### ???????????????
+- ?? `version_control_surface.json` ? `package_check_control_surface.json` ????? documentation contract ????????? JSON ????
+
+### ??????????
+- ??????? `version` ? `package-check` ??? `maintainer_preflight` ??????????????? version????? audience ???
+
+## 2026-05-24 05:36 CST - Control-surface fixture/runtime sync guard
+
+### ??????
+- ? control_surface ??????????? schema????????????????????? `status/doctor/gate-status --json` ?????????????
+
+### ????????
+- ? documentation contract ???????????????? `StatusCommand`?`DoctorCommand`?`GateStatusCommand`???????? `control_surface` ????????????????? stable_fields ??????? payload ?????
+
+### ????????
+- `tests/unit/test_documentation_contracts.py`
+- `WORKING_REPORT.md`
+
+### ???????
+- `tests/unit/test_documentation_contracts.py`????????????????????????? command/audience/stability/stable_fields ?????????? root?summary?next_actions ??????????????????? contract ???? stable_fields ?????????????????????
+- `WORKING_REPORT.md`???????????????????
+
+### ????
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py tests/unit/test_schema_validator.py -q`?41 passed?
+- `ruff check tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- ?? payload ?????????????????????????????????????????? CLI ???
+
+### ???????????????
+- ? `version --json` / `package-check --json` ???? control_surface ??????????????? preflight JSON ????????????????????
+
+### ??????????
+- ?????????????contract ?????????????? TUI/GUI/CI ???????????? fixture ?????
+
+## 2026-05-24 05:21 CST - Control-surface example fixtures
+
+### ??????
+- ?? `status/doctor/gate-status --json` ????????????/????????????? control_surface payload??????????? schema?audience?stable_fields ?????????
+
+### ????????
+- ?? doctor ? gate-status control_surface JSON ????? documentation contract ??? status ???????????????
+
+### ????????
+- `docs/en/examples/doctor_control_surface.json`
+- `docs/en/examples/gate_status_control_surface.json`
+- `docs/zh/????.md`
+- `tests/unit/test_documentation_contracts.py`
+- `WORKING_REPORT.md`
+
+### ???????
+- `docs/en/examples/doctor_control_surface.json`??? `doctor --json` ??? preflight ?????????? TUI/GUI/CI ???
+- `docs/en/examples/gate_status_control_surface.json`??? `gate-status --json` release readiness ???????? release/gray gate ?????????
+- `docs/zh/????.md`?? control_surface ????? status ??? status/doctor/gate-status ????????? source-of-truth ????????
+- `tests/unit/test_documentation_contracts.py`???????????????????? schema_version?command?audience?stability?stable_fields ? schema??????????
+- `WORKING_REPORT.md`??????????????????
+
+### ????
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py tests/unit/test_schema_validator.py -q`?40 passed?
+- `ruff check tests/unit/test_documentation_contracts.py`?All checks passed?
+
+### ?????
+- ???????????????????? CLI ??????????? release evidence????????????? fixture ?????
+
+### ???????????????
+- ? `doctor --json` / `gate-status --json` ?????????????? stable_fields ?????????????????????????????????????
+
+### ??????????
+- ?? control_surface ?? audience ? stable_fields ???????? TUI/GUI/?????????????? gate-status ? stable_fields ???????? release blocker ???
 ## 2026-05-23 22:14:05 +08:00 automated heartbeat check
 
 ### Modified files
@@ -70,3 +445,485 @@
 
 ### Suggested review focus for tomorrow
 - Review the pending runtime decision separately from the code branch; it is product evidence that the control surface correctly blocks on scope expansion rather than silently proceeding.
+
+## 2026-05-23 22:56:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Added a Quick Start workflow sentence to `README.md` documenting the normal `init -> run -> status -> resume -> review -> accept` path and the role of `asteria accept`.
+
+### Modified files
+- `README.md`: documented the default user workflow and final acceptance step.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The current roadmap and Claude Code learning plan call out command-surface convergence and a user-facing workflow rather than exposing internal command stages. After the previous merge added the `accept` command, the README still did not make the full user path explicit.
+- This is a small documentation-only product improvement that avoids changing acceptance policy semantics such as whether promotion approval should be automatic by default.
+
+### Test/build results
+- `python -m asteria_runtime accept --help`: passed and confirms the documented final command is exposed.
+- `ruff check README.md`: passed with the expected warning that no Python files were found under the Markdown path.
+
+### DecisionPoint / unresolved issues
+- The default behavior of `asteria accept` still deserves product review: automatic pending-promotion approval is convenient, but some users may expect explicit approval unless they opt in.
+- Chinese command docs may still need the same workflow wording, but this heartbeat intentionally kept the change to one documentation file plus the report.
+
+### Suggested smallest next task
+- Mirror the same `init -> run -> status -> resume -> review -> accept` workflow wording into the Chinese runtime-command or command-surface convergence document, using Python `utf-8-sig` path discovery to avoid terminal encoding issues.
+
+### Suggested review focus for tomorrow
+- Review whether README should describe `asteria decide` explicitly in Quick Start or leave it as part of the blocked-run/resume path.
+
+## 2026-05-23 23:12:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Mirrored the default `init -> run -> status -> resume -> review -> accept` user workflow into the Chinese runtime-command reference.
+
+### Modified files
+- the Chinese runtime-command reference: added section `1.2 default user workflow` describing the normal user path and clarifying that `accept` is distinct from the `acceptance` test suite and promotion internals.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The Chinese docs are the project source of truth, while the previous heartbeat only updated the English README. This round keeps the command reference aligned with the command-surface convergence plan.
+- The change is documentation-only, small, and avoids changing open product policy questions such as whether `accept` should auto-approve pending promotions.
+
+### Test/build results
+- `python -m asteria_runtime accept --help`: passed and confirms the documented final command is available.
+- Python doc assertions against the Chinese runtime-command reference: passed for the workflow string, section heading, and `accept`/`acceptance` distinction.
+- `ruff check README.md`: passed with the expected Markdown/no-Python-files warning.
+
+### DecisionPoint / unresolved issues
+- `accept` default promotion semantics still need human product review before changing behavior.
+- GitHub CLI remains unavailable locally, so branches can be pushed but PR creation must use the GitHub web link unless `gh` is installed.
+
+### Suggested smallest next task
+- Add a small CLI help or status test that asserts `accept` appears in the Start/default workflow group, if such grouping is intended to be stable.
+
+### Suggested review focus for tomorrow
+- Review whether the Chinese command reference should rename slash-style section headings like `/init` to plain `init`, or keep slash aliases as compatibility notes.
+
+## 2026-05-23 23:22:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Added a regression test that locks `accept` into the top-level Start help group after the documented `init -> run -> status -> resume -> review -> accept` workflow.
+
+### Modified files
+- `tests/unit/test_cli.py`: asserts `accept` appears in the default Start command surface and before the Maintain section.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The command-surface convergence docs say ordinary users should see the Start workflow, not internal command lists. The help output already includes `accept`; this test makes that product contract durable.
+- This is a narrow non-invasive test change that does not alter runtime behavior or the open product question about `accept` promotion defaults.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 7 passed.
+- `ruff check tests/unit/test_cli.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- `accept` default promotion semantics still need product review before behavior changes.
+- The branch has multiple documentation/test commits and still needs PR creation or merge review; GitHub CLI is not installed locally.
+
+### Suggested smallest next task
+- Add one focused test for slash alias parsing of `/accept`, if not already covered, so old-style command compatibility stays explicit while docs move toward plain commands.
+
+### Suggested review focus for tomorrow
+- Review whether the top-level help text should explicitly show the workflow order in one line, or whether the grouped Start list is sufficient.
+
+## 2026-05-23 23:32:00 +08:00 automated heartbeat check
+
+### Substantive artifact change this round
+- Added explicit parser coverage for the `/accept` slash alias, including `--session-id`, `--no-promote`, and `--json`.
+
+### Modified files
+- `tests/unit/test_cli.py`: verifies `/accept` remains compatible while documentation moves the default user surface toward plain `accept`.
+- `WORKING_REPORT.md`: recorded this heartbeat, rationale, validation, and next review focus.
+
+### Reasons
+- The Chinese command docs still contain slash-style command sections, while README/help now emphasize plain command names. Keeping slash alias coverage explicit prevents compatibility drift during command-surface convergence.
+- The test is a small, safe addition that does not change runtime behavior or decide the open product question about default promotion approval.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 7 passed.
+- `ruff check tests/unit/test_cli.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The branch still needs review/PR or merge. GitHub CLI is not installed locally, so PR creation remains manual.
+- Slash aliases remain documented in headings; a future doc cleanup should decide whether to keep slash headings or convert them to plain command names with slash aliases noted as compatibility.
+
+### Suggested smallest next task
+- Add a short note in the Chinese runtime-command naming/compatibility section that slash-prefixed commands are aliases, while plain `asteria <command>` is the preferred public form.
+
+### Suggested review focus for tomorrow
+- Review whether tests should assert every Start command has both plain and slash parsing, or whether targeted coverage for changed commands is enough.
+
+## 2026-05-23 23:48:00 +08:00 automated heartbeat check
+
+### 30-minute iteration goal
+- Complete the plain-command vs slash-alias compatibility loop for the Start workflow: document the preferred public form and lock parsing coverage for all Start commands.
+
+### Substantive artifact change this round
+- Added a Chinese command-reference note that new user-facing docs should prefer plain `asteria <command>` examples, while slash-prefixed forms remain compatibility aliases.
+- Added a CLI regression test that checks every Start workflow command (`init`, `run`, `status`, `resume`, `review`, `accept`) parses in both plain and slash forms.
+
+### Modified files
+- the Chinese runtime-command reference: documents plain-command preference and slash alias compatibility.
+- `tests/unit/test_cli.py`: adds Start workflow plain/slash parser coverage.
+- `WORKING_REPORT.md`: records this heartbeat, rationale, validation, unresolved issues, and next target.
+
+### Reasons
+- The roadmap freezes the ordinary user path as `init -> run -> status -> resume -> review -> accept`, while older docs still use slash headings. This iteration makes the migration rule explicit and protects compatibility in tests.
+- This is a medium-granularity documentation + test alignment, not a behavior change, so it avoids deciding open product semantics such as automatic promotion approval.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py -q`: passed, 8 passed.
+- `ruff check tests/unit/test_cli.py`: passed, All checks passed.
+- Python assertions against the Chinese runtime-command reference: passed for plain-command preference, `asteria accept`, `/accept`, and compatibility alias wording.
+
+### DecisionPoint / unresolved issues
+- Slash-style section headings remain throughout the long command reference. Renaming all headings would be a broader doc migration and should be reviewed separately.
+- GitHub CLI is still unavailable, so PR creation remains manual even though the branch can be pushed.
+
+### Suggested next 30-minute iteration target
+- Add an `accept` subsection to the Chinese runtime-command reference that defines purpose, inputs, state changes, outputs, blockers, and safety notes, aligned with the implemented `AcceptCommand`.
+
+### Suggested review focus for tomorrow
+- Review whether plain-command preference should be applied to all README/docs examples immediately or only when touching nearby sections.
+
+## 2026-05-24 00:06:00 +08:00 automated heartbeat check
+
+### 30-minute iteration goal
+- Complete the Chinese command-reference documentation for the implemented `accept` workflow so the source-of-truth docs cover purpose, invocation, flow, state changes, artifacts, blockers, and safety boundaries.
+
+### Substantive artifact change this round
+- Added a full `accept` command section to the Chinese runtime-command reference, aligned with the implemented `AcceptCommand` behavior.
+- Verified the docs against the actual CLI help and targeted unit tests for accept/CLI parsing.
+
+### Modified files
+- the Chinese runtime-command reference: adds the `accept` command reference section.
+- `WORKING_REPORT.md`: records this heartbeat, validation, open decisions, and next target.
+
+### Reasons
+- The project guidance says Chinese docs are the source of truth, and previous iterations established `accept` as part of the default user workflow. The command reference needed the actual behavior documented, not only the workflow list.
+- The section avoids changing the open product policy about automatic promotion approval; it documents current behavior and explicitly marks default promotion semantics as a DecisionPoint if changed later.
+
+### Test/build results
+- Python assertions against the Chinese runtime-command reference: passed for `accept` section, `acceptance` distinction, `--no-promote`, state transitions, event names, and DecisionPoint note.
+- `python -m asteria_runtime accept --help`: passed.
+- `python -m pytest tests/unit/test_accept_command.py tests/unit/test_cli.py -q`: passed, 10 passed.
+- `ruff check tests/unit/test_cli.py src/asteria_runtime/commands/accept_command.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- If the product wants stricter human approval, `accept` default promotion behavior should be changed only after a user-visible DecisionPoint/RFC.
+- The Chinese command reference now has two `3.8` headings (`accept` and `debug`); renumbering the long document is a broader doc-maintenance task and should be done separately to avoid noisy diffs.
+
+### Suggested next 30-minute iteration target
+- Renumber the affected command-reference headings around `accept/debug/handoff` in a small controlled doc-only pass, with assertions that key anchors still exist.
+
+### Suggested review focus for tomorrow
+- Review whether the documented `accept --skip-review` positioning as a controlled/test path is acceptable, or whether it should be hidden from ordinary user docs.
+
+## 2026-05-24 02:57:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Complete a documentation-contract loop for the command-surface migration: README, Chinese runtime-command docs, and tests now agree that plain commands are preferred while slash-prefixed commands remain compatibility aliases.
+
+### Substantive artifact change this round
+- Added a README note for plain command names and slash alias compatibility.
+- Added documentation contract tests that verify the README source-of-truth link exists, README documents alias compatibility, and the Chinese runtime-command reference keeps the accept workflow and alias-policy fragments.
+
+### Modified files
+- `README.md`: documents plain-command preference and slash alias compatibility for older automation.
+- `tests/unit/test_documentation_contracts.py`: new documentation contract tests for README and Chinese runtime-command docs.
+- `WORKING_REPORT.md`: records this iteration, validation, open issues, and next target.
+
+### Reasons
+- Previous iterations updated docs and CLI tests, but there was no dedicated test guarding the README/source-of-truth and Chinese-doc workflow contract. This closes the loop and prevents future mojibake/link regressions or accidental removal of the alias policy.
+- The change is user-visible documentation plus durable tests, without changing runtime behavior or open product decisions around automatic promotion approval.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 12 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_cli.py src/asteria_runtime/commands/accept_command.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- GitHub CLI is still unavailable locally, so PR creation remains manual even though this branch is pushed.
+- The Chinese command reference still has numbering drift after inserting `accept`; renumbering should be done as a separate doc-only pass.
+
+### Suggested next medium-granularity target
+- Renumber the affected Chinese command-reference sections around `accept`, `debug`, and `handoff`, and add a doc assertion that these key sections appear in the expected order.
+
+### Suggested review focus for tomorrow
+- Review whether the README compatibility note is enough for migration, or whether the CLI help should also explicitly say slash-prefixed forms are compatibility aliases.
+
+## 2026-05-24 03:16:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Finish the command-reference cleanup introduced by adding `accept`: remove duplicate section numbering and guard the user workflow section order with tests.
+
+### Substantive artifact change this round
+- Renumbered the affected Chinese runtime-command sections from `accept/debug/handoff` so `accept` owns `3.8`, `debug` becomes `3.9`, and `handoff` becomes `3.10`.
+- Added a documentation contract test that asserts `resume -> review -> accept -> debug -> handoff` appears in order and that there is only one `3.8` command heading.
+
+### Modified files
+- `docs/zh/????.md`: fixes command-reference numbering around `accept`, `debug`, and `handoff`.
+- `tests/unit/test_documentation_contracts.py`: adds section-order and duplicate-heading regression coverage.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The previous `accept` insertion left two `3.8` headings, which weakens the source-of-truth command reference. This iteration makes the documentation internally consistent and protects the ordering with a targeted test.
+- The change is a cohesive doc/test maintenance pass and does not alter runtime behavior.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_cli.py tests/unit/test_accept_command.py -q`: passed, 13 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_cli.py src/asteria_runtime/commands/accept_command.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The command reference still contains many slash-style headings by design; broader conversion to plain headings should be reviewed separately.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a small user-facing CLI help line or epilog explaining that slash-prefixed commands are compatibility aliases, and extend CLI tests to cover that text.
+
+### Suggested review focus for tomorrow
+- Review whether `accept` should remain before `debug` in the reference because it is a user-workflow command, while `debug` is an advanced repair command.
+
+## 2026-05-24 03:31:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Make the CLI help surface match the documented plain-command workflow by explaining slash-prefixed aliases directly in user-facing help.
+
+### Substantive artifact change this round
+- Added a shared slash-alias compatibility help message to the top-level CLI help and the default workflow commands (`init`, `run`, `status`, `resume`, `review`, `accept`).
+- Removed slash-prefixed wording from `run` and `resume` option help so new help text prefers plain commands while keeping slash aliases functional.
+- Added regression coverage for the top-level compatibility section and all default workflow command help pages.
+
+### Modified files
+- `src/asteria_runtime/cli.py`: adds the compatibility help constant, wires it into relevant help output, and normalizes `run`/`resume` option wording.
+- `tests/unit/test_cli.py`: verifies the plain-command/slash-alias help contract and guards against reintroducing slash-first option wording.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The Chinese command reference and README already say new docs/scripts should prefer plain command names, while slash-prefixed forms are compatibility aliases. CLI help was the remaining user-facing surface that did not make this explicit.
+- A single shared message keeps the policy consistent across the top-level help and the default workflow commands.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py tests/unit/test_documentation_contracts.py -q`: passed, 12 passed.
+- `ruff check src/asteria_runtime/cli.py tests/unit/test_cli.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- Slash aliases remain available and are still shown by argparse in some compatibility contexts; a broader deprecation/migration plan would need an explicit product decision.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a small documentation/CLI contract around `acceptance` versus `accept` so ordinary users do not confuse finalizing a reviewed run with running validation suites.
+
+### Suggested review focus for tomorrow
+- Review whether the compatibility help wording is clear enough for both new users and older automation owners.
+
+## 2026-05-24 03:46:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Clarify the `accept` versus `acceptance` split across CLI help, README, and tests so ordinary users can complete a run without confusing completion with validation suites.
+
+### Substantive artifact change this round
+- Added a shared CLI help note explaining that `accept` finalizes one reviewed run while `acceptance` runs validation suites for maintainers and CI.
+- Exposed that note in top-level help plus `accept` and `acceptance` command help.
+- Updated README quick-start wording to keep `acceptance` out of the ordinary user completion path.
+- Added CLI and documentation contract tests for the distinction.
+
+### Modified files
+- `src/asteria_runtime/cli.py`: adds the `accept`/`acceptance` distinction to user-facing help.
+- `README.md`: documents the same distinction in the quick-start workflow.
+- `tests/unit/test_cli.py`: covers top-level and command-specific help text.
+- `tests/unit/test_documentation_contracts.py`: guards the README quick-start contract.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The Chinese source-of-truth already says `accept` is the ordinary workflow closer and is not `acceptance`; the CLI and README needed the same explicit user-facing distinction.
+- This is a cohesive command-experience improvement and does not change runtime behavior.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py tests/unit/test_documentation_contracts.py -q`: passed, 13 passed.
+- `ruff check src/asteria_runtime/cli.py tests/unit/test_cli.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- No product policy change was made: `acceptance` remains available as a maintainer/CI command.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a compact CLI smoke/help contract for `gate`, `gray`, and `acceptance` so maintainer-facing commands remain clearly separate from the default user workflow.
+
+### Suggested review focus for tomorrow
+- Review whether the `accept`/`acceptance` wording is sufficiently clear for non-maintainer users.
+
+## 2026-05-24 04:01:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Keep maintainer-facing validation commands (`gate`, `gray`, `acceptance`, `acceptance-gate`) clearly outside the ordinary user completion workflow in CLI help and quick-start docs.
+
+### Substantive artifact change this round
+- Added a shared maintainer/CI help note to top-level CLI help and the relevant maintainer command help pages.
+- Extended README quick-start to separate validation/release commands from the `init -> run -> status -> resume -> review -> accept` completion path.
+- Added CLI and documentation contract tests that guard this command-surface separation.
+
+### Modified files
+- `src/asteria_runtime/cli.py`: adds the maintainer command help note and wires it into `gate`, `gray`, `acceptance`, and `acceptance-gate`.
+- `README.md`: documents that maintainer validation commands are not ordinary completion steps.
+- `tests/unit/test_cli.py`: verifies maintainer command help includes the separation note and `accept` does not.
+- `tests/unit/test_documentation_contracts.py`: guards README quick-start wording for maintainer validation commands.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- Recent iterations clarified the default workflow and `accept`/`acceptance`; this closes the adjacent UX gap for `gate` and `gray`, which are important but should not become ordinary user mental-model requirements.
+- The change is user-visible help/documentation behavior with regression tests, without altering runtime execution.
+
+### Test/build results
+- `python -m pytest tests/unit/test_cli.py tests/unit/test_documentation_contracts.py -q`: passed, 14 passed.
+- `ruff check src/asteria_runtime/cli.py tests/unit/test_cli.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- No command deprecation was introduced; this only clarifies command audience and usage order.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add command help/documentation checks for machine-readable JSON fields on `status`, `doctor`, and `gate-status`, so future UI/automation can rely on stable control-surface contracts.
+
+### Suggested review focus for tomorrow
+- Review whether maintainer/CI language should also appear in the Chinese command reference around the `gate` and `gray` sections.
+
+## 2026-05-24 04:16:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Make machine-readable control-surface JSON from `status`, `doctor`, and `gate-status` self-describing so UI/automation can rely on a stable additive field contract.
+
+### Substantive artifact change this round
+- Added a shared `control_surface` contract helper that records command name, audience, additive stability policy, and stable field names.
+- Added the contract to `status`, `doctor`, and `gate-status` JSON payloads without changing existing top-level fields.
+- Added regression tests that verify each contract is present, identifies the correct command/audience, and only lists fields actually present in the payload.
+
+### Modified files
+- `src/asteria_runtime/commands/control_surface_contract.py`: new shared helper for control-surface JSON metadata.
+- `src/asteria_runtime/commands/status_command.py`: exposes the user-workflow control-surface contract.
+- `src/asteria_runtime/commands/doctor_command.py`: exposes the maintainer preflight control-surface contract.
+- `src/asteria_runtime/commands/gate_status_command.py`: exposes the maintainer release-readiness control-surface contract.
+- `tests/unit/test_control_surface_commands.py`: adds contract assertions for `status`, `doctor`, and `gate-status`.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The docs say `status --json`, `doctor --json`, and `gate-status --json` are reusable control-surface outputs for future TUI/GUI/automation. A small self-describing contract makes that promise explicit and testable.
+- The change is additive and keeps existing JSON fields intact.
+
+### Test/build results
+- `python -m pytest tests/unit/test_control_surface_commands.py tests/unit/test_cli.py -q`: passed, 41 passed.
+- `ruff check src/asteria_runtime/commands/control_surface_contract.py src/asteria_runtime/commands/status_command.py src/asteria_runtime/commands/doctor_command.py src/asteria_runtime/commands/gate_status_command.py tests/unit/test_control_surface_commands.py tests/unit/test_cli.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- No JSON field deprecation or schema version bump was introduced; formal cross-version compatibility policy can be documented separately if needed.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Document the new `control_surface` contract in `docs/zh/????.md` and add documentation contract tests for its stable field/audience semantics.
+
+### Suggested review focus for tomorrow
+- Review whether `control_surface.stability=additive` is the right compatibility promise before relying on it from UI/automation.
+
+## 2026-05-24 04:35:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Close the documentation loop for the new `control_surface` JSON contract added to `status`, `doctor`, and `gate-status`.
+
+### Substantive artifact change this round
+- Documented `control_surface`, `stable_fields`, `stability=additive`, and command audiences in the Chinese runtime command source of truth.
+- Added a documentation contract test that guards the control-surface semantics and the required audiences for `status`, `doctor`, and `gate-status`.
+
+### Modified files
+- `docs/zh/????.md`: explains the control-surface metadata contract and its additive compatibility promise.
+- `tests/unit/test_documentation_contracts.py`: adds regression coverage for the documented contract.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The previous iteration added the JSON metadata in code; this iteration makes the source-of-truth docs match the runtime behavior and protects it with tests.
+- This keeps future UI/automation consumers aligned on which fields are stable and when a DecisionPoint is required.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py -q`: passed, 34 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The additive compatibility promise is now documented; any future removal/rename/semantic change must be handled as a DecisionPoint.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add a small machine-readable example fixture for `status --json` that includes `control_surface`, then use it in docs/tests as an executable contract sample.
+
+### Suggested review focus for tomorrow
+- Review whether `stable_fields` should eventually move into JSON Schema files for stronger validation beyond unit tests.
+
+## 2026-05-24 04:50:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Add an executable `status --json` control-surface example fixture and bind it to the documented contract.
+
+### Substantive artifact change this round
+- Added `docs/en/examples/status_control_surface.json` as a minimal machine-readable example containing the new `control_surface` metadata.
+- Updated the Chinese runtime command source of truth to point to the example and require `stable_fields` to match top-level fields.
+- Added a documentation contract test that loads the JSON example and validates command, audience, additive stability, stable fields, and next-action semantics.
+
+### Modified files
+- `docs/en/examples/status_control_surface.json`: new executable JSON example for `status --json` consumers.
+- `docs/zh/????.md`: links the example to the control-surface contract and documents the consistency requirement.
+- `tests/unit/test_documentation_contracts.py`: validates the example as part of the documentation contract suite.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The previous two iterations added and documented the control-surface contract; this adds a concrete sample that UI/automation authors can reuse and tests can enforce.
+- The change is documentation/test focused but still produces a durable machine-readable artifact.
+
+### Test/build results
+- `python -m pytest tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py -q`: passed, 35 passed.
+- `ruff check tests/unit/test_documentation_contracts.py tests/unit/test_control_surface_commands.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- Only `status --json` has an example fixture for now; `doctor` and `gate-status` examples can be added later if UI/automation consumers need them.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add similar example fixtures for `doctor --json` and `gate-status --json`, or move the shared `control_surface` metadata into JSON Schema validation if stronger enforcement is preferred.
+
+### Suggested review focus for tomorrow
+- Review whether the example location under `docs/en/examples/` is the right long-term home for machine-readable contract samples.
+
+## 2026-05-24 05:05:00 +08:00 automated heartbeat check
+
+### Iteration goal
+- Strengthen the `control_surface` contract from documented/tested metadata into a schema-validated runtime object.
+
+### Substantive artifact change this round
+- Added `schemas/control_surface.schema.json` for the shared `control_surface` metadata.
+- Extended schema validator tests to accept the additive contract and reject unsupported stability values.
+- Updated control-surface command tests and the status example test to validate the contract against the new schema.
+- Documented the schema in the Chinese runtime command source of truth.
+
+### Modified files
+- `schemas/control_surface.schema.json`: new schema for control-surface metadata.
+- `tests/unit/test_schema_validator.py`: covers valid additive contracts and invalid stability values.
+- `tests/unit/test_control_surface_commands.py`: validates emitted `status`/`doctor`/`gate-status` contracts against the schema.
+- `tests/unit/test_documentation_contracts.py`: validates the example contract against the schema and guards schema documentation.
+- `docs/zh/????.md`: documents the new schema and required fields.
+- `WORKING_REPORT.md`: records this iteration, validation, unresolved issues, and next target.
+
+### Reasons
+- The project guidance says persisted/runtime objects should not skip schema validation. `control_surface` is becoming a reusable UI/automation contract, so it should have a formal schema rather than only ad hoc assertions.
+- Keeping the schema minimal preserves additive evolution while rejecting accidental unsupported stability modes.
+
+### Test/build results
+- `python -m pytest tests/unit/test_schema_validator.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py -q`: passed, 39 passed.
+- `ruff check tests/unit/test_schema_validator.py tests/unit/test_control_surface_commands.py tests/unit/test_documentation_contracts.py`: passed, All checks passed.
+
+### DecisionPoint / unresolved issues
+- The schema currently validates the metadata shape, not command-specific stable field lists. A deeper per-command schema would be a larger product/governance decision.
+- GitHub CLI is still unavailable locally, so PR creation remains manual.
+
+### Suggested next medium-granularity target
+- Add `doctor` and `gate-status` control-surface example JSON fixtures and validate them against `schemas/control_surface.schema.json`.
+
+### Suggested review focus for tomorrow
+- Review whether `control_surface` should remain a shared embedded metadata object or become part of each command's full JSON schema later.

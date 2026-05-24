@@ -4,6 +4,8 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
+from asteria_runtime.commands.gray_command import GrayCommand
+from asteria_runtime.commands.gray_run_command import GrayRunCommand
 from asteria_runtime.commands.gate_status_command import _validation_recommendation_for_changed_files
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
@@ -16,6 +18,24 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
 
+def _assert_control_surface_contract(
+    payload: dict,
+    *,
+    command: str,
+    audience: str,
+    required_fields: set[str],
+) -> None:
+    contract = payload["control_surface"]
+
+    assert contract["schema_version"] == "0.1.0"
+    assert contract["command"] == command
+    assert contract["audience"] == audience
+    assert contract["stability"] == "additive"
+    assert required_fields <= set(contract["stable_fields"])
+    assert set(contract["stable_fields"]) <= set(payload)
+    SchemaValidator(Path("schemas")).validate("control_surface", contract)
+
+
 def test_version_command_reports_runtime_diagnostics() -> None:
     result = VersionCommand().run()
 
@@ -26,6 +46,18 @@ def test_version_command_reports_runtime_diagnostics() -> None:
     assert payload["version"]
     assert payload["python_version"]
     assert payload["executable"]
+    _assert_control_surface_contract(
+        payload,
+        command="version",
+        audience="maintainer_preflight",
+        required_fields={
+            "schema_version",
+            "package",
+            "version",
+            "python_version",
+            "executable",
+        },
+    )
 
 
 def test_package_check_reports_packaging_preflight() -> None:
@@ -48,6 +80,22 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert hook_plugins["ok"] is True
     assert hook_plugins["error_type"] == "plugin"
     assert "plugin" in payload["error_taxonomy"]["categories"]
+    _assert_control_surface_contract(
+        payload,
+        command="package-check",
+        audience="maintainer_preflight",
+        required_fields={
+            "schema_version",
+            "root",
+            "ok",
+            "status",
+            "checks",
+            "failed_checks",
+            "runbook",
+            "error_taxonomy",
+            "next_actions",
+        },
+    )
     assert payload["runbook"]["path"] == "docs/zh/灰度试运行手册.md"
     assert "rollback" in payload["runbook"]["required_sections"]
     assert any("model.routes.gray.example.ps1" in action for action in payload["next_actions"])
@@ -65,6 +113,18 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "uninitialized"
     assert payload["next_actions"] == ["Run `asteria /init --root .`."]
+    _assert_control_surface_contract(
+        payload,
+        command="status",
+        audience="user_workflow",
+        required_fields={
+            "schema_version",
+            "status",
+            "current_session_id",
+            "recommended_next_command",
+            "next_actions",
+        },
+    )
 
 
 def test_status_reports_initialized_workspace_without_sessions(tmp_path: Path) -> None:
@@ -155,6 +215,56 @@ def test_status_has_no_next_command_after_acceptance(tmp_path: Path) -> None:
     assert payload["next_actions"] == []
 
 
+
+
+
+def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+
+    payload = GrayRunCommand(tmp_path, dry_run=True).run().to_dict()
+
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["status"] == "blocked"
+    _assert_control_surface_contract(
+        payload,
+        command="gray-run",
+        audience="maintainer_gray_execution",
+        required_fields={
+            "schema_version",
+            "gray_run_id",
+            "status",
+            "summary_path",
+            "run_id",
+            "next_actions",
+        },
+    )
+
+def test_gray_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    result = GrayCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["mode"] == "dry_run"
+    assert "gate_status" in payload
+    assert "gray_run" in payload
+    _assert_control_surface_contract(
+        payload,
+        command="gray",
+        audience="maintainer_gray_readiness",
+        required_fields={
+            "schema_version",
+            "root",
+            "status",
+            "ok",
+            "mode",
+            "gate_status",
+            "gray_run",
+            "next_actions",
+        },
+    )
+
+
 def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: Path) -> None:
     result = GateCommand(
         tmp_path,
@@ -170,6 +280,21 @@ def test_gate_release_stage_passes_when_all_heavy_checks_are_skipped(tmp_path: P
     payload = result.to_dict()
     assert payload["mode"] == "release"
     assert payload["stages"]["release"] == []
+    _assert_control_surface_contract(
+        payload,
+        command="gate",
+        audience="maintainer_release_readiness",
+        required_fields={
+            "schema_version",
+            "root",
+            "status",
+            "ok",
+            "mode",
+            "stages",
+            "latest_observation_plan",
+            "next_actions",
+        },
+    )
     text = result.to_text()
     assert "Conclusion: Ready for the requested gate stage." in text
     assert "Mode: release" in text
@@ -413,6 +538,21 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     assert next(check for check in payload["checks"] if check["name"] == "plugins")[
         "error_type"
     ] == "plugin"
+    _assert_control_surface_contract(
+        payload,
+        command="doctor",
+        audience="maintainer_preflight",
+        required_fields={
+            "schema_version",
+            "ok",
+            "status",
+            "checks",
+            "routes",
+            "route_requirements",
+            "plugin_control",
+            "next_actions",
+        },
+    )
 
 
 def test_doctor_reports_blocked_plugin_manifest(tmp_path: Path, monkeypatch) -> None:
@@ -514,6 +654,21 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     _configure_release_routes(monkeypatch)
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "missing_real_model_gate"
+    _assert_control_surface_contract(
+        result.to_dict(),
+        command="gate-status",
+        audience="maintainer_release_readiness",
+        required_fields={
+            "schema_version",
+            "stage",
+            "rollout_state",
+            "release_ready",
+            "gates",
+            "route_environment",
+            "validation_recommendation",
+            "next_actions",
+        },
+    )
 
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.flag_resolver import FlagResolver
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
@@ -44,6 +45,30 @@ class GateStatusResult:
         )
         return {
             "schema_version": "0.1.0",
+            "control_surface": control_surface_contract(
+                command="gate-status",
+                audience="maintainer_release_readiness",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "stage",
+                    "rollout_state",
+                    "release_ready",
+                    "blocking_reason",
+                    "gates",
+                    "route_environment",
+                    "route_guidance",
+                    "latest_observation_plan",
+                    "promotion_release_risks",
+                    "plugin_risks",
+                    "feature_flags",
+                    "capability_flags",
+                    "evidence_sources",
+                    "gray_task_limits",
+                    "validation_recommendation",
+                    "next_actions",
+                ],
+            ),
             "root": str(self.root),
             "stage": self.stage,
             "rollout_state": rollout_state,

@@ -7,6 +7,11 @@ from pathlib import Path
 from asteria_runtime.cli import build_parser, main
 
 
+def _command_help(command: str) -> str:
+    subparsers_action = build_parser()._subparsers._group_actions[0]
+    return subparsers_action.choices[command].format_help()
+
+
 def test_top_level_help_groups_command_surface() -> None:
     help_text = build_parser().format_help()
 
@@ -18,9 +23,79 @@ def test_top_level_help_groups_command_surface() -> None:
     assert help_text.index("Start") < help_text.index("Maintain")
     assert help_text.index("Maintain") < help_text.index("Advanced")
     assert "init    Initialize an agent-ready workspace." in help_text
+    assert "accept  Accept reviewed results and finalize the run." in help_text
+    assert help_text.index("init    Initialize") < help_text.index("accept  Accept")
+    assert help_text.index("accept  Accept") < help_text.index("Maintain")
     assert "gate             Run staged readiness checks" in help_text
     assert "real-model-acceptance" in help_text
+    assert "Compatibility" in help_text
+    assert "slash-prefixed command forms such as `asteria /run` remain aliases" in help_text
+    assert "use plain command names in new docs and scripts" in help_text
+    assert "Accept vs acceptance" in help_text
+    assert "`accept` finalizes one reviewed run" in help_text
+    assert "`acceptance` runs validation suites for maintainers and CI" in help_text
+    assert "Maintainer commands" in help_text
+    assert "Maintainer/CI command: use after the default" in help_text
     assert "Use `asteria <command> --help`" in help_text
+
+
+def test_start_workflow_help_explains_plain_commands_and_slash_aliases() -> None:
+    for command in ("init", "run", "status", "resume", "review", "accept"):
+        help_text = _command_help(command)
+        normalized_help = " ".join(help_text.split())
+
+        assert "slash-prefixed command forms such as `asteria /run` remain aliases" in normalized_help
+        assert "use plain command names in new docs and scripts" in normalized_help
+
+    run_help = _command_help("run")
+    assert "Allow run to execute" in run_help
+    assert "/run to execute" not in run_help
+    resume_help = _command_help("resume")
+    assert "Allow resume to execute" in resume_help
+    assert "/resume to execute" not in resume_help
+
+
+def test_accept_and_acceptance_help_describe_distinct_user_intents() -> None:
+    accept_help = " ".join(_command_help("accept").split())
+    acceptance_help = " ".join(_command_help("acceptance").split())
+    expected = (
+        "`accept` finalizes one reviewed run; `acceptance` runs validation suites "
+        "for maintainers and CI."
+    )
+
+    assert expected in accept_help
+    assert expected in acceptance_help
+    assert "Session id to accept; defaults to current session" in accept_help
+    assert "Acceptance scenario suite" in acceptance_help
+
+
+def test_maintainer_command_help_stays_outside_default_completion_path() -> None:
+    expected = (
+        "Maintainer/CI command: use after the default init -> run -> status -> "
+        "resume -> review -> accept workflow"
+    )
+
+    for command in ("gate", "gray", "acceptance", "acceptance-gate"):
+        help_text = " ".join(_command_help(command).split())
+        assert expected in help_text
+        assert "not as an ordinary completion step" in help_text
+
+    assert "Maintainer/CI command" not in _command_help("accept")
+
+
+def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
+    parser = build_parser()
+    start_commands = ("init", "run", "status", "resume", "review", "accept")
+
+    for command in start_commands:
+        plain_args = [command]
+        slash_args = [f"/{command}"]
+        if command == "run":
+            plain_args.append("build a small tool")
+            slash_args.append("build a small tool")
+
+        assert parser.parse_args(plain_args).command == command
+        assert parser.parse_args(slash_args).command == f"/{command}"
 
 
 def test_slash_command_aliases_parse_like_regular_commands() -> None:
@@ -127,6 +202,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
         ["/replan", "--root", ".", "--session-id", "run-1", "--max-items", "3"]
     )
     brainstorm_args = parser.parse_args(["/brainstorm", "build a tool", "--root", ".", "--apply"])
+    accept_args = parser.parse_args(
+        ["/accept", "--root", ".", "--session-id", "run-1", "--no-promote", "--json"]
+    )
     acceptance_args = parser.parse_args(
         [
             "/acceptance",
@@ -280,6 +358,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert brainstorm_args.command == "/brainstorm"
     assert brainstorm_args.goal == "build a tool"
     assert brainstorm_args.apply
+    assert accept_args.command == "/accept"
+    assert accept_args.session_id == "run-1"
+    assert accept_args.no_promote
+    assert accept_args.json
     assert acceptance_args.command == "/acceptance"
     assert acceptance_args.suite == "nightly"
     assert acceptance_args.allow_fake
