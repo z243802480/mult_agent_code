@@ -91,6 +91,11 @@ class EvidenceAwareReviewModel:
         )
 
 
+class FailingReviewModel:
+    def chat(self, request):
+        raise RuntimeError("stream deadline exceeded")
+
+
 class ClassifiedReviewModel:
     def __init__(self, *, kind: str) -> None:
         self.kind = kind
@@ -262,6 +267,83 @@ def test_review_failure_text_names_primary_blocker_and_next_command(tmp_path: Pa
         "eval_report",
     )
     assert eval_report["failure_classification"]["recommended_command"] == "debug"
+
+
+def test_status_ignores_task_failure_superseded_by_done_evidence(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    run_id = _create_minimal_completed_run(tmp_path)
+    validator = SchemaValidator(Path("schemas"))
+    jsonl = JsonlStore(validator)
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+
+    jsonl.append(
+        run_dir / "task_failures.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "task-failure-0001",
+            "run_id": run_id,
+            "task_id": "task-0001",
+            "phase": "execute",
+            "failure_type": "exception",
+            "summary": "ExecutionAction response was not valid JSON.",
+            "task_status": "ready",
+            "contract_check": {},
+            "tool_failures": [],
+            "verification_failures": [],
+            "candidate": {},
+            "recommendations": ["Repair the execution action."],
+            "created_at": "2026-05-26T00:00:00+08:00",
+        },
+        "task_failure_evidence",
+    )
+    jsonl.append(
+        run_dir / "task_execution_evidence.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "evidence_id": "evidence-0002",
+            "run_id": run_id,
+            "task_id": "task-0001",
+            "status": "done",
+            "summary": "Repair verification passed.",
+            "task": {"task_id": "task-0001", "title": "Minimal workflow task"},
+            "action": {"kind": "repair"},
+            "candidate": {"promoted_files": ["greet.py"]},
+            "contract_check": {"ok": True},
+            "tool_results": [],
+            "verification_results": [{"ok": True}],
+            "created_at": "2026-05-26T00:00:01+08:00",
+        },
+        "task_execution_evidence",
+    )
+
+    payload = StatusCommand(tmp_path).run().to_dict()
+
+    assert payload["latest_failure"] == {}
+    assert payload["blockers"] == []
+    assert payload["risks"] == []
+    assert payload["current_blocker"] is None
+
+
+def test_review_persists_cost_report_when_model_call_fails(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    run_id = _create_minimal_completed_run(tmp_path)
+
+    try:
+        ReviewCommand(tmp_path, model_client=FailingReviewModel()).run()
+    except RuntimeError as exc:
+        assert "stream deadline exceeded" in str(exc)
+    else:
+        raise AssertionError("ReviewCommand should propagate the model failure")
+
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    cost = JsonStore(SchemaValidator(Path("schemas"))).read(
+        run_dir / "cost_report.json",
+        "cost_report",
+    )
+    model_call_count = len(
+        [line for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    )
+    assert cost["model_calls"] == model_call_count
 
 
 def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:

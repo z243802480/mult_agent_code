@@ -190,7 +190,18 @@ class ReviewCommand:
             summary="评审模型正在分析执行证据，判断目标完成情况。",
             display_level="main",
         )
-        eval_report = reviewer.evaluate(review_context, run_id)
+        try:
+            eval_report = reviewer.evaluate(review_context, run_id)
+        except Exception:
+            self.store.write(
+                cost_report_path,
+                self._merge_cost_reports(
+                    budget.cost_report(),
+                    self._read_cost(cost_report_path, run_id),
+                ),
+                "cost_report",
+            )
+            raise
         eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval") or {})
         eval_report["trajectory_eval"]["route_readiness"] = review_context["route_readiness"]
         eval_report["trajectory_eval"]["model_selection"] = review_context["model_selection"]

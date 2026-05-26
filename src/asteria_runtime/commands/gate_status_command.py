@@ -519,9 +519,9 @@ def _release_evidence_route_guidance(
         gate, gray, core
     ):
         return guidance
-    raw_blocking = guidance.get("blocking")
+    raw_blocking = guidance.get("blocking") or []
     blocking = [item for item in raw_blocking if isinstance(item, dict)]
-    raw_review = guidance.get("review")
+    raw_review = guidance.get("review") or []
     review = [item for item in raw_review if isinstance(item, dict)]
     retained: list[dict[str, Any]] = []
     demoted: list[dict[str, Any]] = []
@@ -668,9 +668,9 @@ def _model_call_contract_calls(
 ) -> tuple[list[dict[str, Any]], str]:
     gate_run_id = _gate_model_call_run_id(gate_report)
     if gate_run_id:
-        calls = _model_calls_for_run(root, validator, gate_run_id)
-        if calls:
-            return calls, "real_model_gate_run"
+        gate_calls = _model_calls_for_run(root, validator, gate_run_id)
+        if gate_calls:
+            return gate_calls, "real_model_gate_run"
     calls: list[dict[str, Any]] = []
     for run_dir in _run_dirs(root):
         path = run_dir / "model_calls.jsonl"

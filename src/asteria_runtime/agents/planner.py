@@ -213,6 +213,9 @@ class RequirementPlanner:
             "expected_artifacts": artifacts,
         }
         quality = self._quality_assessment(requirement, artifacts)
+        expected_changed_files = self._filter_non_modified_test_paths(
+            artifacts, self._targeted_repair_description(goal_spec)
+        )
         task = {
             "schema_version": "0.1.0",
             "task_id": "task-0001",
@@ -226,7 +229,7 @@ class RequirementPlanner:
             "allowed_tools": self._allowed_tools("implementation"),
             "expected_artifacts": artifacts,
             "task_kind": "implementation",
-            "expected_changed_files": artifacts,
+            "expected_changed_files": expected_changed_files,
             "assigned_agent_id": None,
             "created_at": now_iso(),
             "updated_at": now_iso(),
@@ -459,6 +462,9 @@ class RequirementPlanner:
         return task
 
     def _single_file_artifact(self, goal_spec: dict) -> str:
+        explicit_files = self._explicit_goal_files(goal_spec)
+        if len(explicit_files) == 1:
+            return explicit_files[0]
         explicit = self._single_output_file(goal_spec)
         if explicit:
             return explicit
@@ -508,15 +514,21 @@ class RequirementPlanner:
         if isinstance(existing, list) and existing:
             return [str(item) for item in existing]
         description = str(requirement.get("description", "")).lower()
+        explicit_paths = self._explicit_file_paths(self._requirement_text(requirement))
         target_outputs_raw = [str(item).strip() for item in goal_spec.get("target_outputs", [])]
         target_outputs = {item.lower() for item in target_outputs_raw}
         artifacts: list[str] = []
+        artifacts.extend(explicit_paths)
         artifacts.extend(
             item.replace("\\", "/")
             for item in target_outputs_raw
             if self._looks_like_artifact_output(item)
+            and item.replace("\\", "/") not in explicit_paths
         )
-        if "readme" in target_outputs or "doc" in description or "documentation" in description:
+        if (
+            ("readme" in target_outputs or "doc" in description or "documentation" in description)
+            and not any(path.lower().endswith("readme.md") for path in artifacts)
+        ):
             artifacts.append("README.md")
         if "test" in description or "unit_tests" in goal_spec.get("verification_strategy", []):
             artifacts.append("tests/")
@@ -587,6 +599,9 @@ class RequirementPlanner:
                 "planning artifact",
             }
         ]
+        concrete_outputs = self._filter_non_modified_test_paths(
+            concrete_outputs, self._requirement_text(requirement)
+        )
         if kind in {"implementation", "report", "ui"} and concrete_outputs:
             return concrete_outputs
         inferred = self._infer_changed_files_from_requirement(kind, expected_artifacts, requirement)
@@ -620,6 +635,7 @@ class RequirementPlanner:
             explicit_paths = [
                 path for path in explicit_paths if path.lower() not in context_inputs
             ]
+        explicit_paths = self._filter_non_modified_test_paths(explicit_paths, text)
         if explicit_paths:
             return explicit_paths
 
@@ -652,7 +668,16 @@ class RequirementPlanner:
             text,
             flags=re.I,
         )
-        return list(dict.fromkeys(match.replace("\\", "/") for match in matches))
+        normalized = [match.replace("\\", "/") for match in matches]
+        lowered = text.lower()
+        if "readme.md" in {path.lower() for path in normalized} and re.search(
+            r"(?:in|under|inside)\s+(?:the\s+)?docs/?\s+directory", lowered
+        ):
+            normalized = [
+                "docs/README.md" if path.lower() == "readme.md" else path
+                for path in normalized
+            ]
+        return list(dict.fromkeys(normalized))
 
     def _module_stem(self, text: str) -> str | None:
         normalized = text.lower()
@@ -691,6 +716,42 @@ class RequirementPlanner:
                 return re.sub(r"[^a-z0-9_]+", "_", candidate)
         return None
 
+    def _filter_non_modified_test_paths(self, paths: list[str], text: str) -> list[str]:
+        lowered = text.lower()
+        non_test_paths = [path for path in paths if not self._is_test_path(path)]
+        if len(non_test_paths) == 1 and len(paths) > 1:
+            only_target = non_test_paths[0].lower()
+            if (
+                f"only {only_target}" in lowered
+                or "no other files were modified" in lowered
+                or "no other files are modified" in lowered
+                or "no other lines or files are modified" in lowered
+            ):
+                return non_test_paths
+        if not any(
+            marker in lowered
+            for marker in {
+                "no test files were modified",
+                "no test files are modified",
+                "no test files should be modified",
+                "without modifying test files",
+            }
+        ):
+            return paths
+        return [
+            path
+            for path in paths
+            if not self._is_test_path(path)
+        ]
+
+    def _is_test_path(self, path: str) -> bool:
+        normalized = path.replace("\\", "/")
+        return (
+            normalized.split("/")[-1].startswith("test_")
+            or "/test_" in normalized
+            or normalized.startswith("tests/")
+        )
+
     def _allowed_tools(self, kind: str) -> list[str]:
         readonly = ["list_files", "read_file", "search_text", "run_command", "run_tests"]
         if kind in {"diagnostic", "verification", "research", "decision"}:
@@ -700,6 +761,7 @@ class RequirementPlanner:
                 "list_files",
                 "read_file",
                 "search_text",
+                "diff_workspace",
                 "write_file",
                 "apply_patch",
                 "restore_backup",
@@ -709,6 +771,7 @@ class RequirementPlanner:
             "list_files",
             "read_file",
             "search_text",
+            "diff_workspace",
             "write_file",
             "apply_patch",
             "restore_backup",

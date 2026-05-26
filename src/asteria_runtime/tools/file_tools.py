@@ -62,7 +62,7 @@ class WriteFileTool:
             )
         backup = FileBackupStore(context).backup_paths([resolved], "write_file")
         resolved.parent.mkdir(parents=True, exist_ok=True)
-        resolved.write_text(content, encoding=encoding)
+        resolved.write_bytes(content.encode(encoding))
         self._clear_python_bytecode(resolved)
         return ToolResult(
             ok=True,

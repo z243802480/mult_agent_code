@@ -199,8 +199,11 @@ class SessionsCommand:
         pending_decisions = (snapshot or {}).get("pending_decisions") or self._pending_decisions(
             run_dir
         )
-        task_failures = (snapshot or {}).get("task_failures") or self._task_failures(run_dir)
         execution_evidence = self._task_execution_evidence(run_dir)
+        task_failures = self._active_task_failures(
+            (snapshot or {}).get("task_failures") or self._task_failures(run_dir),
+            execution_evidence,
+        )
         model_selection = self._latest_model_selection(execution_evidence)
         model_route_timeline = self._model_route_timeline(execution_evidence)
         model_route_timeline_path = self._model_route_timeline_path(run_dir)
@@ -443,6 +446,34 @@ class SessionsCommand:
             }
             for evidence in evidence_items[-10:]
         ]
+
+    def _active_task_failures(
+        self,
+        task_failures: list[dict],
+        execution_evidence: list[dict],
+    ) -> list[dict]:
+        latest_done_at_by_task: dict[str, str] = {}
+        for evidence in execution_evidence:
+            if evidence.get("status") not in {"done", "succeeded"}:
+                continue
+            task_id = str(evidence.get("task_id") or "")
+            if not task_id:
+                continue
+            latest_done_at_by_task[task_id] = str(evidence.get("created_at") or "")
+        if not latest_done_at_by_task:
+            return task_failures
+        active = []
+        for failure in task_failures:
+            task_id = str(failure.get("task_id") or "")
+            if not task_id:
+                active.append(failure)
+                continue
+            done_at = latest_done_at_by_task.get(task_id)
+            failed_at = str(failure.get("created_at") or "")
+            if done_at and (not failed_at or done_at >= failed_at):
+                continue
+            active.append(failure)
+        return active
 
     def _latest_model_selection(self, execution_evidence: list[dict]) -> dict:
         for evidence in reversed(execution_evidence):

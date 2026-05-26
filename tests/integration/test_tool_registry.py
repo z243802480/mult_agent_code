@@ -83,6 +83,16 @@ def test_file_tools_write_read_and_log(tmp_path: Path) -> None:
     assert len([event for event in events if event["type"] == "tool_called"]) == 2
 
 
+def test_write_file_preserves_lf_bytes(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+
+    write = tools.call("write_file", ctx, path="notes/lf.txt", content="one\ntwo\n")
+
+    assert write.ok
+    assert (tmp_path / "notes" / "lf.txt").read_bytes() == b"one\ntwo\n"
+
+
 def test_search_tool_finds_text(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()

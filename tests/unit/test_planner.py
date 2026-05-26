@@ -382,6 +382,66 @@ def test_requirement_planner_groups_targeted_failing_test_repair() -> None:
     assert "targeted repair slice" in task["notes"]
 
 
+def test_requirement_planner_keeps_docs_readme_directory_target() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-doc-readme",
+        "normalized_goal": "Create documentation README",
+        "target_outputs": ["README.md"],
+        "definition_of_done": ["docs/README.md exists"],
+        "verification_strategy": ["file check"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": (
+                    "Create a README.md in the docs/ directory with Overview, Quick Start, "
+                    "and License sections."
+                ),
+                "acceptance": ["docs/README.md is valid Markdown"],
+            }
+        ],
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
+
+    assert task["expected_artifacts"] == ["docs/README.md"]
+    assert task["expected_changed_files"] == ["docs/README.md"]
+    assert task["write_scope"] == ["docs/README.md"]
+
+
+def test_requirement_planner_excludes_tests_when_goal_forbids_test_modification() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-debug-repair",
+        "normalized_goal": "Fix failing tests by repairing buggy_math.py",
+        "target_outputs": ["buggy_math.py", "test_buggy_math.py"],
+        "definition_of_done": ["pytest passes"],
+        "verification_strategy": ["pytest", "diff_workspace"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": (
+                    "Fix the failing tests in this project by changing buggy_math.py. "
+                    "No other files are modified."
+                ),
+                "acceptance": [
+                    "The add function in buggy_math.py returns a + b.",
+                    "No test files were modified, including test_buggy_math.py.",
+                ],
+            }
+        ],
+    }
+
+    task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
+
+    assert task["expected_changed_files"] == ["buggy_math.py"]
+    assert task["write_scope"] == ["buggy_math.py"]
+    assert "test_buggy_math.py" in task["read_scope"]
+    assert "diff_workspace" in task["allowed_tools"]
+
+
 def test_requirement_planner_marks_diagnostic_tasks() -> None:
     goal_spec = {
         "schema_version": "0.1.0",
