@@ -243,7 +243,8 @@ class GateStatusCommand:
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
-        model_call_contract = _model_call_contract(self.root, self.validator)
+        route_guidance = _release_evidence_route_guidance(route_guidance, gate, gray, core)
+        model_call_contract = _model_call_contract(self.root, self.validator, gate)
         latest_observation_plan = _latest_observation_plan(self.root, self.validator)
         latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
         if latest_matrix and latest_matrix.get("ok") is False:
@@ -508,23 +509,107 @@ def _route_guidance(root: Path) -> dict[str, Any]:
     return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
 
 
-def _model_call_contract(root: Path, validator: SchemaValidator) -> dict[str, Any]:
-    calls: list[dict[str, Any]] = []
-    for run_dir in _run_dirs(root):
-        path = run_dir / "model_calls.jsonl"
-        if not path.exists():
-            continue
-        for call in JsonlStore(validator).read_all(path, "model_call"):
-            if str(call.get("model_provider") or "").lower() == "fake":
-                continue
-            item = dict(call)
-            item["_path"] = path
-            calls.append(item)
-    calls = sorted(calls, key=lambda item: str(item.get("created_at") or ""))[-50:]
+def _release_evidence_route_guidance(
+    guidance: dict[str, Any],
+    gate: dict[str, Any],
+    gray: dict[str, Any],
+    core: dict[str, Any],
+) -> dict[str, Any]:
+    if guidance.get("status") != "blocked" or not _release_route_evidence_is_fresh(
+        gate, gray, core
+    ):
+        return guidance
+    raw_blocking = guidance.get("blocking")
+    blocking = [item for item in raw_blocking if isinstance(item, dict)]
+    raw_review = guidance.get("review")
+    review = [item for item in raw_review if isinstance(item, dict)]
+    retained: list[dict[str, Any]] = []
+    demoted: list[dict[str, Any]] = []
+    for item in blocking:
+        if _is_superseded_route_guidance_block(item, gate, gray):
+            demoted.append({**item, "severity": 2, "release_evidence_status": "superseded"})
+        else:
+            retained.append(item)
+    if not demoted:
+        return guidance
+    status = "blocked" if retained else "review"
+    actions = (
+        list(guidance.get("recommended_actions") or [])
+        if retained
+        else [
+            "Release evidence is healthy; keep route guidance under review while collecting fresh capability evidence.",
+            "Run `asteria capability-report` after the next real-provider gray task to refresh route guidance.",
+        ]
+    )
+    return {
+        **guidance,
+        "status": status,
+        "blocking": retained,
+        "review": [*review, *demoted],
+        "release_evidence_override": {
+            "applied": True,
+            "demoted_blockers": len(demoted),
+            "reason": "Latest real-model gate and acceptance evidence supersede stale route guidance blockers.",
+        },
+        "recommended_actions": actions,
+    }
+
+
+def _release_route_evidence_is_fresh(
+    gate: dict[str, Any],
+    gray: dict[str, Any],
+    core: dict[str, Any],
+) -> bool:
+    if not gate.get("ok") or not core.get("ok"):
+        return False
+    if not _gate_model_call_run_id(gate):
+        return False
+    if gray.get("ok") is not True or gray.get("gray_ready") is not True:
+        return False
+    aggregate = gray.get("aggregate")
+    aggregate = aggregate if isinstance(aggregate, dict) else {}
+    route = aggregate.get("route_evidence")
+    route = route if isinstance(route, dict) else {}
+    return route.get("strong_used") is True and route.get("medium_used") is True
+
+
+def _is_superseded_route_guidance_block(
+    item: dict[str, Any],
+    gate: dict[str, Any],
+    gray: dict[str, Any],
+) -> bool:
+    action = str(item.get("recommended_action") or "")
+    if action == "block_gray_until_strong_goal_spec_stable":
+        routes = gate.get("routes")
+        routes = routes if isinstance(routes, dict) else {}
+        strong_route = routes.get("strong")
+        strong_route = strong_route if isinstance(strong_route, dict) else {}
+        gate_model = str(strong_route.get("model") or "")
+        blocked_model = str(item.get("model") or "")
+        return bool(gate_model and blocked_model and gate_model != blocked_model)
+    if action == "review_worker_route_before_scaling":
+        aggregate = gray.get("aggregate")
+        aggregate = aggregate if isinstance(aggregate, dict) else {}
+        route = aggregate.get("route_evidence")
+        route = route if isinstance(route, dict) else {}
+        if item.get("model_tier") == "medium":
+            return route.get("medium_used") is True
+        if item.get("model_tier") == "strong":
+            return route.get("strong_used") is True
+    return False
+
+
+def _model_call_contract(
+    root: Path,
+    validator: SchemaValidator,
+    gate_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    calls, evidence_scope = _model_call_contract_calls(root, validator, gate_report or {})
     if not calls:
         return {
             "status": "unknown",
             "checked_calls": 0,
+            "evidence_scope": evidence_scope,
             "summary": "No recent real-provider model_calls.jsonl evidence was found.",
             "recommended_actions": [
                 "Run model-check or a small real-provider gray task to collect model call contract evidence."
@@ -560,10 +645,11 @@ def _model_call_contract(root: Path, validator: SchemaValidator) -> dict[str, An
         "status": status,
         "checked_calls": len(calls),
         "violation_count": len(violations),
+        "evidence_scope": evidence_scope,
         "summary": (
-            "Recent real-provider model calls include role contract, deadline, and streaming telemetry."
+            "Release evidence model calls include role contract, deadline, and streaming telemetry."
             if not violations
-            else "Recent real-provider model calls are missing role contract, deadline, or streaming telemetry."
+            else "Release evidence model calls are missing role contract, deadline, or streaming telemetry."
         ),
         "recommended_actions": []
         if not violations
@@ -573,6 +659,58 @@ def _model_call_contract(root: Path, validator: SchemaValidator) -> dict[str, An
         ],
         "violations": violations[:10],
     }
+
+
+def _model_call_contract_calls(
+    root: Path,
+    validator: SchemaValidator,
+    gate_report: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str]:
+    gate_run_id = _gate_model_call_run_id(gate_report)
+    if gate_run_id:
+        calls = _model_calls_for_run(root, validator, gate_run_id)
+        if calls:
+            return calls, "real_model_gate_run"
+    calls: list[dict[str, Any]] = []
+    for run_dir in _run_dirs(root):
+        path = run_dir / "model_calls.jsonl"
+        if not path.exists():
+            continue
+        for call in JsonlStore(validator).read_all(path, "model_call"):
+            if str(call.get("model_provider") or "").lower() == "fake":
+                continue
+            item = dict(call)
+            item["_path"] = path
+            calls.append(item)
+    calls = sorted(calls, key=lambda item: str(item.get("created_at") or ""))[-50:]
+    return calls, "recent_real_provider_calls"
+
+
+def _gate_model_call_run_id(gate_report: dict[str, Any]) -> str | None:
+    if not gate_report.get("ok"):
+        return None
+    raw_summary = gate_report.get("model_call_summary")
+    summary = raw_summary if isinstance(raw_summary, dict) else {}
+    run_id = summary.get("run_id")
+    return str(run_id) if run_id else None
+
+
+def _model_calls_for_run(
+    root: Path,
+    validator: SchemaValidator,
+    run_id: str,
+) -> list[dict[str, Any]]:
+    path = root / ".asteria" / "runs" / run_id / "model_calls.jsonl"
+    if not path.exists():
+        return []
+    calls: list[dict[str, Any]] = []
+    for call in JsonlStore(validator).read_all(path, "model_call"):
+        if str(call.get("model_provider") or "").lower() == "fake":
+            continue
+        item = dict(call)
+        item["_path"] = path
+        calls.append(item)
+    return calls
 
 
 def _real_provider_matrix_next_actions(matrix: dict[str, Any]) -> list[str]:

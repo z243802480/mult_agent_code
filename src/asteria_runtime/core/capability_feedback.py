@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.models.route_diagnostics import route_diagnostic_for_tier
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -251,6 +252,23 @@ class CapabilityFeedbackAdvisor:
             if str(item.get("purpose") or "") == "goal_spec"
             and str(item.get("model_tier") or "") == "strong"
         ]
+        current_model = _current_configured_strong_model()
+        if current_model:
+            current_candidates = [
+                item for item in candidates if str(item.get("model") or "") == current_model
+            ]
+            if current_candidates:
+                candidates = current_candidates
+            elif candidates:
+                return {
+                    "decision": "collect_evidence",
+                    "strategy": strategy,
+                    "current_model": current_model,
+                    "reason": (
+                        "No strong goal_spec route evidence exists for the current configured "
+                        "strong model."
+                    ),
+                }
         if not candidates:
             return {
                 "decision": "collect_evidence",
@@ -343,6 +361,13 @@ def _top_counter_key(counter: dict[str, Any]) -> str:
 def _hard_provider_failure(evaluation: dict[str, Any]) -> bool:
     reason = str(evaluation.get("reason") or "").lower()
     return "authentication" in reason or "budget" in reason
+
+
+def _current_configured_strong_model() -> str:
+    diagnostic = route_diagnostic_for_tier("strong")
+    if not diagnostic.configured or not diagnostic.model_name:
+        return ""
+    return diagnostic.model_name
 
 
 def _is_low_risk_goal_spec_goal(goal: str) -> bool:

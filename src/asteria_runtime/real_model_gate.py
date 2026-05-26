@@ -311,9 +311,47 @@ def inspect_smoke_evidence(result: GateResult) -> None:
     result.checks["cost_report_consistent"] = int(cost_report.get("model_calls", -1)) == len(
         model_calls
     )
+    reconcile_model_checks_from_smoke(result, model_calls)
     for check, ok in result.checks.items():
         if not ok:
             result.failures.append(f"check failed: {check}")
+
+
+def reconcile_model_checks_from_smoke(
+    result: GateResult,
+    model_calls: list[dict[str, Any]],
+) -> None:
+    reconciled: list[str] = []
+    for tier, check_name in (
+        ("strong", "strong_model_check"),
+        ("medium", "medium_model_check"),
+    ):
+        if result.checks.get(check_name):
+            continue
+        if _has_successful_contract_model_call(model_calls, tier):
+            result.checks[check_name] = True
+            reconciled.append(tier)
+    if reconciled:
+        result.model_call_summary["model_checks_reconciled_by_smoke"] = reconciled
+
+
+def _has_successful_contract_model_call(model_calls: list[dict[str, Any]], tier: str) -> bool:
+    for call in model_calls:
+        if str(call.get("model_tier")) != tier:
+            continue
+        if call.get("status") != "success":
+            continue
+        if not isinstance(call.get("agent_role_contract"), dict):
+            continue
+        if not isinstance(call.get("deadline_ms"), int):
+            continue
+        streaming = call.get("streaming")
+        if not isinstance(streaming, dict):
+            continue
+        if not isinstance(streaming.get("deadline_ms"), int):
+            continue
+        return True
+    return False
 
 
 def run_command(

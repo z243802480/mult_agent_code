@@ -1112,6 +1112,124 @@ def test_gate_status_blocks_gray_when_capability_route_guidance_is_blocked(
     assert payload["route_guidance"]["status"] == "blocked"
 
 
+def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    gate_path = tmp_path / ".asteria" / "model" / "real_model_gate_report.json"
+    gate_path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "routes": {
+                    "strong": {"provider": "glm", "model": "glm-5.1"},
+                    "medium": {"provider": "minimax", "model": "MiniMax-M2.7"},
+                },
+                "model_call_summary": {"run_id": "run-fresh", "total_model_calls": 3},
+            }
+        ),
+        encoding="utf-8",
+    )
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    JsonStore(validator).write(
+        tmp_path / ".asteria" / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(tmp_path),
+            "profile_count": 3,
+            "profiles": [
+                {
+                    "provider": "zai",
+                    "model": "glm-4.7",
+                    "purpose": "goal_spec",
+                    "model_tier": "strong",
+                    "total_calls": 5,
+                    "success_calls": 3,
+                    "failure_calls": 2,
+                    "success_rate": 0.6,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 0,
+                    "successful_workers": 0,
+                    "failed_workers": 0,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {"timeout": 2},
+                    "recent_failures": [],
+                    "recommended_action": "keep_route",
+                },
+                {
+                    "provider": "runtime",
+                    "model": "medium-route",
+                    "purpose": "coding",
+                    "model_tier": "medium",
+                    "total_calls": 2,
+                    "success_calls": 0,
+                    "failure_calls": 2,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                },
+                {
+                    "provider": "glm",
+                    "model": "glm-5.1",
+                    "purpose": "coding",
+                    "model_tier": "strong",
+                    "total_calls": 2,
+                    "success_calls": 0,
+                    "failure_calls": 2,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                },
+            ],
+        },
+        "model_capability_profile",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["release_ready"] is True
+    assert payload["route_guidance"]["status"] == "review"
+    assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 2
+
+
 def test_gate_status_blocks_release_when_recent_model_call_contract_is_missing(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1216,6 +1334,99 @@ def test_gate_status_accepts_recent_model_call_contract_evidence(
     assert payload["stage"] == "ready_for_small_real_task_gray"
     assert payload["model_call_contract"]["status"] == "healthy"
     assert payload["model_call_contract"]["checked_calls"] == 1
+
+
+def test_gate_status_prefers_real_model_gate_run_for_model_call_contract(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    legacy = run_store.create_run("legacy")
+    fresh = run_store.create_run("fresh")
+    JsonlStore(validator).append(
+        run_store.run_dir(legacy["run_id"]) / "model_calls.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_call_id": "modelcall-legacy",
+            "run_id": legacy["run_id"],
+            "agent_id": "GoalSpecAgent",
+            "purpose": "goal_spec",
+            "model_provider": "glm",
+            "model_name": "glm-4.7",
+            "model_tier": "strong",
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "status": "success",
+            "created_at": now_iso(),
+            "summary": "legacy call missing role contract",
+        },
+        "model_call",
+    )
+    JsonlStore(validator).append(
+        run_store.run_dir(fresh["run_id"]) / "model_calls.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_call_id": "modelcall-fresh",
+            "run_id": fresh["run_id"],
+            "agent_id": "GoalSpecAgent",
+            "agent_role": "GoalSpecAgent",
+            "agent_role_contract": {
+                "role": "GoalSpecAgent",
+                "purpose": "goal_spec",
+                "default_model_tier": "strong",
+                "deadline_profile": "strong_goal_spec",
+                "provider_call_seconds": 120,
+                "stream_idle_timeout_seconds": 30,
+                "max_model_calls": 1,
+                "responsibilities": [],
+                "escalation_policy": "test",
+            },
+            "deadline_profile": "strong_goal_spec",
+            "deadline_ms": 120000,
+            "purpose": "goal_spec",
+            "model_provider": "glm",
+            "model_name": "glm-5.1",
+            "model_tier": "strong",
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "duration_ms": 100,
+            "streaming": {
+                "requested": True,
+                "supported": True,
+                "mode": "streaming",
+                "chunk_count": 1,
+                "deadline_ms": 120000,
+                "idle_timeout_ms": 30000,
+            },
+            "status": "success",
+            "created_at": now_iso(),
+            "summary": "contract-ready gate call",
+        },
+        "model_call",
+    )
+    (tmp_path / ".asteria" / "model" / "real_model_gate_report.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "model_call_summary": {
+                    "run_id": fresh["run_id"],
+                    "total_model_calls": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["model_call_contract"]["status"] == "healthy"
+    assert payload["model_call_contract"]["checked_calls"] == 1
+    assert payload["model_call_contract"]["evidence_scope"] == "real_model_gate_run"
 
 
 def test_gate_status_blocks_gray_when_candidate_promotions_are_unresolved(

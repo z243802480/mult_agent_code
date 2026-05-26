@@ -17,7 +17,12 @@ from scripts.real_model_smoke import (
     recovery_option_id,
     validate_artifacts,
 )
-from asteria_runtime.real_model_gate import GateCommand, model_check_ok
+from asteria_runtime.real_model_gate import (
+    GateCommand,
+    GateResult,
+    model_check_ok,
+    reconcile_model_checks_from_smoke,
+)
 
 pytestmark = [pytest.mark.real_provider, pytest.mark.real_provider_smoke]
 
@@ -311,6 +316,72 @@ def test_real_model_smoke_accepts_verified_artifact_with_redundant_unfinished_ta
     assert result.diagnostics["accepted_review_status"] == "fail"
 
 
+def test_real_model_smoke_accepts_verified_artifact_when_review_artifacts_missing(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    expected_file = workspace / "hello_runtime.txt"
+    expected_file.parent.mkdir(parents=True, exist_ok=True)
+    expected_file.write_text("real model smoke ok\n", encoding="utf-8")
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run-1", "status": "running"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "goal_spec.json").write_text("{}\n", encoding="utf-8")
+    (run_dir / "task_plan.json").write_text(
+        json.dumps({"tasks": [{"task_id": "task-1", "status": "done"}]}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "events.jsonl").write_text(
+        json.dumps({"type": "task_completed"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "tool_calls.jsonl").write_text(json.dumps({"id": "tool-1"}) + "\n", encoding="utf-8")
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps({"id": "model-1"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "cost_report.json").write_text(
+        json.dumps({"model_calls": 1, "tool_calls": 1, "status": "within_budget"}) + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "task_execution_evidence.jsonl").write_text(
+        json.dumps(
+            {
+                "status": "done",
+                "candidate": {
+                    "changed_files": ["hello_runtime.txt"],
+                    "promoted_files": ["hello_runtime.txt"],
+                },
+                "verification_results": [{"ok": True}],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = SmokeResult(
+        workspace=workspace,
+        run_id="run-1",
+        expected_file=expected_file,
+        final_report=None,
+        transcript=workspace / "real_model_smoke_transcript.json",
+    )
+
+    final_report = validate_artifacts(
+        workspace,
+        "run-1",
+        result=result,
+        expected_file=expected_file,
+        expected_text="real model smoke ok",
+    )
+
+    assert final_report.exists()
+    assert result.diagnostics["accepted_artifact_verified_partial"]
+    assert result.diagnostics["review_status"] == "pass"
+
+
 def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:
     workspace = tmp_path / "gate-workspace"
     summary_path = tmp_path / "gate-summary.json"
@@ -393,6 +464,29 @@ def test_real_model_gate_requires_model_check_call_ok() -> None:
             stderr="",
         )
     )
+
+
+def test_real_model_gate_reconciles_model_check_timeout_from_smoke_evidence() -> None:
+    result = GateResult(workspace=Path("unused-workspace"))
+    result.checks["strong_model_check"] = False
+    result.checks["medium_model_check"] = True
+    result.model_call_summary = {}
+
+    reconcile_model_checks_from_smoke(
+        result,
+        [
+            {
+                "model_tier": "strong",
+                "status": "success",
+                "agent_role_contract": {"role": "ReviewAgent"},
+                "deadline_ms": 90000,
+                "streaming": {"mode": "streaming", "deadline_ms": 90000},
+            }
+        ],
+    )
+
+    assert result.checks["strong_model_check"] is True
+    assert result.model_call_summary["model_checks_reconciled_by_smoke"] == ["strong"]
 
 
 def test_real_model_gate_requires_strong_and_medium_routes(tmp_path: Path) -> None:
