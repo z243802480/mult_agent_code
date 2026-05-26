@@ -56,31 +56,41 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
         project_config={"name": "demo"},
         available_tools=["run_command"],
         run_id="run-1",
-            runtime_context={
-                "prompt_envelope": {
-                    "section_order": ["project_guidance", "capability_manifest"],
-                    "sections": [
-                        {
-                            "name": "project_guidance",
-                            "summary": "Follow AGENTS.md project guidance.",
-                        }
-                    ],
-                    "capability_manifest": {
-                        "direct_tools": [{"name": "run_command"}],
-                        "verification": [{"name": "run_tests"}],
-                    },
-                },
-                "tool_observations": [
+        runtime_context={
+            "runtime_profile_id": "runtime-profile-task-0001",
+            "model_profile_id": "model-profile-task-0001",
+            "agent_role_contract": {
+                "role": "CoderAgent",
+                "purpose": "coding",
+                "deadline_profile": "worker",
+                "provider_call_seconds": 90,
+                "stream_idle_timeout_seconds": 30,
+                "max_model_calls": 1,
+            },
+            "prompt_envelope": {
+                "section_order": ["project_guidance", "capability_manifest"],
+                "sections": [
                     {
-                        "tool_name": "run_command",
-                        "ok": False,
-                        "summary": "pytest failed",
-                        "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+                        "name": "project_guidance",
+                        "summary": "Follow AGENTS.md project guidance.",
                     }
                 ],
-                "harness_observations": [
-                    {
-                        "task_id": "task-0001",
+                "capability_manifest": {
+                    "direct_tools": [{"name": "run_command"}],
+                    "verification": [{"name": "run_tests"}],
+                },
+            },
+            "tool_observations": [
+                {
+                    "tool_name": "run_command",
+                    "ok": False,
+                    "summary": "pytest failed",
+                    "next_hint": "diagnose_then_repair_replan_ask_or_stop",
+                }
+            ],
+            "harness_observations": [
+                {
+                    "task_id": "task-0001",
                     "stage": "verification",
                     "summary": "run_command failed: pytest failed",
                     "observation": {
@@ -94,8 +104,12 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
     )
 
     prompt = client.requests[0].messages[-1].content
+    metadata = client.requests[0].metadata
     assert "harness_observations" in prompt
     assert "prompt_envelope" in prompt
     assert "capability_manifest" in prompt
     assert "tool_observations" in prompt
     assert "run_command failed: pytest failed" in prompt
+    assert metadata["runtime_profile_id"] == "runtime-profile-task-0001"
+    assert metadata["model_profile_id"] == "model-profile-task-0001"
+    assert metadata["agent_role_contract"]["role"] == "CoderAgent"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -25,6 +26,11 @@ class GoalSpecAgent:
         model_tier: str = "strong",
     ) -> dict:
         parse_error: GoalSpecError | None = None
+        role_contract = role_contract_for(
+            role="GoalSpecAgent",
+            purpose="goal_spec",
+            policy=project_context.get("policy") if isinstance(project_context.get("policy"), dict) else None,
+        )
         request = ChatRequest(
             purpose="goal_spec",
             model_tier=model_tier,
@@ -35,7 +41,14 @@ class GoalSpecAgent:
             response_format="json",
             temperature=0.2,
             max_output_tokens=4000,
-            metadata={"run_id": run_id, "agent_id": "GoalSpecAgent"},
+            metadata={
+                "run_id": run_id,
+                "agent_id": "GoalSpecAgent",
+                "agent_role_contract": role_contract.to_dict(),
+                "model_route": (project_context.get("runtime_context") or {}).get("goal_spec_route_plan")
+                if isinstance(project_context.get("runtime_context"), dict)
+                else None,
+            },
         )
         response = self.model_client.chat(request)
         try:

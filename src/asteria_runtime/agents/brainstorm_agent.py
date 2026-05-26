@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -25,9 +26,10 @@ class BrainstormAgent:
         run_id: str | None,
         max_candidates: int = 5,
     ) -> dict:
+        role_contract = role_contract_for(role="BrainstormAgent", purpose="brainstorming")
         request = ChatRequest(
             purpose="brainstorming",
-            model_tier="strong",
+            model_tier=role_contract.default_model_tier,
             messages=[
                 ChatMessage(role="system", content=self._system_prompt()),
                 ChatMessage(
@@ -38,7 +40,11 @@ class BrainstormAgent:
             response_format="json",
             temperature=0.35,
             max_output_tokens=5000,
-            metadata={"run_id": run_id, "agent_id": "BrainstormAgent"},
+            metadata={
+                "run_id": run_id,
+                "agent_id": "BrainstormAgent",
+                "agent_role_contract": role_contract.to_dict(),
+            },
         )
         response = self.model_client.chat(request)
         report = self._parse_json(response.content)

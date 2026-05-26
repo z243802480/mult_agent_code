@@ -181,6 +181,23 @@ class FakeBrokenStreamingTransport(FakeTransport):
         return self.response
 
 
+class AlwaysFailingTransport(FakeTransport):
+    def __init__(self) -> None:
+        super().__init__(HttpResponse(500, {}))
+
+    def post_json(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict,
+        timeout_seconds: int,
+    ) -> HttpResponse:
+        self.calls.append(
+            {"url": url, "headers": headers, "payload": payload, "timeout_seconds": timeout_seconds}
+        )
+        raise HttpTransportError("request timed out")
+
+
 def request() -> ChatRequest:
     return ChatRequest(
         purpose="planning",
@@ -188,6 +205,24 @@ def request() -> ChatRequest:
         messages=[ChatMessage(role="user", content="Plan this.")],
         response_format="json",
         max_output_tokens=100,
+    )
+
+
+def role_deadline_request() -> ChatRequest:
+    return ChatRequest(
+        purpose="task_execution",
+        model_tier="medium",
+        messages=[ChatMessage(role="user", content="Do this.")],
+        metadata={
+            "agent_role_contract": {
+                "role": "CoderAgent",
+                "purpose": "coding",
+                "deadline_profile": "worker",
+                "provider_call_seconds": 42,
+                "stream_idle_timeout_seconds": 7,
+                "max_model_calls": 1,
+            }
+        },
     )
 
 
@@ -265,6 +300,56 @@ def test_openai_compatible_client_streams_by_default_and_logs_first_chunk(
     logged = json.loads((tmp_path / "model_calls.jsonl").read_text(encoding="utf-8"))
     assert logged["streaming"]["requested"] is True
     assert logged["streaming"]["chunk_count"] == 2
+
+
+def test_openai_compatible_client_uses_role_deadline_for_provider_call() -> None:
+    transport = FakeStreamingTransport(HttpResponse(200, {}))
+    client = OpenAICompatibleClient(
+        OpenAICompatibleSettings(
+            api_key="test-key",
+            base_url="https://example.test/v1",
+            model_name="test-model",
+            timeout_seconds=90,
+            stream_idle_timeout_seconds=30,
+        ),
+        transport=transport,
+    )
+
+    client.chat(role_deadline_request())
+
+    assert transport.calls[0]["timeout_seconds"] == 42
+    assert transport.calls[0]["idle_timeout_seconds"] == 7
+    assert transport.calls[0]["deadline_seconds"] == 42
+
+
+def test_openai_compatible_client_shares_role_deadline_across_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = {"now": 0.0}
+    monkeypatch.setattr(
+        "asteria_runtime.models.openai_compatible.time.monotonic",
+        lambda: clock["now"],
+    )
+    monkeypatch.setattr(
+        "asteria_runtime.models.openai_compatible.time.sleep",
+        lambda seconds: clock.update(now=clock["now"] + float(seconds)),
+    )
+    transport = AlwaysFailingTransport()
+    client = OpenAICompatibleClient(
+        OpenAICompatibleSettings(
+            api_key="test-key",
+            base_url="https://example.test/v1",
+            model_name="test-model",
+            max_retries=2,
+            streaming_enabled=False,
+        ),
+        transport=transport,
+    )
+
+    with pytest.raises(OpenAICompatibleProviderError):
+        client.chat(role_deadline_request())
+
+    assert [call["timeout_seconds"] for call in transport.calls] == [42, 41, 38]
 
 
 def test_openai_compatible_client_falls_back_when_streaming_is_unsupported(

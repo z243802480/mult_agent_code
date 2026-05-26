@@ -11,6 +11,9 @@ class FakeHealthyClient:
         assert request.purpose == "model_check"
         assert request.temperature == 0.1
         assert request.max_output_tokens == 512
+        assert request.metadata["agent_id"] == "ModelCheckAgent"
+        assert request.metadata["agent_role_contract"]["role"] == "ModelCheckAgent"
+        assert request.metadata["agent_role_contract"]["provider_call_seconds"] == 30
         return ChatResponse(
             content=json.dumps({"ok": True}),
             finish_reason="stop",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient, StreamingTelemetry
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.json_extractor import parse_json_object
@@ -201,6 +202,7 @@ class ModelCheckCommand:
         )
 
     def _request(self) -> ChatRequest:
+        role_contract = role_contract_for(role="ModelCheckAgent", purpose="model_check")
         return ChatRequest(
             purpose="model_check",
             model_tier=self.model_tier,
@@ -216,7 +218,10 @@ class ModelCheckCommand:
             response_format="json",
             temperature=0.1,
             max_output_tokens=512,
-            metadata={"agent_id": "ModelCheckCommand"},
+            metadata={
+                "agent_id": "ModelCheckAgent",
+                "agent_role_contract": role_contract.to_dict(),
+            },
         )
 
 

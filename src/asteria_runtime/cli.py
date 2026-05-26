@@ -97,7 +97,7 @@ class AsteriaArgumentParser(argparse.ArgumentParser):
             "Asteria runtime CLI",
             "",
             "Start",
-            "  Default workflow commands for day-to-day autonomous development.",
+            "  Product workflow commands for ordinary goal -> progress -> accept journeys.",
         ]
         for title, description, commands in self._command_groups:
             if title != "Start":
@@ -1212,11 +1212,16 @@ def build_parser() -> argparse.ArgumentParser:
         [
             (
                 "Start",
-                "User-facing modes. Start here; internal runtime phases stay hidden.",
+                "Product workflow commands for ordinary goal -> progress -> accept journeys.",
                 [
+                    ("init", "Initialize a local-first Asteria workspace."),
                     ("goal", "Long-task objective mode; keeps working within permissions."),
-                    ("plan", "Read-only comprehensive plan; analyze without changing work."),
+                    ("status", "Show user-level progress, blockers, and next actions."),
+                    ("resume", "Continue after approvals, pauses, or repair checkpoints."),
+                    ("review", "Inspect result quality before accepting candidate outputs."),
+                    ("accept", "Accept reviewed results and finalize the run."),
                     ("chat", "Lightweight Q&A mode for everyday questions."),
+                    ("plan", "Read-only comprehensive plan; analyze without changing work."),
                 ],
             ),
             (
@@ -1233,12 +1238,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "Advanced",
                 "Internal workflow controls; useful for debugging and expert operation.",
                 [
-                    ("plan", "Generate GoalSpec and task plan."),
                     ("run", "Compatibility alias for goal mode."),
-                    ("status", "Show current session progress, blockers, and next actions."),
-                    ("resume", "Continue after decisions, pauses, or repair checkpoints."),
-                    ("review", "Inspect risks, validation evidence, and candidate results."),
-                    ("accept", "Accept reviewed results and finalize the run."),
                     ("execute", "Run ready task graph work directly."),
                     ("debug", "Repair failed execution evidence."),
                     ("replan", "Create follow-up tasks from blockers."),

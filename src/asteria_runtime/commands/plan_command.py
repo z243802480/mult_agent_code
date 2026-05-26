@@ -173,6 +173,8 @@ class PlanCommand:
                 "decision_granularity": policy["decision_granularity"],
                 "budgets": policy["budgets"],
                 "permissions": policy["permissions"],
+                "provider_route_strategy": policy.get("provider_route_strategy", {}),
+                "runtime_deadlines": policy.get("runtime_deadlines", {}),
             },
             "capability_manifest": capability_manifest.to_dict(),
         }

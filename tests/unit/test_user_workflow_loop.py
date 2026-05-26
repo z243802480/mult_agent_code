@@ -19,8 +19,10 @@ from asteria_runtime.utils.time import now_iso
 class ContextAwareChatModel:
     def __init__(self) -> None:
         self.context: dict | None = None
+        self.request = None
 
     def chat(self, request):
+        self.request = request
         self.context = json.loads(request.messages[-1].content)["safe_project_context"]
         session = self.context["session_context"]
         workflow = session["workflow"]
@@ -565,6 +567,8 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     assert "Current session:" in chat.to_text()
     assert chat.to_dict()["execution_allowed"] is False
     assert chat_model.context is not None
+    assert chat_model.request.metadata["agent_id"] == "ChatAgent"
+    assert chat_model.request.metadata["agent_role_contract"]["role"] == "ChatAgent"
     assert chat_model.context["session_context"]["workflow"]["workflow_state"] == (
         "ready_for_review"
     )

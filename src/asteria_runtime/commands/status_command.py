@@ -38,6 +38,9 @@ class StatusResult:
         model_selection = (
             self.current_context.get("model_selection") if self.current_context else {}
         ) or {}
+        latest_model_progress = (
+            self.current_context.get("latest_model_progress") if self.current_context else {}
+        ) or {}
         model_route_timeline = (
             self.current_context.get("model_route_timeline") if self.current_context else []
         ) or []
@@ -91,6 +94,7 @@ class StatusResult:
                     "pending_decision_count",
                     "candidate_promotions",
                     "model_selection",
+                    "latest_model_progress",
                     "model_route_timeline",
                     "route_readiness",
                     "run_loop_summary_path",
@@ -126,6 +130,7 @@ class StatusResult:
             ),
             "candidate_promotions": candidate_promotions,
             "model_selection": model_selection,
+            "latest_model_progress": latest_model_progress,
             "model_route_timeline": model_route_timeline,
             "route_readiness": route_readiness,
             "run_loop_summary_path": run_loop_summary_path,
@@ -292,6 +297,15 @@ class StatusResult:
         route_readiness = self.current_context.get("route_readiness") or {}
         if route_readiness:
             evidence.append(f"routes={route_readiness.get('status', 'unknown')}")
+        latest_model_progress = self.current_context.get("latest_model_progress") or {}
+        if latest_model_progress:
+            evidence.append(
+                "latest_model="
+                f"{latest_model_progress.get('event_type', 'unknown')} "
+                f"{latest_model_progress.get('role', 'unknown')} "
+                f"{latest_model_progress.get('model_provider', 'unknown')}/"
+                f"{latest_model_progress.get('model_name', 'unknown')}"
+            )
         if self.latest_real_provider_matrix:
             evidence.append(
                 "real_provider_matrix="
@@ -419,6 +433,9 @@ class StatusResult:
             model_selection = context.get("model_selection") or {}
             if model_selection:
                 lines.extend(self._model_selection_lines(model_selection))
+            latest_model_progress = context.get("latest_model_progress") or {}
+            if latest_model_progress:
+                lines.extend(self._latest_model_progress_lines(latest_model_progress))
             model_route_timeline = context.get("model_route_timeline") or []
             if model_route_timeline:
                 timeline_path = context.get("model_route_timeline_path")
@@ -560,6 +577,38 @@ class StatusResult:
             actions = feedback.get("recommended_actions") or []
             if actions:
                 lines.append(f"  recommended: {actions[0]}")
+        return lines
+
+    def _latest_model_progress_lines(self, progress: dict) -> list[str]:
+        role = progress.get("role") or "unknown-role"
+        tier = progress.get("model_tier") or "unknown-tier"
+        provider = progress.get("model_provider") or "unknown-provider"
+        model = progress.get("model_name") or "unknown-model"
+        event_type = progress.get("event_type") or "unknown"
+        status = progress.get("status") or "unknown"
+        deadline = progress.get("deadline_remaining_ms")
+        deadline_part = (
+            f", deadline_remaining_ms={deadline}" if deadline is not None else ""
+        )
+        lines = [
+            (
+                "Model progress: "
+                f"{role}/{tier} {provider}/{model} "
+                f"{event_type} {status}{deadline_part}"
+            )
+        ]
+        profile = progress.get("deadline_profile")
+        task_id = progress.get("task_id")
+        runtime_profile_id = progress.get("runtime_profile_id")
+        details = []
+        if profile:
+            details.append(f"deadline_profile={profile}")
+        if task_id:
+            details.append(f"task={task_id}")
+        if runtime_profile_id:
+            details.append(f"runtime_profile={runtime_profile_id}")
+        if details:
+            lines.append(f"  {'; '.join(str(item) for item in details)}")
         return lines
 
 

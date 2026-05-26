@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
@@ -138,10 +139,15 @@ class ChatCommand:
             )
         context = self._safe_context(agent_dir)
         client = self.model_client or create_model_client(None, self.validator)
+        role_contract = role_contract_for(
+            role="ChatAgent",
+            purpose="chat",
+            policy=context.get("policy") if isinstance(context.get("policy"), dict) else None,
+        )
         response = client.chat(
             ChatRequest(
                 purpose="chat",
-                model_tier=self._model_tier(),
+                model_tier=self._model_tier(role_contract.default_model_tier),
                 messages=[
                     ChatMessage(role="system", content=self._system_prompt()),
                     ChatMessage(
@@ -160,7 +166,10 @@ class ChatCommand:
                 ],
                 temperature=0.2,
                 max_output_tokens=2500,
-                metadata={"agent_id": "ChatCommand"},
+                metadata={
+                    "agent_id": "ChatAgent",
+                    "agent_role_contract": role_contract.to_dict(),
+                },
             )
         )
         answer = self._clean_answer(response.content)
@@ -362,12 +371,12 @@ class ChatCommand:
             return "debug"
         return None
 
-    def _model_tier(self) -> str:
+    def _model_tier(self, default_tier: str = "medium") -> str:
         if self.model_strategy == "economy":
             return "cheap"
         if self.model_strategy == "quality":
             return "strong"
-        return "medium"
+        return default_tier
 
     def _next_actions(self, answer: str, context: dict) -> list[str]:
         actions: list[str] = []

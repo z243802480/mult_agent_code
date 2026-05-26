@@ -59,7 +59,18 @@ def test_fake_model_records_runtime_user_progress(tmp_path: Path) -> None:
                 ChatMessage(role="user", content="User goal:\nmake a thing\n\nProject context:\n{}")
             ],
             response_format="json",
-            metadata={"run_id": "run-1", "agent_id": "GoalSpecAgent"},
+            metadata={
+                "run_id": "run-1",
+                "agent_id": "GoalSpecAgent",
+                "agent_role_contract": {
+                    "role": "GoalSpecAgent",
+                    "purpose": "goal_spec",
+                    "deadline_profile": "strong_goal_spec",
+                    "provider_call_seconds": 42,
+                    "stream_idle_timeout_seconds": 7,
+                    "max_model_calls": 1,
+                },
+            },
         )
     )
 
@@ -73,3 +84,9 @@ def test_fake_model_records_runtime_user_progress(tmp_path: Path) -> None:
         ("model", "end"),
     ]
     assert events[0]["phase"] == "plan"
+    assert events[0]["telemetry"]["role"] == "GoalSpecAgent"
+    assert events[0]["telemetry"]["deadline_ms"] == 42000
+    logged = json.loads((tmp_path / "model_calls.jsonl").read_text(encoding="utf-8"))
+    assert logged["agent_role"] == "GoalSpecAgent"
+    assert logged["deadline_profile"] == "strong_goal_spec"
+    assert logged["deadline_ms"] == 42000

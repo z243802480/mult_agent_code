@@ -19,6 +19,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -288,6 +289,66 @@ def test_status_reports_blocked_model_route_readiness(tmp_path: Path) -> None:
     assert payload["next_actions"] == ["Run `asteria debug`."]
     assert "Model routes: blocked" in result.to_text()
     assert "strong: unknown/unknown configured=False" in result.to_text()
+
+
+def test_status_surfaces_latest_model_progress_deadline(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "running", "current_phase": "EXECUTE", "summary": "executing"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    progress = UserProgressLogger(run_dir / "user_progress.jsonl", validator)
+    progress.record(
+        run_id=run["run_id"],
+        channel="model",
+        event_type="delta",
+        phase="execute",
+        status="running",
+        title="Model response",
+        summary="Model streamed a response chunk.",
+        content_delta="partial",
+        model_provider="minimax",
+        model_name="MiniMax-M2.7",
+        telemetry={
+            "role": "CoderAgent",
+            "role_purpose": "coding",
+            "model_tier": "medium",
+            "deadline_profile": "worker",
+            "deadline_ms": 90000,
+            "deadline_remaining_ms": 61000,
+            "runtime_profile_id": "runtime-profile-task-0001",
+            "model_profile_id": "model-profile-task-0001",
+            "task_id": "task-0001",
+        },
+        data={
+            "agent_role_contract": {
+                "role": "CoderAgent",
+                "purpose": "coding",
+                "deadline_profile": "worker",
+                "provider_call_seconds": 90,
+                "stream_idle_timeout_seconds": 30,
+                "max_model_calls": 1,
+            }
+        },
+    )
+
+    result = StatusCommand(tmp_path).run()
+    payload = result.to_dict()
+    progress_payload = payload["latest_model_progress"]
+
+    assert progress_payload["role"] == "CoderAgent"
+    assert progress_payload["model_tier"] == "medium"
+    assert progress_payload["deadline_remaining_ms"] == 61000
+    assert progress_payload["runtime_profile_id"] == "runtime-profile-task-0001"
+    assert payload["current_context"]["latest_model_progress"] == progress_payload
+    assert "Model progress: CoderAgent/medium minimax/MiniMax-M2.7 delta running" in (
+        result.to_text()
+    )
+    assert "deadline_remaining_ms=61000" in result.to_text()
+    assert "latest_model=delta CoderAgent minimax/MiniMax-M2.7" in result.to_text()
 
 
 def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> None:
@@ -1049,6 +1110,112 @@ def test_gate_status_blocks_gray_when_capability_route_guidance_is_blocked(
     assert payload["stage"] == "route_guidance_blocked"
     assert payload["rollout_state"] == "blocked"
     assert payload["route_guidance"]["status"] == "blocked"
+
+
+def test_gate_status_blocks_release_when_recent_model_call_contract_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "model_calls.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_call_id": "modelcall-0001",
+            "run_id": run["run_id"],
+            "agent_id": "GoalSpecAgent",
+            "purpose": "goal_spec",
+            "model_provider": "glm",
+            "model_name": "glm-4.7",
+            "model_tier": "strong",
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "status": "success",
+            "created_at": now_iso(),
+            "summary": "legacy call missing role contract",
+        },
+        "model_call",
+    )
+
+    result = GateStatusCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    assert payload["stage"] == "model_call_contract_blocked"
+    assert payload["release_ready"] is False
+    assert payload["model_call_contract"]["status"] == "blocked"
+    assert payload["model_call_contract"]["violations"][0]["missing"] == [
+        "agent_role_contract",
+        "deadline_ms",
+        "streaming",
+    ]
+    assert "Model call contract: blocked" in result.to_text()
+
+
+def test_gate_status_accepts_recent_model_call_contract_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "model_calls.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "model_call_id": "modelcall-0001",
+            "run_id": run["run_id"],
+            "agent_id": "GoalSpecAgent",
+            "agent_role": "GoalSpecAgent",
+            "agent_role_contract": {
+                "role": "GoalSpecAgent",
+                "purpose": "goal_spec",
+                "default_model_tier": "strong",
+                "deadline_profile": "strong_goal_spec",
+                "provider_call_seconds": 120,
+                "stream_idle_timeout_seconds": 30,
+                "max_model_calls": 1,
+                "responsibilities": [],
+                "escalation_policy": "test",
+            },
+            "deadline_profile": "strong_goal_spec",
+            "deadline_ms": 120000,
+            "purpose": "goal_spec",
+            "model_provider": "glm",
+            "model_name": "glm-4.7",
+            "model_tier": "strong",
+            "input_tokens": 10,
+            "output_tokens": 20,
+            "duration_ms": 100,
+            "streaming": {
+                "requested": True,
+                "supported": True,
+                "mode": "streaming",
+                "chunk_count": 1,
+                "deadline_ms": 120000,
+                "idle_timeout_ms": 30000,
+            },
+            "status": "success",
+            "created_at": now_iso(),
+            "summary": "contract-ready call",
+        },
+        "model_call",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["model_call_contract"]["status"] == "healthy"
+    assert payload["model_call_contract"]["checked_calls"] == 1
 
 
 def test_gate_status_blocks_gray_when_candidate_promotions_are_unresolved(

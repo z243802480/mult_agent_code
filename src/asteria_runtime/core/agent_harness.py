@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.agent_role_policy import role_contracts_for_prompt
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -547,6 +548,7 @@ class AgentHarness:
     def capability_manifest(self, mode: str = "build") -> CapabilityManifest:
         permissions = self.policy.get("permissions") or {}
         protected_paths = self.policy.get("protected_paths") or []
+        role_contracts = role_contracts_for_prompt(self.policy)
         tools = self._direct_tools(permissions)
         tools.extend(self._registered_tools(permissions))
         direct_tools = self._dedupe_tools(tools)
@@ -626,6 +628,7 @@ class AgentHarness:
                 "remote_push": "allow" if permissions.get("allow_remote_push") else "deny",
                 "writes": "candidate_workspace_preferred",
                 "budget": "runtime_enforced",
+                "role_contracts": role_contracts,
             },
         )
 
@@ -675,6 +678,21 @@ class AgentHarness:
                 "dynamic",
                 manifest.prompt_summary(),
                 cache_break_reasons=["tools_or_modes_changed", "permissions_changed"],
+            ),
+            PromptEnvelopeSection(
+                "role_route_policy",
+                "AgentHarness",
+                "system",
+                "dynamic",
+                (
+                    "Route and deadline decisions are role contracts, not raw command names. "
+                    "GoalSpecAgent clarifies goals on strong route; PlannerAgent decomposes; "
+                    "CoderAgent produces scoped candidates; DebugAgent consumes failed "
+                    "observations; ReviewAgent independently verifies; ChatAgent answers or "
+                    "routes product requests. Contracts: "
+                    + json.dumps(role_contracts_for_prompt(self.policy), ensure_ascii=False)
+                ),
+                cache_break_reasons=["route_policy_changed", "deadline_policy_changed"],
             ),
             PromptEnvelopeSection(
                 "tool_policy",

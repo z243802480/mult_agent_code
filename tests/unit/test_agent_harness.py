@@ -35,6 +35,8 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
     direct_tools = {tool["name"]: tool for tool in data["direct_tools"]}
     assert data["boundaries"]["active_mode"] == "build"
     assert data["boundaries"]["protected_paths"] == [".env", "secrets/"]
+    assert data["boundaries"]["role_contracts"][0]["purpose"] == "goal_spec"
+    assert data["boundaries"]["role_contracts"][0]["default_model_tier"] == "strong"
     assert data["boundaries"]["destructive_shell"] == "deny"
     assert tools["apply_patch"]["kind"] == "write"
     assert tools["apply_patch"]["permission"] == "ask"
@@ -75,6 +77,7 @@ def test_agent_harness_builds_prompt_envelope_without_full_prompt_body() -> None
         "operating_contract",
         "project_guidance",
         "capability_manifest",
+        "role_route_policy",
         "tool_policy",
         "safety_envelope",
         "failure_repair",
@@ -87,7 +90,31 @@ def test_agent_harness_builds_prompt_envelope_without_full_prompt_body() -> None
     assert project["content_hash"].startswith("sha256:")
     assert "content" not in project
     assert data["capability_manifest"]["direct_tools"]
+    assert data["capability_manifest"]["boundaries"]["role_contracts"]
     assert data["content_hash"].startswith("sha256:")
+
+
+def test_agent_harness_uses_provider_route_strategy_deadline_in_role_policy() -> None:
+    policy = {
+        "permissions": {},
+        "provider_route_strategy": {
+            "strong_goal_spec": {
+                "provider_deadline_seconds": 150,
+                "stream_idle_timeout_seconds": 40,
+            }
+        },
+    }
+
+    envelope = AgentHarness(policy).prompt_envelope(run_id="run-1", mode="plan")
+
+    role_contracts = envelope.capability_manifest.to_dict()["boundaries"]["role_contracts"]
+    goal_spec = next(item for item in role_contracts if item["purpose"] == "goal_spec")
+    assert goal_spec["provider_call_seconds"] == 150
+    assert goal_spec["stream_idle_timeout_seconds"] == 40
+    role_policy = next(
+        section for section in envelope.sections if section.name == "role_route_policy"
+    )
+    assert "GoalSpecAgent clarifies goals on strong route" in role_policy.content
 
 
 def test_tool_observation_summarizes_result_for_model_loop() -> None:

@@ -49,12 +49,46 @@ def valid_goal_spec_json() -> str:
 
 
 def test_goal_spec_agent_generates_valid_goal_spec() -> None:
-    agent = GoalSpecAgent(FakeClient(valid_goal_spec_json()), SchemaValidator(Path("schemas")))
+    client = FakeClient(valid_goal_spec_json())
+    agent = GoalSpecAgent(client, SchemaValidator(Path("schemas")))
 
     result = agent.generate("做一个密码测试工具", {"project": {}}, "run-1")
 
     assert result["goal_id"] == "goal-0001"
     assert result["expanded_requirements"][0]["priority"] == "must"
+    assert client.requests[0].metadata["agent_role_contract"]["role"] == "GoalSpecAgent"
+
+
+def test_goal_spec_agent_metadata_uses_provider_route_deadline() -> None:
+    client = FakeClient(valid_goal_spec_json())
+    agent = GoalSpecAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.generate(
+        "goal",
+        {
+            "project": {},
+            "runtime_context": {
+                "goal_spec_route_plan": {
+                    "selected_model_tier": "strong",
+                    "provider": "glm",
+                }
+            },
+            "policy": {
+                "provider_route_strategy": {
+                    "strong_goal_spec": {
+                        "provider_deadline_seconds": 42,
+                        "stream_idle_timeout_seconds": 7,
+                    }
+                }
+            },
+        },
+        "run-1",
+    )
+
+    metadata = client.requests[0].metadata
+    assert metadata["agent_role_contract"]["provider_call_seconds"] == 42
+    assert metadata["agent_role_contract"]["stream_idle_timeout_seconds"] == 7
+    assert metadata["model_route"]["provider"] == "glm"
 
 
 def test_goal_spec_agent_falls_back_for_invalid_json() -> None:

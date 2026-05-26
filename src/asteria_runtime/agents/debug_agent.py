@@ -54,6 +54,9 @@ class DebugAgent:
                     "agent_id": "DebugAgent",
                     "task_id": task["task_id"],
                     "attempt": attempt + 1,
+                    "runtime_profile_id": (runtime_context or {}).get("runtime_profile_id"),
+                    "model_profile_id": (runtime_context or {}).get("model_profile_id"),
+                    "agent_role_contract": (runtime_context or {}).get("agent_role_contract"),
                     **self._prompt_envelope_metadata(runtime_context or {}),
                 },
             )

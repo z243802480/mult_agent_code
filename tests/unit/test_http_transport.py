@@ -123,7 +123,21 @@ def test_http_transport_stream_writes_runtime_user_progress_events(
         purpose="task_execution",
         model_tier="medium",
         messages=[ChatMessage(role="user", content="do work")],
-        metadata={"run_id": "run-1", "agent_id": "CoderAgent"},
+        metadata={
+            "run_id": "run-1",
+            "agent_id": "CoderAgent",
+            "runtime_profile_id": "runtime-profile-task-0001",
+            "model_profile_id": "model-profile-task-0001",
+            "task_id": "task-0001",
+            "agent_role_contract": {
+                "role": "CoderAgent",
+                "purpose": "coding",
+                "deadline_profile": "worker",
+                "provider_call_seconds": 5,
+                "stream_idle_timeout_seconds": 2,
+                "max_model_calls": 1,
+            },
+        },
     )
     logger = ModelCallLogger(tmp_path, SchemaValidator(Path("schemas")))
 
@@ -150,4 +164,11 @@ def test_http_transport_stream_writes_runtime_user_progress_events(
     assert "".join(event.get("content_delta", "") for event in events) == '{"ok": true}'
     assert events[0]["phase"] == "execute"
     assert events[0]["model_provider"] == "minimax"
+    assert events[0]["telemetry"]["role"] == "CoderAgent"
+    assert events[0]["telemetry"]["deadline_profile"] == "worker"
+    assert events[0]["telemetry"]["deadline_ms"] == 5000
+    assert events[0]["telemetry"]["provider_call_seconds"] == 5
+    assert events[0]["data"]["agent_role_contract"]["role"] == "CoderAgent"
+    assert events[1]["telemetry"]["deadline_remaining_ms"] <= 5000
     assert events[-1]["telemetry"]["chunk_count"] == 2
+    assert events[-1]["telemetry"]["role"] == "CoderAgent"

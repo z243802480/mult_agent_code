@@ -204,6 +204,7 @@ class SessionsCommand:
         model_selection = self._latest_model_selection(execution_evidence)
         model_route_timeline = self._model_route_timeline(execution_evidence)
         model_route_timeline_path = self._model_route_timeline_path(run_dir)
+        latest_model_progress = self._latest_model_progress(run_dir)
         latest_observation_plan = self._latest_observation_plan(run_dir)
         route_readiness = self._route_readiness(run_dir)
         run_loop_summary = self._run_loop_summary(run_dir)
@@ -271,6 +272,7 @@ class SessionsCommand:
             "latest_execution_evidence": execution_evidence[-1] if execution_evidence else None,
             "task_execution_evidence": execution_evidence[-3:],
             "model_selection": model_selection,
+            "latest_model_progress": latest_model_progress,
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,
             "goal_policy": goal_policy,
@@ -478,6 +480,45 @@ class SessionsCommand:
         if not path.exists():
             return None
         return self._relative_path(path)
+
+    def _latest_model_progress(self, run_dir: Path) -> dict:
+        events = self._read_jsonl(run_dir / "user_progress.jsonl", "user_progress_event")
+        model_events = [event for event in events if event.get("channel") == "model"]
+        if not model_events:
+            return {}
+        latest = model_events[-1]
+        telemetry_value = latest.get("telemetry")
+        telemetry: dict = telemetry_value if isinstance(telemetry_value, dict) else {}
+        data_value = latest.get("data")
+        data: dict = data_value if isinstance(data_value, dict) else {}
+        contract_value = data.get("agent_role_contract")
+        contract: dict = contract_value if isinstance(contract_value, dict) else {}
+        return {
+            "event_id": latest.get("event_id"),
+            "event_type": latest.get("event_type"),
+            "status": latest.get("status"),
+            "phase": latest.get("phase"),
+            "summary": latest.get("summary"),
+            "created_at": latest.get("created_at"),
+            "model_provider": latest.get("model_provider"),
+            "model_name": latest.get("model_name"),
+            "role": telemetry.get("role") or contract.get("role"),
+            "role_purpose": telemetry.get("role_purpose") or contract.get("purpose"),
+            "model_tier": telemetry.get("model_tier"),
+            "deadline_profile": telemetry.get("deadline_profile") or contract.get("deadline_profile"),
+            "deadline_ms": telemetry.get("deadline_ms"),
+            "deadline_remaining_ms": telemetry.get("deadline_remaining_ms"),
+            "provider_call_seconds": telemetry.get("provider_call_seconds")
+            or contract.get("provider_call_seconds"),
+            "stream_idle_timeout_seconds": telemetry.get("stream_idle_timeout_seconds")
+            or contract.get("stream_idle_timeout_seconds"),
+            "runtime_profile_id": telemetry.get("runtime_profile_id"),
+            "model_profile_id": telemetry.get("model_profile_id"),
+            "task_id": telemetry.get("task_id"),
+            "attempt": telemetry.get("attempt"),
+            "model_route": telemetry.get("model_route"),
+            "progress_path": self._relative_path(run_dir / "user_progress.jsonl"),
+        }
 
     def _latest_observation_plan(self, run_dir: Path) -> dict | None:
         plans = self._read_jsonl(run_dir / "observation_plans.jsonl", "observation_plan")

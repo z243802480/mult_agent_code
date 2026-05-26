@@ -31,6 +31,7 @@ class GateStatusResult:
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
+    model_call_contract: dict[str, Any] = field(default_factory=dict)
     latest_observation_plan: dict[str, Any] = field(default_factory=dict)
     latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
@@ -63,6 +64,7 @@ class GateStatusResult:
                     "gates",
                     "route_environment",
                     "route_guidance",
+                    "model_call_contract",
                     "latest_observation_plan",
                     "latest_real_provider_matrix",
                     "promotion_release_risks",
@@ -87,6 +89,7 @@ class GateStatusResult:
             },
             "route_environment": self.route_environment,
             "route_guidance": self.route_guidance,
+            "model_call_contract": self.model_call_contract,
             "latest_observation_plan": self.latest_observation_plan,
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "promotion_release_risks": self.promotion_release_risks,
@@ -106,6 +109,7 @@ class GateStatusResult:
         if self.stage in {
             "current_environment_incomplete",
             "route_guidance_blocked",
+            "model_call_contract_blocked",
             "candidate_promotion_risk_blocked",
             "plugin_manifests_blocked",
         }:
@@ -151,6 +155,12 @@ class GateStatusResult:
             )
         if self.route_guidance:
             lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
+        if self.model_call_contract:
+            lines.append(
+                "Model call contract: "
+                f"{self.model_call_contract.get('status', 'unknown')} "
+                f"({self.model_call_contract.get('checked_calls', 0)} checked)"
+            )
         if self.latest_observation_plan:
             lines.append(
                 "Latest agent next action: "
@@ -233,6 +243,7 @@ class GateStatusCommand:
         stage, actions = self._stage(gate, gray, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
+        model_call_contract = _model_call_contract(self.root, self.validator)
         latest_observation_plan = _latest_observation_plan(self.root, self.validator)
         latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
         if latest_matrix and latest_matrix.get("ok") is False:
@@ -246,6 +257,16 @@ class GateStatusCommand:
             missing = ", ".join(route_environment["missing_required"])
             actions = [
                 f"Set current model route environment variables before gray validation: {missing}.",
+                *actions,
+            ]
+        if (
+            stage == "ready_for_small_real_task_gray"
+            and model_call_contract.get("status") == "blocked"
+        ):
+            stage = "model_call_contract_blocked"
+            actions = [
+                "Refresh real-provider evidence so recent model_calls include role contract, deadline, and streaming telemetry.",
+                *[str(item) for item in model_call_contract.get("recommended_actions", [])],
                 *actions,
             ]
         if (
@@ -298,6 +319,7 @@ class GateStatusCommand:
             core_report=core,
             route_environment=route_environment,
             route_guidance=route_guidance,
+            model_call_contract=model_call_contract,
             latest_observation_plan=latest_observation_plan,
             latest_real_provider_matrix=latest_matrix,
             promotion_release_risks=promotion_release_risks,
@@ -484,6 +506,73 @@ def _evidence_sources(
 def _route_guidance(root: Path) -> dict[str, Any]:
     validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
     return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
+
+
+def _model_call_contract(root: Path, validator: SchemaValidator) -> dict[str, Any]:
+    calls: list[dict[str, Any]] = []
+    for run_dir in _run_dirs(root):
+        path = run_dir / "model_calls.jsonl"
+        if not path.exists():
+            continue
+        for call in JsonlStore(validator).read_all(path, "model_call"):
+            if str(call.get("model_provider") or "").lower() == "fake":
+                continue
+            item = dict(call)
+            item["_path"] = path
+            calls.append(item)
+    calls = sorted(calls, key=lambda item: str(item.get("created_at") or ""))[-50:]
+    if not calls:
+        return {
+            "status": "unknown",
+            "checked_calls": 0,
+            "summary": "No recent real-provider model_calls.jsonl evidence was found.",
+            "recommended_actions": [
+                "Run model-check or a small real-provider gray task to collect model call contract evidence."
+            ],
+            "violations": [],
+        }
+    violations = []
+    for call in calls:
+        missing = []
+        if not isinstance(call.get("agent_role_contract"), dict):
+            missing.append("agent_role_contract")
+        if not isinstance(call.get("deadline_ms"), int):
+            missing.append("deadline_ms")
+        streaming = call.get("streaming")
+        if not isinstance(streaming, dict):
+            missing.append("streaming")
+        elif streaming.get("deadline_ms") is None and streaming.get("idle_timeout_ms") is None:
+            missing.append("streaming.deadline_or_idle_timeout")
+        if missing:
+            violations.append(
+                {
+                    "model_call_id": call.get("model_call_id"),
+                    "run_id": call.get("run_id"),
+                    "purpose": call.get("purpose"),
+                    "model_provider": call.get("model_provider"),
+                    "model_name": call.get("model_name"),
+                    "missing": missing,
+                    "path": str(call.get("_path")),
+                }
+            )
+    status = "blocked" if violations else "healthy"
+    return {
+        "status": status,
+        "checked_calls": len(calls),
+        "violation_count": len(violations),
+        "summary": (
+            "Recent real-provider model calls include role contract, deadline, and streaming telemetry."
+            if not violations
+            else "Recent real-provider model calls are missing role contract, deadline, or streaming telemetry."
+        ),
+        "recommended_actions": []
+        if not violations
+        else [
+            "Rerun the affected real-provider checks after the AgentRoleContract deadline changes.",
+            "Inspect model_calls.jsonl entries listed in model_call_contract.violations.",
+        ],
+        "violations": violations[:10],
+    }
 
 
 def _real_provider_matrix_next_actions(matrix: dict[str, Any]) -> list[str]:

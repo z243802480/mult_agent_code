@@ -9,6 +9,7 @@ from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTele
 from asteria_runtime.models.http_transport import HttpResponse, HttpTransport, HttpTransportError
 from asteria_runtime.models.local_route_config import any_local_route_value, local_route_value
 from asteria_runtime.models.model_call_logger import ModelCallLogger
+from asteria_runtime.models.request_deadline import effective_model_deadline
 
 
 class ModelProviderError(RuntimeError):
@@ -83,14 +84,27 @@ class MiniMaxOpenAICompatibleClient:
                 raise ModelProviderError(error_text) from exc
 
         payload = self._payload(request)
-        timeout = request.timeout_seconds or self.settings.timeout_seconds
+        deadline = effective_model_deadline(
+            request,
+            default_provider_call_seconds=self.settings.timeout_seconds,
+            default_stream_idle_timeout_seconds=self.settings.stream_idle_timeout_seconds,
+        )
+        timeout = deadline.provider_call_seconds
         last_error: Exception | None = None
         call_started = time.monotonic()
 
         for attempt in range(self.settings.max_retries + 1):
+            attempt_timeout = _remaining_timeout_seconds(call_started, timeout)
+            if attempt_timeout <= 0:
+                last_error = ModelProviderError("provider deadline exceeded before retry")
+                break
             try:
                 with self.logger.progress_context(request):
-                    response = self._call_provider(payload, timeout)
+                    response = self._call_provider(
+                        payload,
+                        attempt_timeout,
+                        min(attempt_timeout, deadline.stream_idle_timeout_seconds),
+                    )
                 if self.budget:
                     self._update_budget_tokens(response)
                 self.logger.record_success(request, response)
@@ -99,7 +113,10 @@ class MiniMaxOpenAICompatibleClient:
                 last_error = exc
                 if not self._should_retry(exc, attempt):
                     break
-                time.sleep(min(3, 1 + attempt * 2))
+                remaining_after_error = _remaining_timeout_seconds(call_started, timeout)
+                if remaining_after_error <= 0:
+                    break
+                time.sleep(min(3, 1 + attempt * 2, remaining_after_error))
 
         error_text = str(last_error) if last_error else "unknown MiniMax provider error"
         self.logger.record_failure(
@@ -142,7 +159,7 @@ class MiniMaxOpenAICompatibleClient:
     def _chat_url(self) -> str:
         return f"{self.settings.base_url}/chat/completions"
 
-    def _call_provider(self, payload: dict, timeout: int) -> ChatResponse:
+    def _call_provider(self, payload: dict, timeout: int, stream_idle_timeout: int) -> ChatResponse:
         headers = {
             "Authorization": f"Bearer {self.settings.api_key}",
             "Content-Type": "application/json",
@@ -155,7 +172,7 @@ class MiniMaxOpenAICompatibleClient:
                     headers=headers,
                     payload=payload,
                     timeout_seconds=timeout,
-                    idle_timeout_seconds=min(timeout, self.settings.stream_idle_timeout_seconds),
+                    idle_timeout_seconds=stream_idle_timeout,
                     deadline_seconds=timeout,
                 )
             except HttpTransportError as exc:

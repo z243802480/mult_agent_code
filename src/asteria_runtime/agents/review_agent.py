@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -19,6 +20,11 @@ class ReviewAgent:
 
     def evaluate(self, review_context: dict, run_id: str) -> dict:
         parse_error: ReviewAgentError | None = None
+        role_contract = role_contract_for(
+            role="ReviewAgent",
+            purpose="run_review",
+            policy=review_context.get("policy") if isinstance(review_context.get("policy"), dict) else None,
+        )
         request = ChatRequest(
             purpose="run_review",
             model_tier="strong",
@@ -32,6 +38,7 @@ class ReviewAgent:
             metadata={
                 "run_id": run_id,
                 "agent_id": "ReviewAgent",
+                "agent_role_contract": role_contract.to_dict(),
                 **self._prompt_envelope_metadata(review_context),
             },
         )

@@ -26,13 +26,18 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Models" in help_text
     assert help_text.index("Start") < help_text.index("Maintain")
     assert help_text.index("Maintain") < help_text.index("Advanced")
-    assert "goal  Long-task objective mode" in help_text
-    assert "plan  Read-only comprehensive plan" in help_text
-    assert "chat  Lightweight Q&A mode" in help_text
-    assert help_text.index("goal  Long-task") < help_text.index("chat  Lightweight")
-    assert help_text.index("chat  Lightweight") < help_text.index("Maintain")
+    assert "Product workflow commands for ordinary goal -> progress -> accept journeys." in help_text
+    assert "init    Initialize a local-first Asteria workspace." in help_text
+    assert "goal    Long-task objective mode" in help_text
+    assert "status  Show user-level progress" in help_text
+    assert "resume  Continue after approvals" in help_text
+    assert "review  Inspect result quality" in help_text
+    assert "accept  Accept reviewed results" in help_text
+    assert "chat    Lightweight Q&A mode" in help_text
+    assert "plan    Read-only comprehensive plan" in help_text
+    assert help_text.index("goal    Long-task") < help_text.index("status  Show user-level")
+    assert help_text.index("chat    Lightweight") < help_text.index("Maintain")
     assert "run         Compatibility alias for goal mode." in help_text
-    assert "accept      Accept reviewed results and finalize the run." in help_text
     assert "gate             Run staged readiness checks" in help_text
     assert "real-model-acceptance" in help_text
     assert "Compatibility" in help_text

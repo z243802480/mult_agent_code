@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_mount_builder import ContextMountBuilder
 from asteria_runtime.core.context_package_builder import ContextPackageBuilder
@@ -68,6 +69,11 @@ class RuntimeProfileBuilder:
 
         profile_base_id = f"profile-{worker_id}"
         model_purpose = self._model_purpose(task)
+        role_contract = role_contract_for(
+            role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
+            purpose=model_purpose,
+            policy=context.policy,
+        )
         model_selection = self._model_selection(task, context, model_purpose)
         model_tier = model_selection["selected_tier"]
         resolved_route = resolve_model_route(model_tier)
@@ -77,6 +83,12 @@ class RuntimeProfileBuilder:
             provider=resolved_route.provider,
             model_name=resolved_route.model_name or f"{model_tier}-route",
             model_tier=model_tier,
+            limits={
+                "role": role_contract.role,
+                "deadline_profile": role_contract.deadline_profile,
+                "provider_call_seconds": role_contract.provider_call_seconds,
+                "stream_idle_timeout_seconds": role_contract.stream_idle_timeout_seconds,
+            },
         )
         tool_profile = ToolPermissionProfile(
             tool_permission_profile_id=f"tools-{profile_base_id}",
@@ -116,8 +128,9 @@ class RuntimeProfileBuilder:
                 context_mount.get("context_mount_id") or f"context-{profile_base_id}"
             ),
             budget=BudgetProfile(
-                max_model_calls=1,
+                max_model_calls=role_contract.max_model_calls,
                 max_tool_calls=max(1, len(task.get("allowed_tools", []))),
+                max_runtime_minutes=max(1, (role_contract.provider_call_seconds + 59) // 60),
             ),
         )
         scoped["runtime_profile_id"] = runtime_profile.runtime_profile_id
@@ -127,6 +140,7 @@ class RuntimeProfileBuilder:
         scoped["account_profile_id"] = account_profile.account_profile_id
         scoped["model_selection"] = model_selection
         scoped["model_route_resolution"] = resolved_route.to_dict()
+        scoped["agent_role_contract"] = role_contract.to_dict()
         if context.policy.get("model_strategy_profile"):
             scoped["model_strategy_profile"] = context.policy["model_strategy_profile"]
 
@@ -183,7 +197,13 @@ class RuntimeProfileBuilder:
             "failure_policy": failure_policy(task),
             "parallel_safety": parallel_safety(task),
         }
-        scoped["route_guidance"] = self._route_guidance_for_task(context, self._model_purpose(task))
+        purpose = self._model_purpose(task)
+        scoped["route_guidance"] = self._route_guidance_for_task(context, purpose)
+        scoped["agent_role_contract"] = role_contract_for(
+            role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
+            purpose=purpose,
+            policy=context.policy,
+        ).to_dict()
         return scoped
 
     def _record_profiles(
@@ -260,6 +280,11 @@ class RuntimeProfileBuilder:
         return {
             "purpose": purpose,
             "task_kind": kind,
+            "role_contract": role_contract_for(
+                role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
+                purpose=purpose,
+                policy=context.policy,
+            ).to_dict(),
             "default_tier": default,
             "strategy_tier": strategy_tier,
             "selected_tier": selected,

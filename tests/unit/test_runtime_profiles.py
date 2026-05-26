@@ -235,7 +235,12 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) 
     assert '"model_tier": "strong"' in model_profiles
     assert '"provider": "minimax"' in model_profiles
     assert mount.runtime_context["model_route_resolution"]["tier"] == "strong"
+    assert mount.runtime_context["agent_role_contract"]["role"] == "CoderAgent"
+    assert mount.runtime_context["agent_role_contract"]["purpose"] == "coding"
+    assert mount.runtime_context["agent_role_contract"]["deadline_profile"] == "worker"
     selection = mount.runtime_context["model_selection"]
+    assert selection["role_contract"]["role"] == "CoderAgent"
+    assert selection["role_contract"]["provider_call_seconds"] == 90
     assert selection["reason"] == "capability_feedback_escalated_from_medium"
     assert selection["tier_pressure"] == {
         "default_tier": "medium",
@@ -291,7 +296,24 @@ def test_runtime_profile_builder_uses_strategy_bias_without_clobbering_routes(
     )
 
     selection = mount.runtime_context["model_selection"]
-    assert selection == {
+    assert selection["role_contract"] == {
+        "role": "CoderAgent",
+        "purpose": "coding",
+        "default_model_tier": "medium",
+        "deadline_profile": "worker",
+        "provider_call_seconds": 90,
+        "stream_idle_timeout_seconds": 30,
+        "max_model_calls": 1,
+        "responsibilities": [
+            "produce scoped candidate changes",
+            "keep edits inside write scope",
+            "return artifacts and verification commands",
+        ],
+        "escalation_policy": (
+            "start medium; escalate to strong on capability feedback, high risk, or complex scope"
+        ),
+    }
+    assert {key: value for key, value in selection.items() if key != "role_contract"} == {
         "purpose": "coding",
         "task_kind": "implementation",
         "default_tier": "medium",
@@ -397,5 +419,11 @@ def test_runtime_profile_builder_records_resolved_model_route(
     assert route["model_name"] == "medium-model"
     assert route["next_action"] == "Model route is configured."
     model_profiles = (tmp_path / ".asteria" / "runs" / "run-0004" / "model_profiles.jsonl")
-    assert '"provider": "openai-compatible"' in model_profiles.read_text(encoding="utf-8")
-    assert '"model_name": "medium-model"' in model_profiles.read_text(encoding="utf-8")
+    model_profile_text = model_profiles.read_text(encoding="utf-8")
+    assert '"provider": "openai-compatible"' in model_profile_text
+    assert '"model_name": "medium-model"' in model_profile_text
+    assert '"deadline_profile": "worker"' in model_profile_text
+    runtime_profiles = (
+        tmp_path / ".asteria" / "runs" / "run-0004" / "runtime_profiles.jsonl"
+    ).read_text(encoding="utf-8")
+    assert '"max_runtime_minutes": 2' in runtime_profiles

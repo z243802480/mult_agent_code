@@ -96,7 +96,10 @@ class ModelCallLogger:
             path = self.run_dir / "model_calls.jsonl"
             if path.exists():
                 existing_count = len(JsonlStore().read_all(path))
-        return {
+        role_contract = request.metadata.get("agent_role_contract")
+        if not isinstance(role_contract, dict):
+            role_contract = None
+        record = {
             "schema_version": "0.1.0",
             "model_call_id": f"modelcall-{existing_count + 1:04d}",
             "run_id": request.metadata.get("run_id"),
@@ -111,6 +114,30 @@ class ModelCallLogger:
             "prompt_envelope_path": request.metadata.get("prompt_envelope_path"),
             "capability_manifest_hash": request.metadata.get("capability_manifest_hash"),
         }
+        if role_contract is not None:
+            record["agent_role_contract"] = role_contract
+            record["agent_role"] = role_contract.get("role")
+            record["deadline_profile"] = role_contract.get("deadline_profile")
+        if request.metadata.get("model_route") is not None:
+            record["model_route"] = request.metadata.get("model_route")
+        deadline_ms = self._deadline_ms(request, role_contract)
+        if deadline_ms is not None:
+            record["deadline_ms"] = deadline_ms
+        return record
+
+    def _deadline_ms(self, request: ChatRequest, role_contract: dict | None) -> int | None:
+        metadata_deadline = request.metadata.get("deadline_ms")
+        if isinstance(metadata_deadline, int):
+            return metadata_deadline
+        if isinstance(metadata_deadline, float):
+            return int(metadata_deadline)
+        if role_contract is not None:
+            provider_call_seconds = role_contract.get("provider_call_seconds")
+            if isinstance(provider_call_seconds, (int, float)):
+                return int(provider_call_seconds * 1000)
+        if request.timeout_seconds is not None:
+            return int(request.timeout_seconds * 1000)
+        return None
 
     def _append(self, record: dict) -> None:
         if self.run_dir is None:
