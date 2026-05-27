@@ -95,13 +95,17 @@ def runtime_os_release_evidence(
         "candidate_promotions_promoted": 0,
         "capability_manifest_audit": {
             "prompt_envelopes": 0,
+            "context_envelopes": 0,
             "model_calls_with_prompt_envelope": 0,
+            "model_calls_with_context_envelope": 0,
             "model_calls_with_capability_manifest": 0,
             "manifest_hashes": [],
+            "context_envelope_hashes": [],
             "manifest_changed": False,
             "cache_break_reasons": [],
             "model_metadata_complete": False,
-            "audit_chain": "manifest -> cache_break_reasons -> model_call_metadata",
+            "context_envelope_metadata_complete": False,
+            "audit_chain": "manifest/context_envelope -> cache_break_reasons -> model_call_metadata",
         },
     }
     manifest_audit = _empty_manifest_audit()
@@ -152,11 +156,16 @@ def runtime_os_release_evidence(
     manifest_hashes = sorted(manifest_audit["manifest_hashes"])
     summary["capability_manifest_audit"] = {
         "prompt_envelopes": manifest_audit["prompt_envelopes"],
+        "context_envelopes": manifest_audit["context_envelopes"],
         "model_calls_with_prompt_envelope": manifest_audit["model_calls_with_prompt_envelope"],
+        "model_calls_with_context_envelope": manifest_audit[
+            "model_calls_with_context_envelope"
+        ],
         "model_calls_with_capability_manifest": manifest_audit[
             "model_calls_with_capability_manifest"
         ],
         "manifest_hashes": manifest_hashes,
+        "context_envelope_hashes": sorted(manifest_audit["context_envelope_hashes"]),
         "manifest_changed": len(manifest_hashes) > 1,
         "cache_break_reasons": sorted(manifest_audit["cache_break_reasons"]),
         "model_metadata_complete": (
@@ -164,7 +173,11 @@ def runtime_os_release_evidence(
             and manifest_audit["model_calls_with_prompt_envelope"]
             == manifest_audit["model_calls_with_capability_manifest"]
         ),
-        "audit_chain": "manifest -> cache_break_reasons -> model_call_metadata",
+        "context_envelope_metadata_complete": (
+            manifest_audit["context_envelopes"] > 0
+            and manifest_audit["model_calls_with_context_envelope"] > 0
+        ),
+        "audit_chain": "manifest/context_envelope -> cache_break_reasons -> model_call_metadata",
     }
     return summary
 
@@ -212,9 +225,12 @@ def _latest_promotions(promotions: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _empty_manifest_audit() -> dict[str, Any]:
     return {
         "prompt_envelopes": 0,
+        "context_envelopes": 0,
         "model_calls_with_prompt_envelope": 0,
+        "model_calls_with_context_envelope": 0,
         "model_calls_with_capability_manifest": 0,
         "manifest_hashes": set(),
+        "context_envelope_hashes": set(),
         "cache_break_reasons": set(),
     }
 
@@ -227,13 +243,19 @@ def _merge_manifest_audit(target: dict[str, Any], source: dict[str, Any]) -> Non
     target["model_calls_with_capability_manifest"] += int(
         source.get("model_calls_with_capability_manifest") or 0
     )
+    target["context_envelopes"] += int(source.get("context_envelopes") or 0)
+    target["model_calls_with_context_envelope"] += int(
+        source.get("model_calls_with_context_envelope") or 0
+    )
     target["manifest_hashes"].update(source.get("manifest_hashes") or [])
+    target["context_envelope_hashes"].update(source.get("context_envelope_hashes") or [])
     target["cache_break_reasons"].update(source.get("cache_break_reasons") or [])
 
 
 def _capability_manifest_audit(run_dir: Path, read_jsonl: Any) -> dict[str, Any]:
     audit = _empty_manifest_audit()
     envelope_hashes: set[str] = set()
+    context_envelope_hashes: set[str] = set()
     for path in sorted(run_dir.glob("prompt_envelope*.json")):
         try:
             data = _read_json(path)
@@ -247,9 +269,23 @@ def _capability_manifest_audit(run_dir: Path, read_jsonl: Any) -> dict[str, Any]
         content_hash = data.get("content_hash")
         if content_hash:
             envelope_hashes.add(str(content_hash))
+    for path in sorted(run_dir.rglob("context_envelope*.json")):
+        try:
+            data = _read_json(path)
+        except Exception:  # noqa: BLE001
+            continue
+        payload_hash = data.get("payload_hash")
+        if payload_hash:
+            audit["context_envelopes"] += 1
+            context_envelope_hashes.add(str(payload_hash))
+            audit["context_envelope_hashes"].add(str(payload_hash))
     for call in read_jsonl(run_dir / "model_calls.jsonl", "model_call"):
         if call.get("prompt_envelope_hash") in envelope_hashes:
             audit["model_calls_with_prompt_envelope"] += 1
+        if call.get("context_envelope_hash"):
+            audit["context_envelope_hashes"].add(str(call["context_envelope_hash"]))
+        if call.get("context_envelope_hash") in context_envelope_hashes:
+            audit["model_calls_with_context_envelope"] += 1
         if call.get("capability_manifest_hash"):
             audit["model_calls_with_capability_manifest"] += 1
             audit["manifest_hashes"].add(str(call["capability_manifest_hash"]))

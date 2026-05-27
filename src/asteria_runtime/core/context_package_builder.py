@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
+from asteria_runtime.core.context_envelope import ContextEnvelope
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_contract import read_scope, write_scope
 from asteria_runtime.security.path_guard import PathGuard
@@ -30,7 +32,7 @@ class ContextPackageBuilder:
         worker_results = self._worker_results(context, task["task_id"])
         merge_gate_evidence = self._merge_gate_evidence(context, task["task_id"])
         recent_failures = self._recent_failures(context, task["task_id"])
-        return {
+        package = {
             "package_id": f"context-package-{task['task_id']}",
             "run_id": context.run_id,
             "task_id": task["task_id"],
@@ -69,6 +71,25 @@ class ContextPackageBuilder:
             "merge_gate_evidence": merge_gate_evidence,
             "recent_events": self._recent_events(context, int(includes.get("recent_event_count") or 0)),
         }
+        context_envelope = ContextEnvelope.from_payload(
+            audience="worker",
+            mode="context_package",
+            intent=str(package.get("mount_type") or "worker_context"),
+            root=context.root,
+            run_id=context.run_id,
+            refs=self._context_envelope_refs(package),
+            payload=deepcopy(package),
+            sections=self._context_envelope_sections(package),
+            redaction_policy={
+                "backend_fields_allowed": True,
+                "protected_terms": ["secret", "token", "api_key", "password", "credential"],
+            },
+        )
+        package["context_envelope"] = context_envelope.to_dict()
+        envelope_path = self._persist_context_envelope(context, task["task_id"], context_envelope)
+        if envelope_path is not None:
+            package["context_envelope_path"] = envelope_path.relative_to(context.root).as_posix()
+        return package
 
     def _root_guidance(self, context: RuntimeContext) -> dict:
         path = context.root / "AGENTS.md"
@@ -451,3 +472,71 @@ class ContextPackageBuilder:
             "text": content[: self.max_file_chars],
             "truncated": len(content) > self.max_file_chars,
         }
+
+    def _context_envelope_refs(self, package: dict) -> list[str]:
+        refs: list[str] = []
+        for item in package.get("read_scope_files") or []:
+            if isinstance(item, dict) and item.get("path"):
+                refs.append(str(item["path"]))
+        for group in ("artifacts", "failures", "decisions", "validations"):
+            for item in package.get(group) or []:
+                if isinstance(item, dict):
+                    identifier = (
+                        item.get("artifact_id")
+                        or item.get("evidence_id")
+                        or item.get("decision_id")
+                        or item.get("validation_result_id")
+                    )
+                    if identifier:
+                        refs.append(str(identifier))
+        return refs
+
+    def _persist_context_envelope(
+        self,
+        context: RuntimeContext,
+        task_id: str,
+        envelope: ContextEnvelope,
+    ) -> Path | None:
+        if context.run_dir is None:
+            return None
+        path = context.run_dir / "context_envelopes" / f"context_envelope_{task_id}.json"
+        JsonStore(self.validator).write(path, envelope.to_dict(), "context_envelope")
+        return path
+
+    def _context_envelope_sections(self, package: dict) -> list[dict]:
+        section_names = [
+            "root_guidance",
+            "goal_brief",
+            "task_brief",
+            "read_scope_files",
+            "write_scope_files",
+            "evidence_scope",
+            "artifacts",
+            "failures",
+            "recent_failures",
+            "decisions",
+            "validations",
+            "runtime_requests",
+            "worker_results",
+            "merge_gate_evidence",
+            "recent_events",
+        ]
+        sections = []
+        for name in section_names:
+            value = package.get(name)
+            included = bool(value)
+            sections.append(
+                {
+                    "name": name,
+                    "included": included,
+                    "summary": self._section_summary(value) if included else "not mounted",
+                }
+            )
+        return sections
+
+    def _section_summary(self, value: object) -> str:
+        if isinstance(value, dict):
+            return f"{len(value)} field(s)"
+        if isinstance(value, list):
+            return f"{len(value)} item(s)"
+        return "mounted"

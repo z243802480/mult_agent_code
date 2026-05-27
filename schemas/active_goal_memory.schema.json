@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActiveGoalMemory",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "memory_id",
+    "goal_id",
+    "source_run_id",
+    "updated_at",
+    "updated_by",
+    "update_reason",
+    "current_goal",
+    "current_result",
+    "overall_plan",
+    "completed_work",
+    "how_completed",
+    "current_blockers",
+    "questions_for_user",
+    "accepted_decisions",
+    "watch_items",
+    "next_task",
+    "artifact_refs"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "memory_id": { "type": "string" },
+    "goal_id": { "type": "string" },
+    "source_run_id": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "updated_by": {
+      "type": "string",
+      "enum": ["run", "review", "accept", "repair", "resume"]
+    },
+    "update_reason": { "type": "string" },
+    "current_goal": { "type": "string" },
+    "current_result": {
+      "type": "object",
+      "required": ["state", "review", "completion"],
+      "properties": {
+        "state": { "type": "string" },
+        "review": { "type": "string" },
+        "completion": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "overall_plan": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["task_id", "title", "status", "summary"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "string" },
+          "summary": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "completed_work": { "type": "array", "items": { "type": "string" } },
+    "how_completed": { "type": "array", "items": { "type": "string" } },
+    "current_blockers": { "type": "array", "items": { "type": "string" } },
+    "questions_for_user": { "type": "array", "items": { "type": "string" } },
+    "accepted_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["question", "selected_option_id"],
+        "properties": {
+          "question": { "type": "string" },
+          "selected_option_id": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "watch_items": { "type": "array", "items": { "type": "string" } },
+    "next_task": { "type": "array", "items": { "type": "string" } },
+    "artifact_refs": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": false
+}

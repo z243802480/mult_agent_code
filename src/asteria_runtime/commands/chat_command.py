@@ -6,14 +6,10 @@ from pathlib import Path
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.core.agent_role_policy import role_contract_for
-from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
-from asteria_runtime.core.context_loader import ContextLoader
-from asteria_runtime.core.policy_config import load_policy_config
-from asteria_runtime.core.permission_policy import permission_policy_profile
+from asteria_runtime.core.chat_context_builder import ChatContextBuilder
+from asteria_runtime.core.chat_intent_policy import ChatIntentPolicy
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.factory import create_model_client
-from asteria_runtime.storage.json_store import JsonStore
-from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -119,7 +115,6 @@ class ChatCommand:
         self.model_strategy = model_strategy
         self.model_client = model_client
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
-        self.store = JsonStore(self.validator)
 
     def run(self) -> ChatResult:
         agent_dir = self.root / ".asteria"
@@ -142,7 +137,15 @@ class ChatCommand:
                     },
                 },
             )
-        context = self._safe_context(agent_dir)
+        chat_intent = ChatIntentPolicy().classify(self.question)
+        context, context_envelope, context_envelope_path = ChatContextBuilder(
+            self.root,
+            self.validator,
+            permission_level=self.permission_level,
+        ).build_and_persist(
+            intent=chat_intent,
+        )
+        context_envelope_payload = context_envelope.to_dict()
         client = self.model_client or create_model_client(None, self.validator)
         role_contract = role_contract_for(
             role="ChatAgent",
@@ -162,7 +165,8 @@ class ChatCommand:
                                 "question": self.question,
                                 "permission_level": self.permission_level,
                                 "model_strategy": self.model_strategy,
-                                "safe_project_context": context,
+                                "context": context_envelope_payload,
+                                "context_envelope": context_envelope_payload,
                             },
                             ensure_ascii=False,
                             indent=2,
@@ -174,10 +178,16 @@ class ChatCommand:
                 metadata={
                     "agent_id": "ChatAgent",
                     "agent_role_contract": role_contract.to_dict(),
+                    "context_envelope_id": context_envelope.envelope_id,
+                    "context_envelope_hash": context_envelope.payload_hash,
+                    "context_envelope_path": context_envelope_path.relative_to(
+                        self.root
+                    ).as_posix(),
+                    "context_envelope_refs": context_envelope.refs,
                 },
             )
         )
-        debug_details = self._debug_details_requested()
+        debug_details = chat_intent == "debug_question"
         answer = self._clean_answer(response.content)
         if not debug_details:
             answer = self._user_facing_answer(answer, context)
@@ -192,220 +202,6 @@ class ChatCommand:
             session_context=context["session_context"],
             debug_details=debug_details,
         )
-
-    def _safe_context(self, agent_dir: Path) -> dict:
-        project = self.store.read(agent_dir / "project.json", "project_config")
-        policy = load_policy_config(agent_dir, self.validator)
-        run_store = RunStore(agent_dir, self.validator)
-        current_run_id = run_store.current_session_id()
-        current_run = run_store.load_run(current_run_id) if current_run_id else None
-        runtime_context = ContextLoader(self.root, self.validator).load()
-        session_context = self._session_context(agent_dir, current_run_id, current_run)
-        active_goal_memory = ActiveGoalMemory(self.root).read()
-        raw_workspace_envelope = session_context.get("workspace_envelope")
-        workspace_envelope: dict = (
-            raw_workspace_envelope if isinstance(raw_workspace_envelope, dict) else {}
-        )
-        raw_permission_policy = policy.get("permission_policy")
-        if isinstance(raw_permission_policy, dict):
-            permission_policy: dict = raw_permission_policy
-        else:
-            permission_policy = permission_policy_profile(
-                str(workspace_envelope.get("permission_mode") or self.permission_level)
-            )
-        return {
-            "project": {
-                "name": project.get("name"),
-                "workspace_type": project.get("workspace_type"),
-                "languages": project.get("languages", []),
-                "frameworks": project.get("frameworks", []),
-                "commands": project.get("commands", {}),
-            },
-            "policy": {
-                "decision_granularity": policy.get("decision_granularity"),
-                "permissions": policy.get("permissions", {}),
-                "permission_mode": workspace_envelope.get("permission_mode")
-                or permission_policy.get("mode"),
-                "permission_policy": permission_policy,
-            },
-            "workspace_envelope": workspace_envelope,
-            "current_run": {
-                "run_id": current_run.get("run_id"),
-                "status": current_run.get("status"),
-                "current_phase": current_run.get("current_phase"),
-                "summary": current_run.get("summary"),
-            }
-            if current_run
-            else None,
-            "session_context": session_context,
-            "active_goal_memory": active_goal_memory,
-            "runtime_summary": {
-                "important_paths": runtime_context.get("important_paths", [])[:10],
-                "guidance": runtime_context.get("guidance", {}) != {},
-            },
-            "refs": [".asteria/project.json", ".asteria/policies.json"]
-            + ([".asteria/memory/active_goal.md"] if active_goal_memory else [])
-            + (
-                [
-                    f".asteria/runs/{current_run_id}/run.json",
-                    f".asteria/runs/{current_run_id}/workspace_envelope.json",
-                ]
-                if current_run_id
-                else []
-            ),
-        }
-
-    def _session_context(
-        self,
-        agent_dir: Path,
-        current_run_id: str | None,
-        current_run: dict | None,
-    ) -> dict:
-        if not current_run_id or not current_run:
-            return {
-                "current_run": None,
-                "workflow": {
-                    "workflow_state": "initialized",
-                    "recommended_next_command": "plan",
-                    "current_blocker": None,
-                },
-                "latest_evidence": None,
-                "model_selection": {},
-            }
-        run_dir = agent_dir / "runs" / current_run_id
-        run_loop_summary = self._read_json(run_dir / "run_loop_summary.json", "run_loop_summary")
-        final_summary = self._read_json(
-            run_dir / "final_report_summary.json", "final_report_summary"
-        )
-        workflow_source = final_summary or run_loop_summary
-        latest_evidence = (
-            run_loop_summary.get("latest_evidence")
-            if isinstance(run_loop_summary, dict)
-            else workflow_source.get("latest_evidence")
-            if isinstance(workflow_source, dict)
-            else None
-        )
-        model_selection = final_summary.get("model_selection") or self._latest_model_selection(
-            run_dir
-        )
-        model_route_timeline = final_summary.get("model_route_timeline") or self._model_route_timeline(
-            run_dir
-        )
-        model_route_timeline_path = final_summary.get("model_route_timeline_path")
-        if not model_route_timeline_path and (run_dir / "model_route_timeline.json").exists():
-            model_route_timeline_path = self._relative_path(run_dir / "model_route_timeline.json")
-        workspace_envelope = self._read_json(run_dir / "workspace_envelope.json", "workspace_envelope")
-        return {
-            "current_run": {
-                "run_id": current_run.get("run_id"),
-                "status": current_run.get("status"),
-                "current_phase": current_run.get("current_phase"),
-                "summary": current_run.get("summary"),
-            },
-            "workflow": {
-                "workflow_state": workflow_source.get("workflow_state")
-                or self._workflow_state(current_run),
-                "current_blocker": workflow_source.get("current_blocker"),
-                "recommended_next_command": workflow_source.get("recommended_next_command")
-                or self._recommended_next_command(current_run),
-                "run_loop_summary_path": self._relative_path(run_dir / "run_loop_summary.json")
-                if run_loop_summary
-                else None,
-                "final_report_summary_path": self._relative_path(
-                    run_dir / "final_report_summary.json"
-                )
-                if final_summary
-                else None,
-            },
-            "latest_evidence": latest_evidence,
-            "model_selection": model_selection,
-            "model_route_timeline_path": model_route_timeline_path,
-            "model_route_timeline": model_route_timeline,
-            "workspace_envelope": workspace_envelope,
-        }
-
-    def _read_json(self, path: Path, schema_name: str) -> dict:
-        if not path.exists():
-            return {}
-        return self.store.read(path, schema_name)
-
-    def _relative_path(self, path: Path) -> str:
-        return path.relative_to(self.root).as_posix()
-
-    def _latest_model_selection(self, run_dir: Path) -> dict:
-        path = run_dir / "task_execution_evidence.jsonl"
-        if not path.exists():
-            return {}
-        for line in reversed(path.read_text(encoding="utf-8").splitlines()):
-            if not line.strip():
-                continue
-            evidence = json.loads(line)
-            selection = (
-                evidence.get("model_selection")
-                or (evidence.get("action") or {}).get("model_selection")
-            )
-            if isinstance(selection, dict) and selection:
-                return selection
-        return {}
-
-    def _model_route_timeline(self, run_dir: Path) -> list[dict]:
-        path = run_dir / "task_execution_evidence.jsonl"
-        if not path.exists():
-            return []
-        timeline = []
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            evidence = json.loads(line)
-            selection = (
-                evidence.get("model_selection")
-                or (evidence.get("action") or {}).get("model_selection")
-            )
-            if not isinstance(selection, dict) or not selection:
-                continue
-            timeline.append(
-                {
-                    "task_id": evidence.get("task_id"),
-                    "purpose": selection.get("purpose"),
-                    "task_kind": selection.get("task_kind"),
-                    "selected_tier": selection.get("selected_tier"),
-                    "default_tier": selection.get("default_tier"),
-                    "strategy_tier": selection.get("strategy_tier"),
-                    "strategy": selection.get("strategy"),
-                    "reason": selection.get("reason"),
-                    "tier_pressure": selection.get("tier_pressure") or {},
-                    "capability_feedback": selection.get("capability_feedback") or {},
-                    "evidence_path": path.relative_to(self.root).as_posix(),
-                    "created_at": evidence.get("created_at"),
-                }
-            )
-        return timeline[-20:]
-
-    def _workflow_state(self, run: dict) -> str:
-        phase = str(run.get("current_phase") or "")
-        status = str(run.get("status") or "")
-        if phase == "ACCEPTED":
-            return "accepted"
-        if phase == "REVIEWED":
-            return "ready_for_accept"
-        if status == "completed":
-            return "ready_for_review"
-        if status == "failed":
-            return "needs_action"
-        return status or "unknown"
-
-    def _recommended_next_command(self, run: dict) -> str | None:
-        phase = str(run.get("current_phase") or "")
-        status = str(run.get("status") or "")
-        if phase == "ACCEPTED":
-            return None
-        if phase == "REVIEWED":
-            return "accept"
-        if status == "completed":
-            return "review"
-        if status == "failed":
-            return "debug"
-        return None
 
     def _model_tier(self, default_tier: str = "medium") -> str:
         if self.model_strategy == "economy":
@@ -434,38 +230,21 @@ class ChatCommand:
             actions.append("Use `asteria plan` for read-only analysis or `asteria goal` to execute.")
         workflow = (context.get("session_context") or {}).get("workflow") or {}
         recommended = workflow.get("recommended_next_command")
-        if recommended and recommended not in {"plan", "init"}:
+        if (
+            context.get("chat_intent") != "ordinary_chat"
+            and recommended
+            and recommended not in {"plan", "init"}
+        ):
             actions.append(f"Current session recommends `asteria {recommended}`.")
         return list(dict.fromkeys(actions))
-
-    def _debug_details_requested(self) -> bool:
-        text = self.question.lower()
-        debug_words = [
-            "debug",
-            "backend",
-            "run_id",
-            "evidence",
-            "model_route",
-            "model route",
-            "trace",
-            "raw",
-            "json",
-            "调试",
-            "后端",
-            "证据",
-            "运行id",
-            "模型路由",
-            "原始",
-            "详细字段",
-        ]
-        return any(word in text for word in debug_words)
 
     def _user_facing_answer(self, answer: str, context: dict) -> str:
         if not self._contains_backend_terms(answer):
             return answer
         session = context.get("session_context") or {}
         memory = str(context.get("active_goal_memory") or "").strip()
-        if memory:
+        context_policy = context.get("context_policy") or {}
+        if memory and context_policy.get("active_goal_memory_included"):
             return memory
         workflow = session.get("workflow") or {}
         current = session.get("current_run") or {}
@@ -520,8 +299,10 @@ class ChatCommand:
 Chat mode is lightweight Q&A. Answer clearly and concisely.
 Do not claim to have modified files or run state-changing commands.
 If the user asks for implementation, suggest plan mode for read-only analysis or goal mode for execution.
-Use safe_project_context to summarize current session state, blockers, latest evidence, and model route rationale when relevant.
+Use context_envelope.payload to summarize current session state, blockers, latest evidence, and model route rationale when relevant.
 When asked why a model route was used, answer from session_context.model_route_timeline before using general reasoning.
-For questions about progress, plans, completed work, or the next task, prefer safe_project_context.active_goal_memory when it is available.
-For ordinary user questions, translate runtime state into user-level progress, blockers, and next steps. Do not expose backend fields such as run_id, evidence paths, or model_route unless the user explicitly asks for debug details.
+context_envelope.intent tells you why context was mounted.
+active_goal_memory is mounted only for progress, status, plan, and next-step questions. Prefer it when it is available.
+For ordinary user questions, do not infer from long-running task memory and do not turn the answer into a project status report.
+Do not expose backend fields such as run_id, evidence paths, or model_route unless the user explicitly asks for debug details.
 Respect protected paths and do not request secrets."""

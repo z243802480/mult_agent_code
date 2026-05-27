@@ -25,6 +25,7 @@ class StatusResult:
     latest_real_provider_matrix: dict = field(default_factory=dict)
     active_goal_memory_path: Path | None = None
     active_goal_memory: str = ""
+    active_goal_state: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         blockers = self.current_context.get("blockers") if self.current_context else []
@@ -111,6 +112,7 @@ class StatusResult:
                     "workspace_envelope",
                     "active_goal_memory_path",
                     "active_goal_memory",
+                    "active_goal_state",
                     "latest_real_provider_matrix",
                     "plugin_control",
                     "latest_failure",
@@ -152,6 +154,7 @@ class StatusResult:
             if self.active_goal_memory_path
             else None,
             "active_goal_memory": self.active_goal_memory,
+            "active_goal_state": self.active_goal_state,
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "plugin_control": self.plugin_control,
             "latest_failure": latest_failure,
@@ -365,7 +368,7 @@ class StatusResult:
         return ["Run `asteria /sessions --context --root .` to inspect current state."]
 
     def to_text(self, *, debug: bool = False) -> str:
-        if self.active_goal_memory and not debug:
+        if (self.active_goal_state or self.active_goal_memory) and not debug:
             return self._user_text()
         return self._debug_text()
 
@@ -380,6 +383,40 @@ class StatusResult:
                 f"- permission: {workspace.get('permission_mode') or 'unknown'}",
                 "",
             ]
+        if self.active_goal_state:
+            lines = [
+                "Asteria progress",
+                "",
+                *workspace_lines,
+                "Current goal:",
+                f"- {self.active_goal_state.get('current_goal') or 'No goal recorded.'}",
+                "",
+                "Completed:",
+                *self._status_card_lines(
+                    self.active_goal_state.get("completed_work"),
+                    fallback="- No completed work has been recorded yet.",
+                ),
+                "",
+                "Current status:",
+                f"- State: {(self.active_goal_state.get('current_result') or {}).get('state', 'unknown')}",
+                f"- Review: {(self.active_goal_state.get('current_result') or {}).get('review', 'unknown')}",
+                "",
+                "Needs you:",
+                *self._status_card_lines(
+                    self.active_goal_state.get("questions_for_user")
+                    or self.active_goal_state.get("current_blockers"),
+                    fallback="- Nothing needed from you right now.",
+                ),
+                "",
+                "Next step:",
+                *self._status_card_lines(
+                    self.active_goal_state.get("next_task"),
+                    fallback="- Choose the next goal to work on.",
+                ),
+                "",
+                "Runtime details: use `asteria status --debug` or `asteria status --json`.",
+            ]
+            return "\n".join(lines)
         lines = [
             "Asteria progress",
             f"Memory: {self.active_goal_memory_path}",
@@ -390,6 +427,21 @@ class StatusResult:
             "Runtime details: use `asteria status --debug` or `asteria status --json`.",
         ]
         return "\n".join(lines)
+
+    def _status_card_lines(self, values: object, *, fallback: str) -> list[str]:
+        if not isinstance(values, list) or not values:
+            return [fallback]
+        lines = []
+        for value in values[:6]:
+            if isinstance(value, dict):
+                text = str(value.get("title") or value.get("summary") or value)
+            else:
+                text = str(value)
+            text = text.strip()
+            if not text:
+                continue
+            lines.append(text if text.startswith("- ") else f"- {text}")
+        return lines or [fallback]
 
     def _debug_text(self) -> str:
         lines = [
@@ -688,6 +740,7 @@ class StatusCommand:
         )
         active_goal_memory = ActiveGoalMemory(self.root)
         active_goal_text = active_goal_memory.read()
+        active_goal_state = active_goal_memory.read_structured()
         return StatusResult(
             root=self.root,
             initialized=True,
@@ -698,4 +751,5 @@ class StatusCommand:
             latest_real_provider_matrix=latest_real_provider_matrix(agent_dir),
             active_goal_memory_path=active_goal_memory.path if active_goal_text else None,
             active_goal_memory=active_goal_text,
+            active_goal_state=active_goal_state,
         )

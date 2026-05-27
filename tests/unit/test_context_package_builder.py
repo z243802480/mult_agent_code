@@ -230,6 +230,24 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
     assert package["worker_results"][0]["runtime_profile_id"] == "runtime-profile-0001"
     assert package["worker_results"][0]["failure_evidence_refs"] == ["failure-0001"]
     assert package["merge_gate_evidence"][0]["merge_gate"]["ok"] is False
+    envelope = package["context_envelope"]
+    SchemaValidator(SCHEMA_DIR).validate("context_envelope", envelope)
+    assert envelope["audience"] == "worker"
+    assert envelope["mode"] == "context_package"
+    assert envelope["intent"] == "summary_context"
+    assert envelope["run_id"] == "run-0001"
+    assert envelope["payload"]["package_id"] == "context-package-task-0001"
+    assert envelope["payload"]["task_id"] == "task-0001"
+    assert envelope["redaction_policy"]["backend_fields_allowed"] is True
+    assert any(item["name"] == "read_scope_files" for item in envelope["sections"])
+    assert package["context_envelope_path"] == (
+        ".asteria/runs/run-0001/context_envelopes/context_envelope_task-0001.json"
+    )
+    persisted = SchemaValidator(SCHEMA_DIR)
+    persisted.validate(
+        "context_envelope",
+        json.loads((tmp_path / package["context_envelope_path"]).read_text(encoding="utf-8")),
+    )
 
 
 def _append_jsonl(path: Path, payload: dict) -> None:

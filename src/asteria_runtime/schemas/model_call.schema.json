@@ -27,6 +27,8 @@
     "model_route": { "type": ["object", "null"] },
     "prompt_envelope_hash": { "type": ["string", "null"] },
     "prompt_envelope_path": { "type": ["string", "null"] },
+    "context_envelope_hash": { "type": ["string", "null"] },
+    "context_envelope_path": { "type": ["string", "null"] },
     "capability_manifest_hash": { "type": ["string", "null"] },
     "purpose": { "type": "string" },
     "model_provider": { "type": "string" },

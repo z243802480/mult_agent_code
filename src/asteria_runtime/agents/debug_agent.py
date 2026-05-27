@@ -57,7 +57,7 @@ class DebugAgent:
                     "runtime_profile_id": (runtime_context or {}).get("runtime_profile_id"),
                     "model_profile_id": (runtime_context or {}).get("model_profile_id"),
                     "agent_role_contract": (runtime_context or {}).get("agent_role_contract"),
-                    **self._prompt_envelope_metadata(runtime_context or {}),
+                    **self._envelope_metadata(runtime_context or {}),
                 },
             )
             response = self.model_client.chat(request)
@@ -81,15 +81,24 @@ class DebugAgent:
             return action
         raise DebugAgentError(str(last_error) if last_error else "Repair action generation failed")
 
-    def _prompt_envelope_metadata(self, runtime_context: dict) -> dict:
+    def _envelope_metadata(self, runtime_context: dict) -> dict:
+        metadata: dict = {}
         envelope = runtime_context.get("prompt_envelope")
-        if not isinstance(envelope, dict):
-            return {}
-        return {
-            "prompt_envelope_hash": envelope.get("content_hash"),
-            "prompt_envelope_path": envelope.get("path"),
-            "capability_manifest_hash": envelope.get("capability_manifest_hash"),
-        }
+        if isinstance(envelope, dict):
+            metadata.update(
+                {
+                    "prompt_envelope_hash": envelope.get("content_hash"),
+                    "prompt_envelope_path": envelope.get("path"),
+                    "capability_manifest_hash": envelope.get("capability_manifest_hash"),
+                }
+            )
+        context_package = runtime_context.get("context_package")
+        if isinstance(context_package, dict):
+            context_envelope = context_package.get("context_envelope")
+            if isinstance(context_envelope, dict):
+                metadata["context_envelope_hash"] = context_envelope.get("payload_hash")
+            metadata["context_envelope_path"] = context_package.get("context_envelope_path")
+        return metadata
 
     def _validated_action(self, content: str, task: dict) -> dict:
         action = self._parse_json(content)

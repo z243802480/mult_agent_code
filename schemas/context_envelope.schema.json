@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContextEnvelope",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "envelope_id",
+    "audience",
+    "mode",
+    "intent",
+    "root",
+    "run_id",
+    "created_at",
+    "sections",
+    "refs",
+    "redaction_policy",
+    "payload_hash",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "envelope_id": { "type": "string" },
+    "audience": { "type": "string" },
+    "mode": { "type": "string" },
+    "intent": { "type": "string" },
+    "root": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "included", "summary"],
+        "properties": {
+          "name": { "type": "string" },
+          "included": { "type": "boolean" },
+          "summary": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "refs": { "type": "array", "items": { "type": "string" } },
+    "redaction_policy": { "type": "object" },
+    "payload_hash": { "type": "string" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false
+}

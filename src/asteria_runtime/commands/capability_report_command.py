@@ -132,6 +132,13 @@ class CapabilityReportResult:
                     f"{manifest_audit.get('model_calls_with_capability_manifest', 0)} "
                     "model call(s) linked"
                 )
+                if manifest_audit.get("context_envelopes") is not None:
+                    lines.append(
+                        "  - context envelope audit: "
+                        f"{manifest_audit.get('context_envelopes', 0)} envelope(s), "
+                        f"{manifest_audit.get('model_calls_with_context_envelope', 0)} "
+                        "model call(s) linked"
+                    )
                 cache_break_reasons = [
                     str(item) for item in manifest_audit.get("cache_break_reasons", [])
                 ]

@@ -481,6 +481,34 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
         },
         "prompt_envelope",
     )
+    context_envelope_path = (
+        run_dir / "context_envelopes" / "context_envelope_task-0001.json"
+    )
+    store.write(
+        context_envelope_path,
+        {
+            "schema_version": "0.1.0",
+            "envelope_id": "context-envelope-task-0001",
+            "audience": "worker",
+            "mode": "execute",
+            "intent": "task_execution",
+            "root": str(tmp_path),
+            "run_id": "run-1",
+            "created_at": "2026-05-07T10:00:27+08:00",
+            "sections": [
+                {
+                    "name": "task_context",
+                    "included": True,
+                    "summary": "worker context",
+                }
+            ],
+            "refs": ["task_graph.json"],
+            "redaction_policy": {"backend_fields_allowed": True},
+            "payload_hash": "sha256:context",
+            "payload": {"task_id": "task-0001"},
+        },
+        "context_envelope",
+    )
     jsonl.append(
         run_dir / "model_calls.jsonl",
         {
@@ -490,6 +518,8 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
             "agent_id": "CoderAgent",
             "prompt_envelope_hash": "sha256:prompt",
             "prompt_envelope_path": str(run_dir / "prompt_envelope_execute.json"),
+            "context_envelope_hash": "sha256:context",
+            "context_envelope_path": str(context_envelope_path),
             "capability_manifest_hash": manifest_hash,
             "purpose": "task_execution",
             "model_provider": "runtime",
@@ -583,10 +613,13 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
     assert result.runtime_os["evidence"]["task_graph_selections"] == 1
     manifest_audit = result.runtime_os["evidence"]["capability_manifest_audit"]
     assert manifest_audit["manifest_hashes"] == [manifest_hash]
+    assert manifest_audit["context_envelope_hashes"] == ["sha256:context"]
     assert manifest_audit["cache_break_reasons"] == ["tools_or_modes_changed"]
     assert manifest_audit["model_metadata_complete"] is True
+    assert manifest_audit["context_envelope_metadata_complete"] is True
     assert "Runtime OS release evidence" in result.to_text()
     assert "capability manifest audit" in result.to_text()
+    assert "context envelope audit" in result.to_text()
 
 
 def test_capability_report_uses_acceptance_runtime_evidence_without_run_jsonl(

@@ -68,6 +68,9 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
                 "max_model_calls": 1,
             },
             "prompt_envelope": {
+                "content_hash": "sha256:prompt",
+                "path": ".asteria/runs/run-1/prompt_envelope_execute.json",
+                "capability_manifest_hash": "sha256:manifest",
                 "section_order": ["project_guidance", "capability_manifest"],
                 "sections": [
                     {
@@ -78,6 +81,12 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
                 "capability_manifest": {
                     "direct_tools": [{"name": "run_command"}],
                     "verification": [{"name": "run_tests"}],
+                },
+            },
+            "context_package": {
+                "context_envelope_path": ".asteria/runs/run-1/context_envelopes/context_envelope_task-0001.json",
+                "context_envelope": {
+                    "payload_hash": "sha256:context",
                 },
             },
             "tool_observations": [
@@ -113,3 +122,6 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
     assert metadata["runtime_profile_id"] == "runtime-profile-task-0001"
     assert metadata["model_profile_id"] == "model-profile-task-0001"
     assert metadata["agent_role_contract"]["role"] == "CoderAgent"
+    assert metadata["prompt_envelope_hash"] == "sha256:prompt"
+    assert metadata["context_envelope_hash"] == "sha256:context"
+    assert metadata["context_envelope_path"].endswith("context_envelope_task-0001.json")

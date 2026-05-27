@@ -19,11 +19,16 @@ from asteria_runtime.utils.time import now_iso
 class ContextAwareChatModel:
     def __init__(self) -> None:
         self.context: dict | None = None
+        self.context_envelope: dict | None = None
         self.request = None
 
     def chat(self, request):
         self.request = request
-        self.context = json.loads(request.messages[-1].content)["safe_project_context"]
+        payload = json.loads(request.messages[-1].content)
+        self.context_envelope = payload["context_envelope"]
+        self.context = self.context_envelope["payload"]
+        assert payload["context"] == self.context_envelope
+        assert "safe_project_context" not in payload
         session = self.context["session_context"]
         workflow = session["workflow"]
         run = session["current_run"]
@@ -212,6 +217,16 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert run_id not in active_goal_text
     assert "task_execution_evidence" not in active_goal_text
     assert "model_route" not in active_goal_text
+    active_goal_json = tmp_path / ".asteria" / "memory" / "active_goal.json"
+    assert active_goal_json.exists()
+    active_goal_state = JsonStore(SchemaValidator(Path("schemas"))).read(
+        active_goal_json,
+        "active_goal_memory",
+    )
+    assert active_goal_state["source_run_id"] == run_id
+    assert active_goal_state["updated_by"] == "accept"
+    assert active_goal_state["update_reason"] == "accepted_result"
+    assert active_goal_state["current_result"]["state"] == "accepted"
     final_report = accept.final_report_path.read_text(encoding="utf-8")
     assert "## Model Selection" in final_report
     assert "- Reason: capability_feedback_escalated_from_medium" in final_report
@@ -242,6 +257,7 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert "Model selection: strong (capability_feedback_escalated_from_medium)" in accept_text
 
     accepted_payload = StatusCommand(tmp_path).run().to_dict()
+    assert accepted_payload["active_goal_state"] == active_goal_state
     assert accepted_payload["final_report_summary_path"].endswith("final_report_summary.json")
     assert accepted_payload["final_report_summary"] == final_summary
     assert accepted_payload["workflow_state"] == "accepted"
@@ -424,9 +440,20 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     assert "## Next Task" in active_goal_text
     assert "Run `asteria review`." in active_goal_text
     assert run_id not in active_goal_text
+    active_goal_json = tmp_path / ".asteria" / "memory" / "active_goal.json"
+    active_goal_state = JsonStore(SchemaValidator(Path("schemas"))).read(
+        active_goal_json,
+        "active_goal_memory",
+    )
+    assert active_goal_state["source_run_id"] == run_id
+    assert active_goal_state["updated_by"] == "run"
+    assert active_goal_state["update_reason"] == "ready_for_review"
     status_text = StatusCommand(tmp_path).run().to_text()
     assert "Asteria progress" in status_text
-    assert "# Asteria Active Goal" in status_text
+    assert "Current goal:" in status_text
+    assert "Completed:" in status_text
+    assert "Needs you:" in status_text
+    assert "# Asteria Active Goal" not in status_text
     assert "Current session:" not in status_text
     assert "Model selection:" not in status_text
     assert summary["iteration_count"] == 0
@@ -689,6 +716,7 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     assert chat.to_dict()["debug_details"] is False
     assert chat_model.context is not None
     assert chat_model.context["active_goal_memory"]
+    assert chat_model.context["context_policy"]["active_goal_memory_included"] is True
     assert chat_model.request.metadata["agent_id"] == "ChatAgent"
     assert chat_model.request.metadata["agent_role_contract"]["role"] == "ChatAgent"
     assert chat_model.context["session_context"]["workflow"]["workflow_state"] == (
@@ -700,6 +728,59 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
         chat_model.context["session_context"]["workspace_envelope"]["workspace_root"]
         == str(tmp_path.resolve())
     )
+    assert chat_model.context_envelope is not None
+    assert chat_model.context_envelope["intent"] == "next_step_question"
+    assert chat_model.context_envelope["payload"] == chat_model.context
+    assert chat_model.context_envelope["payload_hash"] == (
+        chat_model.request.metadata["context_envelope_hash"]
+    )
+    assert chat_model.request.metadata["context_envelope_id"] == (
+        chat_model.context_envelope["envelope_id"]
+    )
+    envelope_path = tmp_path / chat_model.request.metadata["context_envelope_path"]
+    assert envelope_path.exists()
+    persisted_envelope = JsonStore(SchemaValidator(Path("schemas"))).read(
+        envelope_path,
+        "context_envelope",
+    )
+    assert persisted_envelope["payload_hash"] == chat_model.context_envelope["payload_hash"]
+
+
+def test_chat_ordinary_question_does_not_mount_active_goal_memory(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    run_id = _create_minimal_completed_run(tmp_path)
+    RunCommand(
+        tmp_path,
+        run_id=run_id,
+        max_iterations=0,
+        enable_research=False,
+    ).continue_run(run_id)
+    chat_model = ContextAwareChatModel()
+
+    chat = ChatCommand(
+        tmp_path,
+        "请解释一下 schema validation 的作用。",
+        model_client=chat_model,
+    ).run()
+
+    assert chat_model.context is not None
+    assert chat_model.context["chat_intent"] == "ordinary_chat"
+    assert chat_model.context_envelope is not None
+    assert chat_model.context_envelope["intent"] == "ordinary_chat"
+    assert chat_model.context_envelope["payload"] == chat_model.context
+    active_memory_section = next(
+        item
+        for item in chat_model.context_envelope["sections"]
+        if item["name"] == "active_goal_memory"
+    )
+    assert active_memory_section["included"] is False
+    assert chat_model.context["active_goal_memory"] == ""
+    assert chat_model.context["context_policy"]["active_goal_memory_included"] is False
+    assert ".asteria/memory/active_goal.md" not in chat.context_refs
+    assert all("active_goal.md" not in ref for ref in chat.context_refs)
+    assert not any("Current session recommends" in action for action in chat.next_actions)
+    assert "# Asteria Active Goal" not in chat.to_text()
+    assert "## Next Task" not in chat.to_text()
 
 
 def test_chat_can_show_debug_session_details_when_requested(tmp_path: Path) -> None:
@@ -712,10 +793,11 @@ def test_chat_can_show_debug_session_details_when_requested(tmp_path: Path) -> N
         enable_research=False,
     ).continue_run(run_id)
 
+    debug_model = ContextAwareChatModel()
     chat = ChatCommand(
         tmp_path,
         "请显示调试细节：run_id 和 model route 是什么？",
-        model_client=ContextAwareChatModel(),
+        model_client=debug_model,
     ).run()
 
     text = chat.to_text()
@@ -723,6 +805,10 @@ def test_chat_can_show_debug_session_details_when_requested(tmp_path: Path) -> N
     assert "Current session:" in text
     assert run_id in text
     assert "latest route:" in text
+    assert debug_model.context_envelope is not None
+    assert debug_model.context_envelope["intent"] == "debug_question"
+    assert debug_model.context_envelope["redaction_policy"]["backend_fields_allowed"] is True
+    assert "model_route_timeline" in debug_model.context_envelope["payload"]["session_context"]
 
 
 def test_status_exposes_latest_model_selection_pressure_and_feedback(tmp_path: Path) -> None:

@@ -112,6 +112,8 @@ class ModelCallLogger:
             "model_tier": model_tier,
             "prompt_envelope_hash": request.metadata.get("prompt_envelope_hash"),
             "prompt_envelope_path": request.metadata.get("prompt_envelope_path"),
+            "context_envelope_hash": request.metadata.get("context_envelope_hash"),
+            "context_envelope_path": request.metadata.get("context_envelope_path"),
             "capability_manifest_hash": request.metadata.get("capability_manifest_hash"),
         }
         if role_contract is not None:

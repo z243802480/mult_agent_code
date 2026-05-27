@@ -7,7 +7,11 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 class WrappedRepairClient:
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
     def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
         content = json.dumps(
             {
                 "repair_action": {
@@ -43,8 +47,9 @@ def test_debug_agent_accepts_wrapped_repair_action() -> None:
         "acceptance": ["file exists"],
     }
 
+    client = WrappedRepairClient()
     action = DebugAgent(
-        WrappedRepairClient(),
+        client,
         SchemaValidator(Path.cwd() / "schemas"),
     ).propose_repair(
         task=task,
@@ -52,8 +57,20 @@ def test_debug_agent_accepts_wrapped_repair_action() -> None:
         failure_evidence={"summary": "missing file"},
         available_tools=["write_file", "run_command"],
         run_id="run-1",
+        runtime_context={
+            "context_package": {
+                "context_envelope_path": ".asteria/runs/run-1/context_envelopes/context_envelope_task-0001.json",
+                "context_envelope": {
+                    "payload_hash": "sha256:debug-context",
+                },
+            },
+        },
     )
 
     assert action["task_id"] == "task-0001"
     assert action["tool_calls"][0]["tool_name"] == "write_file"
     assert action["tool_calls"][0]["args"]["path"] == "out/result.txt"
+    assert client.requests[0].metadata["context_envelope_hash"] == "sha256:debug-context"
+    assert client.requests[0].metadata["context_envelope_path"].endswith(
+        "context_envelope_task-0001.json"
+    )
