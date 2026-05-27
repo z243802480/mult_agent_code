@@ -16,6 +16,7 @@ from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand, StatusResult
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
@@ -503,6 +504,12 @@ class RunCommand:
         }
         path = run_dir / "final_report_summary.json"
         self.store.write(path, summary, "final_report_summary")
+        self._write_active_goal_memory(
+            run_id=run_id,
+            review_status=review_status,
+            blockers=self._string_list(status_payload.get("blockers")),
+            next_actions=self._string_list(status_payload.get("next_actions")),
+        )
         return path
 
     def _write_model_route_timeline(self, run_id: str) -> Path | None:
@@ -1382,7 +1389,67 @@ class RunCommand:
         )
         path = run_dir / "final_report.md"
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self._write_active_goal_memory(
+            run_id=run_id,
+            review_status=review_status,
+            completion=completion,
+            steps=steps,
+            blockers=blockers,
+            risks=risks,
+            next_actions=next_actions,
+        )
         return path
+
+    def _write_active_goal_memory(
+        self,
+        *,
+        run_id: str,
+        review_status: str,
+        completion: str | None = None,
+        steps: list[RunStepSummary] | None = None,
+        blockers: list[str] | None = None,
+        risks: list[str] | None = None,
+        next_actions: list[str] | None = None,
+    ) -> Path | None:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        goal_path = run_dir / "goal_spec.json"
+        task_path = run_dir / "task_plan.json"
+        cost_path = run_dir / "cost_report.json"
+        if not goal_path.exists() or not task_path.exists() or not cost_path.exists():
+            return None
+        goal_spec = self.store.read(goal_path, "goal_spec")
+        task_plan = self.store.read(task_path, "task_board")
+        run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)
+        done = len([task for task in task_plan["tasks"] if task["status"] == "done"])
+        blocked_tasks = [task for task in task_plan["tasks"] if task["status"] == "blocked"]
+        pending_decisions = self._pending_decisions(run_dir)
+        accepted_decisions = self._accepted_decisions(run_dir)
+        resolved_completion = completion or self._completion_state(
+            done=done,
+            total=len(task_plan["tasks"]),
+            blocked=len(blocked_tasks),
+            pending_decisions=len(pending_decisions),
+            review_status=review_status,
+            verification_count=len(self._verification_evidence(run_dir)),
+        )
+        return ActiveGoalMemory(self.root).write_from_run(
+            goal_spec=goal_spec,
+            task_plan=task_plan,
+            run_status=run,
+            review_status=review_status,
+            completion=resolved_completion,
+            steps=steps or [],
+            artifacts=self._artifact_paths(run_dir),
+            blockers=blockers or self._report_blockers(
+                blocked_tasks,
+                pending_decisions,
+                self._latest_acceptance_report(),
+            ),
+            risks=risks or [],
+            next_actions=next_actions or [],
+            pending_decisions=pending_decisions,
+            accepted_decisions=accepted_decisions,
+        )
 
     def _task_plan_eval(self, run_dir: Path) -> dict | None:
         path = run_dir / "task_plan_eval.json"

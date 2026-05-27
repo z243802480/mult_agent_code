@@ -31,6 +31,8 @@
       "final_report_summary_path",
       "final_report_summary",
       "goal_policy",
+      "active_goal_memory_path",
+      "active_goal_memory",
       "latest_real_provider_matrix",
       "plugin_control",
       "latest_failure",
@@ -112,5 +114,7 @@
   "final_report_summary_path": null,
   "final_report_summary": {},
   "goal_policy": {},
+  "active_goal_memory_path": null,
+  "active_goal_memory": "",
   "latest_real_provider_matrix": {}
 }

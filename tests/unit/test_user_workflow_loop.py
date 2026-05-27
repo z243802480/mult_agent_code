@@ -201,6 +201,17 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert accept.accepted is True
     assert accept.blockers == []
     assert accept.next_actions == ["Use the final report as the durable handoff artifact."]
+    active_goal = tmp_path / ".asteria" / "memory" / "active_goal.md"
+    assert active_goal.exists()
+    active_goal_text = active_goal.read_text(encoding="utf-8")
+    assert "# Asteria Active Goal" in active_goal_text
+    assert "## Current Goal" in active_goal_text
+    assert "## Overall Plan" in active_goal_text
+    assert "## Completed Work" in active_goal_text
+    assert "## Next Task" in active_goal_text
+    assert run_id not in active_goal_text
+    assert "task_execution_evidence" not in active_goal_text
+    assert "model_route" not in active_goal_text
     final_report = accept.final_report_path.read_text(encoding="utf-8")
     assert "## Model Selection" in final_report
     assert "- Reason: capability_feedback_escalated_from_medium" in final_report
@@ -406,6 +417,18 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
         result.run_loop_summary_path,
         "run_loop_summary",
     )
+    active_goal = tmp_path / ".asteria" / "memory" / "active_goal.md"
+    assert active_goal.exists()
+    active_goal_text = active_goal.read_text(encoding="utf-8")
+    assert "Create a minimal verified workflow." in active_goal_text
+    assert "## Next Task" in active_goal_text
+    assert "Run `asteria review`." in active_goal_text
+    assert run_id not in active_goal_text
+    status_text = StatusCommand(tmp_path).run().to_text()
+    assert "Asteria progress" in status_text
+    assert "# Asteria Active Goal" in status_text
+    assert "Current session:" not in status_text
+    assert "Model selection:" not in status_text
     assert summary["iteration_count"] == 0
     assert summary["stop_reason"] == "handoff_written"
     assert summary["workflow_state"] == "ready_for_review"
@@ -605,7 +628,9 @@ def test_status_and_sessions_context_expose_run_loop_summary(tmp_path: Path) -> 
     assert session_context["run_loop_summary"] == status_context["run_loop_summary"]
     assert session_context["model_route_timeline"] == status_payload["model_route_timeline"]
     assert "run loop summary:" in sessions.to_text()
-    assert "Model route timeline: 1 recent decision(s)" in StatusCommand(tmp_path).run().to_text()
+    assert "Model route timeline: 1 recent decision(s)" in StatusCommand(
+        tmp_path
+    ).run().to_text(debug=True)
     assert session_context["model_route_timeline_path"] == f".asteria/runs/{run_id}/model_route_timeline.json"
 
 
@@ -658,10 +683,12 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     assert "Current session:" not in text
     assert run_id not in text
     assert "task_execution_evidence.jsonl" not in text
-    assert "建议下一步运行 `asteria review`" in text
+    assert "# Asteria Active Goal" in text
+    assert "## Next Task" in text
     assert chat.to_dict()["execution_allowed"] is False
     assert chat.to_dict()["debug_details"] is False
     assert chat_model.context is not None
+    assert chat_model.context["active_goal_memory"]
     assert chat_model.request.metadata["agent_id"] == "ChatAgent"
     assert chat_model.request.metadata["agent_role_contract"]["role"] == "ChatAgent"
     assert chat_model.context["session_context"]["workflow"]["workflow_state"] == (
@@ -709,14 +736,14 @@ def test_status_exposes_latest_model_selection_pressure_and_feedback(tmp_path: P
     assert payload["current_context"]["latest_execution_evidence"]["model_selection"] == selection
     assert payload["current_context"]["model_selection"] == selection
     assert payload["current_context"]["model_route_timeline"][0]["reason"] == selection["reason"]
-    text = StatusCommand(tmp_path).run().to_text()
+    debug_text = StatusCommand(tmp_path).run().to_text(debug=True)
     assert (
         "Model selection: strong for coding "
         "(capability_feedback_escalated_from_medium)"
-    ) in text
-    assert "pressure: medium -> strong (stronger route selected, direction=up) delta=1" in text
-    assert "capability feedback: blocked (escalated_to_strong; blocking=1, review=0)" in text
-    assert "matched route: coding/medium action=review_worker_route_before_scaling" in text
+    ) in debug_text
+    assert "pressure: medium -> strong (stronger route selected, direction=up) delta=1" in debug_text
+    assert "capability feedback: blocked (escalated_to_strong; blocking=1, review=0)" in debug_text
+    assert "matched route: coding/medium action=review_worker_route_before_scaling" in debug_text
 
 
 def test_goal_run_result_uses_explicit_session_status_when_not_current(tmp_path: Path) -> None:

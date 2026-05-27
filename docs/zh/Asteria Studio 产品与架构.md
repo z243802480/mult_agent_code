@@ -72,36 +72,19 @@ Future Studio work must first decide whether a feature belongs to Product Worksp
 
 ## 2. Agent Workspace
 
-上一版 Studio 偏后台 dashboard，Conversation 被放在侧栏，只能问证据，不能承担“用户如何使用智能体”的入口。现在主界面修正为 Agent Workspace：
+上一版 Studio 偏后台 dashboard，Conversation 被放在侧栏，只能问证据，不能承担“用户如何使用智能体”的入口。现在主界面应修正为 Product Workspace：
 
-- Workbench Launcher：用户从真实目标开始，直接选择 `init`、`plan`、`run-limited`、`execute-one`、`review`、`resume-limited`、`decisions`、`promotions` 等 runtime 工作流。
-- Conversation：用户和智能体发生对话的地方，保留本地历史，并能围绕当前 workspace 继续迭代。
-- Agent Command Center：把自然语言或按钮映射到受控 runtime 动作，不要求用户记住复杂 CLI。
-- Permissions：显示当前哪些动作可直接执行，哪些写入型动作需要人工确认。
-- Feedback：执行结果、命令预览、阻塞原因和下一步建议直接回到工作区。
-- Artifacts：预览生成的文档、证据、run 产物和 Studio 本地状态。
-- Dashboard：降级为状态观测，不再是主要交互入口。
+- Composer：用户用自然语言输入目标或问题。
+- Mode selector：只暴露 Goal、Plan 和轻量 Ask/Chat；也可以由意图识别自动选择。
+- Context / Tools menu：模型、skills、MCP servers、图片等属于上下文和能力选择，不是 runtime 命令入口。
+- Progress thread：显示目标理解、计划、权限请求、用户级进展、验证结果和最终交付。
+- Permission cards：需要写入、执行、联网、提权或增加预算时，请用户确认。
+- Deliverables：预览生成的文件、报告、测试结果和验收回顾。
+- Ops link：进入单独的 Ops / Debug Console，而不是在默认首页展示 backend 面板。
 
-P0 白名单动作：
+Studio P0 不应让用户直接选择 `execute-one`、`review`、`promotions`、`gate-status`、`gray` 等 runtime 命令。它可以在内部把自然语言和模式选择映射为受控 runtime action，但默认界面只展示用户能理解的 Goal / Plan / Ask 和结果进展。
 
-```text
-init             初始化工作区
-plan             从目标生成真实计划
-run-limited      受限真实任务运行
-execute-one      执行一个 ready task
-review           审查当前/指定 run
-resume-limited   受限恢复运行
-decisions        查看待决策项
-promotions       查看候选 promotion queue
-gate-status      查看当前门禁
-gate             运行只读灰度入口检查
-gray             准备 gray dry-run
-doctor           检查本机环境
-package-check    检查安装包
-evidence-bundle  导出脱敏证据包
-```
-
-写入型真实任务暂不直接从 Studio 自动执行。Studio 可以生成建议命令，但必须走 runtime policy、预算、approval 和证据记录后再放开。
+写入型真实任务暂不直接从 Studio 自动执行。Studio 可以生成建议动作或权限卡，但必须走 runtime policy、预算、approval 和证据记录后再放开。
 
 ## 3. 工程边界
 
@@ -174,14 +157,14 @@ Studio 第一版依赖这些稳定字段：
 
 Conversation 是 Studio 自己的本地状态，落在 `.asteria/studio/conversations.jsonl`。它不进入 runtime 核心 schema，但必须可审计、可导出、可删除。
 
-P0 assistant response 不调用模型，先使用规则化解释：
+P0 assistant response 可以先使用规则化解释，但必须明确这是受限解释，不可冒充真实智能体执行结果：
 
 - gate/status 问题读取 `gate-status --json`。
 - provider 慢/超时问题读取 model route summary。
 - run 问题读取 selected run detail。
 - “下一步”问题返回 `next_actions` 和建议命令。
 
-P1 才考虑把 Conversation 接入真实模型，但必须走 runtime policy、预算、approval 和 evidence logging。
+后续把 Conversation 接入真实模型时，必须走 runtime policy、预算、approval 和 evidence logging。普通对话默认只使用动态上下文；长期任务状态只在用户询问状态、进展、计划或下一步时挂载。
 
 ## 7. 安全边界
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
@@ -22,6 +23,8 @@ class StatusResult:
     recent_sessions: list[dict] = field(default_factory=list)
     plugin_control: dict = field(default_factory=dict)
     latest_real_provider_matrix: dict = field(default_factory=dict)
+    active_goal_memory_path: Path | None = None
+    active_goal_memory: str = ""
 
     def to_dict(self) -> dict[str, object]:
         blockers = self.current_context.get("blockers") if self.current_context else []
@@ -102,6 +105,8 @@ class StatusResult:
                     "final_report_summary_path",
                     "final_report_summary",
                     "goal_policy",
+                    "active_goal_memory_path",
+                    "active_goal_memory",
                     "latest_real_provider_matrix",
                     "plugin_control",
                     "latest_failure",
@@ -138,6 +143,10 @@ class StatusResult:
             "final_report_summary_path": final_report_summary_path,
             "final_report_summary": final_report_summary,
             "goal_policy": goal_policy,
+            "active_goal_memory_path": str(self.active_goal_memory_path)
+            if self.active_goal_memory_path
+            else None,
+            "active_goal_memory": self.active_goal_memory,
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "plugin_control": self.plugin_control,
             "latest_failure": latest_failure,
@@ -350,7 +359,23 @@ class StatusResult:
             return ['Run `asteria /new "<goal>" --root .`.']
         return ["Run `asteria /sessions --context --root .` to inspect current state."]
 
-    def to_text(self) -> str:
+    def to_text(self, *, debug: bool = False) -> str:
+        if self.active_goal_memory and not debug:
+            return self._user_text()
+        return self._debug_text()
+
+    def _user_text(self) -> str:
+        lines = [
+            "Asteria progress",
+            f"Memory: {self.active_goal_memory_path}",
+            "",
+            self.active_goal_memory.strip(),
+            "",
+            "Runtime details: use `asteria status --debug` or `asteria status --json`.",
+        ]
+        return "\n".join(lines)
+
+    def _debug_text(self) -> str:
         lines = [
             "Agent status",
             f"Root: {self.root}",
@@ -635,6 +660,8 @@ class StatusCommand:
             if sessions.current_session_id
             else None
         )
+        active_goal_memory = ActiveGoalMemory(self.root)
+        active_goal_text = active_goal_memory.read()
         return StatusResult(
             root=self.root,
             initialized=True,
@@ -643,4 +670,6 @@ class StatusCommand:
             recent_sessions=sessions.sessions,
             plugin_control=plugin_control_summary(self.root, self.validator),
             latest_real_provider_matrix=latest_real_provider_matrix(agent_dir),
+            active_goal_memory_path=active_goal_memory.path if active_goal_text else None,
+            active_goal_memory=active_goal_text,
         )

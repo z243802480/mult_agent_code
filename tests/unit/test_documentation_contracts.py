@@ -40,7 +40,12 @@ def test_runtime_command_docs_describe_accept_workflow_and_alias_policy() -> Non
 
     required_fragments = [
         "命令示例优先使用无斜杠形式",
-        "init -> run -> status -> resume -> review -> accept",
+        "Goal / Plan / Ask",
+        "不是普通用户必须理解的线性流程",
+        "init -> run -> status -> review -> accept",
+        "runtime 阶段",
+        "Acceptance review",
+        "只要修改代码，就必须按需引入测试或等价验证",
         "### 3.8 `/accept`",
         "不等同于用于测试套件的 `acceptance`",
         "asteria accept --no-promote",

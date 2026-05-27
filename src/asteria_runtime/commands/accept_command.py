@@ -184,6 +184,13 @@ class AcceptCommand:
             final_report_summary_path,
             "final_report_summary",
         )
+        RunCommand(self.root)._write_active_goal_memory(
+            run_id=run_id,
+            review_status=review_status,
+            steps=[RunStepSummary("accept", "completed", "Operator accepted the reviewed result.")],
+            blockers=blockers,
+            next_actions=next_actions,
+        )
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             "run_accepted" if accepted else "accept_blocked",

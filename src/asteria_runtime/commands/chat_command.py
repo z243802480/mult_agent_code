@@ -6,6 +6,7 @@ from pathlib import Path
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.core.agent_role_policy import role_contract_for
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
@@ -199,6 +200,7 @@ class ChatCommand:
         current_run = run_store.load_run(current_run_id) if current_run_id else None
         runtime_context = ContextLoader(self.root, self.validator).load()
         session_context = self._session_context(agent_dir, current_run_id, current_run)
+        active_goal_memory = ActiveGoalMemory(self.root).read()
         return {
             "project": {
                 "name": project.get("name"),
@@ -220,11 +222,13 @@ class ChatCommand:
             if current_run
             else None,
             "session_context": session_context,
+            "active_goal_memory": active_goal_memory,
             "runtime_summary": {
                 "important_paths": runtime_context.get("important_paths", [])[:10],
                 "guidance": runtime_context.get("guidance", {}) != {},
             },
             "refs": [".asteria/project.json", ".asteria/policies.json"]
+            + ([".asteria/memory/active_goal.md"] if active_goal_memory else [])
             + ([f".asteria/runs/{current_run_id}/run.json"] if current_run_id else []),
         }
 
@@ -435,6 +439,9 @@ class ChatCommand:
         if not self._contains_backend_terms(answer):
             return answer
         session = context.get("session_context") or {}
+        memory = str(context.get("active_goal_memory") or "").strip()
+        if memory:
+            return memory
         workflow = session.get("workflow") or {}
         current = session.get("current_run") or {}
         state = str(workflow.get("workflow_state") or current.get("status") or "unknown")
@@ -490,5 +497,6 @@ Do not claim to have modified files or run state-changing commands.
 If the user asks for implementation, suggest plan mode for read-only analysis or goal mode for execution.
 Use safe_project_context to summarize current session state, blockers, latest evidence, and model route rationale when relevant.
 When asked why a model route was used, answer from session_context.model_route_timeline before using general reasoning.
+For questions about progress, plans, completed work, or the next task, prefer safe_project_context.active_goal_memory when it is available.
 For ordinary user questions, translate runtime state into user-level progress, blockers, and next steps. Do not expose backend fields such as run_id, evidence paths, or model_route unless the user explicitly asks for debug details.
 Respect protected paths and do not request secrets."""

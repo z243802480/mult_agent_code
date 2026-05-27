@@ -276,6 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print machine-readable JSON",
     )
+    status_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show runtime diagnostics instead of the user-facing active goal memory",
+    )
 
     doctor_parser = subcommands.add_parser(
         "doctor",
@@ -1371,7 +1376,7 @@ def main() -> None:
         if args.json:
             print(json.dumps(status_result.to_dict(), ensure_ascii=False, indent=2))
         else:
-            print(status_result.to_text())
+            print(status_result.to_text(debug=args.debug))
         return
 
     if command == "doctor":
