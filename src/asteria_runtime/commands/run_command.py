@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from asteria_runtime.commands.compact_command import CompactCommand
 from asteria_runtime.commands.debug_command import DebugCommand
@@ -125,6 +126,10 @@ class RunCommand:
         mode: str = "goal",
         permission_level: str = "balanced",
         model_strategy: str = "auto",
+        input_roots: list[Path] | None = None,
+        output_root: Path | None = None,
+        artifact_root: Path | None = None,
+        worktree_policy: str = "controlled_patch",
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -142,6 +147,10 @@ class RunCommand:
         self.mode = mode
         self.permission_level = permission_level
         self.model_strategy = model_strategy
+        self.input_roots = input_roots
+        self.output_root = output_root
+        self.artifact_root = artifact_root
+        self.worktree_policy = worktree_policy
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -190,6 +199,10 @@ class RunCommand:
             mode=self.mode,
             permission_level=self.permission_level,
             model_strategy=self.model_strategy,
+            input_roots=self.input_roots,
+            output_root=self.output_root,
+            artifact_root=self.artifact_root,
+            worktree_policy=self.worktree_policy,
         ).run()
         steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
@@ -227,6 +240,7 @@ class RunCommand:
                 summary="正在检查任务状态，准备继续推进。",
                 display_level="main",
             )
+        self._emit_workspace_progress_event(_progress, run_id, phase="execute")
 
         if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
             compact = CompactCommand(self.root, run_id=run_id, focus="task plan quality gate").run()
@@ -252,6 +266,15 @@ class RunCommand:
                 status_payload=self._status_payload(run_id),
                 stop_reason=self._stop_reason(steps, max_iterations=0),
             )
+            self._emit_execution_progress_events(_progress, run_id, phase="review")
+            self._emit_final_report_progress_event(
+                _progress,
+                run_id=run_id,
+                final_report_path=final_report_path,
+                final_report_summary_path=final_report_path.with_name(
+                    "final_report_summary.json"
+                ),
+            )
             return self._build_run_result(
                 run_id=run_id,
                 status=self._run_status(run_id),
@@ -275,6 +298,7 @@ class RunCommand:
                 display_level="main",
             )
             self._execute_until_no_ready(run_id, steps, iteration=index + 1, progress=_progress)
+            self._emit_execution_progress_events(_progress, run_id, phase="execute")
             if self._run_status(run_id) in {"blocked", "paused"}:
                 break
 
@@ -318,6 +342,7 @@ class RunCommand:
                 ),
                 display_level="main",
             )
+            self._emit_execution_progress_events(_progress, run_id, phase="review")
             goal_decision = self._goal_loop_decision(
                 run_id=run_id,
                 review_status=review.status,
@@ -371,7 +396,7 @@ class RunCommand:
             artifact_refs=[str(final_report_path)],
         )
         status_payload = self._status_payload(run_id)
-        self._write_final_report_summary(
+        final_report_summary_path = self._write_final_report_summary(
             run_id=run_id,
             status=run_status,
             review_status=review_status,
@@ -383,6 +408,13 @@ class RunCommand:
             steps=steps,
             status_payload=status_payload,
             stop_reason=self._stop_reason(steps, max_iterations=max_iterations),
+        )
+        self._emit_execution_progress_events(_progress, run_id, phase="review")
+        self._emit_final_report_progress_event(
+            _progress,
+            run_id=run_id,
+            final_report_path=final_report_path,
+            final_report_summary_path=final_report_summary_path,
         )
         return self._build_run_result(
             run_id=run_id,
@@ -482,12 +514,17 @@ class RunCommand:
         recommended = self._optional_str(status_payload.get("recommended_next_command"))
         model_route_timeline_path = self._write_model_route_timeline(run_id)
         model_route_timeline = self._model_route_timeline(run_dir, limit=20)
+        workspace_envelope = self._workspace_envelope(run_dir)
+        validation_conclusion = self._validation_conclusion(run_dir)
+        file_changes = self._file_change_summary(run_dir)
         summary = {
             "schema_version": "0.1.0",
             "run_id": run_id,
             "status": status,
             "review_status": review_status,
             "final_report_path": final_report_path.relative_to(self.root).as_posix(),
+            "workspace_envelope": workspace_envelope,
+            "output_locations": self._output_locations(workspace_envelope),
             "workflow_state": self._optional_str(status_payload.get("workflow_state")),
             "current_blocker": current_blocker,
             "recommended_next_command": recommended,
@@ -498,6 +535,8 @@ class RunCommand:
                 else None
             ),
             "model_route_timeline": model_route_timeline,
+            "file_changes": file_changes,
+            "validation_conclusion": validation_conclusion,
             "blockers": self._string_list(status_payload.get("blockers")),
             "next_actions": self._string_list(status_payload.get("next_actions")),
             "goal_policy": self._goal_policy_summary(run_dir, status_payload),
@@ -610,6 +649,183 @@ class RunCommand:
             "status": str(latest.get("status") or ""),
             "summary": str(latest.get("summary") or ""),
             "evidence_id": latest.get("evidence_id"),
+        }
+
+    def _emit_workspace_progress_event(
+        self,
+        progress: UserProgressLogger,
+        run_id: str,
+        *,
+        phase: str,
+    ) -> None:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        envelope = self._workspace_envelope(run_dir)
+        if not envelope:
+            return
+        output_locations = self._output_locations(envelope)
+        progress.workspace_event(
+            run_id=run_id,
+            title="Workspace and outputs selected",
+            summary=self._workspace_progress_summary(output_locations),
+            workspace=envelope,
+            output_locations=output_locations,
+            phase=phase,
+        )
+
+    def _workspace_progress_summary(self, output_locations: dict) -> str:
+        input_count = len(output_locations.get("input_roots") or [])
+        return (
+            f"Workspace {output_locations.get('workspace_root') or self.root}; "
+            f"{input_count} input root(s); output {output_locations.get('output_root')}; "
+            f"artifacts {output_locations.get('artifact_root')}."
+        )
+
+    def _emit_execution_progress_events(
+        self,
+        progress: UserProgressLogger,
+        run_id: str,
+        *,
+        phase: str,
+    ) -> None:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        model_selection = self._latest_model_selection(run_dir)
+        if model_selection:
+            progress.model_decision_event(
+                run_id=run_id,
+                phase=phase,
+                title="Model route decision",
+                summary=self._model_selection_summary(model_selection),
+                model_selection=model_selection,
+            )
+        file_changes = self._file_change_summary(run_dir)
+        if file_changes:
+            progress.file_change_event(
+                run_id=run_id,
+                phase=phase,
+                title="File changes captured",
+                summary=f"{len(file_changes)} changed file(s) are now visible in the run timeline.",
+                file_changes=file_changes,
+                artifact_refs=[item["path"] for item in file_changes if item.get("path")],
+            )
+        validation = self._validation_conclusion(run_dir)
+        if validation["status"] != "not_recorded":
+            progress.validation_event(
+                run_id=run_id,
+                phase="review" if phase == "review" else "execute",
+                title="Validation conclusion",
+                summary=validation["summary"],
+                validation=validation,
+                status="failed" if validation["status"] == "failed" else "completed",
+                evidence_refs=validation.get("evidence_refs") or [],
+            )
+
+    def _emit_final_report_progress_event(
+        self,
+        progress: UserProgressLogger,
+        *,
+        run_id: str,
+        final_report_path: Path,
+        final_report_summary_path: Path,
+    ) -> None:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        workspace_envelope = self._workspace_envelope(run_dir)
+        validation = self._validation_conclusion(run_dir)
+        file_changes = self._file_change_summary(run_dir)
+        progress.final_report_event(
+            run_id=run_id,
+            title="Final report written",
+            summary=(
+                "The final report and structured summary are available at the recorded output "
+                "locations."
+            ),
+            final_report_path=str(final_report_path),
+            final_report_summary_path=str(final_report_summary_path),
+            output_locations=self._output_locations(workspace_envelope),
+            validation=validation,
+            model_selection=self._latest_model_selection(run_dir),
+            file_changes=file_changes,
+        )
+
+    def _model_selection_summary(self, model_selection: dict) -> str:
+        selected = model_selection.get("selected_tier") or "unknown"
+        purpose = model_selection.get("purpose") or "unknown"
+        reason = model_selection.get("reason") or "No reason recorded."
+        pressure = model_selection.get("tier_pressure") or {}
+        if pressure:
+            return (
+                f"Selected {selected} for {purpose}: {reason} "
+                f"({pressure.get('default_tier', 'unknown')} -> {selected})."
+            )
+        return f"Selected {selected} for {purpose}: {reason}."
+
+    def _file_change_summary(self, run_dir: Path) -> list[dict[str, str]]:
+        changes: dict[str, dict[str, str]] = {}
+        artifact_log = run_dir / "artifacts.jsonl"
+        if artifact_log.exists():
+            for artifact in self.jsonl.read_all(artifact_log, "artifact"):
+                path = str(artifact.get("path") or "")
+                if not path:
+                    continue
+                changes[path] = {
+                    "path": path,
+                    "operation": "modified",
+                    "source": "artifact",
+                    "artifact_id": str(artifact.get("artifact_id") or ""),
+                    "summary": str(artifact.get("summary") or ""),
+                }
+        evidence_log = run_dir / "task_execution_evidence.jsonl"
+        if evidence_log.exists():
+            for evidence in self.jsonl.read_all(evidence_log, "task_execution_evidence"):
+                candidate = evidence.get("candidate") or {}
+                for path in candidate.get("promoted_files") or []:
+                    text_path = str(path)
+                    changes[text_path] = {
+                        "path": text_path,
+                        "operation": "promoted",
+                        "source": "task_execution_evidence",
+                        "task_id": str(evidence.get("task_id") or ""),
+                        "summary": str(evidence.get("summary") or ""),
+                    }
+        return list(changes.values())[-20:]
+
+    def _validation_conclusion(self, run_dir: Path) -> dict[str, Any]:
+        validation_path = run_dir / "validation_results.jsonl"
+        validations = (
+            self.jsonl.read_all(validation_path, "validation_result")
+            if validation_path.exists()
+            else []
+        )
+        verification_calls = self._verification_evidence(run_dir)
+        passed_validations = [item for item in validations if item.get("status") == "passed"]
+        failed_validations = [item for item in validations if item.get("status") == "failed"]
+        passed_commands = [item for item in verification_calls if item.get("status") == "success"]
+        failed_commands = [item for item in verification_calls if item.get("status") != "success"]
+        total = len(validations) + len(verification_calls)
+        passed = len(passed_validations) + len(passed_commands)
+        failed = len(failed_validations) + len(failed_commands)
+        if total == 0:
+            status = "not_recorded"
+            summary = "No validation or verification command has been recorded yet."
+        elif failed:
+            status = "failed"
+            summary = f"Validation has failures: {passed}/{total} check(s) passed."
+        else:
+            status = "passed"
+            summary = f"Validation passed: {passed}/{total} check(s) passed."
+        refs: list[str] = []
+        if validations:
+            refs.append(validation_path.relative_to(self.root).as_posix())
+        if verification_calls:
+            refs.append((run_dir / "tool_calls.jsonl").relative_to(self.root).as_posix())
+        return {
+            "status": status,
+            "summary": summary,
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "validation_result_count": len(validations),
+            "verification_command_count": len(verification_calls),
+            "evidence_refs": refs,
         }
 
     def _execute_until_no_ready(
@@ -1259,6 +1475,7 @@ class RunCommand:
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         acceptance = self._latest_acceptance_report()
         verification_evidence = self._verification_evidence(run_dir)
+        workspace_envelope = self._workspace_envelope(run_dir)
         completion = self._completion_state(
             done=done,
             total=len(task_plan["tasks"]),
@@ -1288,6 +1505,15 @@ class RunCommand:
             f"- Release gate signal: {self._acceptance_summary(acceptance)}",
             f"- Model calls: {cost_report['model_calls']}",
             f"- Tool calls: {cost_report['tool_calls']}",
+            "",
+            "## Workspace and Outputs",
+            "",
+            f"- Workspace root: {workspace_envelope.get('workspace_root') or self.root}",
+            f"- Input roots: {', '.join(workspace_envelope.get('input_roots') or []) or 'unknown'}",
+            f"- Output root: {workspace_envelope.get('output_root') or self.root}",
+            f"- Artifact root: {workspace_envelope.get('artifact_root') or 'unknown'}",
+            f"- Worktree policy: {workspace_envelope.get('worktree_policy') or workspace_envelope.get('candidate_workspace_policy') or 'unknown'}",
+            f"- Permission mode: {workspace_envelope.get('permission_mode') or 'unknown'}",
             "",
             "## Steps",
             "",
@@ -1514,6 +1740,22 @@ class RunCommand:
             if summary not in artifacts:
                 artifacts.append(summary)
         return artifacts[-20:]
+
+    def _workspace_envelope(self, run_dir: Path) -> dict:
+        path = run_dir / "workspace_envelope.json"
+        if not path.exists():
+            return {}
+        return self.store.read(path, "workspace_envelope")
+
+    def _output_locations(self, workspace_envelope: dict) -> dict:
+        return {
+            "workspace_root": workspace_envelope.get("workspace_root"),
+            "input_roots": workspace_envelope.get("input_roots") or [],
+            "output_root": workspace_envelope.get("output_root"),
+            "artifact_root": workspace_envelope.get("artifact_root"),
+            "worktree_policy": workspace_envelope.get("worktree_policy")
+            or workspace_envelope.get("candidate_workspace_policy"),
+        }
 
     def _execution_evidence(self, run_dir: Path) -> list[dict]:
         path = run_dir / "task_execution_evidence.jsonl"

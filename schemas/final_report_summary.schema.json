@@ -23,6 +23,8 @@
     "status": { "type": "string" },
     "review_status": { "type": "string" },
     "final_report_path": { "type": "string" },
+    "workspace_envelope": { "type": "object" },
+    "output_locations": { "type": "object" },
     "workflow_state": { "type": ["string", "null"] },
     "current_blocker": { "type": ["string", "null"] },
     "recommended_next_command": { "type": ["string", "null"] },
@@ -32,6 +34,11 @@
       "type": "array",
       "items": { "type": "object" }
     },
+    "file_changes": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "validation_conclusion": { "type": "object" },
     "blockers": {
       "type": "array",
       "items": { "type": "string" }

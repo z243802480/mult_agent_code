@@ -615,3 +615,43 @@ def test_acceptance_repair_options_parse() -> None:
     assert run_promoted_args.rerun_promoted
     assert run_promoted_args.promoted_run_max_iterations == 2
     assert run_promoted_args.promoted_run_max_tasks_per_iteration == 3
+
+
+def test_plan_and_run_parse_workspace_selection_options() -> None:
+    parser = build_parser()
+
+    plan_args = parser.parse_args(
+        [
+            "plan",
+            "ship report",
+            "--root",
+            ".",
+            "--input-root",
+            "service-a",
+            "--input-root",
+            "service-b",
+            "--output-root",
+            "deliverables",
+            "--artifact-root",
+            ".asteria/exports",
+            "--worktree-policy",
+            "worktree",
+        ]
+    )
+    assert plan_args.input_root == ["service-a", "service-b"]
+    assert plan_args.output_root == "deliverables"
+    assert plan_args.artifact_root == ".asteria/exports"
+    assert plan_args.worktree_policy == "worktree"
+
+    run_args = parser.parse_args(
+        [
+            "run",
+            "ship report",
+            "--input-root",
+            "service-a",
+            "--output-root",
+            "deliverables",
+        ]
+    )
+    assert run_args.input_root == ["service-a"]
+    assert run_args.output_root == "deliverables"

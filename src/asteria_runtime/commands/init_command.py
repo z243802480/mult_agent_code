@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from asteria_runtime.core.workspace_registry import WorkspaceRegistry
 from asteria_runtime.resources import schema_dir, template_path
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -41,12 +42,19 @@ class InitResult:
 
 
 class InitCommand:
-    def __init__(self, root: Path, profile: str = "auto", force: bool = False) -> None:
+    def __init__(
+        self,
+        root: Path,
+        profile: str = "auto",
+        force: bool = False,
+        global_config_dir: Path | None = None,
+    ) -> None:
         self.root = root.resolve()
         self.profile = profile
         self.force = force
         self.validator = SchemaValidator(schema_dir())
         self.store = JsonStore(self.validator)
+        self.global_config_dir = global_config_dir
 
     def run(self) -> InitResult:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -91,6 +99,7 @@ class InitCommand:
             updated,
         )
         self._write_json(tasks_dir / "backlog.json", "task_board", backlog, created, updated)
+        self._record_global_workspace(project_config, warnings)
 
         agents_path = self.root / "AGENTS.md"
         if agents_path.exists():
@@ -107,6 +116,17 @@ class InitCommand:
             )
 
         return InitResult(self.root, created, updated, preserved, warnings)
+
+    def _record_global_workspace(self, project_config: dict, warnings: list[str]) -> None:
+        try:
+            WorkspaceRegistry(self.global_config_dir, self.validator).record_workspace(
+                workspace_root=self.root,
+                name=str(project_config.get("name") or self.root.name),
+                output_root=self.root,
+                artifact_root=self.root / ".asteria" / "artifacts",
+            )
+        except OSError as exc:
+            warnings.append(f"Global workspace index could not be updated: {exc}")
 
     def _write_json(
         self,

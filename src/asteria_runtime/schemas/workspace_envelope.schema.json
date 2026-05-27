@@ -25,7 +25,9 @@
       "items": { "type": "string" }
     },
     "output_root": { "type": "string" },
+    "artifact_root": { "type": "string" },
     "candidate_workspace_policy": { "type": "string" },
+    "worktree_policy": { "type": "string" },
     "read_scope": {
       "type": "array",
       "items": { "type": "string" }
@@ -33,6 +35,16 @@
     "write_scope": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "scope_summary": {
+      "type": "object",
+      "properties": {
+        "input_root_count": { "type": "integer" },
+        "read_scope_count": { "type": "integer" },
+        "write_scope_count": { "type": "integer" },
+        "output_inside_workspace": { "type": "boolean" },
+        "artifact_root_inside_workspace": { "type": "boolean" }
+      }
     },
     "artifact_policy": { "type": "string" },
     "git_policy": { "type": "string" },

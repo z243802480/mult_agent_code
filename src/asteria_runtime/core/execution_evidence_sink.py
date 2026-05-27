@@ -211,6 +211,7 @@ class ExecutionEvidenceSink:
 
         path = context.run_dir / "artifacts.jsonl"
         store = JsonlStore(self.validator)
+        workspace = context.policy.get("workspace_envelope") or {}
         with _ARTIFACT_LOCK:
             existing = store.read_all(path, "artifact") if path.exists() else []
             known = {artifact["path"] for artifact in existing}
@@ -225,6 +226,10 @@ class ExecutionEvidenceSink:
                     "task_id": task["task_id"],
                     "type": self.artifact_type(artifact_path),
                     "path": artifact_path,
+                    "absolute_path": str((context.root / artifact_path).resolve()),
+                    "workspace_id": workspace.get("workspace_id"),
+                    "output_root": workspace.get("output_root"),
+                    "artifact_root": workspace.get("artifact_root"),
                     "created_by": "CoderAgent",
                     "summary": f"Created or modified by {task['task_id']}: {task['title']}",
                     "created_at": now_iso(),

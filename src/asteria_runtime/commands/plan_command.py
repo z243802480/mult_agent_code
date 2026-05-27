@@ -11,6 +11,7 @@ from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_config import apply_run_config, write_run_config
+from asteria_runtime.core.workspace_registry import WorkspaceRegistry
 from asteria_runtime.core.workspace_envelope import (
     build_workspace_envelope,
     workspace_summary,
@@ -41,6 +42,8 @@ class PlanResult:
     task_plan_path: Path
     task_plan_eval_path: Path
     cost_report_path: Path
+    output_root: Path
+    artifact_root: Path
     task_count: int
     task_plan_status: str
     task_plan_score: float
@@ -52,6 +55,8 @@ class PlanResult:
                 f"GoalSpec: {self.goal_spec_path}",
                 f"Task plan: {self.task_plan_path}",
                 f"Task plan eval: {self.task_plan_eval_path}",
+                f"Output root: {self.output_root}",
+                f"Artifact root: {self.artifact_root}",
                 f"Task plan quality: {self.task_plan_status} ({self.task_plan_score:.2f})",
                 f"Cost report: {self.cost_report_path}",
                 f"Tasks: {self.task_count}",
@@ -69,6 +74,11 @@ class PlanCommand:
         mode: str = "plan",
         permission_level: str = "ask",
         model_strategy: str = "auto",
+        global_config_dir: Path | None = None,
+        input_roots: list[Path] | None = None,
+        output_root: Path | None = None,
+        artifact_root: Path | None = None,
+        worktree_policy: str = "controlled_patch",
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -78,6 +88,11 @@ class PlanCommand:
         self.mode = mode
         self.permission_level = permission_level
         self.model_strategy = model_strategy
+        self.global_config_dir = global_config_dir
+        self.input_roots = input_roots
+        self.output_root = output_root
+        self.artifact_root = artifact_root
+        self.worktree_policy = worktree_policy
 
     def run(self) -> PlanResult:
         agent_dir = self.root / ".asteria"
@@ -92,7 +107,21 @@ class PlanCommand:
         workspace_envelope = build_workspace_envelope(
             workspace_root=self.root,
             permission_level=self.permission_level,
+            input_roots=self.input_roots,
+            output_root=self.output_root,
+            artifact_root=self.artifact_root,
+            candidate_workspace_policy=self.worktree_policy,
+            worktree_policy=self.worktree_policy,
         )
+        try:
+            WorkspaceRegistry(self.global_config_dir, self.validator).record_workspace(
+                workspace_root=self.root,
+                name=str(project_config.get("name") or self.root.name),
+                output_root=Path(str(workspace_envelope["output_root"])),
+                artifact_root=Path(str(workspace_envelope["artifact_root"])),
+            )
+        except OSError:
+            pass
         write_workspace_envelope(
             run_dir=run_dir,
             validator=self.validator,
@@ -185,7 +214,14 @@ class PlanCommand:
             run_id=run["run_id"],
             title="Workspace selected",
             summary="Runtime bound this plan to the selected workspace and output scope.",
-            workspace=workspace_summary(workspace_envelope),
+            workspace=workspace_envelope,
+            output_locations={
+                "workspace_root": workspace_envelope["workspace_root"],
+                "input_roots": workspace_envelope["input_roots"],
+                "output_root": workspace_envelope["output_root"],
+                "artifact_root": workspace_envelope["artifact_root"],
+                "worktree_policy": workspace_envelope["worktree_policy"],
+            },
             phase="plan",
         )
         progress_logger.permission_event(
@@ -553,6 +589,8 @@ class PlanCommand:
             task_plan_path=task_plan_path,
             task_plan_eval_path=task_plan_eval_path,
             cost_report_path=cost_report_path,
+            output_root=Path(str(workspace_envelope["output_root"])),
+            artifact_root=Path(str(workspace_envelope["artifact_root"])),
             task_count=len(task_plan["tasks"]),
             task_plan_status=str(task_plan_eval["status"]),
             task_plan_score=float(task_plan_eval["overall_score"]),

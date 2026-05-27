@@ -75,6 +75,10 @@ def test_evidence_sink_records_keep_experiment_and_artifact(tmp_path: Path) -> N
     assert experiments[0]["metrics_after"]["verification_pass_rate"] == 1.0
     assert artifacts[0]["path"] == "src/tool.py"
     assert artifacts[0]["type"] == "source_file"
+    assert artifacts[0]["workspace_id"] == "workspace-1"
+    assert artifacts[0]["output_root"] == str(tmp_path.resolve())
+    assert artifacts[0]["artifact_root"] == str((tmp_path / ".asteria" / "artifacts").resolve())
+    assert artifacts[0]["absolute_path"] == str((tmp_path / "src/tool.py").resolve())
 
 
 def test_evidence_sink_allocates_artifact_ids_safely_for_parallel_writes(
@@ -198,7 +202,14 @@ def _context(tmp_path: Path, validator: SchemaValidator) -> RuntimeContext:
     return RuntimeContext(
         root=tmp_path,
         run_id="run-1",
-        policy={"protected_paths": []},
+        policy={
+            "protected_paths": [],
+            "workspace_envelope": {
+                "workspace_id": "workspace-1",
+                "output_root": str(tmp_path.resolve()),
+                "artifact_root": str((tmp_path / ".asteria" / "artifacts").resolve()),
+            },
+        },
         validator=validator,
         event_logger=EventLogger(tmp_path / "events.jsonl", validator),
         run_dir_override=tmp_path,

@@ -56,11 +56,20 @@ def test_plan_persists_run_config_and_effective_policy_overrides(tmp_path: Path)
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     config = JsonStore(validator).read(run_dir / "run_config.json", "run_config")
 
+    assert result.output_root == tmp_path.resolve()
+    assert result.artifact_root == (tmp_path / ".asteria" / "artifacts").resolve()
+    assert "Output root:" in result.to_text()
+    assert "Artifact root:" in result.to_text()
     assert config["mode"] == "goal"
     assert config["permission_level"] == "ask"
     assert config["permission_mode"] == "ask_everything"
     assert config["workspace_envelope"]["workspace_root"] == str(tmp_path.resolve())
     assert config["workspace_envelope"]["output_root"] == str(tmp_path.resolve())
+    assert config["workspace_envelope"]["artifact_root"] == str(
+        (tmp_path / ".asteria" / "artifacts").resolve()
+    )
+    assert config["workspace_envelope"]["worktree_policy"] == "controlled_patch"
+    assert config["workspace_envelope"]["scope_summary"]["output_inside_workspace"] is True
     assert config["model_strategy"] == "economy"
     assert config["decision_granularity"] == "manual"
 
@@ -102,6 +111,40 @@ def test_plan_records_workspace_and_permission_user_progress(tmp_path: Path) -> 
     assert envelope["workspace_root"] == str(tmp_path.resolve())
     assert any('"channel": "workspace"' in line for line in progress)
     assert any('"channel": "permission"' in line for line in progress)
+
+
+def test_plan_accepts_multi_input_output_and_worktree_policy(tmp_path: Path) -> None:
+    input_a = tmp_path / "project-a"
+    input_b = tmp_path / "project-b"
+    output = tmp_path / "deliverables"
+    artifacts = tmp_path / ".asteria" / "exports"
+    input_a.mkdir()
+    input_b.mkdir()
+    InitCommand(tmp_path).run()
+
+    result = PlanCommand(
+        tmp_path,
+        "Create a tiny offline artifact",
+        model_client=FakeModelClient(),
+        mode="plan",
+        permission_level="reviewed_auto",
+        model_strategy="auto",
+        input_roots=[input_a, input_b],
+        output_root=output,
+        artifact_root=artifacts,
+        worktree_policy="worktree",
+    ).run()
+
+    envelope = JsonStore(SchemaValidator(SCHEMA_DIR)).read(
+        tmp_path / ".asteria" / "runs" / result.run_id / "workspace_envelope.json",
+        "workspace_envelope",
+    )
+    assert envelope["input_roots"] == [str(input_a.resolve()), str(input_b.resolve())]
+    assert envelope["output_root"] == str(output.resolve())
+    assert envelope["artifact_root"] == str(artifacts.resolve())
+    assert envelope["worktree_policy"] == "worktree"
+    assert envelope["candidate_workspace_policy"] == "worktree"
+    assert envelope["scope_summary"]["input_root_count"] == 2
 
 
 def test_plan_mode_does_not_modify_workspace_files_outside_runtime(tmp_path: Path) -> None:

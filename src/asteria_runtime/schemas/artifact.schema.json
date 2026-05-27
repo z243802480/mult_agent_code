@@ -10,6 +10,10 @@
     "task_id": { "type": ["string", "null"] },
     "type": { "type": "string" },
     "path": { "type": "string" },
+    "absolute_path": { "type": ["string", "null"] },
+    "workspace_id": { "type": ["string", "null"] },
+    "output_root": { "type": ["string", "null"] },
+    "artifact_root": { "type": ["string", "null"] },
     "created_by": { "type": ["string", "null"] },
     "summary": { "type": "string" },
     "created_at": { "type": "string" }

@@ -305,8 +305,11 @@ class SessionsCommand:
             "workspace_id": workspace.get("workspace_id"),
             "workspace_root": workspace.get("workspace_root") or workspace.get("path"),
             "output_root": workspace.get("output_root") or workspace.get("path"),
+            "artifact_root": workspace.get("artifact_root"),
             "permission_mode": workspace.get("permission_mode"),
             "candidate_workspace_policy": workspace.get("candidate_workspace_policy"),
+            "worktree_policy": workspace.get("worktree_policy")
+            or workspace.get("candidate_workspace_policy"),
             "git_policy": workspace.get("git_policy"),
         }
 

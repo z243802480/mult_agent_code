@@ -106,8 +106,12 @@ runtime 需要同时支持一次性读取和流式订阅。事件先落盘为 JS
 - `file_created`
 - `file_modified`
 - `file_deleted`
+- `file_changed`
 - `evidence`
 - `decision`
+- `model_decision`
+- `validation_result`
+- `final_report`
 - `heartbeat`
 
 这样 runtime 可以对外提供几种视图：
@@ -152,6 +156,7 @@ Inspector 展示：
 ## 8. 当前落地进展
 
 - `plan` 已写入 runtime-native `user_progress.jsonl`，覆盖 `understand / plan / review / result / next` 阶段。
+- `/run` 的用户过程线已补齐 workspace/input/output 选择、输出与 artifact 落点、模型路线判断、文件变化摘要、验证结论和最终报告落点；这些信息同时进入 `user_progress.jsonl` 与 `final_report_summary.json`。
 - provider streaming 已写入 `model` channel：流式路径会记录 `start / delta / end / error`，非流式路径也会以同一协议记录开始、完整响应和结束。
 - `ToolExecutionGateway` 已写入 `tool` channel：工具开始、工具结束、工具失败都会形成结构化事件，并保留 `tool_call_id`、命令摘要、耗时和调用链。
 - 文件写入类工具已写入 `file` channel：`write_file`、`apply_patch`、`restore_backup` 的成功结果会记录文件路径、操作类型和备份引用。
@@ -159,7 +164,7 @@ Inspector 展示：
 
 ## 9. 下一步开发重点
 
-1. 将 `/run`、`/resume`、`/review` 接入同一协议，让真实任务的计划、执行、验证、修复都能被用户看懂。
+1. 继续把 `/resume`、`/review` 的细分节点接入同一协议，让真实任务的计划、执行、验证、修复都能被用户看懂。
 2. Studio server 优先读取 `user_progress.jsonl`，只在旧 run 缺少该文件时回退到历史证据。
 3. Studio 前端按用户任务主线展示 `display_level=main`，把命令、stdout、schema、原始证据放到 Inspector。
 4. 扩展 `studio-benchmark`：检查 `model/tool/file/evidence` channel 覆盖率，以及五个真实用户任务是否完成到可复盘程度。

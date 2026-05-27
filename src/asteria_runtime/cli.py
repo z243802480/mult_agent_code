@@ -138,6 +138,31 @@ def add_session_id_argument(parser: argparse.ArgumentParser, help_text: str) -> 
     )
 
 
+def add_workspace_selection_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--input-root",
+        action="append",
+        default=[],
+        help="Input directory to mount for planning; repeat for multi-project goals",
+    )
+    parser.add_argument(
+        "--output-root",
+        default=None,
+        help="Directory where user-facing outputs should be written",
+    )
+    parser.add_argument(
+        "--artifact-root",
+        default=None,
+        help="Directory for generated reports, exports, and runtime-managed artifacts",
+    )
+    parser.add_argument(
+        "--worktree-policy",
+        choices=["controlled_patch", "worktree", "isolated_copy"],
+        default="controlled_patch",
+        help="Candidate workspace strategy for later execution",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = AsteriaArgumentParser(prog="asteria", description="Asteria runtime CLI")
     parser.add_argument(
@@ -204,6 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plan_parser.add_argument("goal", help="Natural-language goal")
     plan_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_workspace_selection_arguments(plan_parser)
     plan_parser.add_argument(
         "--permission-level",
         choices=["ask", "balanced", "auto", "ask_everything", "reviewed_auto"],
@@ -574,6 +600,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument("goal", nargs="?", help="Natural-language goal")
     run_parser.add_argument("--root", default=".", help="Workspace root path")
+    add_workspace_selection_arguments(run_parser)
     add_session_id_argument(
         run_parser,
         "Existing session id to continue; defaults to current session",
@@ -1334,6 +1361,10 @@ def main() -> None:
             goal=args.goal,
             permission_level=args.permission_level,
             model_strategy=args.model_strategy,
+            input_roots=[Path(item) for item in args.input_root] if args.input_root else None,
+            output_root=Path(args.output_root) if args.output_root else None,
+            artifact_root=Path(args.artifact_root) if args.artifact_root else None,
+            worktree_policy=args.worktree_policy,
         ).run()
         print(plan_result.to_text())
         print("")
@@ -1526,6 +1557,10 @@ def main() -> None:
             mode="goal",
             permission_level=args.permission_level,
             model_strategy=args.model_strategy,
+            input_roots=[Path(item) for item in args.input_root] if args.input_root else None,
+            output_root=Path(args.output_root) if args.output_root else None,
+            artifact_root=Path(args.artifact_root) if args.artifact_root else None,
+            worktree_policy=args.worktree_policy,
         ).run()
         if args.json:
             print(json.dumps(run_result.to_dict(), ensure_ascii=False, indent=2))

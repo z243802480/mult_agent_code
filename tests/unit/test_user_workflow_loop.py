@@ -408,9 +408,19 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     )
     assert result.final_report_summary == final_summary
     assert final_summary["workflow_state"] == "ready_for_review"
+    assert final_summary["output_locations"]["workspace_root"] == str(tmp_path.resolve())
+    assert final_summary["output_locations"]["artifact_root"] == str(
+        (tmp_path / ".asteria" / "artifacts").resolve()
+    )
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "## Workspace and Outputs" in final_report
+    assert f"- Output root: {tmp_path.resolve()}" in final_report
     assert final_summary["model_selection"]["reason"] == (
         "capability_feedback_escalated_from_medium"
     )
+    assert final_summary["file_changes"][0]["path"] == "workflow_report.md"
+    assert final_summary["validation_conclusion"]["status"] == "passed"
+    assert final_summary["validation_conclusion"]["verification_command_count"] == 1
     result_payload = result.to_dict()
     assert result_payload["final_report_summary"] == final_summary
     assert result_payload["final_report_summary_path"] == str(result.final_report_summary_path)
@@ -429,6 +439,21 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     assert route_timeline["timeline"][0]["reason"] == (
         "capability_feedback_escalated_from_medium"
     )
+    user_progress = JsonlStore(SchemaValidator(Path("schemas"))).read_all(
+        result.final_report_path.with_name("user_progress.jsonl"),
+        "user_progress_event",
+    )
+    event_types = [event["event_type"] for event in user_progress]
+    assert "workspace_selected" in event_types
+    assert "model_decision" in event_types
+    assert "file_changed" in event_types
+    assert "validation_result" in event_types
+    assert "final_report" in event_types
+    final_report_event = [event for event in user_progress if event["event_type"] == "final_report"][-1]
+    assert final_report_event["data"]["output_locations"]["workspace_root"] == str(
+        tmp_path.resolve()
+    )
+    assert final_report_event["data"]["validation"]["status"] == "passed"
     summary = JsonStore(SchemaValidator(Path("schemas"))).read(
         result.run_loop_summary_path,
         "run_loop_summary",
@@ -928,9 +953,18 @@ def _create_minimal_completed_run(root: Path) -> str:
         "workspace_root": str(root.resolve()),
         "input_roots": [str(root.resolve())],
         "output_root": str(root.resolve()),
+        "artifact_root": str((root / ".asteria" / "artifacts").resolve()),
         "candidate_workspace_policy": "controlled_patch",
+        "worktree_policy": "controlled_patch",
         "read_scope": [str(root.resolve())],
         "write_scope": [str(root.resolve())],
+        "scope_summary": {
+            "input_root_count": 1,
+            "read_scope_count": 1,
+            "write_scope_count": 1,
+            "output_inside_workspace": True,
+            "artifact_root_inside_workspace": True,
+        },
         "artifact_policy": "workspace_artifacts",
         "git_policy": "detect",
         "permission_mode": "reviewed_auto",
@@ -1062,7 +1096,10 @@ def _create_minimal_completed_run(root: Path) -> str:
                     },
                 },
             },
-            "candidate": {"artifact_refs": ["task_plan.json"]},
+            "candidate": {
+                "artifact_refs": ["task_plan.json"],
+                "promoted_files": ["workflow_report.md"],
+            },
             "contract_check": {"ok": True},
             "tool_results": [{"tool": "run_command", "ok": True}],
             "verification_results": [{"name": "workflow setup", "status": "pass"}],

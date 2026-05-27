@@ -55,6 +55,31 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         summary="mode selected",
         permission={"mode": "reviewed_auto"},
     )
+    logger.model_decision_event(
+        run_id="run-1",
+        title="model",
+        summary="selected strong",
+        model_selection={"selected_tier": "strong", "reason": "risk"},
+    )
+    logger.file_change_event(
+        run_id="run-1",
+        title="files",
+        summary="changed",
+        file_changes=[{"path": "src/app.py", "operation": "modified"}],
+    )
+    logger.validation_event(
+        run_id="run-1",
+        title="validation",
+        summary="passed",
+        validation={"status": "passed", "passed": 1, "total": 1},
+    )
+    logger.final_report_event(
+        run_id="run-1",
+        title="final",
+        summary="written",
+        final_report_path="final_report.md",
+        final_report_summary_path="final_report_summary.json",
+    )
 
     events = logger.read_all()
     assert [event["channel"] for event in events] == [
@@ -63,6 +88,10 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         "conclusion",
         "workspace",
         "permission",
+        "model",
+        "file",
+        "validation",
+        "conclusion",
     ]
     assert [event["event_type"] for event in events] == [
         "heartbeat",
@@ -70,5 +99,10 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         "message",
         "workspace_selected",
         "permission_decision",
+        "model_decision",
+        "file_changed",
+        "validation_result",
+        "final_report",
     ]
     assert events[0]["display_level"] == "inspector"
+    assert events[-1]["data"]["final_report_path"] == "final_report.md"

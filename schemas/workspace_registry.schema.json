@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkspaceRegistry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "current_workspace_id",
+    "current_workspace_root",
+    "recent_workspaces",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "current_workspace_id": { "type": ["string", "null"] },
+    "current_workspace_root": { "type": ["string", "null"] },
+    "recent_workspaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "workspace_id",
+          "name",
+          "workspace_root",
+          "output_root",
+          "artifact_root",
+          "last_opened_at"
+        ],
+        "properties": {
+          "workspace_id": { "type": "string" },
+          "name": { "type": "string" },
+          "workspace_root": { "type": "string" },
+          "output_root": { "type": "string" },
+          "artifact_root": { "type": "string" },
+          "last_opened_at": { "type": "string" }
+        }
+      }
+    },
+    "updated_at": { "type": "string" }
+  }
+}

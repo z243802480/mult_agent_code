@@ -380,6 +380,7 @@ class StatusResult:
                 "Workspace:",
                 f"- root: {workspace.get('workspace_root') or self.root}",
                 f"- output: {workspace.get('output_root') or workspace.get('workspace_root') or self.root}",
+                f"- artifacts: {workspace.get('artifact_root') or 'unknown'}",
                 f"- permission: {workspace.get('permission_mode') or 'unknown'}",
                 "",
             ]
@@ -465,10 +466,12 @@ class StatusResult:
             lines.append(f"- id: {workspace.get('workspace_id') or 'unknown'}")
             lines.append(f"- root: {workspace.get('workspace_root') or 'unknown'}")
             lines.append(f"- output: {workspace.get('output_root') or 'unknown'}")
+            lines.append(f"- artifact root: {workspace.get('artifact_root') or 'unknown'}")
             lines.append(f"- permission: {workspace.get('permission_mode') or 'unknown'}")
             lines.append(
                 f"- candidate policy: {workspace.get('candidate_workspace_policy') or 'unknown'}"
             )
+            lines.append(f"- worktree policy: {workspace.get('worktree_policy') or 'unknown'}")
         recommended = (
             self.current_context.get("recommended_next_command") if self.current_context else None
         )

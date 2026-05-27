@@ -157,6 +157,7 @@ class UserProgressLogger:
         title: str,
         summary: str,
         workspace: dict[str, Any],
+        output_locations: dict[str, Any] | None = None,
         phase: str = "understand",
     ) -> dict[str, Any]:
         return self.record(
@@ -167,7 +168,7 @@ class UserProgressLogger:
             status="completed",
             title=title,
             summary=summary,
-            data={"workspace": workspace},
+            data={"workspace": workspace, "output_locations": output_locations or {}},
         )
 
     def permission_event(
@@ -189,6 +190,120 @@ class UserProgressLogger:
             title=title,
             summary=summary,
             data={"permission": permission},
+        )
+
+    def model_decision_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        model_selection: dict[str, Any],
+        phase: str = "execute",
+        status: str = "completed",
+    ) -> dict[str, Any]:
+        return self.record(
+            run_id=run_id,
+            channel="model",
+            event_type="model_decision",
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            data={"model_selection": model_selection},
+            call_chain=["RunCommand"],
+            execution_chain=[phase, "model_selection"],
+        )
+
+    def file_change_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        file_changes: list[dict[str, Any]],
+        phase: str = "execute",
+        status: str = "completed",
+        artifact_refs: list[str] | None = None,
+        evidence_refs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return self.record(
+            run_id=run_id,
+            channel="file",
+            event_type="file_changed",
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            artifact_refs=artifact_refs,
+            evidence_refs=evidence_refs,
+            file_changes=file_changes,
+            data={"changed_file_count": len(file_changes)},
+            call_chain=["RunCommand"],
+            execution_chain=[phase, "file_changes"],
+        )
+
+    def validation_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        validation: dict[str, Any],
+        phase: str = "review",
+        status: str = "completed",
+        evidence_refs: list[str] | None = None,
+    ) -> dict[str, Any]:
+        return self.record(
+            run_id=run_id,
+            channel="validation",
+            event_type="validation_result",
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            evidence_refs=evidence_refs,
+            data={"validation": validation},
+            call_chain=["RunCommand"],
+            execution_chain=[phase, "validation"],
+        )
+
+    def final_report_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        final_report_path: str,
+        final_report_summary_path: str | None = None,
+        output_locations: dict[str, Any] | None = None,
+        validation: dict[str, Any] | None = None,
+        model_selection: dict[str, Any] | None = None,
+        file_changes: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        refs = [final_report_path]
+        if final_report_summary_path:
+            refs.append(final_report_summary_path)
+        return self.record(
+            run_id=run_id,
+            channel="conclusion",
+            event_type="final_report",
+            phase="result",
+            status="completed",
+            title=title,
+            summary=summary,
+            artifact_refs=refs,
+            evidence_refs=refs,
+            file_changes=file_changes or [],
+            data={
+                "final_report_path": final_report_path,
+                "final_report_summary_path": final_report_summary_path,
+                "output_locations": output_locations or {},
+                "validation": validation or {},
+                "model_selection": model_selection or {},
+            },
+            call_chain=["RunCommand"],
+            execution_chain=["result", "final_report"],
         )
 
     def read_all(self) -> list[dict[str, Any]]:
