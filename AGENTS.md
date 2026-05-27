@@ -105,7 +105,8 @@ Agents must not:
 - Read secrets without explicit approval.
 - Run destructive shell commands.
 - Install global packages.
-- Push to remote repositories.
+- Push secrets, credentials, protected files, local route/key files, `.env*`, private keys, or other sensitive local data to remote repositories.
+- Push code or documentation only when the user explicitly asks for it, after checking the staged diff does not include protected paths or real secrets.
 - Deploy to production.
 - Send sensitive local data to network services.
 
