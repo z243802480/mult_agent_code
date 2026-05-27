@@ -165,7 +165,11 @@ def test_validation_result_validates_against_schema() -> None:
     )
 
 
-def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) -> None:
+def test_runtime_profile_builder_upgrades_weak_capability_route(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
     validator = SchemaValidator(SCHEMA_DIR)
     model_dir = tmp_path / ".asteria" / "model"
     model_dir.mkdir(parents=True)
@@ -259,6 +263,72 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(tmp_path: Path) 
     sandbox_profile = (run_dir / "sandbox_profiles.jsonl").read_text(encoding="utf-8")
     assert "temp_workspace" in sandbox_profile
     assert "use copied temp workspace" in sandbox_profile
+
+
+def test_runtime_profile_builder_ignores_stale_capability_profile_when_route_missing(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(SCHEMA_DIR)
+    model_dir = tmp_path / ".asteria" / "model"
+    model_dir.mkdir(parents=True)
+    (model_dir / "capability_profile.json").write_text(
+        """
+{
+  "schema_version": "0.1.0",
+  "root": ".",
+  "profile_count": 1,
+  "profiles": [
+    {
+      "provider": "runtime",
+      "model": "old-medium-route",
+      "purpose": "coding",
+      "model_tier": "medium",
+      "total_calls": 3,
+      "success_calls": 1,
+      "failure_calls": 2,
+      "success_rate": 0.3333,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "failure_types": {},
+      "recommended_action": "review_worker_route_before_scaling"
+    }
+  ]
+}
+""".strip(),
+        encoding="utf-8",
+    )
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-stale",
+        policy={"permissions": {}, "protected_paths": []},
+        validator=validator,
+    )
+    task = {
+        "task_id": "task-stale",
+        "role": "CoderAgent",
+        "allowed_tools": ["read_file"],
+        "task_kind": "implementation",
+        "read_scope": ["src/"],
+        "write_scope": ["src/output.py"],
+    }
+
+    mount = RuntimeProfileBuilder(validator).build_and_record(
+        context=context,
+        task=task,
+        worker_id="worker-stale",
+        runtime_context={},
+    )
+
+    selection = mount.runtime_context["model_selection"]
+    route = mount.runtime_context["model_route_resolution"]
+    assert selection["selected_tier"] == "medium"
+    assert selection["reason"] == "task_default"
+    assert selection["capability_feedback"]["decision"] == (
+        "default_route_fallback_due_stale_capability_profile"
+    )
+    assert route["source"] == "default_route_policy"
+    assert route["fallback"]["used"] is True
+    assert route["fallback"]["source"] == "default_route_policy"
 
 
 def test_runtime_profile_builder_uses_strategy_bias_without_clobbering_routes(

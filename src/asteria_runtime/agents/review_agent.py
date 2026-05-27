@@ -20,14 +20,75 @@ class ReviewAgent:
 
     def evaluate(self, review_context: dict, run_id: str) -> dict:
         parse_error: ReviewAgentError | None = None
+        model_call_errors: list[dict[str, str]] = []
         role_contract = role_contract_for(
             role="ReviewAgent",
             purpose="run_review",
             policy=review_context.get("policy") if isinstance(review_context.get("policy"), dict) else None,
         )
+        response_content: str | None = None
+        selected_tier = "strong"
+        for tier in self._fallback_tiers(review_context):
+            selected_tier = tier
+            request = self._request(review_context, run_id, tier, role_contract.to_dict())
+            try:
+                response = self.model_client.chat(request)
+            except Exception as exc:  # noqa: BLE001 - provider boundary fallback is audited below
+                model_call_errors.append(
+                    {
+                        "model_tier": tier,
+                        "error_type": type(exc).__name__,
+                        "summary": str(exc),
+                    }
+                )
+                continue
+            response_content = response.content
+            break
+        if response_content is None:
+            report = {}
+        else:
+            try:
+                report = self._parse_json(response_content)
+            except ReviewAgentError as exc:
+                parse_error = exc
+                report = {}
+        report = self._normalize(report, review_context, run_id)
+        if parse_error:
+            report["overall"]["reason"] = (
+                f"{report['overall']['reason']} Model review returned non-JSON; "
+                "deterministic runtime checks were used for the structured report."
+            )
+            report["trajectory_eval"]["review_model_parse_error"] = str(parse_error)
+        if model_call_errors:
+            report["trajectory_eval"]["review_model_call_errors"] = model_call_errors
+            report["trajectory_eval"]["review_fallback"] = {
+                "used": response_content is None,
+                "source": "deterministic_checks" if response_content is None else "model_tier_retry",
+                "attempted_tiers": [item["model_tier"] for item in model_call_errors],
+                "selected_tier": None if response_content is None else selected_tier,
+                "reason": model_call_errors[0]["summary"],
+            }
+            if response_content is None:
+                report["overall"]["reason"] = (
+                    f"{report['overall']['reason']} Review model calls failed; "
+                    "deterministic runtime checks were used as an auditable fallback."
+                )
+        try:
+            self.validator.validate("eval_report", report)
+        except SchemaValidationError as exc:
+            raise ReviewAgentError(f"EvalReport failed schema validation: {exc}") from exc
+        return report
+
+    def _request(
+        self,
+        review_context: dict,
+        run_id: str,
+        model_tier: str,
+        role_contract: dict,
+    ) -> ChatRequest:
         request = ChatRequest(
             purpose="run_review",
-            model_tier="strong",
+            model_tier=model_tier,
             messages=[
                 ChatMessage(role="system", content=self._system_prompt()),
                 ChatMessage(role="user", content=json.dumps(review_context, ensure_ascii=False, indent=2)),
@@ -38,28 +99,19 @@ class ReviewAgent:
             metadata={
                 "run_id": run_id,
                 "agent_id": "ReviewAgent",
-                "agent_role_contract": role_contract.to_dict(),
+                "agent_role_contract": role_contract,
                 **self._prompt_envelope_metadata(review_context),
             },
         )
-        response = self.model_client.chat(request)
-        try:
-            report = self._parse_json(response.content)
-        except ReviewAgentError as exc:
-            parse_error = exc
-            report = {}
-        report = self._normalize(report, review_context, run_id)
-        if parse_error:
-            report["overall"]["reason"] = (
-                f"{report['overall']['reason']} Model review returned non-JSON; "
-                "deterministic runtime checks were used for the structured report."
-            )
-            report["trajectory_eval"]["review_model_parse_error"] = str(parse_error)
-        try:
-            self.validator.validate("eval_report", report)
-        except SchemaValidationError as exc:
-            raise ReviewAgentError(f"EvalReport failed schema validation: {exc}") from exc
-        return report
+        return request
+
+    def _fallback_tiers(self, review_context: dict) -> list[str]:
+        configured = review_context.get("review_model_fallback_tiers")
+        if isinstance(configured, list):
+            tiers = [str(item).strip().lower() for item in configured]
+        else:
+            tiers = ["strong", "medium", "cheap"]
+        return [tier for tier in dict.fromkeys(tiers) if tier in {"strong", "medium", "cheap"}]
 
     def _prompt_envelope_metadata(self, review_context: dict) -> dict:
         envelope = review_context.get("prompt_envelope")

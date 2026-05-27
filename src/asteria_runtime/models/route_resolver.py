@@ -13,22 +13,38 @@ class ModelRouteResolution:
     tier: str
     provider: str
     model_name: str | None
+    base_url: str | None
     configured: bool
     env_prefix: str
     source: str
     missing: list[str]
     next_action: str
+    deadline_seconds: int | None = None
+    stream_idle_timeout_seconds: int | None = None
+    selection_reason: str = ""
+    fallback_used: bool = False
+    fallback_source: str | None = None
+    fallback_reason: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
             "tier": self.tier,
             "provider": self.provider,
             "model_name": self.model_name,
+            "base_url": self.base_url,
             "configured": self.configured,
             "env_prefix": self.env_prefix,
             "source": self.source,
             "missing": self.missing,
             "next_action": self.next_action,
+            "deadline_seconds": self.deadline_seconds,
+            "stream_idle_timeout_seconds": self.stream_idle_timeout_seconds,
+            "selection_reason": self.selection_reason,
+            "fallback": {
+                "used": self.fallback_used,
+                "source": self.fallback_source,
+                "reason": self.fallback_reason,
+            },
         }
 
 
@@ -39,11 +55,18 @@ def resolve_model_route(tier: str) -> ModelRouteResolution:
         tier=tier,
         provider=diagnostic.provider,
         model_name=diagnostic.model_name or f"{tier}-route",
+        base_url=diagnostic.base_url,
         configured=diagnostic.configured,
         env_prefix=diagnostic.env_prefix,
         source=diagnostic.source,
         missing=missing,
         next_action=_next_action(tier, diagnostic.source, missing),
+        deadline_seconds=diagnostic.timeout_seconds,
+        stream_idle_timeout_seconds=diagnostic.stream_idle_timeout_seconds,
+        selection_reason=diagnostic.selection_reason,
+        fallback_used=diagnostic.fallback_used,
+        fallback_source=diagnostic.fallback_source,
+        fallback_reason=diagnostic.fallback_reason,
     )
 
 
@@ -150,5 +173,10 @@ def _next_action(tier: str, source: str, missing: list[str]) -> str:
         return (
             f"Using fallback route `{source}` for `{tier}`. Configure "
             f"AGENT_MODEL_{tier.upper()}_PROVIDER to make the route explicit."
+        )
+    if source == "default_route_policy":
+        return (
+            f"Using default route policy for `{tier}`. Configure "
+            f"AGENT_MODEL_{tier.upper()}_PROVIDER or AGENT_MODEL_PROVIDER to override it."
         )
     return "Model route is configured."

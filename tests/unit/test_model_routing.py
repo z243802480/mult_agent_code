@@ -148,3 +148,21 @@ def test_route_resolver_reports_missing_requirements_without_fake_success(
     assert resolution.model_name == "fallback-model"
     assert "AGENT_MODEL_API_KEY or OPENAI_API_KEY" in resolution.missing
     assert "Configure model route requirements" in resolution.next_action
+
+
+def test_route_resolver_uses_auditable_default_routes_when_route_missing() -> None:
+    strong = resolve_model_route("strong")
+    cheap = resolve_model_route("cheap")
+
+    assert strong.provider == "glm"
+    assert strong.model_name == "glm-5.1"
+    assert strong.deadline_seconds == 120
+    assert strong.fallback_used is True
+    assert strong.fallback_source == "default_route_policy"
+    assert "ZAI_API_KEY" in " ".join(str(item) for item in strong.missing)
+    assert "No explicit env/local route" in (strong.fallback_reason or "")
+    assert cheap.configured is True
+    assert cheap.provider == "fake"
+    assert cheap.model_name == "fake-offline"
+    assert cheap.deadline_seconds == 30
+    assert cheap.next_action.startswith("Using default route policy")

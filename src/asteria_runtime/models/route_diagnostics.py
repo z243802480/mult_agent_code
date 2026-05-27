@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from asteria_runtime.models.factory import ZAI_PROVIDER_ALIASES, ZHIPU_PROVIDER_ALIASES
 from asteria_runtime.models.local import local_provider_names
 from asteria_runtime.models.local_route_config import any_local_route_value, local_route_value
+from asteria_runtime.models.default_routes import default_route_for_tier
 from asteria_runtime.models.model_failure import model_failure_context_from_env
 from asteria_runtime.models.routing import MODEL_TIERS
 
@@ -24,6 +25,10 @@ class RouteDiagnostic:
     streaming_enabled: bool
     stream_idle_timeout_seconds: int | None
     timeout_seconds: int | None
+    fallback_used: bool = False
+    fallback_source: str | None = None
+    fallback_reason: str | None = None
+    selection_reason: str = "explicit_route"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -40,6 +45,12 @@ class RouteDiagnostic:
                 "idle_timeout_seconds": self.stream_idle_timeout_seconds,
                 "deadline_seconds": self.timeout_seconds,
             },
+            "selection_reason": self.selection_reason,
+            "fallback": {
+                "used": self.fallback_used,
+                "source": self.fallback_source,
+                "reason": self.fallback_reason,
+            },
         }
 
 
@@ -48,21 +59,41 @@ def route_diagnostic_for_tier(tier: str) -> RouteDiagnostic:
 
     context = model_failure_context_from_env(env_prefix)
     provider = provider or context.provider
+    default_route = default_route_for_tier(tier)
+    is_default_fallback = source == default_route.source
+    model_name: str | None
+    base_url: str | None
+    if is_default_fallback:
+        provider = default_route.provider
+        model_name = default_route.model_name
+        base_url = default_route.base_url
+    else:
+        model_name = context.model_name
+        base_url = context.base_url
     api_key_present = _api_key_present(provider, env_prefix)
-    missing = _missing_requirements(provider, env_prefix, api_key_present, context.model_name)
+    missing = _missing_requirements(provider, env_prefix, api_key_present, model_name)
+    fallback_used = is_default_fallback or source.startswith("fallback_tier:")
+    selection_reason = _selection_reason(tier, source)
     return RouteDiagnostic(
         tier=tier,
         configured=not missing,
         provider=provider,
-        model_name=context.model_name,
-        base_url=context.base_url,
+        model_name=model_name,
+        base_url=base_url,
         env_prefix=env_prefix,
         source=source,
         missing=missing,
         api_key_present=api_key_present,
         streaming_enabled=_env_bool(env_prefix, "STREAMING", True),
-        stream_idle_timeout_seconds=_env_int(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS"),
-        timeout_seconds=_env_int(env_prefix, "TIMEOUT_SECONDS"),
+        stream_idle_timeout_seconds=(
+            _env_int(env_prefix, "STREAM_IDLE_TIMEOUT_SECONDS")
+            or default_route.stream_idle_timeout_seconds
+        ),
+        timeout_seconds=_env_int(env_prefix, "TIMEOUT_SECONDS") or default_route.deadline_seconds,
+        fallback_used=fallback_used,
+        fallback_source=source if fallback_used else None,
+        fallback_reason=_fallback_reason(tier, source) if fallback_used else None,
+        selection_reason=selection_reason,
     )
 
 
@@ -105,7 +136,8 @@ def _effective_route(tier: str) -> tuple[str, str, str]:
             provider.lower(),
             f"fallback_tier:{candidate}",
         )
-    return "AGENT_MODEL", "minimax", "default"
+    default_route = default_route_for_tier(tier)
+    return f"AGENT_MODEL_{tier.upper()}", default_route.provider, default_route.source
 
 
 def route_environment_for_tiers(
@@ -246,3 +278,34 @@ def _env_bool(env_prefix: str, key: str, default: bool) -> bool:
     if not value:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
+def _fallback_reason(tier: str, source: str) -> str:
+    if source == "default_route_policy":
+        return (
+            f"No explicit env/local route was found for `{tier}`; using the stable "
+            "default route policy so route guidance remains auditable."
+        )
+    if source.startswith("fallback_tier:"):
+        fallback_tier = source.split(":", 1)[1]
+        return (
+            f"No explicit route was found for `{tier}`; using configured `{fallback_tier}` "
+            "route as a tier fallback."
+        )
+    return "Route fallback was used."
+
+
+def _selection_reason(tier: str, source: str) -> str:
+    if source == "tier":
+        return f"Selected `{tier}` because tier-specific environment configuration exists."
+    if source == "local_tier":
+        return f"Selected `{tier}` because tier-specific local route configuration exists."
+    if source == "global":
+        return f"Selected `{tier}` from global environment route configuration."
+    if source == "local_global":
+        return f"Selected `{tier}` from global local route configuration."
+    if source.startswith("fallback_tier:"):
+        return _fallback_reason(tier, source)
+    if source == "default_route_policy":
+        return _fallback_reason(tier, source)
+    return "Selected model route from available route configuration."

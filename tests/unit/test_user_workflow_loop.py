@@ -324,16 +324,13 @@ def test_status_ignores_task_failure_superseded_by_done_evidence(tmp_path: Path)
     assert payload["current_blocker"] is None
 
 
-def test_review_persists_cost_report_when_model_call_fails(tmp_path: Path) -> None:
+def test_review_falls_back_to_deterministic_report_when_model_call_fails(
+    tmp_path: Path,
+) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
-    try:
-        ReviewCommand(tmp_path, model_client=FailingReviewModel()).run()
-    except RuntimeError as exc:
-        assert "stream deadline exceeded" in str(exc)
-    else:
-        raise AssertionError("ReviewCommand should propagate the model failure")
+    review = ReviewCommand(tmp_path, model_client=FailingReviewModel()).run()
 
     run_dir = tmp_path / ".asteria" / "runs" / run_id
     cost = JsonStore(SchemaValidator(Path("schemas"))).read(
@@ -344,6 +341,17 @@ def test_review_persists_cost_report_when_model_call_fails(tmp_path: Path) -> No
         [line for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     )
     assert cost["model_calls"] == model_call_count
+    assert review.status == "pass"
+    assert review.recommended_next_command == "accept"
+    eval_report = JsonStore(SchemaValidator(Path("schemas"))).read(
+        review.eval_report_path,
+        "eval_report",
+    )
+    fallback = eval_report["trajectory_eval"]["review_fallback"]
+    assert fallback["used"] is True
+    assert fallback["source"] == "deterministic_checks"
+    assert fallback["attempted_tiers"] == ["strong", "medium", "cheap"]
+    assert "stream deadline exceeded" in fallback["reason"]
 
 
 def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
@@ -646,14 +654,42 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     assert f"Current session recommends `asteria {run_result.recommended_next_command}`." in (
         chat.next_actions
     )
-    assert "Current session:" in chat.to_text()
+    text = chat.to_text()
+    assert "Current session:" not in text
+    assert run_id not in text
+    assert "task_execution_evidence.jsonl" not in text
+    assert "建议下一步运行 `asteria review`" in text
     assert chat.to_dict()["execution_allowed"] is False
+    assert chat.to_dict()["debug_details"] is False
     assert chat_model.context is not None
     assert chat_model.request.metadata["agent_id"] == "ChatAgent"
     assert chat_model.request.metadata["agent_role_contract"]["role"] == "ChatAgent"
     assert chat_model.context["session_context"]["workflow"]["workflow_state"] == (
         "ready_for_review"
     )
+
+
+def test_chat_can_show_debug_session_details_when_requested(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    run_id = _create_minimal_completed_run(tmp_path)
+    RunCommand(
+        tmp_path,
+        run_id=run_id,
+        max_iterations=0,
+        enable_research=False,
+    ).continue_run(run_id)
+
+    chat = ChatCommand(
+        tmp_path,
+        "请显示调试细节：run_id 和 model route 是什么？",
+        model_client=ContextAwareChatModel(),
+    ).run()
+
+    text = chat.to_text()
+    assert chat.debug_details is True
+    assert "Current session:" in text
+    assert run_id in text
+    assert "latest route:" in text
 
 
 def test_status_exposes_latest_model_selection_pressure_and_feedback(tmp_path: Path) -> None:

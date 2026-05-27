@@ -27,6 +27,7 @@ class ChatResult:
     next_actions: list[str] = field(default_factory=list)
     session_context: dict | None = None
     execution_allowed: bool = False
+    debug_details: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +46,7 @@ class ChatResult:
                     "session_context",
                     "next_actions",
                     "execution_allowed",
+                    "debug_details",
                 ],
             ),
             "mode": self.mode,
@@ -57,20 +59,21 @@ class ChatResult:
             "session_context": self.session_context,
             "next_actions": self.next_actions,
             "execution_allowed": self.execution_allowed,
+            "debug_details": self.debug_details,
         }
 
     def to_text(self) -> str:
-        lines = [
-            "Chat",
-            f"Permission level: {self.permission_level}",
-            f"Model strategy: {self.model_strategy}",
-            "",
-            self.answer,
-        ]
-        if self.context_refs:
+        lines = ["Asteria", "", self.answer]
+        if self.debug_details:
+            lines[1:1] = [
+                f"Permission level: {self.permission_level}",
+                f"Model strategy: {self.model_strategy}",
+                "",
+            ]
+        if self.debug_details and self.context_refs:
             lines.extend(["", "Context refs:"])
             lines.extend(f"- {item}" for item in self.context_refs)
-        if self.session_context:
+        if self.debug_details and self.session_context:
             current = self.session_context.get("current_run") or {}
             workflow = self.session_context.get("workflow") or {}
             route_timeline = self.session_context.get("model_route_timeline") or []
@@ -172,7 +175,10 @@ class ChatCommand:
                 },
             )
         )
+        debug_details = self._debug_details_requested()
         answer = self._clean_answer(response.content)
+        if not debug_details:
+            answer = self._user_facing_answer(answer, context)
         return ChatResult(
             question=self.question,
             answer=answer,
@@ -182,6 +188,7 @@ class ChatCommand:
             context_refs=list(context["refs"]),
             next_actions=self._next_actions(answer, context),
             session_context=context["session_context"],
+            debug_details=debug_details,
         )
 
     def _safe_context(self, agent_dir: Path) -> dict:
@@ -402,6 +409,56 @@ class ChatCommand:
             actions.append(f"Current session recommends `asteria {recommended}`.")
         return list(dict.fromkeys(actions))
 
+    def _debug_details_requested(self) -> bool:
+        text = self.question.lower()
+        debug_words = [
+            "debug",
+            "backend",
+            "run_id",
+            "evidence",
+            "model_route",
+            "model route",
+            "trace",
+            "raw",
+            "json",
+            "调试",
+            "后端",
+            "证据",
+            "运行id",
+            "模型路由",
+            "原始",
+            "详细字段",
+        ]
+        return any(word in text for word in debug_words)
+
+    def _user_facing_answer(self, answer: str, context: dict) -> str:
+        if not self._contains_backend_terms(answer):
+            return answer
+        session = context.get("session_context") or {}
+        workflow = session.get("workflow") or {}
+        current = session.get("current_run") or {}
+        state = str(workflow.get("workflow_state") or current.get("status") or "unknown")
+        next_command = workflow.get("recommended_next_command")
+        summary = str(current.get("summary") or "当前项目会话已有可用进展。")
+        if next_command:
+            return f"{summary}\n\n当前状态：{state}。建议下一步运行 `asteria {next_command}`。"
+        return f"{summary}\n\n当前状态：{state}。目前没有需要你立即处理的下一步。"
+
+    def _contains_backend_terms(self, answer: str) -> bool:
+        lowered = answer.lower()
+        return any(
+            term in lowered
+            for term in (
+                "run_id",
+                "current run",
+                "latest evidence",
+                ".asteria/",
+                "model_route",
+                "model route",
+                "evidence is",
+            )
+        )
+
     def _clean_answer(self, answer: str) -> str:
         cleaned = answer.strip()
         while True:
@@ -433,4 +490,5 @@ Do not claim to have modified files or run state-changing commands.
 If the user asks for implementation, suggest plan mode for read-only analysis or goal mode for execution.
 Use safe_project_context to summarize current session state, blockers, latest evidence, and model route rationale when relevant.
 When asked why a model route was used, answer from session_context.model_route_timeline before using general reasoning.
+For ordinary user questions, translate runtime state into user-level progress, blockers, and next steps. Do not expose backend fields such as run_id, evidence paths, or model_route unless the user explicitly asks for debug details.
 Respect protected paths and do not request secrets."""

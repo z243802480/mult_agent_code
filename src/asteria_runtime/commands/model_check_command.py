@@ -49,6 +49,15 @@ class ModelCheckResult:
             lines.append(f"Failure report: {self.failure_report_path}")
         if route.get("current_blocker"):
             lines.append(f"Route blocker: {route['current_blocker']}")
+        routes = route.get("routes") or []
+        if routes:
+            fallback = (routes[0].get("fallback") or {}) if isinstance(routes[0], dict) else {}
+            if fallback.get("used"):
+                lines.append(
+                    "Route fallback: "
+                    f"{fallback.get('source') or 'unknown'} - "
+                    f"{fallback.get('reason') or 'no reason recorded'}"
+                )
         return "\n".join(lines)
 
     def _streaming_text(self) -> str:
@@ -102,7 +111,7 @@ class ModelCheckCommand:
         context = model_failure_context_from_env(_env_prefix_for_tier(self.model_tier))
         provider = route_resolution.provider or context.provider
         model_name = route_resolution.model_name or context.model_name
-        base_url = context.base_url
+        base_url = route_resolution.base_url or context.base_url
 
         if not route_resolution.configured and self.model_client is None:
             summary = route_resolution.next_action

@@ -26,6 +26,7 @@ from asteria_runtime.core.task_contract import (
     write_scope,
 )
 from asteria_runtime.models.route_resolver import resolve_model_route
+from asteria_runtime.models.route_diagnostics import route_diagnostic_for_tier
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -397,6 +398,15 @@ class RuntimeProfileBuilder:
                     "no_matching_route_hint",
                 ),
             }
+        if self._route_hint_is_stale(route, default):
+            return {
+                "selected_tier": default,
+                "feedback": self._capability_feedback_summary(
+                    guidance,
+                    route,
+                    "default_route_fallback_due_stale_capability_profile",
+                ),
+            }
         action = str(route.get("recommended_action") or "")
         weak_actions = {
             "fallback_or_retry_later",
@@ -486,6 +496,15 @@ class RuntimeProfileBuilder:
             if route.get("purpose") == purpose and route.get("model_tier") == tier:
                 return route
         return None
+
+    def _route_hint_is_stale(self, route: dict, tier: str) -> bool:
+        diagnostic = route_diagnostic_for_tier(tier)
+        if diagnostic.source != "default_route_policy":
+            return False
+        hinted_model = str(route.get("model") or "").strip()
+        if not hinted_model or hinted_model == "unknown":
+            return True
+        return hinted_model != str(diagnostic.model_name or "")
 
     def _model_purpose(self, task: dict) -> str:
         kind = task_kind(task)
