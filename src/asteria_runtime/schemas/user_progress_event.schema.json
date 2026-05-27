@@ -24,7 +24,7 @@
     "sequence": { "type": "integer" },
     "channel": {
       "type": "string",
-      "enum": ["conclusion", "progress", "model", "tool", "file", "evidence", "call_chain", "execution_chain", "diagnostic"]
+      "enum": ["conclusion", "progress", "workspace", "permission", "model", "tool", "file", "validation", "evidence", "call_chain", "execution_chain", "diagnostic"]
     },
     "event_type": {
       "type": "string",
@@ -44,6 +44,9 @@
         "file_deleted",
         "evidence",
         "decision",
+        "workspace_selected",
+        "permission_request",
+        "permission_decision",
         "heartbeat"
       ]
     },

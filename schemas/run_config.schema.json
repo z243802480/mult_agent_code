@@ -7,6 +7,7 @@
     "run_id",
     "mode",
     "permission_level",
+    "permission_mode",
     "model_strategy",
     "decision_granularity",
     "permission_overrides",
@@ -17,14 +18,17 @@
     "schema_version": { "type": "string" },
     "run_id": { "type": "string" },
     "mode": { "type": "string", "enum": ["goal", "plan", "chat", "run"] },
-    "permission_level": { "type": "string", "enum": ["ask", "balanced", "auto"] },
+    "permission_level": { "type": "string", "enum": ["ask", "balanced", "auto", "ask_everything", "reviewed_auto"] },
+    "permission_mode": { "type": "string", "enum": ["ask_everything", "reviewed_auto", "auto"] },
     "model_strategy": { "type": "string", "enum": ["auto", "quality", "economy", "local"] },
     "decision_granularity": {
       "type": "string",
       "enum": ["manual", "balanced", "autopilot"]
     },
     "permission_overrides": { "type": "object" },
+    "permission_policy": { "type": "object" },
     "model_routing_overrides": { "type": "object" },
+    "workspace_envelope": { "type": "object" },
     "model_strategy_profile": {
       "type": "object",
       "properties": {

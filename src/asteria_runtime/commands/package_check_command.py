@@ -265,7 +265,7 @@ class PackageCheckCommand:
             "docs/zh/开发指南.md",
             "docs/zh/运行命令.md",
             "docs/zh/真实模型验收.md",
-            "docs/zh/交付计划.md",
+            "docs/zh/灰度试运行手册.md",
         ]
         missing = [item for item in required if not (self.root / item).exists()]
         return PackageCheck(

@@ -43,8 +43,32 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         artifact_refs=["task_plan.json"],
     )
     logger.conclusion(run_id="run-1", phase="result", title="done", summary="complete")
+    logger.workspace_event(
+        run_id="run-1",
+        title="workspace",
+        summary="selected",
+        workspace={"workspace_root": str(tmp_path), "permission_mode": "reviewed_auto"},
+    )
+    logger.permission_event(
+        run_id="run-1",
+        title="permission",
+        summary="mode selected",
+        permission={"mode": "reviewed_auto"},
+    )
 
     events = logger.read_all()
-    assert [event["channel"] for event in events] == ["diagnostic", "evidence", "conclusion"]
-    assert [event["event_type"] for event in events] == ["heartbeat", "evidence", "message"]
+    assert [event["channel"] for event in events] == [
+        "diagnostic",
+        "evidence",
+        "conclusion",
+        "workspace",
+        "permission",
+    ]
+    assert [event["event_type"] for event in events] == [
+        "heartbeat",
+        "evidence",
+        "message",
+        "workspace_selected",
+        "permission_decision",
+    ]
     assert events[0]["display_level"] == "inspector"

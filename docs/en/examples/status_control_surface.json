@@ -31,6 +31,7 @@
       "final_report_summary_path",
       "final_report_summary",
       "goal_policy",
+      "workspace_envelope",
       "active_goal_memory_path",
       "active_goal_memory",
       "latest_real_provider_matrix",
@@ -62,6 +63,7 @@
   "risks": [],
   "pending_decision_count": 0,
   "candidate_promotions": {},
+  "workspace_envelope": {},
   "plugin_control": {
     "initialized": true,
     "ok": true,

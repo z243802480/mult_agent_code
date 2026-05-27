@@ -694,6 +694,12 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     assert chat_model.context["session_context"]["workflow"]["workflow_state"] == (
         "ready_for_review"
     )
+    assert chat_model.context["workspace_envelope"]["workspace_root"] == str(tmp_path.resolve())
+    assert chat_model.context["policy"]["permission_mode"] == "reviewed_auto"
+    assert (
+        chat_model.context["session_context"]["workspace_envelope"]["workspace_root"]
+        == str(tmp_path.resolve())
+    )
 
 
 def test_chat_can_show_debug_session_details_when_requested(tmp_path: Path) -> None:
@@ -736,6 +742,11 @@ def test_status_exposes_latest_model_selection_pressure_and_feedback(tmp_path: P
     assert payload["current_context"]["latest_execution_evidence"]["model_selection"] == selection
     assert payload["current_context"]["model_selection"] == selection
     assert payload["current_context"]["model_route_timeline"][0]["reason"] == selection["reason"]
+    assert payload["workspace_envelope"]["workspace_root"] == str(tmp_path.resolve())
+    assert payload["workspace_envelope"]["permission_mode"] == "reviewed_auto"
+    status_text = StatusCommand(tmp_path).run().to_text(debug=True)
+    assert "Workspace envelope:" in status_text
+    assert f"- root: {tmp_path.resolve()}" in status_text
     debug_text = StatusCommand(tmp_path).run().to_text(debug=True)
     assert (
         "Model selection: strong for coding "
@@ -825,12 +836,33 @@ def _create_minimal_completed_run(root: Path) -> str:
     run = run_store.create_run("/run", goal_id="goal-workflow")
     run_id = run["run_id"]
     run_dir = run_store.run_dir(run_id)
+    workspace_envelope = {
+        "schema_version": "0.1.0",
+        "workspace_id": "workspace-test",
+        "workspace_root": str(root.resolve()),
+        "input_roots": [str(root.resolve())],
+        "output_root": str(root.resolve()),
+        "candidate_workspace_policy": "controlled_patch",
+        "read_scope": [str(root.resolve())],
+        "write_scope": [str(root.resolve())],
+        "artifact_policy": "workspace_artifacts",
+        "git_policy": "detect",
+        "permission_mode": "reviewed_auto",
+        "created_at": now_iso(),
+    }
+    store.write(run_dir / "workspace_envelope.json", workspace_envelope, "workspace_envelope")
     run.update(
         {
             "status": "completed",
             "current_phase": "DONE",
             "summary": "Minimal run completed and ready for review.",
             "ended_at": now_iso(),
+            "workspace": {
+                "workspace_id": "workspace-test",
+                "workspace_root": str(root.resolve()),
+                "output_root": str(root.resolve()),
+                "permission_mode": "reviewed_auto",
+            },
         }
     )
     run_store.update_run(run)

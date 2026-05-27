@@ -86,7 +86,10 @@ class ToolExecutionGateway:
                     summary=self._tool_start_summary(tool_name, args),
                     command=self._command_args(tool_name, args),
                     file_changes=pre_file_changes,
-                    data={"arg_keys": sorted(list(args.keys()))},
+                    data={
+                        "arg_keys": sorted(list(args.keys())),
+                        "permission": self.permission_policy.permission_profile(context),
+                    },
                 )
                 self._emit(
                     context,
@@ -216,7 +219,11 @@ class ToolExecutionGateway:
                     command=self._command_args(tool_name, args),
                     telemetry={"duration_ms": duration_ms},
                     file_changes=pre_file_changes,
-                    data={"error": str(exc), "error_type": exc.__class__.__name__},
+                    data={
+                        "error": str(exc),
+                        "error_type": exc.__class__.__name__,
+                        "permission": self.permission_policy.permission_profile(context),
+                    },
                 )
                 observation_event = self._record_harness_turn(
                     context,

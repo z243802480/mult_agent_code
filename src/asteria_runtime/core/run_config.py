@@ -3,6 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
+from asteria_runtime.core.permission_policy import (
+    decision_granularity_for,
+    normalize_permission_mode,
+    permission_overrides_for,
+    permission_policy_profile,
+)
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -17,17 +23,22 @@ def build_run_config(
     mode: str,
     permission_level: str,
     model_strategy: str,
+    workspace_envelope: dict | None = None,
 ) -> dict:
+    permission_mode = normalize_permission_mode(permission_level)
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
         "mode": mode,
         "permission_level": permission_level,
+        "permission_mode": permission_mode,
         "model_strategy": model_strategy,
-        "decision_granularity": _decision_granularity(permission_level),
-        "permission_overrides": _permission_overrides(permission_level),
+        "decision_granularity": decision_granularity_for(permission_level),
+        "permission_overrides": permission_overrides_for(permission_level),
+        "permission_policy": permission_policy_profile(permission_level),
         "model_routing_overrides": _model_routing_overrides(model_strategy),
         "model_strategy_profile": _model_strategy_profile(model_strategy),
+        "workspace_envelope": workspace_envelope or {},
         "created_at": now_iso(),
     }
 
@@ -40,12 +51,14 @@ def write_run_config(
     mode: str,
     permission_level: str,
     model_strategy: str,
+    workspace_envelope: dict | None = None,
 ) -> dict:
     config = build_run_config(
         run_id=run_id,
         mode=mode,
         permission_level=permission_level,
         model_strategy=model_strategy,
+        workspace_envelope=workspace_envelope,
     )
     JsonStore(validator).write(run_dir / "run_config.json", config, "run_config")
     return config
@@ -63,6 +76,13 @@ def apply_run_config(policy: dict, run_config: dict | None) -> dict:
         return policy
     effective = deepcopy(policy)
     effective["decision_granularity"] = run_config["decision_granularity"]
+    effective["permission_mode"] = run_config.get("permission_mode") or normalize_permission_mode(
+        str(run_config.get("permission_level") or "balanced")
+    )
+    effective["permission_policy"] = run_config.get("permission_policy") or permission_policy_profile(
+        str(run_config.get("permission_level") or "balanced")
+    )
+    effective["workspace_envelope"] = run_config.get("workspace_envelope") or {}
     effective_permissions = effective.setdefault("permissions", {})
     effective_permissions.update(run_config.get("permission_overrides") or {})
     effective_model_routing = effective.setdefault("model_routing", {})
@@ -81,34 +101,6 @@ def effective_policy_for_run(
     validator: SchemaValidator,
 ) -> dict:
     return apply_run_config(policy, load_run_config(run_dir, validator))
-
-
-def _decision_granularity(permission_level: str) -> str:
-    return {
-        "ask": "manual",
-        "balanced": "balanced",
-        "auto": "autopilot",
-    }[permission_level]
-
-
-def _permission_overrides(permission_level: str) -> dict:
-    if permission_level == "ask":
-        return {
-            "allow_destructive_shell": False,
-            "allow_global_package_install": False,
-            "allow_secret_file_read": False,
-            "allow_remote_push": False,
-            "allow_deploy": False,
-        }
-    if permission_level == "auto":
-        return {
-            "allow_destructive_shell": False,
-            "allow_global_package_install": False,
-            "allow_secret_file_read": False,
-            "allow_deploy": False,
-        }
-    return {}
-
 
 def _model_routing_overrides(model_strategy: str) -> dict:
     # User-facing strategies are policy biases, not a fixed purpose->tier route table.

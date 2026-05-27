@@ -11,6 +11,11 @@ from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_config import apply_run_config, write_run_config
+from asteria_runtime.core.workspace_envelope import (
+    build_workspace_envelope,
+    workspace_summary,
+    write_workspace_envelope,
+)
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
@@ -84,6 +89,17 @@ class PlanCommand:
         run_store = RunStore(agent_dir, self.validator)
         run = run_store.create_run(f'asteria plan "{self.goal}"')
         run_dir = run_store.run_dir(run["run_id"])
+        workspace_envelope = build_workspace_envelope(
+            workspace_root=self.root,
+            permission_level=self.permission_level,
+        )
+        write_workspace_envelope(
+            run_dir=run_dir,
+            validator=self.validator,
+            envelope=workspace_envelope,
+        )
+        run["workspace"] = workspace_summary(workspace_envelope)
+        run_store.update_run(run)
         run_config = write_run_config(
             run_dir=run_dir,
             validator=self.validator,
@@ -91,6 +107,7 @@ class PlanCommand:
             mode=self.mode,
             permission_level=self.permission_level,
             model_strategy=self.model_strategy,
+            workspace_envelope=workspace_envelope,
         )
         policy = apply_run_config(policy, run_config)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
@@ -163,6 +180,20 @@ class PlanCommand:
             data={"model_route": goal_spec_route_plan},
             call_chain=["PlanCommand", "GoalSpecAgent"],
             execution_chain=["understand", "goal_spec"],
+        )
+        progress_logger.workspace_event(
+            run_id=run["run_id"],
+            title="Workspace selected",
+            summary="Runtime bound this plan to the selected workspace and output scope.",
+            workspace=workspace_summary(workspace_envelope),
+            phase="plan",
+        )
+        progress_logger.permission_event(
+            run_id=run["run_id"],
+            title="Permission mode selected",
+            summary=f"Permission mode is {run_config['permission_mode']}.",
+            permission=run_config["permission_policy"],
+            phase="plan",
         )
 
         goal_spec_agent = GoalSpecAgent(model_client, self.validator)

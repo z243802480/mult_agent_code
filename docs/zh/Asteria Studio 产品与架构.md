@@ -1,11 +1,15 @@
 # Asteria Studio 产品与架构
 
-Asteria Studio 是 Asteria Runtime OS 的本地 Web 控制面。它不是新的执行内核，也不是远端托管服务；它消费 runtime CLI JSON、`.asteria/` 证据和脱敏诊断包，让开发者在真实使用前后看清系统状态、模型路由、运行进度、失败归因和下一步动作。
+Asteria Studio 是 Asteria 的独立产品交互面和通用智能体前端载体。它不是新的执行内核，也不是远端托管服务；后端 runtime 仍负责护栏、证据、权限、计费、schema、恢复和验证边界。Studio 消费 runtime CLI/API、`.asteria/` 证据、`user_progress`、Inspector 和脱敏诊断包，同时承担用户心流、实时过程展示、文件预览/对比、Git 集成、MCP 管理、plugin 管理、skills 管理、session 管理、用户管理、token 额度查看、权限设置、模型设置和展示/配置管理。
+
+当前优先级是先完成通用智能体 Asteria 的后端 runtime；Studio 的后端对接进度可以略落后。但 Studio 的产品设计长期有效，不能被降格成简单 dashboard 或命令包装器，也不应被临时后端实现反向绑死。
 
 ## 1. 产品定位
 
-Studio 面向两类场景：
+Studio 面向三类场景：
 
+- 普通用户智能体工作区：输入 Goal / Plan / Ask，看到实时模型判断、工具调用、文件变化、权限请求、验证过程和最终结果。
+- Project / Workspace 管理：像 Codex / Claude Code 一样展示最近项目，支持打开本地文件夹，切换后 session、run、Git、文件预览、MCP、plugin、skills 和设置都以该 workspace 为边界。
 - 开发者本机内测：确认安装、路由、gate、gray、core、证据导出是否正常。
 - 真实项目 dogfooding：查看 run timeline、模型调用、worker/validation evidence、promotion 风险和证据包。
 
@@ -109,6 +113,9 @@ Studio 后端只监听 localhost，默认端口 `8787`。它提供稳定 JSON AP
 ```text
 GET  /api/health
 GET  /api/overview
+GET  /api/workspaces
+POST /api/workspaces/open
+POST /api/workspaces/select
 GET  /api/doctor
 GET  /api/package-check
 GET  /api/gate-status
@@ -137,6 +144,8 @@ POST /api/evidence-bundle
 
 - 优先调用 runtime CLI 的 `--json` 输出。
 - 对没有 JSON 输出的视图，读取 `.asteria/` 中的 JSON/JSONL evidence。
+- API adapter 启动时必须绑定一个 workspace；所有 run/session/evidence/file preview 默认从该 workspace 读取。
+- 全局 recent workspace、current workspace、模型本机 route 和 UI 偏好读取用户目录下的 `.asteria/`；单工程 evidence、session、run、Studio conversation 必须读取 workspace 内 `.asteria/`。
 - API response 必须脱敏。
 - 不读取 protected paths。
 - 不把 API key、route local 文件或 `.env` 发送给前端。

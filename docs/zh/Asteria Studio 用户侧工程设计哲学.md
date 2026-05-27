@@ -2,7 +2,7 @@
 
 ## 1. 核心判断
 
-Asteria Studio 不是 dashboard，也不是命令包装器。它应该是用户侧的智能体工作区。
+Asteria Studio 不是 dashboard，也不是命令包装器。它应该是用户侧的智能体工作区，是 Asteria 面向通用智能体的独立产品交互面。后端 runtime 可以先完成，但 Studio 的交互设计不应被临时后端形态绑死。
 
 用户真正需要的是：
 
@@ -13,6 +13,7 @@ Asteria Studio 不是 dashboard，也不是命令包装器。它应该是用户�
 - 完成后，过程可以折叠，正式结果清晰留在对话中。
 - 用户基于结果继续指导下一步。
 - 长时间任务可以持续推进、暂停、恢复、审查、导出证据。
+- 文件预览/对比、Git、MCP、plugin、skills、session、用户、token、权限和模型配置都能在同一个产品心流里被理解和管理。
 
 因此 Studio 的主体验必须像 Codex / Claude Code / OpenCode 这类 workspace 产品，而不是后台管理系统。
 
@@ -57,7 +58,7 @@ runtime command
 stdout/stderr
 raw tool events
 schema/evidence refs
-state machine transition
+internal runtime transition / role skeleton suggestions
 ```
 
 ## 3. 首页信息架构
@@ -243,7 +244,7 @@ Studio 不应该有一个独立的“规则聊天机器人”冒充智能体。
 
 下一次实现不再继续修补当前页面，而是按以下最小版本重做：
 
-### P0-A：Session Thread
+### Studio 最小可用线索 A：Session Thread
 
 - 左侧 session 列表。
 - 中间主线程。
@@ -253,7 +254,7 @@ Studio 不应该有一个独立的“规则聊天机器人”冒充智能体。
   - assistant acknowledgement
   - planning activity
 
-### P0-B：Streaming Event Bridge
+### Studio 最小可用线索 B：Streaming Event Bridge
 
 - 后端 job 输出统一转换成 Studio events。
 - 前端每 500ms 或 SSE 订阅事件。
@@ -261,7 +262,7 @@ Studio 不应该有一个独立的“规则聊天机器人”冒充智能体。
 - 内部工具事件进入 Inspector。
 - 完成后 reasoning 自动折叠。
 
-### P0-C：真实 plan 工作流
+### Studio 最小可用线索 C：真实 plan 工作流
 
 验收任务：
 
@@ -277,11 +278,11 @@ Studio 不应该有一个独立的“规则聊天机器人”冒充智能体。
 - plan 完成后给正式旅行计划。
 - 如果模型超时，显示超时、route、重试/切换模型建议。
 
-### P0-D：权限卡
+### Studio 最小可用线索 D：权限卡
 
 对 `run-limited`、`execute-one`、`resume-limited` 显示权限卡，不用 checkbox。
 
-### P0-E：文件 / 证据 Inspector
+### Studio 最小可用线索 E：文件 / 证据 Inspector
 
 选中某个 activity，右侧显示：
 

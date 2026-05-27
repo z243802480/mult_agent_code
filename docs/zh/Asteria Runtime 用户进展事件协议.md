@@ -10,6 +10,7 @@ Studio 当前已经能展示模型事件和 runtime 输出，但仍有硬编码�
 
 用户进展事件回答的是用户关心的问题：
 
+- 当前在哪个 workspace 工作？
 - 我的目标是否被理解了？
 - 计划是什么？
 - 现在执行到哪一步？
@@ -56,6 +57,7 @@ src/asteria_runtime/schemas/user_progress_event.schema.json
 {
   "schema_version": "0.1.0",
   "event_id": "upe-...",
+  "workspace_id": "workspace-...",
   "run_id": "run-...",
   "session_id": "session-...",
   "created_at": "2026-05-21T00:00:00Z",
@@ -73,6 +75,8 @@ src/asteria_runtime/schemas/user_progress_event.schema.json
 }
 ```
 
+`workspace_id` 用于把 Studio project switcher、CLI `--root` 和 workspace-local `.asteria/` 证据关联起来。事件文件本身必须落在当前 workspace 的 `.asteria/runs/<run_id>/user_progress.jsonl`，不能写到用户全局目录。
+
 ## 5. 多通道输出
 
 runtime 需要同时支持一次性读取和流式订阅。事件先落盘为 JSONL，外部可以 tail、轮询、SSE 或 WebSocket 转发。
@@ -88,6 +92,7 @@ runtime 需要同时支持一次性读取和流式订阅。事件先落盘为 JS
 - `call_chain`：模型、agent、tool 的调用链。
 - `execution_chain`：任务、worker、验证、promotion 的执行链。
 - `diagnostic`：heartbeat、deadline、retry、fallback、budget pressure。
+- `workspace`：workspace 切换、输出目录、candidate workspace、git/worktree 状态摘要。
 
 事件类型：
 

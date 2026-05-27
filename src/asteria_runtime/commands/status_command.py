@@ -44,6 +44,9 @@ class StatusResult:
         latest_model_progress = (
             self.current_context.get("latest_model_progress") if self.current_context else {}
         ) or {}
+        workspace_envelope = (
+            self.current_context.get("workspace_envelope") if self.current_context else {}
+        ) or {}
         model_route_timeline = (
             self.current_context.get("model_route_timeline") if self.current_context else []
         ) or []
@@ -105,6 +108,7 @@ class StatusResult:
                     "final_report_summary_path",
                     "final_report_summary",
                     "goal_policy",
+                    "workspace_envelope",
                     "active_goal_memory_path",
                     "active_goal_memory",
                     "latest_real_provider_matrix",
@@ -143,6 +147,7 @@ class StatusResult:
             "final_report_summary_path": final_report_summary_path,
             "final_report_summary": final_report_summary,
             "goal_policy": goal_policy,
+            "workspace_envelope": workspace_envelope,
             "active_goal_memory_path": str(self.active_goal_memory_path)
             if self.active_goal_memory_path
             else None,
@@ -365,10 +370,21 @@ class StatusResult:
         return self._debug_text()
 
     def _user_text(self) -> str:
+        workspace = self.current_context.get("workspace_envelope") or {}
+        workspace_lines = []
+        if workspace:
+            workspace_lines = [
+                "Workspace:",
+                f"- root: {workspace.get('workspace_root') or self.root}",
+                f"- output: {workspace.get('output_root') or workspace.get('workspace_root') or self.root}",
+                f"- permission: {workspace.get('permission_mode') or 'unknown'}",
+                "",
+            ]
         lines = [
             "Asteria progress",
             f"Memory: {self.active_goal_memory_path}",
             "",
+            *workspace_lines,
             self.active_goal_memory.strip(),
             "",
             "Runtime details: use `asteria status --debug` or `asteria status --json`.",
@@ -391,6 +407,16 @@ class StatusResult:
             lines.append("Next: asteria init")
             return "\n".join(lines)
         lines.append(f"Current session: {self.current_session_id or 'none'}")
+        workspace = self.current_context.get("workspace_envelope") if self.current_context else {}
+        if workspace:
+            lines.append("Workspace envelope:")
+            lines.append(f"- id: {workspace.get('workspace_id') or 'unknown'}")
+            lines.append(f"- root: {workspace.get('workspace_root') or 'unknown'}")
+            lines.append(f"- output: {workspace.get('output_root') or 'unknown'}")
+            lines.append(f"- permission: {workspace.get('permission_mode') or 'unknown'}")
+            lines.append(
+                f"- candidate policy: {workspace.get('candidate_workspace_policy') or 'unknown'}"
+            )
         recommended = (
             self.current_context.get("recommended_next_command") if self.current_context else None
         )

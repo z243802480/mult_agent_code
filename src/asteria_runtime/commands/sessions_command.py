@@ -209,6 +209,7 @@ class SessionsCommand:
         model_route_timeline_path = self._model_route_timeline_path(run_dir)
         latest_model_progress = self._latest_model_progress(run_dir)
         latest_observation_plan = self._latest_observation_plan(run_dir)
+        workspace_envelope = self._workspace_envelope(run_dir)
         route_readiness = self._route_readiness(run_dir)
         run_loop_summary = self._run_loop_summary(run_dir)
         final_report_summary = self._final_report_summary(run_dir)
@@ -281,6 +282,7 @@ class SessionsCommand:
             "goal_policy": goal_policy,
             "route_readiness": route_readiness,
             "latest_observation_plan": latest_observation_plan,
+            "workspace_envelope": workspace_envelope,
             "worker_tree": worker_tree,
             "candidate_promotions": promotion_summary,
             "blockers": blockers,
@@ -288,6 +290,24 @@ class SessionsCommand:
             "acceptance_failure_count": len(acceptance_failures),
             "latest_acceptance_failure": acceptance_failures[-1] if acceptance_failures else None,
             "acceptance_failures": acceptance_failures[-3:],
+        }
+
+    def _workspace_envelope(self, run_dir: Path) -> dict:
+        envelope = self._read_json(run_dir / "workspace_envelope.json", "workspace_envelope")
+        if envelope:
+            return envelope
+        run = self._read_json(run_dir / "run.json", "run")
+        workspace = (run or {}).get("workspace") or {}
+        if not workspace:
+            return {}
+        return {
+            "schema_version": "legacy",
+            "workspace_id": workspace.get("workspace_id"),
+            "workspace_root": workspace.get("workspace_root") or workspace.get("path"),
+            "output_root": workspace.get("output_root") or workspace.get("path"),
+            "permission_mode": workspace.get("permission_mode"),
+            "candidate_workspace_policy": workspace.get("candidate_workspace_policy"),
+            "git_policy": workspace.get("git_policy"),
         }
 
     def _acceptance_failures(

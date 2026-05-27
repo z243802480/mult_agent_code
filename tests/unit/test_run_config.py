@@ -31,8 +31,10 @@ def test_run_config_maps_user_modes_to_effective_policy(tmp_path: Path) -> None:
     )
 
     validator.validate("run_config", config)
+    assert config["permission_mode"] == "ask_everything"
     assert config["decision_granularity"] == "manual"
     assert config["permission_overrides"]["allow_remote_push"] is False
+    assert config["permission_policy"]["mode"] == "ask_everything"
     assert config["model_routing_overrides"] == {}
     assert config["model_strategy_profile"]["strategy"] == "quality"
     assert config["model_strategy_profile"]["selection_policy"] == (
@@ -56,6 +58,9 @@ def test_plan_persists_run_config_and_effective_policy_overrides(tmp_path: Path)
 
     assert config["mode"] == "goal"
     assert config["permission_level"] == "ask"
+    assert config["permission_mode"] == "ask_everything"
+    assert config["workspace_envelope"]["workspace_root"] == str(tmp_path.resolve())
+    assert config["workspace_envelope"]["output_root"] == str(tmp_path.resolve())
     assert config["model_strategy"] == "economy"
     assert config["decision_granularity"] == "manual"
 
@@ -64,12 +69,39 @@ def test_plan_persists_run_config_and_effective_policy_overrides(tmp_path: Path)
     )
     effective = effective_policy_for_run(policy=base_policy, run_dir=run_dir, validator=validator)
     assert effective["decision_granularity"] == "manual"
+    assert effective["permission_mode"] == "ask_everything"
+    assert effective["workspace_envelope"]["workspace_root"] == str(tmp_path.resolve())
     assert effective["model_routing"] == base_policy["model_routing"]
     assert effective["model_strategy_profile"]["strategy"] == "economy"
     assert effective["model_strategy_profile"]["selection_policy"] == (
         "prefer_low_cost_with_safety_escalation"
     )
     assert effective["permissions"]["allow_remote_push"] is False
+
+
+def test_plan_records_workspace_and_permission_user_progress(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    result = PlanCommand(
+        tmp_path,
+        "Create a tiny offline artifact",
+        model_client=FakeModelClient(),
+        mode="plan",
+        permission_level="reviewed_auto",
+        model_strategy="auto",
+    ).run()
+    validator = SchemaValidator(SCHEMA_DIR)
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    envelope = JsonStore(validator).read(run_dir / "workspace_envelope.json", "workspace_envelope")
+    progress = [
+        line
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert envelope["permission_mode"] == "reviewed_auto"
+    assert envelope["workspace_root"] == str(tmp_path.resolve())
+    assert any('"channel": "workspace"' in line for line in progress)
+    assert any('"channel": "permission"' in line for line in progress)
 
 
 def test_plan_mode_does_not_modify_workspace_files_outside_runtime(tmp_path: Path) -> None:

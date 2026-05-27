@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.permission_policy import permission_policy_profile
 from asteria_runtime.core.runtime_request import RuntimeRequest
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.task_contract import parallel_safety, read_scope, write_scope
@@ -45,6 +46,13 @@ class RuntimeRequestPolicyResult:
 class ToolPermissionPolicy:
     root: Path
     validator: SchemaValidator
+
+    def permission_profile(self, context: RuntimeContext) -> dict:
+        profile = context.policy.get("permission_policy")
+        if isinstance(profile, dict) and profile:
+            return profile
+        mode = context.policy.get("permission_mode") or "reviewed_auto"
+        return permission_policy_profile(str(mode))
 
     def enforce_tool_permission_profile(self, task: dict, tool_name: str, args: dict) -> None:
         write_tools = {"write_file", "apply_patch", "restore_backup"}
@@ -232,6 +240,12 @@ class ToolPermissionPolicy:
                     "action": "record_constraint",
                 },
                 {
+                    "option_id": "approve_similar_for_session",
+                    "label": "Approve similar for this session",
+                    "tradeoff": "Allow commands with the same intent and prefix during this session; global policy stays unchanged.",
+                    "action": "record_constraint",
+                },
+                {
                     "option_id": "skip",
                     "label": "Keep blocked",
                     "tradeoff": "Do not run the command; the task remains blocked until replanned or changed.",
@@ -248,6 +262,8 @@ class ToolPermissionPolicy:
                 "tool_name": tool_name,
                 "args_fingerprint": self.args_fingerprint(args),
                 "denial": denial,
+                "permission_mode": self.permission_profile(context).get("mode"),
+                "ask_options": self.permission_profile(context).get("ask_options", []),
             },
             "resolved_at": None,
         }

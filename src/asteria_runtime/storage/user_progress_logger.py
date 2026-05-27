@@ -150,6 +150,47 @@ class UserProgressLogger:
             display_level="inspector",
         )
 
+    def workspace_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        workspace: dict[str, Any],
+        phase: str = "understand",
+    ) -> dict[str, Any]:
+        return self.record(
+            run_id=run_id,
+            channel="workspace",
+            event_type="workspace_selected",
+            phase=phase,
+            status="completed",
+            title=title,
+            summary=summary,
+            data={"workspace": workspace},
+        )
+
+    def permission_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        permission: dict[str, Any],
+        status: str = "completed",
+        phase: str = "understand",
+    ) -> dict[str, Any]:
+        return self.record(
+            run_id=run_id,
+            channel="permission",
+            event_type="permission_decision",
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            data={"permission": permission},
+        )
+
     def read_all(self) -> list[dict[str, Any]]:
         return self.store.read_all(self.path, "user_progress_event")
 

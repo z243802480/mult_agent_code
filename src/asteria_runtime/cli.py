@@ -58,8 +58,9 @@ from asteria_runtime.real_model_smoke import run_from_args as run_real_model_smo
 
 CommandGroup = tuple[str, str, list[tuple[str, str]]]
 PERMISSION_LEVEL_HELP = (
-    "User-facing permission level: ask confirms more actions, balanced allows low-risk "
-    "work and asks for sensitive actions, auto advances within policy boundaries."
+    "User-facing permission mode: ask_everything asks every operation, reviewed_auto "
+    "allows low-risk work and asks for sensitive actions, auto advances within runtime "
+    "hard guards. Legacy aliases ask/balanced/auto remain accepted."
 )
 MODEL_STRATEGY_HELP = (
     "User-facing model strategy: auto routes by task, quality favors stronger models, "
@@ -205,7 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--root", default=".", help="Workspace root path")
     plan_parser.add_argument(
         "--permission-level",
-        choices=["ask", "balanced", "auto"],
+        choices=["ask", "balanced", "auto", "ask_everything", "reviewed_auto"],
         default="ask",
         help=PERMISSION_LEVEL_HELP,
     )
@@ -225,7 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument("--root", default=".", help="Workspace root path")
     chat_parser.add_argument(
         "--permission-level",
-        choices=["ask", "balanced", "auto"],
+        choices=["ask", "balanced", "auto", "ask_everything", "reviewed_auto"],
         default="balanced",
         help=PERMISSION_LEVEL_HELP,
     )
@@ -601,7 +602,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--permission-level",
-        choices=["ask", "balanced", "auto"],
+        choices=["ask", "balanced", "auto", "ask_everything", "reviewed_auto"],
         default="balanced",
         help=PERMISSION_LEVEL_HELP,
     )

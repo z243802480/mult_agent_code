@@ -21,6 +21,7 @@ from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.permission_policy import normalize_permission_mode
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.json_store import JsonStore
@@ -1004,7 +1005,7 @@ class RunCommand:
             pending_promotions.get("blocked") or []
         )
         if review_status == "pass":
-            if self.permission_level == "auto" and not promotion_blockers:
+            if normalize_permission_mode(self.permission_level) == "auto" and not promotion_blockers:
                 return {
                     "action": "auto_accept",
                     "reason": "Review passed, permission level is auto, and no candidate promotion requires approval.",

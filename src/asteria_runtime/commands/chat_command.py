@@ -9,6 +9,7 @@ from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.permission_policy import permission_policy_profile
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.storage.json_store import JsonStore
@@ -201,6 +202,17 @@ class ChatCommand:
         runtime_context = ContextLoader(self.root, self.validator).load()
         session_context = self._session_context(agent_dir, current_run_id, current_run)
         active_goal_memory = ActiveGoalMemory(self.root).read()
+        raw_workspace_envelope = session_context.get("workspace_envelope")
+        workspace_envelope: dict = (
+            raw_workspace_envelope if isinstance(raw_workspace_envelope, dict) else {}
+        )
+        raw_permission_policy = policy.get("permission_policy")
+        if isinstance(raw_permission_policy, dict):
+            permission_policy: dict = raw_permission_policy
+        else:
+            permission_policy = permission_policy_profile(
+                str(workspace_envelope.get("permission_mode") or self.permission_level)
+            )
         return {
             "project": {
                 "name": project.get("name"),
@@ -212,7 +224,11 @@ class ChatCommand:
             "policy": {
                 "decision_granularity": policy.get("decision_granularity"),
                 "permissions": policy.get("permissions", {}),
+                "permission_mode": workspace_envelope.get("permission_mode")
+                or permission_policy.get("mode"),
+                "permission_policy": permission_policy,
             },
+            "workspace_envelope": workspace_envelope,
             "current_run": {
                 "run_id": current_run.get("run_id"),
                 "status": current_run.get("status"),
@@ -229,7 +245,14 @@ class ChatCommand:
             },
             "refs": [".asteria/project.json", ".asteria/policies.json"]
             + ([".asteria/memory/active_goal.md"] if active_goal_memory else [])
-            + ([f".asteria/runs/{current_run_id}/run.json"] if current_run_id else []),
+            + (
+                [
+                    f".asteria/runs/{current_run_id}/run.json",
+                    f".asteria/runs/{current_run_id}/workspace_envelope.json",
+                ]
+                if current_run_id
+                else []
+            ),
         }
 
     def _session_context(
@@ -271,6 +294,7 @@ class ChatCommand:
         model_route_timeline_path = final_summary.get("model_route_timeline_path")
         if not model_route_timeline_path and (run_dir / "model_route_timeline.json").exists():
             model_route_timeline_path = self._relative_path(run_dir / "model_route_timeline.json")
+        workspace_envelope = self._read_json(run_dir / "workspace_envelope.json", "workspace_envelope")
         return {
             "current_run": {
                 "run_id": current_run.get("run_id"),
@@ -297,6 +321,7 @@ class ChatCommand:
             "model_selection": model_selection,
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,
+            "workspace_envelope": workspace_envelope,
         }
 
     def _read_json(self, path: Path, schema_name: str) -> dict:

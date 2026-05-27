@@ -334,33 +334,35 @@ User Goal
 
 ## 8. 实现计划
 
-### P0-A：放松强结构闸门
+本节是模型主导设计的长期落地线索，不单独决定当前 P0/P1 顺序。当前执行优先级以 [当前状态与路线.md](./当前状态与路线.md) 和 [代码现状差距与研发计划.md](./代码现状差距与研发计划.md) 为准。下面条目保留为设计来源和验收线索；Studio 是独立产品交互面，后端 runtime 不由 Studio 反向牵引，但 Studio 的用户心流、实时过程展示、文件/配置/权限/模型管理设计长期有效。
+
+### 落地线索 A：放松强结构闸门
 
 - 盘点 `goal_spec`、`task_plan_eval`、`final_answer_quality` 中会直接阻断模型继续尝试的规则。
 - 将“格式不完美”改成 repairable warning。
 - schema 失败优先走补全、提取、最小摘要 fallback。
 - final answer 验收改为用户结果标准：做了什么、验证如何、产物在哪里、风险和下一步是什么。
 
-### P0-B：新增 AgentHarness 草图
+### 落地线索 B：新增 AgentHarness 草图
 
 - 新增 harness 层，先服务 `plan` 和小范围 `run`。
 - 抽象 `PromptEnvelope`、`CapabilityManifest`、`ToolObservation`、`AgentTurn`。
 - 复用现有 provider route、tool registry、permission policy、candidate workspace、user_progress。
 - 不一次性重写 ExecuteCommand，先在新链路旁路验证。
 
-### P0-C：能力目录进入提示词
+### 落地线索 C：能力目录进入提示词
 
 - 从工具注册表、MCP、skills、policy config、AGENTS.md、docs/zh 当前状态生成简洁 capability/context summary。
 - 模型每轮都知道有哪些能力、哪些需要审批、哪些被禁用。
 - 只把必要摘要放入上下文，详情通过 tool/search/skill 渐进加载。
 
-### P0-D：工具结果回灌模型
+### 落地线索 D：工具结果回灌模型
 
 - 统一工具 observation 格式。
 - 每个 tool result 都同时写 raw evidence 和 user-facing progress。
 - 模型收到失败 observation 后可选择 repair/replan/ask/stop。
 
-### P0-E：Studio 切到 Harness Narrative
+### 后续展示方向：Studio 切到 Harness Narrative
 
 - 主线优先消费 `user_progress.jsonl` 和 harness turn events。
 - 展示“模型组织能力和工具”的阶段，而不是只展示后台日志。

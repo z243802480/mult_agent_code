@@ -124,6 +124,7 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     assert events[0]["tool_call_id"] == "toolcall-0001"
     assert events[0]["data"]["turn_event"]["event_type"] == "turn_start"
     assert events[1]["command"] == ["pytest -q"]
+    assert events[1]["data"]["permission"]["mode"] == "reviewed_auto"
     assert events[2]["status"] == "completed"
     assert events[2]["parent_event_id"] == events[1]["event_id"]
     assert events[3]["display_level"] == "main"
@@ -189,6 +190,7 @@ def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
     assert events[-3]["event_type"] == "error"
     assert events[-3]["status"] == "failed"
     assert events[-3]["data"]["error_type"] == "RuntimeError"
+    assert events[-3]["data"]["permission"]["mode"] == "reviewed_auto"
     assert events[-2]["channel"] == "execution_chain"
     assert events[-2]["event_type"] == "tool_observation"
     assert events[-2]["data"]["observation"]["ok"] is False
@@ -206,6 +208,53 @@ def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
     assert observations[-1]["error_class"] == "RuntimeError"
     assert observations[-1]["next_hint"] == "diagnose_then_repair_replan_ask_or_stop"
     assert load_harness_observations(tmp_path)[-1]["observation"]["ok"] is False
+
+
+def test_tool_permission_decision_uses_permission_mode_options(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={
+            "permission_mode": "ask_everything",
+            "permission_policy": {
+                "mode": "ask_everything",
+                "ask_options": [
+                    "allow_once",
+                    "allow_similar_for_session",
+                    "deny",
+                    "switch_to_plan",
+                ],
+            },
+            "permissions": {"allow_shell": False},
+            "protected_paths": [],
+        },
+        validator=validator,
+        run_dir_override=tmp_path,
+    )
+    policy = ToolPermissionPolicy(tmp_path, validator)
+
+    decision = policy.create_policy_decision_if_needed(
+        action={
+            "tool_calls": [
+                {
+                    "tool_name": "run_command",
+                    "args": {"command": "pytest -q"},
+                }
+            ]
+        },
+        task={"task_id": "task-0001"},
+        context=context,
+    )
+
+    assert decision is not None
+    assert decision["metadata"]["permission_mode"] == "ask_everything"
+    assert "allow_similar_for_session" in decision["metadata"]["ask_options"]
+    assert {option["option_id"] for option in decision["options"]} >= {
+        "approve_once",
+        "approve_similar_for_session",
+        "skip",
+    }
 
 
 def _gateway(tmp_path: Path) -> tuple[ToolExecutionGateway, RuntimeContext]:
