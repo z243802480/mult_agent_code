@@ -4,8 +4,8 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
-from asteria_runtime.commands.gray_command import GrayCommand
-from asteria_runtime.commands.gray_run_command import GrayRunCommand
+from asteria_runtime.commands.readiness_command import ReadinessCommand
+from asteria_runtime.commands.readiness_run_command import ReadinessRunCommand
 from asteria_runtime.commands.gate_status_command import (
     _validation_recommendation_for_changed_files,
 )
@@ -75,12 +75,12 @@ def test_package_check_reports_packaging_preflight() -> None:
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "pass"
     assert any(check["name"] == "version_sync" for check in payload["checks"])
-    gray_modules = next(
-        check for check in payload["checks"] if check["name"] == "gray_command_modules"
+    readiness_modules = next(
+        check for check in payload["checks"] if check["name"] == "readiness_command_modules"
     )
-    assert "gray-run" in gray_modules["summary"]
-    assert any(check["name"] == "gray_route_template" for check in payload["checks"])
-    assert any(check["name"] == "gray_runbook" for check in payload["checks"])
+    assert "readiness-run" in readiness_modules["summary"]
+    assert any(check["name"] == "readiness_route_template" for check in payload["checks"])
+    assert any(check["name"] == "readiness_runbook" for check in payload["checks"])
     hook_plugins = next(
         check for check in payload["checks"] if check["name"] == "hook_plugin_control_surface"
     )
@@ -103,10 +103,10 @@ def test_package_check_reports_packaging_preflight() -> None:
             "next_actions",
         },
     )
-    assert payload["runbook"]["path"] == "docs/zh/灰度试运行手册.md"
+    assert payload["runbook"]["path"] == "docs/zh/发布准备验证试运行手册.md"
     assert "rollback" in payload["runbook"]["required_sections"]
-    assert any("model.routes.gray.example.ps1" in action for action in payload["next_actions"])
-    assert any("灰度试运行手册.md" in action for action in payload["next_actions"])
+    assert any("model.routes.readiness.example.ps1" in action for action in payload["next_actions"])
+    assert any("发布准备验证试运行手册.md" in action for action in payload["next_actions"])
     assert "Run `asteria version --json`" in payload["next_actions"][-1]
 
 
@@ -351,20 +351,20 @@ def test_status_surfaces_latest_model_progress_deadline(tmp_path: Path) -> None:
     assert "latest_model=delta CoderAgent minimax/MiniMax-M2.7" in result.to_text()
 
 
-def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> None:
+def test_readiness_run_command_reports_execution_control_surface(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 
-    payload = GrayRunCommand(tmp_path, dry_run=True).run().to_dict()
+    payload = ReadinessRunCommand(tmp_path, dry_run=True).run().to_dict()
 
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "blocked"
     _assert_control_surface_contract(
         payload,
-        command="gray-run",
-        audience="maintainer_gray_execution",
+        command="readiness-run",
+        audience="maintainer_readiness_execution",
         required_fields={
             "schema_version",
-            "gray_run_id",
+            "readiness_run_id",
             "status",
             "summary_path",
             "run_id",
@@ -373,19 +373,19 @@ def test_gray_run_command_reports_execution_control_surface(tmp_path: Path) -> N
     )
 
 
-def test_gray_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
+def test_readiness_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
-    result = GrayCommand(tmp_path).run()
+    result = ReadinessCommand(tmp_path).run()
     payload = result.to_dict()
 
     assert payload["schema_version"] == "0.1.0"
     assert payload["mode"] == "dry_run"
     assert "gate_status" in payload
-    assert "gray_run" in payload
+    assert "readiness_run" in payload
     _assert_control_surface_contract(
         payload,
-        command="gray",
-        audience="maintainer_gray_readiness",
+        command="readiness",
+        audience="maintainer_release_readiness",
         required_fields={
             "schema_version",
             "root",
@@ -393,7 +393,7 @@ def test_gray_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
             "ok",
             "mode",
             "gate_status",
-            "gray_run",
+            "readiness_run",
             "next_actions",
         },
     )
@@ -669,7 +669,7 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
         "AGENT_MODEL_MEDIUM_API_KEY or provider/global API key",
     ]
     assert "preferred_backend" in payload["sandbox"]
-    assert payload["gray_task_limits"]["max_iterations"] == 3
+    assert payload["readiness_task_limits"]["max_iterations"] == 3
     assert payload["plugin_control"]["hook_policy"]["plugins_enabled"] is False
     assert "plugin" in payload["error_taxonomy"]["categories"]
     assert (
@@ -742,7 +742,7 @@ def test_doctor_reports_exact_missing_medium_route_variables(tmp_path: Path, mon
     assert any(
         "AGENT_MODEL_API_KEY or OPENAI_API_KEY" in action for action in payload["next_actions"]
     )
-    assert any("灰度试运行手册.md" in action for action in payload["next_actions"])
+    assert any("发布准备验证试运行手册.md" in action for action in payload["next_actions"])
 
 
 def test_doctor_accepts_global_minimax_as_effective_medium_route(
@@ -788,7 +788,7 @@ def test_doctor_fails_for_missing_workspace_guidance(tmp_path: Path) -> None:
     assert result.to_dict()["ok"] is False
 
 
-def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch) -> None:
+def test_gate_status_moves_from_gate_to_readiness_to_core(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "missing_real_model_gate"
@@ -811,20 +811,20 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
     (gate_dir / "real_model_gate_report.json").write_text(
-        json.dumps({"ok": True, "recommended_actions": ["run gray"]}),
+        json.dumps({"ok": True, "recommended_actions": ["run readiness"]}),
         encoding="utf-8",
     )
     result = GateStatusCommand(tmp_path).run()
-    assert result.stage == "ready_for_gray_suite"
+    assert result.stage == "ready_for_readiness_suite"
     assert result.to_dict()["rollout_state"] == "conditional"
 
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
-    (verification_dir / "real_model_acceptance_gray.json").write_text(
+    (verification_dir / "real_model_acceptance_readiness.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "gray_ready": True,
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 4,
                     "passed": 4,
@@ -836,35 +836,35 @@ def test_gate_status_moves_from_gate_to_gray_to_core(tmp_path: Path, monkeypatch
     )
     result = GateStatusCommand(tmp_path).run()
     assert result.stage == "ready_for_core_acceptance"
-    assert "gray_ready: True" in result.to_text()
+    assert "readiness_ready: True" in result.to_text()
 
     (verification_dir / "real_model_acceptance_core.json").write_text(
         json.dumps({"ok": True, "aggregate": {"total": 6, "passed": 6}}),
         encoding="utf-8",
     )
     result = GateStatusCommand(tmp_path).run()
-    assert result.stage == "ready_for_small_real_task_gray"
+    assert result.stage == "ready_for_small_real_task_readiness"
     payload = result.to_dict()
-    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["stage"] == "ready_for_small_real_task_readiness"
     assert payload["rollout_state"] == "release_ready"
     assert payload["release_ready"] is True
     assert payload["blocking_reason"] is None
-    assert payload["gates"]["gray_suite"]["gray_ready"] is True
-    assert payload["gray_report"]["gray_ready"] is True
+    assert payload["gates"]["readiness_suite"]["readiness_ready"] is True
+    assert payload["readiness_report"]["readiness_ready"] is True
     assert payload["route_environment"]["ready"] is True
     assert payload["promotion_release_risks"]["pending"] == 0
-    assert payload["gray_task_limits"]["max_tasks_per_iteration"] == 1
+    assert payload["readiness_task_limits"]["max_tasks_per_iteration"] == 1
     assert "--no-research" in payload["next_actions"][0]
     assert payload["route_guidance"]["status"] == "healthy"
     assert payload["validation_recommendation"]["level"] in {
         "none",
         "targeted",
         "core_subset",
-        "full_gray_core",
+        "full_readiness_core",
     }
 
 
-def test_gate_status_uses_latest_gray_acceptance_summary(tmp_path: Path, monkeypatch) -> None:
+def test_gate_status_uses_latest_readiness_acceptance_summary(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
@@ -874,14 +874,14 @@ def test_gate_status_uses_latest_gray_acceptance_summary(tmp_path: Path, monkeyp
     )
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
-    stale = verification_dir / "real_model_acceptance_gray.json"
-    fresh = verification_dir / "real_model_acceptance_gray_after_fix.json"
+    stale = verification_dir / "real_model_acceptance_readiness.json"
+    fresh = verification_dir / "real_model_acceptance_readiness_after_fix.json"
     stale.write_text(
         json.dumps(
             {
                 "ok": False,
-                "suite": "gray",
-                "gray_ready": False,
+                "suite": "readiness",
+                "readiness_ready": False,
                 "aggregate": {"total": 7, "passed": 3, "failed": 4},
             }
         ),
@@ -891,8 +891,8 @@ def test_gate_status_uses_latest_gray_acceptance_summary(tmp_path: Path, monkeyp
         json.dumps(
             {
                 "ok": True,
-                "suite": "gray",
-                "gray_ready": True,
+                "suite": "readiness",
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 7,
                     "passed": 7,
@@ -910,14 +910,14 @@ def test_gate_status_uses_latest_gray_acceptance_summary(tmp_path: Path, monkeyp
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["stage"] == "ready_for_small_real_task_gray"
-    assert payload["gates"]["gray_suite"]["passed"] == 7
-    assert payload["evidence_sources"]["gray_suite"].endswith(
-        "real_model_acceptance_gray_after_fix.json"
+    assert payload["stage"] == "ready_for_small_real_task_readiness"
+    assert payload["gates"]["readiness_suite"]["passed"] == 7
+    assert payload["evidence_sources"]["readiness_suite"].endswith(
+        "real_model_acceptance_readiness_after_fix.json"
     )
 
 
-def test_gate_status_prefers_passing_canonical_gray_summary(tmp_path: Path, monkeypatch) -> None:
+def test_gate_status_prefers_passing_canonical_readiness_summary(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
@@ -927,12 +927,12 @@ def test_gate_status_prefers_passing_canonical_gray_summary(tmp_path: Path, monk
     )
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
-    (verification_dir / "real_model_acceptance_gray.json").write_text(
+    (verification_dir / "real_model_acceptance_readiness.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "suite": "gray",
-                "gray_ready": True,
+                "suite": "readiness",
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 7,
                     "passed": 7,
@@ -943,12 +943,12 @@ def test_gate_status_prefers_passing_canonical_gray_summary(tmp_path: Path, monk
         ),
         encoding="utf-8",
     )
-    (verification_dir / "real_model_acceptance_gray_named_history.json").write_text(
+    (verification_dir / "real_model_acceptance_readiness_named_history.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "suite": "gray",
-                "gray_ready": True,
+                "suite": "readiness",
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 1,
                     "passed": 1,
@@ -966,8 +966,8 @@ def test_gate_status_prefers_passing_canonical_gray_summary(tmp_path: Path, monk
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["gates"]["gray_suite"]["total"] == 7
-    assert payload["evidence_sources"]["gray_suite"].endswith("real_model_acceptance_gray.json")
+    assert payload["gates"]["readiness_suite"]["total"] == 7
+    assert payload["evidence_sources"]["readiness_suite"].endswith("real_model_acceptance_readiness.json")
 
 
 def test_gate_status_blocks_release_when_current_routes_are_missing(
@@ -987,11 +987,11 @@ def test_gate_status_blocks_release_when_current_routes_are_missing(
     )
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
-    (verification_dir / "real_model_acceptance_gray.json").write_text(
+    (verification_dir / "real_model_acceptance_readiness.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "gray_ready": True,
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 4,
                     "passed": 4,
@@ -1034,11 +1034,11 @@ def test_gate_status_accepts_global_minimax_fallback_for_medium(
     )
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
-    (verification_dir / "real_model_acceptance_gray.json").write_text(
+    (verification_dir / "real_model_acceptance_readiness.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "gray_ready": True,
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 4,
                     "passed": 4,
@@ -1055,13 +1055,13 @@ def test_gate_status_accepts_global_minimax_fallback_for_medium(
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["stage"] == "ready_for_small_real_task_readiness"
     assert payload["rollout_state"] == "release_ready"
     assert payload["route_environment"]["medium"]["source"] == "global"
     assert payload["route_environment"]["medium"]["provider"] == "minimax"
 
 
-def test_gate_status_blocks_gray_when_capability_route_guidance_is_blocked(
+def test_gate_status_blocks_readiness_when_capability_route_guidance_is_blocked(
     tmp_path: Path, monkeypatch
 ) -> None:
     _configure_release_routes(monkeypatch)
@@ -1224,7 +1224,7 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["stage"] == "ready_for_small_real_task_readiness"
     assert payload["release_ready"] is True
     assert payload["route_guidance"]["status"] == "review"
     assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 2
@@ -1331,7 +1331,7 @@ def test_gate_status_accepts_recent_model_call_contract_evidence(
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["stage"] == "ready_for_small_real_task_readiness"
     assert payload["model_call_contract"]["status"] == "healthy"
     assert payload["model_call_contract"]["checked_calls"] == 1
 
@@ -1423,13 +1423,13 @@ def test_gate_status_prefers_real_model_gate_run_for_model_call_contract(
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["stage"] == "ready_for_small_real_task_gray"
+    assert payload["stage"] == "ready_for_small_real_task_readiness"
     assert payload["model_call_contract"]["status"] == "healthy"
     assert payload["model_call_contract"]["checked_calls"] == 1
     assert payload["model_call_contract"]["evidence_scope"] == "real_model_gate_run"
 
 
-def test_gate_status_blocks_gray_when_candidate_promotions_are_unresolved(
+def test_gate_status_blocks_readiness_when_candidate_promotions_are_unresolved(
     tmp_path: Path, monkeypatch
 ) -> None:
     _configure_release_routes(monkeypatch)
@@ -1492,11 +1492,11 @@ def _write_release_ready_gate_files(tmp_path: Path) -> None:
     )
     verification_dir = tmp_path / ".asteria" / "verification"
     verification_dir.mkdir(parents=True)
-    (verification_dir / "real_model_acceptance_gray.json").write_text(
+    (verification_dir / "real_model_acceptance_readiness.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "gray_ready": True,
+                "readiness_ready": True,
                 "aggregate": {
                     "total": 4,
                     "passed": 4,
@@ -1526,7 +1526,7 @@ def test_gate_status_recommends_validation_by_change_shape() -> None:
 
     assert docs["level"] == "targeted"
     assert source["level"] == "core_subset"
-    assert broad["level"] == "full_gray_core"
+    assert broad["level"] == "full_readiness_core"
 
 
 def _write_plugin_manifest(
@@ -1560,16 +1560,16 @@ def _write_plugin_manifest(
     )
 
 
-def test_validation_recommendation_treats_governance_changes_as_full_gray_core() -> None:
+def test_validation_recommendation_treats_governance_changes_as_full_readiness_core() -> None:
     schema = _validation_recommendation_for_changed_files(["schemas/plugin_manifest.schema.json"])
     policy = _validation_recommendation_for_changed_files(["templates/policies.default.json"])
     hook = _validation_recommendation_for_changed_files(
         ["src/asteria_runtime/core/runtime_hooks.py"]
     )
-    assert schema["level"] == "full_gray_core"
+    assert schema["level"] == "full_readiness_core"
     assert "governance" in schema["reason"].lower() or "schema" in schema["reason"].lower()
-    assert policy["level"] == "full_gray_core"
-    assert hook["level"] == "full_gray_core"
+    assert policy["level"] == "full_readiness_core"
+    assert hook["level"] == "full_readiness_core"
 
 
 def test_gate_status_blocks_release_when_plugin_manifests_are_blocked(

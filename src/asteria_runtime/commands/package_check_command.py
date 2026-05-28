@@ -77,25 +77,25 @@ class PackageCheckResult:
     def _next_actions(self, failed: list[str]) -> list[str]:
         actions: list[str] = []
         if failed:
-            actions.append("Fix package metadata and version checks before building a gray package.")
-        if "gray_route_template" in failed:
-            actions.append("Add `templates/model.routes.gray.example.ps1` before gray rollout.")
-        if "gray_command_modules" in failed:
-            actions.append("Package real-model gate and acceptance modules before gray rollout.")
+            actions.append("Fix package metadata and version checks before building a readiness package.")
+        if "readiness_route_template" in failed:
+            actions.append("Add `templates/model.routes.readiness.example.ps1` before readiness rollout.")
+        if "readiness_command_modules" in failed:
+            actions.append("Package real-model gate and acceptance modules before readiness rollout.")
         if "hook_plugin_control_surface" in failed:
             actions.append("Package hook/plugin schemas, command modules, defaults, and docs.")
-        if "gray_runbook" in failed:
-            actions.append("Add `docs/zh/灰度试运行手册.md` before gray rollout.")
+        if "readiness_runbook" in failed:
+            actions.append("Add `docs/zh/发布准备验证试运行手册.md` before readiness rollout.")
         if not self.artifacts:
             actions.append("Build a local wheel with `python -m build` when the build dependency is available.")
-        actions.append("Follow `docs/zh/灰度试运行手册.md` for install, route config, self-check, rollback, and failure collection.")
-        actions.append("Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.")
-        actions.append("Run `asteria version --json` from the installed package before gray rollout.")
+        actions.append("Follow `docs/zh/发布准备验证试运行手册.md` for install, route config, self-check, rollback, and failure collection.")
+        actions.append("Configure model routes from `templates/model.routes.readiness.example.ps1` in the target shell.")
+        actions.append("Run `asteria version --json` from the installed package before readiness rollout.")
         return actions
 
     def _runbook(self) -> dict[str, object]:
         return {
-            "path": "docs/zh/灰度试运行手册.md",
+            "path": "docs/zh/发布准备验证试运行手册.md",
             "required_sections": [
                 "install",
                 "route_config",
@@ -138,11 +138,11 @@ class PackageCheckCommand:
             self._build_backend_check(pyproject),
             self._console_script_check(pyproject),
             self._version_sync_check(pyproject),
-            self._gray_command_modules_check(),
+            self._readiness_command_modules_check(),
             self._hook_plugin_control_surface_check(),
             self._route_template_check(),
             self._runbook_docs_check(),
-            self._gray_runbook_check(),
+            self._readiness_runbook_check(),
         ]
         return PackageCheckResult(
             root=self.root,
@@ -203,24 +203,24 @@ class PackageCheckCommand:
             f"pyproject={package_version or 'missing'}, runtime={__version__}",
         )
 
-    def _gray_command_modules_check(self) -> PackageCheck:
+    def _readiness_command_modules_check(self) -> PackageCheck:
         required = [
             "src/asteria_runtime/real_model_smoke.py",
             "src/asteria_runtime/real_model_gate.py",
             "src/asteria_runtime/real_model_acceptance.py",
             "src/asteria_runtime/commands/gate_command.py",
-            "src/asteria_runtime/commands/gray_command.py",
-            "src/asteria_runtime/commands/gray_run_command.py",
+            "src/asteria_runtime/commands/readiness_command.py",
+            "src/asteria_runtime/commands/readiness_run_command.py",
             "src/asteria_runtime/commands/evidence_bundle_command.py",
-            "src/asteria_runtime/schemas/gray_run.schema.json",
+            "src/asteria_runtime/schemas/readiness_run.schema.json",
         ]
         missing = [item for item in required if not (self.root / item).exists()]
         return PackageCheck(
-            "gray_command_modules",
+            "readiness_command_modules",
             not missing,
             (
                 "real-model smoke/gate/acceptance package modules present"
-                " and gate/gray/gray-run command modules present"
+                " and gate/readiness/readiness-run command modules present"
                 if not missing
                 else "missing: " + ", ".join(missing)
             ),
@@ -253,11 +253,11 @@ class PackageCheckCommand:
         )
 
     def _route_template_check(self) -> PackageCheck:
-        path = self.root / "templates" / "model.routes.gray.example.ps1"
+        path = self.root / "templates" / "model.routes.readiness.example.ps1"
         return PackageCheck(
-            "gray_route_template",
+            "readiness_route_template",
             path.exists(),
-            str(path.relative_to(self.root)) if path.exists() else "missing gray route template",
+            str(path.relative_to(self.root)) if path.exists() else "missing readiness route template",
         )
 
     def _runbook_docs_check(self) -> PackageCheck:
@@ -265,21 +265,21 @@ class PackageCheckCommand:
             "docs/zh/开发指南.md",
             "docs/zh/运行命令.md",
             "docs/zh/真实模型验收.md",
-            "docs/zh/灰度试运行手册.md",
+            "docs/zh/发布准备验证试运行手册.md",
         ]
         missing = [item for item in required if not (self.root / item).exists()]
         return PackageCheck(
-            "gray_docs",
+            "readiness_docs",
             not missing,
-            "gray rollout docs present" if not missing else "missing: " + ", ".join(missing),
+            "readiness rollout docs present" if not missing else "missing: " + ", ".join(missing),
         )
 
-    def _gray_runbook_check(self) -> PackageCheck:
-        path = self.root / "docs" / "zh" / "灰度试运行手册.md"
+    def _readiness_runbook_check(self) -> PackageCheck:
+        path = self.root / "docs" / "zh" / "发布准备验证试运行手册.md"
         return PackageCheck(
-            "gray_runbook",
+            "readiness_runbook",
             path.exists(),
-            str(path.relative_to(self.root)) if path.exists() else "missing gray runbook",
+            str(path.relative_to(self.root)) if path.exists() else "missing readiness runbook",
         )
 
     def _dist_artifacts(self) -> list[str]:

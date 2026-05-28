@@ -53,9 +53,9 @@
       "error_type": "configuration"
     },
     {
-      "name": "gray_command_modules",
+      "name": "readiness_command_modules",
       "ok": true,
-      "summary": "real-model smoke/gate/acceptance package modules present and gate/gray/gray-run command modules present",
+      "summary": "real-model smoke/gate/acceptance package modules present and gate/readiness/readiness-run command modules present",
       "severity": "error",
       "error_type": "configuration"
     },
@@ -67,23 +67,23 @@
       "error_type": "plugin"
     },
     {
-      "name": "gray_route_template",
+      "name": "readiness_route_template",
       "ok": true,
-      "summary": "templates\\model.routes.gray.example.ps1",
+      "summary": "templates\\model.routes.readiness.example.ps1",
       "severity": "error",
       "error_type": "configuration"
     },
     {
-      "name": "gray_docs",
+      "name": "readiness_docs",
       "ok": true,
-      "summary": "gray rollout docs present",
+      "summary": "readiness rollout docs present",
       "severity": "error",
       "error_type": "configuration"
     },
     {
-      "name": "gray_runbook",
+      "name": "readiness_runbook",
       "ok": true,
-      "summary": "docs\\zh\\灰度试运行手册.md",
+      "summary": "docs\\zh\\发布准备验证试运行手册.md",
       "severity": "error",
       "error_type": "configuration"
     }
@@ -95,7 +95,7 @@
     "dist\\tzdata-2026.2-py2.py3-none-any.whl"
   ],
   "runbook": {
-    "path": "docs/zh/灰度试运行手册.md",
+    "path": "docs/zh/发布准备验证试运行手册.md",
     "required_sections": [
       "install",
       "route_config",
@@ -119,8 +119,8 @@
     ]
   },
   "next_actions": [
-    "Follow `docs/zh/灰度试运行手册.md` for install, route config, self-check, rollback, and failure collection.",
-    "Configure model routes from `templates/model.routes.gray.example.ps1` in the target shell.",
-    "Run `asteria version --json` from the installed package before gray rollout."
+    "Follow `docs/zh/发布准备验证试运行手册.md` for install, route config, self-check, rollback, and failure collection.",
+    "Configure model routes from `templates/model.routes.readiness.example.ps1` in the target shell.",
+    "Run `asteria version --json` from the installed package before readiness rollout."
   ]
 }

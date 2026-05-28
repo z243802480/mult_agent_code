@@ -85,11 +85,11 @@ CHECK_ERROR_TYPES: dict[str, str] = {
     "build_backend": "configuration",
     "console_script": "configuration",
     "version_sync": "configuration",
-    "gray_command_modules": "configuration",
+    "readiness_command_modules": "configuration",
     "hook_plugin_control_surface": "plugin",
-    "gray_route_template": "configuration",
-    "gray_docs": "configuration",
-    "gray_runbook": "configuration",
+    "readiness_route_template": "configuration",
+    "readiness_docs": "configuration",
+    "readiness_runbook": "configuration",
 }
 
 

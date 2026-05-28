@@ -15,12 +15,12 @@ from scripts.real_model_acceptance import (
     aggregate_results,
     apply_timeout_budget_env,
     classify_acceptance_subprocess_failure,
-    gray_ready,
+    readiness_ready,
 )
 
 pytestmark = [
     pytest.mark.real_provider,
-    pytest.mark.real_provider_gray,
+    pytest.mark.real_provider_readiness,
     pytest.mark.real_provider_core,
 ]
 
@@ -31,25 +31,25 @@ def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
     assert "safe_file_renamer" in SUITES["nightly"]
     assert "multi_file_todo_cli" in SUITES["core"]
     assert "config_driven_report" in SUITES["core"]
-    assert SUITES["gray"] == [
-        "gray_file_artifact",
-        "gray_multi_file_scope",
-        "gray_debug_repair",
-        "gray_doc_update",
-        "gray_small_cli",
-        "gray_refactor",
+    assert SUITES["readiness"] == [
+        "readiness_file_artifact",
+        "readiness_multi_file_scope",
+        "readiness_debug_repair",
+        "readiness_doc_update",
+        "readiness_small_cli",
+        "readiness_refactor",
         "runtime_request_resume",
     ]
-    assert SCENARIOS["gray_doc_update"].tier == "gray"
-    assert SCENARIOS["gray_doc_update"].expected_file == "docs/README.md"
-    assert SCENARIOS["gray_small_cli"].tier == "gray"
-    assert SCENARIOS["gray_small_cli"].expected_file == "greet.py"
-    assert SCENARIOS["gray_refactor"].tier == "gray"
-    assert SCENARIOS["gray_refactor"].setup_files
-    assert "shapes.py" in SCENARIOS["gray_refactor"].setup_files
-    assert SCENARIOS["gray_file_artifact"].tier == "gray"
-    assert SCENARIOS["gray_multi_file_scope"].capability == "gray_multi_file_scope"
-    assert SCENARIOS["gray_debug_repair"].setup_files
+    assert SCENARIOS["readiness_doc_update"].tier == "readiness"
+    assert SCENARIOS["readiness_doc_update"].expected_file == "docs/README.md"
+    assert SCENARIOS["readiness_small_cli"].tier == "readiness"
+    assert SCENARIOS["readiness_small_cli"].expected_file == "greet.py"
+    assert SCENARIOS["readiness_refactor"].tier == "readiness"
+    assert SCENARIOS["readiness_refactor"].setup_files
+    assert "shapes.py" in SCENARIOS["readiness_refactor"].setup_files
+    assert SCENARIOS["readiness_file_artifact"].tier == "readiness"
+    assert SCENARIOS["readiness_multi_file_scope"].capability == "readiness_multi_file_scope"
+    assert SCENARIOS["readiness_debug_repair"].setup_files
     assert "docs_code_sync" in SUITES["advanced"]
     assert SCENARIOS["multi_file_todo_cli"].capability == "multi_file_change"
 
@@ -105,7 +105,7 @@ def test_real_model_acceptance_runs_offline_suite_when_explicitly_allowed(
     assert summary["aggregate"]["tool_calls"] > 0
     assert summary["scenario_metadata"][0]["capability"] == "offline_artifact"
     assert summary["aggregate"]["capabilities"]["offline_artifact"]["passed"] == 1
-    assert summary["gray_ready"] is False
+    assert summary["readiness_ready"] is False
     assert [scenario["scenario"] for scenario in summary["scenarios"]] == ["offline_artifact"]
     assert summary["scenarios"][0]["duration_seconds"] >= 0
     assert summary["scenarios"][0]["attempts"][0]["attempt"] == 1
@@ -286,12 +286,12 @@ def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
     assert env["AGENT_MODEL_SMOKE_RECOVERY_TIMEOUT_SECONDS"] == "200"
 
 
-def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:
+def test_readiness_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:
     results = [
         {
-            "scenario": "gray_file_artifact",
-            "capability": "gray_artifact_creation",
-            "tier": "gray",
+            "scenario": "readiness_file_artifact",
+            "capability": "readiness_artifact_creation",
+            "tier": "readiness",
             "ok": True,
             "route_evidence": {
                 "available": True,
@@ -302,9 +302,9 @@ def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() 
             "summary": {"diagnostics": {"model_calls": 2, "tool_calls": 1}},
         },
         {
-            "scenario": "gray_multi_file_scope",
-            "capability": "gray_multi_file_scope",
-            "tier": "gray",
+            "scenario": "readiness_multi_file_scope",
+            "capability": "readiness_multi_file_scope",
+            "tier": "readiness",
             "ok": True,
             "route_evidence": {
                 "available": True,
@@ -318,20 +318,20 @@ def test_gray_ready_requires_passing_results_and_strong_medium_route_evidence() 
 
     aggregate = aggregate_results(results)
 
-    assert gray_ready("gray", aggregate) is True
+    assert readiness_ready("readiness", aggregate) is True
     assert aggregate["route_evidence"]["strong_used"] is True
     assert aggregate["route_evidence"]["medium_used"] is True
     assert aggregate["route_evidence"]["providers_by_tier"]["strong"] == ["zai"]
     assert aggregate["route_evidence"]["providers_by_tier"]["medium"] == ["minimax"]
 
 
-def test_gray_ready_blocks_missing_medium_route_evidence() -> None:
+def test_readiness_ready_blocks_missing_medium_route_evidence() -> None:
     aggregate = aggregate_results(
         [
             {
-                "scenario": "gray_file_artifact",
-                "capability": "gray_artifact_creation",
-                "tier": "gray",
+                "scenario": "readiness_file_artifact",
+                "capability": "readiness_artifact_creation",
+                "tier": "readiness",
                 "ok": True,
                 "route_evidence": {
                     "available": True,
@@ -344,5 +344,5 @@ def test_gray_ready_blocks_missing_medium_route_evidence() -> None:
         ]
     )
 
-    assert gray_ready("gray", aggregate) is False
-    assert aggregate["route_evidence"]["scenarios_missing_medium"] == ["gray_file_artifact"]
+    assert readiness_ready("readiness", aggregate) is False
+    assert aggregate["route_evidence"]["scenarios_missing_medium"] == ["readiness_file_artifact"]

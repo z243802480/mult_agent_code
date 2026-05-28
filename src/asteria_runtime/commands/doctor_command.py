@@ -39,7 +39,7 @@ class DoctorResult:
     routes: dict[str, dict[str, object]] = field(default_factory=dict)
     sandbox: dict[str, object] = field(default_factory=dict)
     route_requirements: dict[str, list[str]] = field(default_factory=dict)
-    gray_task_limits: dict[str, object] = field(default_factory=dict)
+    readiness_task_limits: dict[str, object] = field(default_factory=dict)
     plugin_control: dict[str, object] = field(default_factory=dict)
 
     @property
@@ -64,7 +64,7 @@ class DoctorResult:
                     "routes",
                     "route_requirements",
                     "sandbox",
-                    "gray_task_limits",
+                    "readiness_task_limits",
                     "plugin_control",
                     "error_taxonomy",
                     "next_actions",
@@ -79,7 +79,7 @@ class DoctorResult:
             "routes": self.routes,
             "route_requirements": self.route_requirements,
             "sandbox": self.sandbox,
-            "gray_task_limits": self.gray_task_limits,
+            "readiness_task_limits": self.readiness_task_limits,
             "plugin_control": self.plugin_control,
             "error_taxonomy": taxonomy_summary(),
             "next_actions": self._next_actions(failed),
@@ -101,7 +101,7 @@ class DoctorResult:
             )
             required = ", ".join(required_names)
             actions.append(
-                f"Set {tier} route environment variables before gray validation: {required}."
+                f"Set {tier} route environment variables before readiness validation: {required}."
             )
         if "real_model_gate" in failed:
             actions.append(
@@ -110,7 +110,7 @@ class DoctorResult:
         if "plugins" in failed:
             actions.append("Run `asteria plugins doctor --root . --json` and fix blocked manifests.")
         actions.append(
-            "Use `docs/zh/灰度试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
+            "Use `docs/zh/发布准备验证试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
         )
         return actions
 
@@ -125,7 +125,7 @@ class DoctorResult:
             marker = "ok" if check.ok else check.severity
             lines.append(f"  - {check.name}: {marker} - {check.summary}")
         if not self.ok:
-            lines.append("Next: fix error checks before running gray validation.")
+            lines.append("Next: fix error checks before running readiness validation.")
         return "\n".join(lines)
 
 
@@ -153,7 +153,7 @@ class DoctorCommand:
                 tier: self._route_requirement_names(tier) for tier in ["strong", "medium", "cheap"]
             },
             sandbox=self._sandbox_summary(),
-            gray_task_limits=_gray_task_limits(),
+            readiness_task_limits=_readiness_task_limits(),
             plugin_control=plugin_control,
         )
 
@@ -298,7 +298,7 @@ class DoctorCommand:
         )
 
 
-def _gray_task_limits() -> dict[str, object]:
+def _readiness_task_limits() -> dict[str, object]:
     return {
         "max_iterations": 3,
         "max_tasks_per_iteration": 1,

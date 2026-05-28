@@ -21,12 +21,12 @@
       "promotion_release_risks",
       "plugin_risks",
       "runtime_progress_metrics",
-      "runtime_gray_matrix",
+      "runtime_readiness_matrix",
       "recovery_pressure",
       "feature_flags",
       "capability_flags",
       "evidence_sources",
-      "gray_task_limits",
+      "readiness_task_limits",
       "validation_recommendation",
       "next_actions"
     ]
@@ -42,7 +42,7 @@
       "ok": null,
       "status": "missing"
     },
-    "gray_suite": {
+    "readiness_suite": {
       "present": false,
       "ok": null,
       "status": "missing"
@@ -97,28 +97,28 @@
         "primary_model": "glm-5",
         "cost_saver_model": "glm-4.7",
         "min_calls_before_enforcement": 3,
-        "min_success_rate_for_gray": 0.8,
-        "max_timeout_failures_for_gray": 1,
+        "min_success_rate_for_readiness": 0.8,
+        "max_timeout_failures_for_readiness": 1,
         "provider_deadline_seconds": 120,
         "stream_idle_timeout_seconds": 30,
         "continue_primary_when": [
           "release gate is being refreshed",
           "route guidance is healthy",
-          "recent success rate is at or above min_success_rate_for_gray"
+          "recent success rate is at or above min_success_rate_for_readiness"
         ],
         "allow_cost_saver_when": [
-          "task is a small gray validation task",
+          "task is a small readiness validation task",
           "cost budget is constrained",
-          "cost_saver recent success rate is at or above min_success_rate_for_gray"
+          "cost_saver recent success rate is at or above min_success_rate_for_readiness"
         ],
         "downgrade_or_retry_when": [
           "primary route is transiently rate limited",
           "primary route hits one timeout but recent success rate remains acceptable",
           "task is doc-only or low-risk and medium route is healthy"
         ],
-        "block_gray_when": [
-          "strong goal_spec success rate is below min_success_rate_for_gray after min_calls_before_enforcement calls",
-          "timeout failures exceed max_timeout_failures_for_gray",
+        "block_readiness_when": [
+          "strong goal_spec success rate is below min_success_rate_for_readiness after min_calls_before_enforcement calls",
+          "timeout failures exceed max_timeout_failures_for_readiness",
           "authentication, budget, or configuration failure is present",
           "provider streaming evidence is missing for required strong and medium routes"
         ]
@@ -134,7 +134,7 @@
     "checked_calls": 0,
     "summary": "No recent real-provider model_calls.jsonl evidence was found.",
     "recommended_actions": [
-      "Run model-check or a small real-provider gray task to collect model call contract evidence."
+      "Run model-check or a small real-provider readiness task to collect model call contract evidence."
     ],
     "violations": []
   },
@@ -240,9 +240,9 @@
       "skill_with_reason": 0
     }
   },
-  "runtime_gray_matrix": {
+  "runtime_readiness_matrix": {
     "schema_version": "0.1.0",
-    "catalog_path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmp10jn0r3d\\benchmarks\\runtime_gray_matrix.json",
+    "catalog_path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\tmp10jn0r3d\\benchmarks\\runtime_readiness_matrix.json",
     "case_count": 8,
     "passed": 1,
     "failed": 7,
@@ -313,7 +313,7 @@
     }
   },
   "evidence_sources": {},
-  "gray_task_limits": {
+  "readiness_task_limits": {
     "max_iterations": 3,
     "max_tasks_per_iteration": 1,
     "max_repairs": 1,

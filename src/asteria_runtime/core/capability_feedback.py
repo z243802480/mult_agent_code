@@ -55,13 +55,13 @@ class CapabilityFeedbackAdvisor:
             if low_risk:
                 plan["selected_model_tier"] = "medium"
                 plan["actions"].append("downgrade_low_risk_goal_spec_to_medium")
-        elif decision == "block_gray":
-            plan["actions"].append("block_gray_until_strong_goal_spec_stable")
+        elif decision == "block_readiness":
+            plan["actions"].append("block_readiness_until_strong_goal_spec_stable")
             if low_risk and not _hard_provider_failure(evaluation):
                 plan["selected_model_tier"] = "medium"
                 plan["actions"].append("downgrade_low_risk_goal_spec_to_medium")
         elif decision == "allow_cost_saver":
-            plan["actions"].append("allow_cost_saver_strong_goal_spec_for_small_gray")
+            plan["actions"].append("allow_cost_saver_strong_goal_spec_for_small_readiness")
         elif decision == "continue_primary":
             plan["actions"].append("continue_primary_strong_goal_spec")
         else:
@@ -133,7 +133,7 @@ class CapabilityFeedbackAdvisor:
         dominant_task_kind = _top_counter_key(task_kinds)
         message = (
             f"real-provider matrix is weak for {dominant_task_kind}/{dominant_route}; "
-            "review route before widening gray or long-run budget"
+            "review route before widening readiness or long-run budget"
         )
         severity = 3 if total >= 3 and success_rate < 0.5 else 2
         return {
@@ -175,10 +175,10 @@ class CapabilityFeedbackAdvisor:
                     0,
                     "Do not widen real-provider matrix routes until failed task_kind/route evidence is repaired or rerun.",
                 )
-            if strategy.get("decision") == "block_gray":
+            if strategy.get("decision") == "block_readiness":
                 actions.insert(
                     0,
-                    "Do not widen small real-task gray until strong goal_spec route meets provider strategy thresholds.",
+                    "Do not widen small real-task readiness until strong goal_spec route meets provider strategy thresholds.",
                 )
             return actions
         if review:
@@ -189,7 +189,7 @@ class CapabilityFeedbackAdvisor:
             if matrix_review:
                 actions.insert(
                     0,
-                    "Review real-provider matrix task_kind/route failures before increasing gray batch size.",
+                    "Review real-provider matrix task_kind/route failures before increasing readiness batch size.",
                 )
             if strategy.get("decision") == "retry_or_downgrade":
                 actions.append(
@@ -205,13 +205,13 @@ class CapabilityFeedbackAdvisor:
     ) -> dict:
         evaluation = self._provider_route_strategy_evaluation(agent_dir, profiles)
         decision = str(evaluation.get("decision") or "")
-        if decision == "block_gray":
+        if decision == "block_readiness":
             return {
                 "purpose": "goal_spec",
                 "provider": str(evaluation.get("provider") or "unknown"),
                 "model": str(evaluation.get("model") or "unknown"),
                 "model_tier": "strong",
-                "recommended_action": "block_gray_until_strong_goal_spec_stable",
+                "recommended_action": "block_readiness_until_strong_goal_spec_stable",
                 "message": str(evaluation.get("reason") or "strong goal_spec route is unstable"),
                 "severity": 3,
             }
@@ -285,8 +285,8 @@ class CapabilityFeedbackAdvisor:
         )
         timeout_failures = int(failure_types.get("timeout") or 0)
         min_calls = int(strategy.get("min_calls_before_enforcement") or 3)
-        min_success = float(strategy.get("min_success_rate_for_gray") or 0.8)
-        max_timeouts = int(strategy.get("max_timeout_failures_for_gray") or 1)
+        min_success = float(strategy.get("min_success_rate_for_readiness") or 0.8)
+        max_timeouts = int(strategy.get("max_timeout_failures_for_readiness") or 1)
         provider = str(selected.get("provider") or "unknown")
         model = str(selected.get("model") or "unknown")
 
@@ -298,25 +298,25 @@ class CapabilityFeedbackAdvisor:
             "success_rate": success_rate,
             "timeout_failures": timeout_failures,
             "min_calls_before_enforcement": min_calls,
-            "min_success_rate_for_gray": min_success,
-            "max_timeout_failures_for_gray": max_timeouts,
+            "min_success_rate_for_readiness": min_success,
+            "max_timeout_failures_for_readiness": max_timeouts,
         }
         if failure_types.get("authentication") or failure_types.get("budget"):
             return {
                 **base,
-                "decision": "block_gray",
+                "decision": "block_readiness",
                 "reason": "Strong goal_spec route has authentication or budget failures.",
             }
         if timeout_failures > max_timeouts:
             return {
                 **base,
-                "decision": "block_gray",
+                "decision": "block_readiness",
                 "reason": "Strong goal_spec timeout failures exceed provider route strategy threshold.",
             }
         if total >= min_calls and success_rate < min_success:
             return {
                 **base,
-                "decision": "block_gray",
+                "decision": "block_readiness",
                 "reason": "Strong goal_spec success rate is below provider route strategy threshold.",
             }
         if (
@@ -333,7 +333,7 @@ class CapabilityFeedbackAdvisor:
             return {
                 **base,
                 "decision": "allow_cost_saver",
-                "reason": "Cost-saver strong model has enough healthy evidence for small gray tasks.",
+                "reason": "Cost-saver strong model has enough healthy evidence for small readiness tasks.",
             }
         return {
             **base,

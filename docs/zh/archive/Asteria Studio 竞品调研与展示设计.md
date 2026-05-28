@@ -46,9 +46,9 @@ Codex 的关键价值在于把任务做成可验证工作流：review PR、执�
 
 对 Studio 的落点：
 
-- 首页要显示 gate/gray/core readiness，而不仅是聊天 transcript。
+- 首页要显示 gate/readiness/core readiness，而不仅是聊天 transcript。
 - 每条运行事件应保留 phase、status、route、artifact/evidence，方便复盘。
-- 对文档、小工具、测试修复、受控重构等灰度任务，要能看成本、repair、replan、promotion 趋势。
+- 对文档、小工具、测试修复、受控重构等发布准备验证任务，要能看成本、repair、replan、promotion 趋势。
 - 未来的 dogfooding 证据包导出应成为 Studio 一级动作。
 
 ## 3. 展示设计原则
@@ -80,7 +80,7 @@ Studio 当前阶段采用“任务驾驶舱 + 证据 Inspector”的布局：
 ## 5. 后续计划
 
 - P0：接入 evidence bundle 导出按钮，输出脱敏诊断包路径和摘要。
-- P0：把 gate/gray/release 的推荐动作做成只读 command preview。
+- P0：把 gate/readiness/release 的推荐动作做成只读 command preview。
 - P0：把 route guidance 的 provider_route_strategy 展示为产品化判定，而不是裸 JSON。
 - P1：展示 candidate workspace / promotion queue 状态，并支持 approve/reject/discard 的受控命令预览。
 - P1：把 model streaming heartbeat 做成低噪声进度行：first chunk、last chunk、duration、idle timeout。

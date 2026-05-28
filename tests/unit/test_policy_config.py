@@ -62,7 +62,7 @@ def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> Non
     assert policy["promotion"]["max_pending_release_promotions"] == 0
     assert policy["provider_route_strategy"]["strong_goal_spec"]["primary_model"] == "glm-5"
     assert (
-        policy["provider_route_strategy"]["strong_goal_spec"]["min_success_rate_for_gray"]
+        policy["provider_route_strategy"]["strong_goal_spec"]["min_success_rate_for_readiness"]
         == 0.8
     )
     persisted = json.loads(policy_path.read_text(encoding="utf-8"))

@@ -80,33 +80,33 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="offline verification artifact",
         max_iterations=3,
     ),
-    "gray_file_artifact": AcceptanceScenario(
-        name="gray_file_artifact",
-        capability="gray_artifact_creation",
-        tier="gray",
-        goal=("Create a local file gray_runtime.txt containing one line: gray route artifact ok"),
-        expected_file="gray_runtime.txt",
-        expected_text="gray route artifact ok",
+    "readiness_file_artifact": AcceptanceScenario(
+        name="readiness_file_artifact",
+        capability="readiness_artifact_creation",
+        tier="readiness",
+        goal=("Create a local file readiness_runtime.txt containing one line: readiness route artifact ok"),
+        expected_file="readiness_runtime.txt",
+        expected_text="readiness route artifact ok",
         max_iterations=3,
     ),
-    "gray_multi_file_scope": AcceptanceScenario(
-        name="gray_multi_file_scope",
-        capability="gray_multi_file_scope",
-        tier="gray",
+    "readiness_multi_file_scope": AcceptanceScenario(
+        name="readiness_multi_file_scope",
+        capability="readiness_multi_file_scope",
+        tier="readiness",
         goal=(
             "Create a small multi-file Python notes CLI. Use a package directory named notes_app "
             "with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support "
-            '`python notes.py add "ship gray"` and `python notes.py list`, storing notes in '
+            '`python notes.py add "ship readiness"` and `python notes.py list`, storing notes in '
             "notes.json under the current directory."
         ),
         expected_file="notes.py",
         expected_text="notes_app",
         max_iterations=5,
     ),
-    "gray_debug_repair": AcceptanceScenario(
-        name="gray_debug_repair",
-        capability="gray_debug_repair",
-        tier="gray",
+    "readiness_debug_repair": AcceptanceScenario(
+        name="readiness_debug_repair",
+        capability="readiness_debug_repair",
+        tier="readiness",
         goal=(
             "Fix the failing tests in this project. Run the Python tests, identify the bug in "
             "buggy_math.py, and make the tests pass with the smallest reasonable change."
@@ -125,10 +125,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             ),
         },
     ),
-    "gray_doc_update": AcceptanceScenario(
-        name="gray_doc_update",
-        capability="gray_doc_only_task",
-        tier="gray",
+    "readiness_doc_update": AcceptanceScenario(
+        name="readiness_doc_update",
+        capability="readiness_doc_only_task",
+        tier="readiness",
         goal=(
             "Create a README.md in the docs/ directory with three sections: "
             "'Overview' (one paragraph about this tool), 'Quick Start' (3 numbered steps), "
@@ -138,10 +138,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="Overview",
         max_iterations=3,
     ),
-    "gray_small_cli": AcceptanceScenario(
-        name="gray_small_cli",
-        capability="gray_small_cli",
-        tier="gray",
+    "readiness_small_cli": AcceptanceScenario(
+        name="readiness_small_cli",
+        capability="readiness_small_cli",
+        tier="readiness",
         goal=(
             "Create a single-file Python CLI named greet.py that takes a name as a "
             "command-line argument and prints 'Hello, <name>!' to stdout. "
@@ -151,10 +151,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="Hello",
         max_iterations=3,
     ),
-    "gray_refactor": AcceptanceScenario(
-        name="gray_refactor",
-        capability="gray_controlled_refactor",
-        tier="gray",
+    "readiness_refactor": AcceptanceScenario(
+        name="readiness_refactor",
+        capability="readiness_controlled_refactor",
+        tier="readiness",
         goal=(
             "Refactor the file shapes.py by extracting a base class Shape with an abstract "
             "area() method, then make Circle and Rectangle inherit from it. Keep all existing "
@@ -364,13 +364,13 @@ SUITES = {
         "config_driven_report",
         *runtime_os_scenario_names(),
     ],
-    "gray": [
-        "gray_file_artifact",
-        "gray_multi_file_scope",
-        "gray_debug_repair",
-        "gray_doc_update",
-        "gray_small_cli",
-        "gray_refactor",
+    "readiness": [
+        "readiness_file_artifact",
+        "readiness_multi_file_scope",
+        "readiness_debug_repair",
+        "readiness_doc_update",
+        "readiness_small_cli",
+        "readiness_refactor",
         "runtime_request_resume",
     ],
     "advanced": [
@@ -430,7 +430,7 @@ def run_from_args(args: argparse.Namespace) -> None:
             "scenario_metadata": scenario_metadata,
             "scenarios": results,
             "aggregate": aggregate,
-            "gray_ready": gray_ready(args.suite, aggregate),
+            "readiness_ready": readiness_ready(args.suite, aggregate),
         }
         attach_history(args.history_jsonl, summary)
         write_summary_paths(summary_paths, summary)
@@ -453,7 +453,7 @@ def run_from_args(args: argparse.Namespace) -> None:
                     "scenario_metadata": scenario_metadata_for(selected),
                     "scenarios": results,
                     "aggregate": aggregate_results(results, scenario_metadata_for(selected)),
-                    "gray_ready": False,
+                    "readiness_ready": False,
                     "error": str(exc),
                 },
             )
@@ -1115,8 +1115,8 @@ def aggregate_route_evidence(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def gray_ready(suite: str, aggregate: dict[str, Any]) -> bool:
-    if suite != "gray":
+def readiness_ready(suite: str, aggregate: dict[str, Any]) -> bool:
+    if suite != "readiness":
         return False
     route_evidence = aggregate.get("route_evidence")
     return bool(

@@ -7,10 +7,10 @@ from typing import Any
 from asteria_runtime.core.agent_tool_surface import tool_surface_contract
 
 
-MATRIX_CATALOG_PATH = Path("benchmarks") / "runtime_gray_matrix.json"
+MATRIX_CATALOG_PATH = Path("benchmarks") / "runtime_readiness_matrix.json"
 
 
-def runtime_gray_matrix(root: Path, progress_metrics: dict[str, Any]) -> dict[str, Any]:
+def runtime_readiness_matrix(root: Path, progress_metrics: dict[str, Any]) -> dict[str, Any]:
     catalog = _load_catalog(root)
     raw_cases = catalog.get("cases")
     required_cases = raw_cases if isinstance(raw_cases, list) else []
@@ -33,11 +33,11 @@ def runtime_gray_matrix(root: Path, progress_metrics: dict[str, Any]) -> dict[st
     }
 
 
-def runtime_gray_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
+def runtime_readiness_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
     if not matrix:
         return []
     return [
-        "Runtime gray matrix: "
+        "Runtime readiness matrix: "
         f"{matrix.get('passed', 0)}/{matrix.get('case_count', 0)} covered "
         f"ready={matrix.get('ready', False)}"
     ]

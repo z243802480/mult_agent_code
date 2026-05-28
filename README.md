@@ -28,8 +28,8 @@ path. Use plain command names in new docs and scripts; slash-prefixed forms such
 `asteria /run` remain compatibility aliases for older automation.
 
 Maintainer-facing validation commands stay separate from that completion path: `asteria gate`,
-`asteria gray`, `asteria acceptance`, and `asteria acceptance-gate` are for rollout checks,
-gray validation, acceptance history, and CI/release gates after or around a completed run.
+`asteria readiness`, `asteria acceptance`, and `asteria acceptance-gate` are for rollout checks,
+readiness validation, acceptance history, and CI/release gates after or around a completed run.
 
 `asteria run "goal"` writes run artifacts under `.asteria/runs/<run_id>/`, including
 `goal_spec.json`, `task_plan.json`, `task_plan_eval.json`, logs, `review_report.md`, and

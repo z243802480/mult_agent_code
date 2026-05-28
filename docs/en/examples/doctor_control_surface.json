@@ -16,7 +16,7 @@
       "routes",
       "route_requirements",
       "sandbox",
-      "gray_task_limits",
+      "readiness_task_limits",
       "plugin_control",
       "error_taxonomy",
       "next_actions"
@@ -158,7 +158,7 @@
     "fallback_backend": "temp_workspace",
     "reason": "git unavailable or tracked files are dirty; use copied temp workspace"
   },
-  "gray_task_limits": {
+  "readiness_task_limits": {
     "max_iterations": 3,
     "max_tasks_per_iteration": 1,
     "max_repairs": 1,
@@ -230,6 +230,6 @@
   },
   "next_actions": [
     "Run `asteria real-model-gate --summary-json .asteria/model/real_model_gate_report.json`.",
-    "Use `docs/zh/灰度试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
+    "Use `docs/zh/发布准备验证试运行手册.md` for install self-check, upgrade, rollback, failure collection, and pause/resume."
   ]
 }

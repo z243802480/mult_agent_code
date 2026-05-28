@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from asteria_runtime.core.runtime_gray_matrix import runtime_gray_matrix
+from asteria_runtime.core.runtime_readiness_matrix import runtime_readiness_matrix
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
-def test_runtime_gray_matrix_covers_fixed_real_task_cases(tmp_path: Path) -> None:
+def test_runtime_readiness_matrix_covers_fixed_real_task_cases(tmp_path: Path) -> None:
     run_dir = tmp_path / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
     (run_dir / "agent_loop_dispatch.json").write_text(
@@ -25,7 +25,7 @@ def test_runtime_gray_matrix_covers_fixed_real_task_cases(tmp_path: Path) -> Non
     )
     _write_jsonl(
         run_dir / "capability_decisions.jsonl",
-        [{"decision": {"decision": "allow", "reason": "covered by gray policy"}}],
+        [{"decision": {"decision": "allow", "reason": "covered by readiness policy"}}],
     )
     _write_jsonl(
         run_dir / "mcp_invocations.jsonl",
@@ -62,7 +62,7 @@ def test_runtime_gray_matrix_covers_fixed_real_task_cases(tmp_path: Path) -> Non
     validator = SchemaValidator(Path.cwd() / "schemas")
     metrics = runtime_progress_metrics(tmp_path, validator)
 
-    matrix = runtime_gray_matrix(tmp_path, metrics)
+    matrix = runtime_readiness_matrix(tmp_path, metrics)
 
     assert matrix["ready"] is True
     assert matrix["passed"] == matrix["case_count"]

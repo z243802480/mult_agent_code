@@ -142,8 +142,8 @@ def test_provider_route_strategy_blocks_unstable_strong_goal_spec(tmp_path: Path
                     "primary_model": "glm-5",
                     "cost_saver_model": "glm-4.7",
                     "min_calls_before_enforcement": 3,
-                    "min_success_rate_for_gray": 0.8,
-                    "max_timeout_failures_for_gray": 1,
+                    "min_success_rate_for_readiness": 0.8,
+                    "max_timeout_failures_for_readiness": 1,
                 }
             },
             "commands": {},
@@ -191,9 +191,9 @@ def test_provider_route_strategy_blocks_unstable_strong_goal_spec(tmp_path: Path
     guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
 
     assert guidance["status"] == "blocked"
-    assert guidance["provider_route_strategy"]["decision"] == "block_gray"
-    assert guidance["blocking"][0]["recommended_action"] == "block_gray_until_strong_goal_spec_stable"
-    assert "Do not widen small real-task gray" in guidance["recommended_actions"][0]
+    assert guidance["provider_route_strategy"]["decision"] == "block_readiness"
+    assert guidance["blocking"][0]["recommended_action"] == "block_readiness_until_strong_goal_spec_stable"
+    assert "Do not widen small real-task readiness" in guidance["recommended_actions"][0]
 
 
 def test_provider_route_strategy_does_not_block_on_stale_non_current_model(
@@ -258,8 +258,8 @@ def test_provider_route_strategy_does_not_block_on_stale_non_current_model(
                     "primary_model": "glm-5",
                     "cost_saver_model": "glm-4.7",
                     "min_calls_before_enforcement": 3,
-                    "min_success_rate_for_gray": 0.8,
-                    "max_timeout_failures_for_gray": 1,
+                    "min_success_rate_for_readiness": 0.8,
+                    "max_timeout_failures_for_readiness": 1,
                 }
             },
             "commands": {},
@@ -370,8 +370,8 @@ def test_goal_spec_execution_plan_downgrades_low_risk_docs_when_route_blocked(
                     "primary_model": "glm-5",
                     "cost_saver_model": "glm-4.7",
                     "min_calls_before_enforcement": 3,
-                    "min_success_rate_for_gray": 0.8,
-                    "max_timeout_failures_for_gray": 1,
+                    "min_success_rate_for_readiness": 0.8,
+                    "max_timeout_failures_for_readiness": 1,
                 }
             },
             "commands": {},
@@ -421,7 +421,7 @@ def test_goal_spec_execution_plan_downgrades_low_risk_docs_when_route_blocked(
         "Update README documentation for local setup.",
     )
 
-    assert plan["decision"] == "block_gray"
+    assert plan["decision"] == "block_readiness"
     assert plan["selected_model_tier"] == "medium"
     assert "downgrade_low_risk_goal_spec_to_medium" in plan["actions"]
 

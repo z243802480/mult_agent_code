@@ -1,5 +1,5 @@
 # Copy this file to a private local script or paste it into the target PowerShell session.
-# Replace placeholder API keys before running real gray validation.
+# Replace placeholder API keys before running real readiness validation.
 
 $env:AGENT_MODEL_STRONG_PROVIDER = "glm"
 $env:AGENT_MODEL_STRONG_BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4"

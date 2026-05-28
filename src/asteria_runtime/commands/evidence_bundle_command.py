@@ -217,7 +217,7 @@ class EvidenceBundleCommand:
             self.agent_dir / "model" / "real_model_gate_report.json",
             self.agent_dir / "model" / "real_model_smoke_summary.json",
             self.agent_dir / "model" / "capability_profile.json",
-            self.agent_dir / "verification" / "real_model_acceptance_gray.json",
+            self.agent_dir / "verification" / "real_model_acceptance_readiness.json",
             self.agent_dir / "verification" / "real_model_acceptance_core.json",
             self.agent_dir / "verification" / "acceptance_report_core.json",
             self.agent_dir / "verification" / "acceptance_gate_core.json",

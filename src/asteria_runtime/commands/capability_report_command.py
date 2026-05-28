@@ -978,7 +978,7 @@ class CapabilityReportCommand:
             }
         actions = [
             (
-                "Repair latest real-provider P0 matrix failure before widening gray: "
+                "Repair latest real-provider P0 matrix failure before widening readiness: "
                 f"{case} requires {route} for task_kind={task_kind}."
             )
         ]
@@ -1011,7 +1011,7 @@ class CapabilityReportCommand:
         if route == "ask":
             return "Resolve the permission or scope DecisionPoint before retrying the matrix case."
         if route == "stop":
-            return "Stop widening real-provider gray work until repeated no-new-evidence is diagnosed."
+            return "Stop widening real-provider readiness work until repeated no-new-evidence is diagnosed."
         return (
             "Review the latest real-provider matrix route decision, then rerun "
             f"`asteria real-model-smoke --matrix p0 --matrix-case {case}`."

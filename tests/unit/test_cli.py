@@ -88,7 +88,7 @@ def test_maintainer_command_help_stays_outside_default_completion_path() -> None
         "resume -> review -> accept workflow"
     )
 
-    for command in ("gate", "gray", "acceptance", "acceptance-gate"):
+    for command in ("gate", "readiness", "acceptance", "acceptance-gate"):
         help_text = " ".join(_command_help(command).split())
         assert expected in help_text
         assert "not as an ordinary completion step" in help_text
@@ -172,9 +172,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--allow-fake",
         ]
     )
-    gray_run_args = parser.parse_args(
+    readiness_run_args = parser.parse_args(
         [
-            "/gray-run",
+            "/readiness-run",
             "Create a small probe",
             "--root",
             ".",
@@ -182,7 +182,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--max-iterations",
             "2",
             "--summary-json",
-            "gray.json",
+            "readiness.json",
             "--json",
         ]
     )
@@ -194,14 +194,14 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     model_check_args = parser.parse_args(
         ["/model-check", "--root", ".", "--tier", "strong", "--json"]
     )
-    gray_args = parser.parse_args(
+    readiness_args = parser.parse_args(
         [
-            "/gray",
+            "/readiness",
             "Create a small probe",
             "--root",
             ".",
             "--summary-json",
-            "gray-plan.json",
+            "readiness-plan.json",
             "--json",
         ]
     )
@@ -362,16 +362,16 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert real_model_acceptance_args.command == "/real-model-acceptance"
     assert real_model_acceptance_args.suite == "offline"
     assert real_model_acceptance_args.allow_fake
-    assert gray_run_args.command == "/gray-run"
-    assert gray_run_args.goal == "Create a small probe"
-    assert gray_run_args.dry_run
-    assert gray_run_args.max_iterations == 2
-    assert gray_run_args.summary_json.as_posix() == "gray.json"
-    assert gray_run_args.json
-    assert gray_args.command == "/gray"
-    assert gray_args.goal == "Create a small probe"
-    assert gray_args.summary_json.as_posix() == "gray-plan.json"
-    assert gray_args.json
+    assert readiness_run_args.command == "/readiness-run"
+    assert readiness_run_args.goal == "Create a small probe"
+    assert readiness_run_args.dry_run
+    assert readiness_run_args.max_iterations == 2
+    assert readiness_run_args.summary_json.as_posix() == "readiness.json"
+    assert readiness_run_args.json
+    assert readiness_args.command == "/readiness"
+    assert readiness_args.goal == "Create a small probe"
+    assert readiness_args.summary_json.as_posix() == "readiness-plan.json"
+    assert readiness_args.json
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json
@@ -572,7 +572,7 @@ def test_package_check_json_output_is_machine_readable(
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "pass"
     assert any(check["name"] == "console_script" for check in payload["checks"])
-    assert any(check["name"] == "gray_command_modules" for check in payload["checks"])
+    assert any(check["name"] == "readiness_command_modules" for check in payload["checks"])
 
 
 def test_plugins_json_output_is_machine_readable(tmp_path: Path, monkeypatch, capsys) -> None:

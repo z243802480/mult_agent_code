@@ -6,15 +6,15 @@ from typing import Any
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
-from asteria_runtime.commands.gray_run_command import GrayRunCommand
+from asteria_runtime.commands.readiness_run_command import ReadinessRunCommand
 
 
 @dataclass(frozen=True)
-class GrayCommandResult:
+class ReadinessCommandResult:
     root: Path
     status: str
     gate_status: dict[str, Any] = field(default_factory=dict)
-    gray_run: dict[str, Any] = field(default_factory=dict)
+    readiness_run: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     @property
@@ -25,8 +25,8 @@ class GrayCommandResult:
         return {
             "schema_version": "0.1.0",
             "control_surface": control_surface_contract(
-                command="gray",
-                audience="maintainer_gray_readiness",
+                command="readiness",
+                audience="maintainer_release_readiness",
                 stable_fields=[
                     "schema_version",
                     "root",
@@ -34,7 +34,7 @@ class GrayCommandResult:
                     "ok",
                     "mode",
                     "gate_status",
-                    "gray_run",
+                    "readiness_run",
                     "next_actions",
                 ],
             ),
@@ -43,27 +43,27 @@ class GrayCommandResult:
             "ok": self.status == "dry_run_ready",
             "mode": "dry_run",
             "gate_status": self.gate_status,
-            "gray_run": self.gray_run,
+            "readiness_run": self.readiness_run,
             "next_actions": self.next_actions,
         }
 
     def to_text(self) -> str:
         lines = [
-            "Gray",
+            "Readiness",
             f"Root: {self.root}",
             f"Status: {self.status}",
             "Mode: dry_run",
             f"Gate stage: {self.gate_status.get('stage', 'unknown')}",
         ]
-        if self.gray_run:
-            lines.append(f"Gray run summary: {self.gray_run.get('summary_path')}")
+        if self.readiness_run:
+            lines.append(f"Readiness run summary: {self.readiness_run.get('summary_path')}")
         if self.next_actions:
             lines.append("Next actions:")
             lines.extend(f"  - {action}" for action in self.next_actions)
         return "\n".join(lines)
 
 
-class GrayCommand:
+class ReadinessCommand:
     def __init__(
         self,
         root: Path,
@@ -75,20 +75,20 @@ class GrayCommand:
         self.goal = goal
         self.summary_json = summary_json
 
-    def run(self) -> GrayCommandResult:
+    def run(self) -> ReadinessCommandResult:
         gate_status = GateStatusCommand(self.root).run().to_dict()
-        gray_run_result = GrayRunCommand(
+        readiness_run_result = ReadinessRunCommand(
             root=self.root,
             goal=self.goal,
             dry_run=True,
             summary_json=self.summary_json,
         ).run()
-        gray_run = gray_run_result.to_dict()
-        status = "dry_run_ready" if gray_run_result.status == "dry_run" else "blocked"
-        return GrayCommandResult(
+        readiness_run = readiness_run_result.to_dict()
+        status = "dry_run_ready" if readiness_run_result.status == "dry_run" else "blocked"
+        return ReadinessCommandResult(
             root=self.root,
             status=status,
             gate_status=gate_status,
-            gray_run=gray_run,
-            next_actions=list(gray_run_result.next_actions),
+            readiness_run=readiness_run,
+            next_actions=list(readiness_run_result.next_actions),
         )

@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "GrayRun",
+  "title": "ReadinessRun",
   "type": "object",
   "required": [
     "schema_version",
     "control_surface",
-    "gray_run_id",
+    "readiness_run_id",
     "created_at",
     "root",
     "status",
@@ -24,7 +24,7 @@
     "schema_version": {
       "type": "string"
     },
-    "gray_run_id": {
+    "readiness_run_id": {
       "type": "string"
     },
     "created_at": {

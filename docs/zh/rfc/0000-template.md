@@ -22,7 +22,7 @@ Draft / Review / Accepted / Rejected / Superseded
 
 ## 验收
 
-列出必须通过的测试、gate、gray/core 场景或文档更新。
+列出必须通过的测试、gate、readiness/core 场景或文档更新。
 
 ## 回滚策略
 
