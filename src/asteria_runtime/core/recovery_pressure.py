@@ -15,6 +15,7 @@ RECOVERY_CHAINS = [
     "damaged_memory",
     "multi_run_conflict",
     "permission_block",
+    "compact_continuation",
 ]
 
 
@@ -24,6 +25,7 @@ def recovery_pressure_report(root: Path, validator: SchemaValidator) -> dict[str
     evidence = _scan_runs(run_dirs, store)
     evidence["damaged_memory"] = _damaged_memory_evidence(root)
     evidence["multi_run_conflict"].extend(_multi_run_conflict_evidence(root))
+    evidence["compact_continuation"].extend(_compact_continuation_evidence(root))
     chains = {
         name: {
             "covered": bool(items),
@@ -73,6 +75,11 @@ def _scan_runs(run_dirs: list[Path], store: JsonlStore) -> dict[str, list[str]]:
                 evidence["repair"].append(f"{run_dir.name}/user_progress.jsonl")
             if event.get("event_type") in {"permission_request", "permission_decision"}:
                 evidence["permission_block"].append(f"{run_dir.name}/user_progress.jsonl")
+            if "context_compacted" in haystack or "compact" in haystack:
+                evidence["compact_continuation"].append(f"{run_dir.name}/user_progress.jsonl")
+        for event in _read_jsonl(store, run_dir / "events.jsonl", "event"):
+            if event.get("type") == "context_compacted" or "context_compacted" in _event_text(event):
+                evidence["compact_continuation"].append(f"{run_dir.name}/events.jsonl")
         for decision in decisions:
             raw_metadata = decision.get("metadata")
             metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
@@ -97,6 +104,14 @@ def _scan_runs(run_dirs: list[Path], store: JsonlStore) -> dict[str, list[str]]:
 
 
 def _damaged_memory_evidence(root: Path) -> list[str]:
+    recovery_events = _memory_recovery_events(root)
+    damaged = [
+        ".asteria/memory/recovery_events.jsonl"
+        for item in recovery_events
+        if str(item.get("chain") or "") == "damaged_memory"
+    ]
+    if damaged:
+        return sorted(set(damaged))
     memory = _read_json(root / ".asteria" / "memory" / "active_goal.json")
     if str(memory.get("update_reason") or "") == "recovery_from_corrupt_json":
         return [".asteria/memory/active_goal.json"]
@@ -107,11 +122,47 @@ def _damaged_memory_evidence(root: Path) -> list[str]:
 
 
 def _multi_run_conflict_evidence(root: Path) -> list[str]:
+    recovery_events = _memory_recovery_events(root)
+    conflict = [
+        ".asteria/memory/recovery_events.jsonl"
+        for item in recovery_events
+        if str(item.get("chain") or "") == "multi_run_conflict"
+    ]
+    if conflict:
+        return sorted(set(conflict))
     memory = _read_json(root / ".asteria" / "memory" / "active_goal.json")
     haystack = _event_text(memory)
     if "conflict" in haystack or "another unfinished run" in haystack or "冲突" in haystack:
         return [".asteria/memory/active_goal.json"]
     return []
+
+
+def _compact_continuation_evidence(root: Path) -> list[str]:
+    refs: list[str] = []
+    snapshots_dir = root / ".asteria" / "context" / "snapshots"
+    if snapshots_dir.exists():
+        for path in sorted(snapshots_dir.glob("*.json")):
+            snapshot = _read_json(path)
+            if snapshot.get("compaction_purpose") or snapshot.get("next_actions"):
+                refs.append(f".asteria/context/snapshots/{path.name}")
+    return refs
+
+
+def _memory_recovery_events(root: Path) -> list[dict[str, Any]]:
+    path = root / ".asteria" / "memory" / "recovery_events.jsonl"
+    if not path.exists():
+        return []
+    events: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            item = json.loads(line)
+            if isinstance(item, dict):
+                events.append(item)
+    except (OSError, ValueError):
+        return []
+    return events
 
 
 def _read_jsonl(store: JsonlStore, path: Path, schema_name: str | None) -> list[dict[str, Any]]:

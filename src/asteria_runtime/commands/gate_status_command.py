@@ -49,6 +49,7 @@ class GateStatusResult:
     runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
     runtime_validation_matrix: dict[str, Any] = field(default_factory=dict)
     recovery_pressure: dict[str, Any] = field(default_factory=dict)
+    context_pressure_summary: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     feature_flags: dict[str, Any] = field(default_factory=dict)
     capability_flags: dict[str, Any] = field(default_factory=dict)
@@ -86,6 +87,7 @@ class GateStatusResult:
                     "runtime_validation_matrix",
                     "readiness_explanation",
                     "recovery_pressure",
+                    "context_pressure_summary",
                     "feature_flags",
                     "capability_flags",
                     "evidence_sources",
@@ -115,6 +117,7 @@ class GateStatusResult:
             "runtime_validation_matrix": self.runtime_validation_matrix,
             "readiness_explanation": self._readiness_explanation(release_state),
             "recovery_pressure": self.recovery_pressure,
+            "context_pressure_summary": self.context_pressure_summary,
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
             "evidence_sources": self.evidence_sources,
@@ -197,6 +200,19 @@ class GateStatusResult:
                 f"{explanation.get('status')} - {explanation.get('summary')}"
             )
         lines.extend(recovery_pressure_text_lines(self.recovery_pressure))
+        if self.context_pressure_summary:
+            lines.append(
+                "Context pressure: "
+                f"{self.context_pressure_summary.get('max_context_estimated_tokens', 0)} tokens "
+                f"({self.context_pressure_summary.get('max_context_window_ratio', 0.0):.2f} window ratio)"
+            )
+            sections = self.context_pressure_summary.get("sections") or {}
+            if sections:
+                top_sections = sorted(sections.items(), key=lambda item: (-item[1], item[0]))[:5]
+                lines.append(
+                    "Context sections: "
+                    + ", ".join(f"{name}={tokens}" for name, tokens in top_sections)
+                )
         if self.feature_flags:
             active = [n for n, v in self.feature_flags.items() if v.get("active")]
             lines.append(f"Feature flags: {len(active)} active of {len(self.feature_flags)}")
@@ -404,6 +420,7 @@ class GateStatusCommand:
         progress_metrics = runtime_progress_metrics(self.root, self.validator)
         validation_matrix = runtime_validation_matrix(self.root, progress_metrics)
         recovery_pressure = recovery_pressure_report(self.root, self.validator)
+        context_pressure_summary = _context_pressure_summary(self.root)
 
         return GateStatusResult(
             root=self.root,
@@ -421,6 +438,7 @@ class GateStatusCommand:
             runtime_progress_metrics=progress_metrics,
             runtime_validation_matrix=validation_matrix,
             recovery_pressure=recovery_pressure,
+            context_pressure_summary=context_pressure_summary,
             validation_recommendation=_validation_recommendation(self.root),
             feature_flags=feature_flags,
             capability_flags=capability_flags,
@@ -622,6 +640,42 @@ def _evidence_sources(
     if core_path is not None:
         sources["core_acceptance"] = str(core_path)
     return sources
+
+
+def _context_pressure_summary(root: Path) -> dict[str, Any]:
+    runs_dir = root / ".asteria" / "runs"
+    if not runs_dir.exists():
+        return {}
+    max_tokens = 0
+    max_ratio = 0.0
+    sections: dict[str, int] = {}
+    duplicate_hashes: list[str] = []
+    for run_dir in runs_dir.iterdir():
+        if not run_dir.is_dir():
+            continue
+        cost_path = run_dir / "cost_report.json"
+        if not cost_path.exists():
+            continue
+        try:
+            cost = json.loads(cost_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        max_tokens = max(max_tokens, int(cost.get("max_context_estimated_tokens") or 0))
+        max_ratio = max(max_ratio, float(cost.get("context_window_ratio") or 0.0))
+        raw_sections = cost.get("max_context_sections") or cost.get("latest_context_sections")
+        if isinstance(raw_sections, dict):
+            for key, value in raw_sections.items():
+                sections[str(key)] = max(sections.get(str(key), 0), int(value or 0))
+        raw_hashes = cost.get("context_duplicate_content_hashes")
+        if isinstance(raw_hashes, list):
+            duplicate_hashes.extend(str(item) for item in raw_hashes)
+    return {
+        "max_context_estimated_tokens": max_tokens,
+        "max_context_window_ratio": max_ratio,
+        "sections": dict(sorted(sections.items())),
+        "duplicate_content_hashes": list(dict.fromkeys(duplicate_hashes))[:20],
+        "status": "observed" if max_tokens > 0 else "no_current_context_estimates",
+    }
 
 
 def _route_guidance(root: Path) -> dict[str, Any]:

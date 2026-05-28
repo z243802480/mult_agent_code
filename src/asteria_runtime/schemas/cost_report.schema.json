@@ -37,6 +37,18 @@
       "type": "string",
       "enum": ["within_budget", "near_limit", "hard_stop", "exceeded"]
     },
+    "latest_context_sections": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "max_context_sections": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "context_duplicate_content_hashes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
     "strong_model_calls": { "type": "integer" },
     "cheap_model_calls": { "type": "integer" },
     "repair_attempts": { "type": "integer" },

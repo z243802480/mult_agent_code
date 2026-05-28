@@ -27,6 +27,9 @@ class BudgetUsage:
     context_window_tokens: int = 0
     context_window_ratio: float = 0.0
     context_pressure_status: str = "within_budget"
+    latest_context_sections: dict[str, int] = field(default_factory=dict)
+    max_context_sections: dict[str, int] = field(default_factory=dict)
+    context_duplicate_content_hashes: list[str] = field(default_factory=list)
     strong_model_calls: int = 0
     cheap_model_calls: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -71,6 +74,21 @@ class BudgetController:
         controller.usage.context_pressure_status = str(
             report.get("context_pressure_status", "within_budget")
         )
+        latest_sections = report.get("latest_context_sections")
+        if isinstance(latest_sections, dict):
+            controller.usage.latest_context_sections = {
+                str(key): int(value) for key, value in latest_sections.items()
+            }
+        max_sections = report.get("max_context_sections")
+        if isinstance(max_sections, dict):
+            controller.usage.max_context_sections = {
+                str(key): int(value) for key, value in max_sections.items()
+            }
+        duplicate_hashes = report.get("context_duplicate_content_hashes")
+        if isinstance(duplicate_hashes, list):
+            controller.usage.context_duplicate_content_hashes = [
+                str(item) for item in duplicate_hashes
+            ]
         controller.usage.strong_model_calls = int(report.get("strong_model_calls", 0))
         controller.usage.cheap_model_calls = int(report.get("cheap_model_calls", 0))
         controller.usage.warnings = list(report.get("warnings", []))
@@ -106,7 +124,13 @@ class BudgetController:
             elif output_tokens is not None:
                 self.usage.estimated_output_tokens = None
 
-    def record_context_estimate(self, estimated_tokens: int | None) -> None:
+    def record_context_estimate(
+        self,
+        estimated_tokens: int | None,
+        *,
+        sections: dict[str, int] | None = None,
+        duplicate_content_hashes: list[str] | None = None,
+    ) -> None:
         if estimated_tokens is None:
             return
         with self._lock:
@@ -119,6 +143,22 @@ class BudgetController:
             self.usage.context_window_tokens = pressure.window_tokens
             self.usage.context_window_ratio = pressure.ratio
             self.usage.context_pressure_status = pressure.status
+            if sections:
+                clean_sections = {
+                    str(key): max(0, _as_int(value)) for key, value in sections.items()
+                }
+                self.usage.latest_context_sections = clean_sections
+                for key, value in clean_sections.items():
+                    self.usage.max_context_sections[key] = max(
+                        self.usage.max_context_sections.get(key, 0),
+                        value,
+                    )
+            if duplicate_content_hashes:
+                merged = [
+                    *self.usage.context_duplicate_content_hashes,
+                    *[str(item) for item in duplicate_content_hashes],
+                ]
+                self.usage.context_duplicate_content_hashes = list(dict.fromkeys(merged))[:20]
             if pressure.status in {"near_limit", "hard_stop", "exceeded"}:
                 warning = (
                     "context window is near limit: "
@@ -184,6 +224,11 @@ class BudgetController:
                 "context_window_tokens": self.usage.context_window_tokens,
                 "context_window_ratio": self.usage.context_window_ratio,
                 "context_pressure_status": self.usage.context_pressure_status,
+                "latest_context_sections": dict(sorted(self.usage.latest_context_sections.items())),
+                "max_context_sections": dict(sorted(self.usage.max_context_sections.items())),
+                "context_duplicate_content_hashes": list(
+                    self.usage.context_duplicate_content_hashes
+                ),
                 "strong_model_calls": self.usage.strong_model_calls,
                 "cheap_model_calls": self.usage.cheap_model_calls,
                 "repair_attempts": self.usage.repair_attempts,

@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 
 from asteria_runtime.core.budget import BudgetController, BudgetExceededError
-from asteria_runtime.core.context_budget import estimate_request_context_tokens
+from asteria_runtime.core.context_budget import estimate_request_context
 from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry, TokenUsage
 from asteria_runtime.models.http_transport import HttpResponse, HttpTransport, HttpTransportError
 from asteria_runtime.models.local_route_config import any_local_route_value, local_route_value
@@ -72,8 +72,11 @@ class MiniMaxOpenAICompatibleClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         if self.budget:
             try:
+                estimate = estimate_request_context(request)
                 self.budget.record_context_estimate(
-                    estimate_request_context_tokens(request.messages)
+                    estimate.total_tokens,
+                    sections=estimate.sections,
+                    duplicate_content_hashes=estimate.duplicate_content_hashes,
                 )
                 self.budget.record_model_call(request.model_tier)
             except BudgetExceededError as exc:

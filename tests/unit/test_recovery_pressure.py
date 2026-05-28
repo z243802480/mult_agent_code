@@ -73,6 +73,22 @@ def test_recovery_pressure_report_covers_resume_replan_repair_memory_conflicts_a
         ),
         encoding="utf-8",
     )
+    _write_jsonl(
+        run_dir / "events.jsonl",
+        [{"type": "context_compacted", "summary": "compact snapshot for continuation"}],
+    )
+    snapshots_dir = tmp_path / ".asteria" / "context" / "snapshots"
+    snapshots_dir.mkdir(parents=True)
+    (snapshots_dir / "snapshot-1.json").write_text(
+        json.dumps(
+            {
+                "snapshot_id": "snapshot-1",
+                "compaction_purpose": "continuation_state_not_success_evidence",
+                "next_actions": ["Continue the active task."],
+            }
+        ),
+        encoding="utf-8",
+    )
     memory_dir = tmp_path / ".asteria" / "memory"
     memory_dir.mkdir(parents=True)
     (memory_dir / "active_goal.json").write_text(

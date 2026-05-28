@@ -5,6 +5,7 @@ from threading import RLock
 from contextlib import nullcontext
 from typing import ContextManager
 
+from asteria_runtime.core.context_budget import estimate_request_context
 from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry
 from asteria_runtime.models.model_progress_sink import ModelProgressSink, use_model_progress_sink
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -116,6 +117,8 @@ class ModelCallLogger:
             "context_envelope_path": request.metadata.get("context_envelope_path"),
             "capability_manifest_hash": request.metadata.get("capability_manifest_hash"),
         }
+        estimate = estimate_request_context(request)
+        record["context_estimate"] = estimate.to_dict()
         if role_contract is not None:
             record["agent_role_contract"] = role_contract
             record["agent_role"] = role_contract.get("role")

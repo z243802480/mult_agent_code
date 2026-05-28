@@ -152,6 +152,30 @@ def test_budget_controller_tracks_context_window_pressure() -> None:
     assert pressure["highest_label"] == "context_window"
 
 
+def test_budget_controller_tracks_context_sections_and_duplicates() -> None:
+    controller = BudgetController(policy(), run_id="run-1")
+
+    controller.record_context_estimate(
+        42,
+        sections={"prompt_envelope": 12, "tool_output": 30},
+        duplicate_content_hashes=["abc123"],
+    )
+    controller.record_context_estimate(
+        30,
+        sections={"prompt_envelope": 20, "memory": 10},
+        duplicate_content_hashes=["abc123", "def456"],
+    )
+
+    report = controller.cost_report()
+    assert report["latest_context_sections"] == {"memory": 10, "prompt_envelope": 20}
+    assert report["max_context_sections"] == {
+        "memory": 10,
+        "prompt_envelope": 20,
+        "tool_output": 30,
+    }
+    assert report["context_duplicate_content_hashes"] == ["abc123", "def456"]
+
+
 def test_context_token_estimator_counts_cjk_more_tightly() -> None:
     assert estimate_text_tokens("abcd") == 1
     assert estimate_text_tokens("中文") == 2

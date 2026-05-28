@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
@@ -47,6 +48,13 @@ def test_active_goal_memory_recovers_from_corrupt_json_with_markdown_fallback(
     assert recovered["update_reason"] == "recovery_from_corrupt_json"
     assert recovered["current_goal"] == "Keep user progress durable."
     assert recovered["current_result"]["state"] == "needs repair"
+    events = [
+        json.loads(line)
+        for line in (tmp_path / ".asteria" / "memory" / "recovery_events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert events[-1]["chain"] == "damaged_memory"
     SchemaValidator(Path("schemas")).validate("active_goal_memory", recovered)
 
 
@@ -78,6 +86,13 @@ def test_active_goal_memory_marks_cross_run_conflict_without_blocking_write(
     assert state["updated_by"] == "resume"
     assert state["update_reason"] == "resume_applied_decisions"
     assert any("previous=run-old" in item for item in state["current_blockers"])
+    events = [
+        json.loads(line)
+        for line in (tmp_path / ".asteria" / "memory" / "recovery_events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert events[-1]["chain"] == "multi_run_conflict"
     assert state["questions_for_user"] == [
         "Confirm which run should own the active long-task memory before accepting."
     ]

@@ -34,6 +34,11 @@ class ActiveGoalMemory:
         try:
             return json.loads(self.json_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
+            self._record_recovery_event(
+                "damaged_memory",
+                "active_goal.json could not be parsed; using Markdown fallback.",
+                {"path": str(self.json_path), "line": exc.lineno, "column": exc.colno},
+            )
             return self._corrupt_json_recovery(exc)
 
     def write_from_run(
@@ -110,6 +115,22 @@ class ActiveGoalMemory:
         review = self._review_label(review_status)
         conflict_blockers = self._conflict_blockers(existing_memory, run_status)
         damaged_json_blockers = self._damaged_json_blockers(existing_memory)
+        if conflict_blockers:
+            self._record_recovery_event(
+                "multi_run_conflict",
+                "Active goal memory was updated by a different unfinished run.",
+                {
+                    "previous_run_id": str(existing_memory.get("source_run_id") or ""),
+                    "current_run_id": str(run_status.get("run_id") or ""),
+                    "blockers": conflict_blockers,
+                },
+            )
+        if damaged_json_blockers:
+            self._record_recovery_event(
+                "damaged_memory",
+                "Regenerated active_goal.json after detecting corrupt structured memory.",
+                {"blockers": damaged_json_blockers},
+            )
         all_blockers = [*conflict_blockers, *damaged_json_blockers, *blockers]
         conflict_questions = self._conflict_questions(conflict_blockers)
         return {
@@ -304,6 +325,11 @@ class ActiveGoalMemory:
         try:
             existing = json.loads(self.json_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
+            self._record_recovery_event(
+                "damaged_memory",
+                "active_goal.json was corrupt before write; regenerating from current run.",
+                {"path": str(self.json_path), "line": exc.lineno, "column": exc.colno},
+            )
             return {"recovery": self._corrupt_json_recovery_payload(exc)}
         return existing if isinstance(existing, dict) else {}
 
@@ -394,3 +420,21 @@ class ActiveGoalMemory:
         for old, new in replacements.items():
             cleaned = cleaned.replace(old, new)
         return cleaned
+
+    def _record_recovery_event(
+        self,
+        chain: str,
+        summary: str,
+        data: dict | None = None,
+    ) -> None:
+        path = self.root / ".asteria" / "memory" / "recovery_events.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "schema_version": "0.1.0",
+            "created_at": now_iso(),
+            "chain": chain,
+            "summary": summary,
+            "data": data or {},
+        }
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")

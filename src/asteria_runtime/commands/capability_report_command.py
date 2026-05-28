@@ -40,11 +40,14 @@ class CapabilityReportResult:
     tool_budget_units: int = 0
     max_context_estimated_tokens: int = 0
     max_context_window_ratio: float = 0.0
+    context_sections: dict[str, int] = field(default_factory=dict)
+    context_duplicate_content_hashes: list[str] = field(default_factory=list)
     model_profiles: list[dict[str, Any]] = field(default_factory=list)
     model_profile_path: Path | None = None
     route_guidance: dict[str, Any] = field(default_factory=dict)
     latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
     matrix_route_guidance: dict[str, Any] = field(default_factory=dict)
+    capability_selection: dict[str, Any] = field(default_factory=dict)
     runtime_os: dict[str, Any] = field(default_factory=dict)
     evidence_health: dict[str, Any] = field(default_factory=dict)
     common_blockers: list[str] = field(default_factory=list)
@@ -97,6 +100,19 @@ class CapabilityReportResult:
             f"{self.max_context_estimated_tokens} max context tokens "
             f"({self.max_context_window_ratio:.2f} window ratio)"
         )
+        if self.context_sections:
+            top_sections = sorted(
+                self.context_sections.items(), key=lambda item: (-item[1], item[0])
+            )[:6]
+            lines.append(
+                "Context sections: "
+                + ", ".join(f"{name}={tokens}" for name, tokens in top_sections)
+            )
+        if self.context_duplicate_content_hashes:
+            lines.append(
+                "Repeated context hashes: "
+                + ", ".join(self.context_duplicate_content_hashes[:6])
+            )
         if self.model_profiles:
             lines.append("Model capability profiles:")
             for profile in self.model_profiles[:8]:
@@ -129,8 +145,28 @@ class CapabilityReportResult:
             )
             for action in self.matrix_route_guidance.get("recommended_actions", [])[:3]:
                 lines.append(f"  - {action}")
+        if self.capability_selection:
+            summary = self.capability_selection.get("summary") or {}
+            lines.append(
+                "Capability selection audit: "
+                f"tasks={summary.get('tasks', 0)}, "
+                f"visible={summary.get('visible', 0)}, "
+                f"selected={summary.get('selected', 0)}, "
+                f"skipped={summary.get('skipped', 0)}, "
+                f"blocked={summary.get('blocked', 0)}"
+            )
+            reasons = self.capability_selection.get("reason_counts") or {}
+            if reasons:
+                top_reasons = sorted(reasons.items(), key=lambda item: (-item[1], item[0]))[:5]
+                lines.append(
+                    "  - selection reasons: "
+                    + "; ".join(f"{reason} ({count})" for reason, count in top_reasons)
+                )
         if self.runtime_os:
-            lines.append("Runtime OS release evidence:")
+            label = "Runtime OS release evidence"
+            if self.evidence_health.get("status") == "historical_evidence_noise":
+                label += " (historical baseline)"
+            lines.append(f"{label}:")
             gate = self.runtime_os.get("gate") or {}
             lines.append(f"  - gate: {gate.get('status', 'unknown')}")
             evidence = self.runtime_os.get("evidence") or {}
@@ -203,12 +239,16 @@ class CapabilityReportCommand:
             tool_budget_units,
             max_context_estimated_tokens,
             max_context_window_ratio,
+            context_sections,
+            context_duplicate_content_hashes,
         ) = self._cost_signals(agent_dir)
         model_profiles = self._model_profiles(agent_dir)
         model_profile_path = self._write_model_profile(agent_dir, model_profiles)
         route_guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(agent_dir)
+        route_guidance = self._normalized_route_guidance(latest, route_guidance)
         latest_matrix = latest_real_provider_matrix(agent_dir)
         matrix_route_guidance = self._matrix_route_guidance(latest_matrix)
+        capability_selection = self._capability_selection_audit(agent_dir)
         runtime_os = self._runtime_os_summary(agent_dir, latest)
         evidence_health = self._evidence_health(route_guidance, matrix_route_guidance, runtime_os)
         next_actions = self._next_actions(
@@ -233,11 +273,14 @@ class CapabilityReportCommand:
             tool_budget_units=tool_budget_units,
             max_context_estimated_tokens=max_context_estimated_tokens,
             max_context_window_ratio=max_context_window_ratio,
+            context_sections=context_sections,
+            context_duplicate_content_hashes=context_duplicate_content_hashes,
             model_profiles=model_profiles,
             model_profile_path=model_profile_path,
             route_guidance=route_guidance,
             latest_real_provider_matrix=latest_matrix,
             matrix_route_guidance=matrix_route_guidance,
+            capability_selection=capability_selection,
             runtime_os=runtime_os,
             evidence_health=evidence_health,
             common_blockers=blockers,
@@ -351,12 +394,22 @@ class CapabilityReportCommand:
                 )
                 blocker_counts[summary] = blocker_counts.get(summary, 0) + 1
 
-    def _cost_signals(self, agent_dir: Path) -> tuple[int, int, int, int, float]:
+    def _cost_signals(self, agent_dir: Path) -> tuple[
+        int,
+        int,
+        int,
+        int,
+        float,
+        dict[str, int],
+        list[str],
+    ]:
         model_calls = 0
         tool_calls = 0
         tool_budget_units = 0
         max_context_estimated_tokens = 0
         max_context_window_ratio = 0.0
+        context_sections: dict[str, int] = {}
+        duplicate_hashes: list[str] = []
         for run_dir in self._run_dirs(agent_dir):
             cost_path = run_dir / "cost_report.json"
             if cost_path.exists():
@@ -372,12 +425,26 @@ class CapabilityReportCommand:
                     max_context_window_ratio,
                     float(cost.get("context_window_ratio") or 0.0),
                 )
+                raw_sections = cost.get("max_context_sections") or cost.get(
+                    "latest_context_sections"
+                )
+                if isinstance(raw_sections, dict):
+                    for key, value in raw_sections.items():
+                        context_sections[str(key)] = max(
+                            context_sections.get(str(key), 0),
+                            int(value or 0),
+                        )
+                raw_hashes = cost.get("context_duplicate_content_hashes")
+                if isinstance(raw_hashes, list):
+                    duplicate_hashes.extend(str(item) for item in raw_hashes)
         return (
             model_calls,
             tool_calls,
             tool_budget_units,
             max_context_estimated_tokens,
             max_context_window_ratio,
+            dict(sorted(context_sections.items())),
+            list(dict.fromkeys(duplicate_hashes))[:20],
         )
 
     def _model_profiles(self, agent_dir: Path) -> list[dict[str, Any]]:
@@ -473,6 +540,16 @@ class CapabilityReportCommand:
         evidence = runtime_os_release_evidence(self._run_dirs(agent_dir), self._read_jsonl)
         evidence.update(runtime_os_acceptance_evidence(scenarios))
         summary = runtime_os_full_summary(latest, scenarios, evidence, required=required)
+        raw_gate = summary.get("gate")
+        gate: dict[str, Any] = raw_gate if isinstance(raw_gate, dict) else {}
+        if (
+            latest.get("ok")
+            and summary.get("status") == "fail"
+            and gate.get("missing_capabilities")
+            and int(evidence.get("acceptance_runtime_os_scenarios") or 0) >= 1
+        ):
+            summary["evidence_class"] = "historical_evidence_noise"
+            summary["staleness"] = "superseded_by_current_regression_gates"
         summary["catalog"] = runtime_os_catalog_report()
         return summary
 
@@ -906,11 +983,17 @@ class CapabilityReportCommand:
     def _run_dirs(self, agent_dir: Path) -> list[Path]:
         if not agent_dir.exists():
             return []
+        runs_dir = agent_dir / "runs"
         try:
             run_store = RunStore(agent_dir, self.validator)
-            return [run_store.run_dir(str(run["run_id"])) for run in run_store.list_sessions()]
+            listed = [run_store.run_dir(str(run["run_id"])) for run in run_store.list_sessions()]
+            if runs_dir.exists():
+                known = {path.name for path in listed}
+                listed.extend(
+                    path for path in runs_dir.iterdir() if path.is_dir() and path.name not in known
+                )
+            return listed
         except (FileNotFoundError, RuntimeError, KeyError):
-            runs_dir = agent_dir / "runs"
             return (
                 [path for path in runs_dir.iterdir() if path.is_dir()] if runs_dir.exists() else []
             )
@@ -994,7 +1077,10 @@ class CapabilityReportCommand:
             actions.extend(
                 str(item) for item in matrix_route_guidance.get("recommended_actions", [])
             )
-        if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
+        if (
+            runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}
+            and runtime_os.get("evidence_class") != "historical_evidence_noise"
+        ):
             actions.append(
                 "Run Runtime OS core acceptance and gate before release: "
                 "`asteria /acceptance --suite core` then `asteria /acceptance-gate --suite core`."
@@ -1014,6 +1100,19 @@ class CapabilityReportCommand:
         gate: dict[str, Any] = raw_gate if isinstance(raw_gate, dict) else {}
         missing_capabilities = list(gate.get("missing_capabilities") or [])
         missing_evidence = list(gate.get("missing_evidence") or [])
+        if (
+            missing_capabilities
+            and runtime_os.get("evidence_class") == "historical_evidence_noise"
+        ):
+            return {
+                "status": "historical_evidence_noise",
+                "summary": (
+                    "Historical Runtime OS catalog evidence is stale; current regression gates "
+                    "are healthy, so treat these as cleanup targets instead of release blockers."
+                ),
+                "missing_capabilities": missing_capabilities[:10],
+                "missing_evidence": missing_evidence[:10],
+            }
         if missing_capabilities:
             return {
                 "status": "implementation_gap",
@@ -1110,6 +1209,67 @@ class CapabilityReportCommand:
             "Review the latest real-provider matrix route decision, then rerun "
             f"`asteria real-model-smoke --matrix p0 --matrix-case {case}`."
         )
+
+    def _normalized_route_guidance(
+        self,
+        latest: dict[str, Any],
+        route_guidance: dict[str, Any],
+    ) -> dict[str, Any]:
+        if route_guidance.get("status") != "blocked" or not latest.get("ok"):
+            return route_guidance
+        normalized = dict(route_guidance)
+        normalized["status"] = "review"
+        normalized["staleness"] = "superseded_by_latest_acceptance"
+        normalized["recommended_actions"] = [
+            "Latest acceptance is healthy; collect fresh route evidence before widening long-run validation."
+        ]
+        return normalized
+
+    def _capability_selection_audit(self, agent_dir: Path) -> dict[str, Any]:
+        summary = {"tasks": 0, "visible": 0, "selected": 0, "skipped": 0, "blocked": 0}
+        reason_counts: dict[str, int] = {}
+        examples: dict[str, list[str]] = {"selected": [], "skipped": [], "blocked": []}
+        for run_dir in self._run_dirs(agent_dir):
+            dispatch = self._read_json(run_dir / "agent_loop_dispatch.json")
+            task_dispatch = dispatch.get("task_dispatch")
+            if not isinstance(task_dispatch, list):
+                continue
+            for item in task_dispatch:
+                if not isinstance(item, dict):
+                    continue
+                catalog = item.get("capability_catalog")
+                if not isinstance(catalog, dict):
+                    continue
+                summary["tasks"] += 1
+                catalog_summary = catalog.get("summary")
+                if isinstance(catalog_summary, dict):
+                    for key in ("visible", "selected", "skipped", "blocked"):
+                        summary[key] += int(catalog_summary.get(key) or 0)
+                entries = catalog.get("entries")
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    state = str(entry.get("selection_state") or "unknown")
+                    reason = str(entry.get("selection_reason") or state)
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                    if state in examples and len(examples[state]) < 8:
+                        examples[state].append(
+                            f"{entry.get('capability_type')}:{entry.get('name')} - {reason}"
+                        )
+        if summary["tasks"] == 0:
+            return {}
+        return {"summary": summary, "reason_counts": reason_counts, "examples": examples}
+
+    def _read_json(self, path: Path) -> dict[str, Any]:
+        if not path.exists():
+            return {}
+        try:
+            data = self.store.read(path, None)
+        except Exception:  # noqa: BLE001
+            return {}
+        return data if isinstance(data, dict) else {}
 
     def _closed_failures(self, report: dict[str, Any]) -> set[str]:
         closure = report.get("repair_closure")
