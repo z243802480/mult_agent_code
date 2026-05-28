@@ -192,11 +192,18 @@ class GateStatusResult:
             profile = self.runtime_progress_metrics.get("profile_coverage") or {}
             permission = self.runtime_progress_metrics.get("permission_reason_coverage") or {}
             progress = self.runtime_progress_metrics.get("runtime_native_progress_coverage") or {}
+            adapters = self.runtime_progress_metrics.get("adapter_invocation_coverage") or {}
             lines.append(
                 "Runtime progress metrics: "
                 f"profiles={profile.get('coverage_ratio', 0)}, "
                 f"permission_reasons={permission.get('coverage_ratio', 0)}, "
                 f"user_progress={progress.get('coverage_ratio', 0)}"
+            )
+            lines.append(
+                "Capability adapter evidence: "
+                f"mcp={adapters.get('mcp_invocation_count', 0)}, "
+                f"skills={adapters.get('skill_invocation_count', 0)}, "
+                f"progress_events={adapters.get('capability_progress_event_count', 0)}"
             )
         lines.extend(self._report_lines("Real model gate", self.gate_report))
         lines.extend(self._report_lines("Gray suite", self.gray_report, gray=True))

@@ -34,6 +34,26 @@ def test_runtime_progress_metrics_counts_profile_permission_and_progress(
         + "\n",
         encoding="utf-8",
     )
+    (run_dir / "mcp_invocations.jsonl").write_text(
+        json.dumps(
+            {
+                "mcp_invocation_id": "mcp-0001",
+                "capability_decision": {"reason": "allowed by policy"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "skill_invocations.jsonl").write_text(
+        json.dumps(
+            {
+                "skill_invocation_id": "skill-0001",
+                "capability_decision": {"reason": "matching artifact skill"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     (run_dir / "user_progress.jsonl").write_text(
         json.dumps(
             {
@@ -53,7 +73,7 @@ def test_runtime_progress_metrics_counts_profile_permission_and_progress(
                 "call_chain": [],
                 "execution_chain": [],
                 "file_changes": [],
-                "data": {},
+                "data": {"capability_type": "skill"},
             }
         )
         + "\n",
@@ -65,3 +85,8 @@ def test_runtime_progress_metrics_counts_profile_permission_and_progress(
     assert metrics["profile_coverage"]["coverage_ratio"] == 1.0
     assert metrics["permission_reason_coverage"]["coverage_ratio"] == 1.0
     assert metrics["runtime_native_progress_coverage"]["coverage_ratio"] == 1.0
+    assert metrics["adapter_invocation_coverage"]["mcp_invocation_count"] == 1
+    assert metrics["adapter_invocation_coverage"]["skill_invocation_count"] == 1
+    assert metrics["adapter_invocation_coverage"]["mcp_with_reason"] == 1
+    assert metrics["adapter_invocation_coverage"]["skill_with_reason"] == 1
+    assert metrics["adapter_invocation_coverage"]["capability_progress_event_count"] == 1

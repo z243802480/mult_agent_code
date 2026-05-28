@@ -69,6 +69,23 @@ await writeJsonl("events.jsonl", [
     created_at: "2099-01-01T00:00:00Z",
   },
 ]);
+await writeJsonl("mcp_invocations.jsonl", [
+  {
+    mcp_invocation_id: "mcp-0001",
+    server_name: "docs",
+    tool_name: "echo",
+    status: "success",
+    summary: "MCP echo completed",
+  },
+]);
+await writeJsonl("skill_invocations.jsonl", [
+  {
+    skill_invocation_id: "skill-0001",
+    skill_name: "documents",
+    status: "success",
+    summary: "Document skill completed",
+  },
+]);
 
 const port = Number(process.env.ASTERIA_STUDIO_SMOKE_PORT || 18787);
 const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
@@ -110,6 +127,12 @@ try {
   }
   if (!Array.isArray(detail.legacy_events) || detail.legacy_events[0]?.event_id !== "evt-legacy") {
     throw new Error("legacy events should remain available as fallback evidence");
+  }
+  if (!Array.isArray(detail.mcp_invocations) || detail.mcp_invocations[0]?.mcp_invocation_id !== "mcp-0001") {
+    throw new Error("mcp_invocations should be available for Inspector");
+  }
+  if (!Array.isArray(detail.skill_invocations) || detail.skill_invocations[0]?.skill_invocation_id !== "skill-0001") {
+    throw new Error("skill_invocations should be available for Inspector");
   }
   console.log("Studio run detail smoke passed");
 } finally {

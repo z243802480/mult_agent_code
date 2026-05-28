@@ -1879,6 +1879,8 @@ async function readRunDetail(runId) {
   payload.task_execution_evidence = redact(await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 80));
   payload.worker_results = redact(await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80));
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
+  payload.mcp_invocations = redact(await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80));
+  payload.skill_invocations = redact(await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80));
   const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
   const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);
   payload.user_progress = redact(userProgress);

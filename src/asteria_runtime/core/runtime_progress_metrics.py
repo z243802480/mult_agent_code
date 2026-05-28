@@ -17,6 +17,9 @@ def runtime_progress_metrics(root: Path, validator: SchemaValidator) -> dict[str
     permission_decisions = []
     user_progress_runs = 0
     runtime_native_runs = 0
+    mcp_invocations = []
+    skill_invocations = []
+    capability_progress_events = 0
     store = JsonlStore(validator)
     for run_dir in run_dirs:
         dispatch_path = run_dir / "agent_loop_dispatch.json"
@@ -28,9 +31,23 @@ def runtime_progress_metrics(root: Path, validator: SchemaValidator) -> dict[str
             progress_events = store.read_all(progress_path, "user_progress_event")
             if progress_events:
                 runtime_native_runs += 1
+            capability_progress_events += len(
+                [
+                    event
+                    for event in progress_events
+                    if isinstance(event.get("data"), dict)
+                    and event["data"].get("capability_type") in {"mcp", "skill"}
+                ]
+            )
         decision_path = run_dir / "capability_decisions.jsonl"
         if decision_path.exists():
             permission_decisions.extend(store.read_all(decision_path, schema_name=None))
+        mcp_path = run_dir / "mcp_invocations.jsonl"
+        if mcp_path.exists():
+            mcp_invocations.extend(store.read_all(mcp_path, schema_name=None))
+        skill_path = run_dir / "skill_invocations.jsonl"
+        if skill_path.exists():
+            skill_invocations.extend(store.read_all(skill_path, schema_name=None))
     profile_counts: dict[str, int] = {}
     for dispatch_path in dispatches:
         try:
@@ -71,6 +88,13 @@ def runtime_progress_metrics(root: Path, validator: SchemaValidator) -> dict[str
             "runs_with_user_progress_events": runtime_native_runs,
             "coverage_ratio": _ratio(runtime_native_runs, run_count),
         },
+        "adapter_invocation_coverage": {
+            "mcp_invocation_count": len(mcp_invocations),
+            "skill_invocation_count": len(skill_invocations),
+            "capability_progress_event_count": capability_progress_events,
+            "mcp_with_reason": _with_decision_reason(mcp_invocations),
+            "skill_with_reason": _with_decision_reason(skill_invocations),
+        },
     }
 
 
@@ -96,6 +120,13 @@ def _empty_metrics() -> dict[str, Any]:
             "runs_with_user_progress_events": 0,
             "coverage_ratio": 0.0,
         },
+        "adapter_invocation_coverage": {
+            "mcp_invocation_count": 0,
+            "skill_invocation_count": 0,
+            "capability_progress_event_count": 0,
+            "mcp_with_reason": 0,
+            "skill_with_reason": 0,
+        },
     }
 
 
@@ -103,3 +134,14 @@ def _ratio(numerator: int, denominator: int) -> float:
     if denominator <= 0:
         return 0.0
     return round(numerator / denominator, 4)
+
+
+def _with_decision_reason(items: list[dict[str, Any]]) -> int:
+    return len(
+        [
+            item
+            for item in items
+            if isinstance(item.get("capability_decision"), dict)
+            and item["capability_decision"].get("reason")
+        ]
+    )

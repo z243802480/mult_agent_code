@@ -1,7 +1,12 @@
+import json
 from pathlib import Path
 from typing import Any
 
-from asteria_runtime.core.mcp_adapter import McpAdapter
+from asteria_runtime.core.mcp_adapter import (
+    McpAdapter,
+    mcp_adapter_config_from_policy,
+    mcp_invocation_summary,
+)
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -147,4 +152,72 @@ def test_mcp_adapter_times_out_hung_session_and_records_failure(tmp_path: Path) 
     assert result.ok is False
     assert "timed out" in str(result.error)
     assert session.closed is True
-    assert invocations[0]["status"] == "failure"
+    assert invocations[0]["status"] == "timeout"
+    assert invocations[0]["error_class"] == "timeout"
+
+
+def test_mcp_adapter_loads_server_config_from_policy(tmp_path: Path) -> None:
+    config = mcp_adapter_config_from_policy(
+        {
+            "mcp": {
+                "session_call_timeout_seconds": 12,
+                "servers": [
+                    {
+                        "name": "docs",
+                        "command": ["node", "server.mjs"],
+                        "cwd": "tools/mcp",
+                        "env": {"MODE": "test"},
+                        "framing": "content-length",
+                    }
+                ],
+            }
+        },
+        root=tmp_path,
+    )
+
+    assert config.session_call_timeout_seconds == 12
+    assert config.servers[0].name == "docs"
+    assert config.servers[0].cwd == (tmp_path / "tools" / "mcp").resolve()
+    assert config.servers[0].env == {"MODE": "test"}
+    assert config.servers[0].framing == "content-length"
+
+
+def test_mcp_invocation_summary_groups_statuses(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    (tmp_path / "mcp_invocations.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "mcp_invocation_id": "mcp-0001",
+                        "server_name": "docs",
+                        "tool_name": "echo",
+                        "ok": True,
+                        "status": "success",
+                        "summary": "ok",
+                        "created_at": "2026-05-28T00:00:00+08:00",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "mcp_invocation_id": "mcp-0002",
+                        "server_name": "docs",
+                        "tool_name": "search",
+                        "ok": False,
+                        "status": "timeout",
+                        "summary": "timed out",
+                        "created_at": "2026-05-28T00:01:00+08:00",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = mcp_invocation_summary(tmp_path, validator)
+
+    assert summary["total"] == 2
+    assert summary["completed"] == 1
+    assert summary["failed"] == 1
+    assert summary["by_status"] == {"success": 1, "timeout": 1}

@@ -51,6 +51,12 @@ class McpInvocationResult:
         }
 
 
+@dataclass(frozen=True)
+class McpAdapterConfig:
+    servers: list[McpServerConfig] = field(default_factory=list)
+    session_call_timeout_seconds: int = 60
+
+
 class StdioMcpSession:
     """Minimal MCP stdio JSON-RPC session."""
 
@@ -231,6 +237,14 @@ class McpAdapter:
     def from_configs(cls, configs: list[McpServerConfig]) -> McpAdapter:
         return cls({config.name: StdioMcpSession(config) for config in configs})
 
+    @classmethod
+    def from_adapter_config(cls, config: McpAdapterConfig) -> McpAdapter:
+        return cls.from_configs(config.servers).with_timeout(config.session_call_timeout_seconds)
+
+    def with_timeout(self, timeout_seconds: int) -> McpAdapter:
+        self.session_call_timeout_seconds = timeout_seconds
+        return self
+
     def invoke_tool(
         self,
         *,
@@ -263,7 +277,7 @@ class McpAdapter:
                 ok=False,
                 summary=f"MCP server not configured: {server_name}",
                 error="mcp_server_not_configured",
-                status="failure",
+                status="config_error",
             )
             self._record_invocation(context, task, invocation_id, server_name, tool_name, arguments or {}, decision, result)
             return result
@@ -283,7 +297,7 @@ class McpAdapter:
                 ok=False,
                 summary=f"MCP tool failed: {capability_name}",
                 error=str(exc),
-                status="failure",
+                status=self._classify_error(exc),
             )
         self._record_invocation(context, task, invocation_id, server_name, tool_name, arguments or {}, decision, result)
         return result
@@ -334,6 +348,7 @@ class McpAdapter:
             "arguments": self._safe_arguments(arguments),
             "capability_decision": decision,
             "status": result.status,
+            "error_class": result.status if not result.ok else None,
             "ok": result.ok,
             "summary": result.summary,
             "error": result.error,
@@ -380,6 +395,94 @@ class McpAdapter:
             return "blocked"
         return "failed"
 
+    def _classify_error(self, exc: Exception) -> str:
+        text = str(exc).lower()
+        if isinstance(exc, TimeoutError) or "timed out" in text:
+            return "timeout"
+        if "json" in text or "jsonrpc" in text or "protocol" in text:
+            return "protocol_error"
+        if "closed stdout" in text or "stdin is closed" in text or "server closed" in text:
+            return "session_error"
+        return "execution_error"
+
     def _sensitive_key(self, key: str) -> bool:
         normalized = key.lower()
         return any(part in normalized for part in ["token", "secret", "password", "api_key"])
+
+
+def mcp_adapter_config_from_policy(policy: dict[str, Any], *, root: Path | None = None) -> McpAdapterConfig:
+    raw = policy.get("mcp")
+    config = raw if isinstance(raw, dict) else {}
+    timeout = int(config.get("session_call_timeout_seconds") or 60)
+    raw_servers = config.get("servers")
+    servers: list[McpServerConfig] = []
+    if isinstance(raw_servers, list):
+        for item in raw_servers:
+            if not isinstance(item, dict):
+                continue
+            parsed = mcp_server_config_from_dict(item, root=root)
+            if parsed is not None:
+                servers.append(parsed)
+    return McpAdapterConfig(servers=servers, session_call_timeout_seconds=timeout)
+
+
+def mcp_server_config_from_dict(
+    data: dict[str, Any],
+    *,
+    root: Path | None = None,
+) -> McpServerConfig | None:
+    name = str(data.get("name") or "").strip()
+    raw_command = data.get("command")
+    if not name or not isinstance(raw_command, list) or not raw_command:
+        return None
+    command = [str(part) for part in raw_command]
+    raw_cwd = data.get("cwd")
+    cwd = None
+    if isinstance(raw_cwd, str) and raw_cwd.strip():
+        cwd_path = Path(raw_cwd)
+        cwd = (root / cwd_path).resolve() if root and not cwd_path.is_absolute() else cwd_path.resolve()
+    raw_env = data.get("env")
+    env = {str(k): str(v) for k, v in raw_env.items()} if isinstance(raw_env, dict) else {}
+    framing = str(data.get("framing") or "jsonl")
+    if framing not in {"jsonl", "content-length"}:
+        framing = "jsonl"
+    return McpServerConfig(name=name, command=command, cwd=cwd, env=env, framing=framing)
+
+
+def mcp_invocation_summary(run_dir: Path, validator: Any) -> dict[str, Any]:
+    path = run_dir / "mcp_invocations.jsonl"
+    if not path.exists():
+        return {
+            "schema_version": "0.1.0",
+            "total": 0,
+            "completed": 0,
+            "failed": 0,
+            "denied": 0,
+            "by_status": {},
+            "latest": [],
+        }
+    invocations = JsonlStore(validator).read_all(path, schema_name=None)
+    by_status: dict[str, int] = {}
+    for item in invocations:
+        status = str(item.get("status") or "unknown")
+        by_status[status] = by_status.get(status, 0) + 1
+    latest = [
+        {
+            "mcp_invocation_id": item.get("mcp_invocation_id"),
+            "server_name": item.get("server_name"),
+            "tool_name": item.get("tool_name"),
+            "status": item.get("status"),
+            "summary": item.get("summary"),
+            "created_at": item.get("created_at"),
+        }
+        for item in invocations[-5:]
+    ]
+    return {
+        "schema_version": "0.1.0",
+        "total": len(invocations),
+        "completed": len([item for item in invocations if item.get("ok") is True]),
+        "failed": len([item for item in invocations if item.get("ok") is not True and item.get("status") != "denied"]),
+        "denied": by_status.get("denied", 0),
+        "by_status": by_status,
+        "latest": latest,
+    }
