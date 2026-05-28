@@ -2,7 +2,7 @@
 
 Updated: 2026-05-28
 
-This note records the current implementation boundary for the remaining validation run work.
+This note records the current implementation boundary for real-task validation and recovery pressure evidence.
 
 ## Fixed Real-Task Validation Matrix
 
@@ -11,7 +11,7 @@ The fixed real-task validation catalog lives at `benchmarks/runtime_validation_m
 - `gate-status` through `runtime_validation_matrix`
 - `validation-run` through `evidence.runtime_validation_matrix`
 
-The matrix currently gates the following evidence:
+The catalog currently gates the following evidence:
 
 - ModelToolSurface contract validation.
 - Skill adapter invocation with capability decision reason.
@@ -27,7 +27,7 @@ The catalog deliberately ignores untracked local `.codex/`, `.claude/`, `validat
 
 CLI and Studio should default to `user_progress.jsonl` for the user-facing progress timeline. Raw evidence such as legacy `events.jsonl`, `tool_observations.jsonl`, `mcp_invocations.jsonl`, `skill_invocations.jsonl`, provider routes, and schema refs remain Inspector/debug evidence.
 
-The validation matrix keeps this boundary visible by requiring runtime-native progress coverage before a workspace is considered validation-ready.
+The validation catalog keeps this boundary visible by requiring runtime-native progress coverage before a workspace is considered covered by real-task evidence.
 
 ## Recovery Pressure Report
 
@@ -49,10 +49,10 @@ The report is intentionally evidence-based: it scans run-local `user_progress.js
 
 ## Next Engineering Use
 
-Before widening real-task scope, maintainers should inspect:
+Before adding new real-task cases, maintainers should inspect:
 
 - `gate-status --json` fields `runtime_validation_matrix`, `runtime_progress_metrics`, and `recovery_pressure`.
 - `.asteria/validation_runs/<id>/summary.json` fields under `evidence`.
 - Studio Inspector raw evidence only when a user-facing progress item needs deeper debugging.
 
-The next engineering plan is to add more real tasks to this same catalog, not to create a separate deployment taxonomy. Deployment stage can be expressed by branch name, version tag, or environment label outside runtime feature names.
+The next engineering plan is not to create another matrix or deployment taxonomy. It is to feed this catalog with fresh real-provider runs, then make gate output distinguish implementation gaps, evidence gaps, and route-health gaps.
