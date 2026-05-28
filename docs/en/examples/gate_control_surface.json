@@ -422,6 +422,8 @@
           "promotion_release_risks",
           "plugin_risks",
           "runtime_progress_metrics",
+          "runtime_gray_matrix",
+          "recovery_pressure",
           "feature_flags",
           "capability_flags",
           "evidence_sources",
@@ -664,7 +666,49 @@
           "runs_with_user_progress_file": 0,
           "runs_with_user_progress_events": 0,
           "coverage_ratio": 0.0
+        },
+        "adapter_invocation_coverage": {
+          "mcp_invocation_count": 0,
+          "skill_invocation_count": 0,
+          "capability_progress_event_count": 0,
+          "mcp_with_reason": 0,
+          "skill_with_reason": 0
         }
+      },
+      "runtime_gray_matrix": {
+        "schema_version": "0.1.0",
+        "catalog_path": "H:\\mult_agent_code\\benchmarks\\runtime_gray_matrix.json",
+        "case_count": 8,
+        "passed": 1,
+        "failed": 7,
+        "ready": false,
+        "minimum_ready_ratio": 1.0,
+        "coverage_ratio": 0.125,
+        "cases": []
+      },
+      "recovery_pressure": {
+        "schema_version": "0.1.0",
+        "run_count": 0,
+        "required_chains": [
+          "resume",
+          "replan",
+          "repair",
+          "damaged_memory",
+          "multi_run_conflict",
+          "permission_block"
+        ],
+        "covered": 0,
+        "missing": [
+          "resume",
+          "replan",
+          "repair",
+          "damaged_memory",
+          "multi_run_conflict",
+          "permission_block"
+        ],
+        "coverage_ratio": 0.0,
+        "ready": false,
+        "chains": {}
       },
       "feature_flags": {
         "streaming": {

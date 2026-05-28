@@ -12,6 +12,8 @@ from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.run_command import RunCommand, RunResult
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.recovery_pressure import recovery_pressure_report
+from asteria_runtime.core.runtime_gray_matrix import runtime_gray_matrix
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
@@ -260,6 +262,7 @@ class GrayRunCommand:
                 tier: sorted(purposes) for tier, purposes in sorted(purposes_by_tier.items())
             },
         }
+        progress_metrics = runtime_progress_metrics(self.root, self.validator)
         return {
             "run_dir": str(run_dir),
             "model_call_count": len(model_calls),
@@ -267,7 +270,9 @@ class GrayRunCommand:
             "task_execution_evidence_count": len(task_evidence),
             "merge_gate_evidence_count": len(merge_gate),
             "route_evidence": route_evidence,
-            "runtime_progress_metrics": runtime_progress_metrics(self.root, self.validator),
+            "runtime_progress_metrics": progress_metrics,
+            "runtime_gray_matrix": runtime_gray_matrix(self.root, progress_metrics),
+            "recovery_pressure": recovery_pressure_report(self.root, self.validator),
             "cost_report": cost_report,
             "worker_statuses": sorted(
                 {str(result.get("status") or "unknown") for result in worker_results}

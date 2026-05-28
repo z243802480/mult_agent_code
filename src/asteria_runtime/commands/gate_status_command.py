@@ -16,6 +16,14 @@ from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
     real_provider_matrix_text_lines,
 )
+from asteria_runtime.core.recovery_pressure import (
+    recovery_pressure_report,
+    recovery_pressure_text_lines,
+)
+from asteria_runtime.core.runtime_gray_matrix import (
+    runtime_gray_matrix,
+    runtime_gray_matrix_text_lines,
+)
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -38,6 +46,8 @@ class GateStatusResult:
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
+    runtime_gray_matrix: dict[str, Any] = field(default_factory=dict)
+    recovery_pressure: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     feature_flags: dict[str, Any] = field(default_factory=dict)
     capability_flags: dict[str, Any] = field(default_factory=dict)
@@ -72,6 +82,8 @@ class GateStatusResult:
                     "promotion_release_risks",
                     "plugin_risks",
                     "runtime_progress_metrics",
+                    "runtime_gray_matrix",
+                    "recovery_pressure",
                     "feature_flags",
                     "capability_flags",
                     "evidence_sources",
@@ -98,6 +110,8 @@ class GateStatusResult:
             "promotion_release_risks": self.promotion_release_risks,
             "plugin_risks": self.plugin_risks,
             "runtime_progress_metrics": self.runtime_progress_metrics,
+            "runtime_gray_matrix": self.runtime_gray_matrix,
+            "recovery_pressure": self.recovery_pressure,
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
             "evidence_sources": self.evidence_sources,
@@ -172,6 +186,8 @@ class GateStatusResult:
                 f"{self.latest_observation_plan.get('reason', 'No reason recorded.')}"
             )
         lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
+        lines.extend(runtime_gray_matrix_text_lines(self.runtime_gray_matrix))
+        lines.extend(recovery_pressure_text_lines(self.recovery_pressure))
         if self.feature_flags:
             active = [n for n, v in self.feature_flags.items() if v.get("active")]
             lines.append(f"Feature flags: {len(active)} active of {len(self.feature_flags)}")
@@ -333,6 +349,10 @@ class GateStatusCommand:
         feature_flags = {n: v for n, v in flag_results.items()}
         capability_flags = {n: c.to_dict() for n, c in resolver.capabilities.items()}
 
+        progress_metrics = runtime_progress_metrics(self.root, self.validator)
+        gray_matrix = runtime_gray_matrix(self.root, progress_metrics)
+        recovery_pressure = recovery_pressure_report(self.root, self.validator)
+
         return GateStatusResult(
             root=self.root,
             stage=stage,
@@ -346,7 +366,9 @@ class GateStatusCommand:
             latest_real_provider_matrix=latest_matrix,
             promotion_release_risks=promotion_release_risks,
             plugin_risks=plugin_risks,
-            runtime_progress_metrics=runtime_progress_metrics(self.root, self.validator),
+            runtime_progress_metrics=progress_metrics,
+            runtime_gray_matrix=gray_matrix,
+            recovery_pressure=recovery_pressure,
             validation_recommendation=_validation_recommendation(self.root),
             feature_flags=feature_flags,
             capability_flags=capability_flags,

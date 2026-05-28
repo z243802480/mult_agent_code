@@ -155,6 +155,8 @@ def test_gray_run_executes_small_task_and_collects_route_evidence(
     assert summary["evidence"]["runtime_progress_metrics"]["permission_reason_coverage"][
         "coverage_ratio"
     ] == 1.0
+    assert summary["evidence"]["runtime_gray_matrix"]["ready"] is True
+    assert "recovery_pressure" in summary["evidence"]
 
 
 class FakeRunCommand:
@@ -236,6 +238,19 @@ class FakeRunCommand:
             ],
         )
         _write_jsonl(
+            run_dir / "mcp_invocations.jsonl",
+            [{"mcp_invocation_id": "mcp-1", "capability_decision": {"reason": "echo allowed"}}],
+        )
+        _write_jsonl(
+            run_dir / "skill_invocations.jsonl",
+            [
+                {
+                    "skill_invocation_id": "skill-1",
+                    "capability_decision": {"reason": "artifact skill selected"},
+                }
+            ],
+        )
+        _write_jsonl(
             run_dir / "user_progress.jsonl",
             [
                 {
@@ -255,7 +270,7 @@ class FakeRunCommand:
                     "call_chain": [],
                     "execution_chain": [],
                     "file_changes": [],
-                    "data": {},
+                    "data": {"capability_type": "skill"},
                 }
             ],
         )

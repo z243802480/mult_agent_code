@@ -1,0 +1,55 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Fixed runtime gray matrix for real-task rollout evidence. Gate and gray summaries consume this catalog instead of relying on ad-hoc local gray folders.",
+  "minimum_ready_ratio": 1.0,
+  "cases": [
+    {
+      "id": "model_tool_surface",
+      "priority": "P0",
+      "evidence": "model_tool_surface_contract",
+      "goal": "Expose stable model-facing read/list/search/edit/shell/test/todo primitives and their internal registry mapping."
+    },
+    {
+      "id": "skill_adapter",
+      "priority": "P0",
+      "evidence": "skill_invocation",
+      "goal": "Record a real Skill adapter invocation with capability decision reason, artifact refs, and user_progress."
+    },
+    {
+      "id": "mcp_adapter",
+      "priority": "P0",
+      "evidence": "mcp_invocation",
+      "goal": "Record a real MCP adapter invocation with server/session decision reason and user_progress summary."
+    },
+    {
+      "id": "profile_research",
+      "priority": "P1",
+      "evidence": "profile:research",
+      "goal": "Cover the research loop profile in agent_loop_dispatch and runtime-native progress."
+    },
+    {
+      "id": "profile_brainstorm",
+      "priority": "P1",
+      "evidence": "profile:brainstorm",
+      "goal": "Cover the brainstorm loop profile in agent_loop_dispatch and runtime-native progress."
+    },
+    {
+      "id": "profile_multi_agent",
+      "priority": "P1",
+      "evidence": "profile:multi_agent",
+      "goal": "Cover the multi-agent loop profile in agent_loop_dispatch and runtime-native progress."
+    },
+    {
+      "id": "permission_reason",
+      "priority": "P1",
+      "evidence": "permission_reason",
+      "goal": "Keep capability permission reason coverage at 100 percent for gray-ready runs."
+    },
+    {
+      "id": "runtime_progress",
+      "priority": "P1",
+      "evidence": "runtime_native_progress",
+      "goal": "Keep user_progress.jsonl as the default CLI/Studio progress timeline for every gray run."
+    }
+  ]
+}
