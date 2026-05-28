@@ -9,6 +9,7 @@ from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidationError
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -47,9 +48,23 @@ class CompactCommand:
         run_id = self.run_id or run_store.current_session_id()
         run_dir = agent_dir / "runs" / run_id if run_id else None
         event_logger = None
+        progress = None
         if run_dir and run_dir.exists():
             event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
             event_logger.record(run_id, "context_compacted", "CompactCommand", self.focus)
+            progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="review",
+                status="running",
+                title="正在压缩上下文",
+                summary="正在整理目标、任务、证据、风险和下一步，生成可恢复快照。",
+                display_level="main",
+                call_chain=["CompactCommand"],
+                execution_chain=["compact", "snapshot"],
+                data={"focus": self.focus},
+            )
 
         snapshot = self._build_snapshot(agent_dir, run_id, run_dir)
         snapshots_dir = agent_dir / "context" / "snapshots"
@@ -59,6 +74,22 @@ class CompactCommand:
 
         if run_dir and run_dir.exists():
             self._record_compaction_cost(run_dir, run_id)
+        if progress is not None:
+            progress.artifact_event(
+                run_id=run_id,
+                title="上下文快照已写入",
+                summary=f"已生成恢复快照，包含 {len(snapshot['active_tasks'])} 个活跃任务。",
+                artifact_refs=[str(snapshot_path)],
+                phase="review",
+            )
+            progress.conclusion(
+                run_id=run_id,
+                phase="next",
+                title="上下文压缩完成",
+                summary="后续 agent 可以从该快照恢复目标、证据、风险和下一步。",
+                content_delta="\n".join(snapshot["next_actions"]),
+                artifact_refs=[str(snapshot_path)],
+            )
 
         return CompactResult(
             run_id=run_id, snapshot_path=snapshot_path, next_actions=snapshot["next_actions"]

@@ -16,6 +16,7 @@ from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
     real_provider_matrix_text_lines,
 )
+from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -36,6 +37,7 @@ class GateStatusResult:
     latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     plugin_risks: dict[str, Any] = field(default_factory=dict)
+    runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     feature_flags: dict[str, Any] = field(default_factory=dict)
     capability_flags: dict[str, Any] = field(default_factory=dict)
@@ -69,6 +71,7 @@ class GateStatusResult:
                     "latest_real_provider_matrix",
                     "promotion_release_risks",
                     "plugin_risks",
+                    "runtime_progress_metrics",
                     "feature_flags",
                     "capability_flags",
                     "evidence_sources",
@@ -94,6 +97,7 @@ class GateStatusResult:
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "promotion_release_risks": self.promotion_release_risks,
             "plugin_risks": self.plugin_risks,
+            "runtime_progress_metrics": self.runtime_progress_metrics,
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
             "evidence_sources": self.evidence_sources,
@@ -183,6 +187,16 @@ class GateStatusResult:
                 "Promotion risks: "
                 f"pending={self.promotion_release_risks.get('pending', 0)}, "
                 f"blocked={self.promotion_release_risks.get('blocked', 0)}"
+            )
+        if self.runtime_progress_metrics:
+            profile = self.runtime_progress_metrics.get("profile_coverage") or {}
+            permission = self.runtime_progress_metrics.get("permission_reason_coverage") or {}
+            progress = self.runtime_progress_metrics.get("runtime_native_progress_coverage") or {}
+            lines.append(
+                "Runtime progress metrics: "
+                f"profiles={profile.get('coverage_ratio', 0)}, "
+                f"permission_reasons={permission.get('coverage_ratio', 0)}, "
+                f"user_progress={progress.get('coverage_ratio', 0)}"
             )
         lines.extend(self._report_lines("Real model gate", self.gate_report))
         lines.extend(self._report_lines("Gray suite", self.gray_report, gray=True))
@@ -325,6 +339,7 @@ class GateStatusCommand:
             latest_real_provider_matrix=latest_matrix,
             promotion_release_risks=promotion_release_risks,
             plugin_risks=plugin_risks,
+            runtime_progress_metrics=runtime_progress_metrics(self.root, self.validator),
             validation_recommendation=_validation_recommendation(self.root),
             feature_flags=feature_flags,
             capability_flags=capability_flags,

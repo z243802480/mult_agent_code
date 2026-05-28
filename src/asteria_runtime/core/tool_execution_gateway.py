@@ -10,6 +10,7 @@ from asteria_runtime.core.agent_harness import (
     observation_from_exception,
     observation_from_tool_result,
 )
+from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_policy import ToolPermissionPolicy
@@ -43,6 +44,12 @@ class ToolExecutionGateway:
             started = perf_counter()
             start_event: dict[str, Any] | None = None
             model_telemetry = self._last_model_telemetry(context)
+            capability_decision = CapabilityDecisionRecorder(self.actor).decide_tool(
+                tool_name,
+                task=task,
+                context=context,
+                tool_call_id=tool_call_id,
+            )
             turn_start_event = self._record_harness_turn(
                 context,
                 task,
@@ -64,6 +71,7 @@ class ToolExecutionGateway:
                     "tool_name": tool_name,
                     "arg_keys": sorted(list(args.keys())),
                     "model_telemetry": model_telemetry,
+                    "capability_decision": capability_decision,
                 },
             )
             pre_file_changes = self._planned_file_changes(tool_name, args, context)
@@ -75,6 +83,8 @@ class ToolExecutionGateway:
                     tool_name,
                     args,
                 )
+                if capability_decision["decision"] == "deny":
+                    raise PermissionError(f"Tool is not allowed for {task['task_id']}: {tool_name}")
                 start_event = self._record_tool_progress(
                     context,
                     task,
@@ -89,6 +99,7 @@ class ToolExecutionGateway:
                     data={
                         "arg_keys": sorted(list(args.keys())),
                         "permission": self.permission_policy.permission_profile(context),
+                        "capability_decision": capability_decision,
                     },
                 )
                 self._emit(
@@ -146,6 +157,7 @@ class ToolExecutionGateway:
                     tool_call_id,
                     observation,
                     parent_event_id=start_event.get("event_id") if start_event else None,
+                    capability_decision=capability_decision,
                 )
                 self._record_file_progress(
                     context,
@@ -223,6 +235,7 @@ class ToolExecutionGateway:
                         "error": str(exc),
                         "error_type": exc.__class__.__name__,
                         "permission": self.permission_policy.permission_profile(context),
+                        "capability_decision": capability_decision,
                     },
                 )
                 observation_event = self._record_harness_turn(
@@ -246,6 +259,7 @@ class ToolExecutionGateway:
                             observation=observation,
                         ).to_dict(),
                         "observation": observation.to_dict(),
+                        "capability_decision": capability_decision,
                     },
                     parent_event_id=start_event.get("event_id") if start_event else None,
                 )
@@ -254,6 +268,7 @@ class ToolExecutionGateway:
                     task,
                     tool_call_id,
                     observation,
+                    capability_decision=capability_decision,
                     user_progress_event_id=(
                         str(observation_event.get("event_id"))
                         if observation_event and observation_event.get("event_id")
@@ -285,6 +300,7 @@ class ToolExecutionGateway:
                         "observation": observation.to_dict(),
                         "error": str(exc),
                         "error_type": exc.__class__.__name__,
+                        "capability_decision": capability_decision,
                     },
                 )
                 self._emit(
@@ -371,6 +387,7 @@ class ToolExecutionGateway:
         observation: ToolObservation,
         *,
         parent_event_id: str | None,
+        capability_decision: dict[str, Any],
     ) -> None:
         turn = HarnessTurnEvent(
             turn_id=tool_call_id,
@@ -392,13 +409,18 @@ class ToolExecutionGateway:
             artifact_refs=observation.artifact_refs,
             file_changes=observation.file_changes,
             telemetry=observation.telemetry,
-            data={"turn_event": turn.to_dict(), "observation": observation.to_dict()},
+            data={
+                "turn_event": turn.to_dict(),
+                "observation": observation.to_dict(),
+                "capability_decision": capability_decision,
+            },
         )
         self._record_raw_observation(
             context,
             task,
             tool_call_id,
             observation,
+            capability_decision=capability_decision,
             user_progress_event_id=(
                 str(observation_event.get("event_id"))
                 if observation_event and observation_event.get("event_id")
@@ -413,6 +435,7 @@ class ToolExecutionGateway:
         tool_call_id: str,
         observation: ToolObservation,
         *,
+        capability_decision: dict[str, Any] | None = None,
         user_progress_event_id: str | None,
     ) -> None:
         if context.run_dir is None:
@@ -436,6 +459,7 @@ class ToolExecutionGateway:
                 "next_hint": (
                     "continue" if observation.ok else "diagnose_then_repair_replan_ask_or_stop"
                 ),
+                "capability_decision": capability_decision or {},
                 "observation": observation.to_dict(),
                 "created_at": now_iso(),
             },

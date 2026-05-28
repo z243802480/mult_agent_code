@@ -112,6 +112,17 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
         (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")
     )
     assert backlog["tasks"][1]["task_id"] == "task-0002"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "准备重规划" for event in user_progress)
+    assert any(
+        event["title"] == "已创建修复任务"
+        and event["data"]["new_task_id"] == "task-0002"
+        for event in user_progress
+    )
+    assert any(event["title"] == "重规划完成" for event in user_progress)
 
 
 def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> None:
@@ -134,3 +145,11 @@ def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> N
     ]
     assert decisions[0]["metadata"]["kind"] == "replan_decision"
     assert decisions[0]["metadata"]["source_evidence_id"] == "task-execution-0001"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    decision_events = [event for event in user_progress if event["event_type"] == "decision"]
+    assert any(
+        event["data"]["decision"]["reason"] == "repair_limit" for event in decision_events
+    )

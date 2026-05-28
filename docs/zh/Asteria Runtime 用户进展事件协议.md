@@ -1,5 +1,13 @@
 # Asteria Runtime 用户进展事件协议
 
+> 2026-05-28 同步记录：`user_progress.jsonl` 现在是 Tool 权限决策的用户侧主线。每次 Tool 调用前必须记录 `permission/permission_decision`，并在 `data.capability_decision` 中包含 `decision`、`allowed`、`requires_decision`、`intent`、`task_kind`、`risk`、`permission_mode` 和 `reason`。对应原始证据写入 `capability_decisions.jsonl`，执行观察写入 `tool_observations.jsonl`。MCP/Skill 接入真实执行路径时复用同一字段格式；Studio/CLI 只消费这些 runtime-native 事件和 artifact/evidence refs。
+
+> 2026-05-28 追加同步：权限决策审计入口已收敛为 `CapabilityDecisionRecorder`，但 Tool、MCP、Skill 不是同一种执行机制。Tool 走本地工具网关和 `tool_observations.jsonl`；MCP 应走外部 server/session/protocol 调用入口；Skill 应走按需加载的过程知识/产物能力入口。三者只共享 capability decision 记录格式：先生成并持久化 `capability_decisions.jsonl` 与 `permission/permission_decision`，再进入各自执行层；gray/gate 统计 reason 覆盖率。
+
+> 2026-05-28 MCP adapter 同步：`McpAdapter` 已接入真实 MCP protocol/session 调用入口。MCP 调用结果写入 `mcp_invocations.jsonl`；用户进展为兼容现有 schema 暂使用 `channel=tool,event_type=tool_output`，并在 `data.capability_type=mcp`、`data.adapter=mcp_protocol_session`、`data.mcp_invocation` 中标明这是 MCP 事件。权限决策仍先写 `permission/permission_decision`，不复用 `ToolExecutionGateway`。官方 `@modelcontextprotocol/server-everything@2026.1.26` 已完成真实 stdio smoke，当前 stdio framing 为 JSONL。
+
+> 2026-05-28 工具边界纠偏：这里的 Tool 事件当前指 Asteria 内部 runtime tool registry 的调用事件，不代表完整模型侧标准工具集。后续新增模型-facing tool surface 时，仍应复用 `permission/permission_decision` 与 observation 协议，但工具命名、参数 schema、展示策略和执行 adapter 需要单独建模。
+
 ## 1. 背景
 
 Studio 当前已经能展示模型事件和 runtime 输出，但仍有硬编码风险：前端或 Studio server 会根据 stdout 猜测“结果”“下一步”。这只能作为过渡，不能作为产品内核。
@@ -164,7 +172,7 @@ Inspector 展示：
 
 ## 9. 下一步开发重点
 
-1. 继续把 `/resume`、`/review` 的细分节点接入同一协议，让真实任务的计划、执行、验证、修复都能被用户看懂。
-2. Studio server 优先读取 `user_progress.jsonl`，只在旧 run 缺少该文件时回退到历史证据。
+1. 继续把 `/resume`、`/review`、专业智能体和工具链路的细分节点接入同一协议，让真实任务的计划、执行、验证、修复都能被用户看懂。
+2. Studio server 优先读取 `user_progress.jsonl`，只在旧 run 缺少该文件时回退到历史证据；这一步是薄事件消费，不代表完整 Studio UI 进入 Runtime 后端 P0。
 3. Studio 前端按用户任务主线展示 `display_level=main`，把命令、stdout、schema、原始证据放到 Inspector。
 4. 扩展 `studio-benchmark`：检查 `model/tool/file/evidence` channel 覆盖率，以及五个真实用户任务是否完成到可复盘程度。

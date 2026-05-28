@@ -109,6 +109,8 @@ export type RunDetailPayload = {
   worker_results?: AnyRecord[];
   validation_results?: AnyRecord[];
   events?: AnyRecord[];
+  legacy_events?: AnyRecord[];
+  timeline_events_source?: "user_progress" | "events";
   user_progress?: AnyRecord[];
   files?: WorkspaceFile[];
 };

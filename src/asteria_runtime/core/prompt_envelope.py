@@ -82,6 +82,11 @@ def persist_prompt_envelope(
         project_guidance_refs=["AGENTS.md"] if project_guidance else [],
     )
     data = envelope.to_dict()
+    dispatch_summary = _agent_loop_dispatch_summary(run_dir)
+    if dispatch_summary:
+        data["capability_manifest"].setdefault("boundaries", {})[
+            "agent_loop_dispatch"
+        ] = dispatch_summary
     manifest_hash = capability_manifest_hash(data["capability_manifest"])
     break_reasons = cache_break_reasons(data)
     path = _prompt_envelope_path(run_dir, mode)
@@ -118,7 +123,7 @@ def persist_prompt_envelope(
                 "tools, permissions, and safety boundaries to the model."
             ),
             data={
-                "capability_manifest": envelope.capability_manifest.to_dict(),
+                "capability_manifest": data["capability_manifest"],
                 "prompt_envelope": context_ref,
             },
             artifact_refs=[str(path)],
@@ -133,3 +138,32 @@ def _prompt_envelope_path(run_dir: Path, mode: str) -> Path:
     if mode == "plan":
         return run_dir / "prompt_envelope.json"
     return run_dir / f"prompt_envelope_{mode}.json"
+
+
+def _agent_loop_dispatch_summary(run_dir: Path) -> dict[str, Any]:
+    path = run_dir / "agent_loop_dispatch.json"
+    if not path.exists():
+        return {}
+    try:
+        dispatch = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    task_dispatch = dispatch.get("task_dispatch")
+    if not isinstance(task_dispatch, list):
+        task_dispatch = []
+    return {
+        "path": str(path),
+        "primary_loop_profile_id": dispatch.get("primary_loop_profile_id"),
+        "profile_counts": dispatch.get("profile_counts") or {},
+        "task_dispatch": [
+            {
+                "task_id": item.get("task_id"),
+                "loop_profile_id": item.get("loop_profile_id"),
+                "dispatch_reason": item.get("dispatch_reason"),
+                "output_contract": item.get("output_contract") or {},
+                "validation_contract": item.get("validation_contract") or {},
+            }
+            for item in task_dispatch[:10]
+            if isinstance(item, dict)
+        ],
+    }

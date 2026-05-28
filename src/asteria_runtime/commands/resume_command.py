@@ -11,6 +11,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -77,11 +78,35 @@ class ResumeCommand:
         if not run_id:
             raise RuntimeError("No run found. Run `asteria run` first.")
         run_dir = run_store.run_dir(run_id)
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
         pending = self._pending_decisions(run_dir)
         if pending:
             pending_ids = ", ".join(decision["decision_id"] for decision in pending)
+            progress.decision_event(
+                run_id=run_id,
+                phase="blocked",
+                status="blocked",
+                title="恢复已暂停",
+                summary=f"仍有待处理决策：{pending_ids}。请先处理决策后再恢复运行。",
+                decision={
+                    "pending_decision_ids": [decision["decision_id"] for decision in pending],
+                    "pending_count": len(pending),
+                    "next_action": "asteria decide --list",
+                },
+            )
             raise RuntimeError(f"Run still has pending decisions: {pending_ids}")
 
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="execute",
+            status="running",
+            title="准备恢复运行",
+            summary="正在检查已解决决策、任务状态和运行证据，准备继续推进。",
+            display_level="main",
+            call_chain=["ResumeCommand"],
+            execution_chain=["resume", "decision_replay"],
+        )
         applied_decisions, created_tasks = self._apply_resolved_decisions(
             agent_dir,
             run_dir,
@@ -97,6 +122,13 @@ class ResumeCommand:
         self._reconcile_with_runtime_evidence(run_dir, task_plan)
 
         if run["status"] == "completed" and applied_decisions == 0:
+            progress.conclusion(
+                run_id=run_id,
+                phase="result",
+                title="无需恢复",
+                summary="该运行已经完成，且没有新的已解决决策需要应用。",
+                artifact_refs=[str(run_dir / "final_report.md")],
+            )
             return ResumeResult(
                 RunResult(
                     run_id=run_id,
@@ -120,6 +152,17 @@ class ResumeCommand:
             run["summary"] = f"Resumed after applying {applied_decisions} decision(s)."
             run_store.update_run(run)
         run_store.set_current_session(run_id, "run_resumed")
+        progress.decision_event(
+            run_id=run_id,
+            phase="execute",
+            title="已应用恢复决策",
+            summary=f"已应用 {applied_decisions} 个决策，并创建 {created_tasks} 个后续任务。",
+            decision={
+                "applied_decisions": applied_decisions,
+                "created_tasks": created_tasks,
+                "next_action": "continue_run",
+            },
+        )
 
         steps = [
             RunStepSummary(
@@ -128,7 +171,7 @@ class ResumeCommand:
                 f"Applied {applied_decisions} decision(s); created {created_tasks} task(s).",
             )
         ]
-        result = RunCommand(
+        run_command = RunCommand(
             self.root,
             goal="",
             max_iterations=self.max_iterations,
@@ -139,7 +182,15 @@ class ResumeCommand:
             review_model_client=self.review_model_client,
             enable_research=False,
             parallel_writes=self.parallel_writes,
-        ).continue_run(run_id, steps)
+        )
+        result = run_command.continue_run(run_id, steps, _progress=progress)
+        run_command._write_active_goal_memory(
+            run_id=run_id,
+            review_status="unknown",
+            steps=[*steps, *result.steps],
+            updated_by="resume",
+            update_reason="resume_applied_decisions",
+        )
         return ResumeResult(result, applied_decisions, created_tasks)
 
     def _apply_resolved_decisions(
@@ -676,6 +727,20 @@ class ResumeCommand:
             "ResumeCommand",
             f"{decision['decision_id']} -> {selected} ({effect})",
             {
+                "decision_id": decision["decision_id"],
+                "selected_option_id": selected,
+                "label": option["label"] if option else None,
+                "action": self._option_action(option) if option else None,
+                "effect": effect,
+                "runtime_os_evidence": evidence or {},
+            },
+        )
+        UserProgressLogger(run_dir / "user_progress.jsonl", self.validator).decision_event(
+            run_id=run_id,
+            phase="execute",
+            title="决策已写入运行状态",
+            summary=f"{decision['decision_id']} 已应用为 {selected}，效果：{effect}。",
+            decision={
                 "decision_id": decision["decision_id"],
                 "selected_option_id": selected,
                 "label": option["label"] if option else None,

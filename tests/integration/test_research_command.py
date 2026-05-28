@@ -94,6 +94,22 @@ def test_research_command_collects_local_sources_and_writes_reports(tmp_path: Pa
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "Research report created" in events
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "开始研究" for event in user_progress)
+    assert any(
+        event["channel"] == "evidence"
+        and event["title"] == "研究来源已收集"
+        and event["data"]["source_count"] >= 1
+        and "docs/password.md" in event["data"]["source_refs"]
+        for event in user_progress
+    )
+    assert any(
+        event["channel"] == "conclusion" and event["title"] == "研究完成"
+        for event in user_progress
+    )
     cost = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost["research_calls"] == 1
     assert cost["model_calls"] == 1

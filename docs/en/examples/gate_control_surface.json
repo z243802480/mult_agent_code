@@ -421,6 +421,7 @@
           "latest_real_provider_matrix",
           "promotion_release_risks",
           "plugin_risks",
+          "runtime_progress_metrics",
           "feature_flags",
           "capability_flags",
           "evidence_sources",
@@ -633,6 +634,36 @@
           "status_counts": {},
           "warnings": [],
           "summary": "0 manifest(s), enabled=0, disabled=0, blocked=0; plugin execution=off."
+        }
+      },
+      "runtime_progress_metrics": {
+        "schema_version": "0.1.0",
+        "run_count": 0,
+        "profile_coverage": {
+          "required": [
+            "brainstorm",
+            "multi_agent",
+            "research"
+          ],
+          "covered": [],
+          "missing": [
+            "brainstorm",
+            "multi_agent",
+            "research"
+          ],
+          "profile_counts": {},
+          "coverage_ratio": 0.0
+        },
+        "permission_reason_coverage": {
+          "decision_count": 0,
+          "with_reason": 0,
+          "coverage_ratio": 0.0
+        },
+        "runtime_native_progress_coverage": {
+          "run_count": 0,
+          "runs_with_user_progress_file": 0,
+          "runs_with_user_progress_events": 0,
+          "coverage_ratio": 0.0
         }
       },
       "feature_flags": {

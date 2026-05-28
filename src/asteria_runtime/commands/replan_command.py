@@ -12,6 +12,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -66,22 +67,76 @@ class ReplanCommand:
         run_dir = run_store.run_dir(run_id)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="running",
+            title="准备重规划",
+            summary="正在检查失败证据，判断是创建修复任务还是请求用户决策。",
+            display_level="main",
+            call_chain=["ReplanCommand"],
+            execution_chain=["replan", "failure_analysis"],
+        )
 
         created_task_ids: list[str] = []
         created_decision_ids: list[str] = []
         superseded: list[str] = []
-        for evidence in self._candidate_failures(run_dir, task_board)[: self.max_items]:
+        candidates = self._candidate_failures(run_dir, task_board)[: self.max_items]
+        progress.record(
+            run_id=run_id,
+            channel="diagnostic",
+            phase="review",
+            status="running",
+            title="已读取失败证据",
+            summary=f"找到 {len(candidates)} 个可用于重规划的失败证据。",
+            display_level="inspector",
+            data={"candidate_failure_count": len(candidates)},
+            call_chain=["ReplanCommand"],
+            execution_chain=["replan", "failure_candidates"],
+        )
+        for evidence in candidates:
             task = task_board.get_task(evidence["task_id"])
             if self._replan_count(task_board, task["task_id"]) >= self.max_replans_per_task:
                 decision = self._create_decision(run_id, evidence, "repair_limit")
                 if decision:
                     created_decision_ids.append(decision["decision_id"])
+                    progress.decision_event(
+                        run_id=run_id,
+                        phase="review",
+                        status="waiting_user",
+                        title="需要用户决定是否继续修复",
+                        summary=(
+                            f"{evidence['task_id']} 已达到重规划次数上限，"
+                            "系统已创建决策点。"
+                        ),
+                        decision={
+                            "decision_id": decision["decision_id"],
+                            "source_task_id": evidence["task_id"],
+                            "source_evidence_id": evidence["evidence_id"],
+                            "reason": "repair_limit",
+                        },
+                    )
                 continue
 
             if self._needs_decision(evidence):
                 decision = self._create_decision(run_id, evidence, evidence["failure_type"])
                 if decision:
                     created_decision_ids.append(decision["decision_id"])
+                    progress.decision_event(
+                        run_id=run_id,
+                        phase="review",
+                        status="waiting_user",
+                        title="重规划需要用户确认",
+                        summary=f"{evidence['task_id']} 的失败类型需要用户决策后才能继续。",
+                        decision={
+                            "decision_id": decision["decision_id"],
+                            "source_task_id": evidence["task_id"],
+                            "source_evidence_id": evidence["evidence_id"],
+                            "reason": evidence["failure_type"],
+                        },
+                    )
                 continue
 
             new_task = self._task_from_failure(task_board, task, evidence)
@@ -104,10 +159,39 @@ class ReplanCommand:
                     "failure_type": evidence["failure_type"],
                 },
             )
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="review",
+                status="completed",
+                title="已创建修复任务",
+                summary=f"{evidence['task_id']} 已被 {new_task['task_id']} 替代并进入后续执行。",
+                data={
+                    "source_task_id": evidence["task_id"],
+                    "new_task_id": new_task["task_id"],
+                    "source_evidence_id": evidence["evidence_id"],
+                    "failure_type": evidence["failure_type"],
+                },
+                call_chain=["ReplanCommand"],
+                execution_chain=["replan", "repair_task_created"],
+            )
 
         self._mirror_backlog(agent_dir, task_board)
         self._update_run_status(
             run_store, run_id, bool(created_task_ids), bool(created_decision_ids)
+        )
+        progress.conclusion(
+            run_id=run_id,
+            phase="review",
+            title="重规划完成",
+            summary=(
+                f"创建 {len(created_task_ids)} 个修复任务，"
+                f"创建 {len(created_decision_ids)} 个决策点。"
+            ),
+            content_delta=(
+                "有新修复任务时可以继续执行；有决策点时请先处理决策。"
+            ),
+            artifact_refs=[str(run_dir / "task_plan.json")],
         )
         return ReplanResult(
             run_id=run_id,

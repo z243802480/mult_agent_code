@@ -67,6 +67,16 @@ def test_compact_command_creates_snapshot_from_latest_run(tmp_path: Path) -> Non
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "context_compacted" in events
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "正在压缩上下文" for event in user_progress)
+    assert any(
+        event["channel"] == "evidence" and event["title"] == "上下文快照已写入"
+        for event in user_progress
+    )
+    assert any(event["title"] == "上下文压缩完成" for event in user_progress)
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 1
     assert cost_report["context_compactions"] == 1
@@ -89,6 +99,16 @@ def test_handoff_command_creates_package_from_snapshot(tmp_path: Path) -> None:
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "Created handoff package for ReviewerAgent" in events
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "正在创建交接包" for event in user_progress)
+    assert any(
+        event["channel"] == "evidence" and event["title"] == "交接包已写入"
+        for event in user_progress
+    )
+    assert any(event["title"] == "交接准备完成" for event in user_progress)
 
 
 def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:

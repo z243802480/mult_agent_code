@@ -111,6 +111,15 @@ class SessionsResult:
                     f"{latest_execution.get('status')} - {latest_execution.get('summary')}"
                 )
             )
+        progress_timeline = context.get("progress_timeline") or []
+        if progress_timeline:
+            latest = progress_timeline[-1]
+            lines.append(
+                (
+                    f"  latest progress: {latest.get('title') or latest.get('event_type')} - "
+                    f"{latest.get('summary') or latest.get('status')}"
+                )
+            )
         blockers = context.get("blockers") or []
         if blockers:
             lines.append(f"  blockers: {'; '.join(blockers[:3])}")
@@ -208,6 +217,7 @@ class SessionsCommand:
         model_route_timeline = self._model_route_timeline(execution_evidence)
         model_route_timeline_path = self._model_route_timeline_path(run_dir)
         latest_model_progress = self._latest_model_progress(run_dir)
+        progress_timeline = self._progress_timeline(run_dir, execution_evidence)
         latest_observation_plan = self._latest_observation_plan(run_dir)
         workspace_envelope = self._workspace_envelope(run_dir)
         route_readiness = self._route_readiness(run_dir)
@@ -277,6 +287,8 @@ class SessionsCommand:
             "task_execution_evidence": execution_evidence[-3:],
             "model_selection": model_selection,
             "latest_model_progress": latest_model_progress,
+            "progress_timeline_source": progress_timeline["source"],
+            "progress_timeline": progress_timeline["events"],
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,
             "goal_policy": goal_policy,
@@ -572,6 +584,72 @@ class SessionsCommand:
             "attempt": telemetry.get("attempt"),
             "model_route": telemetry.get("model_route"),
             "progress_path": self._relative_path(run_dir / "user_progress.jsonl"),
+        }
+
+    def _progress_timeline(self, run_dir: Path, execution_evidence: list[dict]) -> dict:
+        user_progress = self._read_jsonl(run_dir / "user_progress.jsonl", "user_progress_event")
+        if user_progress:
+            return {
+                "source": "user_progress",
+                "events": [
+                    {
+                        "event_id": event.get("event_id"),
+                        "channel": event.get("channel"),
+                        "event_type": event.get("event_type"),
+                        "phase": event.get("phase"),
+                        "status": event.get("status"),
+                        "title": event.get("title"),
+                        "summary": event.get("summary"),
+                        "display_level": event.get("display_level"),
+                        "artifact_refs": event.get("artifact_refs", []),
+                        "evidence_refs": event.get("evidence_refs", []),
+                        "created_at": event.get("created_at"),
+                        "source": "user_progress",
+                    }
+                    for event in user_progress[-20:]
+                ],
+            }
+        legacy_events = self._read_jsonl(run_dir / "events.jsonl", "event")
+        if legacy_events:
+            return {
+                "source": "events",
+                "events": [
+                    {
+                        "event_id": event.get("event_id"),
+                        "channel": "diagnostic",
+                        "event_type": event.get("type"),
+                        "phase": "",
+                        "status": event.get("status") or "recorded",
+                        "title": event.get("actor") or event.get("type"),
+                        "summary": event.get("summary"),
+                        "display_level": "inspector",
+                        "artifact_refs": [],
+                        "evidence_refs": [self._relative_path(run_dir / "events.jsonl")],
+                        "created_at": event.get("created_at"),
+                        "source": "events",
+                    }
+                    for event in legacy_events[-20:]
+                ],
+            }
+        return {
+            "source": "task_execution_evidence" if execution_evidence else "none",
+            "events": [
+                {
+                    "event_id": item.get("evidence_id"),
+                    "channel": "evidence",
+                    "event_type": "evidence",
+                    "phase": "execute",
+                    "status": item.get("status"),
+                    "title": item.get("task_id"),
+                    "summary": item.get("summary"),
+                    "display_level": "inspector",
+                    "artifact_refs": [],
+                    "evidence_refs": [item.get("evidence_path")],
+                    "created_at": item.get("created_at"),
+                    "source": "task_execution_evidence",
+                }
+                for item in execution_evidence[-20:]
+            ],
         }
 
     def _latest_observation_plan(self, run_dir: Path) -> dict | None:

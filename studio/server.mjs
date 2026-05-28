@@ -1879,10 +1879,25 @@ async function readRunDetail(runId) {
   payload.task_execution_evidence = redact(await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 80));
   payload.worker_results = redact(await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80));
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
-  payload.events = redact(await readJsonlTail(path.join(runDir, "events.jsonl"), 120));
-  payload.user_progress = redact(await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120));
+  const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
+  const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);
+  payload.user_progress = redact(userProgress);
+  payload.legacy_events = redact(legacyEvents);
+  payload.timeline_events_source = userProgress.length ? "user_progress" : "events";
+  payload.events = redact(
+    userProgress.length
+      ? userProgress.map((event) => userProgressToRunDetailEvent(event, runId)).filter(Boolean)
+      : legacyEvents
+  );
   payload.files = await listRunEvidenceFiles(runDir, runId);
   return redact(payload);
+}
+
+function userProgressToRunDetailEvent(event, runId) {
+  const mapped = userProgressToStudioEvent(event, "", runId);
+  mapped.session_id = "";
+  mapped.event_id = `run-detail-${runId}-${event.event_id || event.sequence || Date.now()}`;
+  return mapped;
 }
 
 async function listRunEvidenceFiles(runDir, runId) {

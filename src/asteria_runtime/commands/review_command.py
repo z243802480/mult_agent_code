@@ -13,6 +13,7 @@ from asteria_runtime.core.agent_harness import (
     observation_next_action_plan,
     tool_observation_action_options,
 )
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
 from asteria_runtime.core.policy_config import load_policy_config
@@ -228,6 +229,36 @@ class ReviewCommand:
             ),
             encoding="utf-8",
         )
+        status = eval_report["overall"]["status"]
+        score = float(eval_report["overall"]["score"])
+        reason = str(eval_report["overall"].get("reason", ""))
+        progress.validation_event(
+            run_id=run_id,
+            title="评审结论已生成",
+            summary=f"评审状态为 {status}，评分 {score:.2f}。{reason}",
+            validation={
+                "status": status,
+                "score": score,
+                "reason": reason,
+                "follow_up_count": follow_up_count,
+                "decision_count": decision_count,
+                "recommended_next_command": self._result_recommended_next_command(
+                    status,
+                    decision_count,
+                    failure_classification,
+                ),
+            },
+            phase="review",
+            status="completed" if status == "pass" else "blocked",
+            evidence_refs=[str(eval_report_path)],
+        )
+        progress.artifact_event(
+            run_id=run_id,
+            title="评审报告已写入",
+            summary="评审报告和评估 JSON 已保存，可供用户结果页和 Inspector 读取。",
+            artifact_refs=[str(eval_report_path), str(review_report_path)],
+            phase="review",
+        )
         event_logger.record(
             run_id,
             "artifact_created",
@@ -244,7 +275,6 @@ class ReviewCommand:
             ),
             "cost_report",
         )
-        status = eval_report["overall"]["status"]
         if status == "pass":
             run["status"] = "completed"
             run["current_phase"] = "REVIEWED"
@@ -261,8 +291,17 @@ class ReviewCommand:
         run["summary"] = eval_report["overall"]["reason"]
         run_store.update_run(run)
 
-        score = float(eval_report["overall"]["score"])
-        reason = str(eval_report["overall"].get("reason", ""))
+        blockers = self._result_blockers(eval_report, follow_up_count, decision_count)
+        next_actions = self._result_next_actions(status, follow_up_count, decision_count)
+        self._write_active_goal_memory(
+            run_dir=run_dir,
+            run_status=run,
+            review_status=status,
+            completion="implemented_needs_accept" if status == "pass" else "blocked",
+            blockers=blockers,
+            next_actions=next_actions,
+        )
+
         progress.conclusion(
             run_id=run_id,
             phase="review",
@@ -280,8 +319,8 @@ class ReviewCommand:
             cost_report_path=cost_report_path,
             follow_up_count=follow_up_count,
             decision_count=decision_count,
-            blockers=self._result_blockers(eval_report, follow_up_count, decision_count),
-            next_actions=self._result_next_actions(status, follow_up_count, decision_count),
+            blockers=blockers,
+            next_actions=next_actions,
             recommended_next_command=self._result_recommended_next_command(
                 status,
                 decision_count,
@@ -947,6 +986,47 @@ class ReviewCommand:
                 ModelCallLogger(run_dir, self.validator),
             )
         return create_model_client(run_dir, self.validator, budget)
+
+    def _write_active_goal_memory(
+        self,
+        *,
+        run_dir: Path,
+        run_status: dict,
+        review_status: str,
+        completion: str,
+        blockers: list[str],
+        next_actions: list[str],
+    ) -> Path | None:
+        goal_path = run_dir / "goal_spec.json"
+        task_path = run_dir / "task_plan.json"
+        if not goal_path.exists() or not task_path.exists():
+            return None
+        pending_decisions = self._decisions_with_status(run_dir, {"pending"})
+        accepted_decisions = self._decisions_with_status(run_dir, {"resolved", "defaulted"})
+        return ActiveGoalMemory(self.root).write_from_run(
+            goal_spec=self.store.read(goal_path, "goal_spec"),
+            task_plan=self.store.read(task_path, "task_board"),
+            run_status=run_status,
+            review_status=review_status,
+            completion=completion,
+            blockers=blockers,
+            next_actions=next_actions,
+            artifacts=[str(run_dir / "eval_report.json"), str(run_dir / "review_report.md")],
+            pending_decisions=pending_decisions,
+            accepted_decisions=accepted_decisions,
+            updated_by="review",
+            update_reason="review_passed" if review_status == "pass" else "review_blocked",
+        )
+
+    def _decisions_with_status(self, run_dir: Path, statuses: set[str]) -> list[dict]:
+        decisions_path = run_dir / "decisions.jsonl"
+        if not decisions_path.exists():
+            return []
+        return [
+            decision
+            for decision in self.jsonl.read_all(decisions_path, "decision_point")
+            if decision.get("status") in statuses
+        ]
 
     def _read_cost(self, path: Path, run_id: str) -> dict:
         if path.exists():

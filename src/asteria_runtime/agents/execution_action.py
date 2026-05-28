@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from asteria_runtime.core.agent_tool_surface import adapt_model_tool_call
 from asteria_runtime.core.runtime_request import normalize_runtime_requests
 from asteria_runtime.agents.verification_command_normalizer import normalize_verification_command
 
@@ -35,11 +36,21 @@ def _normalize_tool_calls(value: object, task: dict) -> list[dict]:
         args = item.get("args") or item.get("arguments") or {}
         if not isinstance(args, dict):
             args = {}
-        args = _repair_tool_args(str(tool_name), args, task)
+        adapted = adapt_model_tool_call(
+            {"tool_name": str(tool_name), "args": args},
+            [str(tool) for tool in task.get("allowed_tools", [])],
+        )
+        tool_name = str(adapted.get("tool_name") or tool_name)
+        adapted_args = adapted.get("args")
+        args = adapted_args if isinstance(adapted_args, dict) else {}
+        args = _repair_tool_args(tool_name, args, task)
         call = {
-            "tool_name": str(tool_name),
+            "tool_name": tool_name,
             "args": args,
         }
+        if adapted.get("model_tool_name"):
+            call["model_tool_name"] = str(adapted["model_tool_name"])
+            call["tool_surface_adapter"] = str(adapted["tool_surface_adapter"])
         reason = item.get("reason")
         if reason:
             call["reason"] = str(reason)

@@ -60,6 +60,39 @@
         "risks and blockers are visible"
       ],
       "required_events": ["user_message", "assistant_delta", "reasoning_delta"]
+    },
+    {
+      "id": "profile_research_runtime_native",
+      "category": "research",
+      "goal": "Research the local docs and summarize the evidence for making user_progress.jsonl the primary process timeline.",
+      "expected_user_experience": [
+        "research progress is visible before the final synthesis",
+        "source or artifact evidence is inspectable",
+        "the answer separates claims, evidence, and next action"
+      ],
+      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+    },
+    {
+      "id": "profile_brainstorm_runtime_native",
+      "category": "brainstorm",
+      "goal": "Brainstorm implementation options for keeping Studio as a thin consumer of runtime-native events and artifacts.",
+      "expected_user_experience": [
+        "multiple options are generated without file writes",
+        "tradeoffs and a recommended option are visible",
+        "a DecisionPoint or next action is explicit"
+      ],
+      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+    },
+    {
+      "id": "profile_multi_agent_runtime_native",
+      "category": "multi_agent",
+      "goal": "Coordinate a multi-file runtime change with bounded workers, permission reasons, evidence, and verification.",
+      "expected_user_experience": [
+        "worker or dispatch progress is visible",
+        "permission decisions are summarized before risky Tool/MCP/Skill use",
+        "merge or validation evidence is inspectable"
+      ],
+      "required_events": ["user_message", "assistant_delta", "permission_request", "final_answer"]
     }
   ]
 }

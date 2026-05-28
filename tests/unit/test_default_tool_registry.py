@@ -14,5 +14,7 @@ def test_default_tool_registry_contains_mvp_tools() -> None:
         "run_command",
         "run_tests",
         "search_text",
+        "todo_read",
+        "todo_write",
         "write_file",
     ]

@@ -162,3 +162,39 @@ class RuntimeProfile:
             "context_mount_id": self.context_mount_id,
             "budget": self.budget.to_dict(),
         }
+
+
+@dataclass(frozen=True)
+class AgentLoopProfile:
+    loop_profile_id: str
+    intent: str
+    task_kinds: list[str]
+    default_agents: list[str]
+    capability_groups: list[str]
+    max_iterations: int
+    parallelism: str
+    stop_conditions: list[str]
+    summary: str
+    output_contract: dict = field(default_factory=dict)
+    validation_contract: dict = field(default_factory=dict)
+    failure_recovery: dict = field(default_factory=dict)
+    decision_escalation: list[str] = field(default_factory=list)
+    schema_version: str = SCHEMA_VERSION
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": self.schema_version,
+            "loop_profile_id": self.loop_profile_id,
+            "intent": self.intent,
+            "task_kinds": self.task_kinds,
+            "default_agents": self.default_agents,
+            "capability_groups": self.capability_groups,
+            "max_iterations": self.max_iterations,
+            "parallelism": self.parallelism,
+            "stop_conditions": self.stop_conditions,
+            "summary": self.summary,
+            "output_contract": self.output_contract,
+            "validation_contract": self.validation_contract,
+            "failure_recovery": self.failure_recovery,
+            "decision_escalation": self.decision_escalation,
+        }

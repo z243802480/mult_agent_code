@@ -55,6 +55,12 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         summary="mode selected",
         permission={"mode": "reviewed_auto"},
     )
+    logger.decision_event(
+        run_id="run-1",
+        title="decision",
+        summary="selected",
+        decision={"decision_id": "decision-0001", "effect": "task_created"},
+    )
     logger.model_decision_event(
         run_id="run-1",
         title="model",
@@ -88,6 +94,7 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         "conclusion",
         "workspace",
         "permission",
+        "progress",
         "model",
         "file",
         "validation",
@@ -99,6 +106,7 @@ def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> 
         "message",
         "workspace_selected",
         "permission_decision",
+        "decision",
         "model_decision",
         "file_changed",
         "validation_result",

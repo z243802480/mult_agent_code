@@ -12,6 +12,7 @@ from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.run_command import RunCommand, RunResult
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -266,6 +267,7 @@ class GrayRunCommand:
             "task_execution_evidence_count": len(task_evidence),
             "merge_gate_evidence_count": len(merge_gate),
             "route_evidence": route_evidence,
+            "runtime_progress_metrics": runtime_progress_metrics(self.root, self.validator),
             "cost_report": cost_report,
             "worker_statuses": sorted(
                 {str(result.get("status") or "unknown") for result in worker_results}

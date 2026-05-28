@@ -15,6 +15,7 @@ from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -76,12 +77,25 @@ class BrainstormCommand:
         budget = BudgetController.from_report(
             policy, self._read_cost(cost_report_path, run_id), run_id=run_id
         )
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
 
         goal = self._goal_text(run_dir)
         run["status"] = "running"
         run["current_phase"] = "BRAINSTORM"
         run_store.update_run(run)
         event_logger.record(run_id, "phase_changed", "BrainstormCommand", "INIT -> BRAINSTORM")
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="plan",
+            status="running",
+            title="开始头脑风暴",
+            summary="正在发散候选方向、任务候选和需要用户确认的决策。",
+            display_level="main",
+            call_chain=["BrainstormCommand"],
+            execution_chain=["brainstorm", "candidate_generation"],
+            data={"goal": goal, "max_candidates": self.max_candidates, "apply": self.apply},
+        )
 
         report = BrainstormAgent(self._model_client(run_dir, budget), self.validator).generate(
             goal,
@@ -106,10 +120,28 @@ class BrainstormCommand:
         markdown_path = run_dir / "brainstorm_report.md"
         self.store.write(report_path, report, "brainstorm_report")
         markdown_path.write_text(self._markdown(report), encoding="utf-8")
+        progress.artifact_event(
+            run_id=run_id,
+            title="头脑风暴报告已写入",
+            summary=f"已生成 {len(report['candidates'])} 个候选方向。",
+            artifact_refs=[str(report_path), str(markdown_path)],
+            phase="result",
+        )
 
         created_tasks = 0
         created_decisions = 0
         if self.apply:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="running",
+                title="正在应用头脑风暴结果",
+                summary="正在把任务候选和决策候选写入当前运行状态。",
+                display_level="main",
+                call_chain=["BrainstormCommand"],
+                execution_chain=["brainstorm", "apply"],
+            )
             created_tasks = self._apply_tasks(agent_dir, run_dir, report)
             created_decisions = self._apply_decisions(run_dir, report)
             for _ in range(created_decisions):
@@ -128,6 +160,34 @@ class BrainstormCommand:
                     "BrainstormCommand",
                     f"Created {created_decisions} decision point(s) from brainstorm report",
                 )
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="completed" if not created_decisions else "waiting_user",
+                title="头脑风暴结果已应用",
+                summary=f"创建 {created_tasks} 个任务，创建 {created_decisions} 个决策点。",
+                display_level="main",
+                data={
+                    "created_tasks": created_tasks,
+                    "created_decisions": created_decisions,
+                    "next_action": "decide --list" if created_decisions else "continue",
+                },
+                call_chain=["BrainstormCommand"],
+                execution_chain=["brainstorm", "apply"],
+            )
+            if created_decisions:
+                progress.decision_event(
+                    run_id=run_id,
+                    phase="execute",
+                    status="waiting_user",
+                    title="头脑风暴生成了待确认决策",
+                    summary=f"已创建 {created_decisions} 个决策点，继续执行前需要用户确认。",
+                    decision={
+                        "created_decisions": created_decisions,
+                        "next_action": "asteria decide --list",
+                    },
+                )
 
         event_logger.record(
             run_id,
@@ -145,6 +205,13 @@ class BrainstormCommand:
         run["summary"] = report["summary"]
         run_store.update_run(run)
         run_store.set_current_session(run_id, "brainstorm_created")
+        progress.conclusion(
+            run_id=run_id,
+            phase="result",
+            title="头脑风暴完成",
+            summary=report["summary"],
+            artifact_refs=[str(report_path), str(markdown_path)],
+        )
         return BrainstormResult(
             run_id=run_id,
             report_path=report_path,

@@ -52,6 +52,40 @@ def test_normalize_execution_action_repairs_obvious_write_file_args() -> None:
     }
 
 
+def test_normalize_execution_action_adapts_model_tool_primitives() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "grep",
+                "args": {"pattern": "needle", "path": "src"},
+                "reason": "inspect source",
+            },
+            {
+                "tool_name": "glob",
+                "args": {"pattern": "*.py", "path": "tests"},
+            },
+        ],
+        "verification": [
+            {
+                "tool_name": "shell",
+                "args": {"command": "python -m pytest tests/unit"},
+            }
+        ],
+    }
+    task = {
+        "task_id": "task-0001",
+        "allowed_tools": ["search_text", "find_files", "run_command"],
+    }
+
+    normalized = normalize_execution_action(action, task)
+
+    assert normalized["tool_calls"][0]["tool_name"] == "search_text"
+    assert normalized["tool_calls"][0]["model_tool_name"] == "grep"
+    assert normalized["tool_calls"][1]["tool_name"] == "find_files"
+    assert normalized["tool_calls"][1]["args"] == {"glob": "*.py", "path": "tests"}
+    assert normalized["verification"][0]["tool_name"] == "run_command"
+
+
 def test_normalize_execution_action_repairs_json_token_drift_in_python_content() -> None:
     action = {
         "tool_calls": [

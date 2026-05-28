@@ -263,6 +263,29 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert cost_report["model_calls"] == 3
     assert cost_report["estimated_input_tokens"] == 45
     assert cost_report["estimated_output_tokens"] == 75
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["channel"] == "validation"
+        and event["event_type"] == "validation_result"
+        and event["data"]["validation"]["status"] == "pass"
+        for event in user_progress
+    )
+    assert any(
+        event["channel"] == "evidence"
+        and event["event_type"] == "evidence"
+        and str(result.review_report_path) in event["artifact_refs"]
+        for event in user_progress
+    )
+    assert any(event["title"] == "评审完成" for event in user_progress)
+    active_goal = json.loads(
+        (tmp_path / ".asteria" / "memory" / "active_goal.json").read_text(encoding="utf-8")
+    )
+    assert active_goal["updated_by"] == "review"
+    assert active_goal["update_reason"] == "review_passed"
+    assert active_goal["current_result"]["review"] == "passed"
 
 
 def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path) -> None:
@@ -291,6 +314,15 @@ def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     assert run["status"] == "paused"
     assert run["current_phase"] == "DECISION"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    review_validation = [
+        event for event in user_progress if event["event_type"] == "validation_result"
+    ][-1]
+    assert review_validation["status"] == "blocked"
+    assert review_validation["data"]["validation"]["decision_count"] == 1
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(task_plan["tasks"]) == 1
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))

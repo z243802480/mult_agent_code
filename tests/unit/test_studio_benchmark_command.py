@@ -108,6 +108,16 @@ def test_studio_benchmark_counts_runtime_user_progress_channels(tmp_path: Path) 
     assert checks["process_channel_coverage"]["ok"] is True
 
 
+def test_studio_benchmark_manifest_covers_loop_profiles() -> None:
+    manifest = json.loads(
+        (Path.cwd() / "benchmarks" / "studio_user_tasks.json").read_text(encoding="utf-8")
+    )
+
+    categories = {task["category"] for task in manifest["tasks"]}
+
+    assert {"research", "brainstorm", "multi_agent"}.issubset(categories)
+
+
 def test_studio_benchmark_rejects_process_log_as_final_answer(tmp_path: Path) -> None:
     manifest = write_manifest(tmp_path)
     write_session(

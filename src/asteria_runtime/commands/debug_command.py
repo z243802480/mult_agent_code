@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime.agents.debug_agent import DebugAgent
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.agent_harness import (
@@ -181,6 +182,13 @@ class DebugCommand:
             run["status"] = "running"
             run["summary"] = f"Debug repaired {repaired} task(s); more work remains."
         run_store.update_run(run)
+        self._write_active_goal_memory(
+            goal_spec=goal_spec,
+            task_plan={"tasks": task_board.list_tasks()},
+            run_status=run,
+            run_dir=run_dir,
+            repairs=repairs,
+        )
 
         return DebugResult(
             run_id=run_id,
@@ -189,6 +197,50 @@ class DebugCommand:
             repairs=repairs,
             cost_report_path=cost_report_path,
         )
+
+    def _write_active_goal_memory(
+        self,
+        *,
+        goal_spec: dict,
+        task_plan: dict,
+        run_status: dict,
+        run_dir: Path,
+        repairs: list[RepairSummary],
+    ) -> Path:
+        still_blocked = [item for item in repairs if item.status == "blocked"]
+        repaired = [item for item in repairs if item.status == "done"]
+        completion = "blocked" if still_blocked else "implemented_needs_review"
+        blockers = [f"{item.task_id}: {item.summary}" for item in still_blocked]
+        next_actions = (
+            ["Run `asteria review` after repaired tasks are verified."]
+            if repaired and not still_blocked
+            else ["Inspect remaining blocked repair evidence, then rerun `asteria debug`."]
+        )
+        artifacts = [str(item.evidence_path) for item in repairs if item.evidence_path]
+        return ActiveGoalMemory(self.root).write_from_run(
+            goal_spec=goal_spec,
+            task_plan=task_plan,
+            run_status=run_status,
+            review_status="unknown",
+            completion=completion,
+            artifacts=artifacts,
+            blockers=blockers,
+            next_actions=next_actions,
+            pending_decisions=self._decisions_with_status(run_dir, {"pending"}),
+            accepted_decisions=self._decisions_with_status(run_dir, {"resolved", "defaulted"}),
+            updated_by="repair",
+            update_reason="repair_blocked" if still_blocked else "repair_completed",
+        )
+
+    def _decisions_with_status(self, run_dir: Path, statuses: set[str]) -> list[dict]:
+        decisions_path = run_dir / "decisions.jsonl"
+        if not decisions_path.exists():
+            return []
+        return [
+            decision
+            for decision in self.jsonl.read_all(decisions_path, "decision_point")
+            if decision.get("status") in statuses
+        ]
 
     def _repair_task(
         self,

@@ -93,6 +93,13 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     task_plan = json.loads(result.task_plan_path.read_text(encoding="utf-8"))
     assert task_plan["tasks"][0]["status"] == "ready"
     assert task_plan["tasks"][1]["depends_on"] == ["task-0001"]
+    assert task_plan["tasks"][0]["agent_loop_profile"]["loop_profile_id"] in {
+        "default",
+        "multi_agent",
+        "research",
+        "brainstorm",
+    }
+    assert task_plan["tasks"][0]["agent_loop_profile"]["output_contract"]
     task_plan_eval = json.loads(result.task_plan_eval_path.read_text(encoding="utf-8"))
     assert task_plan_eval["run_id"] == result.run_id
     assert task_plan_eval["task_count"] == 2
@@ -111,6 +118,10 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     }.issubset(set(prompt_envelope["section_order"]))
     assert prompt_envelope["capability_manifest"]["direct_tools"]
     assert prompt_envelope["capability_manifest"]["verification"]
+    loop_dispatch = json.loads((run_dir / "agent_loop_dispatch.json").read_text(encoding="utf-8"))
+    assert loop_dispatch["task_dispatch"][0]["task_id"] == "task-0001"
+    assert loop_dispatch["task_dispatch"][0]["capability_invocation_policy"]["reason"]
+    assert loop_dispatch["task_dispatch"][0]["validation_contract"]
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(events) >= 4
     user_progress = [
@@ -129,6 +140,11 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     )
     assert any(
         event["channel"] == "file" and event["file_changes"]
+        for event in user_progress
+    )
+    assert any(
+        event["title"] == "Agent loop profiles selected"
+        and event["data"]["agent_loop_dispatch"]["task_dispatch"]
         for event in user_progress
     )
     assert all(event["display_level"] in {"main", "inspector"} for event in user_progress)

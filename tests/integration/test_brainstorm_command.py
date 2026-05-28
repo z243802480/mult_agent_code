@@ -21,6 +21,18 @@ def test_brainstorm_command_writes_report_without_applying(tmp_path: Path) -> No
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
     assert report["recommendation"]["candidate_id"] == "candidate-0001"
     assert result.markdown_path.exists()
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "开始头脑风暴" for event in user_progress)
+    assert any(
+        event["channel"] == "evidence"
+        and event["title"] == "头脑风暴报告已写入"
+        for event in user_progress
+    )
+    assert any(event["title"] == "头脑风暴完成" for event in user_progress)
 
 
 def test_brainstorm_command_apply_creates_tasks_and_decisions(tmp_path: Path) -> None:
@@ -51,3 +63,14 @@ def test_brainstorm_command_apply_creates_tasks_and_decisions(tmp_path: Path) ->
     assert run["current_phase"] == "DECIDE"
     assert cost["model_calls"] == 1
     assert cost["user_decisions"] == 1
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event["title"] == "头脑风暴结果已应用"
+        and event["data"]["created_tasks"] == 1
+        and event["data"]["created_decisions"] == 1
+        for event in user_progress
+    )
+    assert any(event["event_type"] == "decision" for event in user_progress)

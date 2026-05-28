@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
@@ -373,8 +375,32 @@ class PlanCommand:
         task_plan = RequirementPlanner().build_task_plan(goal_spec, runtime_context=runtime_context)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)
+        loop_dispatch = AgentLoopProfileRegistry().dispatch_plan(
+            task_plan["tasks"],
+            permission_mode=str(run_config["permission_mode"]),
+        )
+        for task_dispatch in loop_dispatch["task_dispatch"]:
+            for task in task_plan["tasks"]:
+                if task.get("task_id") != task_dispatch.get("task_id"):
+                    continue
+                task["agent_loop_profile"] = {
+                    "loop_profile_id": task_dispatch["loop_profile_id"],
+                    "parallelism": task_dispatch["parallelism"],
+                    "capability_groups": task_dispatch["capability_groups"],
+                    "output_contract": task_dispatch["output_contract"],
+                    "validation_contract": task_dispatch["validation_contract"],
+                    "failure_recovery": task_dispatch["failure_recovery"],
+                    "decision_escalation": task_dispatch["decision_escalation"],
+                    "dispatch_reason": task_dispatch["dispatch_reason"],
+                }
+                break
         task_plan_path = run_dir / "task_plan.json"
+        loop_dispatch_path = run_dir / "agent_loop_dispatch.json"
         self.store.write(task_plan_path, task_plan, "task_board")
+        loop_dispatch_path.write_text(
+            json.dumps(loop_dispatch, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
         self.store.write(agent_dir / "tasks" / "backlog.json", task_plan, "task_board")
         progress_logger.record(
             run_id=run["run_id"],
@@ -386,11 +412,32 @@ class PlanCommand:
             summary=f"Created {len(task_plan['tasks'])} task(s) from the GoalSpec.",
             display_level="inspector",
             parent_event_id=planner_event.get("event_id"),
-            artifact_refs=[str(task_plan_path)],
-            evidence_refs=[str(task_plan_path)],
+            artifact_refs=[str(task_plan_path), str(loop_dispatch_path)],
+            evidence_refs=[str(task_plan_path), str(loop_dispatch_path)],
             call_chain=["PlanCommand", "RequirementPlanner"],
             execution_chain=["goal_spec", "task_plan"],
-            data={"task_count": len(task_plan["tasks"])},
+            data={
+                "task_count": len(task_plan["tasks"]),
+                "agent_loop_dispatch": loop_dispatch,
+            },
+        )
+        progress_logger.record(
+            run_id=run["run_id"],
+            channel="evidence",
+            event_type="evidence",
+            phase="plan",
+            status="completed",
+            title="Agent loop profiles selected",
+            summary=(
+                "Runtime selected loop profiles for planned tasks: "
+                f"{loop_dispatch['profile_counts']}."
+            ),
+            display_level="inspector",
+            artifact_refs=[str(loop_dispatch_path)],
+            evidence_refs=[str(loop_dispatch_path)],
+            call_chain=["PlanCommand", "AgentLoopProfileRegistry"],
+            execution_chain=["goal_spec", "task_plan", "agent_loop_dispatch"],
+            data={"agent_loop_dispatch": loop_dispatch},
         )
         progress_logger.record(
             run_id=run["run_id"],
@@ -400,11 +447,20 @@ class PlanCommand:
             status="completed",
             title="Task plan files written",
             summary="Persisted task_plan.json and refreshed the workspace backlog.",
-            artifact_refs=[str(task_plan_path), str(agent_dir / "tasks" / "backlog.json")],
-            evidence_refs=[str(task_plan_path)],
+            artifact_refs=[
+                str(task_plan_path),
+                str(loop_dispatch_path),
+                str(agent_dir / "tasks" / "backlog.json"),
+            ],
+            evidence_refs=[str(task_plan_path), str(loop_dispatch_path)],
             file_changes=[
                 {
                     "path": str(task_plan_path),
+                    "operation": "created",
+                    "event_type": "file_created",
+                },
+                {
+                    "path": str(loop_dispatch_path),
                     "operation": "created",
                     "event_type": "file_created",
                 },

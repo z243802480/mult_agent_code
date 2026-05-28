@@ -115,7 +115,26 @@ def test_sessions_command_can_restore_context_for_default_execution(tmp_path: Pa
     context = sessions.context[first.run_id]
     assert context["latest_execution_evidence"]["task_id"] == "task-0001"
     assert context["latest_execution_evidence"]["status"] == "done"
+    assert context["progress_timeline_source"] == "user_progress"
+    assert context["progress_timeline"][-1]["source"] == "user_progress"
     assert "latest execution:" in sessions.to_text()
+    assert "latest progress:" in sessions.to_text()
+
+
+def test_sessions_context_falls_back_to_legacy_events_without_user_progress(
+    tmp_path: Path,
+) -> None:
+    session = NewCommand(tmp_path, "create alpha", model_client=GoalEchoPlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / session.run_id
+    progress_path = run_dir / "user_progress.jsonl"
+    if progress_path.exists():
+        progress_path.unlink()
+
+    sessions = SessionsCommand(tmp_path, session_id=session.run_id, include_context=True).run()
+    context = sessions.context[session.run_id]
+
+    assert context["progress_timeline_source"] == "events"
+    assert context["progress_timeline"][-1]["source"] == "events"
 
 
 def test_runs_command_remains_a_compatibility_alias(tmp_path: Path) -> None:

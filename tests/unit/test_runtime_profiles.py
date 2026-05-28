@@ -242,6 +242,8 @@ def test_runtime_profile_builder_upgrades_weak_capability_route(
     assert mount.runtime_context["agent_role_contract"]["role"] == "CoderAgent"
     assert mount.runtime_context["agent_role_contract"]["purpose"] == "coding"
     assert mount.runtime_context["agent_role_contract"]["deadline_profile"] == "worker"
+    assert mount.runtime_context["agent_loop_profile"]["loop_profile_id"] == "default"
+    assert mount.runtime_context["capability_registry"]
     selection = mount.runtime_context["model_selection"]
     assert selection["role_contract"]["role"] == "CoderAgent"
     assert selection["role_contract"]["provider_call_seconds"] == 90

@@ -115,30 +115,44 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
         "user_progress_event",
     )
     assert [(event["channel"], event["event_type"]) for event in events] == [
+        ("permission", "permission_decision"),
         ("execution_chain", "turn_start"),
         ("tool", "tool_call"),
         ("tool", "tool_output"),
         ("execution_chain", "tool_observation"),
         ("execution_chain", "turn_end"),
     ]
-    assert events[0]["tool_call_id"] == "toolcall-0001"
-    assert events[0]["data"]["turn_event"]["event_type"] == "turn_start"
-    assert events[1]["command"] == ["pytest -q"]
-    assert events[1]["data"]["permission"]["mode"] == "reviewed_auto"
-    assert events[2]["status"] == "completed"
-    assert events[2]["parent_event_id"] == events[1]["event_id"]
-    assert events[3]["display_level"] == "main"
-    assert events[3]["data"]["observation"]["tool_name"] == "run_command"
-    assert events[3]["data"]["observation"]["ok"] is True
+    permission_event = events[0]
+    assert permission_event["data"]["capability_decision"]["decision"] == "ask"
+    assert permission_event["data"]["capability_decision"]["reason"]
+    assert events[1]["tool_call_id"] == "toolcall-0001"
+    assert events[1]["data"]["turn_event"]["event_type"] == "turn_start"
+    assert events[1]["data"]["capability_decision"]["decision"] == "ask"
+    assert events[2]["command"] == ["pytest -q"]
+    assert events[2]["data"]["permission"]["mode"] == "reviewed_auto"
+    assert events[2]["data"]["capability_decision"]["reason"]
+    assert events[3]["status"] == "completed"
+    assert events[3]["parent_event_id"] == events[2]["event_id"]
+    assert events[4]["display_level"] == "main"
+    assert events[4]["data"]["observation"]["tool_name"] == "run_command"
+    assert events[4]["data"]["observation"]["ok"] is True
+    assert events[4]["data"]["capability_decision"]["decision"] == "ask"
     observations = JsonlStore(context.validator).read_all(
         tmp_path / "tool_observations.jsonl",
         "tool_observation",
     )
     assert observations[0]["tool_name"] == "run_command"
-    assert observations[0]["user_progress_event_id"] == events[3]["event_id"]
+    assert observations[0]["user_progress_event_id"] == events[4]["event_id"]
     assert observations[0]["next_hint"] == "continue"
-    assert events[4]["data"]["turn_event"]["event_type"] == "turn_end"
-    assert events[4]["parent_event_id"] == events[0]["event_id"]
+    assert observations[0]["capability_decision"]["reason"]
+    capability_decisions = JsonlStore(context.validator).read_all(
+        tmp_path / "capability_decisions.jsonl",
+        schema_name=None,
+    )
+    assert capability_decisions[0]["capability"] == "run_command"
+    assert capability_decisions[0]["decision"]["reason"]
+    assert events[5]["data"]["turn_event"]["event_type"] == "turn_end"
+    assert events[5]["parent_event_id"] == events[1]["event_id"]
     assert getattr(results[0], "harness_observation").model_summary() == (
         "run_command ok: tests passed"
     )
@@ -191,15 +205,18 @@ def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
     assert events[-3]["status"] == "failed"
     assert events[-3]["data"]["error_type"] == "RuntimeError"
     assert events[-3]["data"]["permission"]["mode"] == "reviewed_auto"
+    assert events[-3]["data"]["capability_decision"]["reason"]
     assert events[-2]["channel"] == "execution_chain"
     assert events[-2]["event_type"] == "tool_observation"
     assert events[-2]["data"]["observation"]["ok"] is False
     assert events[-2]["data"]["observation"]["tool_name"] == "run_command"
     assert events[-2]["data"]["observation"]["data"]["error_type"] == "RuntimeError"
+    assert events[-2]["data"]["capability_decision"]["reason"]
     assert events[-1]["status"] == "failed"
     assert events[-1]["event_type"] == "turn_end"
     assert events[-1]["data"]["observation"]["ok"] is False
     assert events[-1]["data"]["error_type"] == "RuntimeError"
+    assert events[-1]["data"]["capability_decision"]["reason"]
     observations = JsonlStore(context.validator).read_all(
         tmp_path / "tool_observations.jsonl",
         "tool_observation",

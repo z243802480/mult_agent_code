@@ -46,6 +46,29 @@ await writeJson("goal_policy.json", {
   recommended_action: "accept",
 });
 await writeJson("cost_report.json", { total_model_calls: 1 });
+await writeJsonl("user_progress.jsonl", [
+  {
+    event_id: "upe-0001",
+    sequence: 1,
+    channel: "progress",
+    event_type: "message",
+    phase: "review",
+    status: "completed",
+    title: "Runtime progress",
+    summary: "Read from user_progress first.",
+    display_level: "main",
+    created_at: "2099-01-01T00:00:00Z",
+  },
+]);
+await writeJsonl("events.jsonl", [
+  {
+    event_id: "evt-legacy",
+    type: "phase_changed",
+    actor: "Legacy",
+    summary: "Legacy event should not be the primary timeline.",
+    created_at: "2099-01-01T00:00:00Z",
+  },
+]);
 
 const port = Number(process.env.ASTERIA_STUDIO_SMOKE_PORT || 18787);
 const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
@@ -79,6 +102,15 @@ try {
   if (!Array.isArray(detail.model_route_timeline.route_timeline)) {
     throw new Error("model_route_timeline.route_timeline was not returned");
   }
+  if (detail.timeline_events_source !== "user_progress") {
+    throw new Error("run detail should prefer user_progress.jsonl for timeline events");
+  }
+  if (!Array.isArray(detail.events) || detail.events[0]?.source !== "runtime_user_progress") {
+    throw new Error("run detail events were not mapped from user_progress.jsonl");
+  }
+  if (!Array.isArray(detail.legacy_events) || detail.legacy_events[0]?.event_id !== "evt-legacy") {
+    throw new Error("legacy events should remain available as fallback evidence");
+  }
   console.log("Studio run detail smoke passed");
 } finally {
   server.kill("SIGTERM");
@@ -88,6 +120,14 @@ try {
 
 async function writeJson(name, value) {
   await fs.writeFile(path.join(runDir, name), `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function writeJsonl(name, rows) {
+  await fs.writeFile(
+    path.join(runDir, name),
+    `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8"
+  );
 }
 
 async function waitForHealth(targetPort) {

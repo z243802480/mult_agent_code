@@ -30,6 +30,7 @@
     "evidence_refs": { "type": "array", "items": { "type": "string" } },
     "user_progress_event_id": { "type": ["string", "null"] },
     "next_hint": { "type": "string" },
+    "capability_decision": { "type": "object" },
     "observation": { "type": "object" },
     "created_at": { "type": "string" }
   }

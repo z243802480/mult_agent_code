@@ -21,6 +21,9 @@ class ActiveGoalMemory:
         return self.root / ".asteria" / "memory" / "active_goal.json"
 
     def read(self) -> str:
+        return self.read_user_markdown()
+
+    def read_user_markdown(self) -> str:
         if not self.path.exists():
             return ""
         return self.path.read_text(encoding="utf-8")
@@ -28,7 +31,10 @@ class ActiveGoalMemory:
     def read_structured(self) -> dict:
         if not self.json_path.exists():
             return {}
-        return json.loads(self.json_path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(self.json_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return self._corrupt_json_recovery(exc)
 
     def write_from_run(
         self,
@@ -45,8 +51,11 @@ class ActiveGoalMemory:
         next_actions: list[str] | None = None,
         pending_decisions: list[dict] | None = None,
         accepted_decisions: list[dict] | None = None,
+        updated_by: str | None = None,
+        update_reason: str | None = None,
     ) -> Path:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        existing = self._read_existing_for_write()
         structured = self._structured(
             goal_spec=goal_spec,
             task_plan=task_plan,
@@ -60,6 +69,9 @@ class ActiveGoalMemory:
             next_actions=next_actions or [],
             pending_decisions=pending_decisions or [],
             accepted_decisions=accepted_decisions or [],
+            updated_by=updated_by,
+            update_reason=update_reason,
+            existing_memory=existing,
         )
         self.json_path.write_text(
             json.dumps(structured, ensure_ascii=False, indent=2) + "\n",
@@ -86,6 +98,9 @@ class ActiveGoalMemory:
         next_actions: list[str],
         pending_decisions: list[dict],
         accepted_decisions: list[dict],
+        updated_by: str | None,
+        update_reason: str | None,
+        existing_memory: dict,
     ) -> dict:
         tasks = [task for task in task_plan.get("tasks", []) if isinstance(task, dict)]
         done_tasks = [task for task in tasks if task.get("status") == "done"]
@@ -93,14 +108,19 @@ class ActiveGoalMemory:
         updated_at = now_iso()
         state = self._user_state(run_status, completion, review_status)
         review = self._review_label(review_status)
+        conflict_blockers = self._conflict_blockers(existing_memory, run_status)
+        damaged_json_blockers = self._damaged_json_blockers(existing_memory)
+        all_blockers = [*conflict_blockers, *damaged_json_blockers, *blockers]
+        conflict_questions = self._conflict_questions(conflict_blockers)
         return {
             "schema_version": "0.1.0",
             "memory_id": "active-goal",
             "goal_id": str(goal_spec.get("goal_id") or "current-goal"),
             "source_run_id": str(run_status.get("run_id") or ""),
             "updated_at": updated_at,
-            "updated_by": self._updated_by(run_status, review_status),
-            "update_reason": self._update_reason(run_status, completion, review_status),
+            "updated_by": updated_by or self._updated_by(run_status, review_status),
+            "update_reason": update_reason
+            or self._update_reason(run_status, completion, review_status),
             "current_goal": str(
                 goal_spec.get("normalized_goal")
                 or goal_spec.get("original_goal")
@@ -122,11 +142,11 @@ class ActiveGoalMemory:
             ],
             "completed_work": self._completed_lines(done_tasks, artifacts),
             "how_completed": self._step_lines(steps),
-            "current_blockers": [self._clean(item) for item in blockers[:8]],
-            "questions_for_user": [
+            "current_blockers": [self._clean(item) for item in all_blockers[:8]],
+            "questions_for_user": [*conflict_questions, *[
                 self._clean(str(item.get("question") or "Decision needed."))
                 for item in pending_decisions[:5]
-            ],
+            ]][:5],
             "accepted_decisions": [
                 {
                     "question": self._clean(str(item.get("question") or "Decision")),
@@ -277,6 +297,91 @@ class ActiveGoalMemory:
         if completion == "blocked":
             return "blocked"
         return "run_progress"
+
+    def _read_existing_for_write(self) -> dict:
+        if not self.json_path.exists():
+            return {}
+        try:
+            existing = json.loads(self.json_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            return {"recovery": self._corrupt_json_recovery_payload(exc)}
+        return existing if isinstance(existing, dict) else {}
+
+    def _corrupt_json_recovery(self, exc: json.JSONDecodeError) -> dict:
+        markdown = self.read_user_markdown()
+        return {
+            "schema_version": "0.1.0",
+            "memory_id": "active-goal",
+            "goal_id": "current-goal",
+            "source_run_id": "",
+            "updated_at": now_iso(),
+            "updated_by": "run",
+            "update_reason": "recovery_from_corrupt_json",
+            "current_goal": self._goal_from_markdown(markdown),
+            "current_result": {
+                "state": "needs repair",
+                "review": "unknown",
+                "completion": "blocked",
+            },
+            "overall_plan": [],
+            "completed_work": ["- Structured memory could not be read; using Markdown fallback."],
+            "how_completed": ["- Repair active_goal.json or regenerate it from the latest run."],
+            "current_blockers": [self._corrupt_json_message(exc)],
+            "questions_for_user": [
+                "Should Asteria regenerate active_goal.json from the latest run evidence?"
+            ],
+            "accepted_decisions": [],
+            "watch_items": ["active_goal.json is damaged"],
+            "next_task": ["- Repair or regenerate .asteria/memory/active_goal.json."],
+            "artifact_refs": [str(self.path)] if self.path.exists() else [],
+        }
+
+    def _corrupt_json_recovery_payload(self, exc: json.JSONDecodeError) -> dict:
+        return {
+            "status": "corrupt_json",
+            "path": str(self.json_path),
+            "message": self._corrupt_json_message(exc),
+            "fallback_markdown_available": self.path.exists(),
+        }
+
+    def _corrupt_json_message(self, exc: json.JSONDecodeError) -> str:
+        return (
+            "active_goal.json is damaged and could not be parsed "
+            f"(line {exc.lineno}, column {exc.colno})."
+        )
+
+    def _goal_from_markdown(self, markdown: str) -> str:
+        lines = [line.strip() for line in markdown.splitlines()]
+        for index, line in enumerate(lines):
+            if line == "## Current Goal":
+                for candidate in lines[index + 1 :]:
+                    if candidate and not candidate.startswith("#"):
+                        return self._clean(candidate)
+        return "Active goal memory needs repair."
+
+    def _conflict_blockers(self, existing_memory: dict, run_status: dict) -> list[str]:
+        existing_run_id = str(existing_memory.get("source_run_id") or "")
+        new_run_id = str(run_status.get("run_id") or "")
+        if not existing_run_id or not new_run_id or existing_run_id == new_run_id:
+            return []
+        result = existing_memory.get("current_result") or {}
+        if str(result.get("state") or "").lower() == "accepted":
+            return []
+        return [
+            "Active goal memory was previously written by another unfinished run; "
+            f"previous={existing_run_id}, current={new_run_id}."
+        ]
+
+    def _conflict_questions(self, blockers: list[str]) -> list[str]:
+        if not blockers:
+            return []
+        return ["Confirm which run should own the active long-task memory before accepting."]
+
+    def _damaged_json_blockers(self, existing_memory: dict) -> list[str]:
+        recovery = existing_memory.get("recovery") if isinstance(existing_memory, dict) else None
+        if not isinstance(recovery, dict) or recovery.get("status") != "corrupt_json":
+            return []
+        return [str(recovery.get("message") or "active_goal.json was regenerated after damage.")]
 
     def _clean(self, text: str) -> str:
         replacements = {

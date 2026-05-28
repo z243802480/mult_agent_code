@@ -353,6 +353,11 @@ def test_debug_command_records_repair_user_progress(tmp_path: Path) -> None:
         and event["title"] == "Repair evidence recorded"
         for event in progress
     )
+    active_goal = json.loads(
+        (tmp_path / ".asteria" / "memory" / "active_goal.json").read_text(encoding="utf-8")
+    )
+    assert active_goal["updated_by"] == "repair"
+    assert active_goal["update_reason"] == "repair_completed"
 
 
 def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:

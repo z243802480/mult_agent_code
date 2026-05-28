@@ -192,6 +192,29 @@ class UserProgressLogger:
             data={"permission": permission},
         )
 
+    def decision_event(
+        self,
+        *,
+        run_id: str | None,
+        title: str,
+        summary: str,
+        decision: dict[str, Any],
+        status: str = "completed",
+        phase: str = "review",
+        display_level: str = "main",
+    ) -> dict[str, Any]:
+        return self.record(
+            run_id=run_id,
+            channel="progress",
+            event_type="decision",
+            phase=phase,
+            status=status,
+            title=title,
+            summary=summary,
+            display_level=display_level,
+            data={"decision": decision},
+        )
+
     def model_decision_event(
         self,
         *,

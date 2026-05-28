@@ -86,7 +86,13 @@ class ChatContextBuilder:
             permission_policy = permission_policy_profile(
                 str(workspace_envelope.get("permission_mode") or self.permission_level)
             )
-        capability_invocation_policy = CapabilityInvocationPolicy().for_intent(intent)
+        permission_mode = str(
+            workspace_envelope.get("permission_mode") or permission_policy.get("mode")
+        )
+        capability_invocation_policy = CapabilityInvocationPolicy().for_intent(
+            intent,
+            permission_mode=permission_mode,
+        )
         return {
             "chat_intent": intent,
             "capability_invocation_policy": capability_invocation_policy,
@@ -104,8 +110,7 @@ class ChatContextBuilder:
             "policy": {
                 "decision_granularity": policy.get("decision_granularity"),
                 "permissions": policy.get("permissions", {}),
-                "permission_mode": workspace_envelope.get("permission_mode")
-                or permission_policy.get("mode"),
+                "permission_mode": permission_mode,
                 "permission_policy": permission_policy,
             },
             "workspace_envelope": workspace_envelope,
@@ -118,6 +123,7 @@ class ChatContextBuilder:
             if current_run
             else None,
             "session_context": session_context,
+            "agent_loop_dispatch": session_context.get("agent_loop_dispatch") or {},
             "active_goal_memory": active_goal_memory,
             "runtime_summary": {
                 "important_paths": runtime_context.get("important_paths", [])[:10],
@@ -175,6 +181,7 @@ class ChatContextBuilder:
         if not model_route_timeline_path and (run_dir / "model_route_timeline.json").exists():
             model_route_timeline_path = self._relative_path(run_dir / "model_route_timeline.json")
         workspace_envelope = self._read_json(run_dir / "workspace_envelope.json", "workspace_envelope")
+        agent_loop_dispatch = self._agent_loop_dispatch_summary(run_dir)
         return {
             "current_run": {
                 "run_id": current_run.get("run_id"),
@@ -202,6 +209,7 @@ class ChatContextBuilder:
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,
             "workspace_envelope": workspace_envelope,
+            "agent_loop_dispatch": agent_loop_dispatch,
         }
 
     def _read_json(self, path: Path, schema_name: str) -> dict[str, Any]:
@@ -304,6 +312,7 @@ class ChatContextBuilder:
             "policy",
             "capability_invocation_policy",
             "workspace_envelope",
+            "agent_loop_dispatch",
             "session_context",
             "active_goal_memory",
             "runtime_summary",
@@ -329,3 +338,31 @@ class ChatContextBuilder:
         if isinstance(value, list):
             return f"{len(value)} item(s)"
         return "mounted"
+
+    def _agent_loop_dispatch_summary(self, run_dir: Path) -> dict[str, Any]:
+        path = run_dir / "agent_loop_dispatch.json"
+        if not path.exists():
+            return {}
+        try:
+            dispatch = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        task_dispatch = dispatch.get("task_dispatch")
+        if not isinstance(task_dispatch, list):
+            task_dispatch = []
+        return {
+            "path": self._relative_path(path),
+            "primary_loop_profile_id": dispatch.get("primary_loop_profile_id"),
+            "profile_counts": dispatch.get("profile_counts") or {},
+            "task_dispatch": [
+                {
+                    "task_id": item.get("task_id"),
+                    "loop_profile_id": item.get("loop_profile_id"),
+                    "dispatch_reason": item.get("dispatch_reason"),
+                    "output_contract": item.get("output_contract") or {},
+                    "validation_contract": item.get("validation_contract") or {},
+                }
+                for item in task_dispatch[:10]
+                if isinstance(item, dict)
+            ],
+        }

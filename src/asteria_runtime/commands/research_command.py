@@ -20,6 +20,7 @@ from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -85,22 +86,86 @@ class ResearchCommand:
             policy, self._read_cost(cost_report_path, run_id), run_id=run_id
         )
         budget.record_research_call()
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
 
         run["status"] = "running"
         run["current_phase"] = "RESEARCH"
         run_store.update_run(run)
         event_logger.record(run_id, "phase_changed", "ResearchCommand", "INIT -> RESEARCH")
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="plan",
+            status="running",
+            title="开始研究",
+            summary=f"正在围绕“{self.query}”收集本地或授权来源。",
+            display_level="main",
+            call_chain=["ResearchCommand"],
+            execution_chain=["research", "source_collection"],
+        )
 
-        source_records = self._collect_sources(policy)
+        try:
+            source_records = self._collect_sources(policy)
+        except Exception as exc:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="blocked",
+                status="blocked",
+                title="研究来源受阻",
+                summary=str(exc),
+                display_level="main",
+                call_chain=["ResearchCommand"],
+                execution_chain=["research", "source_collection"],
+            )
+            raise
         source_payload = [
             self._source_payload(record) for record in source_records[: self.max_sources]
         ]
         if not source_payload:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="blocked",
+                status="blocked",
+                title="没有可用研究来源",
+                summary="未收集到本地文档、URL 或可用搜索结果，无法生成研究报告。",
+                display_level="main",
+                call_chain=["ResearchCommand"],
+                execution_chain=["research", "source_collection"],
+            )
             raise RuntimeError(
                 "No research sources were collected. Provide local docs, URLs, or SERPER_API_KEY."
             )
+        progress.record(
+            run_id=run_id,
+            channel="evidence",
+            event_type="evidence",
+            phase="plan",
+            status="completed",
+            title="研究来源已收集",
+            summary=f"已收集 {len(source_payload)} 个来源，准备综合研究结论。",
+            display_level="inspector",
+            data={
+                "source_count": len(source_payload),
+                "source_refs": [source["reference"] for source in source_payload],
+            },
+            call_chain=["ResearchCommand"],
+            execution_chain=["research", "sources"],
+        )
 
         agent = ResearchAgent(self._model_client(run_dir, budget), self.validator)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="running",
+            title="正在综合研究结论",
+            summary="研究智能体正在分析来源、提取结论、要求和风险。",
+            display_level="main",
+            call_chain=["ResearchCommand", "ResearchAgent"],
+            execution_chain=["research", "synthesis"],
+        )
         report = agent.synthesize(self.query, source_payload, run_id)
         report["created_at"] = report.get("created_at") or now_iso()
         report_path = run_dir / "research_report.json"
@@ -118,6 +183,23 @@ class ResearchCommand:
         run["current_phase"] = "RESEARCHED"
         run["summary"] = report["summary"]
         run_store.update_run(run)
+        progress.artifact_event(
+            run_id=run_id,
+            title="研究报告已写入",
+            summary=(
+                f"研究报告包含 {len(report['sources'])} 个来源、"
+                f"{len(report['claims'])} 条结论。"
+            ),
+            artifact_refs=[str(report_path), str(markdown_path)],
+            phase="result",
+        )
+        progress.conclusion(
+            run_id=run_id,
+            phase="result",
+            title="研究完成",
+            summary=report["summary"],
+            artifact_refs=[str(report_path), str(markdown_path)],
+        )
         return ResearchResult(
             run_id=run_id,
             report_path=report_path,

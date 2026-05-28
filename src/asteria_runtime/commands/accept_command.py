@@ -11,6 +11,7 @@ from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -111,6 +112,18 @@ class AcceptCommand:
         if not run_id:
             raise RuntimeError('No current session found. Run `asteria run "goal"` first.')
         run_dir = run_store.run_dir(run_id)
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="running",
+            title="开始验收收尾",
+            summary="正在检查评审状态、候选 promotion 和最终报告落点。",
+            display_level="main",
+            call_chain=["AcceptCommand"],
+            execution_chain=["accept", "preflight"],
+        )
 
         review_status = self._latest_review_status(run_dir)
         if not self.skip_review and review_status != "pass":
@@ -121,6 +134,18 @@ class AcceptCommand:
         promoted_files: list[str] = []
         pending = self._pending_promotions(run_dir)
         if pending and self.promote_all:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="running",
+                title="正在处理候选 promotion",
+                summary=f"发现 {len(pending)} 个待处理候选，正在尝试批准并合并。",
+                display_level="main",
+                data={"pending_promotions": len(pending), "promote_all": self.promote_all},
+                call_chain=["AcceptCommand", "PromotionsCommand"],
+                execution_chain=["accept", "promotion"],
+            )
             promotion_result = PromotionsCommand(
                 self.root,
                 run_id=run_id,
@@ -202,6 +227,31 @@ class AcceptCommand:
                 "blockers": blockers,
                 "final_report_summary_path": str(final_report_summary_path),
             },
+        )
+        progress.final_report_event(
+            run_id=run_id,
+            title="验收报告已写入",
+            summary=(
+                "验收已通过，最终报告可作为交付记录。"
+                if accepted
+                else "验收被阻塞，最终报告已记录阻塞原因和下一步。"
+            ),
+            final_report_path=str(final_report_path),
+            final_report_summary_path=str(final_report_summary_path),
+            output_locations=final_report_summary.get("output_locations") or {},
+            validation={
+                "accepted": accepted,
+                "review_status": review_status,
+                "blockers": blockers,
+            },
+        )
+        progress.conclusion(
+            run_id=run_id,
+            phase="result" if accepted else "blocked",
+            title="验收完成" if accepted else "验收受阻",
+            summary=run["summary"],
+            content_delta="\n".join(next_actions),
+            artifact_refs=[str(final_report_path), str(final_report_summary_path)],
         )
 
         return AcceptResult(

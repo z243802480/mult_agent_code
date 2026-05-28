@@ -27,7 +27,18 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
     }
 
     manifest = AgentHarness(
-        policy, tool_names=["apply_patch", "read_file", "run_command"]
+        policy,
+        tool_names=[
+            "apply_patch",
+            "find_files",
+            "list_files",
+            "read_file",
+            "run_command",
+            "search_text",
+            "todo_read",
+            "todo_write",
+            "write_file",
+        ],
     ).capability_manifest(mode="build")
 
     data = manifest.to_dict()
@@ -38,6 +49,21 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
     assert data["boundaries"]["role_contracts"][0]["purpose"] == "goal_spec"
     assert data["boundaries"]["role_contracts"][0]["default_model_tier"] == "strong"
     assert data["boundaries"]["destructive_shell"] == "deny"
+    invocation_policy = data["boundaries"]["capability_invocation_policy"]
+    assert invocation_policy["intent"] == "implementation_goal"
+    assert invocation_policy["allow_tools"] is True
+    assert invocation_policy["tool_permissions"]["write"] == "ask"
+    tool_surface = data["boundaries"]["tool_surface_contract"]
+    assert tool_surface["runtime_internal_registry"]["status"] == "implemented"
+    assert tool_surface["model_facing_standard_surface"]["status"] == "ready"
+    assert tool_surface["model_facing_standard_surface"]["missing_primitives"] == []
+    model_surface = data["boundaries"]["model_tool_surface"]
+    model_tools = {tool["name"]: tool for tool in model_surface["tools"]}
+    assert model_tools["grep"]["internal_tool"] == "search_text"
+    assert model_tools["glob"]["internal_tool"] == "find_files"
+    assert model_tools["edit_file"]["internal_tool"] == "apply_patch"
+    assert model_tools["todo_read"]["status"] == "available"
+    assert model_tools["todo_write"]["permission"] == "ask"
     assert tools["apply_patch"]["kind"] == "write"
     assert tools["apply_patch"]["permission"] == "ask"
     assert direct_tools["apply_patch"]["permission_state"] == "ask"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from asteria_runtime.commands.accept_command import AcceptCommand
@@ -30,6 +31,13 @@ def test_accept_command_promotes_pending_candidate_and_finalizes_run(tmp_path: P
     run = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(run_dir / "run.json", "run")
     assert run["current_phase"] == "ACCEPTED"
     assert "Accepted by operator" in run["summary"]
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "开始验收收尾" for event in user_progress)
+    assert any(event["event_type"] == "final_report" for event in user_progress)
+    assert any(event["title"] == "验收完成" for event in user_progress)
 
 
 def test_accept_command_blocks_when_review_has_not_passed(tmp_path: Path) -> None:
@@ -54,6 +62,13 @@ def test_accept_command_blocks_when_review_has_not_passed(tmp_path: Path) -> Non
     assert "Recommended next command: asteria debug" in text
     run = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(run_dir / "run.json", "run")
     assert run["current_phase"] == "ACCEPT"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "验收受阻" for event in user_progress)
+    final_events = [event for event in user_progress if event["event_type"] == "final_report"]
+    assert final_events[-1]["data"]["validation"]["accepted"] is False
 
 
 def _workspace_ready_for_accept(

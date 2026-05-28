@@ -8,6 +8,7 @@ from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
 
 
@@ -62,6 +63,19 @@ class HandoffCommand:
         run_dir = run_store.run_dir(run_id)
         if not run_dir.exists():
             raise RuntimeError(f"Run not found: {run_id}")
+        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="running",
+            title="正在创建交接包",
+            summary=f"正在为 {self.to_role} 汇总快照、当前任务、风险和推荐下一步。",
+            display_level="main",
+            call_chain=["HandoffCommand"],
+            execution_chain=["handoff", "package"],
+            data={"to_role": self.to_role},
+        )
 
         focus = self.focus or f"handoff for {self.to_role}"
         compact = CompactCommand(self.root, run_id=run_id, focus=focus).run()
@@ -83,6 +97,21 @@ class HandoffCommand:
                 "snapshot_id": snapshot["snapshot_id"],
                 "to_role": self.to_role,
             },
+        )
+        progress.artifact_event(
+            run_id=run_id,
+            title="交接包已写入",
+            summary=f"已为 {self.to_role} 创建交接包，推荐下一步：{handoff['recommended_next_command']}。",
+            artifact_refs=[str(handoff_path), str(compact.snapshot_path)],
+            phase="review",
+        )
+        progress.conclusion(
+            run_id=run_id,
+            phase="next",
+            title="交接准备完成",
+            summary=f"后续角色 {self.to_role} 可以从交接包继续工作。",
+            content_delta=f"Recommended next command: {handoff['recommended_next_command']}",
+            artifact_refs=[str(handoff_path), str(compact.snapshot_path)],
         )
         return HandoffResult(
             run_id=run_id,

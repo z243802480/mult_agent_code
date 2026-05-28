@@ -1254,8 +1254,22 @@ def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Pa
     assert all(task["status"] == "done" for task in task_plan["tasks"])
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "decision_applied" in events
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    decision_events = [event for event in user_progress if event["event_type"] == "decision"]
+    assert any(event["title"] == "已应用恢复决策" for event in decision_events)
+    assert any(
+        event["data"]["decision"].get("effect") == "task_created" for event in decision_events
+    )
     final_report = resumed.run_result.final_report_path.read_text(encoding="utf-8")
     assert "## Accepted Decisions" in final_report
+    active_goal = json.loads(
+        (tmp_path / ".asteria" / "memory" / "active_goal.json").read_text(encoding="utf-8")
+    )
+    assert active_goal["updated_by"] == "resume"
+    assert active_goal["update_reason"] == "resume_applied_decisions"
 
 
 def test_resume_command_records_constraint_action_without_creating_task(tmp_path: Path) -> None:
@@ -1296,6 +1310,15 @@ def test_resume_command_records_constraint_action_without_creating_task(tmp_path
     applied = [event for event in events if event["type"] == "decision_applied"]
     assert applied[0]["data"]["action"] == "record_constraint"
     assert applied[0]["data"]["effect"] == "constraint_recorded"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    decision_events = [event for event in user_progress if event["event_type"] == "decision"]
+    assert any(
+        event["data"]["decision"].get("effect") == "constraint_recorded"
+        for event in decision_events
+    )
     memory = [
         json.loads(line)
         for line in (tmp_path / ".asteria" / "memory" / "decisions.jsonl")

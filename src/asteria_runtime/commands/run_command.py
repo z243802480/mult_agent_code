@@ -18,6 +18,7 @@ from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand, StatusResult
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
+from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
@@ -241,6 +242,7 @@ class RunCommand:
                 display_level="main",
             )
         self._emit_workspace_progress_event(_progress, run_id, phase="execute")
+        self._emit_agent_loop_dispatch(_progress, run_id, phase="execute")
 
         if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
             compact = CompactCommand(self.root, run_id=run_id, focus="task plan quality gate").run()
@@ -951,6 +953,46 @@ class RunCommand:
                 return progressed
         return progressed
 
+    def _emit_agent_loop_dispatch(
+        self,
+        progress: UserProgressLogger,
+        run_id: str,
+        *,
+        phase: str,
+    ) -> dict:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        task_plan = self.store.read(run_dir / "task_plan.json", "task_board")
+        workspace = self._workspace_envelope(run_dir)
+        permission_mode = str(workspace.get("permission_mode") or self.permission_level)
+        dispatch = AgentLoopProfileRegistry().dispatch_plan(
+            list(task_plan.get("tasks") or []),
+            permission_mode=permission_mode,
+        )
+        dispatch_path = run_dir / "agent_loop_dispatch.json"
+        dispatch_path.write_text(
+            json.dumps(dispatch, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        progress.record(
+            run_id=run_id,
+            channel="evidence",
+            event_type="evidence",
+            phase=phase,
+            status="running",
+            title="Agent loop dispatch loaded",
+            summary=(
+                "Runtime selected loop profiles before execution: "
+                f"{dispatch['profile_counts']}."
+            ),
+            display_level="inspector",
+            artifact_refs=[str(dispatch_path)],
+            evidence_refs=[str(dispatch_path)],
+            call_chain=["RunCommand", "AgentLoopProfileRegistry"],
+            execution_chain=["agent_loop_dispatch", phase],
+            data={"agent_loop_dispatch": dispatch},
+        )
+        return dispatch
+
     def _budget_guard(self, run_id: str, steps: list[RunStepSummary], phase: str) -> bool:
         policy = self._policy()
         report = self._cost_report(run_id)
@@ -1637,6 +1679,8 @@ class RunCommand:
         blockers: list[str] | None = None,
         risks: list[str] | None = None,
         next_actions: list[str] | None = None,
+        updated_by: str | None = None,
+        update_reason: str | None = None,
     ) -> Path | None:
         run_dir = self.root / ".asteria" / "runs" / run_id
         goal_path = run_dir / "goal_spec.json"
@@ -1676,6 +1720,8 @@ class RunCommand:
             next_actions=next_actions or [],
             pending_decisions=pending_decisions,
             accepted_decisions=accepted_decisions,
+            updated_by=updated_by,
+            update_reason=update_reason,
         )
 
     def _task_plan_eval(self, run_dir: Path) -> dict | None:

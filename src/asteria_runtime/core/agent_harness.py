@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.agent_role_policy import role_contracts_for_prompt
+from asteria_runtime.core.agent_tool_surface import model_tool_surface, tool_surface_contract
+from asteria_runtime.core.capability_invocation_policy import CapabilityInvocationPolicy
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -549,9 +551,19 @@ class AgentHarness:
         permissions = self.policy.get("permissions") or {}
         protected_paths = self.policy.get("protected_paths") or []
         role_contracts = role_contracts_for_prompt(self.policy)
+        invocation_policy = CapabilityInvocationPolicy().for_goal(
+            self._mode_intent(mode),
+            permission_mode=str(self.policy.get("permission_mode") or "reviewed_auto"),
+            risk=self._mode_risk(mode),
+        )
         tools = self._direct_tools(permissions)
         tools.extend(self._registered_tools(permissions))
         direct_tools = self._dedupe_tools(tools)
+        runtime_tool_names = [tool.name for tool in direct_tools]
+        model_tools = model_tool_surface(
+            runtime_tool_names,
+            allow_shell=bool(permissions.get("allow_shell")),
+        )
         deferred_tools = [
             CapabilityTool(
                 "tool_search",
@@ -629,8 +641,39 @@ class AgentHarness:
                 "writes": "candidate_workspace_preferred",
                 "budget": "runtime_enforced",
                 "role_contracts": role_contracts,
+                "capability_invocation_policy": invocation_policy,
+                "tool_surface_contract": tool_surface_contract(
+                    runtime_tool_names,
+                    allow_shell=bool(permissions.get("allow_shell")),
+                ),
+                "model_tool_surface": {
+                    "schema_version": "0.1.0",
+                    "adapter": "runtime_registry_to_model_primitives",
+                    "tools": model_tools,
+                    "guidance": [
+                        "Prefer read/list/glob/grep/edit/run_tests before shell.",
+                        "Use shell only when no dedicated primitive fits.",
+                        "Todo tools are a model-facing planning surface and do not mutate task_plan.json.",
+                    ],
+                },
             },
         )
+
+    def _mode_intent(self, mode: str) -> str:
+        normalized = mode.strip().lower()
+        if normalized == "research":
+            return "research_goal"
+        if normalized == "brainstorm":
+            return "brainstorm_goal"
+        return "implementation_goal"
+
+    def _mode_risk(self, mode: str) -> str:
+        normalized = mode.strip().lower()
+        if normalized in {"review", "repair", "debug"}:
+            return "high"
+        if normalized in {"research", "plan"}:
+            return "medium"
+        return "medium"
 
     def prompt_envelope(
         self,
@@ -785,6 +828,8 @@ class AgentHarness:
     def _registered_tools(self, permissions: dict[str, Any]) -> list[CapabilityTool]:
         shell_like = {"run_command", "run_tests"}
         write_like = {"write_file", "apply_patch"}
+        planning_write = {"todo_write"}
+        planning_read = {"todo_read"}
         tools: list[CapabilityTool] = []
         for name in self.tool_names:
             if name in shell_like:
@@ -793,6 +838,12 @@ class AgentHarness:
             elif name in write_like:
                 permission = "ask"
                 kind = "write"
+            elif name in planning_write:
+                permission = "ask"
+                kind = "planning"
+            elif name in planning_read:
+                permission = "allow"
+                kind = "planning"
             else:
                 permission = "allow"
                 kind = "read"

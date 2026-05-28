@@ -445,6 +445,7 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     )
     event_types = [event["event_type"] for event in user_progress]
     assert "workspace_selected" in event_types
+    assert "evidence" in event_types
     assert "model_decision" in event_types
     assert "file_changed" in event_types
     assert "validation_result" in event_types
@@ -454,6 +455,14 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
         tmp_path.resolve()
     )
     assert final_report_event["data"]["validation"]["status"] == "passed"
+    dispatch_path = result.final_report_path.with_name("agent_loop_dispatch.json")
+    dispatch = json.loads(dispatch_path.read_text(encoding="utf-8"))
+    assert dispatch["task_dispatch"]
+    assert any(
+        event["title"] == "Agent loop dispatch loaded"
+        and event["data"]["agent_loop_dispatch"]["task_dispatch"]
+        for event in user_progress
+    )
     summary = JsonStore(SchemaValidator(Path("schemas"))).read(
         result.run_loop_summary_path,
         "run_loop_summary",

@@ -152,6 +152,9 @@ def test_gray_run_executes_small_task_and_collects_route_evidence(
     assert summary["evidence"]["route_evidence"]["strong_used"] is True
     assert summary["evidence"]["route_evidence"]["medium_used"] is True
     assert summary["evidence"]["worker_result_count"] == 1
+    assert summary["evidence"]["runtime_progress_metrics"]["permission_reason_coverage"][
+        "coverage_ratio"
+    ] == 1.0
 
 
 class FakeRunCommand:
@@ -206,6 +209,53 @@ class FakeRunCommand:
                     "tool_results": [],
                     "verification_results": [],
                     "created_at": now_iso(),
+                }
+            ],
+        )
+        (run_dir / "agent_loop_dispatch.json").write_text(
+            json.dumps(
+                {
+                    "profile_counts": {
+                        "research": 1,
+                        "brainstorm": 1,
+                        "multi_agent": 1,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        _write_jsonl(
+            run_dir / "capability_decisions.jsonl",
+            [
+                {
+                    "decision": {
+                        "decision": "ask",
+                        "reason": "capability is available but requires a decision",
+                    }
+                }
+            ],
+        )
+        _write_jsonl(
+            run_dir / "user_progress.jsonl",
+            [
+                {
+                    "schema_version": "0.1.0",
+                    "event_id": "upe-1",
+                    "run_id": run_id,
+                    "created_at": now_iso(),
+                    "channel": "permission",
+                    "event_type": "permission_decision",
+                    "phase": "execute",
+                    "status": "running",
+                    "title": "Capability decision recorded",
+                    "summary": "recorded",
+                    "display_level": "main",
+                    "artifact_refs": [],
+                    "evidence_refs": [],
+                    "call_chain": [],
+                    "execution_chain": [],
+                    "file_changes": [],
+                    "data": {},
                 }
             ],
         )

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
+from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_mount_builder import ContextMountBuilder
 from asteria_runtime.core.context_package_builder import ContextPackageBuilder
@@ -199,6 +200,12 @@ class RuntimeProfileBuilder:
             "parallel_safety": parallel_safety(task),
         }
         purpose = self._model_purpose(task)
+        loop_registry = AgentLoopProfileRegistry()
+        scoped["agent_loop_profile"] = loop_registry.for_task(
+            task,
+            permission_mode=str(context.policy.get("permission_mode") or "reviewed_auto"),
+        )
+        scoped["capability_registry"] = loop_registry.registrations()
         scoped["route_guidance"] = self._route_guidance_for_task(context, purpose)
         scoped["agent_role_contract"] = role_contract_for(
             role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
