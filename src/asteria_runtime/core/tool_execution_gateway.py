@@ -39,6 +39,8 @@ class ToolExecutionGateway:
         allowed = set(task["allowed_tools"])
         for call in calls:
             tool_name = call["tool_name"]
+            model_tool_name = str(call.get("model_tool_name") or tool_name)
+            tool_surface_adapter = call.get("tool_surface_adapter")
             args = call.get("args", {}) or {}
             tool_call_id = self._next_tool_call_id(context)
             started = perf_counter()
@@ -69,6 +71,8 @@ class ToolExecutionGateway:
                         summary=f"Agent is preparing to use {tool_name}.",
                     ).to_dict(),
                     "tool_name": tool_name,
+                    "model_tool_name": model_tool_name,
+                    "tool_surface_adapter": tool_surface_adapter,
                     "arg_keys": sorted(list(args.keys())),
                     "model_telemetry": model_telemetry,
                     "capability_decision": capability_decision,
@@ -100,6 +104,8 @@ class ToolExecutionGateway:
                         "arg_keys": sorted(list(args.keys())),
                         "permission": self.permission_policy.permission_profile(context),
                         "capability_decision": capability_decision,
+                        "model_tool_name": model_tool_name,
+                        "tool_surface_adapter": tool_surface_adapter,
                     },
                 )
                 self._emit(
@@ -191,6 +197,8 @@ class ToolExecutionGateway:
                             observation=observation,
                         ).to_dict(),
                         "observation": observation.to_dict(),
+                        "model_tool_name": model_tool_name,
+                        "tool_surface_adapter": tool_surface_adapter,
                     },
                 )
                 self._emit(
@@ -236,6 +244,8 @@ class ToolExecutionGateway:
                         "error_type": exc.__class__.__name__,
                         "permission": self.permission_policy.permission_profile(context),
                         "capability_decision": capability_decision,
+                        "model_tool_name": model_tool_name,
+                        "tool_surface_adapter": tool_surface_adapter,
                     },
                 )
                 observation_event = self._record_harness_turn(
@@ -301,6 +311,8 @@ class ToolExecutionGateway:
                         "error": str(exc),
                         "error_type": exc.__class__.__name__,
                         "capability_decision": capability_decision,
+                        "model_tool_name": model_tool_name,
+                        "tool_surface_adapter": tool_surface_adapter,
                     },
                 )
                 self._emit(
@@ -552,6 +564,7 @@ class ToolExecutionGateway:
                 continue
             try:
                 import json
+
                 last = json.loads(line)
             except Exception:  # noqa: BLE001
                 pass
@@ -589,12 +602,11 @@ class ToolExecutionGateway:
     def _tool_result_data(self, result: object) -> dict[str, Any]:
         data = getattr(result, "data", None)
         if not isinstance(data, dict):
-            return {"ok": bool(getattr(result, "ok", False)), "error": getattr(result, "error", None)}
-        redacted = {
-            key: value
-            for key, value in data.items()
-            if key not in {"content", "diff"}
-        }
+            return {
+                "ok": bool(getattr(result, "ok", False)),
+                "error": getattr(result, "error", None),
+            }
+        redacted = {key: value for key, value in data.items() if key not in {"content", "diff"}}
         redacted["ok"] = bool(getattr(result, "ok", False))
         redacted["error"] = getattr(result, "error", None)
         return redacted

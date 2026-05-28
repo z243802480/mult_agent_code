@@ -660,6 +660,55 @@ class FakeReservedToolArgsClient:
         )
 
 
+class FakeModelSurfaceExecuteClient:
+    def __init__(self) -> None:
+        self.available_tools: list[str] = []
+        self.model_surface: dict = {}
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        self.available_tools = payload["available_tools"]
+        self.model_surface = payload["model_tool_surface"]
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Use model-facing search and test primitives.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                            "reason": "produce the expected artifact before inspection",
+                        },
+                        {
+                            "tool_name": "grep",
+                            "args": {"pattern": "def add_note", "path": "src"},
+                            "reason": "inspect implementation with the model-facing search primitive",
+                        },
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_tests",
+                            "args": {"command": 'python -c "assert True"'},
+                            "reason": "verify through the model-facing test primitive",
+                        }
+                    ],
+                    "completion_notes": "model-facing tool surface was consumed",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-model-surface",
+            raw_response={},
+        )
+
+
 class FakeUnsafeVerificationClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         return ChatResponse(
@@ -915,14 +964,8 @@ def test_execute_command_records_run_loop_user_progress(tmp_path: Path) -> None:
     assert "Promotion started" in titles
     assert "Candidate promoted" in titles
     assert "Task execution evidence recorded" in titles
-    assert any(
-        event["channel"] == "file" and event["file_changes"]
-        for event in progress
-    )
-    assert any(
-        event["channel"] == "evidence" and event["phase"] == "result"
-        for event in progress
-    )
+    assert any(event["channel"] == "file" and event["file_changes"] for event in progress)
+    assert any(event["channel"] == "evidence" and event["phase"] == "result" for event in progress)
 
 
 def test_execute_command_records_pre_tool_user_progress_when_action_fails(
@@ -931,7 +974,9 @@ def test_execute_command_records_pre_tool_user_progress_when_action_fails(
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
 
-    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeInvalidExecuteClient()).run()
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeInvalidExecuteClient()
+    ).run()
 
     assert result.completed == 0
     assert result.blocked == 1
@@ -1125,7 +1170,9 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
 
 def test_execute_command_stabilizes_doc_only_verification(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "create a validation batch note", model_client=FakePlanClient()).run()
+    plan = PlanCommand(
+        tmp_path, "create a validation batch note", model_client=FakePlanClient()
+    ).run()
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
@@ -1158,8 +1205,10 @@ def test_execute_command_stabilizes_doc_only_verification(tmp_path: Path) -> Non
 
     assert result.completed == 1
     assert result.blocked == 0
-    assert (tmp_path / "docs" / "validation_batch_note.md").read_text(encoding="utf-8").startswith(
-        "# Validation Batch"
+    assert (
+        (tmp_path / "docs" / "validation_batch_note.md")
+        .read_text(encoding="utf-8")
+        .startswith("# Validation Batch")
     )
     validation_results = [
         json.loads(line)
@@ -1896,6 +1945,39 @@ def test_execute_command_filters_reserved_model_tool_args(tmp_path: Path) -> Non
     )
     assert "model should not pass this" not in tool_calls
     assert "reserved" not in tool_calls
+
+
+def test_execute_command_exposes_model_tool_surface_and_records_mapping(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    (tmp_path / "src").mkdir(exist_ok=True)
+    (tmp_path / "src" / "notes_tool.py").write_text(
+        "def add_note(notes, text):\n    return [*notes, text]\n",
+        encoding="utf-8",
+    )
+    execute_client = FakeModelSurfaceExecuteClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=execute_client).run()
+
+    assert result.completed == 1
+    assert "grep" in execute_client.available_tools
+    assert "run_tests" in execute_client.available_tools
+    assert execute_client.model_surface["adapter"] == "model_to_runtime_registry"
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    proposed = [event for event in progress if event.get("title") == "Worker action proposed"][-1]
+    assert any(
+        item["model_tool_name"] == "grep" and item["tool_name"] == "search_text"
+        for item in proposed["data"]["model_tool_calls"]
+    )
+    assert any(
+        event.get("data", {}).get("model_tool_name") == "grep"
+        for event in progress
+        if event.get("event_type") == "tool_call"
+    )
 
 
 def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -> None:

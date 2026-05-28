@@ -6,7 +6,7 @@ This note records the current implementation boundary for the remaining validati
 
 ## Fixed Real-Task Validation Matrix
 
-The fixed matrix lives at `benchmarks/runtime_validation_matrix.json` and is consumed by:
+The fixed real-task validation catalog lives at `benchmarks/runtime_validation_matrix.json` and is consumed by:
 
 - `gate-status` through `runtime_validation_matrix`
 - `validation-run` through `evidence.runtime_validation_matrix`
@@ -19,8 +19,9 @@ The matrix currently gates the following evidence:
 - Research, Brainstorm, and Multi-agent profile coverage.
 - Permission reason coverage.
 - Runtime-native `user_progress.jsonl` coverage.
+- Agent-facing tool surface evidence from the Plan/Run/Worker loop.
 
-The matrix deliberately ignores untracked local `.codex/`, `.claude/`, `validation_*`, transcript, and probe folders. Those remain local scratch evidence unless promoted into structured runtime artifacts.
+The catalog deliberately ignores untracked local `.codex/`, `.claude/`, `validation_*`, transcript, and probe folders. Those remain local scratch evidence unless promoted into structured runtime artifacts.
 
 ## Progress Timeline Boundary
 
@@ -53,3 +54,5 @@ Before widening real-task scope, maintainers should inspect:
 - `gate-status --json` fields `runtime_validation_matrix`, `runtime_progress_metrics`, and `recovery_pressure`.
 - `.asteria/validation_runs/<id>/summary.json` fields under `evidence`.
 - Studio Inspector raw evidence only when a user-facing progress item needs deeper debugging.
+
+The next engineering plan is to add more real tasks to this same catalog, not to create a separate deployment taxonomy. Deployment stage can be expressed by branch name, version tag, or environment label outside runtime feature names.

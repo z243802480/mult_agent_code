@@ -17,11 +17,9 @@ from asteria_runtime.utils.time import now_iso
 
 
 class McpSession(Protocol):
-    def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        ...
+    def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]: ...
 
-    def close(self) -> None:
-        ...
+    def close(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -55,6 +53,7 @@ class McpInvocationResult:
 class McpAdapterConfig:
     servers: list[McpServerConfig] = field(default_factory=list)
     session_call_timeout_seconds: int = 60
+    retry_attempts: int = 0
 
 
 class StdioMcpSession:
@@ -228,10 +227,12 @@ class McpAdapter:
         *,
         actor: str = "McpAdapter",
         session_call_timeout_seconds: int = 60,
+        retry_attempts: int = 0,
     ) -> None:
         self.sessions = sessions
         self.actor = actor
         self.session_call_timeout_seconds = session_call_timeout_seconds
+        self.retry_attempts = max(0, retry_attempts)
 
     @classmethod
     def from_configs(cls, configs: list[McpServerConfig]) -> McpAdapter:
@@ -239,10 +240,18 @@ class McpAdapter:
 
     @classmethod
     def from_adapter_config(cls, config: McpAdapterConfig) -> McpAdapter:
-        return cls.from_configs(config.servers).with_timeout(config.session_call_timeout_seconds)
+        return (
+            cls.from_configs(config.servers)
+            .with_timeout(config.session_call_timeout_seconds)
+            .with_retries(config.retry_attempts)
+        )
 
     def with_timeout(self, timeout_seconds: int) -> McpAdapter:
         self.session_call_timeout_seconds = timeout_seconds
+        return self
+
+    def with_retries(self, retry_attempts: int) -> McpAdapter:
+        self.retry_attempts = max(0, retry_attempts)
         return self
 
     def invoke_tool(
@@ -269,7 +278,16 @@ class McpAdapter:
                 error=decision["reason"],
                 status="denied",
             )
-            self._record_invocation(context, task, invocation_id, server_name, tool_name, arguments or {}, decision, result)
+            self._record_invocation(
+                context,
+                task,
+                invocation_id,
+                server_name,
+                tool_name,
+                arguments or {},
+                decision,
+                result,
+            )
             return result
         session = self.sessions.get(server_name)
         if session is None:
@@ -279,10 +297,19 @@ class McpAdapter:
                 error="mcp_server_not_configured",
                 status="config_error",
             )
-            self._record_invocation(context, task, invocation_id, server_name, tool_name, arguments or {}, decision, result)
+            self._record_invocation(
+                context,
+                task,
+                invocation_id,
+                server_name,
+                tool_name,
+                arguments or {},
+                decision,
+                result,
+            )
             return result
         try:
-            payload = self._call_session(
+            payload, attempts = self._call_session_with_retries(
                 session,
                 "tools/call",
                 {"name": tool_name, "arguments": arguments or {}},
@@ -290,7 +317,12 @@ class McpAdapter:
             result = McpInvocationResult(
                 ok=True,
                 summary=f"MCP tool completed: {capability_name}",
-                data={"server": server_name, "tool": tool_name, "response": payload},
+                data={
+                    "server": server_name,
+                    "tool": tool_name,
+                    "response": payload,
+                    "attempts": attempts,
+                },
             )
         except Exception as exc:  # noqa: BLE001 - adapter boundary returns structured failure
             result = McpInvocationResult(
@@ -299,7 +331,9 @@ class McpAdapter:
                 error=str(exc),
                 status=self._classify_error(exc),
             )
-        self._record_invocation(context, task, invocation_id, server_name, tool_name, arguments or {}, decision, result)
+        self._record_invocation(
+            context, task, invocation_id, server_name, tool_name, arguments or {}, decision, result
+        )
         return result
 
     def close(self) -> None:
@@ -323,6 +357,23 @@ class McpAdapter:
             ) from exc
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
+
+    def _call_session_with_retries(
+        self,
+        session: McpSession,
+        method: str,
+        params: dict[str, Any],
+    ) -> tuple[dict[str, Any], int]:
+        attempts = self.retry_attempts + 1
+        last_error: Exception | None = None
+        for index in range(attempts):
+            try:
+                return self._call_session(session, method, params), index + 1
+            except Exception as exc:  # noqa: BLE001 - retry boundary returns structured failure
+                last_error = exc
+                if index >= attempts - 1 or not self._retryable(exc):
+                    raise
+        raise RuntimeError(str(last_error) if last_error else "MCP call failed")
 
     def _record_invocation(
         self,
@@ -353,6 +404,7 @@ class McpAdapter:
             "summary": result.summary,
             "error": result.error,
             "data": result.data,
+            "retry_attempts": self.retry_attempts,
             "created_at": now_iso(),
         }
         JsonlStore(context.validator).append(path, record, schema_name=None)
@@ -379,7 +431,11 @@ class McpAdapter:
         if context.run_dir is None:
             return "mcp-0001"
         path = context.run_dir / "mcp_invocations.jsonl"
-        count = len(JsonlStore(context.validator).read_all(path, schema_name=None)) if path.exists() else 0
+        count = (
+            len(JsonlStore(context.validator).read_all(path, schema_name=None))
+            if path.exists()
+            else 0
+        )
         return f"mcp-{count + 1:04d}"
 
     def _safe_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -405,15 +461,21 @@ class McpAdapter:
             return "session_error"
         return "execution_error"
 
+    def _retryable(self, exc: Exception) -> bool:
+        return self._classify_error(exc) in {"timeout", "session_error", "execution_error"}
+
     def _sensitive_key(self, key: str) -> bool:
         normalized = key.lower()
         return any(part in normalized for part in ["token", "secret", "password", "api_key"])
 
 
-def mcp_adapter_config_from_policy(policy: dict[str, Any], *, root: Path | None = None) -> McpAdapterConfig:
+def mcp_adapter_config_from_policy(
+    policy: dict[str, Any], *, root: Path | None = None
+) -> McpAdapterConfig:
     raw = policy.get("mcp")
     config = raw if isinstance(raw, dict) else {}
     timeout = int(config.get("session_call_timeout_seconds") or 60)
+    retry_attempts = int(config.get("retry_attempts") or 0)
     raw_servers = config.get("servers")
     servers: list[McpServerConfig] = []
     if isinstance(raw_servers, list):
@@ -423,7 +485,11 @@ def mcp_adapter_config_from_policy(policy: dict[str, Any], *, root: Path | None 
             parsed = mcp_server_config_from_dict(item, root=root)
             if parsed is not None:
                 servers.append(parsed)
-    return McpAdapterConfig(servers=servers, session_call_timeout_seconds=timeout)
+    return McpAdapterConfig(
+        servers=servers,
+        session_call_timeout_seconds=timeout,
+        retry_attempts=retry_attempts,
+    )
 
 
 def mcp_server_config_from_dict(
@@ -440,7 +506,11 @@ def mcp_server_config_from_dict(
     cwd = None
     if isinstance(raw_cwd, str) and raw_cwd.strip():
         cwd_path = Path(raw_cwd)
-        cwd = (root / cwd_path).resolve() if root and not cwd_path.is_absolute() else cwd_path.resolve()
+        cwd = (
+            (root / cwd_path).resolve()
+            if root and not cwd_path.is_absolute()
+            else cwd_path.resolve()
+        )
     raw_env = data.get("env")
     env = {str(k): str(v) for k, v in raw_env.items()} if isinstance(raw_env, dict) else {}
     framing = str(data.get("framing") or "jsonl")
@@ -460,6 +530,7 @@ def mcp_invocation_summary(run_dir: Path, validator: Any) -> dict[str, Any]:
             "denied": 0,
             "by_status": {},
             "latest": [],
+            "consumer_summary": "No MCP invocations recorded.",
         }
     invocations = JsonlStore(validator).read_all(path, schema_name=None)
     by_status: dict[str, int] = {}
@@ -481,8 +552,26 @@ def mcp_invocation_summary(run_dir: Path, validator: Any) -> dict[str, Any]:
         "schema_version": "0.1.0",
         "total": len(invocations),
         "completed": len([item for item in invocations if item.get("ok") is True]),
-        "failed": len([item for item in invocations if item.get("ok") is not True and item.get("status") != "denied"]),
+        "failed": len(
+            [
+                item
+                for item in invocations
+                if item.get("ok") is not True and item.get("status") != "denied"
+            ]
+        ),
         "denied": by_status.get("denied", 0),
         "by_status": by_status,
         "latest": latest,
+        "consumer_summary": _mcp_consumer_summary(invocations, by_status),
     }
+
+
+def _mcp_consumer_summary(invocations: list[dict[str, Any]], by_status: dict[str, int]) -> str:
+    if not invocations:
+        return "No MCP invocations recorded."
+    failures = len([item for item in invocations if item.get("ok") is not True])
+    if failures:
+        return (
+            f"MCP recorded {len(invocations)} invocation(s), with failures by status: {by_status}."
+        )
+    return f"MCP recorded {len(invocations)} successful invocation(s)."

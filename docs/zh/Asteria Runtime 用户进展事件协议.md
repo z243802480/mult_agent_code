@@ -169,10 +169,11 @@ Inspector 展示：
 - `ToolExecutionGateway` 已写入 `tool` channel：工具开始、工具结束、工具失败都会形成结构化事件，并保留 `tool_call_id`、命令摘要、耗时和调用链。
 - 文件写入类工具已写入 `file` channel：`write_file`、`apply_patch`、`restore_backup` 的成功结果会记录文件路径、操作类型和备份引用。
 - `studio-benchmark` 已作为用户侧内测基准入口存在，但当前真实任务覆盖仍未跑满，不能视为用户内测已准备好。
+- Execute/Coder 主循环已消费 agent-facing tool surface：模型侧 `grep/glob/shell/run_tests/todo_*` 等原语会映射到内部 registry，并把 `model_tool_name`、permission decision、observation 和 `user_progress` 串联记录。
+- MCP/Skill adapter 已按独立 capability 类型写入权限审计、调用证据和用户进展事件；Studio run detail 默认 timeline 来自 `user_progress.jsonl`，Inspector 读取 raw evidence。
 
 ## 9. 下一步开发重点
 
-1. 继续把 `/resume`、`/review`、专业智能体和工具链路的细分节点接入同一协议，让真实任务的计划、执行、验证、修复都能被用户看懂。
-2. Studio server 优先读取 `user_progress.jsonl`，只在旧 run 缺少该文件时回退到历史证据；这一步是薄事件消费，不代表完整 Studio UI 进入 Runtime 后端 P0。
-3. Studio 前端按用户任务主线展示 `display_level=main`，把命令、stdout、schema、原始证据放到 Inspector。
-4. 扩展 `studio-benchmark`：检查 `model/tool/file/evidence` channel 覆盖率，以及五个真实用户任务是否完成到可复盘程度。
+1. 继续补 `/review`、专业智能体和恢复链路中的更细粒度用户事件标题与摘要，让真实任务的验证、修复和阻塞恢复更容易读。
+2. Studio 前端按用户任务主线展示 `display_level=main`，把命令、stdout、schema、原始证据放到 Inspector。
+3. 扩展真实任务验证目录：检查 `model/tool/file/evidence` channel 覆盖率，以及更多真实用户任务是否完成到可复盘程度。

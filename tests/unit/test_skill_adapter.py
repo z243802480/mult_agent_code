@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.skill_adapter import SkillAdapter
+from asteria_runtime.core.skill_adapter import SkillAdapter, SkillDiscovery
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -22,6 +22,39 @@ class FakeSkill:
                 }
             ],
         }
+
+
+class FailingSkill:
+    def invoke(self, request: dict) -> dict:
+        raise ValueError("argument schema mismatch")
+
+
+def test_skill_discovery_loads_skill_md_contract(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "documents"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                "name: documents",
+                "description: Generate document artifacts",
+                "parameters: title, outline",
+                "artifacts: docx, pdf",
+                "---",
+                "",
+                "# Documents",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    definitions = SkillDiscovery([tmp_path / "skills"]).discover()
+    adapter = SkillAdapter.from_skill_roots([tmp_path / "skills"])
+
+    assert definitions[0].name == "documents"
+    assert definitions[0].parameter_contract == {"summary": "title, outline"}
+    assert definitions[0].artifact_types == ["docx", "pdf"]
+    assert adapter.catalog()[0]["description"] == "Generate document artifacts"
 
 
 def test_skill_adapter_records_decision_artifact_and_progress(tmp_path: Path) -> None:
@@ -65,6 +98,36 @@ def test_skill_adapter_records_decision_artifact_and_progress(tmp_path: Path) ->
     assert progress[-1]["artifact_refs"] == ["artifact-0001"]
     assert decisions[0]["capability_type"] == "skill"
     assert decisions[0]["decision"]["reason"]
+
+
+def test_skill_adapter_classifies_contract_failures(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={"protected_paths": []},
+        validator=validator,
+        run_dir_override=run_dir,
+    )
+    task = {
+        "task_id": "task-1",
+        "task_kind": "document",
+        "allowed_skills": ["documents"],
+    }
+
+    result = SkillAdapter({"documents": FailingSkill()}).invoke(
+        context=context,
+        task=task,
+        skill_name="documents",
+        arguments={"title": "Quarterly"},
+    )
+
+    assert result.ok is False
+    assert result.status == "contract_error"
+    invocations = JsonlStore(validator).read_all(run_dir / "skill_invocations.jsonl", None)
+    assert invocations[0]["status"] == "contract_error"
 
 
 def test_skill_adapter_denies_unmatched_skill_and_redacts_arguments(tmp_path: Path) -> None:

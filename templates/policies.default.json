@@ -83,6 +83,11 @@
     }
   },
   "capability_flags": {},
+  "mcp": {
+    "session_call_timeout_seconds": 60,
+    "retry_attempts": 1,
+    "servers": []
+  },
   "agent_loop": {
     "task_plan_quality_gate_blocks": false,
     "schema_shape_errors_are_repairable": true,

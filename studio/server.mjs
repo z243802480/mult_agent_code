@@ -1884,8 +1884,19 @@ async function readRunDetail(runId) {
   const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
   const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);
   payload.user_progress = redact(userProgress);
+  payload.raw_evidence = redact({
+    legacy_events: legacyEvents,
+    model_calls: payload.model_calls,
+    task_execution_evidence: payload.task_execution_evidence,
+    worker_results: payload.worker_results,
+    validation_results: payload.validation_results,
+    mcp_invocations: payload.mcp_invocations,
+    skill_invocations: payload.skill_invocations,
+  });
   payload.legacy_events = redact(legacyEvents);
   payload.timeline_events_source = userProgress.length ? "user_progress" : "events";
+  payload.timeline_default = userProgress.length ? "user_progress" : "legacy_events_fallback";
+  payload.inspector_raw_evidence_source = "raw_evidence";
   payload.events = redact(
     userProgress.length
       ? userProgress.map((event) => userProgressToRunDetailEvent(event, runId)).filter(Boolean)

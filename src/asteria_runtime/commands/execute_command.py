@@ -10,6 +10,10 @@ from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionG
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
+from asteria_runtime.core.agent_tool_surface import (
+    model_tool_surface_for_task,
+    model_tools_available_for_task,
+)
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
@@ -423,15 +427,29 @@ class ExecuteCommand:
                 summary=f"Asked the coder model to propose execution steps for {task_id}.",
                 data={
                     "task_id": task_id,
-                    "available_tools": self.registry.names(),
+                    "available_tools": model_tools_available_for_task(
+                        self.registry.names(),
+                        task,
+                        allow_shell=self._shell_allowed(context.policy),
+                    ),
                 },
             )
             self._refresh_harness_observations(runtime_context, context)
+            task_model_surface = model_tool_surface_for_task(
+                self.registry.names(),
+                task,
+                allow_shell=self._shell_allowed(context.policy),
+            )
+            runtime_context["model_tool_surface"] = task_model_surface
             action = coder.propose_action(
                 task=task,
                 goal_spec=goal_spec,
                 project_config=project_config,
-                available_tools=self.registry.names(),
+                available_tools=model_tools_available_for_task(
+                    self.registry.names(),
+                    task,
+                    allow_shell=self._shell_allowed(context.policy),
+                ),
                 run_id=context.run_id or "",
                 runtime_context=runtime_context,
             )
@@ -458,6 +476,8 @@ class ExecuteCommand:
                     "verification_count": len(verification),
                     "runtime_request_count": len(runtime_requests),
                     "summary": action.get("summary", ""),
+                    "model_tool_surface": task_model_surface,
+                    "model_tool_calls": self._model_tool_call_summary(tool_calls, verification),
                 },
             )
             runtime_request_result = self.runtime_request_policy.handle_runtime_requests(
@@ -761,6 +781,28 @@ class ExecuteCommand:
         if "no tool calls or verification" in message:
             return "empty_action"
         return "exception"
+
+    def _shell_allowed(self, policy: dict) -> bool:
+        permission = str(policy.get("permission_mode") or "").lower()
+        return permission in {"reviewed_auto", "allow", "allow_all", "trusted"}
+
+    def _model_tool_call_summary(
+        self,
+        tool_calls: list[dict],
+        verification: list[dict],
+    ) -> list[dict]:
+        summary = []
+        for call in [*tool_calls, *verification]:
+            if not isinstance(call, dict):
+                continue
+            summary.append(
+                {
+                    "tool_name": call.get("tool_name"),
+                    "model_tool_name": call.get("model_tool_name") or call.get("tool_name"),
+                    "tool_surface_adapter": call.get("tool_surface_adapter"),
+                }
+            )
+        return summary
 
     def _failure_evidence_refs(self, summary: TaskExecutionSummary) -> list[str]:
         if summary.status != "blocked" or summary.evidence_path is None:

@@ -79,7 +79,9 @@ class CoderAgent:
                 )
                 continue
             return action
-        raise CoderAgentError(str(last_error) if last_error else "ExecutionAction generation failed")
+        raise CoderAgentError(
+            str(last_error) if last_error else "ExecutionAction generation failed"
+        )
 
     def _envelope_metadata(self, runtime_context: dict) -> dict:
         metadata: dict = {}
@@ -135,8 +137,9 @@ Return only valid JSON matching the ExecutionAction schema. Do not wrap in markd
 
 You must:
 - Make a small, verifiable change for the assigned task.
-- Use only tools from allowed_tools and available_tools.
-- Prefer apply_patch for editing existing files and write_file for new files.
+- Use only tools from available_tools. These are model-facing primitives backed by runtime policy.
+- Prefer edit_file for editing existing files and write_file for new files.
+- Prefer grep/glob/read_file/list_files before shell, and prefer run_tests for verification.
 - Include verification tool calls when possible.
 - Use cross-platform Python commands for verification; do not rely on Unix-only commands like cat, wc, grep, or sed.
 - Do not use shell control operators or redirection in verification commands: &&, ||, ;, |, <, >, 2>, 2>&1.
@@ -164,6 +167,7 @@ You must:
             "runtime_context": runtime_context,
             "available_tools": available_tools,
             "allowed_tools": task["allowed_tools"],
+            "model_tool_surface": runtime_context.get("model_tool_surface", {}),
             "output_schema": {
                 "schema_version": "0.1.0",
                 "task_id": task["task_id"],
@@ -177,7 +181,7 @@ You must:
                 ],
                 "verification": [
                     {
-                        "tool_name": "run_command",
+                        "tool_name": "run_tests",
                         "args": {
                             "command": "python -m pytest",
                             "expected_returncodes": [0],

@@ -40,6 +40,21 @@ class HangingMcpSession:
         self.closed = True
 
 
+class FlakyMcpSession:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.closed = False
+
+    def call(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("temporary server closed stdout")
+        return {"content": [{"type": "text", "text": "ok"}]}
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def _context(tmp_path: Path) -> RuntimeContext:
     validator = SchemaValidator(Path.cwd() / "schemas")
     return RuntimeContext(
@@ -70,9 +85,7 @@ def test_mcp_adapter_invokes_session_and_records_decision_and_progress(tmp_path:
     )
 
     assert result.ok is True
-    assert session.calls == [
-        ("tools/call", {"name": "search", "arguments": {"query": "runtime"}})
-    ]
+    assert session.calls == [("tools/call", {"name": "search", "arguments": {"query": "runtime"}})]
     decisions = JsonlStore(context.validator).read_all(
         tmp_path / "capability_decisions.jsonl",
         schema_name=None,
@@ -156,11 +169,39 @@ def test_mcp_adapter_times_out_hung_session_and_records_failure(tmp_path: Path) 
     assert invocations[0]["error_class"] == "timeout"
 
 
+def test_mcp_adapter_retries_retryable_session_failures(tmp_path: Path) -> None:
+    context = _context(tmp_path)
+    session = FlakyMcpSession()
+    adapter = McpAdapter({"docs": session}, retry_attempts=1)
+
+    result = adapter.invoke_tool(
+        context=context,
+        task={
+            "task_id": "task-1",
+            "task_kind": "research",
+            "allowed_mcp": ["docs"],
+        },
+        server_name="docs",
+        tool_name="search",
+        arguments={},
+    )
+
+    invocations = JsonlStore(context.validator).read_all(
+        tmp_path / "mcp_invocations.jsonl",
+        schema_name=None,
+    )
+    assert result.ok is True
+    assert session.calls == 2
+    assert invocations[0]["retry_attempts"] == 1
+    assert invocations[0]["data"]["attempts"] == 2
+
+
 def test_mcp_adapter_loads_server_config_from_policy(tmp_path: Path) -> None:
     config = mcp_adapter_config_from_policy(
         {
             "mcp": {
                 "session_call_timeout_seconds": 12,
+                "retry_attempts": 2,
                 "servers": [
                     {
                         "name": "docs",
@@ -176,6 +217,7 @@ def test_mcp_adapter_loads_server_config_from_policy(tmp_path: Path) -> None:
     )
 
     assert config.session_call_timeout_seconds == 12
+    assert config.retry_attempts == 2
     assert config.servers[0].name == "docs"
     assert config.servers[0].cwd == (tmp_path / "tools" / "mcp").resolve()
     assert config.servers[0].env == {"MODE": "test"}
@@ -221,3 +263,4 @@ def test_mcp_invocation_summary_groups_statuses(tmp_path: Path) -> None:
     assert summary["completed"] == 1
     assert summary["failed"] == 1
     assert summary["by_status"] == {"success": 1, "timeout": 1}
+    assert "failures by status" in summary["consumer_summary"]

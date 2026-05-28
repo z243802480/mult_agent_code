@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
@@ -11,8 +13,82 @@ from asteria_runtime.utils.time import now_iso
 
 
 class SkillHandler(Protocol):
+    def invoke(self, request: dict[str, Any]) -> dict[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class SkillDefinition:
+    name: str
+    path: Path
+    description: str
+    parameter_contract: dict[str, Any] = field(default_factory=dict)
+    artifact_types: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "path": str(self.path),
+            "description": self.description,
+            "parameter_contract": self.parameter_contract,
+            "artifact_types": self.artifact_types,
+        }
+
+
+class SkillDiscovery:
+    """Discover local SKILL.md definitions without invoking their runtime behavior."""
+
+    def __init__(self, roots: list[Path]) -> None:
+        self.roots = roots
+
+    def discover(self) -> list[SkillDefinition]:
+        definitions: list[SkillDefinition] = []
+        for root in self.roots:
+            if root.is_file() and root.name == "SKILL.md":
+                parsed = self._parse_skill(root)
+                if parsed is not None:
+                    definitions.append(parsed)
+                continue
+            if not root.exists():
+                continue
+            for path in root.rglob("SKILL.md"):
+                parsed = self._parse_skill(path)
+                if parsed is not None:
+                    definitions.append(parsed)
+        return sorted(definitions, key=lambda item: item.name)
+
+    def _parse_skill(self, path: Path) -> SkillDefinition | None:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        name = _metadata_value(text, "name") or path.parent.name
+        description = _metadata_value(text, "description") or _first_paragraph(text)
+        return SkillDefinition(
+            name=name.strip(),
+            path=path,
+            description=description.strip(),
+            parameter_contract=_parameter_contract(text),
+            artifact_types=_artifact_types(text),
+        )
+
+
+class SkillManifestHandler:
+    """A minimal handler for discovery-only skills that returns SKILL.md metadata."""
+
+    def __init__(self, definition: SkillDefinition) -> None:
+        self.definition = definition
+
     def invoke(self, request: dict[str, Any]) -> dict[str, Any]:
-        ...
+        return {
+            "ok": True,
+            "summary": f"Loaded skill definition: {self.definition.name}",
+            "data": {
+                "skill_definition": self.definition.to_dict(),
+                "arguments": request.get("arguments") or {},
+            },
+            "artifacts": [],
+            "status": "success",
+        }
 
 
 @dataclass(frozen=True)
@@ -57,6 +133,37 @@ class SkillAdapter:
         self.handlers = handlers
         self.actor = actor
 
+    @classmethod
+    def from_skill_roots(
+        cls,
+        roots: list[Path],
+        *,
+        actor: str = "SkillAdapter",
+    ) -> SkillAdapter:
+        definitions = SkillDiscovery(roots).discover()
+        return cls(
+            {definition.name: SkillManifestHandler(definition) for definition in definitions},
+            actor=actor,
+        )
+
+    def catalog(self) -> list[dict[str, Any]]:
+        items = []
+        for name, handler in sorted(self.handlers.items()):
+            definition = getattr(handler, "definition", None)
+            if isinstance(definition, SkillDefinition):
+                items.append(definition.to_dict())
+            else:
+                items.append(
+                    {
+                        "name": name,
+                        "path": None,
+                        "description": "runtime-configured skill handler",
+                        "parameter_contract": {},
+                        "artifact_types": [],
+                    }
+                )
+        return items
+
     def invoke(
         self,
         *,
@@ -80,7 +187,9 @@ class SkillAdapter:
                 error=decision["reason"],
                 status="denied",
             )
-            self._record_invocation(context, task, invocation_id, skill_name, args, decision, result)
+            self._record_invocation(
+                context, task, invocation_id, skill_name, args, decision, result
+            )
             return result
         handler = self.handlers.get(skill_name)
         if handler is None:
@@ -90,7 +199,9 @@ class SkillAdapter:
                 error="skill_handler_not_configured",
                 status="config_error",
             )
-            self._record_invocation(context, task, invocation_id, skill_name, args, decision, result)
+            self._record_invocation(
+                context, task, invocation_id, skill_name, args, decision, result
+            )
             return result
         try:
             payload = handler.invoke(
@@ -109,12 +220,14 @@ class SkillAdapter:
                 ok=False,
                 summary=f"Skill failed: {skill_name}",
                 error=str(exc),
-                status="execution_error",
+                status=self._classify_error(exc),
             )
         self._record_invocation(context, task, invocation_id, skill_name, args, decision, result)
         return result
 
-    def _result_from_payload(self, skill_name: str, payload: dict[str, Any]) -> SkillInvocationResult:
+    def _result_from_payload(
+        self, skill_name: str, payload: dict[str, Any]
+    ) -> SkillInvocationResult:
         raw_artifacts = payload.get("artifacts")
         artifacts: list[SkillArtifact] = []
         if isinstance(raw_artifacts, list):
@@ -133,11 +246,7 @@ class SkillAdapter:
         return SkillInvocationResult(
             ok=ok,
             summary=str(payload.get("summary") or f"Skill completed: {skill_name}"),
-            data=(
-                payload["data"]
-                if isinstance(payload.get("data"), dict)
-                else {}
-            ),
+            data=(payload["data"] if isinstance(payload.get("data"), dict) else {}),
             artifacts=artifacts,
             error=payload.get("error") if isinstance(payload.get("error"), str) else None,
             status=str(payload.get("status") or ("success" if ok else "failure")),
@@ -241,7 +350,11 @@ class SkillAdapter:
         if context.run_dir is None:
             return "skill-0001"
         path = context.run_dir / "skill_invocations.jsonl"
-        count = len(JsonlStore(context.validator).read_all(path, schema_name=None)) if path.exists() else 0
+        count = (
+            len(JsonlStore(context.validator).read_all(path, schema_name=None))
+            if path.exists()
+            else 0
+        )
         return f"skill-{count + 1:04d}"
 
     def _next_artifact_index(self, existing: list[dict[str, Any]]) -> int:
@@ -266,6 +379,47 @@ class SkillAdapter:
             return "blocked"
         return "failed"
 
+    def _classify_error(self, exc: Exception) -> str:
+        text = str(exc).lower()
+        if isinstance(exc, TimeoutError) or "timed out" in text:
+            return "timeout"
+        if isinstance(exc, ValueError) or "schema" in text or "argument" in text:
+            return "contract_error"
+        if "artifact" in text or "path" in text:
+            return "artifact_error"
+        return "execution_error"
+
     def _sensitive_key(self, key: str) -> bool:
         normalized = key.lower()
         return any(part in normalized for part in ["token", "secret", "password", "api_key"])
+
+
+def _metadata_value(text: str, key: str) -> str | None:
+    pattern = re.compile(rf"^\s*{re.escape(key)}\s*:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+    match = pattern.search(text)
+    if not match:
+        return None
+    return match.group(1).strip().strip("'\"")
+
+
+def _first_paragraph(text: str) -> str:
+    cleaned = re.sub(r"^---.*?---", "", text, flags=re.DOTALL).strip()
+    for block in re.split(r"\n\s*\n", cleaned):
+        block = block.strip()
+        if block and not block.startswith("#"):
+            return " ".join(line.strip() for line in block.splitlines())
+    return ""
+
+
+def _parameter_contract(text: str) -> dict[str, Any]:
+    raw = _metadata_value(text, "parameters") or _metadata_value(text, "parameter_contract")
+    if not raw:
+        return {}
+    return {"summary": raw}
+
+
+def _artifact_types(text: str) -> list[str]:
+    raw = _metadata_value(text, "artifacts") or _metadata_value(text, "artifact_types")
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]

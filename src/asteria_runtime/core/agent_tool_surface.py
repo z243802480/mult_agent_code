@@ -190,6 +190,53 @@ def model_tool_surface(
     ]
 
 
+def model_tools_available_for_task(
+    runtime_tool_names: list[str],
+    task: dict[str, Any],
+    *,
+    allow_shell: bool = False,
+) -> list[str]:
+    """Return model-facing tool names whose internal backend is allowed by the task."""
+
+    allowed = set(str(tool) for tool in task.get("allowed_tools", []) if tool)
+    available: list[str] = []
+    for tool in model_tool_surface(runtime_tool_names, allow_shell=allow_shell):
+        internal = tool.get("internal_tool")
+        if tool.get("status") == "available" and internal in allowed:
+            available.append(str(tool["name"]))
+    return available
+
+
+def model_tool_surface_for_task(
+    runtime_tool_names: list[str],
+    task: dict[str, Any],
+    *,
+    allow_shell: bool = False,
+) -> dict[str, Any]:
+    """Describe the task-scoped model-facing surface and internal registry mapping."""
+
+    allowed = set(str(tool) for tool in task.get("allowed_tools", []) if tool)
+    tools = []
+    for tool in model_tool_surface(runtime_tool_names, allow_shell=allow_shell):
+        internal = tool.get("internal_tool")
+        task_allowed = bool(internal and internal in allowed)
+        entry = dict(tool)
+        entry["task_allowed"] = task_allowed
+        if not task_allowed:
+            entry["permission"] = "deny"
+        tools.append(entry)
+    return {
+        "schema_version": "0.1.0",
+        "adapter": "model_to_runtime_registry",
+        "task_allowed_model_tools": [
+            str(tool["name"])
+            for tool in tools
+            if tool.get("status") == "available" and tool.get("task_allowed")
+        ],
+        "tools": tools,
+    }
+
+
 def adapt_model_tool_call(
     call: dict[str, Any],
     runtime_tool_names: list[str],
@@ -228,9 +275,7 @@ def tool_surface_contract(
 
     runtime_names = sorted(set(runtime_tool_names))
     model_tools = model_tool_surface(runtime_names, allow_shell=allow_shell)
-    missing = [
-        tool["name"] for tool in model_tools if tool["status"] == "missing"
-    ]
+    missing = [tool["name"] for tool in model_tools if tool["status"] == "missing"]
     return {
         "schema_version": "0.1.0",
         "runtime_internal_registry": {

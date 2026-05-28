@@ -110,7 +110,10 @@ export type RunDetailPayload = {
   validation_results?: AnyRecord[];
   events?: AnyRecord[];
   legacy_events?: AnyRecord[];
+  raw_evidence?: AnyRecord;
   timeline_events_source?: "user_progress" | "events";
+  timeline_default?: "user_progress" | "legacy_events_fallback";
+  inspector_raw_evidence_source?: "raw_evidence";
   user_progress?: AnyRecord[];
   files?: WorkspaceFile[];
 };
