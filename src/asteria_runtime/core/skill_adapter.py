@@ -17,10 +17,17 @@ class SkillHandler(Protocol):
 
 
 @dataclass(frozen=True)
+class SkillRoot:
+    path: Path
+    scope: str = "workspace"
+
+
+@dataclass(frozen=True)
 class SkillDefinition:
     name: str
     path: Path
     description: str
+    scope: str = "workspace"
     parameter_contract: dict[str, Any] = field(default_factory=dict)
     artifact_types: list[str] = field(default_factory=list)
 
@@ -29,6 +36,7 @@ class SkillDefinition:
             "name": self.name,
             "path": str(self.path),
             "description": self.description,
+            "scope": self.scope,
             "parameter_contract": self.parameter_contract,
             "artifact_types": self.artifact_types,
         }
@@ -37,26 +45,49 @@ class SkillDefinition:
 class SkillDiscovery:
     """Discover local SKILL.md definitions without invoking their runtime behavior."""
 
-    def __init__(self, roots: list[Path]) -> None:
-        self.roots = roots
+    def __init__(self, roots: list[Path | SkillRoot]) -> None:
+        self.roots = [
+            root if isinstance(root, SkillRoot) else SkillRoot(path=root) for root in roots
+        ]
+
+    @classmethod
+    def from_scopes(
+        cls,
+        *,
+        global_roots: list[Path] | None = None,
+        workspace_roots: list[Path] | None = None,
+    ) -> SkillDiscovery:
+        return cls(
+            [
+                *[SkillRoot(path=path, scope="global") for path in global_roots or []],
+                *[SkillRoot(path=path, scope="workspace") for path in workspace_roots or []],
+            ]
+        )
 
     def discover(self) -> list[SkillDefinition]:
-        definitions: list[SkillDefinition] = []
+        definitions_by_name: dict[str, SkillDefinition] = {}
         for root in self.roots:
-            if root.is_file() and root.name == "SKILL.md":
-                parsed = self._parse_skill(root)
+            if root.path.is_file() and root.path.name == "SKILL.md":
+                parsed = self._parse_skill(root.path, root.scope)
                 if parsed is not None:
-                    definitions.append(parsed)
+                    definitions_by_name[parsed.name] = _prefer_skill(
+                        definitions_by_name.get(parsed.name), parsed
+                    )
                 continue
-            if not root.exists():
+            if not root.path.exists():
                 continue
-            for path in root.rglob("SKILL.md"):
-                parsed = self._parse_skill(path)
+            for path in root.path.rglob("SKILL.md"):
+                parsed = self._parse_skill(path, root.scope)
                 if parsed is not None:
-                    definitions.append(parsed)
-        return sorted(definitions, key=lambda item: item.name)
+                    definitions_by_name[parsed.name] = _prefer_skill(
+                        definitions_by_name.get(parsed.name), parsed
+                    )
+        return sorted(
+            definitions_by_name.values(),
+            key=lambda item: (_scope_rank(item.scope), item.name),
+        )
 
-    def _parse_skill(self, path: Path) -> SkillDefinition | None:
+    def _parse_skill(self, path: Path, scope: str) -> SkillDefinition | None:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
@@ -67,6 +98,7 @@ class SkillDiscovery:
             name=name.strip(),
             path=path,
             description=description.strip(),
+            scope=scope,
             parameter_contract=_parameter_contract(text),
             artifact_types=_artifact_types(text),
         )
@@ -136,7 +168,7 @@ class SkillAdapter:
     @classmethod
     def from_skill_roots(
         cls,
-        roots: list[Path],
+        roots: list[Path | SkillRoot],
         *,
         actor: str = "SkillAdapter",
     ) -> SkillAdapter:
@@ -423,3 +455,18 @@ def _artifact_types(text: str) -> list[str]:
     if not raw:
         return []
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _scope_rank(scope: str) -> int:
+    return {"global": 0, "workspace": 1}.get(scope, 2)
+
+
+def _prefer_skill(
+    current: SkillDefinition | None,
+    candidate: SkillDefinition,
+) -> SkillDefinition:
+    if current is None:
+        return candidate
+    if _scope_rank(candidate.scope) >= _scope_rank(current.scope):
+        return candidate
+    return current

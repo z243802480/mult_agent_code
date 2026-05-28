@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.skill_adapter import SkillAdapter, SkillDiscovery
+from asteria_runtime.core.skill_adapter import SkillAdapter, SkillDiscovery, SkillRoot
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -55,6 +55,46 @@ def test_skill_discovery_loads_skill_md_contract(tmp_path: Path) -> None:
     assert definitions[0].parameter_contract == {"summary": "title, outline"}
     assert definitions[0].artifact_types == ["docx", "pdf"]
     assert adapter.catalog()[0]["description"] == "Generate document artifacts"
+
+
+def test_skill_discovery_merges_global_and_workspace_scopes(tmp_path: Path) -> None:
+    global_dir = tmp_path / "global" / "skills" / "documents"
+    workspace_dir = tmp_path / "workspace" / ".asteria" / "skills" / "documents"
+    research_dir = tmp_path / "global" / "skills" / "research"
+    global_dir.mkdir(parents=True)
+    workspace_dir.mkdir(parents=True)
+    research_dir.mkdir(parents=True)
+    (global_dir / "SKILL.md").write_text(
+        "name: documents\ndescription: Global documents skill\n",
+        encoding="utf-8",
+    )
+    (workspace_dir / "SKILL.md").write_text(
+        "name: documents\ndescription: Workspace documents override\n",
+        encoding="utf-8",
+    )
+    (research_dir / "SKILL.md").write_text(
+        "name: research\ndescription: Global research skill\n",
+        encoding="utf-8",
+    )
+
+    definitions = SkillDiscovery(
+        [
+            SkillRoot(tmp_path / "global" / "skills", scope="global"),
+            SkillRoot(tmp_path / "workspace" / ".asteria" / "skills", scope="workspace"),
+        ]
+    ).discover()
+    catalog = SkillAdapter.from_skill_roots(
+        [
+            SkillRoot(tmp_path / "global" / "skills", scope="global"),
+            SkillRoot(tmp_path / "workspace" / ".asteria" / "skills", scope="workspace"),
+        ]
+    ).catalog()
+
+    assert [definition.name for definition in definitions] == ["research", "documents"]
+    assert definitions[0].scope == "global"
+    assert definitions[1].scope == "workspace"
+    assert definitions[1].description == "Workspace documents override"
+    assert next(item for item in catalog if item["name"] == "documents")["scope"] == "workspace"
 
 
 def test_skill_adapter_records_decision_artifact_and_progress(tmp_path: Path) -> None:

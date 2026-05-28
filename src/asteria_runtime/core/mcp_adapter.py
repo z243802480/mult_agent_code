@@ -492,6 +492,35 @@ def mcp_adapter_config_from_policy(
     )
 
 
+def mcp_adapter_config_from_product_policy(
+    product_policy: dict[str, Any],
+    *,
+    workspace_policy: dict[str, Any] | None = None,
+    root: Path | None = None,
+) -> McpAdapterConfig:
+    """Build MCP config from product-level servers plus workspace runtime limits.
+
+    MCP servers are product/user connectors. Workspaces can tune call limits, but
+    they should not be the default place to redefine the server catalog.
+    """
+
+    product_config = mcp_adapter_config_from_policy(product_policy, root=root)
+    raw_workspace_mcp = workspace_policy.get("mcp") if isinstance(workspace_policy, dict) else None
+    workspace_mcp: dict[str, Any] = raw_workspace_mcp if isinstance(raw_workspace_mcp, dict) else {}
+    timeout = int(
+        workspace_mcp.get(
+            "session_call_timeout_seconds",
+            product_config.session_call_timeout_seconds,
+        )
+    )
+    retry_attempts = int(workspace_mcp.get("retry_attempts", product_config.retry_attempts))
+    return McpAdapterConfig(
+        servers=product_config.servers,
+        session_call_timeout_seconds=timeout,
+        retry_attempts=retry_attempts,
+    )
+
+
 def mcp_server_config_from_dict(
     data: dict[str, Any],
     *,

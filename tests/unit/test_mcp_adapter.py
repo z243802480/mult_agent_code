@@ -5,6 +5,7 @@ from typing import Any
 from asteria_runtime.core.mcp_adapter import (
     McpAdapter,
     mcp_adapter_config_from_policy,
+    mcp_adapter_config_from_product_policy,
     mcp_invocation_summary,
 )
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -222,6 +223,40 @@ def test_mcp_adapter_loads_server_config_from_policy(tmp_path: Path) -> None:
     assert config.servers[0].cwd == (tmp_path / "tools" / "mcp").resolve()
     assert config.servers[0].env == {"MODE": "test"}
     assert config.servers[0].framing == "content-length"
+
+
+def test_mcp_adapter_uses_product_servers_with_workspace_limits(tmp_path: Path) -> None:
+    config = mcp_adapter_config_from_product_policy(
+        {
+            "mcp": {
+                "session_call_timeout_seconds": 60,
+                "retry_attempts": 1,
+                "servers": [
+                    {
+                        "name": "docs",
+                        "command": ["node", "server.js"],
+                    }
+                ],
+            }
+        },
+        workspace_policy={
+            "mcp": {
+                "session_call_timeout_seconds": 10,
+                "retry_attempts": 0,
+                "servers": [
+                    {
+                        "name": "workspace-local",
+                        "command": ["node", "workspace.js"],
+                    }
+                ],
+            }
+        },
+        root=tmp_path,
+    )
+
+    assert [server.name for server in config.servers] == ["docs"]
+    assert config.session_call_timeout_seconds == 10
+    assert config.retry_attempts == 0
 
 
 def test_mcp_invocation_summary_groups_statuses(tmp_path: Path) -> None:

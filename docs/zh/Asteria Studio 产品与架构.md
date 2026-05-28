@@ -9,7 +9,7 @@ Asteria Studio 是 Asteria 的独立产品交互面和通用智能体前端载�
 Studio 面向三类场景：
 
 - 普通用户智能体工作区：输入 Goal / Plan / Ask，看到实时模型判断、工具调用、文件变化、权限请求、验证过程和最终结果。
-- Project / Workspace 管理：像 Codex / Claude Code 一样展示最近项目，支持打开本地文件夹，切换后 session、run、Git、文件预览、MCP、plugin、skills 和设置都以该 workspace 为边界。
+- Project / Workspace 管理：像 Codex / Claude Code 一样展示最近项目，支持打开本地文件夹，切换后 session、run、Git、文件预览、plugin、workspace skills 和项目设置都以该 workspace 为边界；MCP server catalog 属于产品/用户层连接器配置，默认跨 workspace 复用。
 - 开发者本机内测：确认安装、路由、gate、validation、core、证据导出是否正常。
 - 真实项目 dogfooding：查看 run timeline、模型调用、worker/validation evidence、promotion 风险和证据包。
 
@@ -80,7 +80,7 @@ Future Studio work must first decide whether a feature belongs to Product Worksp
 
 - Composer：用户用自然语言输入目标或问题。
 - Mode selector：只暴露 Goal、Plan 和轻量 Ask/Chat；也可以由意图识别自动选择。
-- Context / Tools menu：模型、skills、MCP servers、图片等属于上下文和能力选择，不是 runtime 命令入口。
+- Context / Tools menu：模型、全局 skills、workspace skills、产品级 MCP servers、图片等属于上下文和能力选择，不是 runtime 命令入口。
 - Progress thread：显示目标理解、计划、权限请求、用户级进展、验证结果和最终交付。
 - Permission cards：需要写入、执行、联网、提权或增加预算时，请用户确认。
 - Deliverables：预览生成的文件、报告、测试结果和验收回顾。
