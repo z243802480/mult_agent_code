@@ -268,7 +268,7 @@ class WeeklyReportCommand:
         actions = []
         if not reports:
             actions.append(
-                "Run `asteria /long-run-plan --objective <goal>` to start a bounded cycle."
+                "Run `asteria daily-plan --objective <goal>` to start a bounded cycle."
             )
         if acceptance.get("latest_failed", 0):
             actions.append("Run `asteria /acceptance --failed-only --promote-failures`.")

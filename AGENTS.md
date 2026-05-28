@@ -133,14 +133,26 @@ Create a DecisionPoint for:
 Default budgets:
 
 ```yaml
-max_model_calls_per_goal: 60
-max_tool_calls_per_goal: 120
-max_iterations_per_goal: 8
-max_repair_attempts_per_task: 2
+max_model_calls_per_goal: 200
+max_tool_calls_per_goal: 1000
+max_iterations_per_goal: 32
+max_repair_attempts_per_task: 4
 max_replans_per_task: 2
 context_compaction_threshold: 0.75
 hard_stop_threshold: 0.90
 ```
+
+`max_tool_calls_per_goal` is a risk-weighted emergency brake, not a raw call-count cap
+and not the main stability mechanism. Raw `tool_calls` are still recorded for audit.
+Low-risk read/search/list/diff exploration has weight 0 by default; verification/state
+tools have low weight; write, shell, external MCP, and Skill calls consume more budget
+and remain permission-gated. Long-running autonomy should be governed primarily by
+goal progress, context pressure, repair/replan limits, permission risk, provider health,
+and repeated low-value loop detection.
+
+Budget policies may define profiles such as `validation`, `balanced`, and
+`autonomous_long_task`. Use stricter profiles for release validation and wider profiles
+for long-horizon development where the agent should keep iterating toward the goal.
 
 When approaching budget:
 

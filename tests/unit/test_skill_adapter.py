@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.skill_adapter import SkillAdapter, SkillDiscovery, SkillRoot
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -27,6 +28,23 @@ class FakeSkill:
 class FailingSkill:
     def invoke(self, request: dict) -> dict:
         raise ValueError("argument schema mismatch")
+
+
+def _budget_policy(max_tool_calls: int = 3) -> dict:
+    return {
+        "budgets": {
+            "max_model_calls_per_goal": 60,
+            "max_tool_calls_per_goal": max_tool_calls,
+            "max_total_minutes_per_goal": 30,
+            "max_iterations_per_goal": 8,
+            "max_repair_attempts_total": 5,
+            "max_repair_attempts_per_task": 2,
+            "max_replans_per_task": 2,
+            "max_research_calls": 5,
+            "max_user_decisions": 5,
+        },
+        "protected_paths": [],
+    }
 
 
 def test_skill_discovery_loads_skill_md_contract(tmp_path: Path) -> None:
@@ -201,3 +219,36 @@ def test_skill_adapter_denies_unmatched_skill_and_redacts_arguments(tmp_path: Pa
     ]
     assert invocations[0]["arguments"] == {"api_token": "<redacted>"}
     assert invocations[0]["capability_decision"]["decision"] == "deny"
+
+
+def test_skill_adapter_consumes_external_tool_budget(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    policy = _budget_policy(max_tool_calls=2)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy=policy,
+        validator=validator,
+        run_dir_override=run_dir,
+        budget=BudgetController(policy, run_id="run-1"),
+    )
+    task = {
+        "task_id": "task-1",
+        "task_kind": "document",
+        "allowed_skills": ["documents"],
+    }
+
+    result = SkillAdapter({"documents": FakeSkill()}).invoke(
+        context=context,
+        task=task,
+        skill_name="documents",
+        arguments={"title": "Quarterly"},
+    )
+
+    assert result.status == "denied"
+    assert result.error and "tool_budget_units exceeded budget" in result.error
+    assert context.budget
+    report = context.budget.cost_report()
+    assert report["tool_call_breakdown"] == {"external": 1}

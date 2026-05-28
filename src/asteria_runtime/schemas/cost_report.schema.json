@@ -22,8 +22,21 @@
     "run_id": { "type": ["string", "null"] },
     "model_calls": { "type": "integer" },
     "tool_calls": { "type": "integer" },
+    "tool_budget_units": { "type": "integer" },
+    "tool_call_breakdown": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
     "estimated_input_tokens": { "type": ["integer", "null"] },
     "estimated_output_tokens": { "type": ["integer", "null"] },
+    "latest_context_estimated_tokens": { "type": "integer" },
+    "max_context_estimated_tokens": { "type": "integer" },
+    "context_window_tokens": { "type": "integer" },
+    "context_window_ratio": { "type": "number" },
+    "context_pressure_status": {
+      "type": "string",
+      "enum": ["within_budget", "near_limit", "hard_stop", "exceeded"]
+    },
     "strong_model_calls": { "type": "integer" },
     "cheap_model_calls": { "type": "integer" },
     "repair_attempts": { "type": "integer" },

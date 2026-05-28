@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 
 from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
+from asteria_runtime.core.runtime_validation_evidence import (
+    record_runtime_validation_matrix_evidence,
+)
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -75,6 +78,29 @@ def test_runtime_validation_matrix_covers_fixed_real_task_cases(tmp_path: Path) 
         "profile_multi_agent",
         "permission_reason",
         "runtime_progress",
+    }
+
+
+def test_runtime_validation_matrix_evidence_probe_records_all_required_cases(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+
+    evidence = record_runtime_validation_matrix_evidence(
+        root=tmp_path,
+        validator=validator,
+        source="unit-test",
+    )
+    metrics = runtime_progress_metrics(tmp_path, validator)
+    matrix = runtime_validation_matrix(tmp_path, metrics)
+
+    assert evidence["run_id"].startswith("runtime-validation-matrix-")
+    assert metrics["runtime_native_progress_coverage"]["matrix_evidence_runs"] == 1
+    assert matrix["ready"] is True
+    assert matrix["gap_summary"] == {
+        "implementation_missing": 0,
+        "evidence_missing": 0,
+        "historical_evidence_noise": 0,
     }
 
 

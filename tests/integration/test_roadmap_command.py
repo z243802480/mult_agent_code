@@ -68,4 +68,4 @@ def test_roadmap_update_works_without_weekly_report(tmp_path: Path) -> None:
     )
     assert result.status == "on_track"
     assert roadmap["source_reports"]["weekly_report"] is None
-    assert "long-run" in roadmap["next_actions"][0]
+    assert "daily-plan" in roadmap["next_actions"][0]

@@ -20,6 +20,15 @@ def runtime_validation_matrix(root: Path, progress_metrics: dict[str, Any]) -> d
         if isinstance(case, dict)
     ]
     passed = len([case for case in evaluated if case["ok"]])
+    implementation_missing = len(
+        [case for case in evaluated if case.get("gap_type") == "implementation_missing"]
+    )
+    evidence_missing = len(
+        [case for case in evaluated if case.get("gap_type") == "evidence_missing"]
+    )
+    historical_noise = len(
+        [case for case in evaluated if case.get("gap_type") == "historical_evidence_noise"]
+    )
     return {
         "schema_version": "0.1.0",
         "catalog_path": str((root / MATRIX_CATALOG_PATH).resolve()),
@@ -29,6 +38,11 @@ def runtime_validation_matrix(root: Path, progress_metrics: dict[str, Any]) -> d
         "ready": bool(evaluated) and passed == len(evaluated),
         "minimum_ready_ratio": float(catalog.get("minimum_ready_ratio") or 1.0),
         "coverage_ratio": _ratio(passed, len(evaluated)),
+        "gap_summary": {
+            "implementation_missing": implementation_missing,
+            "evidence_missing": evidence_missing,
+            "historical_evidence_noise": historical_noise,
+        },
         "cases": evaluated,
     }
 
@@ -98,6 +112,7 @@ def _evaluate_case(
         surface = contract.get("model_facing_standard_surface")
         surface = surface if isinstance(surface, dict) else {}
         ok = surface.get("status") == "ready"
+        gap_type = "none" if ok else "implementation_missing"
         details = {
             "status": surface.get("status"),
             "model_tool_count": len(surface.get("tools") or []),
@@ -111,6 +126,7 @@ def _evaluate_case(
             "skill_invocation_count": adapters.get("skill_invocation_count", 0),
             "skill_with_reason": adapters.get("skill_with_reason", 0),
         }
+        gap_type = "none" if ok else "evidence_missing"
     elif evidence == "mcp_invocation":
         adapters = progress_metrics.get("adapter_invocation_coverage") or {}
         ok = int(adapters.get("mcp_invocation_count") or 0) > 0 and int(
@@ -120,6 +136,7 @@ def _evaluate_case(
             "mcp_invocation_count": adapters.get("mcp_invocation_count", 0),
             "mcp_with_reason": adapters.get("mcp_with_reason", 0),
         }
+        gap_type = "none" if ok else "evidence_missing"
     elif evidence.startswith("profile:"):
         profile_id = evidence.split(":", 1)[1]
         profile = progress_metrics.get("profile_coverage") or {}
@@ -127,6 +144,7 @@ def _evaluate_case(
         counts = raw_counts if isinstance(raw_counts, dict) else {}
         ok = int(counts.get(profile_id) or 0) > 0
         details = {"profile_id": profile_id, "count": int(counts.get(profile_id) or 0)}
+        gap_type = "none" if ok else "evidence_missing"
     elif evidence == "permission_reason":
         permission = progress_metrics.get("permission_reason_coverage") or {}
         ok = float(permission.get("coverage_ratio") or 0) >= 1.0 and int(
@@ -136,22 +154,34 @@ def _evaluate_case(
             "decision_count": permission.get("decision_count", 0),
             "coverage_ratio": permission.get("coverage_ratio", 0),
         }
+        gap_type = "none" if ok else "evidence_missing"
     elif evidence == "runtime_native_progress":
         progress = progress_metrics.get("runtime_native_progress_coverage") or {}
-        ok = float(progress.get("coverage_ratio") or 0) >= 1.0 and int(
-            progress.get("run_count") or 0
-        ) > 0
+        matrix_runs = int(progress.get("matrix_evidence_runs") or 0)
+        matrix_ratio = float(progress.get("matrix_evidence_coverage_ratio") or 0)
+        ok = (
+            matrix_runs > 0
+            and matrix_ratio >= 1.0
+        ) or (
+            float(progress.get("coverage_ratio") or 0) >= 1.0
+            and int(progress.get("run_count") or 0) > 0
+        )
         details = {
             "run_count": progress.get("run_count", 0),
             "coverage_ratio": progress.get("coverage_ratio", 0),
+            "matrix_evidence_runs": matrix_runs,
+            "matrix_evidence_coverage_ratio": matrix_ratio,
         }
+        gap_type = "none" if ok else "historical_evidence_noise"
     else:
         details = {"unknown_evidence": evidence, "root": str(root)}
+        gap_type = "implementation_missing"
     return {
         "id": str(case.get("id") or evidence or "unknown"),
         "priority": str(case.get("priority") or "P1"),
         "evidence": evidence,
         "ok": ok,
+        "gap_type": gap_type,
         "details": details,
     }
 

@@ -104,6 +104,29 @@ def test_search_tool_finds_text(tmp_path: Path) -> None:
     assert result.data["matches"][0]["line"] == 2
 
 
+def test_read_only_tools_do_not_exhaust_risk_weighted_tool_budget(tmp_path: Path) -> None:
+    ctx = context(tmp_path, max_tool_calls=2)
+    tools = registry()
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "a.txt").write_text("needle\n", encoding="utf-8")
+
+    for _ in range(10):
+        assert tools.call("read_file", ctx, path="src/a.txt").ok
+        assert tools.call("search_text", ctx, pattern="needle", path="src").ok
+
+    assert tools.call("write_file", ctx, path="out.txt", content="ok").ok
+    report = ctx.budget.cost_report()
+    assert report["tool_calls"] == 21
+    assert report["tool_budget_units"] == 2
+    assert report["tool_call_breakdown"]["read_only"] == 20
+    assert report["tool_call_breakdown"]["write"] == 1
+
+    blocked = tools.call("run_command", ctx, command="python --version")
+
+    assert not blocked.ok
+    assert blocked.status == "denied"
+
+
 def test_protected_read_is_denied_and_logged(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()
@@ -205,7 +228,7 @@ def test_tool_registry_ignores_unsupported_model_args(tmp_path: Path) -> None:
 
 
 def test_tool_registry_budget_denies_before_execution(tmp_path: Path) -> None:
-    ctx = context(tmp_path, max_tool_calls=1)
+    ctx = context(tmp_path, max_tool_calls=2)
     tools = registry()
 
     first = tools.call("write_file", ctx, path="a.txt", content="ok")

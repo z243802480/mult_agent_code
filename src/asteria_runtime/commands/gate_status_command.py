@@ -25,6 +25,7 @@ from asteria_runtime.core.runtime_validation_matrix import (
     runtime_validation_matrix_text_lines,
 )
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
+from asteria_runtime.real_model_acceptance import SUITES as REAL_MODEL_ACCEPTANCE_SUITES
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -83,6 +84,7 @@ class GateStatusResult:
                     "plugin_risks",
                     "runtime_progress_metrics",
                     "runtime_validation_matrix",
+                    "readiness_explanation",
                     "recovery_pressure",
                     "feature_flags",
                     "capability_flags",
@@ -111,6 +113,7 @@ class GateStatusResult:
             "plugin_risks": self.plugin_risks,
             "runtime_progress_metrics": self.runtime_progress_metrics,
             "runtime_validation_matrix": self.runtime_validation_matrix,
+            "readiness_explanation": self._readiness_explanation(release_state),
             "recovery_pressure": self.recovery_pressure,
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
@@ -187,6 +190,12 @@ class GateStatusResult:
             )
         lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
         lines.extend(runtime_validation_matrix_text_lines(self.runtime_validation_matrix))
+        explanation = self._readiness_explanation(self._release_state())
+        if explanation:
+            lines.append(
+                "Readiness explanation: "
+                f"{explanation.get('status')} - {explanation.get('summary')}"
+            )
         lines.extend(recovery_pressure_text_lines(self.recovery_pressure))
         if self.feature_flags:
             active = [n for n, v in self.feature_flags.items() if v.get("active")]
@@ -261,6 +270,49 @@ class GateStatusResult:
         if isinstance(failures, list) and failures:
             lines.append("  failures: " + "; ".join(str(item) for item in failures[:3]))
         return lines
+
+    def _readiness_explanation(self, release_state: str) -> dict[str, Any]:
+        matrix = self.runtime_validation_matrix or {}
+        gap_summary = matrix.get("gap_summary") if isinstance(matrix, dict) else {}
+        gap_summary = gap_summary if isinstance(gap_summary, dict) else {}
+        gates = {
+            "real_model_gate": self._gate_summary(self.gate_report),
+            "validation_suite": self._gate_summary(self.validation_report, validation=True),
+            "core_acceptance": self._gate_summary(self.core_report),
+        }
+        if release_state == "release_ready":
+            summary = "release gates and current runtime evidence are ready for small validation."
+            status = "ready"
+        elif self.stage in {"ready_for_validation_suite", "ready_for_core_acceptance"}:
+            summary = "release gates are partially satisfied; more suite evidence is required."
+            status = "missing_release_suite_evidence"
+        elif self.stage == "validation_suite_failed":
+            summary = "validation suite evidence is present but did not complete successfully."
+            status = "validation_suite_failed"
+        elif int(gap_summary.get("implementation_missing") or 0) > 0:
+            summary = "runtime matrix found missing implementation coverage."
+            status = "implementation_gap"
+        elif int(gap_summary.get("evidence_missing") or 0) > 0:
+            summary = "runtime implementation exists, but validation evidence is missing."
+            status = "evidence_gap"
+        elif int(gap_summary.get("historical_evidence_noise") or 0) > 0:
+            summary = "historical run evidence is noisy; collect focused runtime matrix evidence."
+            status = "historical_evidence_noise"
+        elif self.route_guidance.get("status") == "blocked":
+            summary = "provider route health is blocked by recent capability evidence."
+            status = "route_health_blocked"
+        else:
+            summary = self.next_actions[0] if self.next_actions else "gate is blocked."
+            status = "blocked"
+        return {
+            "status": status,
+            "summary": summary,
+            "stage": self.stage,
+            "release_state": release_state,
+            "gate_statuses": gates,
+            "runtime_validation_gap_summary": gap_summary,
+            "route_guidance_status": self.route_guidance.get("status"),
+        }
 
 
 class GateStatusCommand:
@@ -502,7 +554,31 @@ def _matches_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
     report_suite = report.get("suite")
     if report_suite is None:
         return True
-    return str(report_suite) == suite
+    if str(report_suite) != suite:
+        return False
+    return _has_complete_acceptance_suite(report, suite)
+
+
+def _has_complete_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
+    if suite != "validation":
+        return True
+    expected = set(REAL_MODEL_ACCEPTANCE_SUITES.get(suite, ()))
+    if not expected:
+        return True
+    requested = {str(item) for item in report.get("requested_scenarios") or [] if str(item)}
+    if requested and not expected.issubset(requested):
+        return False
+    raw_metadata = report.get("scenario_metadata")
+    if isinstance(raw_metadata, list):
+        observed = {
+            str(item.get("scenario") or "")
+            for item in raw_metadata
+            if isinstance(item, dict)
+        }
+        return expected.issubset(observed)
+    aggregate = report.get("aggregate")
+    aggregate = aggregate if isinstance(aggregate, dict) else {}
+    return int(aggregate.get("total") or 0) >= len(expected)
 
 
 def _latest_observation_plan(root: Path, validator: SchemaValidator) -> dict[str, Any]:

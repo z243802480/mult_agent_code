@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 
 from asteria_runtime.core.budget import BudgetController, BudgetExceededError
+from asteria_runtime.core.context_budget import estimate_request_context_tokens
 from asteria_runtime.models.base import ChatRequest, ChatResponse, StreamingTelemetry, TokenUsage
 from asteria_runtime.models.http_transport import HttpResponse, HttpTransport, HttpTransportError
 from asteria_runtime.models.local_route_config import any_local_route_value, local_route_value
@@ -78,6 +79,9 @@ class OpenAICompatibleClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         if self.budget:
             try:
+                self.budget.record_context_estimate(
+                    estimate_request_context_tokens(request.messages)
+                )
                 self.budget.record_model_call(request.model_tier)
             except BudgetExceededError as exc:
                 error_text = str(exc)

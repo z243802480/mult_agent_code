@@ -13,6 +13,9 @@ from asteria_runtime.commands.run_command import RunCommand, RunResult
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.recovery_pressure import recovery_pressure_report
+from asteria_runtime.core.runtime_validation_evidence import (
+    record_runtime_validation_matrix_evidence,
+)
 from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.resources import schema_dir
@@ -91,6 +94,15 @@ class ValidationRunCommand:
         package = PackageCheckCommand(self.root).run().to_dict()
         doctor = DoctorCommand(self.root).run()
         gate = GateStatusCommand(self.root).run()
+        matrix_evidence = (
+            {}
+            if self.dry_run
+            else record_runtime_validation_matrix_evidence(
+                root=self.root,
+                validator=self.validator,
+                source="validation-run-preflight",
+            )
+        )
         goal_spec_route_plan = CapabilityFeedbackAdvisor(
             self.validator
         ).goal_spec_execution_plan(self.root / ".asteria", self.goal)
@@ -106,7 +118,7 @@ class ValidationRunCommand:
                 gate=gate.to_dict(),
                 goal_spec_route_plan=goal_spec_route_plan,
                 run_result=None,
-                evidence={},
+                evidence=self._preflight_evidence(matrix_evidence),
                 next_actions=blocked_reasons,
             )
             self.store.write(summary_path, summary, "validation_run")
@@ -281,6 +293,17 @@ class ValidationRunCommand:
                 {str(item.get("status") or "unknown") for item in task_evidence}
             ),
         }
+
+    def _preflight_evidence(self, matrix_evidence: dict[str, Any]) -> dict[str, Any]:
+        progress_metrics = runtime_progress_metrics(self.root, self.validator)
+        evidence = {
+            "runtime_progress_metrics": progress_metrics,
+            "runtime_validation_matrix": runtime_validation_matrix(self.root, progress_metrics),
+            "recovery_pressure": recovery_pressure_report(self.root, self.validator),
+        }
+        if matrix_evidence:
+            evidence["runtime_validation_matrix_evidence"] = matrix_evidence
+        return evidence
 
     def _status_from_run(self, run_result: RunResult, evidence: dict[str, Any]) -> str:
         route = evidence.get("route_evidence") if isinstance(evidence, dict) else {}

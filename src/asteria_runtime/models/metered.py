@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from asteria_runtime.core.budget import BudgetController, BudgetExceededError
+from asteria_runtime.core.context_budget import estimate_request_context_tokens
 from asteria_runtime.models.base import ChatRequest, ChatResponse, ModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
 
@@ -17,6 +18,7 @@ class MeteredModelClient:
 
     def chat(self, request: ChatRequest) -> ChatResponse:
         try:
+            self.budget.record_context_estimate(estimate_request_context_tokens(request.messages))
             self.budget.record_model_call(request.model_tier)
         except BudgetExceededError as exc:
             self.logger.record_failure(

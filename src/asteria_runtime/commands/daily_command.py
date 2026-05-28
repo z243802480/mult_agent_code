@@ -30,6 +30,7 @@ class DailyBudgetGuard:
     failure_count: int = 0
     model_calls: int = 0
     tool_calls: int = 0
+    tool_budget_units: int = 0
     repair_attempts: int = 0
     started_at: float = field(default_factory=time.monotonic)
 
@@ -49,6 +50,11 @@ class DailyBudgetGuard:
     def apply_delta(self, before: dict[str, int], after: dict[str, int]) -> None:
         self.model_calls += max(0, after.get("model_calls", 0) - before.get("model_calls", 0))
         self.tool_calls += max(0, after.get("tool_calls", 0) - before.get("tool_calls", 0))
+        self.tool_budget_units += max(
+            0,
+            after.get("tool_budget_units", after.get("tool_calls", 0))
+            - before.get("tool_budget_units", before.get("tool_calls", 0)),
+        )
         self.repair_attempts += max(
             0,
             after.get("repair_attempts", 0) - before.get("repair_attempts", 0),
@@ -66,6 +72,7 @@ class DailyBudgetGuard:
             "failures": self.failure_count,
             "model_calls": self.model_calls,
             "tool_calls": self.tool_calls,
+            "tool_budget_units": self.tool_budget_units,
             "repair_attempts": self.repair_attempts,
             "elapsed_seconds": round(time.monotonic() - self.started_at, 3),
         }
@@ -82,8 +89,11 @@ class DailyBudgetGuard:
             return f"runtime budget reached ({elapsed_minutes:.2f}/{self.max_runtime_minutes} min)"
         if self.model_calls >= self.max_model_calls:
             return f"model call budget reached ({self.model_calls}/{self.max_model_calls})"
-        if self.tool_calls >= self.max_tool_calls:
-            return f"tool call budget reached ({self.tool_calls}/{self.max_tool_calls})"
+        if self.tool_budget_units >= self.max_tool_calls:
+            return (
+                "weighted tool budget reached "
+                f"({self.tool_budget_units}/{self.max_tool_calls})"
+            )
         if self.repair_attempts >= self.max_repair_attempts:
             return (
                 f"repair attempt budget reached ({self.repair_attempts}/{self.max_repair_attempts})"
@@ -760,7 +770,8 @@ class DailyRunCommand:
                 "",
                 f"- Runtime seconds: {report['budget']['elapsed_seconds']}",
                 f"- Model calls: {report['budget']['model_calls']}/{report['budget']['max_model_calls']}",
-                f"- Tool calls: {report['budget']['tool_calls']}/{report['budget']['max_tool_calls']}",
+                f"- Tool calls: {report['budget']['tool_calls']} raw, "
+                f"{report['budget']['tool_budget_units']}/{report['budget']['max_tool_calls']} weighted",
                 f"- Repair attempts: {report['budget']['repair_attempts']}/{report['budget']['max_repair_attempts']}",
                 "",
                 "## Results",
@@ -947,21 +958,32 @@ class DailyRunCommand:
 
     def _cost_snapshot(self, run_id: str | None) -> dict[str, int]:
         if not run_id:
-            return {"model_calls": 0, "tool_calls": 0, "repair_attempts": 0}
+            return {
+                "model_calls": 0,
+                "tool_calls": 0,
+                "tool_budget_units": 0,
+                "repair_attempts": 0,
+            }
         path = self.root / ".asteria" / "runs" / run_id / "cost_report.json"
         if not path.exists():
-            return {"model_calls": 0, "tool_calls": 0, "repair_attempts": 0}
+            return {
+                "model_calls": 0,
+                "tool_calls": 0,
+                "tool_budget_units": 0,
+                "repair_attempts": 0,
+            }
         report = self.store.read(path, "cost_report")
         return {
             "model_calls": int(report.get("model_calls") or 0),
             "tool_calls": int(report.get("tool_calls") or 0),
+            "tool_budget_units": int(report.get("tool_budget_units", report.get("tool_calls") or 0)),
             "repair_attempts": int(report.get("repair_attempts") or 0),
         }
 
     def _cost_delta(self, before: dict[str, int], after: dict[str, int]) -> dict[str, int]:
         return {
             key: max(0, after.get(key, 0) - before.get(key, 0))
-            for key in {"model_calls", "tool_calls", "repair_attempts"}
+            for key in {"model_calls", "tool_calls", "tool_budget_units", "repair_attempts"}
         }
 
     def _failure_type(self, action: dict[str, Any], stderr: str) -> str:

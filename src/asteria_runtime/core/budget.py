@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import RLock
 
+from asteria_runtime.core.context_budget import context_pressure
+
 
 class BudgetExceededError(RuntimeError):
     pass
@@ -12,12 +14,19 @@ class BudgetExceededError(RuntimeError):
 class BudgetUsage:
     model_calls: int = 0
     tool_calls: int = 0
+    tool_budget_units: int = 0
+    tool_call_breakdown: dict[str, int] = field(default_factory=dict)
     repair_attempts: int = 0
     research_calls: int = 0
     user_decisions: int = 0
     context_compactions: int = 0
     estimated_input_tokens: int | None = 0
     estimated_output_tokens: int | None = 0
+    latest_context_estimated_tokens: int = 0
+    max_context_estimated_tokens: int = 0
+    context_window_tokens: int = 0
+    context_window_ratio: float = 0.0
+    context_pressure_status: str = "within_budget"
     strong_model_calls: int = 0
     cheap_model_calls: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -26,6 +35,7 @@ class BudgetUsage:
 class BudgetController:
     def __init__(self, policy: dict, run_id: str | None = None) -> None:
         self.policy = policy
+        self.budgets = resolve_budget_limits(policy)
         self.run_id = run_id
         self.usage = BudgetUsage()
         self._lock = RLock()
@@ -37,11 +47,30 @@ class BudgetController:
         controller = cls(policy, run_id=run_id or report.get("run_id"))
         controller.usage.model_calls = int(report.get("model_calls", 0))
         controller.usage.tool_calls = int(report.get("tool_calls", 0))
+        controller.usage.tool_budget_units = int(
+            report.get("tool_budget_units", report.get("tool_calls", 0))
+        )
+        raw_breakdown = report.get("tool_call_breakdown")
+        if isinstance(raw_breakdown, dict):
+            controller.usage.tool_call_breakdown = {
+                str(key): int(value) for key, value in raw_breakdown.items()
+            }
         controller.usage.repair_attempts = int(report.get("repair_attempts", 0))
         controller.usage.context_compactions = int(report.get("context_compactions", 0))
         controller.usage.user_decisions = int(report.get("user_decisions", 0))
         controller.usage.estimated_input_tokens = report.get("estimated_input_tokens")
         controller.usage.estimated_output_tokens = report.get("estimated_output_tokens")
+        controller.usage.latest_context_estimated_tokens = int(
+            report.get("latest_context_estimated_tokens", 0)
+        )
+        controller.usage.max_context_estimated_tokens = int(
+            report.get("max_context_estimated_tokens", 0)
+        )
+        controller.usage.context_window_tokens = int(report.get("context_window_tokens", 0))
+        controller.usage.context_window_ratio = float(report.get("context_window_ratio", 0.0))
+        controller.usage.context_pressure_status = str(
+            report.get("context_pressure_status", "within_budget")
+        )
         controller.usage.strong_model_calls = int(report.get("strong_model_calls", 0))
         controller.usage.cheap_model_calls = int(report.get("cheap_model_calls", 0))
         controller.usage.warnings = list(report.get("warnings", []))
@@ -77,10 +106,41 @@ class BudgetController:
             elif output_tokens is not None:
                 self.usage.estimated_output_tokens = None
 
-    def record_tool_call(self) -> None:
+    def record_context_estimate(self, estimated_tokens: int | None) -> None:
+        if estimated_tokens is None:
+            return
         with self._lock:
+            pressure = context_pressure(self.policy, max(0, int(estimated_tokens)))
+            self.usage.latest_context_estimated_tokens = pressure.estimated_tokens
+            self.usage.max_context_estimated_tokens = max(
+                self.usage.max_context_estimated_tokens,
+                pressure.estimated_tokens,
+            )
+            self.usage.context_window_tokens = pressure.window_tokens
+            self.usage.context_window_ratio = pressure.ratio
+            self.usage.context_pressure_status = pressure.status
+            if pressure.status in {"near_limit", "hard_stop", "exceeded"}:
+                warning = (
+                    "context window is near limit: "
+                    f"{pressure.estimated_tokens}/{pressure.window_tokens}"
+                )
+                if warning not in self.usage.warnings:
+                    self.usage.warnings.append(warning)
+
+    def record_tool_call(self, tool_name: str | None = None) -> None:
+        with self._lock:
+            tool_class = classify_tool_budget_class(tool_name)
+            weight = self._tool_budget_weight(tool_class)
             self.usage.tool_calls += 1
-            self._check_limit("tool_calls", self.usage.tool_calls, "max_tool_calls_per_goal")
+            self.usage.tool_budget_units += weight
+            self.usage.tool_call_breakdown[tool_class] = (
+                self.usage.tool_call_breakdown.get(tool_class, 0) + 1
+            )
+            self._check_limit(
+                "tool_budget_units",
+                self.usage.tool_budget_units,
+                "max_tool_calls_per_goal",
+            )
 
     def record_repair_attempt(self) -> None:
         with self._lock:
@@ -115,8 +175,15 @@ class BudgetController:
                 "run_id": self.run_id,
                 "model_calls": self.usage.model_calls,
                 "tool_calls": self.usage.tool_calls,
+                "tool_budget_units": self.usage.tool_budget_units,
+                "tool_call_breakdown": dict(sorted(self.usage.tool_call_breakdown.items())),
                 "estimated_input_tokens": self.usage.estimated_input_tokens,
                 "estimated_output_tokens": self.usage.estimated_output_tokens,
+                "latest_context_estimated_tokens": self.usage.latest_context_estimated_tokens,
+                "max_context_estimated_tokens": self.usage.max_context_estimated_tokens,
+                "context_window_tokens": self.usage.context_window_tokens,
+                "context_window_ratio": self.usage.context_window_ratio,
+                "context_pressure_status": self.usage.context_pressure_status,
                 "strong_model_calls": self.usage.strong_model_calls,
                 "cheap_model_calls": self.usage.cheap_model_calls,
                 "repair_attempts": self.usage.repair_attempts,
@@ -129,12 +196,13 @@ class BudgetController:
 
     @staticmethod
     def pressure(policy: dict, report: dict) -> dict:
-        budgets = policy["budgets"]
+        budgets = resolve_budget_limits(policy)
+        tool_budget_value = report.get("tool_budget_units", report.get("tool_calls", 0))
         ratios: dict[str, float] = {
             "model_calls": _ratio(
                 report.get("model_calls", 0), budgets["max_model_calls_per_goal"]
             ),
-            "tool_calls": _ratio(report.get("tool_calls", 0), budgets["max_tool_calls_per_goal"]),
+            "tool_budget_units": _ratio(tool_budget_value, budgets["max_tool_calls_per_goal"]),
             "repair_attempts": _ratio(
                 report.get("repair_attempts", 0),
                 budgets["max_repair_attempts_total"],
@@ -146,6 +214,9 @@ class BudgetController:
                 report.get("user_decisions", 0), budgets["max_user_decisions"]
             ),
         }
+        context_ratio = report.get("context_window_ratio")
+        if isinstance(context_ratio, (int, float)):
+            ratios["context_window"] = max(0.0, float(context_ratio))
         highest_label = max(ratios, key=lambda key: ratios[key])
         highest_ratio = ratios[highest_label]
         context = policy.get("context", {})
@@ -167,13 +238,75 @@ class BudgetController:
         }
 
     def _check_limit(self, label: str, value: int, policy_key: str) -> None:
-        limit = int(self.policy["budgets"][policy_key])
+        limit = int(self.budgets[policy_key])
         if value > limit:
             raise BudgetExceededError(f"{label} exceeded budget: {value} > {limit}")
         if value >= max(1, int(limit * 0.8)):
             warning = f"{label} is near budget: {value}/{limit}"
             if warning not in self.usage.warnings:
                 self.usage.warnings.append(warning)
+
+    def _tool_budget_weight(self, tool_class: str) -> int:
+        weights = self.policy.get("tool_budget_weights")
+        if not isinstance(weights, dict):
+            weights = (self.policy.get("budgets") or {}).get("tool_budget_weights")
+        if isinstance(weights, dict) and tool_class in weights:
+            return max(0, _as_int(weights[tool_class]))
+        return DEFAULT_TOOL_BUDGET_WEIGHTS.get(tool_class, DEFAULT_TOOL_BUDGET_WEIGHTS["unknown"])
+
+
+READ_ONLY_TOOLS = {
+    "read_file",
+    "list_files",
+    "find_files",
+    "search_text",
+    "diff_workspace",
+    "todo_read",
+}
+VERIFICATION_TOOLS = {"run_tests"}
+STATE_TOOLS = {"todo_write"}
+WRITE_TOOLS = {"write_file", "apply_patch", "restore_backup"}
+SHELL_TOOLS = {"run_command"}
+EXTERNAL_TOOLS = {"mcp", "skill"}
+
+DEFAULT_TOOL_BUDGET_WEIGHTS = {
+    "read_only": 0,
+    "state": 1,
+    "verification": 1,
+    "write": 2,
+    "shell": 2,
+    "external": 3,
+    "unknown": 1,
+}
+
+
+def classify_tool_budget_class(tool_name: str | None) -> str:
+    normalized = (tool_name or "unknown").strip()
+    if normalized in READ_ONLY_TOOLS:
+        return "read_only"
+    if normalized in VERIFICATION_TOOLS:
+        return "verification"
+    if normalized in STATE_TOOLS:
+        return "state"
+    if normalized in WRITE_TOOLS:
+        return "write"
+    if normalized in SHELL_TOOLS:
+        return "shell"
+    if normalized in EXTERNAL_TOOLS or normalized.startswith(("mcp.", "skill.")):
+        return "external"
+    return "unknown"
+
+
+def resolve_budget_limits(policy: dict) -> dict:
+    budgets = dict(policy.get("budgets") or {})
+    profile_name = str(policy.get("active_budget_profile") or "").strip()
+    profiles = policy.get("budget_profiles")
+    if profile_name and isinstance(profiles, dict):
+        profile = profiles.get(profile_name)
+        if isinstance(profile, dict):
+            budgets.update(profile)
+            budgets["active_budget_profile"] = profile_name
+    return budgets
 
 
 def _ratio(value: object, limit: object) -> float:

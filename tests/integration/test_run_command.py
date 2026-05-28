@@ -498,6 +498,7 @@ def set_budget_policy(
 ) -> None:
     path = root / ".asteria" / "policies.json"
     policy = json.loads(path.read_text(encoding="utf-8"))
+    policy["active_budget_profile"] = ""
     policy["budgets"]["max_model_calls_per_goal"] = max_model_calls
     policy["context"]["compaction_threshold"] = compaction_threshold
     policy["context"]["hard_stop_threshold"] = hard_stop_threshold

@@ -32,7 +32,7 @@ class ToolRegistry:
         started_at = now_iso()
         if context.budget:
             try:
-                context.budget.record_tool_call()
+                context.budget.record_tool_call(name)
             except BudgetExceededError as exc:
                 result = ToolResult(
                     ok=False,

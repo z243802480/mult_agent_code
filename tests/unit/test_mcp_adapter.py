@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.mcp_adapter import (
     McpAdapter,
     mcp_adapter_config_from_policy,
@@ -65,6 +66,24 @@ def _context(tmp_path: Path) -> RuntimeContext:
         validator=validator,
         run_dir_override=tmp_path,
     )
+
+
+def _budget_policy(max_tool_calls: int = 3) -> dict:
+    return {
+        "budgets": {
+            "max_model_calls_per_goal": 60,
+            "max_tool_calls_per_goal": max_tool_calls,
+            "max_total_minutes_per_goal": 30,
+            "max_iterations_per_goal": 8,
+            "max_repair_attempts_total": 5,
+            "max_repair_attempts_per_task": 2,
+            "max_replans_per_task": 2,
+            "max_research_calls": 5,
+            "max_user_decisions": 5,
+        },
+        "permission_mode": "reviewed_auto",
+        "protected_paths": [],
+    }
 
 
 def test_mcp_adapter_invokes_session_and_records_decision_and_progress(tmp_path: Path) -> None:
@@ -140,6 +159,41 @@ def test_mcp_adapter_denies_unlisted_server_before_session_call(tmp_path: Path) 
     assert session.calls == []
     assert invocations[0]["arguments"] == {"api_token": "<redacted>"}
     assert invocations[0]["capability_decision"]["decision"] == "deny"
+
+
+def test_mcp_adapter_consumes_external_tool_budget(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    policy = _budget_policy(max_tool_calls=2)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy=policy,
+        validator=validator,
+        run_dir_override=tmp_path,
+        budget=BudgetController(policy, run_id="run-1"),
+    )
+    session = FakeMcpSession()
+    adapter = McpAdapter({"docs": session})
+    task = {
+        "task_id": "task-1",
+        "task_kind": "research",
+        "allowed_mcp": ["docs"],
+    }
+
+    result = adapter.invoke_tool(
+        context=context,
+        task=task,
+        server_name="docs",
+        tool_name="search",
+        arguments={"query": "runtime"},
+    )
+
+    assert result.status == "denied"
+    assert session.calls == []
+    assert result.error and "tool_budget_units exceeded budget" in result.error
+    assert context.budget
+    report = context.budget.cost_report()
+    assert report["tool_call_breakdown"] == {"external": 1}
 
 
 def test_mcp_adapter_times_out_hung_session_and_records_failure(tmp_path: Path) -> None:

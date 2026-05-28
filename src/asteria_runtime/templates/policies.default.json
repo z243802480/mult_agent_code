@@ -1,18 +1,64 @@
 {
   "schema_version": "0.1.0",
   "decision_granularity": "balanced",
+  "active_budget_profile": "autonomous_long_task",
   "budgets": {
-    "max_model_calls_per_goal": 60,
-    "max_tool_calls_per_goal": 120,
-    "max_total_minutes_per_goal": 30,
-    "max_iterations_per_goal": 8,
-    "max_repair_attempts_total": 5,
-    "max_repair_attempts_per_task": 2,
+    "max_model_calls_per_goal": 200,
+    "max_tool_calls_per_goal": 1000,
+    "max_total_minutes_per_goal": 240,
+    "max_iterations_per_goal": 32,
+    "max_repair_attempts_total": 20,
+    "max_repair_attempts_per_task": 4,
     "max_replans_per_task": 2,
-    "max_research_calls": 5,
-    "max_user_decisions": 5
+    "max_research_calls": 20,
+    "max_user_decisions": 12,
+    "tool_budget_weights": {
+      "read_only": 0,
+      "state": 1,
+      "verification": 1,
+      "write": 2,
+      "shell": 2,
+      "external": 3,
+      "unknown": 1
+    }
+  },
+  "budget_profiles": {
+    "validation": {
+      "max_model_calls_per_goal": 60,
+      "max_tool_calls_per_goal": 120,
+      "max_total_minutes_per_goal": 30,
+      "max_iterations_per_goal": 8,
+      "max_repair_attempts_total": 5,
+      "max_repair_attempts_per_task": 2,
+      "max_replans_per_task": 2,
+      "max_research_calls": 5,
+      "max_user_decisions": 5
+    },
+    "balanced": {
+      "max_model_calls_per_goal": 120,
+      "max_tool_calls_per_goal": 500,
+      "max_total_minutes_per_goal": 120,
+      "max_iterations_per_goal": 16,
+      "max_repair_attempts_total": 10,
+      "max_repair_attempts_per_task": 3,
+      "max_replans_per_task": 2,
+      "max_research_calls": 10,
+      "max_user_decisions": 8
+    },
+    "autonomous_long_task": {
+      "max_model_calls_per_goal": 200,
+      "max_tool_calls_per_goal": 1000,
+      "max_total_minutes_per_goal": 240,
+      "max_iterations_per_goal": 32,
+      "max_repair_attempts_total": 20,
+      "max_repair_attempts_per_task": 4,
+      "max_replans_per_task": 3,
+      "max_research_calls": 20,
+      "max_user_decisions": 12
+    }
   },
   "context": {
+    "model_context_window_tokens": 200000,
     "compaction_threshold": 0.75,
     "hard_stop_threshold": 0.9,
     "phase_boundary_compaction": true,
@@ -91,7 +137,14 @@
   "agent_loop": {
     "task_plan_quality_gate_blocks": false,
     "schema_shape_errors_are_repairable": true,
-    "inject_capability_manifest": true
+    "inject_capability_manifest": true,
+    "loop_quality_guard": {
+      "enabled": true,
+      "mode": "observe_then_warn",
+      "repeated_identical_tool_window": 8,
+      "repeated_failed_verification_window": 3,
+      "hard_block_only_for_permission_or_destructive_risk": true
+    }
   },
   "model_routing": {
     "goal_spec": "strong",

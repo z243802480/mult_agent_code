@@ -119,6 +119,18 @@ max_repair_attempts_per_task: {{MAX_REPAIR_ATTEMPTS_PER_TASK}}
 context_compaction_threshold: {{CONTEXT_COMPACTION_THRESHOLD}}
 ```
 
+`max_tool_calls_per_goal` is a risk-weighted emergency brake, not a raw call-count cap
+and not the main stability mechanism. Raw `tool_calls` are still recorded for audit.
+Low-risk read/search/list/diff exploration has weight 0 by default; verification/state
+tools have low weight; write, shell, external MCP, and Skill calls consume more budget
+and remain permission-gated. Long-running autonomy should be governed primarily by
+goal progress, context pressure, repair/replan limits, permission risk, provider health,
+and repeated low-value loop detection.
+
+Budget policies may define profiles such as `validation`, `balanced`, and
+`autonomous_long_task`. Use stricter profiles for release validation and wider profiles
+for long-horizon development where the agent should keep iterating toward the goal.
+
 When approaching budget:
 
 1. Compact context.

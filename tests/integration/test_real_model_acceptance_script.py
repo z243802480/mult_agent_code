@@ -289,9 +289,9 @@ def test_real_model_acceptance_timeout_budget_flows_to_provider_env() -> None:
 def test_validation_ready_requires_passing_results_and_strong_medium_route_evidence() -> None:
     results = [
         {
-            "scenario": "validation_file_artifact",
-            "capability": "validation_artifact_creation",
-            "tier": "validation",
+            "scenario": scenario,
+            "capability": SCENARIOS[scenario].capability,
+            "tier": SCENARIOS[scenario].tier,
             "ok": True,
             "route_evidence": {
                 "available": True,
@@ -300,11 +300,33 @@ def test_validation_ready_requires_passing_results_and_strong_medium_route_evide
                 "providers_by_tier": {"strong": ["zai"], "medium": ["minimax"]},
             },
             "summary": {"diagnostics": {"model_calls": 2, "tool_calls": 1}},
-        },
+        }
+        for scenario in SUITES["validation"]
+    ]
+
+    aggregate = aggregate_results(results, scenario_metadata_for_names(SUITES["validation"]))
+
+    assert (
+        validation_ready(
+            "validation",
+            aggregate,
+            scenario_metadata=scenario_metadata_for_names(SUITES["validation"]),
+        )
+        is True
+    )
+    assert aggregate["route_evidence"]["strong_used"] is True
+    assert aggregate["route_evidence"]["medium_used"] is True
+    assert aggregate["route_evidence"]["providers_by_tier"]["strong"] == ["zai"]
+    assert aggregate["route_evidence"]["providers_by_tier"]["medium"] == ["minimax"]
+
+
+def test_validation_ready_blocks_partial_validation_subset() -> None:
+    subset = ["validation_file_artifact", "validation_multi_file_scope"]
+    results = [
         {
-            "scenario": "validation_multi_file_scope",
-            "capability": "validation_multi_file_scope",
-            "tier": "validation",
+            "scenario": scenario,
+            "capability": SCENARIOS[scenario].capability,
+            "tier": SCENARIOS[scenario].tier,
             "ok": True,
             "route_evidence": {
                 "available": True,
@@ -313,16 +335,21 @@ def test_validation_ready_requires_passing_results_and_strong_medium_route_evide
                 "providers_by_tier": {"strong": ["zai"], "medium": ["minimax"]},
             },
             "summary": {"diagnostics": {"model_calls": 3, "tool_calls": 2}},
-        },
+        }
+        for scenario in subset
     ]
 
-    aggregate = aggregate_results(results)
+    aggregate = aggregate_results(results, scenario_metadata_for_names(subset))
 
-    assert validation_ready("validation", aggregate) is True
-    assert aggregate["route_evidence"]["strong_used"] is True
-    assert aggregate["route_evidence"]["medium_used"] is True
-    assert aggregate["route_evidence"]["providers_by_tier"]["strong"] == ["zai"]
-    assert aggregate["route_evidence"]["providers_by_tier"]["medium"] == ["minimax"]
+    assert (
+        validation_ready(
+            "validation",
+            aggregate,
+            scenario_metadata=scenario_metadata_for_names(subset),
+            requested_scenarios=subset,
+        )
+        is False
+    )
 
 
 def test_validation_ready_blocks_missing_medium_route_evidence() -> None:
@@ -346,3 +373,15 @@ def test_validation_ready_blocks_missing_medium_route_evidence() -> None:
 
     assert validation_ready("validation", aggregate) is False
     assert aggregate["route_evidence"]["scenarios_missing_medium"] == ["validation_file_artifact"]
+
+
+def scenario_metadata_for_names(names: list[str]) -> list[dict[str, str]]:
+    return [
+        {
+            "scenario": name,
+            "capability": SCENARIOS[name].capability,
+            "tier": SCENARIOS[name].tier,
+            "kind": SCENARIOS[name].kind,
+        }
+        for name in names
+    ]

@@ -22,6 +22,7 @@
       "plugin_risks",
       "runtime_progress_metrics",
       "runtime_validation_matrix",
+      "readiness_explanation",
       "recovery_pressure",
       "feature_flags",
       "capability_flags",
@@ -250,6 +251,15 @@
     "minimum_ready_ratio": 1.0,
     "coverage_ratio": 0.125,
     "cases": []
+  },
+  "readiness_explanation": {
+    "status": "blocked",
+    "summary": "gate is blocked.",
+    "stage": "missing_real_model_gate",
+    "release_state": "blocked",
+    "gate_statuses": {},
+    "runtime_validation_gap_summary": {},
+    "route_guidance_status": "healthy"
   },
   "recovery_pressure": {
     "schema_version": "0.1.0",

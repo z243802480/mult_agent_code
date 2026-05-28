@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -223,6 +224,20 @@ class SkillAdapter:
                 context, task, invocation_id, skill_name, args, decision, result
             )
             return result
+        if context.budget:
+            try:
+                context.budget.record_tool_call(f"skill.{skill_name}")
+            except BudgetExceededError as exc:
+                result = SkillInvocationResult(
+                    ok=False,
+                    summary=f"Skill denied by budget: {skill_name}",
+                    error=str(exc),
+                    status="denied",
+                )
+                self._record_invocation(
+                    context, task, invocation_id, skill_name, args, decision, result
+                )
+                return result
         handler = self.handlers.get(skill_name)
         if handler is None:
             result = SkillInvocationResult(

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -43,6 +45,33 @@ def test_run_with_heartbeat_raises_timeout_with_output(tmp_path: Path) -> None:
         )
 
     assert "before" in str(exc_info.value.output)
+
+
+def test_run_with_heartbeat_timeout_terminates_child_process(tmp_path: Path) -> None:
+    child_pid_file = tmp_path / "child.pid"
+    parent_code = (
+        "import subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        f"open({str(child_pid_file)!r}, 'w', encoding='utf-8').write(str(child.pid)); "
+        "time.sleep(30)"
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        run_with_heartbeat(
+            [sys.executable, "-c", parent_code],
+            cwd=tmp_path,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=0.5,
+            heartbeat_seconds=0,
+        )
+
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and _process_exists(child_pid):
+        time.sleep(0.1)
+    assert not _process_exists(child_pid)
 
 
 def test_run_with_heartbeat_emits_runtime_progress(
@@ -98,3 +127,24 @@ def test_run_with_heartbeat_emits_runtime_progress(
     assert "status=running" in stderr
     assert "route=strong" in stderr
     assert "stream=streaming" in stderr
+
+
+def _process_exists(pid: int) -> bool:
+    if os.name == "nt":
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ exit 0 }} else {{ exit 1 }}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return completed.returncode == 0
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True

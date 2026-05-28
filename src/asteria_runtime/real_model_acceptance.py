@@ -430,7 +430,12 @@ def run_from_args(args: argparse.Namespace) -> None:
             "scenario_metadata": scenario_metadata,
             "scenarios": results,
             "aggregate": aggregate,
-            "validation_ready": validation_ready(args.suite, aggregate),
+            "validation_ready": validation_ready(
+                args.suite,
+                aggregate,
+                scenario_metadata=scenario_metadata,
+                requested_scenarios=args.scenario,
+            ),
         }
         attach_history(args.history_jsonl, summary)
         write_summary_paths(summary_paths, summary)
@@ -1115,8 +1120,16 @@ def aggregate_route_evidence(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def validation_ready(suite: str, aggregate: dict[str, Any]) -> bool:
+def validation_ready(
+    suite: str,
+    aggregate: dict[str, Any],
+    *,
+    scenario_metadata: list[dict[str, Any]] | None = None,
+    requested_scenarios: list[str] | None = None,
+) -> bool:
     if suite != "validation":
+        return False
+    if not _complete_suite_evidence(suite, aggregate, scenario_metadata, requested_scenarios):
         return False
     route_evidence = aggregate.get("route_evidence")
     return bool(
@@ -1125,6 +1138,28 @@ def validation_ready(suite: str, aggregate: dict[str, Any]) -> bool:
         and route_evidence.get("strong_used")
         and route_evidence.get("medium_used")
     )
+
+
+def _complete_suite_evidence(
+    suite: str,
+    aggregate: dict[str, Any],
+    scenario_metadata: list[dict[str, Any]] | None,
+    requested_scenarios: list[str] | None,
+) -> bool:
+    expected = set(SUITES.get(suite, ()))
+    if not expected:
+        return True
+    requested = {str(item) for item in requested_scenarios or [] if str(item)}
+    if requested and not expected.issubset(requested):
+        return False
+    if scenario_metadata is not None:
+        observed = {
+            str(item.get("scenario") or "")
+            for item in scenario_metadata
+            if isinstance(item, dict)
+        }
+        return expected.issubset(observed)
+    return int(aggregate.get("total") or 0) >= len(expected)
 
 
 def _add_status(target: dict[str, dict[str, Any]], key: str, ok: bool) -> None:

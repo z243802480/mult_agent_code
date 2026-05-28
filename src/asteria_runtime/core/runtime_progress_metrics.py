@@ -17,11 +17,16 @@ def runtime_progress_metrics(root: Path, validator: SchemaValidator) -> dict[str
     permission_decisions = []
     user_progress_runs = 0
     runtime_native_runs = 0
+    matrix_evidence_runs = 0
+    matrix_evidence_progress_runs = 0
     mcp_invocations = []
     skill_invocations = []
     capability_progress_events = 0
     store = JsonlStore(validator)
     for run_dir in run_dirs:
+        is_matrix_evidence_run = (run_dir / "runtime_validation_matrix_evidence.json").exists()
+        if is_matrix_evidence_run:
+            matrix_evidence_runs += 1
         dispatch_path = run_dir / "agent_loop_dispatch.json"
         if dispatch_path.exists():
             dispatches.append(dispatch_path)
@@ -31,6 +36,8 @@ def runtime_progress_metrics(root: Path, validator: SchemaValidator) -> dict[str
             progress_events = store.read_all(progress_path, "user_progress_event")
             if progress_events:
                 runtime_native_runs += 1
+                if is_matrix_evidence_run:
+                    matrix_evidence_progress_runs += 1
             capability_progress_events += len(
                 [
                     event
@@ -86,6 +93,12 @@ def runtime_progress_metrics(root: Path, validator: SchemaValidator) -> dict[str
             "run_count": run_count,
             "runs_with_user_progress_file": user_progress_runs,
             "runs_with_user_progress_events": runtime_native_runs,
+            "matrix_evidence_runs": matrix_evidence_runs,
+            "matrix_evidence_runs_with_progress": matrix_evidence_progress_runs,
+            "matrix_evidence_coverage_ratio": _ratio(
+                matrix_evidence_progress_runs,
+                matrix_evidence_runs,
+            ),
             "coverage_ratio": _ratio(runtime_native_runs, run_count),
         },
         "adapter_invocation_coverage": {
@@ -118,6 +131,9 @@ def _empty_metrics() -> dict[str, Any]:
             "run_count": 0,
             "runs_with_user_progress_file": 0,
             "runs_with_user_progress_events": 0,
+            "matrix_evidence_runs": 0,
+            "matrix_evidence_runs_with_progress": 0,
+            "matrix_evidence_coverage_ratio": 0.0,
             "coverage_ratio": 0.0,
         },
         "adapter_invocation_coverage": {

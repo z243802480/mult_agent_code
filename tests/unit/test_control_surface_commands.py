@@ -970,6 +970,52 @@ def test_gate_status_prefers_passing_canonical_validation_summary(tmp_path: Path
     assert payload["evidence_sources"]["validation_suite"].endswith("real_model_acceptance_validation.json")
 
 
+def test_gate_status_does_not_treat_validation_subset_as_full_suite(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _configure_release_routes(monkeypatch)
+    gate_dir = tmp_path / ".asteria" / "model"
+    gate_dir.mkdir(parents=True)
+    (gate_dir / "real_model_gate_report.json").write_text(
+        json.dumps({"ok": True}),
+        encoding="utf-8",
+    )
+    verification_dir = tmp_path / ".asteria" / "verification"
+    verification_dir.mkdir(parents=True)
+    (verification_dir / "real_model_acceptance_validation_subset.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "suite": "validation",
+                "requested_scenarios": ["validation_refactor", "runtime_request_resume"],
+                "scenario_metadata": [
+                    {"scenario": "validation_refactor"},
+                    {"scenario": "runtime_request_resume"},
+                ],
+                "validation_ready": True,
+                "aggregate": {
+                    "total": 2,
+                    "passed": 2,
+                    "failed": 0,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps({"ok": True, "suite": "core", "aggregate": {"total": 10, "passed": 10}}),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "ready_for_validation_suite"
+    assert payload["gates"]["validation_suite"]["present"] is False
+    assert payload["readiness_explanation"]["status"] == "missing_release_suite_evidence"
+
+
 def test_gate_status_blocks_release_when_current_routes_are_missing(
     tmp_path: Path, monkeypatch
 ) -> None:

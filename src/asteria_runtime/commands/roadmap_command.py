@@ -64,7 +64,7 @@ class RoadmapCommand:
         milestones = self._milestones(acceptance, model_profile, risks)
         if not weekly:
             next_actions.append(
-                "Run `asteria /long-run-plan --objective <goal>` to start evidence collection."
+                "Run `asteria daily-plan --objective <goal>` to start evidence collection."
             )
             next_actions.append("Run `asteria /weekly-report` before the next roadmap update.")
         if not next_actions:

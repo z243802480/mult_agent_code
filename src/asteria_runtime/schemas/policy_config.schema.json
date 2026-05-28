@@ -20,6 +20,7 @@
       "type": "string",
       "enum": ["autopilot", "balanced", "collaborative", "manual"]
     },
+    "active_budget_profile": { "type": "string" },
     "budgets": {
       "type": "object",
       "required": [
@@ -41,7 +42,28 @@
         "max_repair_attempts_per_task": { "type": "integer" },
         "max_replans_per_task": { "type": "integer" },
         "max_research_calls": { "type": "integer" },
-        "max_user_decisions": { "type": "integer" }
+        "max_user_decisions": { "type": "integer" },
+        "tool_budget_weights": {
+          "type": "object",
+          "additionalProperties": { "type": "integer" }
+        }
+      }
+    },
+    "budget_profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "max_model_calls_per_goal": { "type": "integer" },
+          "max_tool_calls_per_goal": { "type": "integer" },
+          "max_total_minutes_per_goal": { "type": "integer" },
+          "max_iterations_per_goal": { "type": "integer" },
+          "max_repair_attempts_total": { "type": "integer" },
+          "max_repair_attempts_per_task": { "type": "integer" },
+          "max_replans_per_task": { "type": "integer" },
+          "max_research_calls": { "type": "integer" },
+          "max_user_decisions": { "type": "integer" }
+        }
       }
     },
     "context": {
@@ -53,6 +75,7 @@
         "handoff_compaction"
       ],
       "properties": {
+        "model_context_window_tokens": { "type": "integer" },
         "compaction_threshold": { "type": "number" },
         "hard_stop_threshold": { "type": "number" },
         "phase_boundary_compaction": { "type": "boolean" },

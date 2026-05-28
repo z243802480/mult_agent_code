@@ -54,12 +54,17 @@ def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> Non
     policy = load_policy_config(agent_dir, SchemaValidator(Path.cwd() / "schemas"))
 
     assert policy["permissions"]["allow_restore_delete_created_files"] is True
+    assert policy["context"]["model_context_window_tokens"] == 200000
     assert policy["budgets"]["max_replans_per_task"] == 2
     assert policy["hooks"]["enabled"] is True
     assert policy["hooks"]["plugins_enabled"] is False
     assert "after_tool_call" in policy["hooks"]["allowed_hook_names"]
     assert policy["promotion"]["manual_approval_default"] is False
     assert policy["promotion"]["max_pending_release_promotions"] == 0
+    assert policy["active_budget_profile"] == "autonomous_long_task"
+    assert policy["budget_profiles"]["validation"]["max_tool_calls_per_goal"] == 120
+    assert policy["budget_profiles"]["autonomous_long_task"]["max_tool_calls_per_goal"] == 1000
+    assert policy["agent_loop"]["loop_quality_guard"]["mode"] == "observe_then_warn"
     assert policy["provider_route_strategy"]["strong_goal_spec"]["primary_model"] == "glm-5"
     assert (
         policy["provider_route_strategy"]["strong_goal_spec"]["min_success_rate_for_validation"]
@@ -67,6 +72,10 @@ def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> Non
     )
     persisted = json.loads(policy_path.read_text(encoding="utf-8"))
     assert persisted["permissions"]["allow_restore_delete_created_files"] is True
+    assert persisted["context"]["model_context_window_tokens"] == 200000
     assert persisted["hooks"]["handler_timeout_ms"] == 1000
     assert "promotion_failed" in persisted["promotion"]["release_blocking_statuses"]
+    assert persisted["active_budget_profile"] == "autonomous_long_task"
+    assert persisted["budget_profiles"]["balanced"]["max_tool_calls_per_goal"] == 500
+    assert persisted["agent_loop"]["loop_quality_guard"]["enabled"] is True
     assert persisted["provider_route_strategy"]["strong_goal_spec"]["cost_saver_model"] == "glm-4.7"

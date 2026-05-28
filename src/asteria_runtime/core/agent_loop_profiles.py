@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from asteria_runtime.core.capability_catalog import task_capability_catalog
 from asteria_runtime.core.capability_invocation_policy import CapabilityInvocationPolicy
 from asteria_runtime.core.runtime_profile import AgentLoopProfile
 
@@ -227,6 +228,10 @@ class AgentLoopProfileRegistry:
         tasks: list[dict],
         *,
         permission_mode: str = "reviewed_auto",
+        runtime_tool_names: list[str] | None = None,
+        skill_catalog: list[dict] | None = None,
+        mcp_servers: list[dict] | None = None,
+        allow_shell: bool = False,
     ) -> dict:
         profiles = [
             self.for_task(task, permission_mode=permission_mode)
@@ -251,6 +256,14 @@ class AgentLoopProfileRegistry:
                     "capability_groups": profile["capability_groups"],
                     "registered_capabilities": profile["registered_capabilities"],
                     "capability_invocation_policy": profile["capability_invocation_policy"],
+                    "capability_catalog": task_capability_catalog(
+                        task=task,
+                        runtime_tool_names=runtime_tool_names or [],
+                        permission_mode=permission_mode,
+                        skill_catalog=skill_catalog or [],
+                        mcp_servers=mcp_servers or [],
+                        allow_shell=allow_shell,
+                    ),
                     "output_contract": profile["output_contract"],
                     "validation_contract": profile["validation_contract"],
                     "failure_recovery": profile["failure_recovery"],

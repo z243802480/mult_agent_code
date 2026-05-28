@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import signal
 import subprocess
 import sys
 import threading
@@ -56,6 +57,12 @@ def run_with_heartbeat(
         )
 
     command = list(args)
+    popen_kwargs: dict[str, Any] = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        popen_kwargs["start_new_session"] = True
+
     process = subprocess.Popen(
         command,
         cwd=cwd,
@@ -63,6 +70,7 @@ def run_with_heartbeat(
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        **popen_kwargs,
     )
     stdout_queue: queue.Queue[str] = queue.Queue()
     stderr_queue: queue.Queue[str] = queue.Queue()
@@ -92,7 +100,7 @@ def run_with_heartbeat(
             _drain(stderr_queue, stderr_chunks)
             elapsed = time.monotonic() - started
             if timeout is not None and elapsed >= timeout:
-                process.kill()
+                _terminate_process_tree(process)
                 process.wait(timeout=5)
                 _join_reader(stdout_thread, stderr_thread)
                 _drain(stdout_queue, stdout_chunks)
@@ -119,7 +127,7 @@ def run_with_heartbeat(
             time.sleep(0.25)
     finally:
         if process.poll() is None:
-            process.kill()
+            _terminate_process_tree(process)
 
     returncode = process.wait()
     _join_reader(stdout_thread, stderr_thread)
@@ -175,6 +183,29 @@ def _drain(source: queue.Queue[str], target: list[str]) -> None:
 def _join_reader(*threads: threading.Thread) -> None:
     for thread in threads:
         thread.join(timeout=1)
+
+
+def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            killpg = getattr(os, "killpg")
+            getpgid = getattr(os, "getpgid")
+            sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
+            killpg(getpgid(process.pid), sigkill)
+    except (OSError, subprocess.SubprocessError):
+        try:
+            process.kill()
+        except OSError:
+            pass
 
 
 def _heartbeat_line(

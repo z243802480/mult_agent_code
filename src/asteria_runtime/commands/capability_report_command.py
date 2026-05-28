@@ -37,12 +37,16 @@ class CapabilityReportResult:
     average_repair_rounds: float = 0.0
     model_calls: int = 0
     tool_calls: int = 0
+    tool_budget_units: int = 0
+    max_context_estimated_tokens: int = 0
+    max_context_window_ratio: float = 0.0
     model_profiles: list[dict[str, Any]] = field(default_factory=list)
     model_profile_path: Path | None = None
     route_guidance: dict[str, Any] = field(default_factory=dict)
     latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
     matrix_route_guidance: dict[str, Any] = field(default_factory=dict)
     runtime_os: dict[str, Any] = field(default_factory=dict)
+    evidence_health: dict[str, Any] = field(default_factory=dict)
     common_blockers: list[str] = field(default_factory=list)
     next_actions: list[str] = field(default_factory=list)
 
@@ -62,8 +66,15 @@ class CapabilityReportResult:
                         f"scenarios={self.latest_acceptance.get('passed')}/"
                         f"{self.latest_acceptance.get('total')}"
                     ),
-                    f"Release validation: {self.latest_acceptance.get('release_validation')}",
+                    "Latest acceptance state: "
+                    f"{self.latest_acceptance.get('release_validation')}",
                 ]
+            )
+        if self.evidence_health:
+            lines.append(
+                "Evidence health: "
+                f"{self.evidence_health.get('status')} - "
+                f"{self.evidence_health.get('summary')}"
             )
         if self.capability_summary:
             lines.append("Capabilities:")
@@ -78,7 +89,14 @@ class CapabilityReportResult:
             )[:8]:
                 lines.append(f"  - {failure_type}: {count}")
         lines.append(f"Average repair rounds: {self.average_repair_rounds:.2f}")
-        lines.append(f"Cost signals: {self.model_calls} model calls, {self.tool_calls} tool calls")
+        lines.append(
+            "Cost signals: "
+            f"{self.model_calls} model calls, "
+            f"{self.tool_calls} raw tool calls, "
+            f"{self.tool_budget_units} weighted tool units, "
+            f"{self.max_context_estimated_tokens} max context tokens "
+            f"({self.max_context_window_ratio:.2f} window ratio)"
+        )
         if self.model_profiles:
             lines.append("Model capability profiles:")
             for profile in self.model_profiles[:8]:
@@ -179,13 +197,20 @@ class CapabilityReportCommand:
         )
         capability_summary = self._capability_summary(acceptance_runs, latest)
         failure_types, blockers, repair_rounds = self._execution_evidence_summary(agent_dir)
-        model_calls, tool_calls = self._cost_signals(agent_dir)
+        (
+            model_calls,
+            tool_calls,
+            tool_budget_units,
+            max_context_estimated_tokens,
+            max_context_window_ratio,
+        ) = self._cost_signals(agent_dir)
         model_profiles = self._model_profiles(agent_dir)
         model_profile_path = self._write_model_profile(agent_dir, model_profiles)
         route_guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(agent_dir)
         latest_matrix = latest_real_provider_matrix(agent_dir)
         matrix_route_guidance = self._matrix_route_guidance(latest_matrix)
         runtime_os = self._runtime_os_summary(agent_dir, latest)
+        evidence_health = self._evidence_health(route_guidance, matrix_route_guidance, runtime_os)
         next_actions = self._next_actions(
             latest,
             capability_summary,
@@ -205,12 +230,16 @@ class CapabilityReportCommand:
             average_repair_rounds=repair_rounds,
             model_calls=model_calls,
             tool_calls=tool_calls,
+            tool_budget_units=tool_budget_units,
+            max_context_estimated_tokens=max_context_estimated_tokens,
+            max_context_window_ratio=max_context_window_ratio,
             model_profiles=model_profiles,
             model_profile_path=model_profile_path,
             route_guidance=route_guidance,
             latest_real_provider_matrix=latest_matrix,
             matrix_route_guidance=matrix_route_guidance,
             runtime_os=runtime_os,
+            evidence_health=evidence_health,
             common_blockers=blockers,
             next_actions=next_actions,
         )
@@ -322,16 +351,34 @@ class CapabilityReportCommand:
                 )
                 blocker_counts[summary] = blocker_counts.get(summary, 0) + 1
 
-    def _cost_signals(self, agent_dir: Path) -> tuple[int, int]:
+    def _cost_signals(self, agent_dir: Path) -> tuple[int, int, int, int, float]:
         model_calls = 0
         tool_calls = 0
+        tool_budget_units = 0
+        max_context_estimated_tokens = 0
+        max_context_window_ratio = 0.0
         for run_dir in self._run_dirs(agent_dir):
             cost_path = run_dir / "cost_report.json"
             if cost_path.exists():
                 cost = self.store.read(cost_path, "cost_report")
                 model_calls += int(cost.get("model_calls") or 0)
                 tool_calls += int(cost.get("tool_calls") or 0)
-        return model_calls, tool_calls
+                tool_budget_units += int(cost.get("tool_budget_units", cost.get("tool_calls") or 0))
+                max_context_estimated_tokens = max(
+                    max_context_estimated_tokens,
+                    int(cost.get("max_context_estimated_tokens") or 0),
+                )
+                max_context_window_ratio = max(
+                    max_context_window_ratio,
+                    float(cost.get("context_window_ratio") or 0.0),
+                )
+        return (
+            model_calls,
+            tool_calls,
+            tool_budget_units,
+            max_context_estimated_tokens,
+            max_context_window_ratio,
+        )
 
     def _model_profiles(self, agent_dir: Path) -> list[dict[str, Any]]:
         profiles: dict[tuple[str, str, str, str], dict[str, Any]] = {}
@@ -884,7 +931,7 @@ class CapabilityReportCommand:
         closed_failures = set(closure.get("closed_failures", [])) if closure_ok else set()
         effective_passed = int(aggregate.get("passed") or 0) + len(closed_failures)
         effective_failed = max(0, failed - len(closed_failures))
-        release_validation = "ready"
+        release_validation = "acceptance_passed"
         if effective_failed and not closure_ok:
             release_validation = "blocked"
         elif trend or latest.get("repair_closure"):
@@ -955,6 +1002,53 @@ class CapabilityReportCommand:
         if not model_profiles:
             actions.append("Run a long-run or acceptance cycle to collect model capability data.")
         return list(dict.fromkeys(actions))
+
+    def _evidence_health(
+        self,
+        route_guidance: dict[str, Any],
+        matrix_route_guidance: dict[str, Any],
+        runtime_os: dict[str, Any],
+    ) -> dict[str, Any]:
+        runtime_status = str(runtime_os.get("status") or "unknown")
+        raw_gate = runtime_os.get("gate")
+        gate: dict[str, Any] = raw_gate if isinstance(raw_gate, dict) else {}
+        missing_capabilities = list(gate.get("missing_capabilities") or [])
+        missing_evidence = list(gate.get("missing_evidence") or [])
+        if missing_capabilities:
+            return {
+                "status": "implementation_gap",
+                "summary": "Runtime OS catalog still has missing capability implementation.",
+                "missing_capabilities": missing_capabilities[:10],
+                "missing_evidence": missing_evidence[:10],
+            }
+        if missing_evidence:
+            return {
+                "status": "evidence_gap",
+                "summary": "Runtime OS capability exists, but release evidence is incomplete.",
+                "missing_capabilities": [],
+                "missing_evidence": missing_evidence[:10],
+            }
+        if route_guidance.get("status") == "blocked":
+            return {
+                "status": "route_health_blocked",
+                "summary": "Provider route health blocks widening validation.",
+                "recommended_actions": list(route_guidance.get("recommended_actions") or [])[:5],
+            }
+        if matrix_route_guidance.get("status") == "blocked":
+            return {
+                "status": "real_provider_matrix_blocked",
+                "summary": "Latest real-provider matrix needs repair before widening validation.",
+                "recommended_actions": list(matrix_route_guidance.get("recommended_actions") or [])[:5],
+            }
+        if runtime_status in {"pass", "ready"}:
+            return {
+                "status": "ready",
+                "summary": "Implementation and evidence are aligned for the current release scope.",
+            }
+        return {
+            "status": runtime_status,
+            "summary": "Capability evidence is not yet sufficient for release readiness.",
+        }
 
     def _matrix_route_guidance(self, matrix: dict[str, Any]) -> dict[str, Any]:
         if not matrix:

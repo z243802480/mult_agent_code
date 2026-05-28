@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from asteria_runtime.core.budget import BudgetController, BudgetExceededError
+from asteria_runtime.core.context_budget import estimate_request_context_tokens
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.models.model_call_logger import ModelCallLogger
 from asteria_runtime.models.model_progress_sink import model_progress_sink
@@ -23,6 +24,9 @@ class FakeModelClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         try:
             if self.budget:
+                self.budget.record_context_estimate(
+                    estimate_request_context_tokens(request.messages)
+                )
                 self.budget.record_model_call(request.model_tier)
         except BudgetExceededError as exc:
             if self.logger:

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from asteria_runtime.core.budget import BudgetExceededError
 from asteria_runtime.core.capability_decision_recorder import CapabilityDecisionRecorder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -289,6 +290,27 @@ class McpAdapter:
                 result,
             )
             return result
+        if context.budget:
+            try:
+                context.budget.record_tool_call(f"mcp.{server_name}/{tool_name}")
+            except BudgetExceededError as exc:
+                result = McpInvocationResult(
+                    ok=False,
+                    summary=f"MCP denied by budget: {capability_name}",
+                    error=str(exc),
+                    status="denied",
+                )
+                self._record_invocation(
+                    context,
+                    task,
+                    invocation_id,
+                    server_name,
+                    tool_name,
+                    arguments or {},
+                    decision,
+                    result,
+                )
+                return result
         session = self.sessions.get(server_name)
         if session is None:
             result = McpInvocationResult(

@@ -215,7 +215,7 @@ def test_weekly_report_handles_missing_inputs(tmp_path: Path) -> None:
     assert report["long_run"]["cycles"] == 0
     assert report["runtime_os"]["status"] == "missing_acceptance"
     assert "No long-run cycle reports were found" in report["risks"][0]
-    assert "asteria /long-run-plan" in report["next_actions"][0]
+    assert "asteria daily-plan" in report["next_actions"][0]
 
 
 def runtime_os_report(tmp_path: Path) -> dict:
