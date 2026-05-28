@@ -84,7 +84,7 @@ def test_preparer_replaces_doc_only_verification_with_stable_file_check() -> Non
         "tool_calls": [
             {
                 "tool_name": "write_file",
-                "args": {"path": "docs/readiness_batch_note.md", "content": "# Readiness\n"},
+                "args": {"path": "docs/validation_batch_note.md", "content": "# Validation\n"},
             },
         ],
         "verification": [
@@ -93,7 +93,7 @@ def test_preparer_replaces_doc_only_verification_with_stable_file_check() -> Non
                 "args": {
                     "command": (
                         'python -c "from pathlib import Path; '
-                        'paths=["docs/readiness_batch_note.md"]; print(paths)"'
+                        'paths=["docs/validation_batch_note.md"]; print(paths)"'
                     )
                 },
             },
@@ -103,8 +103,8 @@ def test_preparer_replaces_doc_only_verification_with_stable_file_check() -> Non
     prepared = _preparer().prepare(
         action,
         _task(
-            expected_artifacts=["docs/readiness_batch_note.md"],
-            expected_changed_files=["docs/readiness_batch_note.md"],
+            expected_artifacts=["docs/validation_batch_note.md"],
+            expected_changed_files=["docs/validation_batch_note.md"],
             verification_policy={"required": True, "commands": []},
         ),
         {},
@@ -112,7 +112,7 @@ def test_preparer_replaces_doc_only_verification_with_stable_file_check() -> Non
 
     commands = [call["args"]["command"] for call in prepared["verification"]]
     assert len(commands) == 1
-    assert "docs/readiness_batch_note.md" in commands[0]
+    assert "docs/validation_batch_note.md" in commands[0]
     assert "missing or empty" in commands[0]
     assert "bad" not in commands[0]
 

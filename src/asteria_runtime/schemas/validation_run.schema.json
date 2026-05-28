@@ -1,10 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "ReadinessRun",
+  "title": "ValidationRun",
   "type": "object",
   "required": [
     "schema_version",
-    "readiness_run_id",
+    "validation_run_id",
     "created_at",
     "root",
     "status",
@@ -21,7 +21,7 @@
   ],
   "properties": {
     "schema_version": { "type": "string" },
-    "readiness_run_id": { "type": "string" },
+    "validation_run_id": { "type": "string" },
     "created_at": { "type": "string" },
     "root": { "type": "string" },
     "status": {

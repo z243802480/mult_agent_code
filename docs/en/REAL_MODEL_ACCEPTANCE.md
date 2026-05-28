@@ -116,7 +116,7 @@ Failures should be promoted through `asteria /acceptance --promote-failures` rat
 Acceptance reports should carry `scenario_metadata` plus per-scenario `capability` and `tier`.
 Runtime readers backfill known metadata for older history rows, so legacy runs still contribute to
 `asteria capability-report` and `asteria acceptance-gate` coverage. The final
-`.agent/acceptance/acceptance_report.json` is the source of truth for latest release readiness,
+`.agent/acceptance/acceptance_report.json` is the source of truth for latest release validation,
 because it includes runtime trend warnings that script-level history rows may not contain.
 
 Use:
@@ -127,4 +127,4 @@ python -m asteria_runtime /acceptance-gate --root . --suite core --min-scenarios
 ```
 
 The first command blocks on cost or stability trend regressions. The second treats those warnings as
-conditional release readiness, which is useful after a broader successful baseline run.
+conditional release validation, which is useful after a broader successful baseline run.

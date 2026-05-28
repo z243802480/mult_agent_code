@@ -62,7 +62,7 @@ class CapabilityReportResult:
                         f"scenarios={self.latest_acceptance.get('passed')}/"
                         f"{self.latest_acceptance.get('total')}"
                     ),
-                    f"Release readiness: {self.latest_acceptance.get('release_readiness')}",
+                    f"Release validation: {self.latest_acceptance.get('release_validation')}",
                 ]
             )
         if self.capability_summary:
@@ -884,11 +884,11 @@ class CapabilityReportCommand:
         closed_failures = set(closure.get("closed_failures", [])) if closure_ok else set()
         effective_passed = int(aggregate.get("passed") or 0) + len(closed_failures)
         effective_failed = max(0, failed - len(closed_failures))
-        release_readiness = "ready"
+        release_validation = "ready"
         if effective_failed and not closure_ok:
-            release_readiness = "blocked"
+            release_validation = "blocked"
         elif trend or latest.get("repair_closure"):
-            release_readiness = "conditional"
+            release_validation = "conditional"
         return {
             "ok": bool(latest.get("ok")) or (closure_ok and effective_failed == 0),
             "base_ok": bool(latest.get("ok")),
@@ -896,7 +896,7 @@ class CapabilityReportCommand:
             "total": int(aggregate.get("total") or len(latest.get("scenarios", []))),
             "passed": effective_passed,
             "failed": effective_failed,
-            "release_readiness": release_readiness,
+            "release_validation": release_validation,
         }
 
     def _next_actions(
@@ -978,7 +978,7 @@ class CapabilityReportCommand:
             }
         actions = [
             (
-                "Repair latest real-provider P0 matrix failure before widening readiness: "
+                "Repair latest real-provider P0 matrix failure before widening validation: "
                 f"{case} requires {route} for task_kind={task_kind}."
             )
         ]
@@ -1011,7 +1011,7 @@ class CapabilityReportCommand:
         if route == "ask":
             return "Resolve the permission or scope DecisionPoint before retrying the matrix case."
         if route == "stop":
-            return "Stop widening real-provider readiness work until repeated no-new-evidence is diagnosed."
+            return "Stop widening real-provider validation work until repeated no-new-evidence is diagnosed."
         return (
             "Review the latest real-provider matrix route decision, then rerun "
             f"`asteria real-model-smoke --matrix p0 --matrix-case {case}`."

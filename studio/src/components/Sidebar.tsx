@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronRight, Settings, Sparkles, Trash2 } from "lucide-react";
 import type { StudioSession, OverviewPayload, SettingsPayload } from "../types";
-import { SignalCard, gateStage, readinessTone } from "./Shared";
+import { SignalCard, gateStage, validationTone } from "./Shared";
 
 function cleanTitle(value: string): string {
   const text = value.replace(/\?{2,}/g, " ").replace(/\s+/g, " ").trim();
@@ -49,8 +49,8 @@ export function Sidebar({
               icon={<Sparkles size={14} />}
               label="Ready"
               value={gateStage(overview)}
-              detail={String(gate.blocking_reason ?? gate.rollout_state ?? gate.status ?? "Ready to help")}
-              tone={readinessTone(overview)}
+              detail={String(gate.blocking_reason ?? gate.release_state ?? gate.status ?? "Ready to help")}
+              tone={validationTone(overview)}
             />
           </div>
         )}

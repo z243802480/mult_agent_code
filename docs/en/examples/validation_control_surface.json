@@ -2,8 +2,8 @@
   "schema_version": "0.1.0",
   "control_surface": {
     "schema_version": "0.1.0",
-    "command": "readiness",
-    "audience": "maintainer_release_readiness",
+    "command": "validation",
+    "audience": "maintainer_release_validation",
     "stability": "additive",
     "stable_fields": [
       "schema_version",
@@ -12,7 +12,7 @@
       "ok",
       "mode",
       "gate_status",
-      "readiness_run",
+      "validation_run",
       "next_actions"
     ]
   },
@@ -25,13 +25,13 @@
     "control_surface": {
       "schema_version": "0.1.0",
       "command": "gate-status",
-      "audience": "maintainer_release_readiness",
+      "audience": "maintainer_release_validation",
       "stability": "additive",
       "stable_fields": [
         "schema_version",
         "root",
         "stage",
-        "rollout_state",
+        "release_state",
         "release_ready",
         "blocking_reason",
         "gates",
@@ -43,14 +43,14 @@
         "feature_flags",
         "capability_flags",
         "evidence_sources",
-        "readiness_task_limits",
+        "validation_task_limits",
         "validation_recommendation",
         "next_actions"
       ]
     },
     "root": "H:\\mult_agent_code",
-    "stage": "ready_for_small_real_task_readiness",
-    "rollout_state": "release_ready",
+    "stage": "ready_for_small_real_task_validation",
+    "release_state": "release_ready",
     "release_ready": true,
     "blocking_reason": null,
     "gates": {
@@ -59,19 +59,19 @@
         "ok": true,
         "status": "pass"
       },
-      "readiness_suite": {
+      "validation_suite": {
         "present": true,
         "ok": true,
         "status": "pass",
         "total": 4,
         "passed": 4,
         "failed": 0,
-        "readiness_ready": true,
+        "validation_ready": true,
         "route_evidence": {
           "scenarios_with_route_evidence": [
-            "readiness_file_artifact",
-            "readiness_multi_file_scope",
-            "readiness_debug_repair"
+            "validation_file_artifact",
+            "validation_multi_file_scope",
+            "validation_debug_repair"
           ],
           "scenarios_missing_strong": [],
           "scenarios_missing_medium": [],
@@ -139,28 +139,28 @@
           "primary_model": "glm-5",
           "cost_saver_model": "glm-4.7",
           "min_calls_before_enforcement": 3,
-          "min_success_rate_for_readiness": 0.8,
-          "max_timeout_failures_for_readiness": 1,
+          "min_success_rate_for_validation": 0.8,
+          "max_timeout_failures_for_validation": 1,
           "provider_deadline_seconds": 120,
           "stream_idle_timeout_seconds": 30,
           "continue_primary_when": [
             "release gate is being refreshed",
             "route guidance is healthy",
-            "recent success rate is at or above min_success_rate_for_readiness"
+            "recent success rate is at or above min_success_rate_for_validation"
           ],
           "allow_cost_saver_when": [
-            "task is a small readiness validation task",
+            "task is a small validation task",
             "cost budget is constrained",
-            "cost_saver recent success rate is at or above min_success_rate_for_readiness"
+            "cost_saver recent success rate is at or above min_success_rate_for_validation"
           ],
           "downgrade_or_retry_when": [
             "primary route is transiently rate limited",
             "primary route hits one timeout but recent success rate remains acceptable",
             "task is doc-only or low-risk and medium route is healthy"
           ],
-          "block_readiness_when": [
-            "strong goal_spec success rate is below min_success_rate_for_readiness after min_calls_before_enforcement calls",
-            "timeout failures exceed max_timeout_failures_for_readiness",
+          "block_validation_when": [
+            "strong goal_spec success rate is below min_success_rate_for_validation after min_calls_before_enforcement calls",
+            "timeout failures exceed max_timeout_failures_for_validation",
             "authentication, budget, or configuration failure is present",
             "provider streaming evidence is missing for required strong and medium routes"
           ]
@@ -171,8 +171,8 @@
         "success_rate": 1.0,
         "timeout_failures": 0,
         "min_calls_before_enforcement": 3,
-        "min_success_rate_for_readiness": 0.8,
-        "max_timeout_failures_for_readiness": 1,
+        "min_success_rate_for_validation": 0.8,
+        "max_timeout_failures_for_validation": 1,
         "decision": "continue_primary",
         "reason": "Strong goal_spec route is within configured provider strategy thresholds."
       },
@@ -284,10 +284,10 @@
     },
     "evidence_sources": {
       "real_model_gate": "H:\\mult_agent_code\\.asteria\\model\\real_model_gate_report.json",
-      "readiness_suite": "H:\\mult_agent_code\\.asteria\\verification\\real_model_acceptance_readiness.json",
+      "validation_suite": "H:\\mult_agent_code\\.asteria\\verification\\real_model_acceptance_validation.json",
       "core_acceptance": "H:\\mult_agent_code\\.asteria\\acceptance\\acceptance_report.json"
     },
-    "readiness_task_limits": {
+    "validation_task_limits": {
       "max_iterations": 3,
       "max_tasks_per_iteration": 1,
       "max_repairs": 1,
@@ -305,7 +305,7 @@
       ]
     },
     "validation_recommendation": {
-      "level": "full_readiness_core",
+      "level": "full_validation_core",
       "reason": "Schema, policy, or hook/plugin governance files changed.",
       "changed_file_count": 53,
       "governance_changes": [
@@ -355,7 +355,7 @@
       },
       "failures": [],
       "recommended_actions": [
-        "Run `asteria real-model-acceptance --suite readiness` before core acceptance."
+        "Run `asteria real-model-acceptance --suite validation` before core acceptance."
       ],
       "model_call_summary": {
         "run_id": "run-20260517-0001",
@@ -503,29 +503,29 @@
         }
       ]
     },
-    "readiness_report": {
+    "validation_report": {
       "ok": true,
       "root": "H:\\mult_agent_code",
-      "suite": "readiness",
+      "suite": "validation",
       "requested_scenarios": [],
       "created_at": "2026-05-17T18:40:58+08:00",
       "scenario_metadata": [
         {
-          "scenario": "readiness_file_artifact",
-          "capability": "readiness_artifact_creation",
-          "tier": "readiness",
+          "scenario": "validation_file_artifact",
+          "capability": "validation_artifact_creation",
+          "tier": "validation",
           "kind": "run"
         },
         {
-          "scenario": "readiness_multi_file_scope",
-          "capability": "readiness_multi_file_scope",
-          "tier": "readiness",
+          "scenario": "validation_multi_file_scope",
+          "capability": "validation_multi_file_scope",
+          "tier": "validation",
           "kind": "run"
         },
         {
-          "scenario": "readiness_debug_repair",
-          "capability": "readiness_debug_repair",
-          "tier": "readiness",
+          "scenario": "validation_debug_repair",
+          "capability": "validation_debug_repair",
+          "tier": "validation",
           "kind": "run"
         },
         {
@@ -537,11 +537,11 @@
       ],
       "scenarios": [
         {
-          "scenario": "readiness_file_artifact",
-          "capability": "readiness_artifact_creation",
-          "tier": "readiness",
+          "scenario": "validation_file_artifact",
+          "capability": "validation_artifact_creation",
+          "tier": "validation",
           "ok": true,
-          "workspace": "H:\\mult_agent_code\\readiness_file_artifact",
+          "workspace": "H:\\mult_agent_code\\validation_file_artifact",
           "duration_seconds": 187.908,
           "attempts": [
             {
@@ -549,16 +549,16 @@
               "returncode": 0,
               "retryable": false,
               "failure_type": null,
-              "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\readiness_file_artifact\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\readiness_file_artifact\\readiness_runtime.txt\nFinal report: H:\\mult_agent_code\\readiness_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\readiness_file_artifact\\real_model_smoke_transcript.json\n",
+              "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\validation_file_artifact\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\validation_file_artifact\\validation_runtime.txt\nFinal report: H:\\mult_agent_code\\validation_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\validation_file_artifact\\real_model_smoke_transcript.json\n",
               "stderr_tail": ""
             }
           ],
           "summary": {
-            "workspace": "H:\\mult_agent_code\\readiness_file_artifact",
+            "workspace": "H:\\mult_agent_code\\validation_file_artifact",
             "run_id": "run-20260517-0001",
-            "expected_file": "H:\\mult_agent_code\\readiness_file_artifact\\readiness_runtime.txt",
-            "final_report": "H:\\mult_agent_code\\readiness_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md",
-            "transcript": "H:\\mult_agent_code\\readiness_file_artifact\\real_model_smoke_transcript.json",
+            "expected_file": "H:\\mult_agent_code\\validation_file_artifact\\validation_runtime.txt",
+            "final_report": "H:\\mult_agent_code\\validation_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+            "transcript": "H:\\mult_agent_code\\validation_file_artifact\\real_model_smoke_transcript.json",
             "duration_seconds": 187.834,
             "diagnostics": {
               "run_status": "completed",
@@ -584,10 +584,10 @@
                   "asteria_runtime",
                   "/init",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_file_artifact"
+                  "H:\\mult_agent_code\\validation_file_artifact"
                 ],
                 "returncode": 0,
-                "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\readiness_file_artifact\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
+                "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\validation_file_artifact\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
                 "stderr": ""
               },
               {
@@ -598,7 +598,7 @@
                   "asteria_runtime",
                   "/model-check",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_file_artifact"
+                  "H:\\mult_agent_code\\validation_file_artifact"
                 ],
                 "returncode": 0,
                 "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
@@ -611,9 +611,9 @@
                   "-m",
                   "asteria_runtime",
                   "/run",
-                  "Create a local file readiness_runtime.txt containing one line: readiness route artifact ok",
+                  "Create a local file validation_runtime.txt containing one line: validation route artifact ok",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_file_artifact",
+                  "H:\\mult_agent_code\\validation_file_artifact",
                   "--max-iterations",
                   "3",
                   "--max-tasks-per-iteration",
@@ -621,7 +621,7 @@
                   "--no-research"
                 ],
                 "returncode": 0,
-                "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\readiness_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183600-0800.json.\n",
+                "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\validation_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183600-0800.json.\n",
                 "stderr": ""
               }
             ]
@@ -656,15 +656,15 @@
             "strong_used": true,
             "medium_used": true
           },
-          "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\readiness_file_artifact\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\readiness_file_artifact\\readiness_runtime.txt\nFinal report: H:\\mult_agent_code\\readiness_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\readiness_file_artifact\\real_model_smoke_transcript.json\n",
+          "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\validation_file_artifact\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\validation_file_artifact\\validation_runtime.txt\nFinal report: H:\\mult_agent_code\\validation_file_artifact\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\validation_file_artifact\\real_model_smoke_transcript.json\n",
           "stderr": ""
         },
         {
-          "scenario": "readiness_multi_file_scope",
-          "capability": "readiness_multi_file_scope",
-          "tier": "readiness",
+          "scenario": "validation_multi_file_scope",
+          "capability": "validation_multi_file_scope",
+          "tier": "validation",
           "ok": true,
-          "workspace": "H:\\mult_agent_code\\readiness_multi_file_scope",
+          "workspace": "H:\\mult_agent_code\\validation_multi_file_scope",
           "duration_seconds": 119.911,
           "attempts": [
             {
@@ -672,16 +672,16 @@
               "returncode": 0,
               "retryable": false,
               "failure_type": null,
-              "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\readiness_multi_file_scope\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\readiness_multi_file_scope\\notes.py\nFinal report: H:\\mult_agent_code\\readiness_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\readiness_multi_file_scope\\real_model_smoke_transcript.json\n",
+              "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\validation_multi_file_scope\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\validation_multi_file_scope\\notes.py\nFinal report: H:\\mult_agent_code\\validation_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\validation_multi_file_scope\\real_model_smoke_transcript.json\n",
               "stderr_tail": ""
             }
           ],
           "summary": {
-            "workspace": "H:\\mult_agent_code\\readiness_multi_file_scope",
+            "workspace": "H:\\mult_agent_code\\validation_multi_file_scope",
             "run_id": "run-20260517-0001",
-            "expected_file": "H:\\mult_agent_code\\readiness_multi_file_scope\\notes.py",
-            "final_report": "H:\\mult_agent_code\\readiness_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md",
-            "transcript": "H:\\mult_agent_code\\readiness_multi_file_scope\\real_model_smoke_transcript.json",
+            "expected_file": "H:\\mult_agent_code\\validation_multi_file_scope\\notes.py",
+            "final_report": "H:\\mult_agent_code\\validation_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+            "transcript": "H:\\mult_agent_code\\validation_multi_file_scope\\real_model_smoke_transcript.json",
             "duration_seconds": 119.837,
             "diagnostics": {
               "run_status": "completed",
@@ -707,10 +707,10 @@
                   "asteria_runtime",
                   "/init",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_multi_file_scope"
+                  "H:\\mult_agent_code\\validation_multi_file_scope"
                 ],
                 "returncode": 0,
-                "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\readiness_multi_file_scope\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
+                "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\validation_multi_file_scope\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
                 "stderr": ""
               },
               {
@@ -721,7 +721,7 @@
                   "asteria_runtime",
                   "/model-check",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_multi_file_scope"
+                  "H:\\mult_agent_code\\validation_multi_file_scope"
                 ],
                 "returncode": 0,
                 "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
@@ -734,9 +734,9 @@
                   "-m",
                   "asteria_runtime",
                   "/run",
-                  "Create a small multi-file Python notes CLI. Use a package directory named notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support `python notes.py add \"ship readiness\"` and `python notes.py list`, storing notes in notes.json under the current directory.",
+                  "Create a small multi-file Python notes CLI. Use a package directory named notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support `python notes.py add \"ship validation\"` and `python notes.py list`, storing notes in notes.json under the current directory.",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_multi_file_scope",
+                  "H:\\mult_agent_code\\validation_multi_file_scope",
                   "--max-iterations",
                   "5",
                   "--max-tasks-per-iteration",
@@ -744,7 +744,7 @@
                   "--no-research"
                 ],
                 "returncode": 0,
-                "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\readiness_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183800-0800.json.\n",
+                "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\validation_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 1 completed, 0 blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183800-0800.json.\n",
                 "stderr": ""
               }
             ]
@@ -779,15 +779,15 @@
             "strong_used": true,
             "medium_used": true
           },
-          "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\readiness_multi_file_scope\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\readiness_multi_file_scope\\notes.py\nFinal report: H:\\mult_agent_code\\readiness_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\readiness_multi_file_scope\\real_model_smoke_transcript.json\n",
+          "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\validation_multi_file_scope\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\validation_multi_file_scope\\notes.py\nFinal report: H:\\mult_agent_code\\validation_multi_file_scope\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\validation_multi_file_scope\\real_model_smoke_transcript.json\n",
           "stderr": ""
         },
         {
-          "scenario": "readiness_debug_repair",
-          "capability": "readiness_debug_repair",
-          "tier": "readiness",
+          "scenario": "validation_debug_repair",
+          "capability": "validation_debug_repair",
+          "tier": "validation",
           "ok": true,
-          "workspace": "H:\\mult_agent_code\\readiness_debug_repair",
+          "workspace": "H:\\mult_agent_code\\validation_debug_repair",
           "duration_seconds": 103.37,
           "attempts": [
             {
@@ -795,16 +795,16 @@
               "returncode": 0,
               "retryable": false,
               "failure_type": null,
-              "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\readiness_debug_repair\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\readiness_debug_repair\\buggy_math.py\nFinal report: H:\\mult_agent_code\\readiness_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\readiness_debug_repair\\real_model_smoke_transcript.json\n",
+              "stdout_tail": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\validation_debug_repair\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\validation_debug_repair\\buggy_math.py\nFinal report: H:\\mult_agent_code\\validation_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\validation_debug_repair\\real_model_smoke_transcript.json\n",
               "stderr_tail": ""
             }
           ],
           "summary": {
-            "workspace": "H:\\mult_agent_code\\readiness_debug_repair",
+            "workspace": "H:\\mult_agent_code\\validation_debug_repair",
             "run_id": "run-20260517-0001",
-            "expected_file": "H:\\mult_agent_code\\readiness_debug_repair\\buggy_math.py",
-            "final_report": "H:\\mult_agent_code\\readiness_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md",
-            "transcript": "H:\\mult_agent_code\\readiness_debug_repair\\real_model_smoke_transcript.json",
+            "expected_file": "H:\\mult_agent_code\\validation_debug_repair\\buggy_math.py",
+            "final_report": "H:\\mult_agent_code\\validation_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md",
+            "transcript": "H:\\mult_agent_code\\validation_debug_repair\\real_model_smoke_transcript.json",
             "duration_seconds": 103.303,
             "diagnostics": {
               "run_status": "completed",
@@ -830,10 +830,10 @@
                   "asteria_runtime",
                   "/init",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_debug_repair"
+                  "H:\\mult_agent_code\\validation_debug_repair"
                 ],
                 "returncode": 0,
-                "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\readiness_debug_repair\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
+                "stdout": "Initialized Asteria workspace: H:\\mult_agent_code\\validation_debug_repair\nCreated:\n  - .asteria\n  - .asteria/context\n  - .asteria/tasks\n  - .asteria/runs\n  - .asteria/memory\n  - .asteria/project.json\n  - .asteria/policies.json\n  - .asteria/context/root_snapshot.json\n  - .asteria/tasks/backlog.json\n  - AGENTS.md\nWarnings:\n  - No .git directory found; workspace isolation will use controlled writes for now.\n",
                 "stderr": ""
               },
               {
@@ -844,7 +844,7 @@
                   "asteria_runtime",
                   "/model-check",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_debug_repair"
+                  "H:\\mult_agent_code\\validation_debug_repair"
                 ],
                 "returncode": 0,
                 "stdout": "Model check\nProvider: minimax\nModel: MiniMax-M2.7\nBase URL: https://api.minimaxi.com/v1\nConfig: ok\nCall: ok\nSummary: Model returned valid JSON for the health check prompt.\n",
@@ -859,7 +859,7 @@
                   "/run",
                   "Fix the failing tests in this project. Run the Python tests, identify the bug in buggy_math.py, and make the tests pass with the smallest reasonable change.",
                   "--root",
-                  "H:\\mult_agent_code\\readiness_debug_repair",
+                  "H:\\mult_agent_code\\validation_debug_repair",
                   "--max-iterations",
                   "5",
                   "--max-tasks-per-iteration",
@@ -867,7 +867,7 @@
                   "--no-research"
                 ],
                 "returncode": 0,
-                "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\readiness_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 0 completed, 1 blocked.\n- debug: completed - 1 repaired, 0 still blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183943-0800.json.\n",
+                "stdout": "Run: run-20260517-0001\nStatus: completed\nFinal report: H:\\mult_agent_code\\validation_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\n- plan: completed - Created 1 task(s).\n- execute: completed - Iteration 1: 0 completed, 1 blocked.\n- debug: completed - 1 repaired, 0 still blocked.\n- review: pass - Score 0.90; 0 follow-up task(s); 0 decision point(s).\n- compact: completed - Snapshot: snapshot-20260517T183943-0800.json.\n",
                 "stderr": ""
               }
             ]
@@ -903,7 +903,7 @@
             "strong_used": true,
             "medium_used": true
           },
-          "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\readiness_debug_repair\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\readiness_debug_repair\\buggy_math.py\nFinal report: H:\\mult_agent_code\\readiness_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\readiness_debug_repair\\real_model_smoke_transcript.json\n",
+          "stdout": "Real model smoke passed\nWorkspace: H:\\mult_agent_code\\validation_debug_repair\nSession: run-20260517-0001\nArtifact: H:\\mult_agent_code\\validation_debug_repair\\buggy_math.py\nFinal report: H:\\mult_agent_code\\validation_debug_repair\\.asteria\\runs\\run-20260517-0001\\final_report.md\nTranscript: H:\\mult_agent_code\\validation_debug_repair\\real_model_smoke_transcript.json\n",
           "stderr": ""
         },
         {
@@ -947,19 +947,19 @@
         "context_compactions": 3,
         "failed_scenarios": [],
         "capabilities": {
-          "readiness_artifact_creation": {
+          "validation_artifact_creation": {
             "total": 1,
             "passed": 1,
             "failed": 0,
             "ok": true
           },
-          "readiness_multi_file_scope": {
+          "validation_multi_file_scope": {
             "total": 1,
             "passed": 1,
             "failed": 0,
             "ok": true
           },
-          "readiness_debug_repair": {
+          "validation_debug_repair": {
             "total": 1,
             "passed": 1,
             "failed": 0,
@@ -973,7 +973,7 @@
           }
         },
         "tiers": {
-          "readiness": {
+          "validation": {
             "total": 3,
             "passed": 3,
             "failed": 0,
@@ -988,9 +988,9 @@
         },
         "route_evidence": {
           "scenarios_with_route_evidence": [
-            "readiness_file_artifact",
-            "readiness_multi_file_scope",
-            "readiness_debug_repair"
+            "validation_file_artifact",
+            "validation_multi_file_scope",
+            "validation_debug_repair"
           ],
           "scenarios_missing_strong": [],
           "scenarios_missing_medium": [],
@@ -1006,7 +1006,7 @@
           "medium_used": true
         }
       },
-      "readiness_ready": true,
+      "validation_ready": true,
       "trend": {
         "previous": null,
         "deltas": {}
@@ -1694,35 +1694,35 @@
       "trend_warnings": []
     },
     "next_actions": [
-      "Start small real-task readiness validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
+      "Start small real-task validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
       "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears."
     ]
   },
-  "readiness_run": {
+  "validation_run": {
     "schema_version": "0.1.0",
     "control_surface": {
       "schema_version": "0.1.0",
-      "command": "readiness-run",
-      "audience": "maintainer_readiness_execution",
+      "command": "validation-run",
+      "audience": "maintainer_validation_execution",
       "stability": "additive",
       "stable_fields": [
         "schema_version",
-        "readiness_run_id",
+        "validation_run_id",
         "status",
         "summary_path",
         "run_id",
         "next_actions"
       ]
     },
-    "readiness_run_id": "readiness-2026-05-25T004109-0800",
+    "validation_run_id": "validation-2026-05-25T004109-0800",
     "status": "dry_run",
-    "summary_path": "H:\\mult_agent_code\\.asteria\\readiness_runs\\readiness-2026-05-25T004109-0800\\summary.json",
+    "summary_path": "H:\\mult_agent_code\\.asteria\\validation_runs\\validation-2026-05-25T004109-0800\\summary.json",
     "run_id": null,
     "next_actions": [
-      "Run without `--dry-run` to start the controlled small real-task readiness run."
+      "Run without `--dry-run` to start the controlled small real-task validation run."
     ]
   },
   "next_actions": [
-    "Run without `--dry-run` to start the controlled small real-task readiness run."
+    "Run without `--dry-run` to start the controlled small real-task validation run."
   ]
 }

@@ -112,7 +112,7 @@ _ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "max_model_calls": 1,
         "responsibilities": [
             "consume independent verification evidence",
-            "summarize risk and release readiness",
+            "summarize risk and release validation",
             "refuse self-certified success for non-trivial changes",
         ],
         "escalation_policy": "use strong for release-impacting review; downgrade only for read-only summaries",
@@ -169,7 +169,7 @@ _ROLE_DEFAULTS: dict[str, dict[str, Any]] = {
         "responsibilities": [
             "probe provider configuration",
             "verify JSON response and streaming telemetry",
-            "return route readiness evidence without consuming long-task budget",
+            "return route health evidence without consuming long-task budget",
         ],
         "escalation_policy": "use the requested route tier for the probe; keep deadline short and fail fast",
     },

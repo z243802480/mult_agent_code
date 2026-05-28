@@ -127,7 +127,7 @@ Asteria 应采用 mode，而不是用命令数量表达全部产品形态：
 | `build` | 实现用户目标 | read/search/edit/write/shell/test/candidate workspace |
 | `review` | 审查结果和风险 | read/search/diff/test/report |
 | `repair` | 根据失败证据修复 | read/search/edit/shell/test，带失败 observation |
-| `release` | 发布准备验证、gate、promotion | gate/readiness/release/promotion，只走受控命令 |
+| `release` | 验证、gate、promotion | gate/validation/release/promotion，只走受控命令 |
 
 用户不需要理解内部命令。CLI 和 Studio 都应把用户意图映射到 mode，再由模型在该 mode 的能力边界内工作。
 

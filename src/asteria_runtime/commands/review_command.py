@@ -28,7 +28,7 @@ from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
-from asteria_runtime.models.route_resolver import route_readiness_for_tiers
+from asteria_runtime.models.route_resolver import route_health_for_tiers
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -204,7 +204,7 @@ class ReviewCommand:
             )
             raise
         eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval") or {})
-        eval_report["trajectory_eval"]["route_readiness"] = review_context["route_readiness"]
+        eval_report["trajectory_eval"]["route_health"] = review_context["route_health"]
         eval_report["trajectory_eval"]["model_selection"] = review_context["model_selection"]
         failure_classification = self._failure_classification(eval_report)
         eval_report["failure_classification"] = failure_classification
@@ -223,7 +223,7 @@ class ReviewCommand:
                 review_context.get("collaboration_summary") or {},
                 review_context.get("tool_observations") or [],
                 review_context.get("latest_observation_plan") or {},
-                review_context.get("route_readiness") or {},
+                review_context.get("route_health") or {},
                 review_context.get("model_selection") or {},
                 review_context.get("latest_real_provider_matrix") or {},
             ),
@@ -551,7 +551,7 @@ class ReviewCommand:
         )
         model_calls = self._read_jsonl(run_dir / "model_calls.jsonl", "model_call")
         model_profiles = self._read_jsonl(run_dir / "model_profiles.jsonl", "model_profile")
-        route_readiness = self._route_readiness(model_profiles)
+        route_health = self._route_health(model_profiles)
         events = self._read_jsonl(run_dir / "events.jsonl", "event")
         runtime_os_evidence = self.runtime_evidence.run_evidence(run_dir)
         execution_evidence = runtime_os_evidence["task_execution_evidence"]
@@ -563,7 +563,7 @@ class ReviewCommand:
             "task_plan": task_plan,
             "cost_report": cost_report,
             "collaboration_summary": self._collaboration_summary(run_dir),
-            "route_readiness": route_readiness,
+            "route_health": route_health,
             "model_selection": model_selection,
             "latest_real_provider_matrix": latest_real_provider_matrix(agent_dir),
             "trajectory": {
@@ -574,7 +574,7 @@ class ReviewCommand:
                 "tool_observation_actions": tool_observation_action_options(tool_observations),
                 "model_calls": model_calls[-20:],
                 "model_profiles": model_profiles[-20:],
-                "route_readiness": route_readiness,
+                "route_health": route_health,
                 "model_selection": model_selection,
                 "task_execution_evidence": execution_evidence[-20:],
                 "worker_results": runtime_os_evidence["worker_results"][-20:],
@@ -606,7 +606,7 @@ class ReviewCommand:
                 return selection
         return {}
 
-    def _route_readiness(self, model_profiles: list[dict]) -> dict:
+    def _route_health(self, model_profiles: list[dict]) -> dict:
         if not model_profiles:
             return {
                 "status": "unknown",
@@ -618,7 +618,7 @@ class ReviewCommand:
         for profile in model_profiles:
             tier = str(profile.get("model_tier") or "unknown")
             latest_by_tier[tier] = profile
-        return route_readiness_for_tiers(tuple(latest_by_tier))
+        return route_health_for_tiers(tuple(latest_by_tier))
 
     def _deterministic_checks(
         self,
@@ -683,7 +683,7 @@ class ReviewCommand:
         collaboration_summary: dict | None = None,
         tool_observations: list[dict] | None = None,
         latest_observation_plan: dict | None = None,
-        route_readiness: dict | None = None,
+        route_health: dict | None = None,
         model_selection: dict | None = None,
         latest_real_provider_matrix: dict | None = None,
     ) -> str:
@@ -691,16 +691,16 @@ class ReviewCommand:
         action_plan = observation_next_action_plan(tool_observations or [])
         latest_plan = latest_observation_plan or {}
         effective_plan = latest_plan or action_plan
-        route_readiness = route_readiness or {}
+        route_health = route_health or {}
         model_selection = model_selection or {}
         latest_real_provider_matrix = latest_real_provider_matrix or {}
-        blockers = self._human_blockers(eval_report, action_plan, latest_plan, route_readiness)
+        blockers = self._human_blockers(eval_report, action_plan, latest_plan, route_health)
         evidence = self._human_evidence(
             eval_report,
             collaboration_summary or {},
             action_plan,
             latest_plan,
-            route_readiness,
+            route_health,
             model_selection,
         )
         next_actions = self._human_next_actions(eval_report, effective_plan, blockers)
@@ -736,17 +736,17 @@ class ReviewCommand:
             "",
             *self._failure_classification_lines(eval_report),
             "",
-            "## Model Route Readiness",
+            "## Model Route Health",
             "",
-            f"- Status: {route_readiness.get('status', 'unknown')}",
-            f"- Summary: {route_readiness.get('summary', 'No route readiness recorded.')}",
+            f"- Status: {route_health.get('status', 'unknown')}",
+            f"- Summary: {route_health.get('summary', 'No route health recorded.')}",
             *[
                 "- "
                 f"{route.get('tier', 'unknown')}: "
                 f"{route.get('provider', route.get('recorded_provider', 'unknown'))}/"
                 f"{route.get('model_name', route.get('recorded_model_name', 'unknown'))} "
                 f"configured={route.get('configured', False)}"
-                for route in list(route_readiness.get("routes") or [])[:5]
+                for route in list(route_health.get("routes") or [])[:5]
             ],
             "",
             "## Model Selection",
@@ -816,7 +816,7 @@ class ReviewCommand:
         eval_report: dict,
         action_plan: dict,
         latest_plan: dict | None = None,
-        route_readiness: dict | None = None,
+        route_health: dict | None = None,
         model_selection: dict | None = None,
     ) -> list[str]:
         blockers: list[str] = []
@@ -824,7 +824,7 @@ class ReviewCommand:
         if overall.get("status") != "pass":
             blockers.append(f"Review verdict is {overall.get('status')}: {overall.get('reason')}")
         source_plan = latest_plan or action_plan
-        blockers.extend(str(item) for item in (route_readiness or {}).get("blockers") or [])
+        blockers.extend(str(item) for item in (route_health or {}).get("blockers") or [])
         blockers.extend(str(item) for item in source_plan.get("blockers") or [])
         follow_ups = self._follow_ups(eval_report)
         if follow_ups:
@@ -837,7 +837,7 @@ class ReviewCommand:
         collaboration_summary: dict,
         action_plan: dict,
         latest_plan: dict | None = None,
-        route_readiness: dict | None = None,
+        route_health: dict | None = None,
         model_selection: dict | None = None,
     ) -> list[str]:
         source_plan = latest_plan or action_plan
@@ -859,9 +859,9 @@ class ReviewCommand:
                 f"{collaboration_summary.get('successful_workers', 0)}/"
                 f"{collaboration_summary.get('total_workers', 0)} workers succeeded"
             )
-        if route_readiness:
-            evidence.append(f"model routes={route_readiness.get('status', 'unknown')}")
-            for route in list(route_readiness.get("routes") or [])[:3]:
+        if route_health:
+            evidence.append(f"model routes={route_health.get('status', 'unknown')}")
+            for route in list(route_health.get("routes") or [])[:3]:
                 evidence.append(
                     "model route: "
                     f"{route.get('tier', 'unknown')} "

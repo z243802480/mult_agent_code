@@ -290,18 +290,18 @@ def test_requirement_planner_groups_atomic_multifile_cli_artifacts() -> None:
         "original_goal": (
             "Create a small multi-file Python notes CLI. Use a package directory named "
             "notes_app with storage.py and cli.py, plus a runnable notes.py entrypoint. "
-            'It must support `python notes.py add "ship readiness"` and `python notes.py list`, '
+            'It must support `python notes.py add "ship validation"` and `python notes.py list`, '
             "storing notes in notes.json under the current directory."
         ),
         "normalized_goal": "Create a multi-file Python notes CLI",
         "target_outputs": ["local_cli", "python_module"],
         "definition_of_done": [
-            'python notes.py add "ship readiness" exits successfully',
-            "python notes.py list prints ship readiness",
+            'python notes.py add "ship validation" exits successfully',
+            "python notes.py list prints ship validation",
             "notes are stored in notes.json",
         ],
         "verification_strategy": [
-            'python notes.py add "ship readiness"',
+            'python notes.py add "ship validation"',
             "python notes.py list",
         ],
         "expanded_requirements": [

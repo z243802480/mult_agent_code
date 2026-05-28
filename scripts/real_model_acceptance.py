@@ -19,7 +19,7 @@ from asteria_runtime.real_model_acceptance import (  # noqa: E402,F401
     aggregate_results,
     apply_timeout_budget_env,
     classify_acceptance_subprocess_failure,
-    readiness_ready,
+    validation_ready,
     main,
 )
 

@@ -13,7 +13,7 @@ from asteria_runtime.commands.run_command import RunCommand, RunResult
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.recovery_pressure import recovery_pressure_report
-from asteria_runtime.core.runtime_readiness_matrix import runtime_readiness_matrix
+from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
@@ -22,15 +22,15 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
 
-DEFAULT_READINESS_GOAL = (
-    "Create a tiny local readiness validation artifact named readiness_probe.txt containing one line: "
-    "readiness small task ok. Keep the change minimal and verify the file exists."
+DEFAULT_VALIDATION_GOAL = (
+    "Create a tiny local validation artifact named validation_probe.txt containing one line: "
+    "validation small task ok. Keep the change minimal and verify the file exists."
 )
 
 
 @dataclass(frozen=True)
-class ReadinessRunResult:
-    readiness_run_id: str
+class ValidationRunResult:
+    validation_run_id: str
     status: str
     summary_path: Path
     run_id: str | None = None
@@ -39,8 +39,8 @@ class ReadinessRunResult:
     def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": "0.1.0",
-            "control_surface": _readiness_run_control_surface(),
-            "readiness_run_id": self.readiness_run_id,
+            "control_surface": _validation_run_control_surface(),
+            "validation_run_id": self.validation_run_id,
             "status": self.status,
             "summary_path": str(self.summary_path),
             "run_id": self.run_id,
@@ -49,7 +49,7 @@ class ReadinessRunResult:
 
     def to_text(self) -> str:
         lines = [
-            f"Readiness run: {self.readiness_run_id}",
+            f"Validation run: {self.validation_run_id}",
             f"Status: {self.status}",
             f"Summary: {self.summary_path}",
         ]
@@ -61,7 +61,7 @@ class ReadinessRunResult:
         return "\n".join(lines)
 
 
-class ReadinessRunCommand:
+class ValidationRunCommand:
     def __init__(
         self,
         root: Path,
@@ -74,7 +74,7 @@ class ReadinessRunCommand:
         run_command_factory: Callable[..., RunCommand] | None = None,
     ) -> None:
         self.root = root.resolve()
-        self.goal = goal or DEFAULT_READINESS_GOAL
+        self.goal = goal or DEFAULT_VALIDATION_GOAL
         self.dry_run = dry_run
         self.max_iterations = max_iterations
         self.max_tasks_per_iteration = max_tasks_per_iteration
@@ -84,9 +84,9 @@ class ReadinessRunCommand:
         self.run_command_factory = run_command_factory or RunCommand
         self.summary_json = summary_json
 
-    def run(self) -> ReadinessRunResult:
-        readiness_run_id = self._readiness_run_id()
-        summary_path = self._summary_path(readiness_run_id)
+    def run(self) -> ValidationRunResult:
+        validation_run_id = self._validation_run_id()
+        summary_path = self._summary_path(validation_run_id)
         version = VersionCommand().run().to_dict()
         package = PackageCheckCommand(self.root).run().to_dict()
         doctor = DoctorCommand(self.root).run()
@@ -97,7 +97,7 @@ class ReadinessRunCommand:
         blocked_reasons = self._blocked_reasons(doctor.to_dict(), gate.to_dict())
         if blocked_reasons:
             summary = self._build_summary(
-                readiness_run_id=readiness_run_id,
+                validation_run_id=validation_run_id,
                 status="blocked",
                 summary_path=summary_path,
                 version=version,
@@ -109,13 +109,13 @@ class ReadinessRunCommand:
                 evidence={},
                 next_actions=blocked_reasons,
             )
-            self.store.write(summary_path, summary, "readiness_run")
-            return ReadinessRunResult(readiness_run_id, "blocked", summary_path, None, blocked_reasons)
+            self.store.write(summary_path, summary, "validation_run")
+            return ValidationRunResult(validation_run_id, "blocked", summary_path, None, blocked_reasons)
 
         if self.dry_run:
-            actions = ["Run without `--dry-run` to start the controlled small real-task readiness run."]
+            actions = ["Run without `--dry-run` to start the controlled small real-task validation run."]
             summary = self._build_summary(
-                readiness_run_id=readiness_run_id,
+                validation_run_id=validation_run_id,
                 status="dry_run",
                 summary_path=summary_path,
                 version=version,
@@ -127,8 +127,8 @@ class ReadinessRunCommand:
                 evidence={},
                 next_actions=actions,
             )
-            self.store.write(summary_path, summary, "readiness_run")
-            return ReadinessRunResult(readiness_run_id, "dry_run", summary_path, None, actions)
+            self.store.write(summary_path, summary, "validation_run")
+            return ValidationRunResult(validation_run_id, "dry_run", summary_path, None, actions)
 
         run_command = self.run_command_factory(
             root=self.root,
@@ -143,7 +143,7 @@ class ReadinessRunCommand:
         status = self._status_from_run(run_result, evidence)
         actions = self._next_actions(status, run_result.run_id, evidence)
         summary = self._build_summary(
-            readiness_run_id=readiness_run_id,
+            validation_run_id=validation_run_id,
             status=status,
             summary_path=summary_path,
             version=version,
@@ -155,20 +155,20 @@ class ReadinessRunCommand:
             evidence=evidence,
             next_actions=actions,
         )
-        self.store.write(summary_path, summary, "readiness_run")
-        return ReadinessRunResult(readiness_run_id, status, summary_path, run_result.run_id, actions)
+        self.store.write(summary_path, summary, "validation_run")
+        return ValidationRunResult(validation_run_id, status, summary_path, run_result.run_id, actions)
 
     def _blocked_reasons(self, doctor: dict[str, object], gate: dict[str, Any]) -> list[str]:
         reasons: list[str] = []
         if doctor.get("ok") is not True:
-            reasons.append("Fix `asteria doctor` error checks before readiness-run.")
-        if gate.get("stage") != "ready_for_small_real_task_readiness":
+            reasons.append("Fix `asteria doctor` error checks before validation-run.")
+        if gate.get("stage") != "ready_for_small_real_task_validation":
             blocking_reason = gate.get("blocking_reason")
             if blocking_reason:
                 reasons.append(str(blocking_reason))
             else:
                 reasons.append(
-                    "Reach `ready_for_small_real_task_readiness` via real model gate, readiness suite, and core acceptance."
+                    "Reach `ready_for_small_real_task_validation` via real model gate, validation suite, and core acceptance."
                 )
         route_guidance = gate.get("route_guidance")
         if isinstance(route_guidance, dict) and route_guidance.get("status") == "blocked":
@@ -178,7 +178,7 @@ class ReadinessRunCommand:
     def _build_summary(
         self,
         *,
-        readiness_run_id: str,
+        validation_run_id: str,
         status: str,
         summary_path: Path,
         version: dict[str, object],
@@ -192,8 +192,8 @@ class ReadinessRunCommand:
     ) -> dict[str, Any]:
         return {
             "schema_version": "0.1.0",
-            "control_surface": _readiness_run_control_surface(),
-            "readiness_run_id": readiness_run_id,
+            "control_surface": _validation_run_control_surface(),
+            "validation_run_id": validation_run_id,
             "created_at": now_iso(),
             "root": str(self.root),
             "status": status,
@@ -205,7 +205,7 @@ class ReadinessRunCommand:
                     "package-check",
                     "doctor",
                     "gate-status",
-                    "readiness-run",
+                    "validation-run",
                 ],
                 "version": version,
                 "package_check": package,
@@ -271,7 +271,7 @@ class ReadinessRunCommand:
             "merge_gate_evidence_count": len(merge_gate),
             "route_evidence": route_evidence,
             "runtime_progress_metrics": progress_metrics,
-            "runtime_readiness_matrix": runtime_readiness_matrix(self.root, progress_metrics),
+            "runtime_validation_matrix": runtime_validation_matrix(self.root, progress_metrics),
             "recovery_pressure": recovery_pressure_report(self.root, self.validator),
             "cost_report": cost_report,
             "worker_statuses": sorted(
@@ -296,8 +296,8 @@ class ReadinessRunCommand:
     def _next_actions(self, status: str, run_id: str, evidence: dict[str, Any]) -> list[str]:
         if status == "completed":
             return [
-                f"Inspect `.asteria/readiness_runs` summary and run `{run_id}` final report.",
-                "Use this run as evidence before widening real-task readiness scope.",
+                f"Inspect `.asteria/validation_runs` summary and run `{run_id}` final report.",
+                "Use this run as evidence before widening real-task validation scope.",
             ]
         route = evidence.get("route_evidence") if isinstance(evidence, dict) else {}
         if isinstance(route, dict) and not route.get("medium_used"):
@@ -326,22 +326,22 @@ class ReadinessRunCommand:
             ],
         }
 
-    def _summary_path(self, readiness_run_id: str) -> Path:
+    def _summary_path(self, validation_run_id: str) -> Path:
         if self.summary_json:
             return self.summary_json.resolve()
-        return self.root / ".asteria" / "readiness_runs" / readiness_run_id / "summary.json"
+        return self.root / ".asteria" / "validation_runs" / validation_run_id / "summary.json"
 
-    def _readiness_run_id(self) -> str:
-        return "readiness-" + now_iso().replace(":", "").replace("+", "-").replace(".", "")
+    def _validation_run_id(self) -> str:
+        return "validation-" + now_iso().replace(":", "").replace("+", "-").replace(".", "")
 
 
-def _readiness_run_control_surface() -> dict[str, object]:
+def _validation_run_control_surface() -> dict[str, object]:
     return control_surface_contract(
-        command="readiness-run",
-        audience="maintainer_readiness_execution",
+        command="validation-run",
+        audience="maintainer_validation_execution",
         stable_fields=[
             "schema_version",
-            "readiness_run_id",
+            "validation_run_id",
             "status",
             "summary_path",
             "run_id",

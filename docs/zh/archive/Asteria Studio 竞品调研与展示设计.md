@@ -46,9 +46,9 @@ Codex 的关键价值在于把任务做成可验证工作流：review PR、执�
 
 对 Studio 的落点：
 
-- 首页要显示 gate/readiness/core readiness，而不仅是聊天 transcript。
+- 首页要显示 gate/validation/core validation，而不仅是聊天 transcript。
 - 每条运行事件应保留 phase、status、route、artifact/evidence，方便复盘。
-- 对文档、小工具、测试修复、受控重构等发布准备验证任务，要能看成本、repair、replan、promotion 趋势。
+- 对文档、小工具、测试修复、受控重构等验证任务，要能看成本、repair、replan、promotion 趋势。
 - 未来的 dogfooding 证据包导出应成为 Studio 一级动作。
 
 ## 3. 展示设计原则
@@ -56,7 +56,7 @@ Codex 的关键价值在于把任务做成可验证工作流：review PR、执�
 Studio 当前阶段采用“任务驾驶舱 + 证据 Inspector”的布局：
 
 - 左栏：workspace/session 列表、当前安全模式、入口动作。
-- 中栏：readiness strip、任务时间线、composer。用户先看到能不能跑、卡在哪，再进入对话。
+- 中栏：validation strip、任务时间线、composer。用户先看到能不能跑、卡在哪，再进入对话。
 - 右栏：selected event inspector、runtime health、model routes、recent files。
 
 视觉风格：
@@ -80,7 +80,7 @@ Studio 当前阶段采用“任务驾驶舱 + 证据 Inspector”的布局：
 ## 5. 后续计划
 
 - P0：接入 evidence bundle 导出按钮，输出脱敏诊断包路径和摘要。
-- P0：把 gate/readiness/release 的推荐动作做成只读 command preview。
+- P0：把 gate/validation/release 的推荐动作做成只读 command preview。
 - P0：把 route guidance 的 provider_route_strategy 展示为产品化判定，而不是裸 JSON。
 - P1：展示 candidate workspace / promotion queue 状态，并支持 approve/reject/discard 的受控命令预览。
 - P1：把 model streaming heartbeat 做成低噪声进度行：first chunk、last chunk、duration、idle timeout。
@@ -120,20 +120,20 @@ User Goal
 
 后续若 runtime 补充更强的 event schema，Studio 再从启发式映射升级为 schema-driven timeline。
 
-## 7. Evidence Explorer 与 Actionable Readiness
+## 7. Evidence Explorer 与 Actionable Validation
 
 在 run narrative 之后，Studio 需要把“发生了什么”继续推进到“证据在哪里、下一步做什么”。本轮补充两个只读能力：
 
 - 新增 `/api/runs/:runId`，只读取 `.asteria/runs/<run-id>` 下固定证据文件：`run.json`、`cost_report.json`、`goal_spec.json`、`task_plan.json`、`task_plan_eval.json`、`agent_run_graph.json`，以及 model calls、task evidence、worker results、validation results、events 的 JSONL tail。
 - Inspector 增加 `Evidence Explorer`，用户可以在最近 runs 间切换，扫读 model call、validation、worker、task evidence 摘要，并按需展开单条 JSON。
 - Evidence Explorer 只展示证据和可预览文件，不执行命令、不读取任意路径、不突破 protected path 规则。
-- 主栏新增 `Actionable Readiness`，把 `gate-status --json` 的 `next_actions`、`route_guidance.recommended_actions`、`provider_route_strategy.recommended_action`、`validation_recommendation.command` 和 promotion 风险转成短行动项。
+- 主栏新增 `Actionable Validation`，把 `gate-status --json` 的 `next_actions`、`route_guidance.recommended_actions`、`provider_route_strategy.recommended_action`、`validation_recommendation.command` 和 promotion 风险转成短行动项。
 - 推荐动作默认是 command preview，用于提示用户下一步应验证、审查或阻断，而不是让 dashboard 绕过 runtime policy。
 
 这一步让驾驶舱形成三层阅读顺序：
 
 ```text
-Readiness: 当前能不能继续
+Validation: 当前能不能继续
 Run Narrative: 一次任务怎么推进
 Evidence Explorer: 证据和下一步动作在哪里
 ```

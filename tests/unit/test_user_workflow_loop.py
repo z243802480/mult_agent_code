@@ -901,7 +901,7 @@ def test_goal_run_result_uses_explicit_session_status_when_not_current(tmp_path:
     assert result.recommended_next_command == "review"
 
 
-def test_review_report_includes_model_route_readiness_blocker(
+def test_review_report_includes_model_route_health_blocker(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -937,7 +937,7 @@ def test_review_report_includes_model_route_readiness_blocker(
     ).run()
 
     report = review.review_report_path.read_text(encoding="utf-8")
-    assert "## Model Route Readiness" in report
+    assert "## Model Route Health" in report
     assert "- Status: blocked" in report
     assert "AGENT_MODEL_STRONG_API_KEY or AGENT_MODEL_API_KEY or OPENAI_API_KEY" in report
     assert "model routes=blocked" in report
@@ -945,7 +945,7 @@ def test_review_report_includes_model_route_readiness_blocker(
         review.eval_report_path,
         "eval_report",
     )
-    assert eval_report["trajectory_eval"]["route_readiness"]["status"] == "blocked"
+    assert eval_report["trajectory_eval"]["route_health"]["status"] == "blocked"
 
 
 def _create_minimal_completed_run(root: Path) -> str:

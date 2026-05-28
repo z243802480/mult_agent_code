@@ -48,10 +48,10 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
   "contract: public contracts such as schema, policy, merge gate, security, and compatibility invariants",
   "workflow: user-visible runtime workflows such as plan, run, execute, debug, review, and resume",
-  "release_gate: release readiness reports, acceptance gates, capability reports, and weekly reports",
+  "release_gate: release validation reports, acceptance gates, capability reports, and weekly reports",
   "real_provider: tests for real-model smoke, acceptance, routing, and fake-provider rejection",
   "real_provider_smoke: real-provider smoke and route gate tests",
-  "real_provider_readiness: real-provider readiness acceptance tests and readiness contracts",
+  "real_provider_validation: real-provider validation acceptance tests and validation contracts",
   "real_provider_core: real-provider core/nightly acceptance contracts",
   "mcp_official_smoke: official MCP server stdio smoke tests",
 ]

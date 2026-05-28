@@ -80,33 +80,33 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="offline verification artifact",
         max_iterations=3,
     ),
-    "readiness_file_artifact": AcceptanceScenario(
-        name="readiness_file_artifact",
-        capability="readiness_artifact_creation",
-        tier="readiness",
-        goal=("Create a local file readiness_runtime.txt containing one line: readiness route artifact ok"),
-        expected_file="readiness_runtime.txt",
-        expected_text="readiness route artifact ok",
+    "validation_file_artifact": AcceptanceScenario(
+        name="validation_file_artifact",
+        capability="validation_artifact_creation",
+        tier="validation",
+        goal=("Create a local file validation_runtime.txt containing one line: validation route artifact ok"),
+        expected_file="validation_runtime.txt",
+        expected_text="validation route artifact ok",
         max_iterations=3,
     ),
-    "readiness_multi_file_scope": AcceptanceScenario(
-        name="readiness_multi_file_scope",
-        capability="readiness_multi_file_scope",
-        tier="readiness",
+    "validation_multi_file_scope": AcceptanceScenario(
+        name="validation_multi_file_scope",
+        capability="validation_multi_file_scope",
+        tier="validation",
         goal=(
             "Create a small multi-file Python notes CLI. Use a package directory named notes_app "
             "with storage.py and cli.py, plus a runnable notes.py entrypoint. It must support "
-            '`python notes.py add "ship readiness"` and `python notes.py list`, storing notes in '
+            '`python notes.py add "ship validation"` and `python notes.py list`, storing notes in '
             "notes.json under the current directory."
         ),
         expected_file="notes.py",
         expected_text="notes_app",
         max_iterations=5,
     ),
-    "readiness_debug_repair": AcceptanceScenario(
-        name="readiness_debug_repair",
-        capability="readiness_debug_repair",
-        tier="readiness",
+    "validation_debug_repair": AcceptanceScenario(
+        name="validation_debug_repair",
+        capability="validation_debug_repair",
+        tier="validation",
         goal=(
             "Fix the failing tests in this project. Run the Python tests, identify the bug in "
             "buggy_math.py, and make the tests pass with the smallest reasonable change."
@@ -125,10 +125,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
             ),
         },
     ),
-    "readiness_doc_update": AcceptanceScenario(
-        name="readiness_doc_update",
-        capability="readiness_doc_only_task",
-        tier="readiness",
+    "validation_doc_update": AcceptanceScenario(
+        name="validation_doc_update",
+        capability="validation_doc_only_task",
+        tier="validation",
         goal=(
             "Create a README.md in the docs/ directory with three sections: "
             "'Overview' (one paragraph about this tool), 'Quick Start' (3 numbered steps), "
@@ -138,10 +138,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="Overview",
         max_iterations=3,
     ),
-    "readiness_small_cli": AcceptanceScenario(
-        name="readiness_small_cli",
-        capability="readiness_small_cli",
-        tier="readiness",
+    "validation_small_cli": AcceptanceScenario(
+        name="validation_small_cli",
+        capability="validation_small_cli",
+        tier="validation",
         goal=(
             "Create a single-file Python CLI named greet.py that takes a name as a "
             "command-line argument and prints 'Hello, <name>!' to stdout. "
@@ -151,10 +151,10 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="Hello",
         max_iterations=3,
     ),
-    "readiness_refactor": AcceptanceScenario(
-        name="readiness_refactor",
-        capability="readiness_controlled_refactor",
-        tier="readiness",
+    "validation_refactor": AcceptanceScenario(
+        name="validation_refactor",
+        capability="validation_controlled_refactor",
+        tier="validation",
         goal=(
             "Refactor the file shapes.py by extracting a base class Shape with an abstract "
             "area() method, then make Circle and Rectangle inherit from it. Keep all existing "
@@ -364,13 +364,13 @@ SUITES = {
         "config_driven_report",
         *runtime_os_scenario_names(),
     ],
-    "readiness": [
-        "readiness_file_artifact",
-        "readiness_multi_file_scope",
-        "readiness_debug_repair",
-        "readiness_doc_update",
-        "readiness_small_cli",
-        "readiness_refactor",
+    "validation": [
+        "validation_file_artifact",
+        "validation_multi_file_scope",
+        "validation_debug_repair",
+        "validation_doc_update",
+        "validation_small_cli",
+        "validation_refactor",
         "runtime_request_resume",
     ],
     "advanced": [
@@ -430,7 +430,7 @@ def run_from_args(args: argparse.Namespace) -> None:
             "scenario_metadata": scenario_metadata,
             "scenarios": results,
             "aggregate": aggregate,
-            "readiness_ready": readiness_ready(args.suite, aggregate),
+            "validation_ready": validation_ready(args.suite, aggregate),
         }
         attach_history(args.history_jsonl, summary)
         write_summary_paths(summary_paths, summary)
@@ -453,7 +453,7 @@ def run_from_args(args: argparse.Namespace) -> None:
                     "scenario_metadata": scenario_metadata_for(selected),
                     "scenarios": results,
                     "aggregate": aggregate_results(results, scenario_metadata_for(selected)),
-                    "readiness_ready": False,
+                    "validation_ready": False,
                     "error": str(exc),
                 },
             )
@@ -1115,8 +1115,8 @@ def aggregate_route_evidence(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def readiness_ready(suite: str, aggregate: dict[str, Any]) -> bool:
-    if suite != "readiness":
+def validation_ready(suite: str, aggregate: dict[str, Any]) -> bool:
+    if suite != "validation":
         return False
     route_evidence = aggregate.get("route_evidence")
     return bool(

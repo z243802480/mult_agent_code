@@ -155,8 +155,8 @@ def _policy_020_to_030(data: dict[str, Any]) -> dict[str, Any]:
     strong_goal_spec.setdefault("primary_model", "glm-5")
     strong_goal_spec.setdefault("cost_saver_model", "glm-4.7")
     strong_goal_spec.setdefault("min_calls_before_enforcement", 3)
-    strong_goal_spec.setdefault("min_success_rate_for_readiness", 0.8)
-    strong_goal_spec.setdefault("max_timeout_failures_for_readiness", 1)
+    strong_goal_spec.setdefault("min_success_rate_for_validation", 0.8)
+    strong_goal_spec.setdefault("max_timeout_failures_for_validation", 1)
     strong_goal_spec.setdefault("provider_deadline_seconds", 120)
     strong_goal_spec.setdefault("stream_idle_timeout_seconds", 30)
     strong_goal_spec.setdefault(
@@ -164,15 +164,15 @@ def _policy_020_to_030(data: dict[str, Any]) -> dict[str, Any]:
         [
             "release gate is being refreshed",
             "route guidance is healthy",
-            "recent success rate is at or above min_success_rate_for_readiness",
+            "recent success rate is at or above min_success_rate_for_validation",
         ],
     )
     strong_goal_spec.setdefault(
         "allow_cost_saver_when",
         [
-            "task is a small readiness validation task",
+            "task is a small validation task",
             "cost budget is constrained",
-            "cost_saver recent success rate is at or above min_success_rate_for_readiness",
+            "cost_saver recent success rate is at or above min_success_rate_for_validation",
         ],
     )
     strong_goal_spec.setdefault(
@@ -184,10 +184,10 @@ def _policy_020_to_030(data: dict[str, Any]) -> dict[str, Any]:
         ],
     )
     strong_goal_spec.setdefault(
-        "block_readiness_when",
+        "block_validation_when",
         [
-            "strong goal_spec success rate is below min_success_rate_for_readiness after min_calls_before_enforcement calls",
-            "timeout failures exceed max_timeout_failures_for_readiness",
+            "strong goal_spec success rate is below min_success_rate_for_validation after min_calls_before_enforcement calls",
+            "timeout failures exceed max_timeout_failures_for_validation",
             "authentication, budget, or configuration failure is present",
             "provider streaming evidence is missing for required strong and medium routes",
         ],

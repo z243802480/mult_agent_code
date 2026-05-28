@@ -136,7 +136,7 @@ def run_from_args(args: argparse.Namespace) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the controlled real-model gate before readiness release validation."
+        description="Run the controlled real-model gate before release validation."
     )
     parser.add_argument("--root", type=Path, default=None, help="Gate workspace root.")
     parser.add_argument(
@@ -175,12 +175,12 @@ def validate_environment(*, allow_fake: bool) -> None:
     strong = route_provider("strong")
     medium = route_provider("medium")
     if not strong:
-        raise GateFailure("AGENT_MODEL_STRONG_PROVIDER is required for readiness gate.")
+        raise GateFailure("AGENT_MODEL_STRONG_PROVIDER is required for validation gate.")
     if not medium:
-        raise GateFailure("AGENT_MODEL_MEDIUM_PROVIDER is required for readiness gate.")
+        raise GateFailure("AGENT_MODEL_MEDIUM_PROVIDER is required for validation gate.")
     if not allow_fake and (strong in OFFLINE_PROVIDERS or medium in OFFLINE_PROVIDERS):
         raise GateFailure(
-            "fake/offline routes require --allow-fake and are not readiness-release evidence."
+            "fake/offline routes require --allow-fake and are not validation-release evidence."
         )
     if not allow_fake:
         _require_route_key("strong")
@@ -527,8 +527,8 @@ def report_path(args: argparse.Namespace, workspace: Path) -> Path:
 
 def recommended_actions(failures: list[str]) -> list[str]:
     if not failures:
-        return ["Run `asteria real-model-acceptance --suite readiness` before core acceptance."]
-    actions = ["Fix failed route checks before readiness release validation."]
+        return ["Run `asteria real-model-acceptance --suite validation` before core acceptance."]
+    actions = ["Fix failed route checks before release validation."]
     if any("strong" in failure for failure in failures):
         actions.append(
             "Check GLM/coordinator provider key, endpoint, JSON response, and tier routing."

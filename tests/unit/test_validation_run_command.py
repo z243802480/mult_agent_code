@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from asteria_runtime.commands.readiness_run_command import ReadinessRunCommand
+from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.run_command import RunResult, RunStepSummary
 from asteria_runtime.storage.json_store import JsonStore
@@ -11,17 +11,17 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
 
-def _assert_readiness_run_result_control_surface(payload: dict) -> None:
+def _assert_validation_run_result_control_surface(payload: dict) -> None:
     contract = payload["control_surface"]
 
     assert payload["schema_version"] == "0.1.0"
     assert contract["schema_version"] == "0.1.0"
-    assert contract["command"] == "readiness-run"
-    assert contract["audience"] == "maintainer_readiness_execution"
+    assert contract["command"] == "validation-run"
+    assert contract["audience"] == "maintainer_validation_execution"
     assert contract["stability"] == "additive"
     assert {
         "schema_version",
-        "readiness_run_id",
+        "validation_run_id",
         "status",
         "summary_path",
         "run_id",
@@ -32,51 +32,51 @@ def _assert_readiness_run_result_control_surface(payload: dict) -> None:
 
 
 
-def _assert_readiness_run_summary_control_surface(summary: dict) -> None:
-    _assert_readiness_run_result_control_surface(summary)
-    SchemaValidator(Path("schemas")).validate("readiness_run", summary)
+def _assert_validation_run_summary_control_surface(summary: dict) -> None:
+    _assert_validation_run_result_control_surface(summary)
+    SchemaValidator(Path("schemas")).validate("validation_run", summary)
 
-def test_readiness_run_blocks_until_release_gates_are_ready(tmp_path: Path) -> None:
+def test_validation_run_blocks_until_release_gates_are_ready(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 
-    result = ReadinessRunCommand(tmp_path, dry_run=True).run()
+    result = ValidationRunCommand(tmp_path, dry_run=True).run()
 
     assert result.status == "blocked"
-    _assert_readiness_run_result_control_surface(result.to_dict())
+    _assert_validation_run_result_control_surface(result.to_dict())
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
-    _assert_readiness_run_summary_control_surface(summary)
+    _assert_validation_run_summary_control_surface(summary)
     assert summary["status"] == "blocked"
     assert summary["preflight"]["gate_status"]["stage"] == "missing_real_model_gate"
     assert summary["next_actions"]
 
 
-def test_readiness_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatch) -> None:
+def test_validation_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     _configure_release_routes(monkeypatch)
     _write_ready_gate_reports(tmp_path)
 
-    result = ReadinessRunCommand(tmp_path, dry_run=True).run()
+    result = ValidationRunCommand(tmp_path, dry_run=True).run()
 
     assert result.status == "dry_run"
-    _assert_readiness_run_result_control_surface(result.to_dict())
+    _assert_validation_run_result_control_surface(result.to_dict())
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
-    _assert_readiness_run_summary_control_surface(summary)
+    _assert_validation_run_summary_control_surface(summary)
     assert summary["dry_run"] is True
     assert summary["preflight"]["sequence"] == [
         "version",
         "package-check",
         "doctor",
         "gate-status",
-        "readiness-run",
+        "validation-run",
     ]
     assert summary["preflight"]["version"]["package"] == "asteria-runtime"
     assert "package_check" in summary["preflight"]
-    assert summary["preflight"]["gate_status"]["stage"] == "ready_for_small_real_task_readiness"
+    assert summary["preflight"]["gate_status"]["stage"] == "ready_for_small_real_task_validation"
     assert summary["route_expectations"]["planning_coordinator"] == "strong"
     assert summary["route_expectations"]["worker"] == "medium"
 
 
-def test_readiness_run_explains_blocked_route_guidance(
+def test_validation_run_explains_blocked_route_guidance(
     tmp_path: Path, monkeypatch
 ) -> None:
     InitCommand(tmp_path).run()
@@ -121,7 +121,7 @@ def test_readiness_run_explains_blocked_route_guidance(
         "model_capability_profile",
     )
 
-    result = ReadinessRunCommand(tmp_path, dry_run=True).run()
+    result = ValidationRunCommand(tmp_path, dry_run=True).run()
 
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
     assert result.status == "blocked"
@@ -129,33 +129,33 @@ def test_readiness_run_explains_blocked_route_guidance(
     assert any("route guidance" in action for action in summary["next_actions"])
 
 
-def test_readiness_run_executes_small_task_and_collects_route_evidence(
+def test_validation_run_executes_small_task_and_collects_route_evidence(
     tmp_path: Path, monkeypatch
 ) -> None:
     InitCommand(tmp_path).run()
     _configure_release_routes(monkeypatch)
     _write_ready_gate_reports(tmp_path)
 
-    result = ReadinessRunCommand(
+    result = ValidationRunCommand(
         tmp_path,
-        goal="Create readiness evidence",
+        goal="Create validation evidence",
         run_command_factory=FakeRunCommand,
     ).run()
 
     assert result.status == "completed"
-    _assert_readiness_run_result_control_surface(result.to_dict())
-    assert result.run_id == "run-readiness-0001"
+    _assert_validation_run_result_control_surface(result.to_dict())
+    assert result.run_id == "run-validation-0001"
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
-    _assert_readiness_run_summary_control_surface(summary)
+    _assert_validation_run_summary_control_surface(summary)
     assert summary["status"] == "completed"
-    assert summary["run_result"]["run_id"] == "run-readiness-0001"
+    assert summary["run_result"]["run_id"] == "run-validation-0001"
     assert summary["evidence"]["route_evidence"]["strong_used"] is True
     assert summary["evidence"]["route_evidence"]["medium_used"] is True
     assert summary["evidence"]["worker_result_count"] == 1
     assert summary["evidence"]["runtime_progress_metrics"]["permission_reason_coverage"][
         "coverage_ratio"
     ] == 1.0
-    assert summary["evidence"]["runtime_readiness_matrix"]["ready"] is True
+    assert summary["evidence"]["runtime_validation_matrix"]["ready"] is True
     assert "recovery_pressure" in summary["evidence"]
 
 
@@ -165,7 +165,7 @@ class FakeRunCommand:
         self.kwargs = kwargs
 
     def run(self) -> RunResult:
-        run_id = "run-readiness-0001"
+        run_id = "run-validation-0001"
         run_dir = self.root / ".asteria" / "runs" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         _write_jsonl(
@@ -185,11 +185,11 @@ class FakeRunCommand:
                     "run_id": run_id,
                     "task_id": "task-0001",
                     "status": "succeeded",
-                    "artifact_refs": ["readiness_probe.txt"],
+                    "artifact_refs": ["validation_probe.txt"],
                     "validation_refs": [],
                     "failure_evidence_refs": [],
                     "cost": {"model_calls": 1, "tool_calls": 1},
-                    "summary": "Created readiness probe.",
+                    "summary": "Created validation probe.",
                 }
             ],
         )
@@ -299,7 +299,7 @@ class FakeRunCommand:
             run_id=run_id,
             status="completed",
             final_report_path=run_dir / "final_report.md",
-            steps=[RunStepSummary("execute", "completed", "fake readiness execution")],
+            steps=[RunStepSummary("execute", "completed", "fake validation execution")],
         )
 
 
@@ -312,11 +312,11 @@ def _write_ready_gate_reports(root: Path) -> None:
         json.dumps({"ok": True}),
         encoding="utf-8",
     )
-    (verification_dir / "real_model_acceptance_readiness.json").write_text(
+    (verification_dir / "real_model_acceptance_validation.json").write_text(
         json.dumps(
             {
                 "ok": True,
-                "readiness_ready": True,
+                "validation_ready": True,
                 "aggregate": {
                     "total": 4,
                     "passed": 4,

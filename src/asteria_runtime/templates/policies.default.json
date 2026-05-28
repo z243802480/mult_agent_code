@@ -105,28 +105,28 @@
       "primary_model": "glm-5",
       "cost_saver_model": "glm-4.7",
       "min_calls_before_enforcement": 3,
-      "min_success_rate_for_readiness": 0.8,
-      "max_timeout_failures_for_readiness": 1,
+      "min_success_rate_for_validation": 0.8,
+      "max_timeout_failures_for_validation": 1,
       "provider_deadline_seconds": 120,
       "stream_idle_timeout_seconds": 30,
       "continue_primary_when": [
         "release gate is being refreshed",
         "route guidance is healthy",
-        "recent success rate is at or above min_success_rate_for_readiness"
+        "recent success rate is at or above min_success_rate_for_validation"
       ],
       "allow_cost_saver_when": [
-        "task is a small readiness validation task",
+        "task is a small validation task",
         "cost budget is constrained",
-        "cost_saver recent success rate is at or above min_success_rate_for_readiness"
+        "cost_saver recent success rate is at or above min_success_rate_for_validation"
       ],
       "downgrade_or_retry_when": [
         "primary route is transiently rate limited",
         "primary route hits one timeout but recent success rate remains acceptable",
         "task is doc-only or low-risk and medium route is healthy"
       ],
-      "block_readiness_when": [
-        "strong goal_spec success rate is below min_success_rate_for_readiness after min_calls_before_enforcement calls",
-        "timeout failures exceed max_timeout_failures_for_readiness",
+      "block_validation_when": [
+        "strong goal_spec success rate is below min_success_rate_for_validation after min_calls_before_enforcement calls",
+        "timeout failures exceed max_timeout_failures_for_validation",
         "authentication, budget, or configuration failure is present",
         "provider streaming evidence is missing for required strong and medium routes"
       ]

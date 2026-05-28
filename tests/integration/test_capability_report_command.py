@@ -190,7 +190,7 @@ def test_capability_report_summarizes_acceptance_and_execution_evidence(
     result = CapabilityReportCommand(tmp_path).run()
 
     assert result.acceptance_runs == 1
-    assert result.latest_acceptance["release_readiness"] == "blocked"
+    assert result.latest_acceptance["release_validation"] == "blocked"
     assert result.capability_summary["multi_file_change"]["failed"] == 1
     assert result.failure_types["verification_failed"] == 1
     assert result.model_profiles[0]["provider"] == "minimax"
@@ -644,7 +644,7 @@ def test_capability_report_uses_acceptance_runtime_evidence_without_run_jsonl(
     assert "acceptance worker evidence: present" in result.to_text()
 
 
-def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path) -> None:
+def test_capability_report_uses_latest_report_for_trend_validation(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     store = JsonStore(validator)
     jsonl = JsonlStore(validator)
@@ -670,7 +670,7 @@ def test_capability_report_uses_latest_report_for_trend_readiness(tmp_path: Path
 
     result = CapabilityReportCommand(tmp_path).run()
 
-    assert result.latest_acceptance["release_readiness"] == "conditional"
+    assert result.latest_acceptance["release_validation"] == "conditional"
 
 
 def test_capability_report_marks_closed_repair_as_conditional(tmp_path: Path) -> None:
@@ -702,7 +702,7 @@ def test_capability_report_marks_closed_repair_as_conditional(tmp_path: Path) ->
 
     result = CapabilityReportCommand(tmp_path).run()
 
-    assert result.latest_acceptance["release_readiness"] == "conditional"
+    assert result.latest_acceptance["release_validation"] == "conditional"
     assert result.latest_acceptance["ok"] is True
     assert result.latest_acceptance["base_ok"] is False
     assert result.latest_acceptance["passed"] == 1

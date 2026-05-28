@@ -2,7 +2,7 @@
 
 > 2026-05-28 同步记录：`user_progress.jsonl` 现在是 Tool 权限决策的用户侧主线。每次 Tool 调用前必须记录 `permission/permission_decision`，并在 `data.capability_decision` 中包含 `decision`、`allowed`、`requires_decision`、`intent`、`task_kind`、`risk`、`permission_mode` 和 `reason`。对应原始证据写入 `capability_decisions.jsonl`，执行观察写入 `tool_observations.jsonl`。MCP/Skill 接入真实执行路径时复用同一字段格式；Studio/CLI 只消费这些 runtime-native 事件和 artifact/evidence refs。
 
-> 2026-05-28 追加同步：权限决策审计入口已收敛为 `CapabilityDecisionRecorder`，但 Tool、MCP、Skill 不是同一种执行机制。Tool 走本地工具网关和 `tool_observations.jsonl`；MCP 应走外部 server/session/protocol 调用入口；Skill 应走按需加载的过程知识/产物能力入口。三者只共享 capability decision 记录格式：先生成并持久化 `capability_decisions.jsonl` 与 `permission/permission_decision`，再进入各自执行层；readiness/gate 统计 reason 覆盖率。
+> 2026-05-28 追加同步：权限决策审计入口已收敛为 `CapabilityDecisionRecorder`，但 Tool、MCP、Skill 不是同一种执行机制。Tool 走本地工具网关和 `tool_observations.jsonl`；MCP 应走外部 server/session/protocol 调用入口；Skill 应走按需加载的过程知识/产物能力入口。三者只共享 capability decision 记录格式：先生成并持久化 `capability_decisions.jsonl` 与 `permission/permission_decision`，再进入各自执行层；validation/gate 统计 reason 覆盖率。
 
 > 2026-05-28 MCP adapter 同步：`McpAdapter` 已接入真实 MCP protocol/session 调用入口。MCP 调用结果写入 `mcp_invocations.jsonl`；用户进展为兼容现有 schema 暂使用 `channel=tool,event_type=tool_output`，并在 `data.capability_type=mcp`、`data.adapter=mcp_protocol_session`、`data.mcp_invocation` 中标明这是 MCP 事件。权限决策仍先写 `permission/permission_decision`，不复用 `ToolExecutionGateway`。官方 `@modelcontextprotocol/server-everything@2026.1.26` 已完成真实 stdio smoke，当前 stdio framing 为 JSONL。
 

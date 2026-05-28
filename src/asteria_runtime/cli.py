@@ -31,8 +31,8 @@ from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.evidence_bundle_command import EvidenceBundleCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gate_command import GateCommand
-from asteria_runtime.commands.readiness_command import ReadinessCommand
-from asteria_runtime.commands.readiness_run_command import ReadinessRunCommand
+from asteria_runtime.commands.validation_command import ValidationCommand
+from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.plugins_command import PluginsCommand
@@ -324,7 +324,7 @@ def build_parser() -> argparse.ArgumentParser:
     gate_status_parser = subcommands.add_parser(
         "gate-status",
         aliases=["/gate-status"],
-        help="Show real model gate, readiness suite, and core acceptance readiness",
+        help="Show real model gate, validation suite, and core acceptance validation",
     )
     gate_status_parser.add_argument("--root", default=".", help="Workspace root path")
     gate_status_parser.add_argument(
@@ -336,7 +336,7 @@ def build_parser() -> argparse.ArgumentParser:
     gate_parser = subcommands.add_parser(
         "gate",
         aliases=["/gate"],
-        help="Run read-only staged rollout checks for package, doctor, and gate status",
+        help="Run read-only staged release checks for package, doctor, and gate status",
         epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
     gate_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -399,7 +399,7 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_gate_parser = subcommands.add_parser(
         "real-model-gate",
         aliases=["/real-model-gate"],
-        help="Run the controlled real-model gate before readiness release validation",
+        help="Run the controlled real-model gate before release validation",
     )
     real_model_gate_parser.add_argument("--root", type=Path, default=None)
     real_model_gate_parser.add_argument("--summary-json", type=Path, default=None)
@@ -434,67 +434,67 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_acceptance_parser.add_argument("--cleanup", action="store_true")
     real_model_acceptance_parser.add_argument("--reuse-workspace", action="store_true")
 
-    readiness_run_parser = subcommands.add_parser(
-        "readiness-run",
-        aliases=["/readiness-run"],
-        help="Run a controlled small real-task readiness validation after release gates pass",
+    validation_run_parser = subcommands.add_parser(
+        "validation-run",
+        aliases=["/validation-run"],
+        help="Run a controlled small real-task validation after release gates pass",
     )
-    readiness_run_parser.add_argument(
+    validation_run_parser.add_argument(
         "goal",
         nargs="?",
         default=None,
         help="Small real-task goal; defaults to a tiny file artifact probe",
     )
-    readiness_run_parser.add_argument("--root", default=".", help="Workspace root path")
-    readiness_run_parser.add_argument(
+    validation_run_parser.add_argument("--root", default=".", help="Workspace root path")
+    validation_run_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Only check preflight and write a readiness-run plan summary",
+        help="Only check preflight and write a validation-run plan summary",
     )
-    readiness_run_parser.add_argument(
+    validation_run_parser.add_argument(
         "--max-iterations",
         type=int,
         default=3,
-        help="Maximum run-loop iterations for the readiness task",
+        help="Maximum run-loop iterations for the validation task",
     )
-    readiness_run_parser.add_argument(
+    validation_run_parser.add_argument(
         "--max-tasks-per-iteration",
         type=int,
         default=1,
         help="Maximum tasks executed per iteration",
     )
-    readiness_run_parser.add_argument(
+    validation_run_parser.add_argument(
         "--summary-json",
         type=Path,
         default=None,
-        help="Write the readiness-run summary to this JSON path",
+        help="Write the validation-run summary to this JSON path",
     )
-    readiness_run_parser.add_argument(
+    validation_run_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
     )
 
-    readiness_parser = subcommands.add_parser(
-        "readiness",
-        aliases=["/readiness"],
-        help="Prepare a dry-run readiness validation plan without changing candidate writes",
+    validation_parser = subcommands.add_parser(
+        "validation",
+        aliases=["/validation"],
+        help="Prepare a dry-run validation plan without changing candidate writes",
         epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
-    readiness_parser.add_argument(
+    validation_parser.add_argument(
         "goal",
         nargs="?",
         default=None,
-        help="Small real-task goal; defaults to the readiness artifact probe",
+        help="Small real-task goal; defaults to the validation artifact probe",
     )
-    readiness_parser.add_argument("--root", default=".", help="Workspace root path")
-    readiness_parser.add_argument(
+    validation_parser.add_argument("--root", default=".", help="Workspace root path")
+    validation_parser.add_argument(
         "--summary-json",
         type=Path,
         default=None,
-        help="Write the readiness dry-run summary to this JSON path",
+        help="Write the validation dry-run summary to this JSON path",
     )
-    readiness_parser.add_argument(
+    validation_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
@@ -510,7 +510,7 @@ def build_parser() -> argparse.ArgumentParser:
     package_check_parser = subcommands.add_parser(
         "package-check",
         aliases=["/package-check", "packaging", "/packaging"],
-        help="Check local packaging metadata before readiness rollout",
+        help="Check local packaging metadata before validation run",
     )
     package_check_parser.add_argument("--root", default=".", help="Workspace root path")
     package_check_parser.add_argument(
@@ -1259,11 +1259,11 @@ def build_parser() -> argparse.ArgumentParser:
             ),
             (
                 "Maintain",
-                "Readiness, rollout, and support commands for maintainers.",
+                "Validation, release, and support commands for maintainers.",
                 [
-                    ("doctor", "Diagnose local runtime setup and model route readiness."),
-                    ("gate", "Run staged readiness checks; use --stage release before release."),
-                    ("readiness", "Plan controlled real-provider rollout tasks."),
+                    ("doctor", "Diagnose local runtime setup and model route health."),
+                    ("gate", "Run staged validation checks; use --stage release before release."),
+                    ("validation", "Plan controlled real-provider validation tasks."),
                     ("evidence-bundle", "Export a redacted diagnostic bundle."),
                 ],
             ),
@@ -1300,7 +1300,7 @@ def build_parser() -> argparse.ArgumentParser:
                     ("daily-report", "Report on a bounded long-run cycle."),
                     ("verification", "Show latest verification summary."),
                     ("package-check", "Check packaging metadata and docs."),
-                    ("gate-status", "Show rollout readiness evidence."),
+                    ("gate-status", "Show release validation evidence."),
                     ("version", "Show runtime version diagnostics."),
                     ("studio-benchmark", "Evaluate Studio sessions against UX benchmarks."),
                 ],
@@ -1312,8 +1312,8 @@ def build_parser() -> argparse.ArgumentParser:
                     ("model-check", "Validate provider configuration."),
                     ("real-model-smoke", "Run an isolated real-model smoke test."),
                     ("real-model-gate", "Run controlled real-model preflight gate."),
-                    ("real-model-acceptance", "Run readiness/core real-provider suites."),
-                    ("readiness-run", "Run or dry-run controlled readiness tasks."),
+                    ("real-model-acceptance", "Run validation/core real-provider suites."),
+                    ("validation-run", "Run or dry-run controlled validation tasks."),
                 ],
             ),
         ]
@@ -1460,8 +1460,8 @@ def main() -> None:
         run_real_model_acceptance(args)
         return
 
-    if command == "readiness-run":
-        readiness_run_result = ReadinessRunCommand(
+    if command == "validation-run":
+        validation_run_result = ValidationRunCommand(
             root=Path(args.root),
             goal=args.goal,
             dry_run=args.dry_run,
@@ -1470,24 +1470,24 @@ def main() -> None:
             summary_json=args.summary_json,
         ).run()
         if args.json:
-            print(json.dumps(readiness_run_result.to_dict(), ensure_ascii=False, indent=2))
+            print(json.dumps(validation_run_result.to_dict(), ensure_ascii=False, indent=2))
         else:
-            print(readiness_run_result.to_text())
-        if readiness_run_result.status in {"blocked", "failed"}:
+            print(validation_run_result.to_text())
+        if validation_run_result.status in {"blocked", "failed"}:
             raise SystemExit(1)
         return
 
-    if command == "readiness":
-        readiness_result = ReadinessCommand(
+    if command == "validation":
+        validation_result = ValidationCommand(
             root=Path(args.root),
             goal=args.goal,
             summary_json=args.summary_json,
         ).run()
         if args.json:
-            print(json.dumps(readiness_result.to_dict(), ensure_ascii=False, indent=2))
+            print(json.dumps(validation_result.to_dict(), ensure_ascii=False, indent=2))
         else:
-            print(readiness_result.to_text())
-        if readiness_result.status == "blocked":
+            print(validation_result.to_text())
+        if validation_result.status == "blocked":
             raise SystemExit(1)
         return
 

@@ -20,9 +20,9 @@ from asteria_runtime.core.recovery_pressure import (
     recovery_pressure_report,
     recovery_pressure_text_lines,
 )
-from asteria_runtime.core.runtime_readiness_matrix import (
-    runtime_readiness_matrix,
-    runtime_readiness_matrix_text_lines,
+from asteria_runtime.core.runtime_validation_matrix import (
+    runtime_validation_matrix,
+    runtime_validation_matrix_text_lines,
 )
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
@@ -36,7 +36,7 @@ class GateStatusResult:
     root: Path
     stage: str
     gate_report: dict[str, Any] = field(default_factory=dict)
-    readiness_report: dict[str, Any] = field(default_factory=dict)
+    validation_report: dict[str, Any] = field(default_factory=dict)
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
@@ -46,7 +46,7 @@ class GateStatusResult:
     promotion_release_risks: dict[str, Any] = field(default_factory=dict)
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
-    runtime_readiness_matrix: dict[str, Any] = field(default_factory=dict)
+    runtime_validation_matrix: dict[str, Any] = field(default_factory=dict)
     recovery_pressure: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
     feature_flags: dict[str, Any] = field(default_factory=dict)
@@ -55,22 +55,22 @@ class GateStatusResult:
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        rollout_state = self._rollout_state()
+        release_state = self._release_state()
         blocking_reason = (
             None
-            if rollout_state == "release_ready"
+            if release_state == "release_ready"
             else (self.next_actions[0] if self.next_actions else None)
         )
         return {
             "schema_version": "0.1.0",
             "control_surface": control_surface_contract(
                 command="gate-status",
-                audience="maintainer_release_readiness",
+                audience="maintainer_release_validation",
                 stable_fields=[
                     "schema_version",
                     "root",
                     "stage",
-                    "rollout_state",
+                    "release_state",
                     "release_ready",
                     "blocking_reason",
                     "gates",
@@ -82,24 +82,24 @@ class GateStatusResult:
                     "promotion_release_risks",
                     "plugin_risks",
                     "runtime_progress_metrics",
-                    "runtime_readiness_matrix",
+                    "runtime_validation_matrix",
                     "recovery_pressure",
                     "feature_flags",
                     "capability_flags",
                     "evidence_sources",
-                    "readiness_task_limits",
+                    "validation_task_limits",
                     "validation_recommendation",
                     "next_actions",
                 ],
             ),
             "root": str(self.root),
             "stage": self.stage,
-            "rollout_state": rollout_state,
-            "release_ready": rollout_state == "release_ready",
+            "release_state": release_state,
+            "release_ready": release_state == "release_ready",
             "blocking_reason": blocking_reason,
             "gates": {
                 "real_model_gate": self._gate_summary(self.gate_report),
-                "readiness_suite": self._gate_summary(self.readiness_report, readiness=True),
+                "validation_suite": self._gate_summary(self.validation_report, validation=True),
                 "core_acceptance": self._gate_summary(self.core_report),
             },
             "route_environment": self.route_environment,
@@ -110,20 +110,20 @@ class GateStatusResult:
             "promotion_release_risks": self.promotion_release_risks,
             "plugin_risks": self.plugin_risks,
             "runtime_progress_metrics": self.runtime_progress_metrics,
-            "runtime_readiness_matrix": self.runtime_readiness_matrix,
+            "runtime_validation_matrix": self.runtime_validation_matrix,
             "recovery_pressure": self.recovery_pressure,
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
             "evidence_sources": self.evidence_sources,
-            "readiness_task_limits": _readiness_task_limits(),
+            "validation_task_limits": _validation_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
-            "readiness_report": self.readiness_report,
+            "validation_report": self.validation_report,
             "core_report": self.core_report,
             "next_actions": self.next_actions,
         }
 
-    def _rollout_state(self) -> str:
+    def _release_state(self) -> str:
         if self.stage in {
             "current_environment_incomplete",
             "route_guidance_blocked",
@@ -132,13 +132,13 @@ class GateStatusResult:
             "plugin_manifests_blocked",
         }:
             return "blocked"
-        if self.stage == "ready_for_small_real_task_readiness":
+        if self.stage == "ready_for_small_real_task_validation":
             return "release_ready"
-        if self.stage in {"ready_for_readiness_suite", "ready_for_core_acceptance"}:
+        if self.stage in {"ready_for_validation_suite", "ready_for_core_acceptance"}:
             return "conditional"
         return "blocked"
 
-    def _gate_summary(self, report: dict[str, Any], readiness: bool = False) -> dict[str, Any]:
+    def _gate_summary(self, report: dict[str, Any], validation: bool = False) -> dict[str, Any]:
         if not report:
             return {"present": False, "ok": None, "status": "missing"}
         summary: dict[str, Any] = {
@@ -151,8 +151,8 @@ class GateStatusResult:
             summary["total"] = int(aggregate.get("total") or 0)
             summary["passed"] = int(aggregate.get("passed") or 0)
             summary["failed"] = int(aggregate.get("failed") or 0)
-        if readiness:
-            summary["readiness_ready"] = report.get("readiness_ready")
+        if validation:
+            summary["validation_ready"] = report.get("validation_ready")
             route = aggregate.get("route_evidence") if isinstance(aggregate, dict) else {}
             if isinstance(route, dict):
                 summary["route_evidence"] = route
@@ -163,7 +163,7 @@ class GateStatusResult:
             "Gate status",
             f"Root: {self.root}",
             f"Stage: {self.stage}",
-            f"Rollout state: {self._rollout_state()}",
+            f"Release state: {self._release_state()}",
         ]
         if self.route_environment:
             lines.append(
@@ -186,7 +186,7 @@ class GateStatusResult:
                 f"{self.latest_observation_plan.get('reason', 'No reason recorded.')}"
             )
         lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
-        lines.extend(runtime_readiness_matrix_text_lines(self.runtime_readiness_matrix))
+        lines.extend(runtime_validation_matrix_text_lines(self.runtime_validation_matrix))
         lines.extend(recovery_pressure_text_lines(self.recovery_pressure))
         if self.feature_flags:
             active = [n for n, v in self.feature_flags.items() if v.get("active")]
@@ -222,7 +222,7 @@ class GateStatusResult:
                 f"progress_events={adapters.get('capability_progress_event_count', 0)}"
             )
         lines.extend(self._report_lines("Real model gate", self.gate_report))
-        lines.extend(self._report_lines("Readiness suite", self.readiness_report, readiness=True))
+        lines.extend(self._report_lines("Validation suite", self.validation_report, validation=True))
         lines.extend(self._report_lines("Core acceptance", self.core_report))
         if self.next_actions:
             lines.append("Recommended next actions:")
@@ -231,20 +231,20 @@ class GateStatusResult:
             lines.append("Recommended validation:")
             lines.append(f"  - level: {self.validation_recommendation.get('level')}")
             lines.append(f"  - command: {self.validation_recommendation.get('command')}")
-        limits = _readiness_task_limits()
-        lines.append("Small readiness task limits:")
+        limits = _validation_task_limits()
+        lines.append("Small validation task limits:")
         lines.append(f"  - max_iterations: {limits['max_iterations']}")
         lines.append(f"  - max_tasks_per_iteration: {limits['max_tasks_per_iteration']}")
         lines.append(f"  - max_repairs: {limits['max_repairs']}")
         return "\n".join(lines)
 
-    def _report_lines(self, label: str, report: dict[str, Any], readiness: bool = False) -> list[str]:
+    def _report_lines(self, label: str, report: dict[str, Any], validation: bool = False) -> list[str]:
         if not report:
             return [f"{label}: missing"]
         status = "pass" if report.get("ok") else "fail"
         lines = [f"{label}: {status}"]
-        if readiness and "readiness_ready" in report:
-            lines.append(f"  readiness_ready: {report.get('readiness_ready')}")
+        if validation and "validation_ready" in report:
+            lines.append(f"  validation_ready: {report.get('validation_ready')}")
         aggregate = report.get("aggregate")
         if isinstance(aggregate, dict):
             lines.append(
@@ -271,16 +271,16 @@ class GateStatusCommand:
     def run(self) -> GateStatusResult:
         gate_path = self.root / ".asteria" / "model" / "real_model_gate_report.json"
         gate = self._read_json(gate_path)
-        readiness, readiness_path = self._latest_acceptance_report("readiness")
+        validation, validation_path = self._latest_acceptance_report("validation")
         core, core_path = self._latest_acceptance_report("core")
         if not core:
             fallback_core_path = self.root / ".asteria" / "acceptance" / "acceptance_report.json"
             core = self._read_json(fallback_core_path)
             core_path = fallback_core_path if core else None
-        stage, actions = self._stage(gate, readiness, core)
+        stage, actions = self._stage(gate, validation, core)
         route_environment = _route_environment()
         route_guidance = _route_guidance(self.root)
-        route_guidance = _release_evidence_route_guidance(route_guidance, gate, readiness, core)
+        route_guidance = _release_evidence_route_guidance(route_guidance, gate, validation, core)
         model_call_contract = _model_call_contract(self.root, self.validator, gate)
         latest_observation_plan = _latest_observation_plan(self.root, self.validator)
         latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
@@ -290,15 +290,15 @@ class GateStatusCommand:
                 *actions,
             ]
         promotion_release_risks = _promotion_release_risks(self.root, self._policy())
-        if stage == "ready_for_small_real_task_readiness" and not route_environment["ready"]:
+        if stage == "ready_for_small_real_task_validation" and not route_environment["ready"]:
             stage = "current_environment_incomplete"
             missing = ", ".join(route_environment["missing_required"])
             actions = [
-                f"Set current model route environment variables before readiness validation: {missing}.",
+                f"Set current model route environment variables before validation: {missing}.",
                 *actions,
             ]
         if (
-            stage == "ready_for_small_real_task_readiness"
+            stage == "ready_for_small_real_task_validation"
             and model_call_contract.get("status") == "blocked"
         ):
             stage = "model_call_contract_blocked"
@@ -308,28 +308,28 @@ class GateStatusCommand:
                 *actions,
             ]
         if (
-            stage == "ready_for_small_real_task_readiness"
+            stage == "ready_for_small_real_task_validation"
             and route_guidance.get("status") == "blocked"
         ):
             stage = "route_guidance_blocked"
             actions = [
-                "Resolve blocked model route guidance before widening readiness validation.",
+                "Resolve blocked model route guidance before widening validation.",
                 *[str(item) for item in route_guidance.get("recommended_actions", [])],
                 *actions,
             ]
         if (
-            stage == "ready_for_small_real_task_readiness"
+            stage == "ready_for_small_real_task_validation"
             and _promotion_risks_exceed_threshold(promotion_release_risks)
         ):
             stage = "candidate_promotion_risk_blocked"
             actions = [
-                "Resolve release-blocking candidate promotions before readiness validation.",
+                "Resolve release-blocking candidate promotions before validation.",
                 "Use `asteria promotions list`, then approve, retry, reject, or discard unresolved candidates.",
                 *actions,
             ]
         plugin_risks = _plugin_risks(self.root, self.validator)
         if (
-            stage == "ready_for_small_real_task_readiness"
+            stage == "ready_for_small_real_task_validation"
             and plugin_risks["blocked"]
         ):
             stage = "plugin_manifests_blocked"
@@ -350,14 +350,14 @@ class GateStatusCommand:
         capability_flags = {n: c.to_dict() for n, c in resolver.capabilities.items()}
 
         progress_metrics = runtime_progress_metrics(self.root, self.validator)
-        readiness_matrix = runtime_readiness_matrix(self.root, progress_metrics)
+        validation_matrix = runtime_validation_matrix(self.root, progress_metrics)
         recovery_pressure = recovery_pressure_report(self.root, self.validator)
 
         return GateStatusResult(
             root=self.root,
             stage=stage,
             gate_report=gate,
-            readiness_report=readiness,
+            validation_report=validation,
             core_report=core,
             route_environment=route_environment,
             route_guidance=route_guidance,
@@ -367,14 +367,14 @@ class GateStatusCommand:
             promotion_release_risks=promotion_release_risks,
             plugin_risks=plugin_risks,
             runtime_progress_metrics=progress_metrics,
-            runtime_readiness_matrix=readiness_matrix,
+            runtime_validation_matrix=validation_matrix,
             recovery_pressure=recovery_pressure,
             validation_recommendation=_validation_recommendation(self.root),
             feature_flags=feature_flags,
             capability_flags=capability_flags,
             evidence_sources=_evidence_sources(
                 gate_path if gate else None,
-                readiness_path,
+                validation_path,
                 core_path,
             ),
             next_actions=actions,
@@ -389,7 +389,7 @@ class GateStatusCommand:
     def _stage(
         self,
         gate: dict[str, Any],
-        readiness: dict[str, Any],
+        validation: dict[str, Any],
         core: dict[str, Any],
     ) -> tuple[str, list[str]]:
         if not gate:
@@ -401,17 +401,17 @@ class GateStatusCommand:
             )
         if not gate.get("ok"):
             return ("real_model_gate_failed", list(gate.get("recommended_actions") or []))
-        if not readiness:
+        if not validation:
             return (
-                "ready_for_readiness_suite",
+                "ready_for_validation_suite",
                 [
-                    "Run `python scripts/real_model_acceptance.py --suite readiness --summary-json .asteria/verification/real_model_acceptance_readiness.json`."
+                    "Run `python scripts/real_model_acceptance.py --suite validation --summary-json .asteria/verification/real_model_acceptance_validation.json`."
                 ],
             )
-        if not readiness.get("ok") or readiness.get("readiness_ready") is not True:
+        if not validation.get("ok") or validation.get("validation_ready") is not True:
             return (
-                "readiness_suite_failed",
-                ["Inspect readiness suite evidence; do not proceed to core acceptance yet."],
+                "validation_suite_failed",
+                ["Inspect validation suite evidence; do not proceed to core acceptance yet."],
             )
         if not core:
             return (
@@ -423,9 +423,9 @@ class GateStatusCommand:
         if not core.get("ok"):
             return ("core_acceptance_failed", ["Repair core acceptance failures before release."])
         return (
-            "ready_for_small_real_task_readiness",
+            "ready_for_small_real_task_validation",
             [
-                "Start small real-task readiness validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
+                "Start small real-task validation with `--max-iterations 3 --max-tasks-per-iteration 1 --no-research`.",
                 "Stop and collect evidence if cost status reaches near_limit or a merge/protected-path risk appears.",
             ],
         )
@@ -461,7 +461,7 @@ class GateStatusCommand:
         return report, path
 
 
-def _readiness_task_limits() -> dict[str, object]:
+def _validation_task_limits() -> dict[str, object]:
     return {
         "max_iterations": 3,
         "max_tasks_per_iteration": 1,
@@ -535,14 +535,14 @@ def _latest_observation_plan(root: Path, validator: SchemaValidator) -> dict[str
 
 def _evidence_sources(
     gate_path: Path | None,
-    readiness_path: Path | None,
+    validation_path: Path | None,
     core_path: Path | None,
 ) -> dict[str, str]:
     sources: dict[str, str] = {}
     if gate_path is not None:
         sources["real_model_gate"] = str(gate_path)
-    if readiness_path is not None:
-        sources["readiness_suite"] = str(readiness_path)
+    if validation_path is not None:
+        sources["validation_suite"] = str(validation_path)
     if core_path is not None:
         sources["core_acceptance"] = str(core_path)
     return sources
@@ -556,11 +556,11 @@ def _route_guidance(root: Path) -> dict[str, Any]:
 def _release_evidence_route_guidance(
     guidance: dict[str, Any],
     gate: dict[str, Any],
-    readiness: dict[str, Any],
+    validation: dict[str, Any],
     core: dict[str, Any],
 ) -> dict[str, Any]:
     if guidance.get("status") != "blocked" or not _release_route_evidence_is_fresh(
-        gate, readiness, core
+        gate, validation, core
     ):
         return guidance
     raw_blocking = guidance.get("blocking") or []
@@ -570,7 +570,7 @@ def _release_evidence_route_guidance(
     retained: list[dict[str, Any]] = []
     demoted: list[dict[str, Any]] = []
     for item in blocking:
-        if _is_superseded_route_guidance_block(item, gate, readiness):
+        if _is_superseded_route_guidance_block(item, gate, validation):
             demoted.append({**item, "severity": 2, "release_evidence_status": "superseded"})
         else:
             retained.append(item)
@@ -582,7 +582,7 @@ def _release_evidence_route_guidance(
         if retained
         else [
             "Release evidence is healthy; keep route guidance under review while collecting fresh capability evidence.",
-            "Run `asteria capability-report` after the next real-provider readiness task to refresh route guidance.",
+            "Run `asteria capability-report` after the next real-provider validation task to refresh route guidance.",
         ]
     )
     return {
@@ -601,16 +601,16 @@ def _release_evidence_route_guidance(
 
 def _release_route_evidence_is_fresh(
     gate: dict[str, Any],
-    readiness: dict[str, Any],
+    validation: dict[str, Any],
     core: dict[str, Any],
 ) -> bool:
     if not gate.get("ok") or not core.get("ok"):
         return False
     if not _gate_model_call_run_id(gate):
         return False
-    if readiness.get("ok") is not True or readiness.get("readiness_ready") is not True:
+    if validation.get("ok") is not True or validation.get("validation_ready") is not True:
         return False
-    aggregate = readiness.get("aggregate")
+    aggregate = validation.get("aggregate")
     aggregate = aggregate if isinstance(aggregate, dict) else {}
     route = aggregate.get("route_evidence")
     route = route if isinstance(route, dict) else {}
@@ -620,10 +620,10 @@ def _release_route_evidence_is_fresh(
 def _is_superseded_route_guidance_block(
     item: dict[str, Any],
     gate: dict[str, Any],
-    readiness: dict[str, Any],
+    validation: dict[str, Any],
 ) -> bool:
     action = str(item.get("recommended_action") or "")
-    if action == "block_readiness_until_strong_goal_spec_stable":
+    if action == "block_validation_until_strong_goal_spec_stable":
         routes = gate.get("routes")
         routes = routes if isinstance(routes, dict) else {}
         strong_route = routes.get("strong")
@@ -632,7 +632,7 @@ def _is_superseded_route_guidance_block(
         blocked_model = str(item.get("model") or "")
         return bool(gate_model and blocked_model and gate_model != blocked_model)
     if action == "review_worker_route_before_scaling":
-        aggregate = readiness.get("aggregate")
+        aggregate = validation.get("aggregate")
         aggregate = aggregate if isinstance(aggregate, dict) else {}
         route = aggregate.get("route_evidence")
         route = route if isinstance(route, dict) else {}
@@ -656,7 +656,7 @@ def _model_call_contract(
             "evidence_scope": evidence_scope,
             "summary": "No recent real-provider model_calls.jsonl evidence was found.",
             "recommended_actions": [
-                "Run model-check or a small real-provider readiness task to collect model call contract evidence."
+                "Run model-check or a small real-provider validation task to collect model call contract evidence."
             ],
             "violations": [],
         }
@@ -766,7 +766,7 @@ def _real_provider_matrix_next_actions(matrix: dict[str, Any]) -> list[str]:
         "repair": "Run the failed matrix case through `asteria debug` or rerun `asteria real-model-smoke --matrix p0 --matrix-case <case>` after fixing verification.",
         "replan": "Run `asteria replan` for the failed matrix case contract, then rerun the targeted matrix case.",
         "ask": "Resolve the permission or scope question before rerunning the targeted matrix case.",
-        "stop": "Stop widening readiness validation until repeated no-new-evidence is investigated.",
+        "stop": "Stop widening validation until repeated no-new-evidence is investigated.",
     }.get(
         route,
         "Inspect the failed matrix case and rerun the targeted matrix case after repair.",
@@ -909,7 +909,7 @@ def _validation_recommendation_for_changed_files(changed_files: list[str]) -> di
     ]
     if governance_changes:
         return {
-            "level": "full_readiness_core",
+            "level": "full_validation_core",
             "reason": "Schema, policy, or hook/plugin governance files changed.",
             "changed_file_count": len(changed_files),
             "governance_changes": governance_changes,
@@ -921,12 +921,12 @@ def _validation_recommendation_for_changed_files(changed_files: list[str]) -> di
         }
     if len(changed_files) >= 12 or len(runtime_changes) >= 4:
         return {
-            "level": "full_readiness_core",
+            "level": "full_validation_core",
             "reason": "Broad Runtime OS changes detected.",
             "changed_file_count": len(changed_files),
             "command": (
                 "ruff check . && mypy src && pytest -q && "
-                "asteria real-model-gate && asteria real-model-acceptance --suite readiness && "
+                "asteria real-model-gate && asteria real-model-acceptance --suite validation && "
                 "asteria /acceptance-gate --suite core"
             ),
         }

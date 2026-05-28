@@ -80,7 +80,7 @@ Each requirement should be marked as:
 - `research`
 - `blocked`
 
-Do not delete meaningful requirements simply because the MVP is narrower. High-risk requirements should be transformed into controls such as permissions, budgets, user decision points, sandbox isolation, validation gates, or staged rollout.
+Do not delete meaningful requirements simply because the MVP is narrower. High-risk requirements should be transformed into controls such as permissions, budgets, user decision points, sandbox isolation, validation gates, or staged release.
 
 ## 7. Default MVP Policy
 

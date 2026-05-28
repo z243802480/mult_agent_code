@@ -38,7 +38,7 @@ def test_top_level_help_groups_command_surface() -> None:
     assert help_text.index("goal    Long-task") < help_text.index("status  Show user-level")
     assert help_text.index("chat    Lightweight") < help_text.index("Maintain")
     assert "run         Compatibility alias for goal mode." in help_text
-    assert "gate             Run staged readiness checks" in help_text
+    assert "gate             Run staged validation checks" in help_text
     assert "real-model-acceptance" in help_text
     assert "Compatibility" in help_text
     assert "slash-prefixed command forms such as `asteria /run` remain aliases" in help_text
@@ -88,7 +88,7 @@ def test_maintainer_command_help_stays_outside_default_completion_path() -> None
         "resume -> review -> accept workflow"
     )
 
-    for command in ("gate", "readiness", "acceptance", "acceptance-gate"):
+    for command in ("gate", "validation", "acceptance", "acceptance-gate"):
         help_text = " ".join(_command_help(command).split())
         assert expected in help_text
         assert "not as an ordinary completion step" in help_text
@@ -172,9 +172,9 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--allow-fake",
         ]
     )
-    readiness_run_args = parser.parse_args(
+    validation_run_args = parser.parse_args(
         [
-            "/readiness-run",
+            "/validation-run",
             "Create a small probe",
             "--root",
             ".",
@@ -182,7 +182,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "--max-iterations",
             "2",
             "--summary-json",
-            "readiness.json",
+            "validation.json",
             "--json",
         ]
     )
@@ -194,14 +194,14 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     model_check_args = parser.parse_args(
         ["/model-check", "--root", ".", "--tier", "strong", "--json"]
     )
-    readiness_args = parser.parse_args(
+    validation_args = parser.parse_args(
         [
-            "/readiness",
+            "/validation",
             "Create a small probe",
             "--root",
             ".",
             "--summary-json",
-            "readiness-plan.json",
+            "validation-plan.json",
             "--json",
         ]
     )
@@ -362,16 +362,16 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert real_model_acceptance_args.command == "/real-model-acceptance"
     assert real_model_acceptance_args.suite == "offline"
     assert real_model_acceptance_args.allow_fake
-    assert readiness_run_args.command == "/readiness-run"
-    assert readiness_run_args.goal == "Create a small probe"
-    assert readiness_run_args.dry_run
-    assert readiness_run_args.max_iterations == 2
-    assert readiness_run_args.summary_json.as_posix() == "readiness.json"
-    assert readiness_run_args.json
-    assert readiness_args.command == "/readiness"
-    assert readiness_args.goal == "Create a small probe"
-    assert readiness_args.summary_json.as_posix() == "readiness-plan.json"
-    assert readiness_args.json
+    assert validation_run_args.command == "/validation-run"
+    assert validation_run_args.goal == "Create a small probe"
+    assert validation_run_args.dry_run
+    assert validation_run_args.max_iterations == 2
+    assert validation_run_args.summary_json.as_posix() == "validation.json"
+    assert validation_run_args.json
+    assert validation_args.command == "/validation"
+    assert validation_args.goal == "Create a small probe"
+    assert validation_args.summary_json.as_posix() == "validation-plan.json"
+    assert validation_args.json
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json
@@ -556,7 +556,7 @@ def test_gate_status_json_output_is_machine_readable(
 
     payload = json.loads(capsys.readouterr().out)
     assert payload["stage"] == "missing_real_model_gate"
-    assert payload["rollout_state"] == "blocked"
+    assert payload["release_state"] == "blocked"
     assert payload["next_actions"]
 
 
@@ -572,7 +572,7 @@ def test_package_check_json_output_is_machine_readable(
     assert payload["schema_version"] == "0.1.0"
     assert payload["status"] == "pass"
     assert any(check["name"] == "console_script" for check in payload["checks"])
-    assert any(check["name"] == "readiness_command_modules" for check in payload["checks"])
+    assert any(check["name"] == "validation_command_modules" for check in payload["checks"])
 
 
 def test_plugins_json_output_is_machine_readable(tmp_path: Path, monkeypatch, capsys) -> None:

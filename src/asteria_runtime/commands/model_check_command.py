@@ -13,7 +13,7 @@ from asteria_runtime.models.model_failure import (
     model_failure_context_from_env,
 )
 from asteria_runtime.models.openai_compatible import OpenAICompatibleProviderError
-from asteria_runtime.models.route_resolver import resolve_model_route, route_readiness_for_tiers
+from asteria_runtime.models.route_resolver import resolve_model_route, route_health_for_tiers
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -28,16 +28,16 @@ class ModelCheckResult:
     failure_report_path: Path | None = None
     failure_type: str | None = None
     streaming: StreamingTelemetry | None = None
-    route_readiness: dict | None = None
+    route_health: dict | None = None
 
     def to_text(self) -> str:
-        route = self.route_readiness or {}
+        route = self.route_health or {}
         lines = [
             "Model check",
             f"Provider: {self.provider}",
             f"Model: {self.model_name or 'not configured'}",
             f"Base URL: {self.base_url or 'not configured'}",
-            f"Route readiness: {route.get('status', 'unknown')}",
+            f"Route health: {route.get('status', 'unknown')}",
             f"Config: {'ok' if self.config_ok else 'failed'}",
             f"Call: {'ok' if self.call_ok else 'skipped/failed'}",
             f"Streaming: {self._streaming_text()}",
@@ -86,7 +86,7 @@ class ModelCheckResult:
             else None,
             "failure_type": self.failure_type,
             "streaming": self.streaming.to_dict() if self.streaming else None,
-            "route_readiness": self.route_readiness or {},
+            "route_health": self.route_health or {},
         }
 
 
@@ -107,7 +107,7 @@ class ModelCheckCommand:
 
     def run(self) -> ModelCheckResult:
         route_resolution = resolve_model_route(self.model_tier)
-        route_readiness = route_readiness_for_tiers((self.model_tier,))
+        route_health = route_health_for_tiers((self.model_tier,))
         context = model_failure_context_from_env(_env_prefix_for_tier(self.model_tier))
         provider = route_resolution.provider or context.provider
         model_name = route_resolution.model_name or context.model_name
@@ -123,7 +123,7 @@ class ModelCheckCommand:
                 call_ok=False,
                 summary=summary,
                 failure_type="configuration",
-                route_readiness=route_readiness,
+                route_health=route_health,
             )
 
         try:
@@ -144,7 +144,7 @@ class ModelCheckCommand:
                 summary=str(exc),
                 failure_report_path=report_path,
                 failure_type=report["failure_type"],
-                route_readiness=route_readiness,
+                route_health=route_health,
             )
 
         if self.skip_call:
@@ -155,7 +155,7 @@ class ModelCheckCommand:
                 config_ok=True,
                 call_ok=False,
                 summary="Configuration loaded; model call skipped.",
-                route_readiness=route_readiness,
+                route_health=route_health,
             )
 
         try:
@@ -177,7 +177,7 @@ class ModelCheckCommand:
                 summary=f"Model call failed: {exc}",
                 failure_report_path=report_path,
                 failure_type=report["failure_type"],
-                route_readiness=route_readiness,
+                route_health=route_health,
             )
 
         if not isinstance(parsed, dict) or parsed.get("ok") is not True:
@@ -196,7 +196,7 @@ class ModelCheckCommand:
                 summary="Model responded, but did not return the expected JSON payload.",
                 failure_report_path=report_path,
                 failure_type=report["failure_type"],
-                route_readiness=route_readiness,
+                route_health=route_health,
             )
 
         return ModelCheckResult(
@@ -207,7 +207,7 @@ class ModelCheckCommand:
             call_ok=True,
             summary="Model returned valid JSON for the health check prompt.",
             streaming=response.streaming,
-            route_readiness=route_readiness,
+            route_health=route_health,
         )
 
     def _request(self) -> ChatRequest:

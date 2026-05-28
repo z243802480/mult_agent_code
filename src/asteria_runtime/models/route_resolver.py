@@ -70,7 +70,7 @@ def resolve_model_route(tier: str) -> ModelRouteResolution:
     )
 
 
-def route_readiness_for_tiers(tiers: list[str] | tuple[str, ...]) -> dict:
+def route_health_for_tiers(tiers: list[str] | tuple[str, ...]) -> dict:
     routes = [resolve_model_route(tier).to_dict() for tier in tiers]
     blocked = [route for route in routes if route.get("configured") is False]
     if blocked:
@@ -98,7 +98,7 @@ def route_readiness_for_tiers(tiers: list[str] | tuple[str, ...]) -> dict:
     }
 
 
-def route_readiness_from_records(records: list[dict]) -> dict:
+def route_health_from_records(records: list[dict]) -> dict:
     routes = [_route_from_record(record) for record in records]
     blocked = [route for route in routes if route.get("configured") is False]
     if blocked:

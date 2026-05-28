@@ -85,7 +85,7 @@ def test_daily_run_plan_only_writes_report_and_markdown(tmp_path: Path) -> None:
     result = DailyRunCommand(
         tmp_path,
         date="release-hardening",
-        objective="Advance the autonomous runtime until release gate readiness.",
+        objective="Advance the autonomous runtime until release gate validation.",
     ).run()
 
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
@@ -93,7 +93,7 @@ def test_daily_run_plan_only_writes_report_and_markdown(tmp_path: Path) -> None:
     assert report["executed"] is False
     assert report["cycle_id"] == "release-hardening"
     assert report["schedule_type"] == "long_running_cycle"
-    assert report["objective"] == "Advance the autonomous runtime until release gate readiness."
+    assert report["objective"] == "Advance the autonomous runtime until release gate validation."
     assert report["goal"]
     assert report["progress"]["planned_actions"] == 1
     assert report["stop_reason"] == "plan_only"

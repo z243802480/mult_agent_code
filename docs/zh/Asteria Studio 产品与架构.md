@@ -10,7 +10,7 @@ Studio 面向三类场景：
 
 - 普通用户智能体工作区：输入 Goal / Plan / Ask，看到实时模型判断、工具调用、文件变化、权限请求、验证过程和最终结果。
 - Project / Workspace 管理：像 Codex / Claude Code 一样展示最近项目，支持打开本地文件夹，切换后 session、run、Git、文件预览、MCP、plugin、skills 和设置都以该 workspace 为边界。
-- 开发者本机内测：确认安装、路由、gate、readiness、core、证据导出是否正常。
+- 开发者本机内测：确认安装、路由、gate、validation、core、证据导出是否正常。
 - 真实项目 dogfooding：查看 run timeline、模型调用、worker/validation evidence、promotion 风险和证据包。
 
 Studio 不负责：
@@ -86,7 +86,7 @@ Future Studio work must first decide whether a feature belongs to Product Worksp
 - Deliverables：预览生成的文件、报告、测试结果和验收回顾。
 - Ops link：进入单独的 Ops / Debug Console，而不是在默认首页展示 backend 面板。
 
-Studio P0 不应让用户直接选择 `execute-one`、`review`、`promotions`、`gate-status`、`readiness` 等 runtime 命令。它可以在内部把自然语言和模式选择映射为受控 runtime action，但默认界面只展示用户能理解的 Goal / Plan / Ask 和结果进展。
+Studio P0 不应让用户直接选择 `execute-one`、`review`、`promotions`、`gate-status`、`validation` 等 runtime 命令。它可以在内部把自然语言和模式选择映射为受控 runtime action，但默认界面只展示用户能理解的 Goal / Plan / Ask 和结果进展。
 
 写入型真实任务暂不直接从 Studio 自动执行。Studio 可以生成建议动作或权限卡，但必须走 runtime policy、预算、approval 和证据记录后再放开。
 
@@ -155,7 +155,7 @@ POST /api/evidence-bundle
 
 Studio 第一版依赖这些稳定字段：
 
-- `gate-status --json`：`stage`、`release_ready`、`rollout_state`、`blocking_reason`、`gates`、`route_guidance`、`evidence_sources`、`next_actions`。
+- `gate-status --json`：`stage`、`release_ready`、`release_state`、`blocking_reason`、`gates`、`route_guidance`、`evidence_sources`、`next_actions`。
 - `doctor --json`：`checks`、`routes`、`sandbox`、`plugin_control`。
 - `package-check --json`：`checks`、`artifacts`、`runbook`。
 - `.asteria/runs/<run-id>/`：`run.json`、`cost_report.json`、`events.jsonl`、`model_calls.jsonl`、`task_execution_evidence.jsonl`、`worker_results.jsonl`、`validation_results.jsonl`。
@@ -198,7 +198,7 @@ Studio 必须默认排除：
 Studio 第一屏应该回答：
 
 - 现在能不能进入内测？
-- 如果不能，卡在 gate、readiness、route、promotion、plugin、环境还是证据缺口？
+- 如果不能，卡在 gate、validation、route、promotion、plugin、环境还是证据缺口？
 - 我在哪里和智能体继续对话、确认权限、看执行反馈？
 - 我下一步应该运行哪个动作？
 - 我不用背 CLI，能不能直接从界面触发安全动作？

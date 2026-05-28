@@ -36,8 +36,8 @@ class StatusResult:
         candidate_promotions = (
             self.current_context.get("candidate_promotions") if self.current_context else {}
         ) or {}
-        route_readiness = (
-            self.current_context.get("route_readiness") if self.current_context else {}
+        route_health = (
+            self.current_context.get("route_health") if self.current_context else {}
         ) or {}
         model_selection = (
             self.current_context.get("model_selection") if self.current_context else {}
@@ -103,7 +103,7 @@ class StatusResult:
                     "model_selection",
                     "latest_model_progress",
                     "model_route_timeline",
-                    "route_readiness",
+                    "route_health",
                     "run_loop_summary_path",
                     "run_loop_summary",
                     "final_report_summary_path",
@@ -143,7 +143,7 @@ class StatusResult:
             "model_selection": model_selection,
             "latest_model_progress": latest_model_progress,
             "model_route_timeline": model_route_timeline,
-            "route_readiness": route_readiness,
+            "route_health": route_health,
             "run_loop_summary_path": run_loop_summary_path,
             "run_loop_summary": run_loop_summary,
             "final_report_summary_path": final_report_summary_path,
@@ -214,9 +214,9 @@ class StatusResult:
                 or "Plugin control preflight failed; inspect plugin configuration."
             )
         blockers = [str(item) for item in self.current_context.get("blockers") or [] if item]
-        route_readiness = self.current_context.get("route_readiness") or {}
-        route_blocker = route_readiness.get("current_blocker")
-        if route_readiness.get("status") == "blocked" and route_blocker:
+        route_health = self.current_context.get("route_health") or {}
+        route_blocker = route_health.get("current_blocker")
+        if route_health.get("status") == "blocked" and route_blocker:
             return str(route_blocker)
         task_summary = self.current_context.get("task_summary") or {}
         run_status = self.current_context.get("run_status") or {}
@@ -311,9 +311,9 @@ class StatusResult:
                 evidence.append(
                     f"latest_execution={latest_execution.get('task_id')} {latest_execution.get('status')}"
                 )
-        route_readiness = self.current_context.get("route_readiness") or {}
-        if route_readiness:
-            evidence.append(f"routes={route_readiness.get('status', 'unknown')}")
+        route_health = self.current_context.get("route_health") or {}
+        if route_health:
+            evidence.append(f"routes={route_health.get('status', 'unknown')}")
         latest_model_progress = self.current_context.get("latest_model_progress") or {}
         if latest_model_progress:
             evidence.append(
@@ -357,8 +357,8 @@ class StatusResult:
             return ["Run `asteria /init --root .`."]
         if recommended:
             return [f"Run `asteria {recommended}`."]
-        route_readiness = self.current_context.get("route_readiness") if self.current_context else {}
-        if (route_readiness or {}).get("status") == "blocked":
+        route_health = self.current_context.get("route_health") if self.current_context else {}
+        if (route_health or {}).get("status") == "blocked":
             return ["Run `asteria model-check --json` and configure the missing model route."]
         run_status = self.current_context.get("run_status") if self.current_context else {}
         if str((run_status or {}).get("current_phase") or "") == "ACCEPTED":
@@ -519,14 +519,14 @@ class StatusResult:
                     f"{cost.get('status', 'unknown')} "
                     f"({cost.get('model_calls', 0)} model, {cost.get('tool_calls', 0)} tool)"
                 )
-            route_readiness = context.get("route_readiness") or {}
-            if route_readiness:
+            route_health = context.get("route_health") or {}
+            if route_health:
                 lines.append(
                     "Model routes: "
-                    f"{route_readiness.get('status', 'unknown')} - "
-                    f"{route_readiness.get('summary', 'no route summary')}"
+                    f"{route_health.get('status', 'unknown')} - "
+                    f"{route_health.get('summary', 'no route summary')}"
                 )
-                for route in list(route_readiness.get("routes") or [])[:3]:
+                for route in list(route_health.get("routes") or [])[:3]:
                     lines.append(
                         "  - "
                         f"{route.get('tier', 'unknown')}: "
@@ -534,8 +534,8 @@ class StatusResult:
                         f"{route.get('model_name', 'unknown')} "
                         f"configured={route.get('configured', False)}"
                     )
-                if route_readiness.get("current_blocker"):
-                    lines.append(f"  next: {route_readiness['current_blocker']}")
+                if route_health.get("current_blocker"):
+                    lines.append(f"  next: {route_health['current_blocker']}")
             model_selection = context.get("model_selection") or {}
             if model_selection:
                 lines.extend(self._model_selection_lines(model_selection))

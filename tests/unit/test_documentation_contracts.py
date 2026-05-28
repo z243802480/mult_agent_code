@@ -7,8 +7,8 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
-from asteria_runtime.commands.readiness_command import ReadinessCommand
-from asteria_runtime.commands.readiness_run_command import ReadinessRunCommand
+from asteria_runtime.commands.validation_command import ValidationCommand
+from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.status_command import StatusCommand
@@ -31,7 +31,7 @@ def test_readme_points_to_existing_chinese_source_of_truth() -> None:
     assert "path. Use plain command names" in readme
     assert "Maintainer-facing validation commands stay separate" in readme
     assert "`asteria gate`" in readme
-    assert "`asteria readiness`" in readme
+    assert "`asteria validation`" in readme
     assert "`asteria acceptance-gate`" in readme
 
 
@@ -68,24 +68,24 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "`asteria doctor --json`",
         "`asteria gate-status --json`",
         "`asteria gate --json`",
-        "`asteria readiness --json`",
-        "`asteria readiness-run --json`",
+        "`asteria validation --json`",
+        "`asteria validation-run --json`",
         "`control_surface`",
         "`stable_fields`",
         "`control_surface.stability` 当前为 `additive`",
         "DecisionPoint",
         "`status` uses `user_workflow`",
         "`doctor` use `maintainer_preflight`",
-        "`gate-status` / `gate` use `maintainer_release_readiness`",
-        "`readiness-run` uses `maintainer_readiness_execution`",
+        "`gate-status` / `gate` use `maintainer_release_validation`",
+        "`validation-run` uses `maintainer_validation_execution`",
         "docs/en/examples/version_control_surface.json",
         "docs/en/examples/package_check_control_surface.json",
         "docs/en/examples/status_control_surface.json",
         "docs/en/examples/doctor_control_surface.json",
         "docs/en/examples/gate_status_control_surface.json",
         "docs/en/examples/gate_control_surface.json",
-        "docs/en/examples/readiness_control_surface.json",
-        "docs/en/examples/readiness_run_control_surface.json",
+        "docs/en/examples/validation_control_surface.json",
+        "docs/en/examples/validation_run_control_surface.json",
         "schemas/control_surface.schema.json",
         "`stability=additive`",
     ]
@@ -138,8 +138,8 @@ def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: P
         "doctor_control_surface.json": DoctorCommand(tmp_path).run().to_dict(),
         "gate_status_control_surface.json": GateStatusCommand(tmp_path).run().to_dict(),
         "gate_control_surface.json": GateCommand(Path.cwd()).run().to_dict(),
-        "readiness_control_surface.json": ReadinessCommand(Path.cwd()).run().to_dict(),
-        "readiness_run_control_surface.json": ReadinessRunCommand(Path.cwd(), dry_run=True).run().to_dict(),
+        "validation_control_surface.json": ValidationCommand(Path.cwd()).run().to_dict(),
+        "validation_run_control_surface.json": ValidationRunCommand(Path.cwd(), dry_run=True).run().to_dict(),
     }
 
     for filename, runtime_payload in runtime_payloads.items():
@@ -158,11 +158,11 @@ def test_control_surface_examples_match_documented_contracts() -> None:
         (
             "gate_status_control_surface.json",
             "gate-status",
-            "maintainer_release_readiness",
+            "maintainer_release_validation",
         ),
-        ("gate_control_surface.json", "gate", "maintainer_release_readiness"),
-        ("readiness_control_surface.json", "readiness", "maintainer_release_readiness"),
-        ("readiness_run_control_surface.json", "readiness-run", "maintainer_readiness_execution"),
+        ("gate_control_surface.json", "gate", "maintainer_release_validation"),
+        ("validation_control_surface.json", "validation", "maintainer_release_validation"),
+        ("validation_run_control_surface.json", "validation-run", "maintainer_validation_execution"),
     ]
 
     for filename, command, audience in examples:
@@ -194,8 +194,8 @@ def test_gate_control_surface_example_keeps_nested_stage_contracts_in_sync() -> 
             assert field in stage_payload
 
 
-def test_readiness_run_control_surface_summary_schema_requires_contract() -> None:
-    schema = json.loads(Path("schemas/readiness_run.schema.json").read_text(encoding="utf-8"))
+def test_validation_run_control_surface_summary_schema_requires_contract() -> None:
+    schema = json.loads(Path("schemas/validation_run.schema.json").read_text(encoding="utf-8"))
 
     assert "control_surface" in schema["required"]
     control_surface = schema["properties"]["control_surface"]

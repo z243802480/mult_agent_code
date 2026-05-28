@@ -38,7 +38,7 @@ class GateCommandResult:
             "schema_version": "0.1.0",
             "control_surface": control_surface_contract(
                 command="gate",
-                audience="maintainer_release_readiness",
+                audience="maintainer_release_validation",
                 stable_fields=[
                     "schema_version",
                     "root",
@@ -142,7 +142,7 @@ class GateCommandResult:
         evidence = [
             f"package_check={package.get('status', 'unknown')}",
             f"doctor={'pass' if doctor.get('ok') else 'blocked'}",
-            f"rollout={gate_status.get('rollout_state', 'unknown')}",
+            f"release={gate_status.get('release_state', 'unknown')}",
         ]
         gates = gate_status.get("gates") if isinstance(gate_status.get("gates"), dict) else {}
         for name, gate in list(gates.items())[:5]:
@@ -332,10 +332,10 @@ class GateCommand:
     ) -> str:
         if package.get("ok") is not True or doctor.get("ok") is not True:
             return "blocked"
-        rollout = gate_status.get("rollout_state")
-        if rollout == "release_ready":
+        release = gate_status.get("release_state")
+        if release == "release_ready":
             return "ready"
-        if rollout == "conditional":
+        if release == "conditional":
             return "conditional"
         return "blocked"
 

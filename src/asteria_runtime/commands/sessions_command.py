@@ -7,8 +7,8 @@ from pathlib import Path
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.worker_tree import WorkerTreeBuilder
 from asteria_runtime.models.route_resolver import (
-    route_readiness_for_tiers,
-    route_readiness_from_records,
+    route_health_for_tiers,
+    route_health_from_records,
 )
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
@@ -220,7 +220,7 @@ class SessionsCommand:
         progress_timeline = self._progress_timeline(run_dir, execution_evidence)
         latest_observation_plan = self._latest_observation_plan(run_dir)
         workspace_envelope = self._workspace_envelope(run_dir)
-        route_readiness = self._route_readiness(run_dir)
+        route_health = self._route_health(run_dir)
         run_loop_summary = self._run_loop_summary(run_dir)
         final_report_summary = self._final_report_summary(run_dir)
         latest_review = self._latest_review_report(run_dir)
@@ -241,7 +241,7 @@ class SessionsCommand:
             pending_decisions,
             task_failures,
             acceptance_failures,
-            route_readiness,
+            route_health,
         )
         risks = (snapshot or {}).get("open_risks") or self._risks(
             run_dir, task_failures, acceptance_failures
@@ -292,7 +292,7 @@ class SessionsCommand:
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,
             "goal_policy": goal_policy,
-            "route_readiness": route_readiness,
+            "route_health": route_health,
             "latest_observation_plan": latest_observation_plan,
             "workspace_envelope": workspace_envelope,
             "worker_tree": worker_tree,
@@ -676,10 +676,10 @@ class SessionsCommand:
         pending_decisions: list[dict],
         task_failures: list[dict],
         acceptance_failures: list[dict],
-        route_readiness: dict,
+        route_health: dict,
     ) -> list[str]:
         blockers = []
-        route_blocker = route_readiness.get("current_blocker") if route_readiness else None
+        route_blocker = route_health.get("current_blocker") if route_health else None
         if route_blocker:
             blockers.append(str(route_blocker))
         for decision in pending_decisions[:3]:
@@ -699,7 +699,7 @@ class SessionsCommand:
             blockers.append(f"acceptance failure {acceptance_failures[-1]['scenario']}")
         return blockers
 
-    def _route_readiness(self, run_dir: Path) -> dict:
+    def _route_health(self, run_dir: Path) -> dict:
         model_profiles = self._read_jsonl(run_dir / "model_profiles.jsonl", "model_profile")
         if not model_profiles:
             route_records = self._read_jsonl(
@@ -707,7 +707,7 @@ class SessionsCommand:
                 schema_name=None,
             )
             if route_records:
-                return route_readiness_from_records(route_records)
+                return route_health_from_records(route_records)
         if not model_profiles:
             return {
                 "status": "unknown",
@@ -720,7 +720,7 @@ class SessionsCommand:
         for profile in model_profiles:
             tier = str(profile.get("model_tier") or "unknown")
             latest_by_tier[tier] = profile
-        return route_readiness_for_tiers(tuple(latest_by_tier))
+        return route_health_for_tiers(tuple(latest_by_tier))
 
     def _run_loop_summary(self, run_dir: Path) -> dict:
         return self._read_json(run_dir / "run_loop_summary.json", "run_loop_summary")

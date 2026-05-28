@@ -491,8 +491,8 @@ class FakeBadDocVerificationClient:
                         {
                             "tool_name": "write_file",
                             "args": {
-                                "path": "docs/readiness_batch_note.md",
-                                "content": "# Readiness Batch\n\n- Verify document-only tasks.\n",
+                                "path": "docs/validation_batch_note.md",
+                                "content": "# Validation Batch\n\n- Verify document-only tasks.\n",
                                 "overwrite": True,
                             },
                             "reason": "create the requested documentation artifact",
@@ -504,13 +504,13 @@ class FakeBadDocVerificationClient:
                             "args": {
                                 "command": (
                                     'python -c "from pathlib import Path; '
-                                    'paths=["docs/readiness_batch_note.md"]; print(paths)"'
+                                    'paths=["docs/validation_batch_note.md"]; print(paths)"'
                                 )
                             },
                             "reason": "this malformed command should be replaced",
                         }
                     ],
-                    "completion_notes": "docs/readiness_batch_note.md contains the readiness batch note",
+                    "completion_notes": "docs/validation_batch_note.md contains the validation batch note",
                 }
             ),
             finish_reason="stop",
@@ -1125,18 +1125,18 @@ def test_execute_command_parallel_readonly_executes_readonly_batch(tmp_path: Pat
 
 def test_execute_command_stabilizes_doc_only_verification(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "create a readiness batch note", model_client=FakePlanClient()).run()
+    plan = PlanCommand(tmp_path, "create a validation batch note", model_client=FakePlanClient()).run()
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     task_plan_path = run_dir / "task_plan.json"
     task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
     task_plan["tasks"][0].update(
         {
-            "title": "Write readiness batch note",
-            "description": "Create docs/readiness_batch_note.md with a short checklist.",
+            "title": "Write validation batch note",
+            "description": "Create docs/validation_batch_note.md with a short checklist.",
             "allowed_tools": ["write_file", "run_command"],
-            "expected_artifacts": ["docs/readiness_batch_note.md"],
-            "expected_changed_files": ["docs/readiness_batch_note.md"],
-            "write_scope": ["docs/readiness_batch_note.md"],
+            "expected_artifacts": ["docs/validation_batch_note.md"],
+            "expected_changed_files": ["docs/validation_batch_note.md"],
+            "write_scope": ["docs/validation_batch_note.md"],
             "read_scope": ["AGENTS.md"],
             "task_kind": "documentation",
             "parallel_safety": "serial",
@@ -1158,8 +1158,8 @@ def test_execute_command_stabilizes_doc_only_verification(tmp_path: Path) -> Non
 
     assert result.completed == 1
     assert result.blocked == 0
-    assert (tmp_path / "docs" / "readiness_batch_note.md").read_text(encoding="utf-8").startswith(
-        "# Readiness Batch"
+    assert (tmp_path / "docs" / "validation_batch_note.md").read_text(encoding="utf-8").startswith(
+        "# Validation Batch"
     )
     validation_results = [
         json.loads(line)
@@ -1167,7 +1167,7 @@ def test_execute_command_stabilizes_doc_only_verification(tmp_path: Path) -> Non
     ]
     assert len(validation_results) == 1
     assert "missing or empty" in validation_results[0]["command"]
-    assert "docs/readiness_batch_note.md" in validation_results[0]["command"]
+    assert "docs/validation_batch_note.md" in validation_results[0]["command"]
     assert "bad" not in validation_results[0]["command"]
 
 

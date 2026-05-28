@@ -117,12 +117,12 @@ def test_model_check_reports_missing_provider_config(tmp_path: Path, monkeypatch
     assert result.failure_type == "configuration"
     assert result.failure_report_path is None
     payload = result.to_dict()
-    assert payload["route_readiness"]["status"] == "blocked"
-    assert payload["route_readiness"]["recommended_next_command"] == "model-check"
-    assert "Route readiness: blocked" in result.to_text()
+    assert payload["route_health"]["status"] == "blocked"
+    assert payload["route_health"]["recommended_next_command"] == "model-check"
+    assert "Route health: blocked" in result.to_text()
 
 
-def test_model_check_route_readiness_matches_status_review_shape(
+def test_model_check_route_health_matches_status_review_shape(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -133,15 +133,15 @@ def test_model_check_route_readiness_matches_status_review_shape(
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     payload = ModelCheckCommand(tmp_path, model_tier="strong").run().to_dict()
-    readiness = payload["route_readiness"]
+    validation = payload["route_health"]
 
-    assert readiness["status"] == "blocked"
-    assert readiness["routes"][0]["tier"] == "strong"
-    assert readiness["routes"][0]["provider"] == "openai-compatible"
-    assert readiness["routes"][0]["model_name"] == "strong-model"
-    assert readiness["routes"][0]["configured"] is False
-    assert readiness["current_blocker"] == readiness["blockers"][0]
-    assert readiness["recommended_next_command"] == "model-check"
+    assert validation["status"] == "blocked"
+    assert validation["routes"][0]["tier"] == "strong"
+    assert validation["routes"][0]["provider"] == "openai-compatible"
+    assert validation["routes"][0]["model_name"] == "strong-model"
+    assert validation["routes"][0]["configured"] is False
+    assert validation["current_blocker"] == validation["blockers"][0]
+    assert validation["recommended_next_command"] == "model-check"
 
 
 def test_model_check_reports_local_provider_defaults(tmp_path: Path, monkeypatch) -> None:

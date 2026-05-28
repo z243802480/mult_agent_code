@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1.0",
-  "purpose": "Fixed runtime readiness matrix for real-task rollout evidence. Gate and readiness summaries consume this catalog instead of relying on ad-hoc local readiness folders.",
+  "purpose": "Fixed runtime validation matrix for real-task release validation evidence. Gate and validation summaries consume this catalog instead of relying on ad-hoc local validation folders.",
   "minimum_ready_ratio": 1.0,
   "cases": [
     {
@@ -43,13 +43,13 @@
       "id": "permission_reason",
       "priority": "P1",
       "evidence": "permission_reason",
-      "goal": "Keep capability permission reason coverage at 100 percent for readiness-ready runs."
+      "goal": "Keep capability permission reason coverage at 100 percent for validation-ready runs."
     },
     {
       "id": "runtime_progress",
       "priority": "P1",
       "evidence": "runtime_native_progress",
-      "goal": "Keep user_progress.jsonl as the default CLI/Studio progress timeline for every readiness run."
+      "goal": "Keep user_progress.jsonl as the default CLI/Studio progress timeline for every validation run."
     }
   ]
 }
