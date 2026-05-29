@@ -14,6 +14,7 @@ from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.real_provider_matrix import summarize_real_provider_matrix
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -289,6 +290,170 @@ def test_status_reports_blocked_model_route_health(tmp_path: Path) -> None:
     assert payload["next_actions"] == ["Run `asteria debug`."]
     assert "Model routes: blocked" in result.to_text()
     assert "strong: unknown/unknown configured=False" in result.to_text()
+
+
+def test_status_recommends_from_latest_recovery_loop_decision(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "running", "current_phase": "REVIEWED", "summary": "review timeout"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_decisions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "decision_id": "agent-loop-decision-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "created_at": now_iso(),
+            "next_action": {
+                "action": "ask",
+                "reason": "recovery hit a budget decision",
+                "target_task_id": "task-0001",
+                "capability_ref": {"type": "runtime", "name": "recovery-review"},
+                "expected_observation": {"summary": "decision should be resolved"},
+                "risk": "medium",
+                "budget_hint": {"model_calls": 1},
+                "evidence_refs": ["user_progress.jsonl"],
+            },
+        },
+        "agent_loop_decision",
+    )
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_execution_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "execution_id": "agent-loop-execution-0001",
+            "decision_id": "agent-loop-decision-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "target_task_id": "task-0001",
+            "created_at": now_iso(),
+            "action": "ask",
+            "status": "waiting_user",
+            "target": "decision_point",
+            "recommended_command": "decide --list",
+            "capability_ref": {"type": "runtime", "name": "recovery-review"},
+            "reason": "recovery hit a budget decision",
+            "expected_observation": {"summary": "decision should be resolved"},
+            "risk": "medium",
+            "budget_hint": {"model_calls": 1},
+            "evidence_refs": ["user_progress.jsonl"],
+        },
+        "agent_loop_execution_result",
+    )
+
+    payload = StatusCommand(tmp_path).run().to_dict()
+
+    assert payload["latest_agent_loop_decision"]["next_action"]["action"] == "ask"
+    assert payload["latest_agent_loop_execution_result"]["target"] == "decision_point"
+    assert payload["recommended_next_command"] == "decide --list"
+    assert payload["next_actions"] == ["Run `asteria decide --list`."]
+
+
+def test_status_recommends_exact_decision_from_runtime_owned_ask(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "running", "current_phase": "REVIEWED", "summary": "needs ask"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    decision = {
+        "schema_version": "0.1.0",
+        "decision_id": "agent-loop-decision-0001",
+        "run_id": run["run_id"],
+        "task_id": "task-0001",
+        "created_at": now_iso(),
+        "next_action": {
+            "action": "ask",
+            "reason": "provider recovery needs user direction",
+            "target_task_id": "task-0001",
+            "capability_ref": {"type": "runtime", "name": "review_failure"},
+            "expected_observation": {
+                "question": "Provider recovery needs user direction. Continue?",
+                "options": [
+                    {
+                        "option_id": "retry",
+                        "label": "Retry",
+                        "tradeoff": "Spend one more recovery attempt.",
+                        "action": "require_replan",
+                    },
+                    {
+                        "option_id": "stop",
+                        "label": "Stop",
+                        "tradeoff": "Stop and preserve evidence.",
+                        "action": "record_constraint",
+                    },
+                ],
+                "recommended_option_id": "retry",
+            },
+            "risk": "medium",
+            "budget_hint": {"model_calls": 1},
+            "evidence_refs": ["model_calls.jsonl"],
+        },
+    }
+    JsonlStore(validator).append(run_dir / "agent_loop_decisions.jsonl", decision, "agent_loop_decision")
+    persist_agent_loop_execution_result(
+        run_dir=run_dir,
+        validator=validator,
+        decision=decision,
+        create_decision_point=True,
+    )
+
+    payload = StatusCommand(tmp_path).run().to_dict()
+
+    assert payload["pending_decision_count"] == 1
+    assert payload["latest_agent_loop_execution_result"]["decision_point_id"] == "decision-0001"
+    assert payload["recommended_next_command"] == "decide --decision-id decision-0001"
+    assert payload["next_actions"] == ["Run `asteria decide --decision-id decision-0001`."]
+
+
+def test_status_shows_subagent_worker_dispatch_from_loop_execution(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    run_store = RunStore(tmp_path / ".asteria", validator)
+    run = run_store.create_run("test")
+    run.update({"status": "running", "current_phase": "EXECUTE", "summary": "delegating"})
+    run_store.update_run(run)
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_execution_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "execution_id": "agent-loop-execution-0001",
+            "decision_id": "agent-loop-decision-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "target_task_id": "task-0001",
+            "created_at": now_iso(),
+            "action": "subagent",
+            "status": "dispatched",
+            "target": "subagent_dispatcher",
+            "recommended_command": "execute",
+            "capability_ref": {"type": "subagent", "name": "subagent"},
+            "reason": "delegate independent implementation",
+            "expected_observation": {"summary": "worker evidence recorded"},
+            "risk": "medium",
+            "budget_hint": {"model_calls": 1},
+            "evidence_refs": [],
+            "worker_invocation_id": "worker-0001",
+            "worker_result_id": "worker-result-0001",
+            "runtime_profile_id": "runtime-profile-subagent-subagent",
+            "worker_status": "partial",
+        },
+        "agent_loop_execution_result",
+    )
+
+    text = StatusCommand(tmp_path).run().to_text()
+
+    assert "Latest loop execution: subagent_dispatcher dispatched - execute" in text
+    assert "worker=worker-0001/runtime-profile-subagent-subagent" in text
 
 
 def test_status_surfaces_latest_model_progress_deadline(tmp_path: Path) -> None:
@@ -1014,6 +1179,97 @@ def test_gate_status_does_not_treat_validation_subset_as_full_suite(
     assert payload["stage"] == "ready_for_validation_suite"
     assert payload["gates"]["validation_suite"]["present"] is False
     assert payload["readiness_explanation"]["status"] == "missing_release_suite_evidence"
+
+
+def test_gate_status_maps_validation_failure_loop_decision_to_command(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _configure_release_routes(monkeypatch)
+    gate_dir = tmp_path / ".asteria" / "model"
+    gate_dir.mkdir(parents=True)
+    (gate_dir / "real_model_gate_report.json").write_text(
+        json.dumps({"ok": True}),
+        encoding="utf-8",
+    )
+    failed_workspace = tmp_path / "validation_small_cli"
+    run_dir = failed_workspace / ".asteria" / "runs" / "run-validation"
+    run_dir.mkdir(parents=True)
+    JsonlStore(SchemaValidator(Path("schemas"))).append(
+        run_dir / "agent_loop_decisions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "decision_id": "agent-loop-decision-0001",
+            "run_id": "run-validation",
+            "task_id": "run",
+            "created_at": now_iso(),
+            "next_action": {
+                "action": "repair",
+                "reason": "scenario timed out",
+                "target_task_id": "run",
+                "capability_ref": {"type": "runtime", "name": "acceptance_timeout"},
+                "expected_observation": {"summary": "debug can continue"},
+                "risk": "medium",
+                "budget_hint": {"model_calls": 1},
+                "evidence_refs": [],
+            },
+        },
+        "agent_loop_decision",
+    )
+    JsonlStore(SchemaValidator(Path("schemas"))).append(
+        run_dir / "agent_loop_execution_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "execution_id": "agent-loop-execution-0001",
+            "decision_id": "agent-loop-decision-0001",
+            "run_id": "run-validation",
+            "task_id": "run",
+            "target_task_id": "run",
+            "created_at": now_iso(),
+            "action": "repair",
+            "status": "dispatched",
+            "target": "debug_agent",
+            "recommended_command": "debug",
+            "capability_ref": {"type": "runtime", "name": "acceptance_timeout"},
+            "reason": "scenario timed out",
+            "expected_observation": {"summary": "debug can continue"},
+            "risk": "medium",
+            "budget_hint": {"model_calls": 1},
+            "evidence_refs": [],
+        },
+        "agent_loop_execution_result",
+    )
+    verification_dir = tmp_path / ".asteria" / "verification"
+    verification_dir.mkdir(parents=True)
+    (verification_dir / "real_model_acceptance_validation.json").write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "suite": "validation",
+                "validation_ready": False,
+                "aggregate": {"total": 7, "passed": 6, "failed": 1},
+                "scenarios": [
+                    {
+                        "scenario": "validation_small_cli",
+                        "ok": False,
+                        "workspace": str(failed_workspace),
+                        "summary": {"run_id": "run-validation"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps({"ok": True, "suite": "core", "aggregate": {"total": 10, "passed": 10}}),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "validation_suite_failed"
+    assert payload["next_actions"][0].startswith("Run `asteria debug --root")
+    assert "validation_small_cli" in payload["next_actions"][0]
 
 
 def test_gate_status_blocks_release_when_current_routes_are_missing(

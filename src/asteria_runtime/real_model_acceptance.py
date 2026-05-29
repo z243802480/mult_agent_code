@@ -18,8 +18,11 @@ from asteria_runtime.acceptance.runtime_os_catalog import (  # noqa: E402
     runtime_os_scenario_names,
 )
 from asteria_runtime.acceptance.runtime_os_scenarios import run_runtime_os_scenario  # noqa: E402
+from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
+from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 @dataclass(frozen=True)
@@ -415,28 +418,28 @@ def run_from_args(args: argparse.Namespace) -> None:
     root, cleanup = prepare_root(args.root)
     results: list[dict[str, Any]] = []
     summary_paths = summary_output_paths(args, root)
+    selected: list[AcceptanceScenario] = []
     try:
         selected = select_scenarios(args)
         for scenario in selected:
             results.append(run_scenario(args, root, scenario))
-        scenario_metadata = scenario_metadata_for(selected)
-        aggregate = aggregate_results(results, scenario_metadata)
-        summary = {
-            "ok": all(result["ok"] for result in results),
-            "root": str(root),
-            "suite": args.suite,
-            "requested_scenarios": args.scenario,
-            "created_at": now_iso(),
-            "scenario_metadata": scenario_metadata,
-            "scenarios": results,
-            "aggregate": aggregate,
-            "validation_ready": validation_ready(
-                args.suite,
-                aggregate,
-                scenario_metadata=scenario_metadata,
-                requested_scenarios=args.scenario,
-            ),
-        }
+            write_summary_paths(
+                summary_paths,
+                build_acceptance_summary(
+                    args=args,
+                    root=root,
+                    selected=selected,
+                    results=results,
+                    complete=False,
+                ),
+            )
+        summary = build_acceptance_summary(
+            args=args,
+            root=root,
+            selected=selected,
+            results=results,
+            complete=True,
+        )
         attach_history(args.history_jsonl, summary)
         write_summary_paths(summary_paths, summary)
         if not summary["ok"]:
@@ -449,18 +452,14 @@ def run_from_args(args: argparse.Namespace) -> None:
         if results:
             write_summary_paths(
                 summary_paths,
-                {
-                    "ok": False,
-                    "root": str(root),
-                    "suite": args.suite,
-                    "requested_scenarios": args.scenario,
-                    "created_at": now_iso(),
-                    "scenario_metadata": scenario_metadata_for(selected),
-                    "scenarios": results,
-                    "aggregate": aggregate_results(results, scenario_metadata_for(selected)),
-                    "validation_ready": False,
-                    "error": str(exc),
-                },
+                build_acceptance_summary(
+                    args=args,
+                    root=root,
+                    selected=selected,
+                    results=results,
+                    complete=False,
+                    error=str(exc),
+                ),
             )
         print(f"Real model acceptance failed: {exc}", file=sys.stderr)
         print(f"Root: {root}", file=sys.stderr)
@@ -530,6 +529,40 @@ def select_scenarios(args: argparse.Namespace) -> list[AcceptanceScenario]:
                 "Use real providers for real task scenarios."
             )
     return [SCENARIOS[name] for name in names]
+
+
+def build_acceptance_summary(
+    *,
+    args: argparse.Namespace,
+    root: Path,
+    selected: list[AcceptanceScenario],
+    results: list[dict[str, Any]],
+    complete: bool,
+    error: str | None = None,
+) -> dict[str, Any]:
+    scenario_metadata = scenario_metadata_for(selected)
+    aggregate = aggregate_results(results, scenario_metadata)
+    summary = {
+        "ok": complete and all(result["ok"] for result in results),
+        "complete": complete,
+        "root": str(root),
+        "suite": args.suite,
+        "requested_scenarios": args.scenario,
+        "created_at": now_iso(),
+        "scenario_metadata": scenario_metadata,
+        "scenarios": results,
+        "aggregate": aggregate,
+        "validation_ready": complete
+        and validation_ready(
+            args.suite,
+            aggregate,
+            scenario_metadata=scenario_metadata,
+            requested_scenarios=args.scenario,
+        ),
+    }
+    if error:
+        summary["error"] = error
+    return summary
 
 
 def prepare_root(root: Path | None) -> tuple[Path, bool]:
@@ -643,6 +676,12 @@ def run_scenario(
                 scenario=scenario,
                 summary_path=summary_path,
                 started_at=started_at,
+            )
+            record_acceptance_timeout_loop_decision(
+                workspace=workspace,
+                scenario=scenario,
+                reason=f"Scenario timed out after {timeout_budget.subprocess_seconds}s.",
+                stderr=stderr,
             )
             attempts.append(
                 {
@@ -808,6 +847,55 @@ def salvage_timed_out_smoke_summary(
     }
     write_summary(summary_path, summary)
     return summary
+
+
+def record_acceptance_timeout_loop_decision(
+    *,
+    workspace: Path,
+    scenario: AcceptanceScenario,
+    reason: str,
+    stderr: str,
+) -> None:
+    run_id = current_run_id(workspace)
+    if not run_id:
+        return
+    run_dir = workspace / ".asteria" / "runs" / run_id
+    if not run_dir.exists():
+        return
+    action = "repair"
+    lowered = stderr.lower()
+    if "decision" in lowered or "permission" in lowered or "budget" in lowered:
+        action = "ask"
+    elif "plan" in lowered or "scope" in lowered:
+        action = "replan"
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    decision = persist_runtime_agent_loop_decision(
+        run_dir=run_dir,
+        validator=validator,
+        run_id=run_id,
+        task_id=latest_task_id(run_dir),
+        action=action,
+        reason=(
+            "Acceptance scenario timed out before review/recovery could return a "
+            f"model-authored next action: {reason}"
+        ),
+        capability_name=f"acceptance_timeout:{scenario.name}",
+        expected_observation={
+            "summary": "Scenario timeout is captured as a recoverable loop decision.",
+            "success_signal": "Debug, replan, decide, or stop can continue from the recorded timeout evidence.",
+            "scenario": scenario.name,
+        },
+        risk="medium",
+        evidence_refs=[str(run_dir / "user_progress.jsonl"), str(run_dir / "model_calls.jsonl")],
+        budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "acceptance_timeout"},
+    )
+    if decision is not None:
+        persist_agent_loop_execution_result(
+            run_dir=run_dir,
+            validator=validator,
+            decision=decision,
+            create_decision_point=action == "ask",
+        )
 
 
 def write_setup_files(workspace: Path, scenario: AcceptanceScenario) -> None:
@@ -1300,6 +1388,17 @@ def current_run_id(workspace: Path) -> str | None:
         return None
     runs = sorted(path.name for path in runs_dir.iterdir() if path.is_dir())
     return runs[-1] if runs else None
+
+
+def latest_task_id(run_dir: Path) -> str | None:
+    task_plan = read_json(run_dir / "task_plan.json")
+    tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else None
+    if not isinstance(tasks, list):
+        return None
+    for task in reversed(tasks):
+        if isinstance(task, dict) and task.get("task_id"):
+            return str(task["task_id"])
+    return None
 
 
 def text_or_empty(value: bytes | str | None) -> str:

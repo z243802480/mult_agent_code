@@ -4,6 +4,12 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from asteria_runtime.core.agent_loop_decision import (
+    latest_agent_loop_decision,
+    recommended_command_for_next_action,
+)
+from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution_result
+from asteria_runtime.core.agent_loop_observation import latest_agent_loop_observation
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.worker_tree import WorkerTreeBuilder
 from asteria_runtime.models.route_resolver import (
@@ -219,6 +225,9 @@ class SessionsCommand:
         latest_model_progress = self._latest_model_progress(run_dir)
         progress_timeline = self._progress_timeline(run_dir, execution_evidence)
         latest_observation_plan = self._latest_observation_plan(run_dir)
+        latest_loop_decision = latest_agent_loop_decision(run_dir, self.validator) or {}
+        latest_loop_execution = latest_agent_loop_execution_result(run_dir, self.validator) or {}
+        latest_loop_observation = latest_agent_loop_observation(run_dir, self.validator) or {}
         workspace_envelope = self._workspace_envelope(run_dir)
         route_health = self._route_health(run_dir)
         run_loop_summary = self._run_loop_summary(run_dir)
@@ -254,6 +263,17 @@ class SessionsCommand:
             task_failures,
             blockers,
         )
+        if (
+            str(run_status.get("status") or "") != "completed"
+            and str(run_status.get("current_phase") or "") != "ACCEPTED"
+        ):
+            next_action_command = recommended_command_for_next_action(
+                latest_loop_decision.get("next_action", {})
+            )
+            if next_action_command in {"debug", "replan", "decide --list", "status --debug"} and (
+                recommended_next_command is None or recommended_next_command == "debug"
+            ):
+                recommended_next_command = next_action_command
         if (
             recommended_next_command is None
             and str(run_status.get("status") or "") != "completed"
@@ -294,6 +314,9 @@ class SessionsCommand:
             "goal_policy": goal_policy,
             "route_health": route_health,
             "latest_observation_plan": latest_observation_plan,
+            "latest_agent_loop_decision": latest_loop_decision,
+            "latest_agent_loop_execution_result": latest_loop_execution,
+            "latest_agent_loop_observation": latest_loop_observation,
             "workspace_envelope": workspace_envelope,
             "worker_tree": worker_tree,
             "candidate_promotions": promotion_summary,

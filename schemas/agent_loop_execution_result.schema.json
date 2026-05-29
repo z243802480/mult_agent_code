@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentLoopExecutionResult",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "execution_id",
+    "decision_id",
+    "run_id",
+    "task_id",
+    "target_task_id",
+    "created_at",
+    "action",
+    "status",
+    "target",
+    "recommended_command",
+    "capability_ref",
+    "reason",
+    "expected_observation",
+    "risk",
+    "budget_hint",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "execution_id": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "target_task_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "action": {
+      "type": "string",
+      "enum": ["tool", "subagent", "repair", "replan", "ask", "stop"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["dispatched", "waiting_user", "stopped"]
+    },
+    "target": {
+      "type": "string",
+      "enum": [
+        "tool_gateway",
+        "subagent_dispatcher",
+        "debug_agent",
+        "replan_command",
+        "decision_point",
+        "stop_report"
+      ]
+    },
+    "recommended_command": { "type": ["string", "null"] },
+    "capability_ref": {
+      "type": "object",
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "reason": { "type": "string" },
+    "expected_observation": { "type": "object" },
+    "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+    "budget_hint": { "type": "object" },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "decision_point_id": { "type": "string" },
+    "decision_point_path": { "type": "string" },
+    "worker_invocation_id": { "type": "string" },
+    "worker_result_id": { "type": "string" },
+    "runtime_profile_id": { "type": "string" },
+    "worker_status": { "type": "string" }
+  }
+}

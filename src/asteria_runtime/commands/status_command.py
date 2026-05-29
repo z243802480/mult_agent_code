@@ -45,6 +45,19 @@ class StatusResult:
         latest_model_progress = (
             self.current_context.get("latest_model_progress") if self.current_context else {}
         ) or {}
+        latest_agent_loop_decision = (
+            self.current_context.get("latest_agent_loop_decision") if self.current_context else {}
+        ) or {}
+        latest_agent_loop_execution_result = (
+            self.current_context.get("latest_agent_loop_execution_result")
+            if self.current_context
+            else {}
+        ) or {}
+        latest_agent_loop_observation = (
+            self.current_context.get("latest_agent_loop_observation")
+            if self.current_context
+            else {}
+        ) or {}
         workspace_envelope = (
             self.current_context.get("workspace_envelope") if self.current_context else {}
         ) or {}
@@ -102,6 +115,9 @@ class StatusResult:
                     "candidate_promotions",
                     "model_selection",
                     "latest_model_progress",
+                    "latest_agent_loop_decision",
+                    "latest_agent_loop_execution_result",
+                    "latest_agent_loop_observation",
                     "model_route_timeline",
                     "route_health",
                     "run_loop_summary_path",
@@ -142,6 +158,9 @@ class StatusResult:
             "candidate_promotions": candidate_promotions,
             "model_selection": model_selection,
             "latest_model_progress": latest_model_progress,
+            "latest_agent_loop_decision": latest_agent_loop_decision,
+            "latest_agent_loop_execution_result": latest_agent_loop_execution_result,
+            "latest_agent_loop_observation": latest_agent_loop_observation,
             "model_route_timeline": model_route_timeline,
             "route_health": route_health,
             "run_loop_summary_path": run_loop_summary_path,
@@ -357,6 +376,10 @@ class StatusResult:
             return ["Run `asteria /init --root .`."]
         if recommended:
             return [f"Run `asteria {recommended}`."]
+        latest_plan = self.current_context.get("latest_observation_plan") if self.current_context else {}
+        mapped = self._command_for_observation_route(str((latest_plan or {}).get("recommended_route") or ""))
+        if mapped:
+            return [f"Run `asteria {mapped}`."]
         route_health = self.current_context.get("route_health") if self.current_context else {}
         if (route_health or {}).get("status") == "blocked":
             return ["Run `asteria model-check --json` and configure the missing model route."]
@@ -621,6 +644,37 @@ class StatusResult:
                 evidence_refs = latest_plan.get("evidence_refs") or []
                 if evidence_refs:
                     lines.append(f"  evidence: {', '.join(str(ref) for ref in evidence_refs[:3])}")
+            latest_decision = context.get("latest_agent_loop_decision") or {}
+            next_action = latest_decision.get("next_action") or {}
+            if next_action:
+                lines.append(
+                    "Latest loop decision: "
+                    f"{next_action.get('action', 'unknown')} - "
+                    f"{next_action.get('reason', 'No reason recorded.')}"
+                )
+            latest_loop_execution = context.get("latest_agent_loop_execution_result") or {}
+            if latest_loop_execution:
+                worker_suffix = ""
+                if latest_loop_execution.get("worker_invocation_id"):
+                    worker_suffix = (
+                        f" worker={latest_loop_execution.get('worker_invocation_id')}"
+                        f"/{latest_loop_execution.get('runtime_profile_id', 'unknown')}"
+                    )
+                lines.append(
+                    "Latest loop execution: "
+                    f"{latest_loop_execution.get('target', 'unknown')} "
+                    f"{latest_loop_execution.get('status', 'unknown')} - "
+                    f"{latest_loop_execution.get('recommended_command') or 'no command'}"
+                    f"{worker_suffix}"
+                )
+            latest_loop_observation = context.get("latest_agent_loop_observation") or {}
+            if latest_loop_observation:
+                lines.append(
+                    "Latest loop observation: "
+                    f"{latest_loop_observation.get('observation_type', 'unknown')} "
+                    f"{latest_loop_observation.get('status', 'unknown')} - "
+                    f"{latest_loop_observation.get('next_recommended_action') or 'no next action'}"
+                )
             evidence_chain = self._evidence_chain()
             if evidence_chain:
                 lines.append("Evidence chain:")
@@ -716,6 +770,16 @@ class StatusResult:
         if details:
             lines.append(f"  {'; '.join(str(item) for item in details)}")
         return lines
+
+    def _command_for_observation_route(self, route: str) -> str | None:
+        return {
+            "repair": "debug",
+            "diagnose": "debug",
+            "replan": "replan",
+            "ask": "decide --list",
+            "review": "review",
+            "stop": "status --debug",
+        }.get(route)
 
 
 class StatusCommand:

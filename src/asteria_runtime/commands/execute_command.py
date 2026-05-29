@@ -10,6 +10,14 @@ from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionG
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
+from asteria_runtime.core.agent_loop_decision import (
+    persist_agent_loop_decision,
+    recommended_command_for_next_action,
+)
+from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
+from asteria_runtime.core.agent_loop_observation import (
+    persist_agent_loop_observation_for_execution,
+)
 from asteria_runtime.core.agent_tool_surface import (
     model_tool_surface_for_task,
     model_tools_available_for_task,
@@ -295,6 +303,210 @@ class ExecuteCommand:
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
 
+    def _agent_loop_max_rounds(self, policy: dict) -> int:
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        try:
+            value = int(agent_loop.get("max_rounds_per_task") or 2)
+        except (TypeError, ValueError):
+            value = 2
+        return max(1, min(value, 8))
+
+    def _handle_runtime_managed_loop_action(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        action_kind: str,
+        execution_result: dict | None,
+        latest_summary: TaskExecutionSummary | None,
+    ) -> TaskExecutionSummary | None:
+        if action_kind not in {"subagent", "repair", "replan", "stop"}:
+            return None
+        task_id = str(task["task_id"])
+        if action_kind == "stop":
+            loop_observation = persist_agent_loop_observation_for_execution(
+                run_dir=context.run_dir,
+                validator=context.validator,
+                execution_result=execution_result,
+                status="stopped",
+                summary="Model stopped the bounded agent loop.",
+                next_recommended_action="stop",
+            )
+            self._record_progress(
+                context,
+                task,
+                channel="execution_chain",
+                event_type="message",
+                phase="execute",
+                status="completed" if latest_summary and latest_summary.status == "done" else "blocked",
+                title="Agent loop stopped",
+                summary="Model selected stop after reviewing the latest observation.",
+                data={
+                    "task_id": task_id,
+                    "agent_loop_execution_result": execution_result or {},
+                    "agent_loop_observation": loop_observation or {},
+                    "recommended_command": "status --debug",
+                },
+            )
+            if latest_summary is not None:
+                return latest_summary
+            self._mark_task_blocked(task_board, task_id)
+            return TaskExecutionSummary(
+                task_id=task_id,
+                status="blocked",
+                summary="Agent loop stopped before completing the task.",
+                tool_calls=0,
+                verification_calls=0,
+                evidence_path=context.run_dir / "agent_loop_observations.jsonl"
+                if context.run_dir is not None
+                else None,
+            )
+        if action_kind == "subagent":
+            self._mark_task_blocked(task_board, task_id)
+            loop_observation = persist_agent_loop_observation_for_execution(
+                run_dir=context.run_dir,
+                validator=context.validator,
+                execution_result=execution_result,
+                status="pending",
+                summary=(
+                    "Subagent worker dispatch was recorded; Runtime is waiting for "
+                    "worker completion or a recovery decision."
+                ),
+                next_recommended_action="subagent",
+            )
+            worker_id = (
+                execution_result.get("worker_invocation_id")
+                if isinstance(execution_result, dict)
+                else None
+            )
+            summary = (
+                "Subagent dispatch recorded"
+                + (f" as {worker_id}." if worker_id else ".")
+                + " Runtime is waiting for subagent worker evidence or recovery routing."
+            )
+            self._record_progress(
+                context,
+                task,
+                channel="execution_chain",
+                event_type="message",
+                phase="execute",
+                status="blocked",
+                title="Subagent dispatch recorded",
+                summary=summary,
+                data={
+                    "task_id": task_id,
+                    "agent_loop_execution_result": execution_result or {},
+                    "agent_loop_observation": loop_observation or {},
+                    "recommended_command": "execute",
+                },
+            )
+            return TaskExecutionSummary(
+                task_id=task_id,
+                status="blocked",
+                summary=summary,
+                tool_calls=0,
+                verification_calls=0,
+                evidence_path=context.run_dir / "worker_results.jsonl"
+                if context.run_dir is not None
+                else None,
+            )
+        command = "debug" if action_kind == "repair" else "replan"
+        self._mark_task_blocked(task_board, task_id)
+        summary = f"Model selected `{action_kind}` after reviewing the latest observation."
+        loop_observation = persist_agent_loop_observation_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=execution_result,
+            status="pending",
+            summary=summary,
+            next_recommended_action=action_kind,
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="blocked",
+            title=f"Agent loop requested {action_kind}",
+            summary=summary,
+            data={
+                "task_id": task_id,
+                "agent_loop_execution_result": execution_result or {},
+                "agent_loop_observation": loop_observation or {},
+                "recommended_command": command,
+            },
+        )
+        return TaskExecutionSummary(
+            task_id=task_id,
+            status="blocked",
+            summary=summary,
+            tool_calls=0,
+            verification_calls=0,
+            evidence_path=context.run_dir / "agent_loop_observations.jsonl"
+            if context.run_dir is not None
+            else None,
+        )
+
+    def _next_action_after_attempt(
+        self,
+        *,
+        attempt_status: str,
+        next_action: dict,
+    ) -> str | None:
+        expected = next_action.get("expected_observation")
+        expected_observation = expected if isinstance(expected, dict) else {}
+        requested = str(expected_observation.get("next_recommended_action") or "")
+        if requested in {"tool", "subagent", "repair", "replan", "ask", "stop"}:
+            return requested
+        if expected_observation.get("requires_follow_up_decision") is True:
+            return "stop"
+        if attempt_status != "done" and expected_observation.get("auto_repair_on_failure") is True:
+            return "repair"
+        return None
+
+    def _should_continue_agent_loop(
+        self,
+        *,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        observation: dict | None,
+        next_action: dict,
+        attempt_status: str,
+    ) -> bool:
+        if round_index >= max_rounds or not isinstance(observation, dict):
+            return False
+        if not self._loop_continuation_requested(
+            next_action=next_action,
+            attempt_status=attempt_status,
+        ):
+            return False
+        observation_next_action = str(observation.get("next_recommended_action") or "")
+        if observation_next_action not in {"tool", "repair", "replan", "stop"}:
+            return False
+        if context.budget is None:
+            return False
+        pressure = BudgetController.pressure(context.policy, context.budget.cost_report())
+        return str(pressure.get("status") or "") not in {"hard_stop", "exceeded"}
+
+    def _loop_continuation_requested(self, *, next_action: dict, attempt_status: str) -> bool:
+        expected = next_action.get("expected_observation")
+        expected_observation = expected if isinstance(expected, dict) else {}
+        requested = str(expected_observation.get("next_recommended_action") or "")
+        if requested in {"tool", "repair", "replan", "stop"}:
+            return True
+        if expected_observation.get("requires_follow_up_decision") is True:
+            return True
+        return attempt_status != "done" and expected_observation.get("auto_repair_on_failure") is True
+
+    def _mark_task_blocked(self, task_board: TaskBoard, task_id: str) -> None:
+        task = task_board.get_task(task_id)
+        if task.get("status") != "blocked":
+            task_board.update_status(task_id, "blocked")
+
     def _execute_task_with_worker_record(
         self,
         task: dict,
@@ -434,116 +646,210 @@ class ExecuteCommand:
                     ),
                 },
             )
-            self._refresh_harness_observations(runtime_context, context)
             task_model_surface = model_tool_surface_for_task(
                 self.registry.names(),
                 task,
                 allow_shell=self._shell_allowed(context.policy),
             )
             runtime_context["model_tool_surface"] = task_model_surface
-            action = coder.propose_action(
-                task=task,
-                goal_spec=goal_spec,
-                project_config=project_config,
-                available_tools=model_tools_available_for_task(
-                    self.registry.names(),
-                    task,
-                    allow_shell=self._shell_allowed(context.policy),
-                ),
-                run_id=context.run_id or "",
-                runtime_context=runtime_context,
-            )
-            action = self.action_preparer.prepare(action, task, context.policy)
-            tool_calls = list(action.get("tool_calls") or [])
-            verification = list(action.get("verification") or [])
-            runtime_requests = list(action.get("runtime_requests") or [])
-            self._record_progress(
-                context,
+            available_tools = model_tools_available_for_task(
+                self.registry.names(),
                 task,
-                channel="progress",
-                event_type="message",
-                phase="execute",
-                status="running",
-                title="Worker action proposed",
-                summary=(
-                    f"Prepared {len(tool_calls)} tool call(s), "
-                    f"{len(verification)} verification step(s), "
-                    f"and {len(runtime_requests)} runtime request(s)."
-                ),
-                data={
-                    "task_id": task_id,
-                    "tool_call_count": len(tool_calls),
-                    "verification_count": len(verification),
-                    "runtime_request_count": len(runtime_requests),
-                    "summary": action.get("summary", ""),
-                    "model_tool_surface": task_model_surface,
-                    "model_tool_calls": self._model_tool_call_summary(tool_calls, verification),
-                },
+                allow_shell=self._shell_allowed(context.policy),
             )
-            runtime_request_result = self.runtime_request_policy.handle_runtime_requests(
-                action=action,
-                task=task,
-                task_board=task_board,
-                context=context,
-            )
-            if runtime_request_result is not None:
-                self._record_runtime_request_progress(context, task, runtime_request_result)
-                return self._runtime_request_task_summary(runtime_request_result)
-            decision = self.tool_permission_policy.create_policy_decision_if_needed(
-                action=action,
-                task=task,
-                context=context,
-            )
-            if decision is not None:
-                blocked = self.blocking_handler.block_for_policy_decision(
-                    context=context,
-                    task_board=task_board,
+            max_rounds = self._agent_loop_max_rounds(context.policy)
+            latest_loop_observation: dict | None = None
+            latest_summary: TaskExecutionSummary | None = None
+            for round_index in range(1, max_rounds + 1):
+                self._refresh_harness_observations(runtime_context, context)
+                runtime_context["agent_loop_round"] = {
+                    "index": round_index,
+                    "max_rounds": max_rounds,
+                    "latest_observation": latest_loop_observation or {},
+                }
+                if latest_loop_observation:
+                    runtime_context["latest_agent_loop_observation"] = latest_loop_observation
+                action = coder.propose_action(
                     task=task,
-                    action=action,
-                    decision=decision,
+                    goal_spec=goal_spec,
+                    project_config=project_config,
+                    available_tools=available_tools,
+                    run_id=context.run_id or "",
+                    runtime_context=runtime_context,
                 )
+                action = self.action_preparer.prepare(action, task, context.policy)
+                runtime_requests = list(action.get("runtime_requests") or [])
+                loop_decision = action.get("agent_loop_decision")
+                loop_execution_result = None
+                if isinstance(loop_decision, dict):
+                    persist_agent_loop_decision(
+                        run_dir=context.run_dir,
+                        validator=context.validator,
+                        decision=loop_decision,
+                    )
+                    loop_execution_result = persist_agent_loop_execution_result(
+                        run_dir=context.run_dir,
+                        validator=context.validator,
+                        decision=loop_decision,
+                        create_decision_point=not runtime_requests,
+                    )
+                tool_calls = list(action.get("tool_calls") or [])
+                verification = list(action.get("verification") or [])
+                next_action = (
+                    loop_decision.get("next_action", {}) if isinstance(loop_decision, dict) else {}
+                )
+                next_action_kind = str(next_action.get("action") or "")
                 self._record_progress(
                     context,
                     task,
                     channel="progress",
-                    event_type="decision",
-                    phase="blocked",
-                    status="waiting_user",
-                    title="Tool permission decision required",
-                    summary=blocked.summary,
-                    evidence_refs=self._refs(blocked.evidence_path),
+                    event_type="message",
+                    phase="execute",
+                    status="running",
+                    title="Worker action proposed",
+                    summary=(
+                        f"Round {round_index}/{max_rounds}: prepared {len(tool_calls)} "
+                        f"tool call(s), {len(verification)} verification step(s), "
+                        f"and {len(runtime_requests)} runtime request(s)."
+                    ),
                     data={
                         "task_id": task_id,
-                        "decision_id": decision.get("decision_id"),
-                        "risk": decision.get("risk"),
-                        "reason": decision.get("reason"),
+                        "agent_loop_round": round_index,
+                        "agent_loop_max_rounds": max_rounds,
+                        "tool_call_count": len(tool_calls),
+                        "verification_count": len(verification),
+                        "runtime_request_count": len(runtime_requests),
+                        "summary": action.get("summary", ""),
+                        "agent_loop_decision": loop_decision or {},
+                        "recommended_command": recommended_command_for_next_action(next_action),
+                        "agent_loop_execution_result": loop_execution_result or {},
+                        "latest_agent_loop_observation": latest_loop_observation or {},
+                        "model_tool_surface": task_model_surface,
+                        "model_tool_calls": self._model_tool_call_summary(tool_calls, verification),
                     },
                 )
-                return self._blocked_task_summary(blocked)
-            attempt = self.task_attempt_runner.run(
-                task=task,
-                task_board=task_board,
-                context=context,
-                runtime_context=runtime_context,
-                action=action,
-                create_candidate_workspace=self.candidate_gateway.create_workspace,
-                candidate_context=self.candidate_gateway.candidate_context,
-                run_tool_calls=self.tool_gateway.run_tool_calls,
-                record_validation_results=self.evidence_sink.record_validation_results,
-                changed_files=self.evidence_sink.changed_files,
-                promote_candidate_changes=self.candidate_gateway.promote_changes,
-                record_experiment=self.evidence_sink.record_experiment,
-                complete_task_after_candidate_promotion=self.candidate_gateway.complete_after_promotion,
-                record_task_failure=self.evidence_sink.record_task_failure,
-            )
+                runtime_managed = self._handle_runtime_managed_loop_action(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    action_kind=next_action_kind,
+                    execution_result=loop_execution_result,
+                    latest_summary=latest_summary,
+                )
+                if runtime_managed is not None:
+                    return runtime_managed
+                runtime_request_result = self.runtime_request_policy.handle_runtime_requests(
+                    action=action,
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                )
+                if runtime_request_result is not None:
+                    persist_agent_loop_observation_for_execution(
+                        run_dir=context.run_dir,
+                        validator=context.validator,
+                        execution_result=loop_execution_result,
+                        status="waiting_user",
+                        summary=runtime_request_result.summary,
+                        evidence_refs=self._refs(runtime_request_result.evidence_path),
+                        next_recommended_action="ask",
+                    )
+                    self._record_runtime_request_progress(context, task, runtime_request_result)
+                    return self._runtime_request_task_summary(runtime_request_result)
+                decision = self.tool_permission_policy.create_policy_decision_if_needed(
+                    action=action,
+                    task=task,
+                    context=context,
+                )
+                if decision is not None:
+                    blocked = self.blocking_handler.block_for_policy_decision(
+                        context=context,
+                        task_board=task_board,
+                        task=task,
+                        action=action,
+                        decision=decision,
+                    )
+                    persist_agent_loop_observation_for_execution(
+                        run_dir=context.run_dir,
+                        validator=context.validator,
+                        execution_result=loop_execution_result,
+                        status="blocked",
+                        summary=blocked.summary,
+                        evidence_refs=self._refs(blocked.evidence_path),
+                        next_recommended_action="ask",
+                    )
+                    self._record_progress(
+                        context,
+                        task,
+                        channel="progress",
+                        event_type="decision",
+                        phase="blocked",
+                        status="waiting_user",
+                        title="Tool permission decision required",
+                        summary=blocked.summary,
+                        evidence_refs=self._refs(blocked.evidence_path),
+                        data={
+                            "task_id": task_id,
+                            "decision_id": decision.get("decision_id"),
+                            "risk": decision.get("risk"),
+                            "reason": decision.get("reason"),
+                        },
+                    )
+                    return self._blocked_task_summary(blocked)
+                attempt = self.task_attempt_runner.run(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    runtime_context=runtime_context,
+                    action=action,
+                    create_candidate_workspace=self.candidate_gateway.create_workspace,
+                    candidate_context=self.candidate_gateway.candidate_context,
+                    run_tool_calls=self.tool_gateway.run_tool_calls,
+                    record_validation_results=self.evidence_sink.record_validation_results,
+                    changed_files=self.evidence_sink.changed_files,
+                    promote_candidate_changes=self.candidate_gateway.promote_changes,
+                    record_experiment=self.evidence_sink.record_experiment,
+                    complete_task_after_candidate_promotion=self.candidate_gateway.complete_after_promotion,
+                    record_task_failure=self.evidence_sink.record_task_failure,
+                )
+                latest_loop_observation = persist_agent_loop_observation_for_execution(
+                    run_dir=context.run_dir,
+                    validator=context.validator,
+                    execution_result=loop_execution_result,
+                    status="succeeded" if attempt.status == "done" else "failed",
+                    summary=attempt.summary,
+                    evidence_refs=self._refs(attempt.evidence_path) + attempt.validation_refs,
+                    next_recommended_action=self._next_action_after_attempt(
+                        attempt_status=attempt.status,
+                        next_action=next_action,
+                    ),
+                )
+                latest_summary = TaskExecutionSummary(
+                    task_id=attempt.task_id,
+                    status=attempt.status,
+                    summary=attempt.summary,
+                    tool_calls=attempt.tool_calls,
+                    verification_calls=attempt.verification_calls,
+                    evidence_path=attempt.evidence_path,
+                    validation_refs=attempt.validation_refs,
+                )
+                if not self._should_continue_agent_loop(
+                    context=context,
+                    round_index=round_index,
+                    max_rounds=max_rounds,
+                    observation=latest_loop_observation,
+                    next_action=next_action,
+                    attempt_status=attempt.status,
+                ):
+                    return latest_summary
+            if latest_summary is not None:
+                return latest_summary
             return TaskExecutionSummary(
-                task_id=attempt.task_id,
-                status=attempt.status,
-                summary=attempt.summary,
-                tool_calls=attempt.tool_calls,
-                verification_calls=attempt.verification_calls,
-                evidence_path=attempt.evidence_path,
-                validation_refs=attempt.validation_refs,
+                task_id=task_id,
+                status="blocked",
+                summary="Agent loop stopped without executable model action.",
+                tool_calls=0,
+                verification_calls=0,
             )
         except ToolPermissionDenied as exc:
             fallback_action = locals().get("action")

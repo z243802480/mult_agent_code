@@ -98,7 +98,7 @@ class AsteriaArgumentParser(argparse.ArgumentParser):
             "Asteria runtime CLI",
             "",
             "Start",
-            "  Product workflow commands for ordinary goal -> progress -> accept journeys.",
+            "  Product workflow commands for ordinary goal -> progress -> review journeys.",
         ]
         for title, description, commands in self._command_groups:
             if title != "Start":
@@ -1245,50 +1245,44 @@ def build_parser() -> argparse.ArgumentParser:
         [
             (
                 "Start",
-                "Product workflow commands for ordinary goal -> progress -> accept journeys.",
+                "Product workflow commands for ordinary goal -> progress -> review journeys.",
                 [
-                    ("init", "Initialize a local-first Asteria workspace."),
                     ("goal", "Long-task objective mode; keeps working within permissions."),
+                    ("plan", "Read-only comprehensive plan; analyze without changing work."),
                     ("status", "Show user-level progress, blockers, and next actions."),
-                    ("resume", "Continue after approvals, pauses, or repair checkpoints."),
                     ("review", "Inspect result quality before accepting candidate outputs."),
                     ("accept", "Accept reviewed results and finalize the run."),
-                    ("chat", "Lightweight Q&A mode for everyday questions."),
-                    ("plan", "Read-only comprehensive plan; analyze without changing work."),
+                    ("debug", "Repair failed execution evidence."),
                 ],
             ),
             (
-                "Maintain",
-                "Validation, release, and support commands for maintainers.",
+                "Support",
+                "Setup and recovery commands used when a workflow asks for them.",
                 [
+                    ("init", "Initialize a local-first Asteria workspace."),
+                    ("resume", "Continue after approvals, pauses, or repair checkpoints."),
+                    ("chat", "Lightweight Q&A mode for everyday questions."),
+                    ("sessions", "List, inspect, or select session contexts."),
                     ("doctor", "Diagnose local runtime setup and model route health."),
-                    ("gate", "Run staged validation checks; use --stage release before release."),
-                    ("validation", "Plan controlled real-provider validation tasks."),
-                    ("evidence-bundle", "Export a redacted diagnostic bundle."),
                 ],
             ),
             (
-                "Advanced",
-                "Internal workflow controls; useful for debugging and expert operation.",
+                "Maintainer / Inspector",
+                "Raw runtime controls and evidence surfaces for experts, validation, and CI.",
                 [
                     ("run", "Compatibility alias for goal mode."),
                     ("execute", "Run ready task graph work directly."),
-                    ("debug", "Repair failed execution evidence."),
                     ("replan", "Create follow-up tasks from blockers."),
                     ("compact", "Create context snapshots."),
                     ("handoff", "Write recovery handoff context."),
-                    ("sessions", "List, inspect, or select session contexts."),
                     ("promotions", "Inspect and operate candidate promotions."),
                     ("plugins", "Inspect plugin manifest policy state."),
                     ("decide", "Create or resolve DecisionPoints."),
                     ("research", "Collect research context."),
                     ("brainstorm", "Generate early solution options."),
-                ],
-            ),
-            (
-                "CI / Reports",
-                "Validation, release evidence, and product reporting commands.",
-                [
+                    ("gate", "Run staged validation checks; use --stage release before release."),
+                    ("validation", "Plan controlled real-provider validation tasks."),
+                    ("evidence-bundle", "Export a redacted diagnostic bundle."),
                     ("acceptance", "Run reproducible runtime acceptance scenarios."),
                     ("acceptance-gate", "Evaluate acceptance reports as release gates."),
                     ("acceptance-history", "Show acceptance trend history."),
@@ -1303,12 +1297,6 @@ def build_parser() -> argparse.ArgumentParser:
                     ("gate-status", "Show release validation evidence."),
                     ("version", "Show runtime version diagnostics."),
                     ("studio-benchmark", "Evaluate Studio sessions against UX benchmarks."),
-                ],
-            ),
-            (
-                "Models",
-                "Explicit real-provider checks; not part of ordinary pytest.",
-                [
                     ("model-check", "Validate provider configuration."),
                     ("real-model-smoke", "Run an isolated real-model smoke test."),
                     ("real-model-gate", "Run controlled real-model preflight gate."),

@@ -54,6 +54,18 @@
         }
       }
     },
+    "agent_loop_decision": {
+      "type": "object",
+      "required": ["schema_version", "decision_id", "run_id", "task_id", "created_at", "next_action"],
+      "properties": {
+        "schema_version": { "type": "string" },
+        "decision_id": { "type": "string" },
+        "run_id": { "type": ["string", "null"] },
+        "task_id": { "type": "string" },
+        "created_at": { "type": "string" },
+        "next_action": { "type": "object" }
+      }
+    },
     "completion_notes": { "type": "string" }
   }
 }

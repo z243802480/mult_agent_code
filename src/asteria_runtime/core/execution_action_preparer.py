@@ -17,6 +17,9 @@ class ExecutionActionPreparer:
     shell_denial: ShellDenial
 
     def prepare(self, action: dict, task: dict, policy: dict) -> dict:
+        if self._runtime_managed_action(action):
+            self.require_non_empty(action)
+            return action
         prepared = self._normalize_inline_verification(action, task)
         prepared = self._ensure_planned_verification(prepared, task)
         prepared = self._replace_unsafe_verification(prepared, task, policy)
@@ -27,6 +30,8 @@ class ExecutionActionPreparer:
         return prepared
 
     def require_non_empty(self, action: dict) -> None:
+        if self._runtime_managed_action(action):
+            return
         if (
             not action.get("tool_calls")
             and not action.get("verification")
@@ -35,6 +40,12 @@ class ExecutionActionPreparer:
             raise RuntimeError(
                 "ExecutionAction contained no tool calls, verification, or runtime requests."
             )
+
+    def _runtime_managed_action(self, action: dict) -> bool:
+        decision = action.get("agent_loop_decision")
+        next_action = decision.get("next_action") if isinstance(decision, dict) else None
+        kind = str((next_action or {}).get("action") or "")
+        return kind in {"subagent", "repair", "replan", "stop"}
 
     def _normalize_inline_verification(self, action: dict, task: dict) -> dict:
         if action.get("verification") or not task.get("verification_policy", {}).get("required"):

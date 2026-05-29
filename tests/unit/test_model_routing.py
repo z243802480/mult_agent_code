@@ -2,12 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from asteria_runtime.models.base import ChatMessage, ChatRequest
+from asteria_runtime.models.base import ChatMessage, ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.fake import FakeModelClient
 from asteria_runtime.models.openai_compatible import OpenAICompatibleClient
 from asteria_runtime.models.route_resolver import resolve_model_route
-from asteria_runtime.models.routing import RoutedModelClient
+from asteria_runtime.models.routing import ModelRoute, RoutedModelClient
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -17,6 +17,27 @@ def request(model_tier: str) -> ChatRequest:
         model_tier=model_tier,
         messages=[ChatMessage(role="user", content="hello")],
     )
+
+
+class TimeoutClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise RuntimeError("stream deadline exceeded")
+
+
+class CaptureClient:
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
+        return ChatResponse(
+            content='{"ok": true}',
+            finish_reason="stop",
+            usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+            model_provider="minimax",
+            model_name="MiniMax-M2.7",
+            raw_response={},
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +99,47 @@ def test_factory_can_use_tier_route_without_global_provider(monkeypatch: pytest.
     assert isinstance(client, RoutedModelClient)
     response = client.chat(request("medium"))
     assert response.model_provider == "fake"
+
+
+def test_routed_client_falls_back_from_strong_timeout_to_medium() -> None:
+    medium = CaptureClient()
+    client = RoutedModelClient(
+        default_client=medium,
+        tier_clients={"strong": TimeoutClient(), "medium": medium},
+        routes={
+            "strong": ModelRoute("strong", "glm", "AGENT_MODEL_STRONG"),
+            "medium": ModelRoute("medium", "minimax", "AGENT_MODEL_MEDIUM"),
+        },
+    )
+
+    response = client.chat(request("strong"))
+
+    assert response.model_provider == "minimax"
+    assert response.raw_response["route_fallback"]["used"] is True
+    assert response.raw_response["route_fallback"]["from_tier"] == "strong"
+    assert medium.requests[0].model_tier == "medium"
+    assert medium.requests[0].metadata["route_fallback"]["policy"] == "strong_timeout_to_medium"
+
+
+def test_routed_client_can_disable_strong_timeout_fallback() -> None:
+    client = RoutedModelClient(
+        default_client=FakeModelClient(),
+        tier_clients={"strong": TimeoutClient(), "medium": FakeModelClient()},
+        routes={
+            "strong": ModelRoute("strong", "glm", "AGENT_MODEL_STRONG"),
+            "medium": ModelRoute("medium", "minimax", "AGENT_MODEL_MEDIUM"),
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="stream deadline exceeded"):
+        client.chat(
+            ChatRequest(
+                purpose="routing-test",
+                model_tier="strong",
+                messages=[ChatMessage(role="user", content="hello")],
+                metadata={"disable_route_fallback": True},
+            )
+        )
 
 
 def test_tier_specific_openai_settings_do_not_leak_to_default(

@@ -75,6 +75,41 @@ def test_model_check_uses_requested_model_tier(tmp_path: Path) -> None:
     assert result.model_name == "fake-strong"
 
 
+def test_model_check_reports_route_fallback_from_response(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "sk-cp-test")
+
+    class FallbackClient:
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            return ChatResponse(
+                content=json.dumps({"ok": True}),
+                finish_reason="stop",
+                usage=TokenUsage(1, 1, 2),
+                model_provider="minimax",
+                model_name="MiniMax-M2.7",
+                raw_response={
+                    "route_fallback": {
+                        "used": True,
+                        "from_tier": "strong",
+                        "to_tier": "medium",
+                        "policy": "strong_timeout_to_medium",
+                    }
+                },
+            )
+
+    result = ModelCheckCommand(
+        tmp_path,
+        model_tier="strong",
+        model_client=FallbackClient(),
+    ).run()
+
+    payload = result.to_dict()
+    assert result.call_ok
+    assert payload["route_fallback"]["used"] is True
+    assert result.base_url == "https://api.minimaxi.com/v1"
+    assert "Call fallback: strong -> medium" in result.to_text()
+
+
 def test_model_check_can_skip_call_with_injected_client(tmp_path: Path) -> None:
     result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
 

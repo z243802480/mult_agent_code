@@ -25,6 +25,12 @@ from asteria_runtime.core.runtime_validation_matrix import (
     runtime_validation_matrix_text_lines,
 )
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
+from asteria_runtime.core.runtime_readiness_gate import runtime_readiness_gate
+from asteria_runtime.core.agent_loop_decision import (
+    latest_agent_loop_decision,
+    recommended_command_for_next_action,
+)
+from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution_result
 from asteria_runtime.real_model_acceptance import SUITES as REAL_MODEL_ACCEPTANCE_SUITES
 from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -48,6 +54,7 @@ class GateStatusResult:
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
     runtime_validation_matrix: dict[str, Any] = field(default_factory=dict)
+    runtime_readiness_gate: dict[str, Any] = field(default_factory=dict)
     recovery_pressure: dict[str, Any] = field(default_factory=dict)
     context_pressure_summary: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
@@ -85,6 +92,7 @@ class GateStatusResult:
                     "plugin_risks",
                     "runtime_progress_metrics",
                     "runtime_validation_matrix",
+                    "runtime_readiness_gate",
                     "readiness_explanation",
                     "recovery_pressure",
                     "context_pressure_summary",
@@ -115,6 +123,7 @@ class GateStatusResult:
             "plugin_risks": self.plugin_risks,
             "runtime_progress_metrics": self.runtime_progress_metrics,
             "runtime_validation_matrix": self.runtime_validation_matrix,
+            "runtime_readiness_gate": self.runtime_readiness_gate,
             "readiness_explanation": self._readiness_explanation(release_state),
             "recovery_pressure": self.recovery_pressure,
             "context_pressure_summary": self.context_pressure_summary,
@@ -134,6 +143,7 @@ class GateStatusResult:
             "current_environment_incomplete",
             "route_guidance_blocked",
             "model_call_contract_blocked",
+            "runtime_readiness_blocked",
             "candidate_promotion_risk_blocked",
             "plugin_manifests_blocked",
         }:
@@ -193,6 +203,15 @@ class GateStatusResult:
             )
         lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
         lines.extend(runtime_validation_matrix_text_lines(self.runtime_validation_matrix))
+        if self.runtime_readiness_gate:
+            lines.append(
+                "Runtime readiness gate: "
+                f"{self.runtime_readiness_gate.get('status', 'unknown')} "
+                f"(blocked={self.runtime_readiness_gate.get('blocked', 0)}, "
+                f"review={self.runtime_readiness_gate.get('review', 0)})"
+            )
+            for action in list(self.runtime_readiness_gate.get("next_actions") or [])[:3]:
+                lines.append(f"  - {action}")
         explanation = self._readiness_explanation(self._release_state())
         if explanation:
             lines.append(
@@ -317,6 +336,12 @@ class GateStatusResult:
         elif self.route_guidance.get("status") == "blocked":
             summary = "provider route health is blocked by recent capability evidence."
             status = "route_health_blocked"
+        elif self.runtime_readiness_gate.get("status") == "blocked":
+            summary = "runtime readiness gate blocked on model/context/capability/decision evidence."
+            status = "runtime_readiness_blocked"
+        elif self.runtime_readiness_gate.get("status") == "review":
+            summary = "runtime readiness gate needs review before widening validation."
+            status = "runtime_readiness_review"
         else:
             summary = self.next_actions[0] if self.next_actions else "gate is blocked."
             status = "blocked"
@@ -328,6 +353,7 @@ class GateStatusResult:
             "gate_statuses": gates,
             "runtime_validation_gap_summary": gap_summary,
             "route_guidance_status": self.route_guidance.get("status"),
+            "runtime_readiness_gate_status": self.runtime_readiness_gate.get("status"),
         }
 
 
@@ -421,6 +447,32 @@ class GateStatusCommand:
         validation_matrix = runtime_validation_matrix(self.root, progress_metrics)
         recovery_pressure = recovery_pressure_report(self.root, self.validator)
         context_pressure_summary = _context_pressure_summary(self.root)
+        readiness_gate = runtime_readiness_gate(
+            root=self.root,
+            validator=self.validator,
+            model_call_contract=model_call_contract,
+            route_guidance=route_guidance,
+            context_pressure_summary=context_pressure_summary,
+            latest_observation_plan=latest_observation_plan,
+        )
+        if (
+            stage == "ready_for_small_real_task_validation"
+            and readiness_gate.get("status") == "blocked"
+        ):
+            stage = "runtime_readiness_blocked"
+            actions = [
+                "Resolve runtime readiness gate blockers before validation.",
+                *[str(item) for item in readiness_gate.get("next_actions", [])],
+                *actions,
+            ]
+        elif (
+            stage == "ready_for_small_real_task_validation"
+            and readiness_gate.get("status") == "review"
+        ):
+            actions = [
+                *actions,
+                *[str(item) for item in readiness_gate.get("next_actions", [])],
+            ]
 
         return GateStatusResult(
             root=self.root,
@@ -437,6 +489,7 @@ class GateStatusCommand:
             plugin_risks=plugin_risks,
             runtime_progress_metrics=progress_metrics,
             runtime_validation_matrix=validation_matrix,
+            runtime_readiness_gate=readiness_gate,
             recovery_pressure=recovery_pressure,
             context_pressure_summary=context_pressure_summary,
             validation_recommendation=_validation_recommendation(self.root),
@@ -479,9 +532,11 @@ class GateStatusCommand:
                 ],
             )
         if not validation.get("ok") or validation.get("validation_ready") is not True:
+            actions = _validation_failure_next_actions(validation, self.validator)
             return (
                 "validation_suite_failed",
-                ["Inspect validation suite evidence; do not proceed to core acceptance yet."],
+                actions
+                or ["Inspect validation suite evidence; do not proceed to core acceptance yet."],
             )
         if not core:
             return (
@@ -549,6 +604,46 @@ def _validation_task_limits() -> dict[str, object]:
             "session cannot resume",
         ],
     }
+
+
+def _validation_failure_next_actions(
+    validation: dict[str, Any],
+    validator: SchemaValidator,
+) -> list[str]:
+    actions: list[str] = []
+    for scenario in validation.get("scenarios") or []:
+        if not isinstance(scenario, dict) or scenario.get("ok"):
+            continue
+        workspace = scenario.get("workspace")
+        if not workspace:
+            continue
+        run_id = ((scenario.get("summary") or {}).get("run_id")) if isinstance(scenario.get("summary"), dict) else None
+        run_dir = _scenario_run_dir(Path(str(workspace)), str(run_id) if run_id else None)
+        execution = latest_agent_loop_execution_result(run_dir, validator) or {}
+        command = str(execution.get("recommended_command") or "")
+        if not command:
+            decision = latest_agent_loop_decision(run_dir, validator) or {}
+            command = recommended_command_for_next_action(decision.get("next_action") or {}) or ""
+        if command:
+            actions.append(
+                f"Run `asteria {command} --root {workspace}` for failed scenario "
+                f"{scenario.get('scenario', 'unknown')}."
+            )
+        else:
+            actions.append(
+                f"Inspect failed scenario {scenario.get('scenario', 'unknown')} evidence at {workspace}."
+            )
+    return actions[:5]
+
+
+def _scenario_run_dir(workspace: Path, run_id: str | None) -> Path | None:
+    runs_dir = workspace / ".asteria" / "runs"
+    if run_id:
+        return runs_dir / run_id
+    if not runs_dir.exists():
+        return None
+    run_dirs = sorted(path for path in runs_dir.iterdir() if path.is_dir())
+    return run_dirs[-1] if run_dirs else None
 
 
 def _route_environment() -> dict[str, Any]:

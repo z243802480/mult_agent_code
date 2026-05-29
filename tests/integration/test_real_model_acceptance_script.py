@@ -4,9 +4,11 @@ import json
 import os
 import subprocess
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 import pytest
+from asteria_runtime import real_model_acceptance as acceptance
 
 from scripts.real_model_acceptance import (
     SCENARIOS,
@@ -221,6 +223,101 @@ def test_real_model_acceptance_runs_memory_lesson_reuse_without_model(
     assert scenario["scenario"] == "memory_lesson_reuse"
     assert scenario["summary"]["lesson_reused"] is True
     assert summary["aggregate"]["capabilities"]["memory_effectiveness"]["passed"] == 1
+
+
+def test_real_model_acceptance_writes_incremental_summary_on_partial_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summary_path = tmp_path / "summary.json"
+    args = Namespace(
+        suite="offline",
+        scenario=["offline_artifact", "decision_point"],
+        root=tmp_path / "acceptance",
+        summary_json=summary_path,
+        history_jsonl=None,
+        python=sys.executable,
+        allow_fake=True,
+        run_attempts=1,
+        model_max_retries=1,
+        scenario_timeout_seconds=600,
+        cleanup=False,
+        reuse_workspace=False,
+    )
+
+    def fake_run_scenario(
+        _args: Namespace,
+        workspace_root: Path,
+        scenario: acceptance.AcceptanceScenario,
+    ) -> dict[str, object]:
+        if scenario.name == "decision_point":
+            raise RuntimeError("simulated interruption")
+        return {
+            "scenario": scenario.name,
+            "capability": scenario.capability,
+            "tier": scenario.tier,
+            "ok": True,
+            "workspace": str(workspace_root / scenario.name),
+            "duration_seconds": 0.1,
+            "summary": {"diagnostics": {"model_calls": 0, "tool_calls": 0}},
+        }
+
+    monkeypatch.setattr(acceptance, "run_scenario", fake_run_scenario)
+
+    with pytest.raises(SystemExit):
+        acceptance.run_from_args(args)
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["ok"] is False
+    assert summary["complete"] is False
+    assert summary["error"] == "simulated interruption"
+    assert [item["scenario"] for item in summary["scenarios"]] == ["offline_artifact"]
+    assert [item["scenario"] for item in summary["scenario_metadata"]] == [
+        "offline_artifact",
+        "decision_point",
+    ]
+
+
+def test_acceptance_timeout_records_agent_loop_decision(tmp_path: Path) -> None:
+    workspace = tmp_path / "validation_small_cli"
+    run_dir = workspace / ".asteria" / "runs" / "run-0001"
+    run_dir.mkdir(parents=True)
+    (workspace / ".asteria" / "current_session.json").write_text(
+        json.dumps({"session_id": "run-0001"}),
+        encoding="utf-8",
+    )
+    (run_dir / "task_plan.json").write_text(
+        json.dumps({"tasks": [{"task_id": "task-0001"}]}),
+        encoding="utf-8",
+    )
+
+    acceptance.record_acceptance_timeout_loop_decision(
+        workspace=workspace,
+        scenario=acceptance.SCENARIOS["validation_small_cli"],
+        reason="Scenario timed out after 360s.",
+        stderr="recovery-review timed out",
+    )
+
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_decisions.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert decisions[-1]["task_id"] == "task-0001"
+    assert decisions[-1]["next_action"]["action"] == "repair"
+    assert decisions[-1]["next_action"]["capability_ref"]["name"] == (
+        "acceptance_timeout:validation_small_cli"
+    )
+    executions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_execution_results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line.strip()
+    ]
+    assert executions[-1]["decision_id"] == decisions[-1]["decision_id"]
+    assert executions[-1]["target"] == "debug_agent"
+    assert executions[-1]["recommended_command"] == "debug"
 
 
 def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> None:

@@ -776,6 +776,21 @@ class AgentHarness:
                 ),
             ),
             PromptEnvelopeSection(
+                "loop_decision_contract",
+                "runtime",
+                "system",
+                "static",
+                (
+                    "Each agent loop turn must produce one AgentLoopDecision. "
+                    "Allowed next_action.action values are tool, subagent, repair, "
+                    "replan, ask, and stop. Every action must include reason, "
+                    "target_task_id, capability_ref, expected_observation, risk, "
+                    "budget_hint, and evidence_refs. Runtime validates this decision "
+                    "before routing to tool gateway, subagent delegation, debug repair, "
+                    "replan, DecisionPoint, or stop reporting."
+                ),
+            ),
+            PromptEnvelopeSection(
                 "delegation_contract",
                 "runtime",
                 "system",

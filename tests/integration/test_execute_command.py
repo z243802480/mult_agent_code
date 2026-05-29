@@ -126,6 +126,235 @@ class FakeReadonlyExecuteClient:
         )
 
 
+class FakeSubagentExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Delegate this task to a subagent.",
+                    "tool_calls": [],
+                    "verification": [],
+                    "runtime_requests": [],
+                    "agent_loop_decision": {
+                        "schema_version": "0.1.0",
+                        "decision_id": "agent-loop-decision-0001",
+                        "run_id": "run-placeholder",
+                        "task_id": task_id,
+                        "created_at": "2026-05-29T10:00:00+08:00",
+                        "next_action": {
+                            "action": "subagent",
+                            "reason": "Independent implementation should be delegated.",
+                            "target_task_id": task_id,
+                            "capability_ref": {"type": "subagent", "name": "subagent"},
+                            "expected_observation": {
+                                "summary": "Subagent worker dispatch is recorded.",
+                                "success_signal": "worker evidence is present",
+                            },
+                            "risk": "medium",
+                            "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
+                            "evidence_refs": [],
+                        },
+                    },
+                    "completion_notes": "subagent dispatch requested",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(5, 8, 13),
+            model_provider="fake",
+            model_name="fake-subagent-execute",
+            raw_response={},
+        )
+
+
+class FakeBoundedLoopExecuteClient:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.latest_observations: list[dict] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest_observation = runtime_context.get("latest_agent_loop_observation") or {}
+        if latest_observation:
+            self.latest_observations.append(latest_observation)
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        if self.calls == 1:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Create notes module and ask Runtime for a follow-up loop decision.",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                        "reason": "create the requested module",
+                    }
+                ],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                        },
+                        "reason": "verify the module behavior",
+                    }
+                ],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "A tool action should create and verify the module.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "tool", "name": "write_file"},
+                        "expected_observation": {
+                            "summary": "Tool execution should succeed and then return to the loop.",
+                            "success_signal": "verified notes module exists",
+                            "requires_follow_up_decision": True,
+                            "next_recommended_action": "stop",
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                        "evidence_refs": [],
+                    }
+                },
+                "completion_notes": "src/notes_tool.py contains a working add_note function",
+            }
+        else:
+            assert latest_observation["observation_type"] == "tool_result"
+            assert latest_observation["status"] == "succeeded"
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Stop after reviewing successful tool observation.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "stop",
+                        "reason": "The latest observation proves the task is complete.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "stop"},
+                        "expected_observation": {
+                            "summary": "Runtime records a stop observation."
+                        },
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                        "evidence_refs": [latest_observation["observation_id"]],
+                    }
+                },
+                "completion_notes": "bounded loop stopped after observation",
+            }
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(5, 8, 13),
+            model_provider="fake",
+            model_name="fake-bounded-loop-execute",
+            raw_response={},
+        )
+
+
+class FakeRepairAfterFailureLoopClient:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.latest_observations: list[dict] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest_observation = runtime_context.get("latest_agent_loop_observation") or {}
+        if latest_observation:
+            self.latest_observations.append(latest_observation)
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        if self.calls == 1:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Make a tool attempt that will fail validation.",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return notes\n",
+                            "overwrite": True,
+                        },
+                        "reason": "create an intentionally incomplete module",
+                    }
+                ],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": "python -c \"raise SystemExit(1)\"",
+                            "expected_returncodes": [0],
+                        },
+                        "reason": "force validation failure for loop recovery",
+                    }
+                ],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "Use a tool action so Runtime can observe failure.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "tool", "name": "write_file"},
+                        "expected_observation": {
+                            "summary": "Validation failure should become repair observation.",
+                            "next_recommended_action": "repair",
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                        "evidence_refs": [],
+                    }
+                },
+                "completion_notes": "validation should fail",
+            }
+        else:
+            assert latest_observation["status"] == "failed"
+            assert latest_observation["next_recommended_action"] == "repair"
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Route failed observation into repair.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "repair",
+                        "reason": "The failed observation needs the debug repair path.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "repair"},
+                        "expected_observation": {
+                            "summary": "Runtime records repair routing."
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
+                        "evidence_refs": [latest_observation["observation_id"]],
+                    }
+                },
+                "completion_notes": "repair requested",
+            }
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(5, 8, 13),
+            model_provider="fake",
+            model_name="fake-repair-after-failure-loop",
+            raw_response={},
+        )
+
+
 class FakeDisjointWriteExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         task_id = str(request.metadata.get("task_id") or "task-0001")
@@ -903,6 +1132,144 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert cost_report["tool_calls"] == 3
     assert cost_report["estimated_input_tokens"] == 25
     assert cost_report["estimated_output_tokens"] == 45
+    loop_observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert loop_observations[-1]["observation_type"] == "tool_result"
+    assert loop_observations[-1]["status"] == "succeeded"
+
+
+def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeSubagentExecuteClient(),
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    executions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_execution_results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    workers = [
+        json.loads(line)
+        for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert result.blocked == 1
+    assert executions[-1]["action"] == "subagent"
+    assert executions[-1]["target"] == "subagent_dispatcher"
+    worker = next(
+        item for item in workers if item["worker_invocation_id"] == executions[-1]["worker_invocation_id"]
+    )
+    worker_result = next(
+        item for item in worker_results if item["worker_result_id"] == executions[-1]["worker_result_id"]
+    )
+    assert worker["status"] == "queued"
+    assert worker_result["status"] == "partial"
+    loop_observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert loop_observations[-1]["observation_type"] == "subagent_result"
+    assert loop_observations[-1]["status"] == "pending"
+    assert loop_observations[-1]["next_recommended_action"] == "subagent"
+
+
+def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeBoundedLoopExecuteClient()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=client,
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    executions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_execution_results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert client.calls == 2
+    assert client.latest_observations[0]["observation_type"] == "tool_result"
+    assert [item["next_action"]["action"] for item in decisions[-2:]] == ["tool", "stop"]
+    assert [item["action"] for item in executions[-2:]] == ["tool", "stop"]
+    assert [item["observation_type"] for item in observations[-2:]] == [
+        "tool_result",
+        "stop_report",
+    ]
+    assert observations[-2]["next_recommended_action"] == "stop"
+    assert observations[-1]["status"] == "stopped"
+
+
+def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeRepairAfterFailureLoopClient()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=client,
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert client.calls == 2
+    assert client.latest_observations[0]["status"] == "failed"
+    assert [item["next_action"]["action"] for item in decisions[-2:]] == ["tool", "repair"]
+    assert observations[-2]["observation_type"] == "tool_result"
+    assert observations[-2]["status"] == "failed"
+    assert observations[-2]["next_recommended_action"] == "repair"
+    assert observations[-1]["observation_type"] == "repair_result"
+    assert observations[-1]["status"] == "pending"
 
 
 def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(

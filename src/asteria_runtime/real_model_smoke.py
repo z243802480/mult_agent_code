@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
+from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -232,7 +234,10 @@ def run_from_args(args: argparse.Namespace) -> None:
         if getattr(args, "matrix", None):
             run_matrix_from_args(args, timeout_budget=timeout_budget)
             return
-        result, cleanup = run_single_from_args(args, timeout_budget=timeout_budget)
+        result, cleanup = prepare_single_result(args)
+        run_smoke(args, result)
+        result.ended_at = time.monotonic()
+        write_transcript(result)
         if args.summary_json:
             write_json(args.summary_json, result.summary())
         print_success(result)
@@ -241,6 +246,8 @@ def run_from_args(args: argparse.Namespace) -> None:
             result.ended_at = time.monotonic()
         if result:
             write_transcript(result)
+            if args.summary_json:
+                write_json(args.summary_json, result.summary())
             print_failure(exc, result)
         else:
             print(f"Real model smoke failed: {exc}", file=sys.stderr)
@@ -396,21 +403,36 @@ def run_single_from_args(
     timeout_budget: DeadlineBudget,
     case: SmokeCase | None = None,
 ) -> tuple[SmokeResult, bool]:
-    workspace, cleanup = prepare_workspace(args.root)
-    if case:
-        apply_setup_files(workspace, case.setup_files)
-    result = SmokeResult(
-        workspace=workspace,
-        run_id=None,
-        expected_file=workspace / args.expected_file,
-        final_report=None,
-        transcript=workspace / "real_model_smoke_transcript.json",
-        diagnostics={"timeout_budget": timeout_budget.as_dict()},
-    )
+    result, cleanup = prepare_single_result(args, case=case)
     run_smoke(args, result)
     result.ended_at = time.monotonic()
     write_transcript(result)
     return result, cleanup
+
+
+def prepare_single_result(
+    args: argparse.Namespace,
+    *,
+    case: SmokeCase | None = None,
+) -> tuple[SmokeResult, bool]:
+    workspace, cleanup = prepare_workspace(args.root)
+    if case:
+        apply_setup_files(workspace, case.setup_files)
+    timeout_budget = DeadlineBudget.for_smoke(
+        args.command_timeout_seconds,
+        model_max_retries=args.model_max_retries,
+    )
+    return (
+        SmokeResult(
+            workspace=workspace,
+            run_id=None,
+            expected_file=workspace / args.expected_file,
+            final_report=None,
+            transcript=workspace / "real_model_smoke_transcript.json",
+            diagnostics={"timeout_budget": timeout_budget.as_dict()},
+        ),
+        cleanup,
+    )
 
 
 def run_matrix_from_args(args: argparse.Namespace, *, timeout_budget: DeadlineBudget) -> None:
@@ -798,6 +820,7 @@ def run_command(
             stderr=redact(stderr),
         )
         result.commands.append(record)
+        record_recovery_loop_decision(result, record, reason=f"{name} timed out after {timeout}s.")
         if check:
             raise SmokeFailure(f"{name} timed out after {timeout}s.")
         return record
@@ -809,9 +832,83 @@ def run_command(
         stderr=redact(completed.stderr),
     )
     result.commands.append(record)
+    if completed.returncode != 0:
+        record_recovery_loop_decision(
+            result,
+            record,
+            reason=f"{name} failed with exit code {completed.returncode}.",
+        )
     if check and completed.returncode != 0:
         raise SmokeFailure(f"{name} failed with exit code {completed.returncode}.")
     return record
+
+
+def record_recovery_loop_decision(
+    result: SmokeResult,
+    record: CommandRecord,
+    *,
+    reason: str,
+) -> None:
+    if not result.run_id or not _is_review_or_recovery_command(record.name):
+        return
+    run_dir = result.workspace / ".asteria" / "runs" / result.run_id
+    if not run_dir.exists():
+        return
+    text = f"{record.stdout}\n{record.stderr}\n{reason}".lower()
+    action = "repair"
+    if "decision" in text or "permission" in text or "budget" in text:
+        action = "ask"
+    elif "plan" in text or "scope" in text:
+        action = "replan"
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
+    decision = persist_runtime_agent_loop_decision(
+        run_dir=run_dir,
+        validator=validator,
+        run_id=result.run_id,
+        task_id=latest_task_id(run_dir),
+        action=action,
+        reason=(
+            "Recovery command failed before a model-authored next action was available: "
+            f"{reason}"
+        ),
+        capability_name=record.name,
+        expected_observation={
+            "summary": "Review or recovery failure is captured as a loop decision.",
+            "success_signal": "The next runtime command can continue through debug, replan, decide, or stop.",
+            "command": record.name,
+        },
+        risk="medium",
+        evidence_refs=[str(run_dir / "user_progress.jsonl"), str(run_dir / "model_calls.jsonl")],
+        budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "recovery_failure"},
+    )
+    if decision is not None:
+        persist_agent_loop_execution_result(
+            run_dir=run_dir,
+            validator=validator,
+            decision=decision,
+            create_decision_point=action == "ask",
+        )
+
+
+def _is_review_or_recovery_command(name: str) -> bool:
+    return name in {"run", "review"} or name.startswith("run-retry-") or name.startswith("recovery-")
+
+
+def latest_task_id(run_dir: Path) -> str | None:
+    task_plan_path = run_dir / "task_plan.json"
+    if not task_plan_path.exists():
+        return None
+    try:
+        task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else None
+    if not isinstance(tasks, list):
+        return None
+    for task in reversed(tasks):
+        if isinstance(task, dict) and task.get("task_id"):
+            return str(task["task_id"])
+    return None
 
 
 def args_model_max_retries() -> int:

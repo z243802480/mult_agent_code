@@ -4,6 +4,11 @@ import json
 from dataclasses import dataclass
 
 from asteria_runtime.agents.execution_action import normalize_execution_action
+from asteria_runtime.core.agent_loop_decision import (
+    AgentLoopDecisionError,
+    normalize_agent_loop_decision,
+    validate_decision_matches_execution_action,
+)
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -62,7 +67,12 @@ class CoderAgent:
             )
             response = self.model_client.chat(request)
             try:
-                action = self._validated_action(response.content, task)
+                action = self._validated_action(
+                    response.content,
+                    task,
+                    run_id,
+                    sequence=self._loop_sequence(runtime_context or {}),
+                )
             except CoderAgentError as exc:
                 last_error = exc
                 messages.extend(
@@ -102,15 +112,36 @@ class CoderAgent:
             metadata["context_envelope_path"] = context_package.get("context_envelope_path")
         return metadata
 
-    def _validated_action(self, content: str, task: dict) -> dict:
+    def _validated_action(
+        self,
+        content: str,
+        task: dict,
+        run_id: str,
+        *,
+        sequence: int = 1,
+    ) -> dict:
         action = self._parse_json(content)
         action = normalize_execution_action(action, task)
+        try:
+            loop_decision = normalize_agent_loop_decision(
+                action,
+                task=task,
+                run_id=run_id,
+                sequence=sequence,
+            )
+            validate_decision_matches_execution_action(loop_decision, action)
+        except AgentLoopDecisionError as exc:
+            raise CoderAgentError(f"AgentLoopDecision failed validation: {exc}") from exc
+        action["agent_loop_decision"] = loop_decision
         if action.get("task_id") != task["task_id"]:
             raise CoderAgentError(
                 f"ExecutionAction task_id mismatch: {action.get('task_id')} != {task['task_id']}"
             )
+        next_action = loop_decision.get("next_action") or {}
+        next_action_kind = str(next_action.get("action") or "")
         if (
-            not action.get("tool_calls")
+            next_action_kind == "tool"
+            and not action.get("tool_calls")
             and not action.get("verification")
             and not action.get("runtime_requests")
         ):
@@ -122,6 +153,14 @@ class CoderAgent:
         except SchemaValidationError as exc:
             raise CoderAgentError(f"ExecutionAction failed schema validation: {exc}") from exc
         return action
+
+    def _loop_sequence(self, runtime_context: dict) -> int:
+        raw = runtime_context.get("agent_loop_round")
+        round_context = raw if isinstance(raw, dict) else {}
+        try:
+            return max(1, int(round_context.get("index") or 1))
+        except (TypeError, ValueError):
+            return 1
 
     def _parse_json(self, content: str) -> dict:
         try:
@@ -136,6 +175,8 @@ class CoderAgent:
 Return only valid JSON matching the ExecutionAction schema. Do not wrap in markdown.
 
 You must:
+- Explicitly choose exactly one agent_loop_decision.next_action.action: tool, subagent, repair, replan, ask, or stop.
+- Every next action must include reason, target_task_id, capability_ref, expected_observation, risk, budget_hint, and evidence_refs.
 - Make a small, verifiable change for the assigned task.
 - Use only tools from available_tools. These are model-facing primitives backed by runtime policy.
 - Prefer edit_file for editing existing files and write_file for new files.
@@ -197,6 +238,20 @@ You must:
                         "details": {"write_scope": ["path/to/requested_file.py"]},
                     }
                 ],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "why this is the correct next runtime action",
+                        "target_task_id": task["task_id"],
+                        "capability_ref": {"type": "tool", "name": "write_file"},
+                        "expected_observation": {
+                            "summary": "what tool observation should prove"
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 1},
+                        "evidence_refs": [],
+                    }
+                },
                 "completion_notes": "what should be true after execution",
             },
         }

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentLoopDecision",
+  "type": "object",
+  "required": ["schema_version", "decision_id", "run_id", "task_id", "created_at", "next_action"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "next_action": {
+      "type": "object",
+      "required": [
+        "action",
+        "reason",
+        "target_task_id",
+        "capability_ref",
+        "expected_observation",
+        "risk",
+        "budget_hint",
+        "evidence_refs"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": ["tool", "subagent", "repair", "replan", "ask", "stop"]
+        },
+        "reason": { "type": "string" },
+        "target_task_id": { "type": "string" },
+        "capability_ref": {
+          "type": "object",
+          "required": ["type", "name"],
+          "properties": {
+            "type": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        },
+        "expected_observation": { "type": "object" },
+        "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+        "budget_hint": { "type": "object" },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

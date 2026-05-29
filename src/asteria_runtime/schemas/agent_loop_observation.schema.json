@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentLoopObservation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "observation_id",
+    "run_id",
+    "task_id",
+    "target_task_id",
+    "created_at",
+    "observation_type",
+    "source_execution_id",
+    "source_decision_id",
+    "status",
+    "summary",
+    "evidence_refs",
+    "next_recommended_action"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "observation_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "target_task_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "observation_type": {
+      "type": "string",
+      "enum": [
+        "tool_result",
+        "subagent_result",
+        "repair_result",
+        "replan_result",
+        "decision_pending",
+        "decision_resolved",
+        "stop_report"
+      ]
+    },
+    "source_execution_id": { "type": "string" },
+    "source_decision_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "pending", "blocked", "waiting_user", "stopped"]
+    },
+    "summary": { "type": "string" },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "next_recommended_action": {
+      "type": ["string", "null"],
+      "enum": ["tool", "subagent", "repair", "replan", "ask", "stop", null]
+    }
+  }
+}

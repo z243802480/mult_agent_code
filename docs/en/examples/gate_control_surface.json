@@ -423,6 +423,7 @@
           "plugin_risks",
           "runtime_progress_metrics",
           "runtime_validation_matrix",
+          "runtime_readiness_gate",
           "readiness_explanation",
           "recovery_pressure",
           "context_pressure_summary",
@@ -687,6 +688,15 @@
         "minimum_ready_ratio": 1.0,
         "coverage_ratio": 0.125,
         "cases": []
+      },
+      "runtime_readiness_gate": {
+        "schema_version": "0.1.0",
+        "status": "review",
+        "blocked": 0,
+        "review": 0,
+        "ready": 0,
+        "checks": [],
+        "next_actions": []
       },
       "readiness_explanation": {
         "status": "blocked",

@@ -107,6 +107,7 @@ def test_agent_harness_builds_prompt_envelope_without_full_prompt_body() -> None
         "tool_policy",
         "safety_envelope",
         "failure_repair",
+        "loop_decision_contract",
         "delegation_contract",
         "context_compaction",
         "user_communication",

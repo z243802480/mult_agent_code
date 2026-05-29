@@ -13,6 +13,8 @@ from asteria_runtime.core.agent_harness import (
     observation_next_action_plan,
     tool_observation_action_options,
 )
+from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
+from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
@@ -193,7 +195,12 @@ class ReviewCommand:
         )
         try:
             eval_report = reviewer.evaluate(review_context, run_id)
-        except Exception:
+        except Exception as exc:
+            self._record_review_failure_decision(
+                run_dir=run_dir,
+                run_id=run_id,
+                error=exc,
+            )
             self.store.write(
                 cost_report_path,
                 self._merge_cost_reports(
@@ -328,6 +335,63 @@ class ReviewCommand:
             ),
             failure_classification=failure_classification,
         )
+
+    def _record_review_failure_decision(
+        self,
+        *,
+        run_dir: Path,
+        run_id: str,
+        error: Exception,
+    ) -> None:
+        message = str(error) or error.__class__.__name__
+        normalized = message.lower()
+        action = "repair"
+        if "budget" in normalized or "permission" in normalized:
+            action = "ask"
+        elif "plan" in normalized or "coverage" in normalized:
+            action = "replan"
+        decision = persist_runtime_agent_loop_decision(
+            run_dir=run_dir,
+            validator=self.validator,
+            run_id=run_id,
+            task_id=self._latest_task_id(run_dir),
+            action=action,
+            reason=(
+                "Review failed before a model-authored next action was available: "
+                f"{message}"
+            ),
+            capability_name="review_failure",
+            expected_observation={
+                "summary": "Review failure is routed into the agent loop instead of stopping at provider/review.",
+                "success_signal": "Asteria debug, replan, decide, or status can continue from this evidence.",
+            },
+            risk="medium",
+            evidence_refs=[str(run_dir / "user_progress.jsonl"), str(run_dir / "model_calls.jsonl")],
+            budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "review_failure"},
+        )
+        if decision is not None:
+            persist_agent_loop_execution_result(
+                run_dir=run_dir,
+                validator=self.validator,
+                decision=decision,
+                create_decision_point=action == "ask",
+            )
+
+    def _latest_task_id(self, run_dir: Path) -> str | None:
+        task_plan_path = run_dir / "task_plan.json"
+        if not task_plan_path.exists():
+            return None
+        try:
+            task_plan = self.store.read(task_plan_path, "task_board")
+        except Exception:
+            return None
+        tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else None
+        if not isinstance(tasks, list):
+            return None
+        for task in reversed(tasks):
+            if isinstance(task, dict) and task.get("task_id"):
+                return str(task["task_id"])
+        return None
 
     def _result_blockers(
         self,

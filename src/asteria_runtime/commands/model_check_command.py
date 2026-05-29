@@ -29,6 +29,7 @@ class ModelCheckResult:
     failure_type: str | None = None
     streaming: StreamingTelemetry | None = None
     route_health: dict | None = None
+    route_fallback: dict | None = None
 
     def to_text(self) -> str:
         route = self.route_health or {}
@@ -49,6 +50,13 @@ class ModelCheckResult:
             lines.append(f"Failure report: {self.failure_report_path}")
         if route.get("current_blocker"):
             lines.append(f"Route blocker: {route['current_blocker']}")
+        if self.route_fallback:
+            lines.append(
+                "Call fallback: "
+                f"{self.route_fallback.get('from_tier', 'unknown')} -> "
+                f"{self.route_fallback.get('to_tier', 'unknown')} "
+                f"({self.route_fallback.get('policy', 'unknown')})"
+            )
         routes = route.get("routes") or []
         if routes:
             fallback = (routes[0].get("fallback") or {}) if isinstance(routes[0], dict) else {}
@@ -87,6 +95,7 @@ class ModelCheckResult:
             "failure_type": self.failure_type,
             "streaming": self.streaming.to_dict() if self.streaming else None,
             "route_health": self.route_health or {},
+            "route_fallback": self.route_fallback or {},
         }
 
 
@@ -199,15 +208,20 @@ class ModelCheckCommand:
                 route_health=route_health,
             )
 
+        route_fallback = _route_fallback(response.raw_response)
+        effective_base_url = base_url
+        if route_fallback.get("to_tier"):
+            effective_base_url = resolve_model_route(str(route_fallback["to_tier"])).base_url
         return ModelCheckResult(
             provider=response.model_provider or provider,
             model_name=response.model_name or model_name,
-            base_url=base_url,
+            base_url=effective_base_url or base_url,
             config_ok=True,
             call_ok=True,
             summary="Model returned valid JSON for the health check prompt.",
             streaming=response.streaming,
             route_health=route_health,
+            route_fallback=route_fallback,
         )
 
     def _request(self) -> ChatRequest:
@@ -238,3 +252,8 @@ def _env_prefix_for_tier(model_tier: str) -> str:
     if model_tier in {"strong", "medium", "cheap"}:
         return f"AGENT_MODEL_{model_tier.upper()}"
     return "AGENT_MODEL"
+
+
+def _route_fallback(raw_response: dict) -> dict:
+    fallback = raw_response.get("route_fallback") if isinstance(raw_response, dict) else None
+    return fallback if isinstance(fallback, dict) else {}
