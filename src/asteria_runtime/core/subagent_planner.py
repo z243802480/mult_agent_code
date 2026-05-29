@@ -284,7 +284,7 @@ def _child_task(
 ) -> dict[str, Any]:
     child_task_suffix = worker_id or f"{max(1, sequence):04d}"
     return {
-        "child_task_id": f"{target_task_id}:child:{child_task_suffix}:{index:02d}",
+        "child_task_id": f"{target_task_id}-child-{child_task_suffix}-{index:02d}",
         "task_id": target_task_id,
         "title": title,
         "objective": objective,

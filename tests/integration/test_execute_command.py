@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from threading import Lock
 
 import pytest
 
@@ -406,6 +407,148 @@ class FakeSubagentMultiRoundExecuteClient:
             model_name="fake-subagent-multi-round-execute",
             raw_response={},
         )
+
+
+class FakeSubagentReadonlyFanoutClient:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.child_calls = 0
+        self.latest_observations: list[dict] = []
+        self.child_task_ids: list[str] = []
+        self._lock = Lock()
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        with self._lock:
+            self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest_observation = runtime_context.get("latest_agent_loop_observation") or {}
+        if latest_observation:
+            self.latest_observations.append(latest_observation)
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        if runtime_context.get("subagent_fanout_child"):
+            with self._lock:
+                self.child_calls += 1
+                self.child_task_ids.append(task_id)
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": f"Run readonly fanout check for {task_id}.",
+                "tool_calls": [],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {"command": 'python -c "assert True"'},
+                        "reason": "readonly fanout verification",
+                    }
+                ],
+                "runtime_requests": [],
+                "completion_notes": f"readonly fanout child {task_id} completed",
+            }
+        elif latest_observation:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Stop after readonly fanout subagent observation.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "stop",
+                        "reason": "Readonly fanout workers completed.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "stop"},
+                        "expected_observation": {
+                            "summary": "Runtime records stop after readonly fanout."
+                        },
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                        "evidence_refs": [latest_observation["observation_id"]],
+                    }
+                },
+                "completion_notes": "parent loop stopped",
+            }
+        else:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Delegate readonly fanout checks to subagents.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "schema_version": "0.1.0",
+                    "decision_id": "agent-loop-decision-0001",
+                    "run_id": "run-placeholder",
+                    "task_id": task_id,
+                    "created_at": "2026-05-29T10:00:00+08:00",
+                    "next_action": {
+                        "action": "subagent",
+                        "reason": "Readonly checks can safely fan out.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "subagent", "name": "subagent"},
+                        "expected_observation": {
+                            "summary": "Readonly fanout workers complete.",
+                            "success_signal": "all readonly workers pass",
+                            "parallel_safety": "readonly",
+                        },
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 2, "tool_budget_units": 2},
+                        "evidence_refs": [],
+                    },
+                },
+                "completion_notes": "subagent readonly fanout requested",
+            }
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(4, 6, 10),
+            model_provider="fake",
+            model_name="fake-subagent-readonly-fanout",
+            raw_response={},
+        )
+
+
+class FakeSubagentReadonlyFanoutWriteClient(FakeSubagentReadonlyFanoutClient):
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        if runtime_context.get("subagent_fanout_child"):
+            with self._lock:
+                self.calls += 1
+                self.child_calls += 1
+            task_id = str(request.metadata.get("task_id") or "task-0001")
+            return ChatResponse(
+                content=json.dumps(
+                    {
+                        "schema_version": "0.1.0",
+                        "task_id": task_id,
+                        "summary": "Attempt an unsafe write from readonly fanout.",
+                        "tool_calls": [
+                            {
+                                "tool_name": "write_file",
+                                "args": {
+                                    "path": "readonly_fanout_violation.txt",
+                                    "content": "bad",
+                                    "overwrite": True,
+                                },
+                                "reason": "unsafe write",
+                            }
+                        ],
+                        "verification": [],
+                        "runtime_requests": [],
+                        "completion_notes": "should be denied",
+                    },
+                    ensure_ascii=False,
+                ),
+                finish_reason="stop",
+                usage=TokenUsage(4, 6, 10),
+                model_provider="fake",
+                model_name="fake-subagent-readonly-fanout-write",
+                raw_response={},
+            )
+        return super().chat(request)
 
 
 class FakeBoundedLoopExecuteClient:
@@ -1599,6 +1742,172 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
     assert subagent_plan["subagent_child_plan_id"] == "subagent-child-plan-0001"
     assert subagent_plan["planned_child_count"] == 1
     assert subagent_plan["planned_child_tasks"][0]["task_id"] == "task-0001"
+
+
+def test_execute_command_runs_subagent_readonly_fanout_child_workers(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["max_rounds_per_task"] = 2
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "research two local checks", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "title": "Research local readonly checks",
+            "description": "Inspect two local facts without writing files.",
+            "acceptance": ["inspect alpha", "inspect beta"],
+            "allowed_tools": ["list_files", "read_file", "search_text", "run_command"],
+            "expected_artifacts": [],
+            "expected_changed_files": [],
+            "write_scope": [],
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": True,
+                "allows_expected_failure": False,
+            },
+            "multi_agent_strategy": {
+                "mode": "readonly_fanout",
+                "max_child_workers": 2,
+                "planner_child_plan": True,
+                "coordination_policy": {
+                    "write_allowed": False,
+                    "requires_merge_gate": False,
+                    "requires_summary": True,
+                    "scale_out_limit": 2,
+                },
+            },
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+    client = FakeSubagentReadonlyFanoutClient()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=client,
+    ).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert client.child_calls == 2
+    assert sorted(client.child_task_ids) == [
+        "task-0001-child-worker-0002-01",
+        "task-0001-child-worker-0002-02",
+    ]
+    child_plans = [
+        json.loads(line)
+        for line in (run_dir / "subagent_child_plans.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert child_plans[-1]["scheduling_strategy"] == "parallel_readonly_safe"
+    assert len(child_plans[-1]["child_tasks"]) == 2
+    workers = [
+        json.loads(line)
+        for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    readonly_workers = [
+        item for item in workers if item.get("worker_kind") == "subagent_readonly_child"
+    ]
+    assert len(readonly_workers) == 2
+    assert {item["status"] for item in readonly_workers} == {"succeeded"}
+    assert {item["parent_worker_invocation_id"] for item in readonly_workers} == {"worker-0002"}
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    readonly_results = [
+        item for item in worker_results if item.get("worker_kind") == "subagent_readonly_child"
+    ]
+    assert len(readonly_results) == 2
+    assert {item["cost"]["model_calls"] for item in readonly_results} == {1}
+    parent_subagent_result = [
+        item for item in worker_results if item.get("worker_kind") == "subagent"
+    ][-1]
+    assert parent_subagent_result["status"] == "succeeded"
+    assert parent_subagent_result["cost"]["model_calls"] == 2
+    assert parent_subagent_result["child_plan_refs"] == ["subagent-child-plan-0001"]
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    subagent_observation = [
+        item for item in observations if item["observation_type"] == "subagent_result"
+    ][-1]
+    assert subagent_observation["status"] == "succeeded"
+    assert subagent_observation["next_recommended_action"] == "stop"
+    agent_graph = json.loads((run_dir / "agent_run_graph.json").read_text(encoding="utf-8"))
+    readonly_plans = [
+        item
+        for item in agent_graph["child_worker_plans"]
+        if item["worker_invocation_id"] in {worker["worker_invocation_id"] for worker in readonly_workers}
+    ]
+    assert len(readonly_plans) == 2
+    assert {item["parent_worker_invocation_id"] for item in readonly_plans} == {"worker-0002"}
+    assert {item["collaboration_role"] for item in readonly_plans} == {"research_child"}
+
+
+def test_execute_command_blocks_write_tool_in_subagent_readonly_fanout(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "research two local checks", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "title": "Research local readonly checks",
+            "description": "Inspect two local facts without writing files.",
+            "acceptance": ["inspect alpha", "inspect beta"],
+            "allowed_tools": ["list_files", "read_file", "search_text", "run_command"],
+            "expected_artifacts": [],
+            "expected_changed_files": [],
+            "write_scope": [],
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": True,
+                "allows_expected_failure": False,
+            },
+            "multi_agent_strategy": {
+                "mode": "readonly_fanout",
+                "max_child_workers": 2,
+                "planner_child_plan": True,
+                "coordination_policy": {"write_allowed": False, "requires_merge_gate": False},
+            },
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeSubagentReadonlyFanoutWriteClient(),
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "readonly_fanout_violation.txt").exists()
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    parent_subagent_result = [
+        item for item in worker_results if item.get("worker_kind") == "subagent"
+    ][-1]
+    assert parent_subagent_result["status"] == "failed"
+    assert "Readonly fanout child cannot use write tool" in parent_subagent_result["summary"]
 
 
 def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path) -> None:

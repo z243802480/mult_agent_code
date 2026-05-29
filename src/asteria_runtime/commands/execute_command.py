@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -401,6 +402,20 @@ class ExecuteCommand:
         if isinstance(child_plan, dict):
             child_runtime_context["subagent_child_plan"] = child_plan
             child_runtime_context["subagent_worker"]["child_plan_refs"] = child_plan_refs
+            if self._is_readonly_fanout_child_plan(child_plan):
+                return self._execute_subagent_readonly_fanout(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    coder=coder,
+                    goal_spec=goal_spec,
+                    project_config=project_config,
+                    runtime_context=child_runtime_context,
+                    parent_decision=parent_decision,
+                    parent_execution=parent_execution,
+                    child_plan=child_plan,
+                    child_plan_refs=child_plan_refs,
+                )
         child_max_rounds = self._subagent_child_max_rounds(context.policy)
         child_runtime_context["current_worker_invocation_id"] = worker_id
         child_runtime_context["current_worker_result_id"] = str(
@@ -583,6 +598,341 @@ class ExecuteCommand:
             tool_calls=child_tool_calls,
             evidence_path=child_latest_summary.evidence_path if child_latest_summary else None,
         )
+
+    def _is_readonly_fanout_child_plan(self, child_plan: dict) -> bool:
+        if str(child_plan.get("scheduling_strategy") or "") != "parallel_readonly_safe":
+            return False
+        children = [item for item in child_plan.get("child_tasks") or [] if isinstance(item, dict)]
+        if len(children) <= 1:
+            return False
+        return self._readonly_fanout_gate(child_plan) is None
+
+    def _readonly_fanout_gate(self, child_plan: dict) -> str | None:
+        if str(child_plan.get("scheduling_strategy") or "") != "parallel_readonly_safe":
+            return "subagent fanout is not using readonly scheduling"
+        write_tools = {"write_file", "apply_patch", "restore_backup"}
+        for child in child_plan.get("child_tasks") or []:
+            if not isinstance(child, dict):
+                return "subagent fanout child task is malformed"
+            if child.get("write_allowed") is True:
+                return "readonly fanout child task allows writes"
+            if child.get("write_scope"):
+                return "readonly fanout child task has write scope"
+            if set(child.get("allowed_tools") or []) & write_tools:
+                return "readonly fanout child task exposes write tools"
+            if str(child.get("parallel_safety") or "") != "readonly":
+                return "readonly fanout child task is not marked readonly"
+        return None
+
+    def _execute_subagent_readonly_fanout(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+        parent_decision: dict,
+        parent_execution: dict,
+        child_plan: dict,
+        child_plan_refs: list[str],
+    ) -> tuple[TaskExecutionSummary, dict | None]:
+        task_id = str(task["task_id"])
+        gate_reason = self._readonly_fanout_gate(child_plan)
+        if gate_reason is not None:
+            return self._complete_subagent_child_worker(
+                task=task,
+                task_board=task_board,
+                context=context,
+                parent_execution=parent_execution,
+                child_execution=None,
+                status="failed",
+                summary=f"Readonly fanout blocked by gate: {gate_reason}.",
+                artifact_refs=[],
+                validation_refs=[],
+                failure_evidence_refs=[],
+                child_plan_refs=child_plan_refs,
+                model_calls=0,
+                tool_calls=0,
+            )
+        children = [item for item in child_plan.get("child_tasks") or [] if isinstance(item, dict)]
+        slots = self.worker_recorder.allocate_execution_slots(context, len(children))
+        model_calls_before = (
+            self._jsonl_count(context.run_dir / "model_calls.jsonl") if context.run_dir else 0
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title="Readonly fanout started",
+            summary=f"Started {len(children)} readonly child worker(s) for {task_id}.",
+            data={
+                "task_id": task_id,
+                "subagent_child_plan_id": child_plan.get("subagent_child_plan_id"),
+                "worker_slots": [slot.worker_id for slot in slots],
+            },
+        )
+        summaries_by_id: dict[str, TaskExecutionSummary] = {}
+        with ThreadPoolExecutor(
+            max_workers=len(children),
+            thread_name_prefix="subagent-readonly",
+        ) as pool:
+            futures = {
+                pool.submit(
+                    self._execute_one_readonly_fanout_child,
+                    child=child,
+                    slot=slots[index],
+                    task=task,
+                    context=context,
+                    coder=coder,
+                    goal_spec=goal_spec,
+                    project_config=project_config,
+                    runtime_context=runtime_context,
+                    parent_execution=parent_execution,
+                    child_plan=child_plan,
+                    child_plan_refs=child_plan_refs,
+                ): str(child.get("child_task_id") or f"{task_id}-child-{index + 1:02d}")
+                for index, child in enumerate(children)
+            }
+            for future in as_completed(futures):
+                child_id = futures[future]
+                try:
+                    summaries_by_id[child_id] = future.result()
+                except Exception as exc:
+                    summaries_by_id[child_id] = TaskExecutionSummary(
+                        task_id=child_id,
+                        status="blocked",
+                        summary=str(exc),
+                        tool_calls=0,
+                        verification_calls=0,
+                    )
+        summaries = [
+            summaries_by_id[str(child.get("child_task_id") or f"{task_id}-child-{index + 1:02d}")]
+            for index, child in enumerate(children)
+        ]
+        validation_refs = [
+            ref for summary in summaries for ref in summary.validation_refs
+        ]
+        failure_refs = [
+            ref for summary in summaries for ref in self._refs(summary.evidence_path)
+            if summary.status != "done"
+        ]
+        model_calls = (
+            self._jsonl_count(context.run_dir / "model_calls.jsonl") - model_calls_before
+            if context.run_dir
+            else len(summaries)
+        )
+        tool_calls = sum(summary.tool_calls + summary.verification_calls for summary in summaries)
+        succeeded = all(summary.status == "done" for summary in summaries)
+        summary_text = (
+            f"Readonly fanout completed {len(summaries)} child worker(s)."
+            if succeeded
+            else "Readonly fanout had failed child worker(s): "
+            + "; ".join(summary.summary for summary in summaries if summary.status != "done")
+        )
+        return self._complete_subagent_child_worker(
+            task=task,
+            task_board=task_board,
+            context=context,
+            parent_execution=parent_execution,
+            child_execution=None,
+            status="succeeded" if succeeded else "failed",
+            summary=summary_text,
+            artifact_refs=[],
+            validation_refs=validation_refs,
+            failure_evidence_refs=failure_refs,
+            child_plan_refs=child_plan_refs,
+            model_calls=model_calls,
+            tool_calls=tool_calls,
+            evidence_path=context.run_dir / "worker_results.jsonl" if context.run_dir else None,
+        )
+
+    def _execute_one_readonly_fanout_child(
+        self,
+        *,
+        child: dict,
+        slot: WorkerExecutionSlot,
+        task: dict,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+        parent_execution: dict,
+        child_plan: dict,
+        child_plan_refs: list[str],
+    ) -> TaskExecutionSummary:
+        child_task = self._readonly_fanout_task(task, child, parent_execution, child_plan)
+        return self.worker_runner.run(
+            task=child_task,
+            context=context,
+            runtime_context={
+                **runtime_context,
+                "current_worker_invocation_id": slot.worker_id,
+                "current_worker_result_id": slot.result_id,
+                "subagent_fanout_child": child,
+                "subagent_worker": {
+                    **dict(runtime_context.get("subagent_worker") or {}),
+                    "worker_invocation_id": slot.worker_id,
+                    "worker_result_id": slot.result_id,
+                    "parent_worker_invocation_id": parent_execution.get("worker_invocation_id"),
+                    "child_plan_refs": child_plan_refs,
+                    "scheduling_strategy": child_plan.get("scheduling_strategy"),
+                },
+            },
+            execute_task=lambda mounted_context: self._execute_readonly_fanout_child_once(
+                task=child_task,
+                context=context,
+                coder=coder,
+                goal_spec=goal_spec,
+                project_config=project_config,
+                runtime_context=mounted_context,
+            ),
+            artifact_refs=self.evidence_sink.artifact_refs,
+            failure_evidence_refs=self._failure_evidence_refs,
+            task_failure_refs=self.evidence_sink.task_failure_refs,
+            decision_refs=self.evidence_sink.decision_refs,
+            validation_refs=self.evidence_sink.validation_refs,
+            model_call_count=self._jsonl_count,
+            worker_id=slot.worker_id,
+            result_id=slot.result_id,
+        )
+
+    def _execute_readonly_fanout_child_once(
+        self,
+        *,
+        task: dict,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+    ) -> TaskExecutionSummary:
+        available_tools = model_tools_available_for_task(
+            self.registry.names(),
+            task,
+            allow_shell=self._shell_allowed(context.policy),
+        )
+        action = coder.propose_action(
+            task=task,
+            goal_spec=goal_spec,
+            project_config=project_config,
+            available_tools=available_tools,
+            run_id=context.run_id or "",
+            runtime_context=runtime_context,
+        )
+        action = self.action_preparer.prepare(action, task, context.policy)
+        self._enforce_readonly_fanout_action(task, action)
+        tool_results = self.tool_gateway.run_tool_calls(action.get("tool_calls") or [], task, context)
+        verification = list(action.get("verification") or [])
+        verification_results = self.tool_gateway.run_tool_calls(
+            verification,
+            task,
+            context,
+            stop_on_failure=False,
+            stop_verification_on_fatal=True,
+        )
+        validation_refs = self.evidence_sink.record_validation_results(
+            context,
+            task,
+            verification,
+            verification_results,
+        )
+        failed = [
+            result
+            for result in [*tool_results, *verification_results]
+            if not bool(getattr(result, "ok", False))
+        ]
+        if failed:
+            summary = "; ".join(str(getattr(result, "summary", "")) for result in failed)
+            self.evidence_sink.record_task_failure(
+                context,
+                task,
+                "readonly_fanout_child_failed",
+                summary,
+                tool_results=tool_results,
+                verification_results=verification_results,
+            )
+            return TaskExecutionSummary(
+                task_id=task["task_id"],
+                status="blocked",
+                summary=summary,
+                tool_calls=len(tool_results),
+                verification_calls=len(verification_results),
+                evidence_path=(
+                    context.run_dir / "task_failures.jsonl" if context.run_dir else None
+                ),
+                validation_refs=validation_refs,
+            )
+        return TaskExecutionSummary(
+            task_id=task["task_id"],
+            status="done",
+            summary=str(action.get("completion_notes") or action.get("summary") or "readonly child completed"),
+            tool_calls=len(tool_results),
+            verification_calls=len(verification_results),
+            evidence_path=context.run_dir / "validation_results.jsonl" if context.run_dir else None,
+            validation_refs=validation_refs,
+        )
+
+    def _enforce_readonly_fanout_action(self, task: dict, action: dict) -> None:
+        write_tools = {"write_file", "apply_patch", "restore_backup"}
+        for call in [*list(action.get("tool_calls") or []), *list(action.get("verification") or [])]:
+            if str(call.get("tool_name") or "") in write_tools:
+                raise PermissionError(f"Readonly fanout child cannot use write tool: {task['task_id']}")
+
+    def _readonly_fanout_task(
+        self,
+        parent_task: dict,
+        child: dict,
+        parent_execution: dict,
+        child_plan: dict,
+    ) -> dict:
+        child_task_id = str(child.get("child_task_id") or parent_task["task_id"])
+        hints = dict(parent_task.get("runtime_profile_hints") or {})
+        hints.update(
+            {
+                "worker_kind": "subagent_readonly_child",
+                "parent_task_id": parent_task.get("task_id"),
+                "parent_worker_invocation_id": parent_execution.get("worker_invocation_id"),
+                "parent_runtime_profile_id": parent_execution.get("runtime_profile_id"),
+                "candidate_parent_execution_id": parent_execution.get("execution_id"),
+            }
+        )
+        return {
+            **parent_task,
+            "task_id": child_task_id,
+            "title": str(child.get("title") or parent_task.get("title") or child_task_id),
+            "description": str(child.get("objective") or parent_task.get("description") or ""),
+            "acceptance": list(child.get("acceptance") or []),
+            "read_scope": list(child.get("read_scope") or parent_task.get("read_scope") or []),
+            "write_scope": [],
+            "expected_changed_files": [],
+            "expected_artifacts": [],
+            "allowed_tools": list(child.get("allowed_tools") or ["list_files", "read_file", "search_text"]),
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": True,
+                "allows_expected_failure": False,
+            },
+            "runtime_profile_hints": hints,
+            "multi_agent_strategy": {
+                "mode": "readonly_fanout_child",
+                "max_child_workers": 1,
+                "planner_child_plan": False,
+                "coordination_policy": {
+                    "write_allowed": False,
+                    "requires_merge_gate": False,
+                    "scale_out_parent_plan": child_plan.get("subagent_child_plan_id"),
+                },
+            },
+        }
 
     def _reset_task_for_subagent_child_attempt(
         self,

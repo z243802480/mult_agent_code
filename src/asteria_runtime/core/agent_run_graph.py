@@ -127,7 +127,7 @@ class AgentRunGraphBuilder:
             "write_scope": [str(item) for item in tool_profile.get("write_scope", [])],
             "depends_on": [str(item) for item in task.get("depends_on", [])],
             "coordination_mode": coordination_by_task.get(task_id, "serial_ready_selection"),
-            "collaboration_role": self._collaboration_role(task),
+            "collaboration_role": self._collaboration_role(task, worker),
             "artifact_refs": (result or {}).get("artifact_refs", []),
             "validation_refs": (result or {}).get("validation_refs", []),
             "failure_evidence_refs": (result or {}).get("failure_evidence_refs", []),
@@ -135,7 +135,12 @@ class AgentRunGraphBuilder:
             "summary": (result or {}).get("summary") or worker.get("summary") or "",
         }
 
-    def _collaboration_role(self, task: dict) -> str:
+    def _collaboration_role(self, task: dict, worker: dict | None = None) -> str:
+        worker_kind = str((worker or {}).get("worker_kind") or "")
+        if worker_kind == "subagent_readonly_child":
+            return "research_child"
+        if worker_kind == "subagent_disjoint_write_child":
+            return "implementation_child"
         safety = str(task.get("parallel_safety") or "serial")
         kind = str(task.get("task_kind") or "implementation")
         if safety == "readonly":

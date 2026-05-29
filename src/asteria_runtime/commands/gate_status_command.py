@@ -210,6 +210,15 @@ class GateStatusResult:
                 f"(blocked={self.runtime_readiness_gate.get('blocked', 0)}, "
                 f"review={self.runtime_readiness_gate.get('review', 0)})"
             )
+            for check in self.runtime_readiness_gate.get("checks") or []:
+                if not isinstance(check, dict):
+                    continue
+                if check.get("name") == "subagent_readonly_fanout":
+                    lines.append(
+                        "Readonly fanout: "
+                        f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
+                    )
+                    break
             for action in list(self.runtime_readiness_gate.get("next_actions") or [])[:3]:
                 lines.append(f"  - {action}")
         explanation = self._readiness_explanation(self._release_state())

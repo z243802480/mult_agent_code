@@ -47,6 +47,7 @@ def runtime_readiness_gate(
         _route_guidance_check(route_guidance or {}),
         _context_pressure_check(context_pressure_summary),
         _subagent_context_isolation_check(run_dirs, validator),
+        _subagent_readonly_fanout_check(run_dirs, validator),
         _observation_decision_check(run_dirs, validator, latest_observation_plan),
         _agent_loop_execution_check(run_dirs, validator),
         _capability_selection_check(run_dirs, validator),
@@ -236,6 +237,194 @@ def _subagent_context_isolation_check(
         summary="Subagent child context snapshot includes token attribution and compact boundary evidence.",
         evidence_refs=evidence_refs,
     )
+
+
+def _subagent_readonly_fanout_check(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> RuntimeReadinessCheck:
+    plan = _latest_readonly_fanout_plan(run_dirs, validator)
+    if not plan:
+        return RuntimeReadinessCheck(
+            name="subagent_readonly_fanout",
+            status="ready",
+            summary="No readonly fanout child worker evidence is required yet.",
+        )
+    plan_id = str(plan.get("subagent_child_plan_id") or "")
+    parent_worker_id = str(plan.get("worker_invocation_id") or "")
+    children = [item for item in plan.get("child_tasks") or [] if isinstance(item, dict)]
+    evidence_refs = [plan_id, parent_worker_id]
+    boundary_error = _readonly_fanout_boundary_error(plan)
+    if boundary_error is not None:
+        return RuntimeReadinessCheck(
+            name="subagent_readonly_fanout",
+            status="blocked",
+            summary=f"Readonly fanout plan violates its scheduling boundary: {boundary_error}.",
+            recommended_action=(
+                "Regenerate the subagent child plan with readonly child tasks before "
+                "dispatching fanout workers."
+            ),
+            evidence_refs=[item for item in evidence_refs if item],
+        )
+    if not parent_worker_id or not children:
+        return RuntimeReadinessCheck(
+            name="subagent_readonly_fanout",
+            status="blocked",
+            summary="Readonly fanout plan is missing parent worker or child task evidence.",
+            recommended_action="Rerun the subagent planner so fanout scheduling evidence is complete.",
+            evidence_refs=[item for item in evidence_refs if item],
+        )
+
+    workers = _workers_for_parent(run_dirs, validator, parent_worker_id)
+    child_workers = {
+        str(worker.get("task_id") or ""): worker
+        for worker in workers
+        if str(worker.get("worker_kind") or "") == "subagent_readonly_child"
+    }
+    results = _worker_results_by_worker(run_dirs, validator)
+    runtime_profiles = _runtime_profiles_by_id(run_dirs, validator)
+    missing_workers: list[str] = []
+    missing_results: list[str] = []
+    missing_profiles: list[str] = []
+    missing_snapshots: list[str] = []
+    missing_validation: list[str] = []
+    bad_statuses: list[str] = []
+    total_model_calls = 0
+    total_tool_calls = 0
+    child_evidence_refs: list[str] = []
+
+    for child in children:
+        child_task_id = str(child.get("child_task_id") or child.get("task_id") or "")
+        worker = child_workers.get(child_task_id)
+        if not worker:
+            missing_workers.append(child_task_id)
+            continue
+        worker_id = str(worker.get("worker_invocation_id") or "")
+        runtime_profile_id = str(worker.get("runtime_profile_id") or "")
+        child_evidence_refs.append(worker_id)
+        if str(worker.get("parallel_safety") or "") != "readonly":
+            return RuntimeReadinessCheck(
+                name="subagent_readonly_fanout",
+                status="blocked",
+                summary=f"Readonly fanout child worker `{worker_id}` is not marked readonly.",
+                recommended_action="Rerun fanout dispatch after fixing child worker parallel_safety.",
+                evidence_refs=[plan_id, worker_id],
+            )
+        result = results.get(worker_id)
+        if not result:
+            missing_results.append(worker_id)
+            continue
+        result_id = str(result.get("worker_result_id") or "")
+        child_evidence_refs.append(result_id)
+        status = str(result.get("status") or "")
+        raw_cost = result.get("cost")
+        cost: dict[str, Any] = raw_cost if isinstance(raw_cost, dict) else {}
+        total_model_calls += int(cost.get("model_calls") or 0)
+        total_tool_calls += int(cost.get("tool_calls") or 0)
+        if status != "succeeded":
+            bad_statuses.append(f"{worker_id}:{status or 'unknown'}")
+        if not list(result.get("validation_refs") or []) and status == "succeeded":
+            missing_validation.append(worker_id)
+        if runtime_profile_id not in runtime_profiles:
+            missing_profiles.append(worker_id)
+        snapshot = _latest_context_budget_snapshot_for_runtime_profile(
+            run_dirs,
+            validator,
+            runtime_profile_id,
+            child_task_id,
+        )
+        if not snapshot:
+            missing_snapshots.append(worker_id)
+        else:
+            snapshot_id = str(snapshot.get("snapshot_id") or "")
+            if snapshot_id:
+                child_evidence_refs.append(snapshot_id)
+            pressure = str(snapshot.get("pressure_status") or "")
+            boundary = snapshot.get("compact_boundary")
+            boundary = boundary if isinstance(boundary, dict) else {}
+            if pressure in {"hard_stop", "exceeded"} or boundary.get("status") == "required":
+                return RuntimeReadinessCheck(
+                    name="subagent_readonly_fanout",
+                    status="blocked",
+                    summary=f"Readonly fanout child `{worker_id}` is at compact hard-stop boundary.",
+                    recommended_action="Run `asteria compact --root .` before rerunning fanout dispatch.",
+                    evidence_refs=[plan_id, worker_id, snapshot_id],
+                )
+            if pressure == "near_limit" or boundary.get("status") == "recommended":
+                return RuntimeReadinessCheck(
+                    name="subagent_readonly_fanout",
+                    status="review",
+                    summary=f"Readonly fanout child `{worker_id}` is near compaction boundary.",
+                    recommended_action="Compact or narrow fanout read scope before widening validation.",
+                    evidence_refs=[plan_id, worker_id, snapshot_id],
+                )
+
+    if missing_workers or missing_results or missing_profiles or missing_snapshots:
+        missing = {
+            "workers": missing_workers,
+            "results": missing_results,
+            "profiles": missing_profiles,
+            "context_snapshots": missing_snapshots,
+        }
+        return RuntimeReadinessCheck(
+            name="subagent_readonly_fanout",
+            status="blocked",
+            summary=f"Readonly fanout execution evidence is incomplete: {missing}.",
+            recommended_action=(
+                "Rerun `asteria execute` for the subagent task so each fanout child records "
+                "worker, result, runtime profile, and context snapshot evidence."
+            ),
+            evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][:10],
+        )
+    if bad_statuses:
+        return RuntimeReadinessCheck(
+            name="subagent_readonly_fanout",
+            status="blocked",
+            summary=f"Readonly fanout child worker(s) did not succeed: {bad_statuses}.",
+            recommended_action=(
+                "Run `asteria debug` or `asteria replan` so the parent loop consumes the "
+                "fanout child failure."
+            ),
+            evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][:10],
+        )
+    if missing_validation:
+        return RuntimeReadinessCheck(
+            name="subagent_readonly_fanout",
+            status="review",
+            summary=f"Readonly fanout child worker(s) succeeded without validation refs: {missing_validation}.",
+            recommended_action="Rerun fanout children with verification enabled before widening validation.",
+            evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][:10],
+        )
+    return RuntimeReadinessCheck(
+        name="subagent_readonly_fanout",
+        status="ready",
+        summary=(
+            f"Readonly fanout recorded {len(children)}/{len(children)} child worker(s), "
+            f"cost model_calls={total_model_calls}, tool_calls={total_tool_calls}."
+        ),
+        evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][:10],
+    )
+
+
+def _readonly_fanout_boundary_error(plan: dict[str, Any]) -> str | None:
+    if str(plan.get("scheduling_strategy") or "") != "parallel_readonly_safe":
+        return "plan is not using parallel_readonly_safe scheduling"
+    if str(plan.get("parallel_safety") or "") != "readonly":
+        return "plan is not marked readonly"
+    write_tools = {"write_file", "apply_patch", "restore_backup"}
+    for child in plan.get("child_tasks") or []:
+        if not isinstance(child, dict):
+            return "child task is malformed"
+        child_id = str(child.get("child_task_id") or child.get("task_id") or "unknown")
+        if child.get("write_allowed") is True:
+            return f"child `{child_id}` allows writes"
+        if child.get("write_scope"):
+            return f"child `{child_id}` has write scope"
+        if set(child.get("allowed_tools") or []) & write_tools:
+            return f"child `{child_id}` exposes write tools"
+        if str(child.get("parallel_safety") or "") != "readonly":
+            return f"child `{child_id}` is not marked readonly"
+    return None
 
 
 def _observation_decision_check(
@@ -720,6 +909,81 @@ def _worker_result_by_id(
     return latest
 
 
+def _worker_results_by_worker(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, dict[str, Any]]:
+    store = JsonlStore(validator)
+    results: dict[str, dict[str, Any]] = {}
+    for run_dir in run_dirs:
+        path = run_dir / "worker_results.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "worker_result"):
+            worker_id = str(item.get("worker_invocation_id") or "")
+            if worker_id:
+                results[worker_id] = item
+    return results
+
+
+def _workers_for_parent(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    parent_worker_id: str,
+) -> list[dict[str, Any]]:
+    store = JsonlStore(validator)
+    workers: list[dict[str, Any]] = []
+    for run_dir in run_dirs:
+        path = run_dir / "workers.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "worker_invocation"):
+            if str(item.get("parent_worker_invocation_id") or "") == parent_worker_id:
+                workers.append(item)
+    return workers
+
+
+def _runtime_profiles_by_id(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, dict[str, Any]]:
+    store = JsonlStore(validator)
+    profiles: dict[str, dict[str, Any]] = {}
+    for run_dir in run_dirs:
+        path = run_dir / "runtime_profiles.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "runtime_profile"):
+            profile_id = str(item.get("runtime_profile_id") or "")
+            if profile_id:
+                profiles[profile_id] = item
+    return profiles
+
+
+def _latest_readonly_fanout_plan(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, Any] | None:
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    for run_dir in run_dirs:
+        path = run_dir / "subagent_child_plans.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "subagent_child_plan"):
+            if str(item.get("scheduling_strategy") or "") != "parallel_readonly_safe":
+                continue
+            children = [child for child in item.get("child_tasks") or [] if isinstance(child, dict)]
+            if len(children) <= 1:
+                continue
+            created = str(item.get("created_at") or "")
+            if latest is None or created >= latest_created:
+                latest = item
+                latest_created = created
+    return latest
+
+
 def _latest_subagent_worker(
     run_dirs: list[Path],
     validator: SchemaValidator,
@@ -759,6 +1023,35 @@ def _latest_context_budget_snapshot_for_worker(
             if str(item.get("scope") or "") != "subagent_child":
                 continue
             if str(item.get("parent_worker_invocation_id") or "") != worker_id:
+                continue
+            created = str(item.get("created_at") or "")
+            if latest is None or created >= latest_created:
+                latest = item
+                latest_created = created
+    return latest
+
+
+def _latest_context_budget_snapshot_for_runtime_profile(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    runtime_profile_id: str,
+    task_id: str,
+) -> dict[str, Any] | None:
+    if not runtime_profile_id:
+        return None
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    for run_dir in run_dirs:
+        path = run_dir / "context_budget_snapshots.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "context_budget_snapshot"):
+            if str(item.get("scope") or "") != "subagent_child":
+                continue
+            if str(item.get("runtime_profile_id") or "") != runtime_profile_id:
+                continue
+            if task_id and str(item.get("task_id") or "") != task_id:
                 continue
             created = str(item.get("created_at") or "")
             if latest is None or created >= latest_created:

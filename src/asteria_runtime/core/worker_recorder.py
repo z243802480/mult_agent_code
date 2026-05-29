@@ -23,13 +23,13 @@ class WorkerExecutionRecorder:
     def allocate_worker_ids(self, context: RuntimeContext, count: int) -> list[str]:
         if context.run_dir is None:
             return [f"worker-{index + 1:04d}" for index in range(count)]
-        start = self._jsonl_count(context.run_dir / "workers.jsonl") + 1
+        start = self._next_numeric_id(context.run_dir / "workers.jsonl", "worker-")
         return [f"worker-{index:04d}" for index in range(start, start + count)]
 
     def allocate_worker_result_ids(self, context: RuntimeContext, count: int) -> list[str]:
         if context.run_dir is None:
             return [f"worker-result-{index + 1:04d}" for index in range(count)]
-        start = self._jsonl_count(context.run_dir / "worker_results.jsonl") + 1
+        start = self._next_numeric_id(context.run_dir / "worker_results.jsonl", "worker-result-")
         return [f"worker-result-{index:04d}" for index in range(start, start + count)]
 
     def allocate_execution_slots(
@@ -228,6 +228,21 @@ class WorkerExecutionRecorder:
         if not path.exists():
             return 0
         return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+
+    def _next_numeric_id(self, path: Path, prefix: str) -> int:
+        if not path.exists():
+            return 1
+        highest = 0
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            for token in line.replace('"', " ").replace(",", " ").split():
+                if not token.startswith(prefix):
+                    continue
+                suffix = token.removeprefix(prefix)
+                if suffix.isdigit():
+                    highest = max(highest, int(suffix))
+        return highest + 1 if highest else self._jsonl_count(path) + 1
 
     def _runtime_hint(self, task: dict, key: str) -> str | None:
         hints = task.get("runtime_profile_hints")

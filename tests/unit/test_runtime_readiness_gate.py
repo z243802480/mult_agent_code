@@ -127,6 +127,11 @@ def _context_budget_snapshot(
     pressure_status: str = "within_budget",
     ratio: float = 0.1,
     duplicate_tokens: int = 0,
+    snapshot_id: str = "context-budget-snapshot-0001",
+    task_id: str = "task-1",
+    runtime_profile_id: str = "runtime-profile-subagent-subagent",
+    parent_worker_invocation_id: str = "worker-0001",
+    worker_kind: str = "subagent",
 ) -> dict:
     boundary = "not_required"
     if pressure_status in {"hard_stop", "exceeded"}:
@@ -137,16 +142,16 @@ def _context_budget_snapshot(
         boundary = "dedupe_recommended"
     return {
         "schema_version": "0.1.0",
-        "snapshot_id": "context-budget-snapshot-0001",
+        "snapshot_id": snapshot_id,
         "run_id": "run-1",
-        "task_id": "task-1",
+        "task_id": task_id,
         "created_at": "2026-05-29T10:00:03+08:00",
         "scope": "subagent_child",
-        "runtime_profile_id": "runtime-profile-subagent-subagent",
+        "runtime_profile_id": runtime_profile_id,
         "context_mount_id": "context-worker-0001",
-        "worker_kind": "subagent",
+        "worker_kind": worker_kind,
         "isolation_policy": "subagent_child_context",
-        "parent_worker_invocation_id": "worker-0001",
+        "parent_worker_invocation_id": parent_worker_invocation_id,
         "parent_runtime_profile_id": "runtime-profile-worker-0001",
         "estimated_tokens": 1000,
         "sections": {"task_brief": 100, "subagent_worker": 50},
@@ -168,6 +173,173 @@ def _context_budget_snapshot(
         },
         "evidence_refs": ["context_envelopes/context_envelope_task-1.json"],
     }
+
+
+def _runtime_profile(runtime_profile_id: str) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "runtime_profile_id": runtime_profile_id,
+        "agent_id": "subagent",
+        "model_profile_id": f"model-{runtime_profile_id}",
+        "tool_permission_profile_id": f"tools-{runtime_profile_id}",
+        "sandbox_profile_id": f"sandbox-{runtime_profile_id}",
+        "context_mount_id": f"context-{runtime_profile_id}",
+        "budget": {"max_model_calls": 1, "max_tool_calls": 4},
+    }
+
+
+def _readonly_child_worker(
+    *,
+    worker_id: str,
+    task_id: str,
+    runtime_profile_id: str,
+    parent_worker_id: str = "worker-0001",
+    parallel_safety: str = "readonly",
+) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "worker_invocation_id": worker_id,
+        "run_id": "run-1",
+        "task_id": task_id,
+        "agent_id": "subagent",
+        "runtime_profile_id": runtime_profile_id,
+        "status": "succeeded",
+        "started_at": "2026-05-29T10:00:04+08:00",
+        "ended_at": "2026-05-29T10:00:05+08:00",
+        "summary": f"Readonly child {task_id} completed.",
+        "parent_worker_invocation_id": parent_worker_id,
+        "parent_task_id": "task-1",
+        "worker_kind": "subagent_readonly_child",
+        "parallel_safety": parallel_safety,
+        "child_plan_refs": ["subagent-child-plan-0001"],
+    }
+
+
+def _readonly_child_result(
+    *,
+    worker_id: str,
+    result_id: str,
+    task_id: str,
+    status: str = "succeeded",
+    validation_refs: list[str] | None = None,
+) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "worker_result_id": result_id,
+        "worker_invocation_id": worker_id,
+        "run_id": "run-1",
+        "task_id": task_id,
+        "status": status,
+        "artifact_refs": [],
+        "validation_refs": validation_refs if validation_refs is not None else [f"{task_id}/verify.json"],
+        "failure_evidence_refs": [] if status == "succeeded" else [f"{task_id}/failure.json"],
+        "cost": {"model_calls": 1, "tool_calls": 2},
+        "summary": f"Readonly child {task_id} result.",
+        "parent_worker_invocation_id": "worker-0001",
+        "worker_kind": "subagent_readonly_child",
+        "child_plan_refs": ["subagent-child-plan-0001"],
+    }
+
+
+def _readonly_fanout_plan(*, write_tool: bool = False) -> dict:
+    allowed_tools = ["list_files", "read_file", "search_text"]
+    if write_tool:
+        allowed_tools = [*allowed_tools, "write_file"]
+    children = []
+    for index in (1, 2):
+        children.append(
+            {
+                "child_task_id": f"task-1-child-{index:02d}",
+                "task_id": "task-1",
+                "title": f"Inspect shard {index}",
+                "objective": f"Read shard {index}.",
+                "acceptance": [f"shard {index} inspected"],
+                "read_scope": ["."],
+                "write_scope": [],
+                "allowed_tools": allowed_tools,
+                "depends_on": [],
+                "risk": "low",
+                "parallel_safety": "readonly",
+                "worker_role": "research_child",
+                "write_allowed": False,
+                "expected_output": ["validation refs"],
+                "verification_expectation": {"requires_verification": True},
+            }
+        )
+    return {
+        "schema_version": "0.1.0",
+        "subagent_child_plan_id": "subagent-child-plan-0001",
+        "run_id": "run-1",
+        "parent_task_id": "task-parent",
+        "target_task_id": "task-1",
+        "parent_decision_id": "agent-loop-decision-0001",
+        "parent_execution_id": "agent-loop-execution-0001",
+        "worker_invocation_id": "worker-0001",
+        "worker_result_id": "worker-result-0001",
+        "runtime_profile_id": "runtime-profile-subagent-subagent",
+        "planner_id": "RuntimeSubagentPlanner",
+        "decomposition_strategy": "readonly_fanout",
+        "scheduling_strategy": "parallel_readonly_safe",
+        "max_child_workers": 2,
+        "coordination_policy": {"write_allowed": False, "requires_merge_gate": False},
+        "status": "planned",
+        "parallel_safety": "readonly",
+        "child_tasks": children,
+        "evidence_refs": ["agent_loop_execution_results.jsonl"],
+        "created_at": "2026-05-29T10:00:03+08:00",
+    }
+
+
+def _append_ready_readonly_fanout(run_dir: Path, validator: SchemaValidator) -> None:
+    JsonlStore(validator).append(run_dir / "workers.jsonl", _worker_invocation(), "worker_invocation")
+    JsonlStore(validator).append(
+        run_dir / "context_budget_snapshots.jsonl",
+        _context_budget_snapshot(),
+        "context_budget_snapshot",
+    )
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        _readonly_fanout_plan(),
+        "subagent_child_plan",
+    )
+    for index in (1, 2):
+        task_id = f"task-1-child-{index:02d}"
+        worker_id = f"worker-000{index + 1}"
+        runtime_profile_id = f"runtime-profile-child-{index}"
+        JsonlStore(validator).append(
+            run_dir / "workers.jsonl",
+            _readonly_child_worker(
+                worker_id=worker_id,
+                task_id=task_id,
+                runtime_profile_id=runtime_profile_id,
+            ),
+            "worker_invocation",
+        )
+        JsonlStore(validator).append(
+            run_dir / "worker_results.jsonl",
+            _readonly_child_result(
+                worker_id=worker_id,
+                result_id=f"worker-result-000{index + 1}",
+                task_id=task_id,
+            ),
+            "worker_result",
+        )
+        JsonlStore(validator).append(
+            run_dir / "runtime_profiles.jsonl",
+            _runtime_profile(runtime_profile_id),
+            "runtime_profile",
+        )
+        JsonlStore(validator).append(
+            run_dir / "context_budget_snapshots.jsonl",
+            _context_budget_snapshot(
+                snapshot_id=f"context-budget-snapshot-000{index + 1}",
+                task_id=task_id,
+                runtime_profile_id=runtime_profile_id,
+                parent_worker_invocation_id="worker-0001",
+                worker_kind="subagent_readonly_child",
+            ),
+            "context_budget_snapshot",
+        )
 
 
 def test_runtime_readiness_gate_blocks_missing_loop_decision_for_failed_observation(
@@ -358,6 +530,77 @@ def test_runtime_readiness_gate_accepts_subagent_worker_dispatch(tmp_path: Path)
         check for check in gate["checks"] if check["name"] == "subagent_context_isolation"
     )
     assert context_check["status"] == "ready"
+
+
+def test_runtime_readiness_gate_accepts_readonly_fanout_child_evidence(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    _append_ready_readonly_fanout(run_dir, validator)
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
+    assert fanout["status"] == "ready"
+    assert "2/2 child worker" in fanout["summary"]
+    assert "model_calls=2" in fanout["summary"]
+
+
+def test_runtime_readiness_gate_blocks_incomplete_readonly_fanout_result(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    _append_ready_readonly_fanout(run_dir, validator)
+    lines = (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    (run_dir / "worker_results.jsonl").write_text("\n".join(lines[:1]) + "\n", encoding="utf-8")
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
+    assert fanout["status"] == "blocked"
+    assert "execution evidence is incomplete" in fanout["summary"]
+    assert "worker-0003" in fanout["summary"]
+
+
+def test_runtime_readiness_gate_blocks_readonly_fanout_write_boundary(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        _readonly_fanout_plan(write_tool=True),
+        "subagent_child_plan",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
+    assert fanout["status"] == "blocked"
+    assert "exposes write tools" in fanout["summary"]
 
 
 def test_runtime_readiness_gate_reviews_missing_subagent_context_snapshot(tmp_path: Path) -> None:

@@ -8,6 +8,7 @@ from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.runtime_hooks import RuntimeHookManager
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder, RuntimeProfileMount
 from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
@@ -67,6 +68,7 @@ class WorkerRunner:
             summary = execute_task(runtime_mount.runtime_context)
         except Exception as exc:
             ended_at = now_iso()
+            failed_mount = locals().get("runtime_mount")
             self.recorder.record_execution(
                 context=context,
                 worker_id=worker_id,
@@ -76,7 +78,9 @@ class WorkerRunner:
                 started_at=started_at,
                 ended_at=ended_at,
                 model_calls=(
-                    model_call_count(run_dir / "model_calls.jsonl") - model_calls_before
+                    self._model_calls_for_runtime_profile(run_dir, failed_mount)
+                    if run_dir and isinstance(failed_mount, RuntimeProfileMount)
+                    else model_call_count(run_dir / "model_calls.jsonl") - model_calls_before
                     if run_dir
                     else 0
                 ),
@@ -85,7 +89,7 @@ class WorkerRunner:
                 validation_refs=[],
                 failure_evidence_refs=[],
                 summary=str(exc),
-                runtime_profile_id=self._runtime_profile_id(task, locals().get("runtime_mount")),
+                runtime_profile_id=self._runtime_profile_id(task, failed_mount),
                 actor=self.actor,
             )
             self._emit(
@@ -108,7 +112,7 @@ class WorkerRunner:
             started_at=started_at,
             ended_at=ended_at,
             model_calls=(
-                model_call_count(run_dir / "model_calls.jsonl") - model_calls_before
+                self._model_calls_for_runtime_profile(run_dir, runtime_mount)
                 if run_dir
                 else 0
             ),
@@ -140,6 +144,18 @@ class WorkerRunner:
         if isinstance(mount, RuntimeProfileMount):
             return mount.runtime_profile_id
         return self.recorder.default_runtime_profile_id(task)
+
+    def _model_calls_for_runtime_profile(
+        self,
+        run_dir: Path,
+        mount: RuntimeProfileMount,
+    ) -> int:
+        path = run_dir / "model_calls.jsonl"
+        if not path.exists():
+            return 0
+        profile_id = mount.runtime_profile_id
+        calls = JsonlStore(self.validator).read_all(path, "model_call")
+        return len([call for call in calls if call.get("runtime_profile_id") == profile_id])
 
     def _emit(
         self,
