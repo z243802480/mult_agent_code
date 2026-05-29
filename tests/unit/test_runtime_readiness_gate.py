@@ -290,6 +290,57 @@ def _readonly_fanout_plan(*, write_tool: bool = False) -> dict:
     }
 
 
+def _disjoint_write_plan(*, overlapping: bool = False) -> dict:
+    scopes = [["docs/a.md"], ["docs/a.md" if overlapping else "docs/b.md"]]
+    children = []
+    for index, scope in enumerate(scopes, start=1):
+        children.append(
+            {
+                "child_task_id": f"task-1-write-{index:02d}",
+                "task_id": "task-1",
+                "title": f"Write shard {index}",
+                "objective": f"Write shard {index}.",
+                "acceptance": [f"shard {index} written"],
+                "read_scope": ["."],
+                "write_scope": scope,
+                "allowed_tools": ["write_file", "run_command"],
+                "depends_on": [],
+                "risk": "medium",
+                "parallel_safety": "disjoint_writes",
+                "worker_role": "implementation_child",
+                "write_allowed": True,
+                "expected_output": scope,
+                "verification_expectation": {"requires_verification": True},
+            }
+        )
+    return {
+        "schema_version": "0.1.0",
+        "subagent_child_plan_id": "subagent-child-plan-0002",
+        "run_id": "run-1",
+        "parent_task_id": "task-parent",
+        "target_task_id": "task-1",
+        "parent_decision_id": "agent-loop-decision-0001",
+        "parent_execution_id": "agent-loop-execution-0001",
+        "worker_invocation_id": "worker-0001",
+        "worker_result_id": "worker-result-0001",
+        "runtime_profile_id": "runtime-profile-subagent-subagent",
+        "planner_id": "RuntimeSubagentPlanner",
+        "decomposition_strategy": "disjoint_write_child_tasks",
+        "scheduling_strategy": "parallel_disjoint_writes_after_merge_gate",
+        "max_child_workers": 2,
+        "coordination_policy": {
+            "write_allowed": True,
+            "requires_merge_gate": True,
+            "requires_disjoint_write_scope": True,
+        },
+        "status": "planned",
+        "parallel_safety": "disjoint_writes",
+        "child_tasks": children,
+        "evidence_refs": ["agent_loop_execution_results.jsonl"],
+        "created_at": "2026-05-29T10:00:04+08:00",
+    }
+
+
 def _candidate_promotion(status: str = "pending_manual_approval", merge_ok: bool = True) -> dict:
     return {
         "schema_version": "0.1.0",
@@ -709,6 +760,57 @@ def test_runtime_readiness_gate_accepts_discarded_candidate_recovery(
     promotion = next(check for check in gate["checks"] if check["name"] == "candidate_promotion_safety")
     assert promotion["status"] == "ready"
     assert "recovery action" in promotion["summary"]
+
+
+def test_runtime_readiness_gate_accepts_disjoint_write_child_plan_gate(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        _disjoint_write_plan(),
+        "subagent_child_plan",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
+    assert disjoint["status"] == "ready"
+    assert "allows 2 child" in disjoint["summary"]
+
+
+def test_runtime_readiness_gate_blocks_overlapping_disjoint_write_child_plan(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        _disjoint_write_plan(overlapping=True),
+        "subagent_child_plan",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
+    assert gate["status"] == "blocked"
+    assert disjoint["status"] == "blocked"
+    assert "write_scope overlaps" in disjoint["summary"]
 
 
 def test_runtime_readiness_gate_reviews_missing_subagent_context_snapshot(tmp_path: Path) -> None:

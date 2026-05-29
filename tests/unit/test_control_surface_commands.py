@@ -694,6 +694,86 @@ def test_gate_status_surfaces_latest_observation_plan(tmp_path: Path) -> None:
     assert "Latest agent next action: ask" in result.to_text()
 
 
+def test_gate_status_surfaces_disjoint_write_gate_check(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    agent_dir = tmp_path / ".asteria"
+    run_store = RunStore(agent_dir, validator)
+    run = run_store.create_run("test")
+    run_store.set_current_session(run["run_id"], "test")
+    run_dir = run_store.run_dir(run["run_id"])
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "subagent_child_plan_id": "subagent-child-plan-0001",
+            "run_id": run["run_id"],
+            "parent_task_id": "task-parent",
+            "target_task_id": "task-0001",
+            "parent_decision_id": "agent-loop-decision-0001",
+            "parent_execution_id": "agent-loop-execution-0001",
+            "worker_invocation_id": "worker-0001",
+            "worker_result_id": "worker-result-0001",
+            "runtime_profile_id": "runtime-profile-subagent",
+            "planner_id": "RuntimeSubagentPlanner",
+            "decomposition_strategy": "disjoint_write_child_tasks",
+            "scheduling_strategy": "parallel_disjoint_writes_after_merge_gate",
+            "max_child_workers": 2,
+            "coordination_policy": {
+                "write_allowed": True,
+                "requires_merge_gate": True,
+                "requires_disjoint_write_scope": True,
+            },
+            "status": "planned",
+            "parallel_safety": "disjoint_writes",
+            "child_tasks": [
+                {
+                    "child_task_id": "child-0001",
+                    "task_id": "task-0001",
+                    "title": "Write A",
+                    "objective": "Write A.",
+                    "acceptance": ["A written"],
+                    "read_scope": ["."],
+                    "write_scope": ["docs/a.md"],
+                    "allowed_tools": ["write_file", "run_command"],
+                    "depends_on": [],
+                    "risk": "medium",
+                    "parallel_safety": "disjoint_writes",
+                    "worker_role": "implementation_child",
+                    "write_allowed": True,
+                    "expected_output": ["docs/a.md"],
+                    "verification_expectation": {"requires_verification": True},
+                },
+                {
+                    "child_task_id": "child-0002",
+                    "task_id": "task-0001",
+                    "title": "Write B",
+                    "objective": "Write B.",
+                    "acceptance": ["B written"],
+                    "read_scope": ["."],
+                    "write_scope": ["docs/b.md"],
+                    "allowed_tools": ["write_file", "run_command"],
+                    "depends_on": [],
+                    "risk": "medium",
+                    "parallel_safety": "disjoint_writes",
+                    "worker_role": "implementation_child",
+                    "write_allowed": True,
+                    "expected_output": ["docs/b.md"],
+                    "verification_expectation": {"requires_verification": True},
+                },
+            ],
+            "evidence_refs": ["agent_loop_execution_results.jsonl"],
+            "created_at": now_iso(),
+        },
+        "subagent_child_plan",
+    )
+
+    result = GateStatusCommand(tmp_path).run()
+
+    assert "Disjoint write gate: ready" in result.to_text()
+    assert "real parallel execution remains gated" in result.to_text()
+
+
 def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path.cwd() / "schemas")

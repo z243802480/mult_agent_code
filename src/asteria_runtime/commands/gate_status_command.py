@@ -218,6 +218,11 @@ class GateStatusResult:
                         "Readonly fanout: "
                         f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
                     )
+                if check.get("name") == "subagent_disjoint_write_gate":
+                    lines.append(
+                        "Disjoint write gate: "
+                        f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
+                    )
                 if check.get("name") == "candidate_promotion_safety":
                     lines.append(
                         "Candidate promotion safety: "

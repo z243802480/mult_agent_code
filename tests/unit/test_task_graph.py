@@ -45,6 +45,10 @@ def test_task_graph_scheduler_selects_disjoint_write_batch_without_conflicts() -
             "depends_on": [],
             "parallel_safety": "disjoint_writes",
             "write_scope": ["src/a.py"],
+            "completion_contract": {
+                "requires_changed_artifact": True,
+                "requires_verification": True,
+            },
         },
         {
             "task_id": "task-0002",
@@ -52,6 +56,10 @@ def test_task_graph_scheduler_selects_disjoint_write_batch_without_conflicts() -
             "depends_on": [],
             "parallel_safety": "disjoint_writes",
             "write_scope": ["src/b.py"],
+            "completion_contract": {
+                "requires_changed_artifact": True,
+                "requires_verification": True,
+            },
         },
         {
             "task_id": "task-0003",
@@ -59,6 +67,10 @@ def test_task_graph_scheduler_selects_disjoint_write_batch_without_conflicts() -
             "depends_on": [],
             "parallel_safety": "disjoint_writes",
             "write_scope": ["src/"],
+            "completion_contract": {
+                "requires_changed_artifact": True,
+                "requires_verification": True,
+            },
         },
         {
             "task_id": "task-0004",

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.agent_loop_decision import NEXT_ACTIONS
+from asteria_runtime.core.disjoint_write_gate import DisjointWriteGate
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -48,6 +49,7 @@ def runtime_readiness_gate(
         _context_pressure_check(context_pressure_summary),
         _subagent_context_isolation_check(run_dirs, validator),
         _subagent_readonly_fanout_check(run_dirs, validator),
+        _subagent_disjoint_write_gate_check(run_dirs, validator),
         _candidate_promotion_safety_check(run_dirs, validator),
         _observation_decision_check(run_dirs, validator, latest_observation_plan),
         _agent_loop_execution_check(run_dirs, validator),
@@ -514,6 +516,67 @@ def _candidate_promotion_safety_check(
         ),
         evidence_refs=[str(item.get("promotion_id") or "") for item in promotions[:8]],
     )
+
+
+def _subagent_disjoint_write_gate_check(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> RuntimeReadinessCheck:
+    plan = _latest_disjoint_write_plan(run_dirs, validator)
+    if not plan:
+        return RuntimeReadinessCheck(
+            name="subagent_disjoint_write_gate",
+            status="ready",
+            summary="No disjoint write child plan requires gate evidence yet.",
+        )
+    plan_id = str(plan.get("subagent_child_plan_id") or "")
+    children = [item for item in plan.get("child_tasks") or [] if isinstance(item, dict)]
+    if len(children) <= 1:
+        return RuntimeReadinessCheck(
+            name="subagent_disjoint_write_gate",
+            status="review",
+            summary="Disjoint write child plan does not contain multiple child write tasks.",
+            recommended_action="Regenerate the child plan before considering disjoint write fanout.",
+            evidence_refs=[plan_id],
+        )
+    gate_tasks = [_disjoint_child_gate_task(child) for child in children]
+    result = DisjointWriteGate().evaluate(
+        gate_tasks,
+        promotions=_latest_candidate_promotions(run_dirs, validator),
+    )
+    if not result.ok:
+        return RuntimeReadinessCheck(
+            name="subagent_disjoint_write_gate",
+            status="blocked",
+            summary="Disjoint write fanout gate blocked: " + "; ".join(result.violations[:4]),
+            recommended_action=(
+                "Fix disjoint child write_scope, verification contract, or promotion recovery "
+                "before enabling real disjoint write workers."
+            ),
+            evidence_refs=[plan_id, *result.blocked_task_ids][:8],
+        )
+    return RuntimeReadinessCheck(
+        name="subagent_disjoint_write_gate",
+        status="ready",
+        summary=(
+            f"Disjoint write fanout gate allows {len(result.allowed_task_ids)} child "
+            "write worker(s); real parallel execution remains gated."
+        ),
+        evidence_refs=[plan_id, *result.allowed_task_ids][:8],
+    )
+
+
+def _disjoint_child_gate_task(child: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "task_id": str(child.get("child_task_id") or child.get("task_id") or "unknown"),
+        "parallel_safety": str(child.get("parallel_safety") or ""),
+        "write_scope": [str(item) for item in child.get("write_scope") or []],
+        "completion_contract": {
+            "requires_changed_artifact": bool(child.get("write_scope")),
+            "requires_verification": isinstance(child.get("verification_expectation"), dict),
+            "allows_expected_failure": False,
+        },
+    }
 
 
 def _observation_decision_check(
@@ -1088,6 +1151,29 @@ def _latest_candidate_promotions(
             if promotion_id:
                 latest[promotion_id] = item
     return [latest[key] for key in sorted(latest)]
+
+
+def _latest_disjoint_write_plan(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, Any] | None:
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    for run_dir in run_dirs:
+        path = run_dir / "subagent_child_plans.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "subagent_child_plan"):
+            if str(item.get("scheduling_strategy") or "") != (
+                "parallel_disjoint_writes_after_merge_gate"
+            ):
+                continue
+            created = str(item.get("created_at") or "")
+            if latest is None or created >= latest_created:
+                latest = item
+                latest_created = created
+    return latest
 
 
 def _latest_subagent_worker(
