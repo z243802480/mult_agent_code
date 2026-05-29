@@ -166,6 +166,8 @@ def _observation_status(execution_result: dict[str, Any], status: str | None) ->
     if execution_status == "stopped":
         return "stopped"
     worker_status = str(execution_result.get("worker_status") or "")
+    if worker_status == "succeeded":
+        return "succeeded"
     if worker_status in {"failed", "denied", "timeout"}:
         return "failed"
     if worker_status in {"partial", "queued", "running"}:

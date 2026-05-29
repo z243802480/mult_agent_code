@@ -21,6 +21,10 @@
     "account_profile_id": { "type": ["string", "null"] },
     "sandbox_profile_id": { "type": "string" },
     "context_mount_id": { "type": "string" },
+    "parent_runtime_profile_id": { "type": "string" },
+    "worker_kind": { "type": "string" },
+    "parallel_safety": { "type": "string" },
+    "candidate_workspace_id": { "type": "string" },
     "budget": {
       "type": "object",
       "required": ["max_model_calls", "max_tool_calls"],

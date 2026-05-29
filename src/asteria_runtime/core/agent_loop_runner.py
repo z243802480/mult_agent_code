@@ -10,6 +10,10 @@ from asteria_runtime.core.agent_loop_decision import (
     validate_agent_loop_decision,
 )
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
+from asteria_runtime.core.agent_loop_executor import (
+    complete_subagent_worker_execution,
+    subagent_worker_observation_payload,
+)
 from asteria_runtime.core.agent_loop_observation import (
     persist_agent_loop_observation_for_execution,
 )
@@ -17,6 +21,7 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 DecisionProvider = Callable[[dict[str, Any], int], dict[str, Any] | None]
+SubagentExecutor = Callable[[dict[str, Any], dict[str, Any]], dict[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -45,6 +50,7 @@ class AgentLoopRunner:
         initial_decision: dict[str, Any],
         decide_next: DecisionProvider,
         max_rounds: int = 2,
+        execute_subagent: SubagentExecutor | None = None,
     ) -> list[AgentLoopRound]:
         if run_dir is None:
             return []
@@ -69,10 +75,11 @@ class AgentLoopRunner:
             )
             if not isinstance(execution_result, dict):
                 break
-            observation = persist_agent_loop_observation_for_execution(
+            observation = self._observe_execution(
                 run_dir=run_dir,
-                validator=self.validator,
+                decision=decision,
                 execution_result=execution_result,
+                execute_subagent=execute_subagent,
             )
             if not isinstance(observation, dict):
                 break
@@ -88,3 +95,45 @@ class AgentLoopRunner:
                 break
             decision = decide_next(observation, index)
         return rounds
+
+    def _observe_execution(
+        self,
+        *,
+        run_dir: Path,
+        decision: dict[str, Any],
+        execution_result: dict[str, Any],
+        execute_subagent: SubagentExecutor | None,
+    ) -> dict[str, Any] | None:
+        if execution_result.get("action") == "subagent" and execute_subagent is not None:
+            worker_result = execute_subagent(decision, execution_result)
+            if isinstance(worker_result, dict):
+                completed = complete_subagent_worker_execution(
+                    run_dir=run_dir,
+                    validator=self.validator,
+                    execution_result=execution_result,
+                    status=str(worker_result.get("status") or "succeeded"),
+                    summary=str(worker_result.get("summary") or "Subagent worker completed."),
+                    artifact_refs=list(worker_result.get("artifact_refs") or []),
+                    validation_refs=list(worker_result.get("validation_refs") or []),
+                    failure_evidence_refs=list(worker_result.get("failure_evidence_refs") or []),
+                    model_calls=int((worker_result.get("cost") or {}).get("model_calls") or 0),
+                    tool_calls=int((worker_result.get("cost") or {}).get("tool_calls") or 0),
+                )
+                payload = subagent_worker_observation_payload(
+                    execution_result,
+                    completed or worker_result,
+                )
+                return persist_agent_loop_observation_for_execution(
+                    run_dir=run_dir,
+                    validator=self.validator,
+                    execution_result=execution_result,
+                    status=str(payload["status"]),
+                    summary=str(payload["summary"]),
+                    evidence_refs=list(payload["evidence_refs"]),
+                    next_recommended_action=str(payload["next_recommended_action"]),
+                )
+        return persist_agent_loop_observation_for_execution(
+            run_dir=run_dir,
+            validator=self.validator,
+            execution_result=execution_result,
+        )

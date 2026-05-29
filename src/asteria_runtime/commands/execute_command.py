@@ -14,7 +14,11 @@ from asteria_runtime.core.agent_loop_decision import (
     persist_agent_loop_decision,
     recommended_command_for_next_action,
 )
-from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
+from asteria_runtime.core.agent_loop_executor import (
+    complete_subagent_worker_execution,
+    persist_agent_loop_execution_result,
+    subagent_worker_observation_payload,
+)
 from asteria_runtime.core.agent_loop_observation import (
     persist_agent_loop_observation_for_execution,
 )
@@ -315,6 +319,472 @@ class ExecuteCommand:
         except (TypeError, ValueError):
             value = 2
         return max(1, min(value, 8))
+
+    def _subagent_child_max_rounds(self, policy: dict) -> int:
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        try:
+            value = int(agent_loop.get("subagent_max_rounds_per_task") or 2)
+        except (TypeError, ValueError):
+            value = 2
+        return max(1, min(value, 4))
+
+    def _execute_subagent_child_loop(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+        available_tools: list[str],
+        parent_decision: dict | None,
+        parent_execution: dict | None,
+    ) -> tuple[TaskExecutionSummary, dict | None]:
+        task_id = str(task["task_id"])
+        if not isinstance(parent_decision, dict) or not isinstance(parent_execution, dict):
+            self._mark_task_blocked(task_board, task_id)
+            return (
+                TaskExecutionSummary(
+                    task_id=task_id,
+                    status="blocked",
+                    summary="Subagent action could not start because parent decision/execution evidence is missing.",
+                    tool_calls=0,
+                    verification_calls=0,
+                ),
+                None,
+            )
+        worker_id = str(parent_execution.get("worker_invocation_id") or "")
+        if not worker_id:
+            self._mark_task_blocked(task_board, task_id)
+            return (
+                TaskExecutionSummary(
+                    task_id=task_id,
+                    status="blocked",
+                    summary="Subagent action could not start because worker slot evidence is missing.",
+                    tool_calls=0,
+                    verification_calls=0,
+                ),
+                None,
+            )
+        child_task = self._subagent_child_task(task, parent_decision, parent_execution)
+        child_runtime_context = self._subagent_child_runtime_context(
+            runtime_context,
+            parent_decision=parent_decision,
+            parent_execution=parent_execution,
+        )
+        runtime_mount = self.worker_runner.runtime_profile_builder.build_and_record(
+            context=context,
+            task=child_task,
+            worker_id=worker_id,
+            runtime_context=child_runtime_context,
+            artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
+            failure_evidence_refs=self.evidence_sink.task_failure_refs(context, task_id),
+            decision_refs=self.evidence_sink.decision_refs(context, task_id),
+            validation_refs=self.evidence_sink.validation_refs(context, task_id),
+        )
+        child_runtime_context = runtime_mount.runtime_context
+        child_runtime_context["subagent_worker"]["runtime_profile_id"] = runtime_mount.runtime_profile_id
+        child_max_rounds = self._subagent_child_max_rounds(context.policy)
+        child_runtime_context["current_worker_invocation_id"] = worker_id
+        child_runtime_context["current_worker_result_id"] = str(
+            parent_execution.get("worker_result_id") or ""
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title="Subagent worker started",
+            summary=f"Started child worker {worker_id} for {task_id}.",
+            data={
+                "task_id": task_id,
+                "worker_invocation_id": worker_id,
+                "runtime_profile_id": runtime_mount.runtime_profile_id,
+                "parallel_safety": child_task.get("parallel_safety"),
+                "parent_agent_loop_execution": parent_execution,
+            },
+        )
+        child_latest_observation: dict | None = None
+        child_latest_execution: dict | None = None
+        child_latest_summary: TaskExecutionSummary | None = None
+        child_model_calls = 0
+        child_tool_calls = 0
+        child_validation_refs: list[str] = []
+        child_failure_refs: list[str] = []
+        for child_round in range(1, child_max_rounds + 1):
+            child_runtime_context["agent_loop_round"] = {
+                "index": child_round,
+                "max_rounds": child_max_rounds,
+                "latest_observation": child_latest_observation or {},
+                "scope": "subagent_child",
+            }
+            if child_latest_observation:
+                child_runtime_context["latest_agent_loop_observation"] = child_latest_observation
+            child_action = coder.propose_action(
+                task=child_task,
+                goal_spec=goal_spec,
+                project_config=project_config,
+                available_tools=available_tools,
+                run_id=context.run_id or "",
+                runtime_context=child_runtime_context,
+            )
+            child_model_calls += 1
+            child_action = self.action_preparer.prepare(child_action, child_task, context.policy)
+            child_decision = child_action.get("agent_loop_decision")
+            child_execution = None
+            if isinstance(child_decision, dict):
+                self._attach_parent_worker_to_loop_decision(child_decision, child_runtime_context)
+                persist_agent_loop_decision(
+                    run_dir=context.run_dir,
+                    validator=context.validator,
+                    decision=child_decision,
+                )
+                child_execution = persist_agent_loop_execution_result(
+                    run_dir=context.run_dir,
+                    validator=context.validator,
+                    decision=child_decision,
+                    create_decision_point=True,
+                )
+                child_latest_execution = child_execution
+            child_next_action = (
+                child_decision.get("next_action", {}) if isinstance(child_decision, dict) else {}
+            )
+            child_next_kind = str(child_next_action.get("action") or "")
+            if child_next_kind != "tool":
+                previous_done = child_latest_summary is not None and child_latest_summary.status == "done"
+                done_summary = child_latest_summary.summary if child_latest_summary else ""
+                done_evidence_path = child_latest_summary.evidence_path if child_latest_summary else None
+                summary = (
+                    "Subagent child worker stopped after a successful observation."
+                    if previous_done and child_next_kind == "stop"
+                    else (
+                        "Subagent child worker did not produce a tool action; parent loop must "
+                        f"correct with repair/replan/ask/stop. Got `{child_next_kind or 'missing'}`."
+                    )
+                )
+                return self._complete_subagent_child_worker(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    parent_execution=parent_execution,
+                    child_execution=child_execution or child_latest_execution,
+                    status="succeeded" if previous_done else "failed",
+                    summary=done_summary if previous_done else summary,
+                    artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
+                    validation_refs=child_validation_refs,
+                    failure_evidence_refs=child_failure_refs,
+                    model_calls=child_model_calls,
+                    tool_calls=child_tool_calls,
+                    evidence_path=done_evidence_path if previous_done else None,
+                )
+            self._reset_task_for_subagent_child_attempt(task_board, task_id)
+            attempt = self.task_attempt_runner.run(
+                task=child_task,
+                task_board=task_board,
+                context=context,
+                runtime_context=child_runtime_context,
+                action=child_action,
+                create_candidate_workspace=self.candidate_gateway.create_workspace,
+                candidate_context=self.candidate_gateway.candidate_context,
+                run_tool_calls=self.tool_gateway.run_tool_calls,
+                record_validation_results=self.evidence_sink.record_validation_results,
+                changed_files=self.evidence_sink.changed_files,
+                promote_candidate_changes=self.candidate_gateway.promote_changes,
+                record_experiment=self.evidence_sink.record_experiment,
+                complete_task_after_candidate_promotion=self.candidate_gateway.complete_after_promotion,
+                record_task_failure=self.evidence_sink.record_task_failure,
+            )
+            child_tool_calls += attempt.tool_calls + attempt.verification_calls
+            child_validation_refs.extend(attempt.validation_refs)
+            if attempt.status != "done":
+                child_failure_refs.extend(self._refs(attempt.evidence_path))
+            if isinstance(child_execution, dict):
+                child_latest_observation = persist_agent_loop_observation_for_execution(
+                    run_dir=context.run_dir,
+                    validator=context.validator,
+                    execution_result=child_execution,
+                    status="succeeded" if attempt.status == "done" else "failed",
+                    summary=attempt.summary,
+                    evidence_refs=self._refs(attempt.evidence_path) + attempt.validation_refs,
+                    next_recommended_action="stop" if attempt.status == "done" else "repair",
+                )
+            child_latest_summary = TaskExecutionSummary(
+                task_id=attempt.task_id,
+                status=attempt.status,
+                summary=attempt.summary,
+                tool_calls=attempt.tool_calls,
+                verification_calls=attempt.verification_calls,
+                evidence_path=attempt.evidence_path,
+                validation_refs=attempt.validation_refs,
+            )
+            if attempt.status == "done":
+                return self._complete_subagent_child_worker(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    parent_execution=parent_execution,
+                    child_execution=child_execution,
+                    status="succeeded",
+                    summary=attempt.summary,
+                    artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
+                    validation_refs=child_validation_refs,
+                    failure_evidence_refs=child_failure_refs,
+                    model_calls=child_model_calls,
+                    tool_calls=child_tool_calls,
+                    evidence_path=attempt.evidence_path,
+                )
+            if not self._should_continue_subagent_child_loop(
+                context=context,
+                round_index=child_round,
+                max_rounds=child_max_rounds,
+                observation=child_latest_observation,
+            ):
+                break
+        summary = (
+            child_latest_summary.summary
+            if child_latest_summary is not None
+            else "Subagent child worker exhausted its bounded loop without a usable action."
+        )
+        return self._complete_subagent_child_worker(
+            task=task,
+            task_board=task_board,
+            context=context,
+            parent_execution=parent_execution,
+            child_execution=child_latest_execution,
+            status="failed",
+            summary=summary,
+            artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
+            validation_refs=child_validation_refs,
+            failure_evidence_refs=child_failure_refs,
+            model_calls=child_model_calls,
+            tool_calls=child_tool_calls,
+            evidence_path=child_latest_summary.evidence_path if child_latest_summary else None,
+        )
+
+    def _reset_task_for_subagent_child_attempt(
+        self,
+        task_board: TaskBoard,
+        task_id: str,
+    ) -> None:
+        try:
+            status = str(task_board.get_task(task_id).get("status") or "")
+            if status == "blocked":
+                task_board.update_status(task_id, "ready")
+                status = "ready"
+            if status == "ready":
+                task_board.update_status(task_id, "in_progress")
+        except Exception:
+            return
+
+    def _complete_subagent_child_worker(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        parent_execution: dict,
+        child_execution: dict | None,
+        status: str,
+        summary: str,
+        artifact_refs: list[str],
+        validation_refs: list[str],
+        failure_evidence_refs: list[str],
+        model_calls: int,
+        tool_calls: int,
+        evidence_path: Path | None = None,
+    ) -> tuple[TaskExecutionSummary, dict | None]:
+        task_id = str(task["task_id"])
+        worker_result = complete_subagent_worker_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=parent_execution,
+            status=status,
+            summary=summary,
+            artifact_refs=artifact_refs,
+            validation_refs=validation_refs,
+            failure_evidence_refs=failure_evidence_refs,
+            model_calls=model_calls,
+            tool_calls=tool_calls,
+        )
+        payload = subagent_worker_observation_payload(parent_execution, worker_result or {})
+        parent_observation = persist_agent_loop_observation_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=parent_execution,
+            status=str(payload["status"]),
+            summary=str(payload["summary"]),
+            evidence_refs=list(payload["evidence_refs"]),
+            next_recommended_action=str(payload["next_recommended_action"]),
+        )
+        if status != "succeeded":
+            self._mark_task_blocked(task_board, task_id)
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="completed" if status == "succeeded" else "blocked",
+            title="Subagent worker completed",
+            summary=summary,
+            evidence_refs=failure_evidence_refs,
+            data={
+                "task_id": task_id,
+                "parent_agent_loop_execution": parent_execution,
+                "child_agent_loop_execution": child_execution or {},
+                "agent_loop_observation": parent_observation or {},
+                "worker_result": worker_result or {},
+            },
+        )
+        return (
+            TaskExecutionSummary(
+                task_id=task_id,
+                status="done" if status == "succeeded" else "blocked",
+                summary=summary,
+                tool_calls=tool_calls,
+                verification_calls=0,
+                evidence_path=evidence_path
+                or (context.run_dir / "worker_results.jsonl" if context.run_dir is not None else None),
+                validation_refs=validation_refs,
+            ),
+            parent_observation,
+        )
+
+    def _attach_parent_worker_to_loop_decision(
+        self,
+        loop_decision: dict,
+        runtime_context: dict,
+    ) -> None:
+        worker_id = str(runtime_context.get("current_worker_invocation_id") or "")
+        if worker_id:
+            loop_decision["parent_worker_invocation_id"] = worker_id
+        result_id = str(runtime_context.get("current_worker_result_id") or "")
+        if result_id:
+            loop_decision["parent_worker_result_id"] = result_id
+        runtime_profile_id = str(runtime_context.get("runtime_profile_id") or "")
+        if runtime_profile_id:
+            loop_decision["parent_runtime_profile_id"] = runtime_profile_id
+
+    def _subagent_child_task(
+        self,
+        task: dict,
+        parent_decision: dict,
+        parent_execution: dict,
+    ) -> dict:
+        child = dict(task)
+        next_action = parent_decision.get("next_action")
+        next_action = next_action if isinstance(next_action, dict) else {}
+        capability = next_action.get("capability_ref")
+        capability = capability if isinstance(capability, dict) else {}
+        expected = next_action.get("expected_observation")
+        expected = expected if isinstance(expected, dict) else {}
+        hints = dict(child.get("runtime_profile_hints") or {})
+        hints.update(
+            {
+                "worker_kind": "subagent",
+                "parent_task_id": task.get("task_id"),
+                "parent_worker_invocation_id": parent_execution.get("worker_invocation_id"),
+                "parent_runtime_profile_id": parent_execution.get("runtime_profile_id"),
+                "candidate_parent_execution_id": parent_execution.get("execution_id"),
+            }
+        )
+        child["runtime_profile_hints"] = hints
+        child["role"] = str(capability.get("name") or task.get("role") or "CoderAgent")
+        child["assigned_agent_id"] = str(capability.get("name") or child["role"])
+        child["parallel_safety"] = str(
+            expected.get("parallel_safety") or task.get("parallel_safety") or "serial"
+        )
+        child["context_requirements"] = self._subagent_context_requirements(task, expected)
+        child["notes"] = (
+            str(task.get("notes") or "")
+            + f"\nSubagent delegated by {parent_decision.get('decision_id')} "
+            f"for reason: {next_action.get('reason')}"
+        ).strip()
+        return child
+
+    def _subagent_context_requirements(self, task: dict, expected: dict) -> dict:
+        current = task.get("context_requirements")
+        base = dict(current) if isinstance(current, dict) else {}
+        return {
+            **base,
+            "mount_type": str(expected.get("mount_type") or base.get("mount_type") or "coding_context"),
+            "include_artifacts": bool(expected.get("include_artifacts", False)),
+            "include_failures": bool(expected.get("include_failures", True)),
+            "include_decisions": bool(expected.get("include_decisions", True)),
+            "include_validation": bool(expected.get("include_validation", True)),
+            "recent_event_count": int(expected.get("recent_event_count") or 5),
+            "isolation_policy": "subagent_child_context",
+        }
+
+    def _subagent_child_runtime_context(
+        self,
+        runtime_context: dict,
+        *,
+        parent_decision: dict,
+        parent_execution: dict,
+    ) -> dict:
+        child_context = dict(runtime_context)
+        child_context["subagent_worker"] = {
+            "worker_invocation_id": parent_execution.get("worker_invocation_id"),
+            "worker_result_id": parent_execution.get("worker_result_id"),
+            "parent_execution_id": parent_execution.get("execution_id"),
+            "parent_decision_id": parent_decision.get("decision_id"),
+            "runtime_profile_id": parent_execution.get("runtime_profile_id"),
+            "parallel_model": "worker_slot_ready_serial_now_parallel_safe_later",
+            "context_isolation": "subagent_child_context",
+        }
+        child_context["parent_agent_loop_decision"] = parent_decision
+        child_context["parent_agent_loop_execution"] = parent_execution
+        return child_context
+
+    def _should_continue_subagent_child_loop(
+        self,
+        *,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        observation: dict | None,
+    ) -> bool:
+        if round_index >= max_rounds or not isinstance(observation, dict):
+            return False
+        if str(observation.get("status") or "") != "failed":
+            return False
+        if str(observation.get("next_recommended_action") or "") not in {"repair", "tool"}:
+            return False
+        if context.budget is None:
+            return False
+        pressure = BudgetController.pressure(context.policy, context.budget.cost_report())
+        return str(pressure.get("status") or "") not in {"hard_stop", "exceeded"}
+
+    def _should_continue_after_subagent(
+        self,
+        *,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        observation: dict | None,
+    ) -> bool:
+        if round_index >= max_rounds or not isinstance(observation, dict):
+            return False
+        if str(observation.get("status") or "") == "pending":
+            return False
+        if str(observation.get("next_recommended_action") or "") not in {
+            "repair",
+            "replan",
+            "ask",
+            "stop",
+            "tool",
+        }:
+            return False
+        if context.budget is None:
+            return False
+        pressure = BudgetController.pressure(context.policy, context.budget.cost_report())
+        return str(pressure.get("status") or "") not in {"hard_stop", "exceeded"}
 
     def _handle_runtime_managed_loop_action(
         self,
@@ -648,7 +1118,11 @@ class ExecuteCommand:
                 coder=coder,
                 goal_spec=goal_spec,
                 project_config=project_config,
-                runtime_context=mounted_context,
+                runtime_context={
+                    **mounted_context,
+                    "current_worker_invocation_id": worker_slot.worker_id,
+                    "current_worker_result_id": worker_slot.result_id,
+                },
             ),
             artifact_refs=self.evidence_sink.artifact_refs,
             failure_evidence_refs=self._failure_evidence_refs,
@@ -792,6 +1266,7 @@ class ExecuteCommand:
                 loop_decision = action.get("agent_loop_decision")
                 loop_execution_result = None
                 if isinstance(loop_decision, dict):
+                    self._attach_parent_worker_to_loop_decision(loop_decision, runtime_context)
                     persist_agent_loop_decision(
                         run_dir=context.run_dir,
                         validator=context.validator,
@@ -838,6 +1313,52 @@ class ExecuteCommand:
                         "model_tool_calls": self._model_tool_call_summary(tool_calls, verification),
                     },
                 )
+                if next_action_kind == "subagent":
+                    child_summary, latest_loop_observation = self._execute_subagent_child_loop(
+                        task=task,
+                        task_board=task_board,
+                        context=context,
+                        coder=coder,
+                        goal_spec=goal_spec,
+                        project_config=project_config,
+                        runtime_context=runtime_context,
+                        available_tools=available_tools,
+                        parent_decision=loop_decision if isinstance(loop_decision, dict) else None,
+                        parent_execution=loop_execution_result,
+                    )
+                    latest_summary = child_summary
+                    if not self._should_continue_after_subagent(
+                        context=context,
+                        round_index=round_index,
+                        max_rounds=max_rounds,
+                        observation=latest_loop_observation,
+                    ):
+                        status = "completed" if child_summary.status == "done" else "blocked"
+                        exit_reason = "completed" if child_summary.status == "done" else "tool_failed"
+                        recommended = (
+                            recommended_command_for_next_action(
+                                {"action": latest_loop_observation.get("next_recommended_action")}
+                            )
+                            if isinstance(latest_loop_observation, dict)
+                            else "status --debug"
+                        )
+                        self._record_agent_loop_run_summary(
+                            context=context,
+                            task_id=task_id,
+                            status=status,
+                            exit_reason=exit_reason,
+                            rounds_completed=round_index,
+                            max_rounds=max_rounds,
+                            summary=child_summary.summary,
+                            recommended_command=recommended or "status --debug",
+                            latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
+                            latest_execution=loop_execution_result,
+                            latest_observation=latest_loop_observation,
+                            evidence_refs=self._refs(child_summary.evidence_path)
+                            + child_summary.validation_refs,
+                        )
+                        return child_summary
+                    continue
                 runtime_managed = self._handle_runtime_managed_loop_action(
                     task=task,
                     task_board=task_board,

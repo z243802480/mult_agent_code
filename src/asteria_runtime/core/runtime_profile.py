@@ -148,10 +148,14 @@ class RuntimeProfile:
     context_mount_id: str
     budget: BudgetProfile
     account_profile_id: str | None = None
+    parent_runtime_profile_id: str | None = None
+    worker_kind: str | None = None
+    parallel_safety: str | None = None
+    candidate_workspace_id: str | None = None
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "schema_version": self.schema_version,
             "runtime_profile_id": self.runtime_profile_id,
             "agent_id": self.agent_id,
@@ -162,6 +166,15 @@ class RuntimeProfile:
             "context_mount_id": self.context_mount_id,
             "budget": self.budget.to_dict(),
         }
+        if self.parent_runtime_profile_id is not None:
+            data["parent_runtime_profile_id"] = self.parent_runtime_profile_id
+        if self.worker_kind is not None:
+            data["worker_kind"] = self.worker_kind
+        if self.parallel_safety is not None:
+            data["parallel_safety"] = self.parallel_safety
+        if self.candidate_workspace_id is not None:
+            data["candidate_workspace_id"] = self.candidate_workspace_id
+        return data
 
 
 @dataclass(frozen=True)

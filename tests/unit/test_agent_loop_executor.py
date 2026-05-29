@@ -84,7 +84,7 @@ def test_agent_loop_executor_records_worker_evidence_for_subagent_dispatch(
     assert result is not None
     assert result["worker_invocation_id"] == "worker-0001"
     assert result["worker_result_id"] == "worker-result-0001"
-    assert result["runtime_profile_id"] == "runtime-profile-subagent-subagent"
+    assert result["runtime_profile_id"] == "runtime-profile-worker-0001"
     workers = (tmp_path / "workers.jsonl").read_text(encoding="utf-8")
     worker_results = (tmp_path / "worker_results.jsonl").read_text(encoding="utf-8")
     assert "worker-0001" in workers

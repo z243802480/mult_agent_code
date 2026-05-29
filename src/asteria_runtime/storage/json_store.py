@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from asteria_runtime.storage.schema_validator import SchemaValidator
+
+
+_JSON_STORE_LOCK = RLock()
 
 
 class JsonStore:
@@ -12,7 +16,8 @@ class JsonStore:
         self.validator = validator
 
     def read(self, path: Path, schema_name: str | None = None) -> dict[str, Any]:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        with _JSON_STORE_LOCK:
+            data = json.loads(path.read_text(encoding="utf-8"))
         if schema_name and self.validator:
             self.validator.validate(schema_name, data)
         return data
@@ -21,7 +26,8 @@ class JsonStore:
         if schema_name and self.validator:
             self.validator.validate(schema_name, data)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+        payload = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        with _JSON_STORE_LOCK:
+            tmp_path = path.with_name(f"{path.name}.tmp")
+            tmp_path.write_text(payload, encoding="utf-8")
+            tmp_path.replace(path)

@@ -29,7 +29,11 @@
         "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
         "decision_refs": { "type": "array", "items": { "type": "string" } },
         "validation_refs": { "type": "array", "items": { "type": "string" } },
-        "recent_event_count": { "type": "integer" }
+        "recent_event_count": { "type": "integer" },
+        "isolation_policy": { "type": "string" },
+        "parent_worker_invocation_id": { "type": "string" },
+        "parent_runtime_profile_id": { "type": "string" },
+        "parallel_safety": { "type": "string" }
       }
     },
     "summary": { "type": "string" }

@@ -70,6 +70,20 @@ class TaskExecutionEvidenceRecorder:
                 if candidate_workspace
                 else None,
                 "branch_name": candidate_workspace.branch_name if candidate_workspace else None,
+                "parent_worker_invocation_id": (
+                    candidate_workspace.parent_worker_invocation_id
+                    if candidate_workspace
+                    else None
+                ),
+                "parent_runtime_profile_id": (
+                    candidate_workspace.parent_runtime_profile_id
+                    if candidate_workspace
+                    else None
+                ),
+                "worker_kind": candidate_workspace.worker_kind if candidate_workspace else None,
+                "parallel_safety": (
+                    candidate_workspace.parallel_safety if candidate_workspace else None
+                ),
                 "manifest_path": (
                     str(candidate_workspace.manifest_path)
                     if candidate_workspace and candidate_workspace.manifest_path

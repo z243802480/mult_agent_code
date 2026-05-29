@@ -37,6 +37,10 @@ class CandidateWorkspace:
     backend_reason: str = ""
     branch_name: str | None = None
     manifest_path: Path | None = None
+    parent_worker_invocation_id: str | None = None
+    parent_runtime_profile_id: str | None = None
+    worker_kind: str | None = None
+    parallel_safety: str | None = None
 
     @classmethod
     def from_promotion(cls, source_root: Path, run_dir: Path, promotion: dict) -> "CandidateWorkspace":
@@ -51,6 +55,10 @@ class CandidateWorkspace:
             backend_reason=str(promotion.get("backend_reason") or ""),
             branch_name=promotion.get("branch_name"),
             manifest_path=manifest_path if manifest_path.exists() else None,
+            parent_worker_invocation_id=promotion.get("parent_worker_invocation_id"),
+            parent_runtime_profile_id=promotion.get("parent_runtime_profile_id"),
+            worker_kind=promotion.get("worker_kind"),
+            parallel_safety=promotion.get("parallel_safety"),
         )
 
     @classmethod
@@ -79,6 +87,10 @@ class CandidateWorkspace:
             workspace_policy=plan.workspace_policy if strategy == plan.backend else "isolated_copy",
             backend_reason=plan.reason,
             branch_name=branch_name if strategy == "git_worktree" else None,
+            parent_worker_invocation_id=_runtime_hint(task, "parent_worker_invocation_id"),
+            parent_runtime_profile_id=_runtime_hint(task, "parent_runtime_profile_id"),
+            worker_kind=_runtime_hint(task, "worker_kind"),
+            parallel_safety=str((task or {}).get("parallel_safety") or ""),
         )
         return cls(
             candidate_id=candidate_id,
@@ -89,6 +101,10 @@ class CandidateWorkspace:
             backend_reason=plan.reason,
             branch_name=branch_name if strategy == "git_worktree" else None,
             manifest_path=manifest_path,
+            parent_worker_invocation_id=_runtime_hint(task, "parent_worker_invocation_id"),
+            parent_runtime_profile_id=_runtime_hint(task, "parent_runtime_profile_id"),
+            worker_kind=_runtime_hint(task, "worker_kind"),
+            parallel_safety=str((task or {}).get("parallel_safety") or ""),
         )
 
     def promote(self, changed_files: list[str]) -> list[str]:
@@ -220,6 +236,10 @@ def _write_manifest(
     workspace_policy: str,
     backend_reason: str,
     branch_name: str | None,
+    parent_worker_invocation_id: str | None = None,
+    parent_runtime_profile_id: str | None = None,
+    worker_kind: str | None = None,
+    parallel_safety: str | None = None,
 ) -> Path:
     manifest_dir = run_dir / "candidates"
     manifest_dir.mkdir(parents=True, exist_ok=True)
@@ -234,6 +254,10 @@ def _write_manifest(
         "backend_reason": backend_reason,
         "branch_name": branch_name,
         "status": "active",
+        "parent_worker_invocation_id": parent_worker_invocation_id,
+        "parent_runtime_profile_id": parent_runtime_profile_id,
+        "worker_kind": worker_kind,
+        "parallel_safety": parallel_safety,
     }
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
@@ -307,3 +331,13 @@ def _short_path_id(candidate_id: str) -> str:
 def _candidate_branch(task_id: str, candidate_id: str) -> str:
     safe_task = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in task_id)
     return f"asteria/candidate/{safe_task}-{_path_id(candidate_id)}"
+
+
+def _runtime_hint(task: dict | None, key: str) -> str | None:
+    if not isinstance(task, dict):
+        return None
+    hints = task.get("runtime_profile_hints")
+    if not isinstance(hints, dict):
+        return None
+    value = hints.get(key)
+    return str(value) if value else None

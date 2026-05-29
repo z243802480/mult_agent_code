@@ -92,6 +92,99 @@ def persist_agent_loop_execution_result(
     return result
 
 
+def complete_subagent_worker_execution(
+    *,
+    run_dir: Path | None,
+    validator: SchemaValidator,
+    execution_result: dict[str, Any],
+    status: str,
+    summary: str,
+    artifact_refs: list[str] | None = None,
+    validation_refs: list[str] | None = None,
+    failure_evidence_refs: list[str] | None = None,
+    model_calls: int = 0,
+    tool_calls: int = 0,
+) -> dict[str, Any] | None:
+    if run_dir is None or execution_result.get("action") != "subagent":
+        return None
+    if status not in {"succeeded", "failed", "denied", "timeout"}:
+        raise ValueError("subagent worker completion status must be succeeded, failed, denied, or timeout")
+    worker_id = str(execution_result.get("worker_invocation_id") or "")
+    worker_result_id = str(execution_result.get("worker_result_id") or "")
+    runtime_profile_id = str(execution_result.get("runtime_profile_id") or "")
+    if not worker_id or not worker_result_id or not runtime_profile_id:
+        raise ValueError("subagent execution result is missing worker evidence ids")
+    timestamp = now_iso()
+    worker = _latest_worker_invocation(run_dir, validator, worker_id)
+    result = WorkerResult(
+        worker_result_id=worker_result_id,
+        worker_invocation_id=worker_id,
+        run_id=str(execution_result.get("run_id") or ""),
+        task_id=str(execution_result.get("target_task_id") or execution_result.get("task_id") or ""),
+        status=status,
+        artifact_refs=list(artifact_refs or []),
+        validation_refs=list(validation_refs or []),
+        failure_evidence_refs=list(failure_evidence_refs or []),
+        cost=WorkerCost(model_calls=max(model_calls, 0), tool_calls=max(tool_calls, 0)),
+        summary=summary,
+        parent_worker_invocation_id=(worker or {}).get("parent_worker_invocation_id"),
+        worker_kind=(worker or {}).get("worker_kind") or "subagent",
+    )
+    worker_update = WorkerInvocation(
+        worker_invocation_id=worker_id,
+        run_id=str(execution_result.get("run_id") or ""),
+        task_id=str(execution_result.get("target_task_id") or execution_result.get("task_id") or ""),
+        agent_id=str((execution_result.get("capability_ref") or {}).get("name") or "subagent"),
+        runtime_profile_id=runtime_profile_id,
+        status=status,
+        started_at=str((worker or {}).get("started_at") or execution_result.get("created_at") or timestamp),
+        ended_at=timestamp,
+        summary=summary,
+        delegation_brief=(worker or {}).get("delegation_brief"),
+        brief_quality=(worker or {}).get("brief_quality"),
+        parent_worker_invocation_id=(worker or {}).get("parent_worker_invocation_id"),
+        parent_task_id=(worker or {}).get("parent_task_id"),
+        worker_kind=(worker or {}).get("worker_kind") or "subagent",
+        parallel_safety=(worker or {}).get("parallel_safety"),
+    )
+    store = JsonlStore(validator)
+    store.append(run_dir / "workers.jsonl", worker_update.to_dict(), "worker_invocation")
+    store.append(run_dir / "worker_results.jsonl", result.to_dict(), "worker_result")
+    return result.to_dict()
+
+
+def subagent_worker_observation_payload(
+    execution_result: dict[str, Any],
+    worker_result: dict[str, Any],
+) -> dict[str, Any]:
+    status = str(worker_result.get("status") or "partial")
+    if status == "succeeded":
+        observation_status = "succeeded"
+        next_action = "stop"
+    elif status in {"failed", "denied", "timeout"}:
+        observation_status = "failed"
+        next_action = "repair"
+    else:
+        observation_status = "pending"
+        next_action = "subagent"
+    refs = [
+        str(worker_result.get("worker_invocation_id") or ""),
+        str(worker_result.get("worker_result_id") or ""),
+        *[str(item) for item in worker_result.get("artifact_refs") or []],
+        *[str(item) for item in worker_result.get("validation_refs") or []],
+        *[str(item) for item in worker_result.get("failure_evidence_refs") or []],
+    ]
+    return {
+        "status": observation_status,
+        "summary": str(worker_result.get("summary") or "Subagent worker produced no summary."),
+        "evidence_refs": [item for item in dict.fromkeys(refs) if item],
+        "next_recommended_action": next_action,
+        "worker_status": status,
+        "worker_invocation_id": str(execution_result.get("worker_invocation_id") or ""),
+        "worker_result_id": str(execution_result.get("worker_result_id") or ""),
+    }
+
+
 def latest_agent_loop_execution_result(
     run_dir: Path | None,
     validator: SchemaValidator,
@@ -137,10 +230,12 @@ def _record_subagent_dispatch(
     workers_path = run_dir / "workers.jsonl"
     worker_results_path = run_dir / "worker_results.jsonl"
     store = JsonlStore(validator)
-    worker_id = f"worker-{_jsonl_count(workers_path) + 1:04d}"
-    worker_result_id = f"worker-result-{_jsonl_count(worker_results_path) + 1:04d}"
+    worker_id = _subagent_worker_id(workers_path, decision)
+    worker_result_id = _subagent_worker_result_id(worker_results_path, decision)
     capability = next_action["capability_ref"]
-    runtime_profile_id = _subagent_runtime_profile_id(capability)
+    expected = next_action.get("expected_observation")
+    expected_observation = expected if isinstance(expected, dict) else {}
+    runtime_profile_id = _subagent_runtime_profile_id(capability, worker_id)
     timestamp = str(result.get("created_at") or now_iso())
     task_id = str(next_action["target_task_id"])
     run_id = str(decision.get("run_id") or "")
@@ -167,6 +262,10 @@ def _record_subagent_dispatch(
                 "verification_expectation",
             ],
         },
+        parent_task_id=str(decision.get("task_id") or ""),
+        parent_worker_invocation_id=str(decision.get("parent_worker_invocation_id") or "") or None,
+        worker_kind="subagent",
+        parallel_safety=str(expected_observation.get("parallel_safety") or "serial"),
     )
     worker_result = WorkerResult(
         worker_result_id=worker_result_id,
@@ -182,6 +281,8 @@ def _record_subagent_dispatch(
             "Subagent dispatch recorded; worker execution must produce follow-up "
             "observation, repair, replan, ask, or completion evidence."
         ),
+        parent_worker_invocation_id=str(decision.get("parent_worker_invocation_id") or "") or None,
+        worker_kind="subagent",
     )
     store.append(workers_path, worker.to_dict(), "worker_invocation")
     store.append(worker_results_path, worker_result.to_dict(), "worker_result")
@@ -214,7 +315,9 @@ def _validate_subagent_decision(decision: dict[str, Any]) -> None:
         raise ValueError("subagent action budget_hint.tool_budget_units cannot be negative")
 
 
-def _subagent_runtime_profile_id(capability: dict[str, Any]) -> str:
+def _subagent_runtime_profile_id(capability: dict[str, Any], worker_id: str | None = None) -> str:
+    if worker_id:
+        return f"runtime-profile-{worker_id}"
     name = str(capability.get("name") or "subagent").lower().replace(" ", "-")
     return f"runtime-profile-subagent-{name}"
 
@@ -251,6 +354,45 @@ def _jsonl_count(path: Path) -> int:
     if not path.exists():
         return 0
     return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+
+
+def _subagent_worker_id(workers_path: Path, decision: dict[str, Any]) -> str:
+    next_index = _jsonl_count(workers_path) + 1
+    parent = str(decision.get("parent_worker_invocation_id") or "")
+    if parent.startswith("worker-"):
+        try:
+            parent_index = int(parent.removeprefix("worker-"))
+        except ValueError:
+            parent_index = 0
+        next_index = max(next_index, parent_index + 1)
+    return f"worker-{next_index:04d}"
+
+
+def _subagent_worker_result_id(worker_results_path: Path, decision: dict[str, Any]) -> str:
+    next_index = _jsonl_count(worker_results_path) + 1
+    parent = str(decision.get("parent_worker_result_id") or "")
+    if parent.startswith("worker-result-"):
+        try:
+            parent_index = int(parent.removeprefix("worker-result-"))
+        except ValueError:
+            parent_index = 0
+        next_index = max(next_index, parent_index + 1)
+    return f"worker-result-{next_index:04d}"
+
+
+def _latest_worker_invocation(
+    run_dir: Path,
+    validator: SchemaValidator,
+    worker_id: str,
+) -> dict[str, Any] | None:
+    path = run_dir / "workers.jsonl"
+    if not path.exists():
+        return None
+    latest: dict[str, Any] | None = None
+    for item in JsonlStore(validator).read_all(path, "worker_invocation"):
+        if str(item.get("worker_invocation_id") or "") == worker_id:
+            latest = item
+    return latest
 
 
 def _decision_point_from_loop_decision(

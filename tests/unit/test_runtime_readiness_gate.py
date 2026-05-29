@@ -99,6 +99,10 @@ def _worker_invocation() -> dict:
         "started_at": "2026-05-29T10:00:01+08:00",
         "ended_at": None,
         "summary": "Dispatch task-1 to subagent.",
+        "parent_worker_invocation_id": "worker-0000",
+        "parent_task_id": "task-parent",
+        "worker_kind": "subagent",
+        "parallel_safety": "serial",
     }
 
 
@@ -115,6 +119,54 @@ def _worker_result(status: str = "partial") -> dict:
         "failure_evidence_refs": [],
         "cost": {"model_calls": 0, "tool_calls": 0},
         "summary": "Subagent dispatch recorded.",
+    }
+
+
+def _context_budget_snapshot(
+    *,
+    pressure_status: str = "within_budget",
+    ratio: float = 0.1,
+    duplicate_tokens: int = 0,
+) -> dict:
+    boundary = "not_required"
+    if pressure_status in {"hard_stop", "exceeded"}:
+        boundary = "required"
+    elif pressure_status == "near_limit":
+        boundary = "recommended"
+    elif duplicate_tokens:
+        boundary = "dedupe_recommended"
+    return {
+        "schema_version": "0.1.0",
+        "snapshot_id": "context-budget-snapshot-0001",
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "created_at": "2026-05-29T10:00:03+08:00",
+        "scope": "subagent_child",
+        "runtime_profile_id": "runtime-profile-subagent-subagent",
+        "context_mount_id": "context-worker-0001",
+        "worker_kind": "subagent",
+        "isolation_policy": "subagent_child_context",
+        "parent_worker_invocation_id": "worker-0001",
+        "parent_runtime_profile_id": "runtime-profile-worker-0001",
+        "estimated_tokens": 1000,
+        "sections": {"task_brief": 100, "subagent_worker": 50},
+        "duplicate_content_hashes": ["abc123"] if duplicate_tokens else [],
+        "duplicate_estimated_tokens": duplicate_tokens,
+        "duplicate_ref_count": 1 if duplicate_tokens else 0,
+        "context_window_tokens": 10000,
+        "context_window_ratio": ratio,
+        "pressure_status": pressure_status,
+        "compaction_threshold": 0.75,
+        "hard_stop_threshold": 0.9,
+        "compact_boundary": {
+            "status": boundary,
+            "recommended_action": "continue",
+            "estimated_tokens_before": 1000,
+            "estimated_duplicate_tokens": duplicate_tokens,
+            "preserve_sections": ["task_brief"],
+            "droppable_sections": [],
+        },
+        "evidence_refs": ["context_envelopes/context_envelope_task-1.json"],
     }
 
 
@@ -286,6 +338,11 @@ def test_runtime_readiness_gate_accepts_subagent_worker_dispatch(tmp_path: Path)
         _loop_observation(action="subagent"),
         "agent_loop_observation",
     )
+    JsonlStore(validator).append(
+        run_dir / "context_budget_snapshots.jsonl",
+        _context_budget_snapshot(),
+        "context_budget_snapshot",
+    )
 
     gate = runtime_readiness_gate(
         root=tmp_path,
@@ -297,6 +354,58 @@ def test_runtime_readiness_gate_accepts_subagent_worker_dispatch(tmp_path: Path)
 
     execution_check = next(check for check in gate["checks"] if check["name"] == "agent_loop_execution")
     assert execution_check["status"] == "ready"
+    context_check = next(
+        check for check in gate["checks"] if check["name"] == "subagent_context_isolation"
+    )
+    assert context_check["status"] == "ready"
+
+
+def test_runtime_readiness_gate_reviews_missing_subagent_context_snapshot(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(run_dir / "workers.jsonl", _worker_invocation(), "worker_invocation")
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    context_check = next(
+        check for check in gate["checks"] if check["name"] == "subagent_context_isolation"
+    )
+    assert context_check["status"] == "review"
+    assert "ContextBudgetMeter v2" in context_check["summary"]
+
+
+def test_runtime_readiness_gate_blocks_subagent_context_hard_stop(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(run_dir / "workers.jsonl", _worker_invocation(), "worker_invocation")
+    JsonlStore(validator).append(
+        run_dir / "context_budget_snapshots.jsonl",
+        _context_budget_snapshot(pressure_status="hard_stop", ratio=0.92),
+        "context_budget_snapshot",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    assert gate["status"] == "blocked"
+    context_check = next(
+        check for check in gate["checks"] if check["name"] == "subagent_context_isolation"
+    )
+    assert context_check["status"] == "blocked"
+    assert "compact hard-stop" in context_check["summary"]
 
 
 def test_runtime_readiness_gate_blocks_execution_without_observation(tmp_path: Path) -> None:

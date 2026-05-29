@@ -127,45 +127,283 @@ class FakeReadonlyExecuteClient:
 
 
 class FakeSubagentExecuteClient:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.latest_observations: list[dict] = []
+
     def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest_observation = runtime_context.get("latest_agent_loop_observation") or {}
+        if latest_observation:
+            self.latest_observations.append(latest_observation)
         task_id = str(request.metadata.get("task_id") or "task-0001")
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": task_id,
-                    "summary": "Delegate this task to a subagent.",
-                    "tool_calls": [],
-                    "verification": [],
-                    "runtime_requests": [],
-                    "agent_loop_decision": {
-                        "schema_version": "0.1.0",
-                        "decision_id": "agent-loop-decision-0001",
-                        "run_id": "run-placeholder",
-                        "task_id": task_id,
-                        "created_at": "2026-05-29T10:00:00+08:00",
-                        "next_action": {
-                            "action": "subagent",
-                            "reason": "Independent implementation should be delegated.",
-                            "target_task_id": task_id,
-                            "capability_ref": {"type": "subagent", "name": "subagent"},
-                            "expected_observation": {
-                                "summary": "Subagent worker dispatch is recorded.",
-                                "success_signal": "worker evidence is present",
-                            },
-                            "risk": "medium",
-                            "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
-                            "evidence_refs": [],
+        if runtime_context.get("subagent_worker"):
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Child subagent creates notes module and verifies it.",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
                         },
-                    },
-                    "completion_notes": "subagent dispatch requested",
+                        "reason": "create delegated artifact",
+                    }
+                ],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                        },
+                        "reason": "verify delegated artifact",
+                    }
+                ],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "The child worker should implement and verify the artifact.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "tool", "name": "write_file"},
+                        "expected_observation": {
+                            "summary": "Child tool execution succeeds."
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                        "evidence_refs": [],
+                    }
                 },
-                ensure_ascii=False,
-            ),
+                "completion_notes": "child worker completed",
+            }
+        elif latest_observation:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Stop after successful subagent worker observation.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "stop",
+                        "reason": "The subagent worker completed and verified the task.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "stop"},
+                        "expected_observation": {
+                            "summary": "Runtime records stop after subagent completion."
+                        },
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                        "evidence_refs": [latest_observation["observation_id"]],
+                    }
+                },
+                "completion_notes": "parent loop stopped",
+            }
+        else:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Delegate this task to a subagent.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "schema_version": "0.1.0",
+                    "decision_id": "agent-loop-decision-0001",
+                    "run_id": "run-placeholder",
+                    "task_id": task_id,
+                    "created_at": "2026-05-29T10:00:00+08:00",
+                    "next_action": {
+                        "action": "subagent",
+                        "reason": "Independent implementation should be delegated.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "subagent", "name": "subagent"},
+                        "expected_observation": {
+                            "summary": "Subagent worker completes the delegated task.",
+                            "success_signal": "worker evidence is present",
+                            "parallel_safety": "serial",
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
+                        "evidence_refs": [],
+                    },
+                },
+                "completion_notes": "subagent dispatch requested",
+            }
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
             finish_reason="stop",
             usage=TokenUsage(5, 8, 13),
             model_provider="fake",
             model_name="fake-subagent-execute",
+            raw_response={},
+        )
+
+
+class FakeSubagentMultiRoundExecuteClient:
+    def __init__(self) -> None:
+        self.calls = 0
+        self.child_calls = 0
+        self.latest_observations: list[dict] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest_observation = runtime_context.get("latest_agent_loop_observation") or {}
+        if latest_observation:
+            self.latest_observations.append(latest_observation)
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        if runtime_context.get("subagent_worker"):
+            self.child_calls += 1
+            if latest_observation:
+                assert latest_observation["status"] == "failed"
+                content = {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Repair child implementation after failed observation.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                            "reason": "repair delegated artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                            },
+                            "reason": "verify repaired delegated artifact",
+                        }
+                    ],
+                    "runtime_requests": [],
+                    "agent_loop_decision": {
+                        "next_action": {
+                            "action": "tool",
+                            "reason": "Repair with a corrected child tool action.",
+                            "target_task_id": task_id,
+                            "capability_ref": {"type": "tool", "name": "write_file"},
+                            "expected_observation": {
+                                "summary": "Child repair succeeds."
+                            },
+                            "risk": "medium",
+                            "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                            "evidence_refs": [latest_observation["observation_id"]],
+                        }
+                    },
+                    "completion_notes": "child repaired",
+                }
+            else:
+                content = {
+                    "schema_version": "0.1.0",
+                    "task_id": task_id,
+                    "summary": "Make an initial child attempt that validation will reject.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return notes\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create incomplete delegated artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                            },
+                            "reason": "capture child validation failure",
+                        }
+                    ],
+                    "runtime_requests": [],
+                    "agent_loop_decision": {
+                        "next_action": {
+                            "action": "tool",
+                            "reason": "Try the delegated implementation.",
+                            "target_task_id": task_id,
+                            "capability_ref": {"type": "tool", "name": "write_file"},
+                            "expected_observation": {
+                                "summary": "Child validation may fail and require repair.",
+                                "next_recommended_action": "repair",
+                            },
+                            "risk": "medium",
+                            "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                            "evidence_refs": [],
+                        }
+                    },
+                    "completion_notes": "child initial attempt",
+                }
+        elif latest_observation:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Stop after repaired subagent worker observation.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "stop",
+                        "reason": "The subagent worker repaired and verified the task.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "stop"},
+                        "expected_observation": {
+                            "summary": "Runtime records stop after repaired subagent completion."
+                        },
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                        "evidence_refs": [latest_observation["observation_id"]],
+                    }
+                },
+                "completion_notes": "parent loop stopped after child repair",
+            }
+        else:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Delegate this task to a multi-round subagent.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "subagent",
+                        "reason": "Independent implementation can be repaired inside a child loop.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "subagent", "name": "subagent"},
+                        "expected_observation": {
+                            "summary": "Subagent worker completes after repair.",
+                            "success_signal": "worker evidence is present",
+                            "parallel_safety": "serial",
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 2, "tool_budget_units": 6},
+                        "evidence_refs": [],
+                    }
+                },
+                "completion_notes": "subagent dispatch requested",
+            }
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(5, 8, 13),
+            model_provider="fake",
+            model_name="fake-subagent-multi-round-execute",
             raw_response={},
         )
 
@@ -1148,11 +1386,12 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
 def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeSubagentExecuteClient()
 
     result = ExecuteCommand(
         tmp_path,
         run_id=plan.run_id,
-        model_client=FakeSubagentExecuteClient(),
+        model_client=client,
     ).run()
 
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
@@ -1170,30 +1409,166 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
         json.loads(line)
         for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
+    runtime_profiles = [
+        json.loads(line)
+        for line in (run_dir / "runtime_profiles.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    context_budget_snapshots = [
+        json.loads(line)
+        for line in (run_dir / "context_budget_snapshots.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
 
-    assert result.blocked == 1
-    assert executions[-1]["action"] == "subagent"
-    assert executions[-1]["target"] == "subagent_dispatcher"
+    assert result.completed == 1
+    assert result.blocked == 0
+    subagent_execution = next(item for item in executions if item["action"] == "subagent")
+    assert subagent_execution["target"] == "subagent_dispatcher"
     worker = next(
-        item for item in workers if item["worker_invocation_id"] == executions[-1]["worker_invocation_id"]
+        item
+        for item in reversed(workers)
+        if item["worker_invocation_id"] == subagent_execution["worker_invocation_id"]
     )
     worker_result = next(
-        item for item in worker_results if item["worker_result_id"] == executions[-1]["worker_result_id"]
+        item
+        for item in reversed(worker_results)
+        if item["worker_result_id"] == subagent_execution["worker_result_id"]
     )
-    assert worker["status"] == "queued"
-    assert worker_result["status"] == "partial"
+    assert worker["status"] == "succeeded"
+    assert worker["worker_kind"] == "subagent"
+    assert worker["parallel_safety"] == "serial"
+    assert worker["parent_worker_invocation_id"] == "worker-0001"
+    assert worker_result["status"] == "succeeded"
+    assert worker_result["worker_kind"] == "subagent"
+    assert worker_result["parent_worker_invocation_id"] == "worker-0001"
+    subagent_profile = next(
+        item for item in runtime_profiles if item["runtime_profile_id"] == worker["runtime_profile_id"]
+    )
+    assert subagent_profile["worker_kind"] == "subagent"
+    assert subagent_profile["parallel_safety"] == "serial"
+    assert subagent_profile["parent_runtime_profile_id"].startswith("runtime-profile-")
+    subagent_budget = [
+        item for item in context_budget_snapshots if item["scope"] == "subagent_child"
+    ][-1]
+    assert subagent_budget["worker_kind"] == "subagent"
+    assert subagent_budget["isolation_policy"] == "subagent_child_context"
+    assert subagent_budget["parent_worker_invocation_id"] == subagent_execution["worker_invocation_id"]
+    assert subagent_budget["runtime_profile_id"] == subagent_profile["runtime_profile_id"]
+    assert subagent_budget["estimated_tokens"] > 0
+    assert subagent_budget["compact_boundary"]["status"] in {
+        "not_required",
+        "dedupe_recommended",
+        "recommended",
+        "required",
+    }
     loop_observations = [
         json.loads(line)
         for line in (run_dir / "agent_loop_observations.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert loop_observations[-1]["observation_type"] == "subagent_result"
-    assert loop_observations[-1]["status"] == "pending"
-    assert loop_observations[-1]["next_recommended_action"] == "subagent"
+    subagent_observation = next(
+        item
+        for item in loop_observations
+        if item["source_execution_id"] == subagent_execution["execution_id"]
+    )
+    assert subagent_observation["observation_type"] == "subagent_result"
+    assert subagent_observation["status"] == "succeeded"
+    assert subagent_observation["next_recommended_action"] == "stop"
+    assert client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
-    assert loop_summary["exit_reason"] == "subagent_pending"
-    assert loop_summary["recommended_command"] == "execute"
+    assert loop_summary["exit_reason"] == "stop"
+    assert loop_summary["recommended_command"] == "status --debug"
+
+
+def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["subagent_max_rounds_per_task"] = 3
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeSubagentMultiRoundExecuteClient()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=client,
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    assert result.completed == 1
+    assert client.child_calls == 2
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
+        "def add_note"
+    )
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    tool_observations = [item for item in observations if item["observation_type"] == "tool_result"]
+    assert [item["status"] for item in tool_observations[-2:]] == ["failed", "succeeded"]
+    subagent_observation = [item for item in observations if item["observation_type"] == "subagent_result"][-1]
+    assert subagent_observation["status"] == "succeeded"
+    assert client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    subagent_result = [
+        item for item in worker_results if item.get("worker_kind") == "subagent"
+    ][-1]
+    assert subagent_result["status"] == "succeeded"
+    assert subagent_result["cost"]["model_calls"] == 2
+    assert subagent_result["parent_worker_invocation_id"] == "worker-0001"
+    context_mounts = [
+        json.loads(line)
+        for line in (run_dir / "context_mounts.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    subagent_mount = [
+        item
+        for item in context_mounts
+        if item["includes"].get("isolation_policy") == "subagent_child_context"
+    ][-1]
+    assert subagent_mount["includes"]["parent_worker_invocation_id"] == "worker-0002"
+    assert subagent_mount["includes"]["parallel_safety"] == "serial"
+    context_budget_snapshots = [
+        json.loads(line)
+        for line in (run_dir / "context_budget_snapshots.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    subagent_budget = [
+        item for item in context_budget_snapshots if item["scope"] == "subagent_child"
+    ][-1]
+    assert subagent_budget["parent_worker_invocation_id"] == "worker-0002"
+    assert subagent_budget["sections"]["subagent_worker"] > 0
+    assert subagent_budget["sections"]["parent_agent_loop_decision"] > 0
+    assert subagent_budget["context_window_ratio"] >= 0
+    candidate_manifests = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in (run_dir / "candidates").glob("*.json")
+    ]
+    subagent_candidates = [
+        item for item in candidate_manifests if item.get("worker_kind") == "subagent"
+    ]
+    assert subagent_candidates
+    assert all(item["parent_worker_invocation_id"] == "worker-0002" for item in subagent_candidates)
+    task_evidence = [
+        json.loads(line)
+        for line in (run_dir / "task_execution_evidence.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert any(
+        item["candidate"].get("worker_kind") == "subagent"
+        and item["candidate"].get("parent_worker_invocation_id") == "worker-0002"
+        for item in task_evidence
+    )
 
 
 def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path) -> None:

@@ -19,6 +19,10 @@ class WorkerInvocation:
     summary: str = ""
     delegation_brief: dict | None = None
     brief_quality: dict | None = None
+    parent_worker_invocation_id: str | None = None
+    parent_task_id: str | None = None
+    worker_kind: str | None = None
+    parallel_safety: str | None = None
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
@@ -38,6 +42,14 @@ class WorkerInvocation:
             data["delegation_brief"] = self.delegation_brief
         if self.brief_quality is not None:
             data["brief_quality"] = self.brief_quality
+        if self.parent_worker_invocation_id is not None:
+            data["parent_worker_invocation_id"] = self.parent_worker_invocation_id
+        if self.parent_task_id is not None:
+            data["parent_task_id"] = self.parent_task_id
+        if self.worker_kind is not None:
+            data["worker_kind"] = self.worker_kind
+        if self.parallel_safety is not None:
+            data["parallel_safety"] = self.parallel_safety
         return data
 
 
@@ -65,10 +77,12 @@ class WorkerResult:
     validation_refs: list[str] = field(default_factory=list)
     failure_evidence_refs: list[str] = field(default_factory=list)
     cost: WorkerCost = field(default_factory=WorkerCost)
+    parent_worker_invocation_id: str | None = None
+    worker_kind: str | None = None
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "schema_version": self.schema_version,
             "worker_result_id": self.worker_result_id,
             "worker_invocation_id": self.worker_invocation_id,
@@ -81,3 +95,8 @@ class WorkerResult:
             "cost": self.cost.to_dict(),
             "summary": self.summary,
         }
+        if self.parent_worker_invocation_id is not None:
+            data["parent_worker_invocation_id"] = self.parent_worker_invocation_id
+        if self.worker_kind is not None:
+            data["worker_kind"] = self.worker_kind
+        return data

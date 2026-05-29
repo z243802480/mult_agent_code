@@ -46,6 +46,7 @@ def runtime_readiness_gate(
         _model_contract_check(model_call_contract),
         _route_guidance_check(route_guidance or {}),
         _context_pressure_check(context_pressure_summary),
+        _subagent_context_isolation_check(run_dirs, validator),
         _observation_decision_check(run_dirs, validator, latest_observation_plan),
         _agent_loop_execution_check(run_dirs, validator),
         _capability_selection_check(run_dirs, validator),
@@ -163,6 +164,77 @@ def _context_pressure_check(summary: dict[str, Any]) -> RuntimeReadinessCheck:
         name="context_pressure",
         status="ready",
         summary="Context pressure is within the configured window.",
+    )
+
+
+def _subagent_context_isolation_check(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> RuntimeReadinessCheck:
+    worker = _latest_subagent_worker(run_dirs, validator)
+    if not worker:
+        return RuntimeReadinessCheck(
+            name="subagent_context_isolation",
+            status="ready",
+            summary="No subagent child worker context isolation evidence is required yet.",
+        )
+    worker_id = str(worker.get("worker_invocation_id") or "")
+    snapshot = _latest_context_budget_snapshot_for_worker(run_dirs, validator, worker_id)
+    if not snapshot:
+        return RuntimeReadinessCheck(
+            name="subagent_context_isolation",
+            status="review",
+            summary="Latest subagent worker has no ContextBudgetMeter v2 child context snapshot.",
+            recommended_action=(
+                "Rerun the subagent path so Runtime records context_budget_snapshots.jsonl "
+                "with child token attribution and compact boundary evidence."
+            ),
+            evidence_refs=[worker_id],
+        )
+    pressure = str(snapshot.get("pressure_status") or "")
+    ratio = float(snapshot.get("context_window_ratio") or 0.0)
+    compact_boundary = snapshot.get("compact_boundary")
+    compact_boundary = compact_boundary if isinstance(compact_boundary, dict) else {}
+    boundary_status = str(compact_boundary.get("status") or "")
+    evidence_refs = [
+        worker_id,
+        str(snapshot.get("snapshot_id") or ""),
+        *[str(item) for item in snapshot.get("evidence_refs") or [] if item],
+    ][:8]
+    if pressure in {"hard_stop", "exceeded"} or boundary_status == "required":
+        return RuntimeReadinessCheck(
+            name="subagent_context_isolation",
+            status="blocked",
+            summary=f"Subagent child context is at compact hard-stop boundary ({ratio:.2f}).",
+            recommended_action="Run `asteria compact --root .` before continuing the child worker loop.",
+            evidence_refs=evidence_refs,
+        )
+    if pressure == "near_limit" or boundary_status == "recommended":
+        return RuntimeReadinessCheck(
+            name="subagent_context_isolation",
+            status="review",
+            summary=f"Subagent child context is near compaction boundary ({ratio:.2f}).",
+            recommended_action="Compact or narrow the child read/evidence scope before widening parallel work.",
+            evidence_refs=evidence_refs,
+        )
+    duplicate_tokens = int(snapshot.get("duplicate_estimated_tokens") or 0)
+    estimated = max(1, int(snapshot.get("estimated_tokens") or 1))
+    if boundary_status == "dedupe_recommended" or duplicate_tokens / estimated >= 0.2:
+        return RuntimeReadinessCheck(
+            name="subagent_context_isolation",
+            status="review",
+            summary=(
+                "Subagent child context contains repeated mounted content "
+                f"({duplicate_tokens} duplicate estimated tokens)."
+            ),
+            recommended_action="Dedupe repeated child context before enabling broader parallel dispatch.",
+            evidence_refs=evidence_refs,
+        )
+    return RuntimeReadinessCheck(
+        name="subagent_context_isolation",
+        status="ready",
+        summary="Subagent child context snapshot includes token attribution and compact boundary evidence.",
+        evidence_refs=evidence_refs,
     )
 
 
@@ -446,12 +518,32 @@ def _subagent_worker_dispatch_check(
         )
     result_status = str(result.get("status") or "")
     if result_status in {"failed", "denied", "timeout"}:
+        observation = _latest_observation_for_execution(
+            run_dirs,
+            validator,
+            str(execution.get("execution_id") or ""),
+        )
+        recovery = _latest_decision_after_observation(run_dirs, validator, observation) if observation else None
+        if not recovery:
+            return RuntimeReadinessCheck(
+                name="agent_loop_execution",
+                status="blocked",
+                summary=(
+                    f"Subagent worker recorded `{result_status}` but no parent "
+                    "repair/replan/ask/stop decision corrected it."
+                ),
+                recommended_action=(
+                    "Run `asteria debug`, `asteria replan`, or `asteria decide --list` "
+                    "so the parent loop consumes the subagent failure."
+                ),
+                evidence_refs=[worker_id, worker_result_id],
+            )
         return RuntimeReadinessCheck(
             name="agent_loop_execution",
             status="review",
-            summary=f"Subagent worker dispatch recorded `{result_status}` and needs recovery routing.",
-            recommended_action="Run `asteria debug`, `asteria replan`, or `asteria decide --list` based on worker evidence.",
-            evidence_refs=[worker_id, worker_result_id],
+            summary=f"Subagent worker `{result_status}` is covered by parent recovery decision.",
+            recommended_action="Continue the recorded parent loop recovery action.",
+            evidence_refs=[worker_id, worker_result_id, str(recovery.get("decision_id") or "")],
         )
     return None
 
@@ -600,14 +692,15 @@ def _worker_by_id(
     worker_id: str,
 ) -> dict[str, Any] | None:
     store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
     for run_dir in run_dirs:
         path = run_dir / "workers.jsonl"
         if not path.exists():
             continue
         for item in store.read_all(path, "worker_invocation"):
             if str(item.get("worker_invocation_id") or "") == worker_id:
-                return item
-    return None
+                latest = item
+    return latest
 
 
 def _worker_result_by_id(
@@ -616,14 +709,62 @@ def _worker_result_by_id(
     worker_result_id: str,
 ) -> dict[str, Any] | None:
     store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
     for run_dir in run_dirs:
         path = run_dir / "worker_results.jsonl"
         if not path.exists():
             continue
         for item in store.read_all(path, "worker_result"):
             if str(item.get("worker_result_id") or "") == worker_result_id:
-                return item
-    return None
+                latest = item
+    return latest
+
+
+def _latest_subagent_worker(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, Any] | None:
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_started = ""
+    for run_dir in run_dirs:
+        path = run_dir / "workers.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "worker_invocation"):
+            if str(item.get("worker_kind") or "") != "subagent":
+                continue
+            started = str(item.get("started_at") or "")
+            if latest is None or started >= latest_started:
+                latest = item
+                latest_started = started
+    return latest
+
+
+def _latest_context_budget_snapshot_for_worker(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    worker_id: str,
+) -> dict[str, Any] | None:
+    if not worker_id:
+        return None
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    for run_dir in run_dirs:
+        path = run_dir / "context_budget_snapshots.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "context_budget_snapshot"):
+            if str(item.get("scope") or "") != "subagent_child":
+                continue
+            if str(item.get("parent_worker_invocation_id") or "") != worker_id:
+                continue
+            created = str(item.get("created_at") or "")
+            if latest is None or created >= latest_created:
+                latest = item
+                latest_created = created
+    return latest
 
 
 def _run_dirs(root: Path) -> list[Path]:

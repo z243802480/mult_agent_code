@@ -225,6 +225,14 @@ class GateStatusResult:
                 f"{self.context_pressure_summary.get('max_context_estimated_tokens', 0)} tokens "
                 f"({self.context_pressure_summary.get('max_context_window_ratio', 0.0):.2f} window ratio)"
             )
+            subagent = self.context_pressure_summary.get("subagent_child_context") or {}
+            if subagent:
+                lines.append(
+                    "Subagent context: "
+                    f"{subagent.get('pressure_status', 'unknown')} "
+                    f"({subagent.get('estimated_tokens', 0)} tokens, "
+                    f"duplicate={subagent.get('duplicate_estimated_tokens', 0)})"
+                )
             sections = self.context_pressure_summary.get("sections") or {}
             if sections:
                 top_sections = sorted(sections.items(), key=lambda item: (-item[1], item[0]))[:5]
@@ -745,30 +753,74 @@ def _context_pressure_summary(root: Path) -> dict[str, Any]:
     max_ratio = 0.0
     sections: dict[str, int] = {}
     duplicate_hashes: list[str] = []
+    latest_subagent_snapshot: dict[str, Any] = {}
+    latest_subagent_created = ""
     for run_dir in runs_dir.iterdir():
         if not run_dir.is_dir():
             continue
         cost_path = run_dir / "cost_report.json"
-        if not cost_path.exists():
-            continue
-        try:
-            cost = json.loads(cost_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        max_tokens = max(max_tokens, int(cost.get("max_context_estimated_tokens") or 0))
-        max_ratio = max(max_ratio, float(cost.get("context_window_ratio") or 0.0))
-        raw_sections = cost.get("max_context_sections") or cost.get("latest_context_sections")
-        if isinstance(raw_sections, dict):
-            for key, value in raw_sections.items():
-                sections[str(key)] = max(sections.get(str(key), 0), int(value or 0))
-        raw_hashes = cost.get("context_duplicate_content_hashes")
-        if isinstance(raw_hashes, list):
-            duplicate_hashes.extend(str(item) for item in raw_hashes)
+        if cost_path.exists():
+            try:
+                cost = json.loads(cost_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                cost = {}
+            max_tokens = max(max_tokens, int(cost.get("max_context_estimated_tokens") or 0))
+            max_ratio = max(max_ratio, float(cost.get("context_window_ratio") or 0.0))
+            raw_sections = cost.get("max_context_sections") or cost.get("latest_context_sections")
+            if isinstance(raw_sections, dict):
+                for key, value in raw_sections.items():
+                    sections[str(key)] = max(sections.get(str(key), 0), int(value or 0))
+            raw_hashes = cost.get("context_duplicate_content_hashes")
+            if isinstance(raw_hashes, list):
+                duplicate_hashes.extend(str(item) for item in raw_hashes)
+        snapshots_path = run_dir / "context_budget_snapshots.jsonl"
+        if snapshots_path.exists():
+            try:
+                snapshots = JsonlStore().read_all(snapshots_path, None)
+            except (OSError, ValueError):
+                snapshots = []
+            for item in snapshots:
+                if str(item.get("scope") or "") != "subagent_child":
+                    continue
+                max_tokens = max(max_tokens, int(item.get("estimated_tokens") or 0))
+                max_ratio = max(max_ratio, float(item.get("context_window_ratio") or 0.0))
+                raw_sections = item.get("sections")
+                if isinstance(raw_sections, dict):
+                    for key, value in raw_sections.items():
+                        sections[str(key)] = max(sections.get(str(key), 0), int(value or 0))
+                raw_hashes = item.get("duplicate_content_hashes")
+                if isinstance(raw_hashes, list):
+                    duplicate_hashes.extend(str(entry) for entry in raw_hashes)
+                created = str(item.get("created_at") or "")
+                if not latest_subagent_snapshot or created >= latest_subagent_created:
+                    latest_subagent_snapshot = item
+                    latest_subagent_created = created
+    subagent_summary = {}
+    if latest_subagent_snapshot:
+        subagent_summary = {
+            "snapshot_id": latest_subagent_snapshot.get("snapshot_id"),
+            "task_id": latest_subagent_snapshot.get("task_id"),
+            "runtime_profile_id": latest_subagent_snapshot.get("runtime_profile_id"),
+            "parent_worker_invocation_id": latest_subagent_snapshot.get(
+                "parent_worker_invocation_id"
+            ),
+            "estimated_tokens": int(latest_subagent_snapshot.get("estimated_tokens") or 0),
+            "context_window_ratio": float(
+                latest_subagent_snapshot.get("context_window_ratio") or 0.0
+            ),
+            "pressure_status": latest_subagent_snapshot.get("pressure_status"),
+            "compact_boundary": latest_subagent_snapshot.get("compact_boundary") or {},
+            "duplicate_estimated_tokens": int(
+                latest_subagent_snapshot.get("duplicate_estimated_tokens") or 0
+            ),
+            "duplicate_ref_count": int(latest_subagent_snapshot.get("duplicate_ref_count") or 0),
+        }
     return {
         "max_context_estimated_tokens": max_tokens,
         "max_context_window_ratio": max_ratio,
         "sections": dict(sorted(sections.items())),
         "duplicate_content_hashes": list(dict.fromkeys(duplicate_hashes))[:20],
+        "subagent_child_context": subagent_summary,
         "status": "observed" if max_tokens > 0 else "no_current_context_estimates",
     }
 

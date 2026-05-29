@@ -76,3 +76,56 @@ def test_agent_loop_runner_persists_two_round_decision_execution_observation(
     ]
     assert observations[0]["next_recommended_action"] == "subagent"
     assert observations[1]["next_recommended_action"] == "stop"
+
+
+def test_agent_loop_runner_turns_subagent_worker_result_into_parent_observation(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    runner = AgentLoopRunner(validator)
+
+    def execute_subagent(decision: dict, execution: dict) -> dict:
+        assert decision["next_action"]["capability_ref"]["type"] == "subagent"
+        assert execution["worker_invocation_id"] == "worker-0001"
+        return {
+            "status": "succeeded",
+            "summary": "Subagent worker completed the delegated check.",
+            "artifact_refs": ["artifact-subagent-0001"],
+            "validation_refs": ["validation-subagent-0001"],
+            "failure_evidence_refs": [],
+            "cost": {"model_calls": 1, "tool_calls": 2},
+        }
+
+    rounds = runner.run(
+        run_dir=tmp_path,
+        initial_decision=_decision("agent-loop-decision-0001", "subagent"),
+        decide_next=lambda observation, index: _decision("agent-loop-decision-0002", "stop")
+        if observation["status"] == "succeeded"
+        else None,
+        max_rounds=2,
+        execute_subagent=execute_subagent,
+    )
+
+    observations = [
+        json.loads(line)
+        for line in (tmp_path / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    worker_results = [
+        json.loads(line)
+        for line in (tmp_path / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    workers = [
+        json.loads(line)
+        for line in (tmp_path / "workers.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert len(rounds) == 2
+    assert observations[0]["observation_type"] == "subagent_result"
+    assert observations[0]["status"] == "succeeded"
+    assert observations[0]["next_recommended_action"] == "stop"
+    assert "artifact-subagent-0001" in observations[0]["evidence_refs"]
+    assert worker_results[-1]["status"] == "succeeded"
+    assert worker_results[-1]["cost"] == {"model_calls": 1, "tool_calls": 2}
+    assert workers[-1]["status"] == "succeeded"

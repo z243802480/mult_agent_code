@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContextBudgetSnapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshot_id",
+    "run_id",
+    "task_id",
+    "created_at",
+    "scope",
+    "runtime_profile_id",
+    "context_mount_id",
+    "worker_kind",
+    "isolation_policy",
+    "parent_worker_invocation_id",
+    "parent_runtime_profile_id",
+    "estimated_tokens",
+    "sections",
+    "duplicate_content_hashes",
+    "duplicate_estimated_tokens",
+    "duplicate_ref_count",
+    "context_window_tokens",
+    "context_window_ratio",
+    "pressure_status",
+    "compaction_threshold",
+    "hard_stop_threshold",
+    "compact_boundary",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "snapshot_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "scope": { "type": "string", "enum": ["task_context", "subagent_child"] },
+    "runtime_profile_id": { "type": "string" },
+    "context_mount_id": { "type": "string" },
+    "worker_kind": { "type": "string" },
+    "isolation_policy": { "type": "string" },
+    "parent_worker_invocation_id": { "type": ["string", "null"] },
+    "parent_runtime_profile_id": { "type": ["string", "null"] },
+    "estimated_tokens": { "type": "integer" },
+    "sections": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "duplicate_content_hashes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "duplicate_estimated_tokens": { "type": "integer" },
+    "duplicate_ref_count": { "type": "integer" },
+    "context_window_tokens": { "type": "integer" },
+    "context_window_ratio": { "type": "number" },
+    "pressure_status": {
+      "type": "string",
+      "enum": ["within_budget", "near_limit", "hard_stop", "exceeded"]
+    },
+    "compaction_threshold": { "type": "number" },
+    "hard_stop_threshold": { "type": "number" },
+    "compact_boundary": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not_required", "dedupe_recommended", "recommended", "required"]
+        },
+        "recommended_action": { "type": "string" },
+        "estimated_tokens_before": { "type": "integer" },
+        "estimated_duplicate_tokens": { "type": "integer" },
+        "preserve_sections": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "droppable_sections": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

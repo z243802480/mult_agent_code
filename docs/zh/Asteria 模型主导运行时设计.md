@@ -10,12 +10,14 @@ Asteria 的核心方向是：
 模型主导 agent loop，Runtime 提供能力环境、权限边界、预算、证据和恢复护栏。
 ```
 
-状态机仍然重要，但它不应该替模型写死完整流程。Runtime 的职责是：
+状态机仍然重要，但它不替模型写死完整流程。Runtime 的职责是：
 
 - 组织用户目标、项目规则、上下文、能力目录、预算和历史证据。
 - 向模型暴露可理解的能力：tools、MCP、skills、subagents、candidate workspace、validation、promotion。
-- 校验模型输出，执行权限/预算/sandbox/schema/gate。
+- 校验模型输出，执行权限、预算、sandbox、schema、gate。
 - 记录可审计 evidence，并把 observation 回灌给模型。
+
+参考 Claude Code 的公开产品思路时，只吸收机制，不照搬形态：subagent 使用独立上下文和受限工具/权限；tool/subagent 调用前后有事件式 gate；session evidence 采用追加式记录；失败不直接消失在 provider/tool 层，而是回到上层 agent loop 纠偏。
 
 模型的职责是：
 
@@ -24,9 +26,9 @@ Asteria 的核心方向是：
 - 阅读 observation 并调整策略。
 - 产出用户可理解的阶段性和最终结论。
 
-## 2. AgentLoopDecision 契约
+## 2. Agent Loop 契约
 
-模型每轮必须产出一个稳定的 `AgentLoopDecision`。
+模型每轮必须产出稳定的 `AgentLoopDecision`。
 
 允许的 next action：
 
@@ -44,29 +46,66 @@ tool | subagent | repair | replan | ask | stop
 - `budget_hint`
 - `evidence_refs`
 
-Runtime 负责把 decision 转成 `agent_loop_execution_results.jsonl`，并按 action 分派：
+Runtime 将 decision 转成 execution result，再转成 observation：
 
-- `tool` -> Tool Gateway / verification
-- `subagent` -> WorkerInvocation / WorkerResult dispatch evidence
-- `repair` -> Debug / recovery
-- `replan` -> Replan
-- `ask` -> DecisionPoint
-- `stop` -> stop report / status debug
+```text
+AgentLoopDecision
+  -> AgentLoopExecutionResult
+  -> AgentLoopObservation
+  -> next AgentLoopDecision
+```
 
-## 3. Runtime Gate
+当前持久化文件：
+
+- `agent_loop_decisions.jsonl`
+- `agent_loop_execution_results.jsonl`
+- `agent_loop_observations.jsonl`
+- `agent_loop_run_summary.json`
+
+## 3. Bounded Loop
+
+`ExecuteCommand` 已从单轮模型提案升级为 bounded loop。
+
+当前规则：
+
+- 默认每个 task 最多 2 轮。
+- policy `agent_loop.max_rounds_per_task` 可调整，上限 8。
+- 每轮 observation 会回灌给下一轮模型。
+- 只有模型显式声明继续条件时才自动进入下一轮。
+
+继续条件包括：
+
+- `expected_observation.next_recommended_action`
+- `expected_observation.requires_follow_up_decision`
+- `expected_observation.auto_repair_on_failure`
+
+这样可以避免普通失败任务盲目自旋，同时允许模型明确要求：
+
+- tool 成功后再 stop。
+- tool 失败后进入 repair。
+- 需要用户判断时进入 ask。
+- 需要分派时进入 subagent。
+
+## 4. Runtime Gate
 
 RuntimeReadinessGate 当前输入：
 
 - model call contract：role、deadline、streaming telemetry。
 - route guidance：provider route health 和 fallback evidence。
-- context pressure：context window ratio 和 section source。
+- context pressure：context window ratio、section source、subagent child snapshot、compact boundary 和 duplicate context signals。
 - observation decision：失败 observation 是否进入 AgentLoopDecision。
 - agent loop execution：decision 是否有 matching execution result；subagent 是否有 worker evidence。
+- subagent context isolation：最新 child worker 是否有 ContextBudgetMeter v2 snapshot，是否触发 compact/dedupe gate。
 - capability selection：catalog 和实际 tool/skill/MCP/subagent 选择是否一致。
 
-缺失 decision、缺失 execution、subagent 缺 worker evidence、重复失败无 recovery route 都应进入 blocked/review，而不是只写日志。
+下一步 gate 需要继续加强：
 
-## 4. Subagent 设计
+- 最新 loop execution 后必须有 observation。
+- 最新 bounded loop 必须有 `agent_loop_run_summary.json`。
+- summary 中 latest ids 必须能对应 JSONL evidence。
+- exit_reason 必须映射到可执行下一步命令。
+
+## 5. Subagent 设计
 
 Subagent 不是普通 tool call。它代表“把一个任务交给隔离 worker/agent 执行”。
 
@@ -76,31 +115,35 @@ Subagent 不是普通 tool call。它代表“把一个任务交给隔离 worker
 - 必须有 `target_task_id`、`risk`、`budget_hint`。
 - Runtime 写入 `workers.jsonl` 和 `worker_results.jsonl`。
 - execution result 回填 `worker_invocation_id`、`worker_result_id`、`runtime_profile_id`、`worker_status`。
+- AgentLoopRunner 和 ExecuteCommand 主链路支持追加写入 worker completion evidence，并转成父 loop `subagent_result` observation。
+- ExecuteCommand 中的 child worker 已支持多轮 bounded tool loop：失败 observation 可回灌 child 下一轮，成功后再回灌父 loop。
+- worker/runtime profile evidence 保留 `worker_kind`、`parent_worker_invocation_id`、`parent_runtime_profile_id` 和 `parallel_safety`，为后续并行 worker 调度保留接口。
+- child candidate workspace manifest、task execution evidence 和 context mount 记录父子关系与 `subagent_child_context` isolation policy。
+- ContextBudgetMeter v2 会为 subagent child context 写入 `context_budget_snapshots.jsonl`，记录 section token attribution、parent worker/runtime profile、compact boundary 和 duplicate context signals。
 - status 可以展示 subagent worker/profile。
-- gate 可以检查 subagent worker evidence。
+- gate 可以检查 subagent worker evidence 和 child context snapshot；失败 worker 若没有父 loop repair / replan / ask / stop 纠偏，会被阻断。
 
 仍需推进：
 
-- 子 agent 独立 context window。
-- 子 agent 多轮 tool loop。
-- 子 agent completion / failed observation 回灌父 loop。
-- 父子 worker graph 和 candidate workspace/promotion 关系。
+- 子 agent 独立 planner/decomposer。
+- ContextBudgetMeter v2 compact before/after token、恢复摘要和文件 hash/diff 降噪。
+- 父子 worker graph 和 candidate workspace/promotion 关系继续图谱化。
 
-## 5. Ask 设计
+## 6. Ask 设计
 
 `ask` 不只是状态提示。Runtime-owned ask 必须落到 DecisionPoint：
 
 - 写入 `decisions.jsonl`。
 - execution result 记录 `decision_point_id`。
-- status 推荐 `decide --decision-id ...`。
+- run summary/status 推荐 `decide --list`。
 
 普通 runtime request 仍由 RuntimeRequestPolicy 创建 DecisionPoint，避免重复。
 
-## 6. Observation 设计缺口
+## 7. Observation 设计
 
-当前已经有 decision 和 execution result，但还需要统一的 `AgentLoopObservation`。
+`AgentLoopObservation` 是模型下一轮输入的稳定边界。
 
-建议 observation 类型：
+当前 observation 类型：
 
 - `tool_result`
 - `subagent_result`
@@ -121,23 +164,42 @@ Subagent 不是普通 tool call。它代表“把一个任务交给隔离 worker
 - `evidence_refs`
 - `next_recommended_action`
 
-这会让 loop runner 能稳定地执行：
+## 8. Loop Run Summary
+
+`agent_loop_run_summary.json` 是用户、gate 和 Studio 读取 loop 退出原因的产品化入口。
+
+当前记录：
+
+- `status`
+- `exit_reason`
+- `rounds_completed`
+- `max_rounds`
+- `summary`
+- `recommended_command`
+- `latest_decision_id`
+- `latest_execution_id`
+- `latest_observation_id`
+- `latest_action`
+- `evidence_refs`
+
+当前退出原因：
 
 ```text
-decision -> execution -> observation -> next decision
+completed | tool_failed | max_rounds | budget_hard_stop | ask | stop |
+subagent_pending | repair_dispatch | replan_dispatch | no_action
 ```
 
-## 7. 下一步设计目标
+## 9. 下一步设计目标
 
-下一步不是继续扩大命令数量，而是把 agent loop 多轮化：
+下一步不是继续扩大命令数量，而是把 subagent 从 dispatch evidence 升级为真实子 agent 执行器：
 
-1. 新增 `AgentLoopObservation` schema 和 JSONL。
-2. tool/subagent/debug/replan/ask/stop 都写 observation。
-3. 新增最小 `AgentLoopRunner`，读取 observation 后调用模型生成下一轮 decision。
-4. RuntimeReadinessGate 检查最新 execution 是否有 observation。
-5. 用 fake-provider 小灰度验证至少两轮循环。
+1. 为 subagent worker 增加独立 planner/decomposer，支持 child task graph。
+2. 将 child candidate workspace 与父 task merge/promotion 关系纳入 graph/status。
+3. 补齐 ContextBudgetMeter v2 compact before/after、恢复摘要和文件 hash/diff 降噪。
+4. 用真实 provider 灰度验证父模型选择 subagent、child repair、父 loop stop。
+5. 再评估 readonly / disjoint write 的真实并行 worker 调度。
 
-## 8. 非目标
+## 10. 非目标
 
 - 不做 unrestricted agent chatroom。
 - 不绕过 permissions、protected paths、budget、schema、candidate workspace 和 gate。

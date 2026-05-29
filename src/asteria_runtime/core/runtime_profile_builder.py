@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.context_budget import record_context_budget_snapshot
 from asteria_runtime.core.context_mount_builder import ContextMountBuilder
 from asteria_runtime.core.context_package_builder import ContextPackageBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -134,6 +135,10 @@ class RuntimeProfileBuilder:
                 max_tool_calls=max(1, len(task.get("allowed_tools", []))),
                 max_runtime_minutes=max(1, (role_contract.provider_call_seconds + 59) // 60),
             ),
+            parent_runtime_profile_id=self._runtime_hint(task, "parent_runtime_profile_id"),
+            worker_kind=self._runtime_hint(task, "worker_kind"),
+            parallel_safety=parallel_safety(task),
+            candidate_workspace_id=self._runtime_hint(task, "candidate_workspace_id"),
         )
         scoped["runtime_profile_id"] = runtime_profile.runtime_profile_id
         scoped["model_profile_id"] = model_profile.model_profile_id
@@ -143,6 +148,7 @@ class RuntimeProfileBuilder:
         scoped["model_selection"] = model_selection
         scoped["model_route_resolution"] = resolved_route.to_dict()
         scoped["agent_role_contract"] = role_contract.to_dict()
+        scoped["worker_topology"] = self._worker_topology(task, runtime_profile)
         if context.policy.get("model_strategy_profile"):
             scoped["model_strategy_profile"] = context.policy["model_strategy_profile"]
 
@@ -156,6 +162,7 @@ class RuntimeProfileBuilder:
             sandbox_profile=sandbox_profile,
             runtime_profile=runtime_profile,
             context_mount=context_mount,
+            runtime_context=scoped,
         )
         return RuntimeProfileMount(
             runtime_profile_id=runtime_profile.runtime_profile_id,
@@ -226,6 +233,7 @@ class RuntimeProfileBuilder:
         sandbox_profile: SandboxProfile,
         runtime_profile: RuntimeProfile,
         context_mount: dict,
+        runtime_context: dict,
     ) -> None:
         if context.run_dir is None:
             return
@@ -255,6 +263,16 @@ class RuntimeProfileBuilder:
             runtime_profile.to_dict(),
             "runtime_profile",
         )
+        record_context_budget_snapshot(
+            run_dir=context.run_dir,
+            validator=self.validator,
+            policy=context.policy,
+            run_id=context.run_id,
+            task=task,
+            runtime_context=runtime_context,
+            runtime_profile_id=runtime_profile.runtime_profile_id,
+            context_mount_id=runtime_profile.context_mount_id,
+        )
         if context.event_logger:
             context.event_logger.record(
                 context.run_id,
@@ -268,6 +286,9 @@ class RuntimeProfileBuilder:
                     "model_profile_id": model_profile.model_profile_id,
                     "tool_permission_profile_id": tool_profile.tool_permission_profile_id,
                     "context_mount_id": runtime_profile.context_mount_id,
+                    "worker_kind": runtime_profile.worker_kind,
+                    "parent_runtime_profile_id": runtime_profile.parent_runtime_profile_id,
+                    "parallel_safety": runtime_profile.parallel_safety,
                 },
             )
 
@@ -528,3 +549,22 @@ class RuntimeProfileBuilder:
     def _default_runtime_profile_id(self, task: dict) -> str:
         role = str(task.get("role") or "CoderAgent").lower().replace("agent", "")
         return f"runtime-profile-execute-{role or 'coder'}"
+
+    def _runtime_hint(self, task: dict, key: str) -> str | None:
+        hints = task.get("runtime_profile_hints")
+        if not isinstance(hints, dict):
+            return None
+        value = hints.get(key)
+        return str(value) if value else None
+
+    def _worker_topology(self, task: dict, runtime_profile: RuntimeProfile) -> dict:
+        hints = task.get("runtime_profile_hints")
+        hints = hints if isinstance(hints, dict) else {}
+        return {
+            "worker_kind": runtime_profile.worker_kind or "primary",
+            "parallel_safety": runtime_profile.parallel_safety,
+            "parent_runtime_profile_id": runtime_profile.parent_runtime_profile_id,
+            "parent_worker_invocation_id": hints.get("parent_worker_invocation_id"),
+            "parent_task_id": hints.get("parent_task_id"),
+            "candidate_workspace_id": runtime_profile.candidate_workspace_id,
+        }

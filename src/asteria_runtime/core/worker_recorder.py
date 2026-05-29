@@ -80,6 +80,10 @@ class WorkerExecutionRecorder:
             summary=f"Execute {task['task_id']} through {runtime_profile_id}.",
             delegation_brief=delegation_brief,
             brief_quality=brief_quality,
+            parent_worker_invocation_id=self._runtime_hint(task, "parent_worker_invocation_id"),
+            parent_task_id=self._runtime_hint(task, "parent_task_id"),
+            worker_kind=self._runtime_hint(task, "worker_kind") or "primary",
+            parallel_safety=str(task.get("parallel_safety") or ""),
         )
         result = WorkerResult(
             worker_result_id=result_id,
@@ -92,6 +96,8 @@ class WorkerExecutionRecorder:
             failure_evidence_refs=failure_evidence_refs,
             cost=WorkerCost(model_calls=max(model_calls, 0), tool_calls=tool_calls),
             summary=summary,
+            parent_worker_invocation_id=self._runtime_hint(task, "parent_worker_invocation_id"),
+            worker_kind=self._runtime_hint(task, "worker_kind") or "primary",
         )
         store.append(context.run_dir / "workers.jsonl", invocation.to_dict(), "worker_invocation")
         store.append(context.run_dir / "worker_results.jsonl", result.to_dict(), "worker_result")
@@ -222,3 +228,10 @@ class WorkerExecutionRecorder:
         if not path.exists():
             return 0
         return len([line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()])
+
+    def _runtime_hint(self, task: dict, key: str) -> str | None:
+        hints = task.get("runtime_profile_hints")
+        if not isinstance(hints, dict):
+            return None
+        value = hints.get(key)
+        return str(value) if value else None

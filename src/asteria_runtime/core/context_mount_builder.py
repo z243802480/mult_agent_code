@@ -33,6 +33,18 @@ class ContextMountBuilder:
             "validation_refs": (validation_refs or []) if requirements.get("include_validation") else [],
             "recent_event_count": int(requirements.get("recent_event_count") or 20),
         }
+        hints = task.get("runtime_profile_hints")
+        if isinstance(hints, dict) and hints.get("worker_kind") == "subagent":
+            includes["isolation_policy"] = str(
+                requirements.get("isolation_policy") or "subagent_child_context"
+            )
+            includes["parent_worker_invocation_id"] = str(
+                hints.get("parent_worker_invocation_id") or ""
+            )
+            includes["parent_runtime_profile_id"] = str(
+                hints.get("parent_runtime_profile_id") or ""
+            )
+            includes["parallel_safety"] = str(task.get("parallel_safety") or "")
         return ContextMount(
             context_mount_id=f"context-mount-{task_id}",
             run_id=self.run_id,
