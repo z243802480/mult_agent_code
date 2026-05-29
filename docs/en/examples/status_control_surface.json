@@ -27,6 +27,7 @@
       "latest_agent_loop_decision",
       "latest_agent_loop_execution_result",
       "latest_agent_loop_observation",
+      "agent_loop_run_summary",
       "model_route_timeline",
       "route_health",
       "run_loop_summary_path",
@@ -70,6 +71,7 @@
   "latest_agent_loop_decision": {},
   "latest_agent_loop_execution_result": {},
   "latest_agent_loop_observation": {},
+  "agent_loop_run_summary": {},
   "workspace_envelope": {},
   "plugin_control": {
     "initialized": true,

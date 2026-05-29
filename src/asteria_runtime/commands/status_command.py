@@ -58,6 +58,9 @@ class StatusResult:
             if self.current_context
             else {}
         ) or {}
+        agent_loop_run_summary = (
+            self.current_context.get("agent_loop_run_summary") if self.current_context else {}
+        ) or {}
         workspace_envelope = (
             self.current_context.get("workspace_envelope") if self.current_context else {}
         ) or {}
@@ -118,6 +121,7 @@ class StatusResult:
                     "latest_agent_loop_decision",
                     "latest_agent_loop_execution_result",
                     "latest_agent_loop_observation",
+                    "agent_loop_run_summary",
                     "model_route_timeline",
                     "route_health",
                     "run_loop_summary_path",
@@ -161,6 +165,7 @@ class StatusResult:
             "latest_agent_loop_decision": latest_agent_loop_decision,
             "latest_agent_loop_execution_result": latest_agent_loop_execution_result,
             "latest_agent_loop_observation": latest_agent_loop_observation,
+            "agent_loop_run_summary": agent_loop_run_summary,
             "model_route_timeline": model_route_timeline,
             "route_health": route_health,
             "run_loop_summary_path": run_loop_summary_path,
@@ -674,6 +679,15 @@ class StatusResult:
                     f"{latest_loop_observation.get('observation_type', 'unknown')} "
                     f"{latest_loop_observation.get('status', 'unknown')} - "
                     f"{latest_loop_observation.get('next_recommended_action') or 'no next action'}"
+                )
+            loop_summary = context.get("agent_loop_run_summary") or {}
+            if loop_summary:
+                lines.append(
+                    "Agent loop exit: "
+                    f"{loop_summary.get('exit_reason', 'unknown')} "
+                    f"rounds={loop_summary.get('rounds_completed', 0)}/"
+                    f"{loop_summary.get('max_rounds', 0)} - "
+                    f"{loop_summary.get('recommended_command') or 'no command'}"
                 )
             evidence_chain = self._evidence_chain()
             if evidence_chain:

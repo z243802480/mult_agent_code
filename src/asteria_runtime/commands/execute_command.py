@@ -18,6 +18,10 @@ from asteria_runtime.core.agent_loop_executor import persist_agent_loop_executio
 from asteria_runtime.core.agent_loop_observation import (
     persist_agent_loop_observation_for_execution,
 )
+from asteria_runtime.core.agent_loop_run_summary import (
+    build_agent_loop_run_summary,
+    persist_agent_loop_run_summary,
+)
 from asteria_runtime.core.agent_tool_surface import (
     model_tool_surface_for_task,
     model_tools_available_for_task,
@@ -319,6 +323,9 @@ class ExecuteCommand:
         task_board: TaskBoard,
         context: RuntimeContext,
         action_kind: str,
+        round_index: int,
+        max_rounds: int,
+        latest_decision: dict | None,
         execution_result: dict | None,
         latest_summary: TaskExecutionSummary | None,
     ) -> TaskExecutionSummary | None:
@@ -349,6 +356,19 @@ class ExecuteCommand:
                     "agent_loop_observation": loop_observation or {},
                     "recommended_command": "status --debug",
                 },
+            )
+            self._record_agent_loop_run_summary(
+                context=context,
+                task_id=task_id,
+                status="completed" if latest_summary and latest_summary.status == "done" else "stopped",
+                exit_reason="stop",
+                rounds_completed=round_index,
+                max_rounds=max_rounds,
+                summary="Model selected stop after reviewing the latest observation.",
+                recommended_command="status --debug",
+                latest_decision=latest_decision,
+                latest_execution=execution_result,
+                latest_observation=loop_observation,
             )
             if latest_summary is not None:
                 return latest_summary
@@ -402,6 +422,19 @@ class ExecuteCommand:
                     "recommended_command": "execute",
                 },
             )
+            self._record_agent_loop_run_summary(
+                context=context,
+                task_id=task_id,
+                status="blocked",
+                exit_reason="subagent_pending",
+                rounds_completed=round_index,
+                max_rounds=max_rounds,
+                summary=summary,
+                recommended_command="execute",
+                latest_decision=latest_decision,
+                latest_execution=execution_result,
+                latest_observation=loop_observation,
+            )
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",
@@ -438,6 +471,19 @@ class ExecuteCommand:
                 "agent_loop_observation": loop_observation or {},
                 "recommended_command": command,
             },
+        )
+        self._record_agent_loop_run_summary(
+            context=context,
+            task_id=task_id,
+            status="blocked",
+            exit_reason="repair_dispatch" if action_kind == "repair" else "replan_dispatch",
+            rounds_completed=round_index,
+            max_rounds=max_rounds,
+            summary=summary,
+            recommended_command=command,
+            latest_decision=latest_decision,
+            latest_execution=execution_result,
+            latest_observation=loop_observation,
         )
         return TaskExecutionSummary(
             task_id=task_id,
@@ -491,6 +537,70 @@ class ExecuteCommand:
             return False
         pressure = BudgetController.pressure(context.policy, context.budget.cost_report())
         return str(pressure.get("status") or "") not in {"hard_stop", "exceeded"}
+
+    def _agent_loop_exit_reason_after_attempt(
+        self,
+        *,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        observation: dict | None,
+        next_action: dict,
+        attempt_status: str,
+    ) -> tuple[str, str, str | None]:
+        if attempt_status == "done":
+            return ("completed", "completed", None)
+        if not isinstance(observation, dict):
+            return ("blocked", "tool_failed", "debug")
+        requested = self._loop_continuation_requested(
+            next_action=next_action,
+            attempt_status=attempt_status,
+        )
+        observation_next_action = str(observation.get("next_recommended_action") or "")
+        actionable = observation_next_action in {"tool", "repair", "replan", "stop"}
+        if requested and actionable and context.budget is not None:
+            pressure = BudgetController.pressure(context.policy, context.budget.cost_report())
+            if str(pressure.get("status") or "") in {"hard_stop", "exceeded"}:
+                return ("blocked", "budget_hard_stop", "compact")
+        if requested and actionable and round_index >= max_rounds:
+            return ("blocked", "max_rounds", "status --debug")
+        return ("blocked", "tool_failed", "debug")
+
+    def _record_agent_loop_run_summary(
+        self,
+        *,
+        context: RuntimeContext,
+        task_id: str,
+        status: str,
+        exit_reason: str,
+        rounds_completed: int,
+        max_rounds: int,
+        summary: str,
+        recommended_command: str | None,
+        latest_decision: dict | None,
+        latest_execution: dict | None,
+        latest_observation: dict | None,
+        evidence_refs: list[str] | None = None,
+    ) -> dict | None:
+        record = build_agent_loop_run_summary(
+            run_id=context.run_id,
+            task_id=task_id,
+            status=status,
+            exit_reason=exit_reason,
+            rounds_completed=rounds_completed,
+            max_rounds=max_rounds,
+            summary=summary,
+            recommended_command=recommended_command,
+            latest_decision=latest_decision,
+            latest_execution=latest_execution,
+            latest_observation=latest_observation,
+            evidence_refs=evidence_refs,
+        )
+        return persist_agent_loop_run_summary(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            summary=record,
+        )
 
     def _loop_continuation_requested(self, *, next_action: dict, attempt_status: str) -> bool:
         expected = next_action.get("expected_observation")
@@ -733,6 +843,9 @@ class ExecuteCommand:
                     task_board=task_board,
                     context=context,
                     action_kind=next_action_kind,
+                    round_index=round_index,
+                    max_rounds=max_rounds,
+                    latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
                     execution_result=loop_execution_result,
                     latest_summary=latest_summary,
                 )
@@ -745,7 +858,7 @@ class ExecuteCommand:
                     context=context,
                 )
                 if runtime_request_result is not None:
-                    persist_agent_loop_observation_for_execution(
+                    loop_observation = persist_agent_loop_observation_for_execution(
                         run_dir=context.run_dir,
                         validator=context.validator,
                         execution_result=loop_execution_result,
@@ -753,6 +866,20 @@ class ExecuteCommand:
                         summary=runtime_request_result.summary,
                         evidence_refs=self._refs(runtime_request_result.evidence_path),
                         next_recommended_action="ask",
+                    )
+                    self._record_agent_loop_run_summary(
+                        context=context,
+                        task_id=task_id,
+                        status="waiting_user",
+                        exit_reason="ask",
+                        rounds_completed=round_index,
+                        max_rounds=max_rounds,
+                        summary=runtime_request_result.summary,
+                        recommended_command="decide --list",
+                        latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
+                        latest_execution=loop_execution_result,
+                        latest_observation=loop_observation,
+                        evidence_refs=self._refs(runtime_request_result.evidence_path),
                     )
                     self._record_runtime_request_progress(context, task, runtime_request_result)
                     return self._runtime_request_task_summary(runtime_request_result)
@@ -769,7 +896,7 @@ class ExecuteCommand:
                         action=action,
                         decision=decision,
                     )
-                    persist_agent_loop_observation_for_execution(
+                    loop_observation = persist_agent_loop_observation_for_execution(
                         run_dir=context.run_dir,
                         validator=context.validator,
                         execution_result=loop_execution_result,
@@ -777,6 +904,20 @@ class ExecuteCommand:
                         summary=blocked.summary,
                         evidence_refs=self._refs(blocked.evidence_path),
                         next_recommended_action="ask",
+                    )
+                    self._record_agent_loop_run_summary(
+                        context=context,
+                        task_id=task_id,
+                        status="waiting_user",
+                        exit_reason="ask",
+                        rounds_completed=round_index,
+                        max_rounds=max_rounds,
+                        summary=blocked.summary,
+                        recommended_command="decide --list",
+                        latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
+                        latest_execution=loop_execution_result,
+                        latest_observation=loop_observation,
+                        evidence_refs=self._refs(blocked.evidence_path),
                     )
                     self._record_progress(
                         context,
@@ -841,9 +982,60 @@ class ExecuteCommand:
                     next_action=next_action,
                     attempt_status=attempt.status,
                 ):
+                    status, exit_reason, recommended = self._agent_loop_exit_reason_after_attempt(
+                        context=context,
+                        round_index=round_index,
+                        max_rounds=max_rounds,
+                        observation=latest_loop_observation,
+                        next_action=next_action,
+                        attempt_status=attempt.status,
+                    )
+                    self._record_agent_loop_run_summary(
+                        context=context,
+                        task_id=task_id,
+                        status=status,
+                        exit_reason=exit_reason,
+                        rounds_completed=round_index,
+                        max_rounds=max_rounds,
+                        summary=attempt.summary,
+                        recommended_command=recommended,
+                        latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
+                        latest_execution=loop_execution_result,
+                        latest_observation=latest_loop_observation,
+                        evidence_refs=self._refs(attempt.evidence_path)
+                        + attempt.validation_refs,
+                    )
                     return latest_summary
             if latest_summary is not None:
+                self._record_agent_loop_run_summary(
+                    context=context,
+                    task_id=task_id,
+                    status="blocked" if latest_summary.status != "done" else "completed",
+                    exit_reason="max_rounds",
+                    rounds_completed=max_rounds,
+                    max_rounds=max_rounds,
+                    summary=latest_summary.summary,
+                    recommended_command="status --debug",
+                    latest_decision=None,
+                    latest_execution=None,
+                    latest_observation=latest_loop_observation,
+                    evidence_refs=self._refs(latest_summary.evidence_path)
+                    + latest_summary.validation_refs,
+                )
                 return latest_summary
+            self._record_agent_loop_run_summary(
+                context=context,
+                task_id=task_id,
+                status="blocked",
+                exit_reason="no_action",
+                rounds_completed=max_rounds,
+                max_rounds=max_rounds,
+                summary="Agent loop stopped without executable model action.",
+                recommended_command="status --debug",
+                latest_decision=None,
+                latest_execution=None,
+                latest_observation=latest_loop_observation,
+            )
             return TaskExecutionSummary(
                 task_id=task_id,
                 status="blocked",

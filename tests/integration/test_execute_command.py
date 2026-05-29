@@ -1140,6 +1140,9 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     ]
     assert loop_observations[-1]["observation_type"] == "tool_result"
     assert loop_observations[-1]["status"] == "succeeded"
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    assert loop_summary["exit_reason"] == "completed"
+    assert loop_summary["rounds_completed"] == 1
 
 
 def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> None:
@@ -1188,6 +1191,9 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     assert loop_observations[-1]["observation_type"] == "subagent_result"
     assert loop_observations[-1]["status"] == "pending"
     assert loop_observations[-1]["next_recommended_action"] == "subagent"
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    assert loop_summary["exit_reason"] == "subagent_pending"
+    assert loop_summary["recommended_command"] == "execute"
 
 
 def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path) -> None:
@@ -1233,6 +1239,9 @@ def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path
     ]
     assert observations[-2]["next_recommended_action"] == "stop"
     assert observations[-1]["status"] == "stopped"
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    assert loop_summary["exit_reason"] == "stop"
+    assert loop_summary["rounds_completed"] == 2
 
 
 def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Path) -> None:
@@ -1270,6 +1279,9 @@ def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Pa
     assert observations[-2]["next_recommended_action"] == "repair"
     assert observations[-1]["observation_type"] == "repair_result"
     assert observations[-1]["status"] == "pending"
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    assert loop_summary["exit_reason"] == "repair_dispatch"
+    assert loop_summary["recommended_command"] == "debug"
 
 
 def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(

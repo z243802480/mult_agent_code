@@ -10,6 +10,7 @@ from asteria_runtime.core.agent_loop_decision import (
 )
 from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution_result
 from asteria_runtime.core.agent_loop_observation import latest_agent_loop_observation
+from asteria_runtime.core.agent_loop_run_summary import latest_agent_loop_run_summary
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.worker_tree import WorkerTreeBuilder
 from asteria_runtime.models.route_resolver import (
@@ -228,6 +229,7 @@ class SessionsCommand:
         latest_loop_decision = latest_agent_loop_decision(run_dir, self.validator) or {}
         latest_loop_execution = latest_agent_loop_execution_result(run_dir, self.validator) or {}
         latest_loop_observation = latest_agent_loop_observation(run_dir, self.validator) or {}
+        agent_loop_run_summary = latest_agent_loop_run_summary(run_dir, self.validator) or {}
         workspace_envelope = self._workspace_envelope(run_dir)
         route_health = self._route_health(run_dir)
         run_loop_summary = self._run_loop_summary(run_dir)
@@ -267,6 +269,9 @@ class SessionsCommand:
             str(run_status.get("status") or "") != "completed"
             and str(run_status.get("current_phase") or "") != "ACCEPTED"
         ):
+            summary_command = str(agent_loop_run_summary.get("recommended_command") or "")
+            if summary_command and summary_command != "None":
+                recommended_next_command = summary_command
             next_action_command = recommended_command_for_next_action(
                 latest_loop_decision.get("next_action", {})
             )
@@ -317,6 +322,7 @@ class SessionsCommand:
             "latest_agent_loop_decision": latest_loop_decision,
             "latest_agent_loop_execution_result": latest_loop_execution,
             "latest_agent_loop_observation": latest_loop_observation,
+            "agent_loop_run_summary": agent_loop_run_summary,
             "workspace_envelope": workspace_envelope,
             "worker_tree": worker_tree,
             "candidate_promotions": promotion_summary,
