@@ -290,6 +290,36 @@ def _readonly_fanout_plan(*, write_tool: bool = False) -> dict:
     }
 
 
+def _candidate_promotion(status: str = "pending_manual_approval", merge_ok: bool = True) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "promotion_id": "promotion-0001",
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "candidate_id": "candidate-0001",
+        "workspace": "cw/0001",
+        "strategy": "temp_workspace",
+        "workspace_policy": "isolated_copy",
+        "backend_reason": "test",
+        "branch_name": None,
+        "promotable_files": ["src/a.py"],
+        "promoted_files": [] if status != "promoted" else ["src/a.py"],
+        "status": status,
+        "approval_mode": "manual",
+        "merge_gate": {
+            "ok": merge_ok,
+            "promotable_files": ["src/a.py"] if merge_ok else [],
+            "violations": [] if merge_ok else ["changed files outside write_scope: src/a.py"],
+        },
+        "failure": None
+        if status not in {"blocked", "promotion_failed"}
+        else {"type": status, "message": "promotion could not be applied"},
+        "decision": None,
+        "created_at": "2026-05-29T10:00:03+08:00",
+        "updated_at": "2026-05-29T10:00:04+08:00",
+    }
+
+
 def _append_ready_readonly_fanout(run_dir: Path, validator: SchemaValidator) -> None:
     JsonlStore(validator).append(run_dir / "workers.jsonl", _worker_invocation(), "worker_invocation")
     JsonlStore(validator).append(
@@ -601,6 +631,84 @@ def test_runtime_readiness_gate_blocks_readonly_fanout_write_boundary(
     fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
     assert fanout["status"] == "blocked"
     assert "exposes write tools" in fanout["summary"]
+
+
+def test_runtime_readiness_gate_reviews_pending_candidate_promotion(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "candidate_promotions.jsonl",
+        _candidate_promotion("pending_manual_approval", merge_ok=True),
+        "candidate_promotion",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    promotion = next(check for check in gate["checks"] if check["name"] == "candidate_promotion_safety")
+    assert gate["status"] == "review"
+    assert promotion["status"] == "review"
+    assert "unresolved promotion" in promotion["summary"]
+
+
+def test_runtime_readiness_gate_blocks_candidate_merge_gate_failure(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "candidate_promotions.jsonl",
+        _candidate_promotion("pending_manual_approval", merge_ok=False),
+        "candidate_promotion",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    promotion = next(check for check in gate["checks"] if check["name"] == "candidate_promotion_safety")
+    assert gate["status"] == "blocked"
+    assert promotion["status"] == "blocked"
+    assert "merge gate blocked" in promotion["summary"]
+    assert "outside write_scope" in promotion["summary"]
+
+
+def test_runtime_readiness_gate_accepts_discarded_candidate_recovery(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "candidate_promotions.jsonl",
+        _candidate_promotion("discarded", merge_ok=True),
+        "candidate_promotion",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    promotion = next(check for check in gate["checks"] if check["name"] == "candidate_promotion_safety")
+    assert promotion["status"] == "ready"
+    assert "recovery action" in promotion["summary"]
 
 
 def test_runtime_readiness_gate_reviews_missing_subagent_context_snapshot(tmp_path: Path) -> None:

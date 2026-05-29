@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from collections.abc import Iterable
 from pathlib import Path
@@ -24,11 +25,24 @@ class AgentRunGraphBuilder:
         subagent_child_plans = jsonl.read_all(
             run_dir / "subagent_child_plans.jsonl", "subagent_child_plan"
         )
+        promotions = self._latest_promotions(
+            jsonl.read_all(run_dir / "candidate_promotions.jsonl", "candidate_promotion")
+        )
+        task_execution = jsonl.read_all(
+            run_dir / "task_execution_evidence.jsonl", "task_execution_evidence"
+        )
         model_profiles = jsonl.read_all(run_dir / "model_profiles.jsonl", "model_profile")
         tool_profiles = jsonl.read_all(
             run_dir / "tool_permission_profiles.jsonl", "tool_permission_profile"
         )
         task_plan = self._read_task_plan(run_dir)
+        candidate_workspaces = self._candidate_workspaces(run_dir, promotions)
+        promotion_queue = self._promotion_queue(promotions)
+        merge_gate_summary = self._merge_gate_summary(promotions, task_execution)
+        promotion_recovery_summary = self._promotion_recovery_summary(
+            promotion_queue,
+            candidate_workspaces,
+        )
 
         result_by_worker = {item["worker_invocation_id"]: item for item in results}
         runtime_by_id = {item["runtime_profile_id"]: item for item in runtime_profiles}
@@ -53,7 +67,13 @@ class AgentRunGraphBuilder:
             )
             for worker in workers
         ]
-        summary = self._collaboration_summary(child_plans)
+        summary = self._collaboration_summary(
+            child_plans,
+            candidate_workspaces=candidate_workspaces,
+            promotion_queue=promotion_queue,
+            merge_gate_summary=merge_gate_summary,
+            promotion_recovery_summary=promotion_recovery_summary,
+        )
         graph = {
             "schema_version": SCHEMA_VERSION,
             "agent_run_graph_id": f"agent-run-graph-{run_id or self._run_id(workers)}",
@@ -62,6 +82,10 @@ class AgentRunGraphBuilder:
             "coordination_modes": self._coordination_modes(events),
             "max_concurrency_observed": self._max_concurrency(events),
             "child_worker_plans": child_plans,
+            "candidate_workspaces": candidate_workspaces,
+            "promotion_queue": promotion_queue,
+            "merge_gate_summary": merge_gate_summary,
+            "promotion_recovery_summary": promotion_recovery_summary,
             "collaboration_summary": summary,
             "updated_at": now_iso(),
         }
@@ -112,6 +136,7 @@ class AgentRunGraphBuilder:
             "status": worker["status"],
             "result_status": result_status,
             "runtime_profile_id": worker["runtime_profile_id"],
+            "candidate_workspace_id": str(runtime_profile.get("candidate_workspace_id") or ""),
             "context_mount_id": str(runtime_profile.get("context_mount_id") or ""),
             "model_profile_id": str(runtime_profile.get("model_profile_id") or ""),
             "tool_permission_profile_id": str(
@@ -151,7 +176,15 @@ class AgentRunGraphBuilder:
             return "summary_child"
         return "serial_child"
 
-    def _collaboration_summary(self, child_plans: list[dict]) -> dict:
+    def _collaboration_summary(
+        self,
+        child_plans: list[dict],
+        *,
+        candidate_workspaces: list[dict],
+        promotion_queue: list[dict],
+        merge_gate_summary: dict,
+        promotion_recovery_summary: dict,
+    ) -> dict:
         statuses = [str(plan.get("result_status") or plan.get("status")) for plan in child_plans]
         failure_refs = self._flatten(child_plans, "failure_evidence_refs")
         next_actions = []
@@ -159,6 +192,19 @@ class AgentRunGraphBuilder:
             next_actions.append("Debug failed child worker plans before widening concurrency.")
         if not child_plans:
             next_actions.append("Run execute to create child worker evidence.")
+        if int(merge_gate_summary.get("blocked_count") or 0) > 0:
+            next_actions.append("Resolve merge gate blockers before promoting candidate writes.")
+        pending_promotions = [
+            item
+            for item in promotion_queue
+            if str(item.get("status") or "")
+            in {"queued", "pending_manual_approval", "auto_approved", "approved"}
+        ]
+        if pending_promotions:
+            next_actions.append("Settle pending candidate promotions before enabling disjoint writes.")
+        unresolved_recoveries = int(promotion_recovery_summary.get("unresolved_count") or 0)
+        if unresolved_recoveries:
+            next_actions.append("Record reject/discard/rollback recovery for blocked promotions.")
         strategy_modes = self._unique(
             str(plan.get("strategy_mode") or "") for plan in child_plans if plan.get("strategy_mode")
         )
@@ -178,6 +224,19 @@ class AgentRunGraphBuilder:
             "artifact_refs": self._flatten(child_plans, "artifact_refs"),
             "validation_refs": self._flatten(child_plans, "validation_refs"),
             "failure_evidence_refs": failure_refs,
+            "candidate_workspace_count": len(candidate_workspaces),
+            "promotion_queue_total": len(promotion_queue),
+            "promotion_pending_count": len(pending_promotions),
+            "promotion_blocked_count": len(
+                [
+                    item
+                    for item in promotion_queue
+                    if str(item.get("status") or "") in {"blocked", "promotion_failed"}
+                ]
+            ),
+            "merge_gate_block_count": int(merge_gate_summary.get("blocked_count") or 0),
+            "promotion_recovered_count": int(promotion_recovery_summary.get("recovered_count") or 0),
+            "promotion_recovery_unresolved_count": unresolved_recoveries,
             "merge_strategy": "merge_gate_then_promotion_queue",
             "collaboration_protocol": {
                 "isolation_model": "candidate_workspace_per_write_worker",
@@ -189,6 +248,227 @@ class AgentRunGraphBuilder:
             "strategy_modes": strategy_modes,
             "next_actions": next_actions,
         }
+
+    def _candidate_workspaces(self, run_dir: Path, promotions: list[dict]) -> list[dict]:
+        by_candidate: dict[str, dict] = {}
+        candidates_dir = run_dir / "candidates"
+        if candidates_dir.exists():
+            for path in sorted(candidates_dir.glob("*.json")):
+                try:
+                    manifest = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                candidate_id = str(manifest.get("candidate_id") or path.stem)
+                by_candidate[candidate_id] = {
+                    "candidate_id": candidate_id,
+                    "task_id": str(manifest.get("task_id") or ""),
+                    "workspace": str(manifest.get("workspace") or ""),
+                    "strategy": str(manifest.get("strategy") or ""),
+                    "workspace_policy": str(manifest.get("workspace_policy") or ""),
+                    "backend_reason": str(manifest.get("backend_reason") or ""),
+                    "branch_name": manifest.get("branch_name"),
+                    "status": str(manifest.get("status") or "unknown"),
+                    "parent_worker_invocation_id": manifest.get("parent_worker_invocation_id"),
+                    "parent_runtime_profile_id": manifest.get("parent_runtime_profile_id"),
+                    "worker_kind": manifest.get("worker_kind"),
+                    "parallel_safety": manifest.get("parallel_safety"),
+                    "manifest_ref": str(path),
+                }
+        for promotion in promotions:
+            candidate_id = str(promotion.get("candidate_id") or "")
+            if not candidate_id:
+                continue
+            existing = by_candidate.get(candidate_id, {})
+            by_candidate[candidate_id] = {
+                "candidate_id": candidate_id,
+                "task_id": str(promotion.get("task_id") or existing.get("task_id") or ""),
+                "workspace": str(promotion.get("workspace") or existing.get("workspace") or ""),
+                "strategy": str(promotion.get("strategy") or existing.get("strategy") or ""),
+                "workspace_policy": str(
+                    promotion.get("workspace_policy") or existing.get("workspace_policy") or ""
+                ),
+                "backend_reason": str(
+                    promotion.get("backend_reason") or existing.get("backend_reason") or ""
+                ),
+                "branch_name": promotion.get("branch_name", existing.get("branch_name")),
+                "status": str(existing.get("status") or "queued"),
+                "parent_worker_invocation_id": existing.get("parent_worker_invocation_id"),
+                "parent_runtime_profile_id": existing.get("parent_runtime_profile_id"),
+                "worker_kind": existing.get("worker_kind"),
+                "parallel_safety": existing.get("parallel_safety"),
+                "promotion_ids": sorted(
+                    {
+                        *[str(item) for item in existing.get("promotion_ids", [])],
+                        str(promotion.get("promotion_id") or ""),
+                    }
+                    - {""}
+                ),
+                "latest_promotion_status": str(promotion.get("status") or ""),
+                "promotable_files": [str(item) for item in promotion.get("promotable_files") or []],
+                "promoted_files": [str(item) for item in promotion.get("promoted_files") or []],
+                "manifest_ref": str(existing.get("manifest_ref") or ""),
+            }
+        return [by_candidate[key] for key in sorted(by_candidate)]
+
+    def _promotion_queue(self, promotions: list[dict]) -> list[dict]:
+        items = []
+        for promotion in promotions:
+            merge_gate = promotion.get("merge_gate")
+            merge_gate = merge_gate if isinstance(merge_gate, dict) else {}
+            failure = promotion.get("failure")
+            failure = failure if isinstance(failure, dict) else {}
+            items.append(
+                {
+                    "promotion_id": str(promotion.get("promotion_id") or ""),
+                    "task_id": str(promotion.get("task_id") or ""),
+                    "candidate_id": str(promotion.get("candidate_id") or ""),
+                    "status": str(promotion.get("status") or "unknown"),
+                    "approval_mode": str(promotion.get("approval_mode") or ""),
+                    "promotable_files": [
+                        str(item) for item in promotion.get("promotable_files") or []
+                    ],
+                    "promoted_files": [str(item) for item in promotion.get("promoted_files") or []],
+                    "merge_gate_ok": merge_gate.get("ok"),
+                    "merge_gate_violations": [
+                        str(item) for item in merge_gate.get("violations") or []
+                    ],
+                    "failure_type": str(failure.get("type") or ""),
+                    "failure_message": str(failure.get("message") or ""),
+                    "recovery_action": self._promotion_recovery_action(promotion),
+                    "recovery_status": self._promotion_recovery_status(promotion),
+                    "updated_at": str(promotion.get("updated_at") or ""),
+                }
+            )
+        return sorted(items, key=lambda item: (item["updated_at"], item["promotion_id"]))
+
+    def _promotion_recovery_summary(
+        self,
+        promotion_queue: list[dict],
+        candidate_workspaces: list[dict],
+    ) -> dict:
+        recovered = [
+            item
+            for item in promotion_queue
+            if str(item.get("recovery_status") or "") in {"recovered", "settled"}
+        ]
+        unresolved = [
+            item
+            for item in promotion_queue
+            if str(item.get("recovery_status") or "") == "unresolved"
+        ]
+        discarded_candidates = {
+            str(item.get("candidate_id") or "")
+            for item in candidate_workspaces
+            if str(item.get("status") or "") == "discarded"
+        }
+        recovery_actions = self._unique(
+            str(item.get("recovery_action") or "")
+            for item in promotion_queue
+            if item.get("recovery_action")
+        )
+        return {
+            "total": len(promotion_queue),
+            "recovered_count": len(recovered),
+            "unresolved_count": len(unresolved),
+            "discarded_candidate_count": len(discarded_candidates - {""}),
+            "recovery_actions": recovery_actions,
+            "unresolved_refs": [
+                str(item.get("promotion_id") or "")
+                for item in unresolved
+                if item.get("promotion_id")
+            ],
+            "recovered_refs": [
+                str(item.get("promotion_id") or "")
+                for item in recovered
+                if item.get("promotion_id")
+            ],
+            "next_actions": []
+            if not unresolved
+            else ["Reject, discard, retry, or rollback blocked promotions before write fanout."],
+        }
+
+    def _promotion_recovery_action(self, promotion: dict) -> str:
+        status = str(promotion.get("status") or "")
+        decision = promotion.get("decision")
+        decision = decision if isinstance(decision, dict) else {}
+        action = str(decision.get("action") or "")
+        if status == "discarded":
+            return "discard"
+        if status == "rejected":
+            return "reject"
+        if status == "promoted":
+            return "promote"
+        if action:
+            return action
+        if status in {"blocked", "promotion_failed"}:
+            return "needs_recovery"
+        return ""
+
+    def _promotion_recovery_status(self, promotion: dict) -> str:
+        status = str(promotion.get("status") or "")
+        if status in {"discarded", "rejected"}:
+            return "recovered"
+        if status == "promoted":
+            return "settled"
+        if status in {"blocked", "promotion_failed"}:
+            return "unresolved"
+        if status in {"queued", "pending_manual_approval", "auto_approved", "approved"}:
+            return "pending"
+        return "settled"
+
+    def _merge_gate_summary(self, promotions: list[dict], task_execution: list[dict]) -> dict:
+        gates = []
+        for promotion in promotions:
+            merge_gate = promotion.get("merge_gate")
+            if isinstance(merge_gate, dict):
+                gates.append(
+                    {
+                        "source": "candidate_promotion",
+                        "source_id": str(promotion.get("promotion_id") or ""),
+                        "task_id": str(promotion.get("task_id") or ""),
+                        "ok": merge_gate.get("ok"),
+                        "promotable_files": [
+                            str(item) for item in merge_gate.get("promotable_files") or []
+                        ],
+                        "violations": [str(item) for item in merge_gate.get("violations") or []],
+                    }
+                )
+        for evidence in task_execution:
+            contract = evidence.get("contract_check")
+            contract = contract if isinstance(contract, dict) else {}
+            merge_gate = contract.get("merge_gate")
+            if not isinstance(merge_gate, dict):
+                continue
+            gates.append(
+                {
+                    "source": "task_execution_evidence",
+                    "source_id": str(evidence.get("evidence_id") or ""),
+                    "task_id": str(evidence.get("task_id") or ""),
+                    "ok": merge_gate.get("ok"),
+                    "promotable_files": [
+                        str(item) for item in merge_gate.get("promotable_files") or []
+                    ],
+                    "violations": [str(item) for item in merge_gate.get("violations") or []],
+                }
+            )
+        blocked = [item for item in gates if item.get("ok") is False]
+        return {
+            "total": len(gates),
+            "passed_count": len([item for item in gates if item.get("ok") is True]),
+            "blocked_count": len(blocked),
+            "blocked_refs": [str(item.get("source_id") or "") for item in blocked if item.get("source_id")],
+            "violations": self._unique(
+                violation for item in blocked for violation in item.get("violations") or []
+            ),
+        }
+
+    def _latest_promotions(self, promotions: list[dict]) -> list[dict]:
+        latest: dict[str, dict] = {}
+        for item in promotions:
+            promotion_id = str(item.get("promotion_id") or "")
+            if promotion_id:
+                latest[promotion_id] = item
+        return [latest[key] for key in sorted(latest)]
 
     def _status(self, child_plans: list[dict]) -> str:
         if not child_plans:

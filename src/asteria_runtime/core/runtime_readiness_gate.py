@@ -48,6 +48,7 @@ def runtime_readiness_gate(
         _context_pressure_check(context_pressure_summary),
         _subagent_context_isolation_check(run_dirs, validator),
         _subagent_readonly_fanout_check(run_dirs, validator),
+        _candidate_promotion_safety_check(run_dirs, validator),
         _observation_decision_check(run_dirs, validator, latest_observation_plan),
         _agent_loop_execution_check(run_dirs, validator),
         _capability_selection_check(run_dirs, validator),
@@ -425,6 +426,94 @@ def _readonly_fanout_boundary_error(plan: dict[str, Any]) -> str | None:
         if str(child.get("parallel_safety") or "") != "readonly":
             return f"child `{child_id}` is not marked readonly"
     return None
+
+
+def _candidate_promotion_safety_check(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> RuntimeReadinessCheck:
+    promotions = _latest_candidate_promotions(run_dirs, validator)
+    if not promotions:
+        return RuntimeReadinessCheck(
+            name="candidate_promotion_safety",
+            status="ready",
+            summary="No candidate promotion queue evidence is pending.",
+        )
+    merge_blocked = [
+        item
+        for item in promotions
+        if isinstance(item.get("merge_gate"), dict) and item["merge_gate"].get("ok") is False
+    ]
+    if merge_blocked:
+        refs = [str(item.get("promotion_id") or "") for item in merge_blocked]
+        violations = [
+            str(violation)
+            for item in merge_blocked
+            for violation in (item.get("merge_gate") or {}).get("violations") or []
+        ]
+        return RuntimeReadinessCheck(
+            name="candidate_promotion_safety",
+            status="blocked",
+            summary=(
+                "Candidate promotion merge gate blocked promotion: "
+                + "; ".join(violations[:4])
+            ),
+            recommended_action=(
+                "Resolve merge gate violations or discard the blocked candidate before "
+                "widening disjoint write workers."
+            ),
+            evidence_refs=refs[:8],
+        )
+    failed = [
+        item
+        for item in promotions
+        if str(item.get("status") or "") in {"blocked", "promotion_failed"}
+    ]
+    if failed:
+        refs = [str(item.get("promotion_id") or "") for item in failed]
+        return RuntimeReadinessCheck(
+            name="candidate_promotion_safety",
+            status="blocked",
+            summary="Candidate promotion queue contains blocked or failed promotion entries.",
+            recommended_action=(
+                "Run `asteria promotions retry`, `asteria promotions reject`, or "
+                "`asteria promotions discard` before enabling broader write concurrency."
+            ),
+            evidence_refs=refs[:8],
+        )
+    recovered = [
+        item
+        for item in promotions
+        if str(item.get("status") or "") in {"rejected", "discarded"}
+    ]
+    pending = [
+        item
+        for item in promotions
+        if str(item.get("status") or "")
+        in {"queued", "pending_manual_approval", "auto_approved", "approved"}
+    ]
+    if pending:
+        refs = [str(item.get("promotion_id") or "") for item in pending]
+        return RuntimeReadinessCheck(
+            name="candidate_promotion_safety",
+            status="review",
+            summary=f"Candidate promotion queue has {len(pending)} unresolved promotion(s).",
+            recommended_action=(
+                "Settle candidate promotions with `asteria promotions list` and approve, "
+                "promote, reject, or discard them before disjoint write fanout."
+            ),
+            evidence_refs=refs[:8],
+        )
+    return RuntimeReadinessCheck(
+        name="candidate_promotion_safety",
+        status="ready",
+        summary=(
+            "Candidate promotions are settled and merge gates did not block."
+            if not recovered
+            else f"Candidate promotions are settled after {len(recovered)} recovery action(s)."
+        ),
+        evidence_refs=[str(item.get("promotion_id") or "") for item in promotions[:8]],
+    )
 
 
 def _observation_decision_check(
@@ -982,6 +1071,23 @@ def _latest_readonly_fanout_plan(
                 latest = item
                 latest_created = created
     return latest
+
+
+def _latest_candidate_promotions(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> list[dict[str, Any]]:
+    store = JsonlStore(validator)
+    latest: dict[str, dict[str, Any]] = {}
+    for run_dir in run_dirs:
+        path = run_dir / "candidate_promotions.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "candidate_promotion"):
+            promotion_id = str(item.get("promotion_id") or "")
+            if promotion_id:
+                latest[promotion_id] = item
+    return [latest[key] for key in sorted(latest)]
 
 
 def _latest_subagent_worker(

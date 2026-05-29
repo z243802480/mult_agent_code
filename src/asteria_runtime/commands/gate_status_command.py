@@ -218,7 +218,11 @@ class GateStatusResult:
                         "Readonly fanout: "
                         f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
                     )
-                    break
+                if check.get("name") == "candidate_promotion_safety":
+                    lines.append(
+                        "Candidate promotion safety: "
+                        f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
+                    )
             for action in list(self.runtime_readiness_gate.get("next_actions") or [])[:3]:
                 lines.append(f"  - {action}")
         explanation = self._readiness_explanation(self._release_state())

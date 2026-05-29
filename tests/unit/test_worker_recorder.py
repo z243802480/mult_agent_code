@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
 from asteria_runtime.storage.event_logger import EventLogger
@@ -68,6 +69,9 @@ def test_worker_recorder_persists_invocation_result_and_event(tmp_path: Path) ->
     graph = JsonStore(validator).read(tmp_path / "agent_run_graph.json", "agent_run_graph")
     assert graph["collaboration_summary"]["total_workers"] == 1
     assert graph["collaboration_summary"]["strategy_modes"] == []
+    assert graph["collaboration_summary"]["candidate_workspace_count"] == 0
+    assert graph["collaboration_summary"]["promotion_queue_total"] == 0
+    assert graph["collaboration_summary"]["merge_gate_block_count"] == 0
     assert graph["collaboration_summary"]["collaboration_protocol"] == {
         "isolation_model": "candidate_workspace_per_write_worker",
         "review_agent_role": "summarize_child_diffs_conflicts_and_release_risks",
@@ -81,6 +85,140 @@ def test_worker_recorder_persists_invocation_result_and_event(tmp_path: Path) ->
     }
     assert events[-1]["type"] == "worker_recorded"
     assert events[-1]["actor"] == "WorkerRecorderTest"
+
+
+def test_agent_run_graph_links_candidate_workspace_promotion_and_merge_gate(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    (tmp_path / "candidates").mkdir()
+    (tmp_path / "candidates" / "candidate-0001.json").write_text(
+        """
+{
+  "schema_version": "0.1.0",
+  "candidate_id": "candidate-0001",
+  "task_id": "task-0001",
+  "workspace": "cw/0001",
+  "strategy": "temp_workspace",
+  "workspace_policy": "isolated_copy",
+  "backend_reason": "test",
+  "branch_name": null,
+  "status": "active",
+  "parent_worker_invocation_id": "worker-0001",
+  "parent_runtime_profile_id": "runtime-profile-0001",
+  "worker_kind": "subagent_disjoint_write_child",
+  "parallel_safety": "disjoint_writes"
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    JsonlStore(validator).append(
+        tmp_path / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "candidate_id": "candidate-0001",
+            "workspace": "cw/0001",
+            "strategy": "temp_workspace",
+            "workspace_policy": "isolated_copy",
+            "backend_reason": "test",
+            "branch_name": None,
+            "promotable_files": ["src/a.py"],
+            "promoted_files": [],
+            "status": "pending_manual_approval",
+            "approval_mode": "manual",
+            "merge_gate": {
+                "ok": False,
+                "promotable_files": [],
+                "violations": ["changed files outside write_scope: src/a.py"],
+            },
+            "failure": None,
+            "decision": None,
+            "created_at": "2026-05-29T10:00:00+08:00",
+            "updated_at": "2026-05-29T10:00:01+08:00",
+        },
+        "candidate_promotion",
+    )
+
+    graph = AgentRunGraphBuilder(validator).build(tmp_path, run_id="run-1")
+
+    assert graph["candidate_workspaces"][0]["candidate_id"] == "candidate-0001"
+    assert graph["candidate_workspaces"][0]["promotion_ids"] == ["promotion-0001"]
+    assert graph["promotion_queue"][0]["merge_gate_ok"] is False
+    assert graph["merge_gate_summary"]["blocked_count"] == 1
+    assert graph["collaboration_summary"]["candidate_workspace_count"] == 1
+    assert graph["collaboration_summary"]["promotion_pending_count"] == 1
+    assert graph["collaboration_summary"]["merge_gate_block_count"] == 1
+    assert any(
+        "Resolve merge gate blockers" in action
+        for action in graph["collaboration_summary"]["next_actions"]
+    )
+
+
+def test_agent_run_graph_marks_discarded_promotion_as_recovered(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    (tmp_path / "candidates").mkdir()
+    (tmp_path / "candidates" / "candidate-0001.json").write_text(
+        """
+{
+  "schema_version": "0.1.0",
+  "candidate_id": "candidate-0001",
+  "task_id": "task-0001",
+  "workspace": "cw/0001",
+  "strategy": "temp_workspace",
+  "workspace_policy": "isolated_copy",
+  "backend_reason": "test",
+  "branch_name": null,
+  "status": "discarded"
+}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    JsonlStore(validator).append(
+        tmp_path / "candidate_promotions.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "promotion_id": "promotion-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "candidate_id": "candidate-0001",
+            "workspace": "cw/0001",
+            "strategy": "temp_workspace",
+            "workspace_policy": "isolated_copy",
+            "backend_reason": "test",
+            "branch_name": None,
+            "promotable_files": ["src/a.py"],
+            "promoted_files": [],
+            "status": "discarded",
+            "approval_mode": "manual",
+            "merge_gate": {"ok": False, "violations": ["outside scope"]},
+            "failure": None,
+            "decision": {
+                "actor": "cli",
+                "action": "discard",
+                "reason": "discard blocked candidate",
+                "decided_at": "2026-05-29T10:00:02+08:00",
+            },
+            "created_at": "2026-05-29T10:00:00+08:00",
+            "updated_at": "2026-05-29T10:00:03+08:00",
+        },
+        "candidate_promotion",
+    )
+
+    graph = AgentRunGraphBuilder(validator).build(tmp_path, run_id="run-1")
+
+    assert graph["promotion_queue"][0]["recovery_action"] == "discard"
+    assert graph["promotion_queue"][0]["recovery_status"] == "recovered"
+    assert graph["promotion_recovery_summary"]["recovered_count"] == 1
+    assert graph["promotion_recovery_summary"]["discarded_candidate_count"] == 1
+    assert graph["collaboration_summary"]["promotion_recovered_count"] == 1
+    assert graph["collaboration_summary"]["promotion_recovery_unresolved_count"] == 0
 
 
 def test_worker_recorder_allocates_ids_from_existing_jsonl(tmp_path: Path) -> None:

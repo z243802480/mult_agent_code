@@ -62,6 +62,7 @@
           "status": { "type": "string" },
           "result_status": { "type": ["string", "null"] },
           "runtime_profile_id": { "type": "string" },
+          "candidate_workspace_id": { "type": "string" },
           "context_mount_id": { "type": "string" },
           "model_profile_id": { "type": "string" },
           "tool_permission_profile_id": { "type": "string" },
@@ -97,6 +98,105 @@
         }
       }
     },
+    "candidate_workspaces": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "task_id",
+          "workspace",
+          "strategy",
+          "workspace_policy",
+          "status"
+        ],
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "task_id": { "type": "string" },
+          "workspace": { "type": "string" },
+          "strategy": { "type": "string" },
+          "workspace_policy": { "type": "string" },
+          "backend_reason": { "type": "string" },
+          "branch_name": { "type": ["string", "null"] },
+          "status": { "type": "string" },
+          "parent_worker_invocation_id": { "type": ["string", "null"] },
+          "parent_runtime_profile_id": { "type": ["string", "null"] },
+          "worker_kind": { "type": ["string", "null"] },
+          "parallel_safety": { "type": ["string", "null"] },
+          "promotion_ids": { "type": "array", "items": { "type": "string" } },
+          "latest_promotion_status": { "type": "string" },
+          "promotable_files": { "type": "array", "items": { "type": "string" } },
+          "promoted_files": { "type": "array", "items": { "type": "string" } },
+          "manifest_ref": { "type": "string" }
+        }
+      }
+    },
+    "promotion_queue": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "promotion_id",
+          "task_id",
+          "candidate_id",
+          "status",
+          "approval_mode",
+          "promotable_files",
+          "promoted_files",
+          "updated_at"
+        ],
+        "properties": {
+          "promotion_id": { "type": "string" },
+          "task_id": { "type": "string" },
+          "candidate_id": { "type": "string" },
+          "status": { "type": "string" },
+          "approval_mode": { "type": "string" },
+          "promotable_files": { "type": "array", "items": { "type": "string" } },
+          "promoted_files": { "type": "array", "items": { "type": "string" } },
+          "merge_gate_ok": { "type": ["boolean", "null"] },
+          "merge_gate_violations": { "type": "array", "items": { "type": "string" } },
+          "failure_type": { "type": "string" },
+          "failure_message": { "type": "string" },
+          "recovery_action": { "type": "string" },
+          "recovery_status": { "type": "string" },
+          "updated_at": { "type": "string" }
+        }
+      }
+    },
+    "merge_gate_summary": {
+      "type": "object",
+      "required": ["total", "passed_count", "blocked_count", "blocked_refs", "violations"],
+      "properties": {
+        "total": { "type": "integer" },
+        "passed_count": { "type": "integer" },
+        "blocked_count": { "type": "integer" },
+        "blocked_refs": { "type": "array", "items": { "type": "string" } },
+        "violations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "promotion_recovery_summary": {
+      "type": "object",
+      "required": [
+        "total",
+        "recovered_count",
+        "unresolved_count",
+        "discarded_candidate_count",
+        "recovery_actions",
+        "unresolved_refs",
+        "recovered_refs",
+        "next_actions"
+      ],
+      "properties": {
+        "total": { "type": "integer" },
+        "recovered_count": { "type": "integer" },
+        "unresolved_count": { "type": "integer" },
+        "discarded_candidate_count": { "type": "integer" },
+        "recovery_actions": { "type": "array", "items": { "type": "string" } },
+        "unresolved_refs": { "type": "array", "items": { "type": "string" } },
+        "recovered_refs": { "type": "array", "items": { "type": "string" } },
+        "next_actions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "collaboration_summary": {
       "type": "object",
       "required": [
@@ -124,6 +224,13 @@
         "artifact_refs": { "type": "array", "items": { "type": "string" } },
         "validation_refs": { "type": "array", "items": { "type": "string" } },
         "failure_evidence_refs": { "type": "array", "items": { "type": "string" } },
+        "candidate_workspace_count": { "type": "integer" },
+        "promotion_queue_total": { "type": "integer" },
+        "promotion_pending_count": { "type": "integer" },
+        "promotion_blocked_count": { "type": "integer" },
+        "merge_gate_block_count": { "type": "integer" },
+        "promotion_recovered_count": { "type": "integer" },
+        "promotion_recovery_unresolved_count": { "type": "integer" },
         "merge_strategy": { "type": "string" },
         "collaboration_protocol": {
           "type": "object",
