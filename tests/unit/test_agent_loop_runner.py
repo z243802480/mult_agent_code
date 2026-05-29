@@ -116,6 +116,12 @@ def test_agent_loop_runner_turns_subagent_worker_result_into_parent_observation(
         json.loads(line)
         for line in (tmp_path / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
+    child_plans = [
+        json.loads(line)
+        for line in (tmp_path / "subagent_child_plans.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
     workers = [
         json.loads(line)
         for line in (tmp_path / "workers.jsonl").read_text(encoding="utf-8").splitlines()
@@ -126,6 +132,10 @@ def test_agent_loop_runner_turns_subagent_worker_result_into_parent_observation(
     assert observations[0]["status"] == "succeeded"
     assert observations[0]["next_recommended_action"] == "stop"
     assert "artifact-subagent-0001" in observations[0]["evidence_refs"]
+    assert child_plans[0]["worker_invocation_id"] == "worker-0001"
+    assert "subagent-child-plan-0001" in observations[0]["evidence_refs"]
     assert worker_results[-1]["status"] == "succeeded"
+    assert worker_results[-1]["child_plan_refs"] == ["subagent-child-plan-0001"]
     assert worker_results[-1]["cost"] == {"model_calls": 1, "tool_calls": 2}
     assert workers[-1]["status"] == "succeeded"
+    assert workers[-1]["child_plan_refs"] == ["subagent-child-plan-0001"]

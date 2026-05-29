@@ -23,6 +23,7 @@ class WorkerInvocation:
     parent_task_id: str | None = None
     worker_kind: str | None = None
     parallel_safety: str | None = None
+    child_plan_refs: list[str] = field(default_factory=list)
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
@@ -50,6 +51,8 @@ class WorkerInvocation:
             data["worker_kind"] = self.worker_kind
         if self.parallel_safety is not None:
             data["parallel_safety"] = self.parallel_safety
+        if self.child_plan_refs:
+            data["child_plan_refs"] = self.child_plan_refs
         return data
 
 
@@ -79,6 +82,7 @@ class WorkerResult:
     cost: WorkerCost = field(default_factory=WorkerCost)
     parent_worker_invocation_id: str | None = None
     worker_kind: str | None = None
+    child_plan_refs: list[str] = field(default_factory=list)
     schema_version: str = SCHEMA_VERSION
 
     def to_dict(self) -> dict:
@@ -99,4 +103,6 @@ class WorkerResult:
             data["parent_worker_invocation_id"] = self.parent_worker_invocation_id
         if self.worker_kind is not None:
             data["worker_kind"] = self.worker_kind
+        if self.child_plan_refs:
+            data["child_plan_refs"] = self.child_plan_refs
         return data

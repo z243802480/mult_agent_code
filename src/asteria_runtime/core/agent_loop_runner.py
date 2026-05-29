@@ -12,6 +12,7 @@ from asteria_runtime.core.agent_loop_decision import (
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.agent_loop_executor import (
     complete_subagent_worker_execution,
+    persist_subagent_child_plan_for_execution,
     subagent_worker_observation_payload,
 )
 from asteria_runtime.core.agent_loop_observation import (
@@ -105,6 +106,15 @@ class AgentLoopRunner:
         execute_subagent: SubagentExecutor | None,
     ) -> dict[str, Any] | None:
         if execution_result.get("action") == "subagent" and execute_subagent is not None:
+            child_plan = persist_subagent_child_plan_for_execution(
+                run_dir=run_dir,
+                validator=self.validator,
+                decision=decision,
+                execution_result=execution_result,
+            )
+            child_plan_refs = (
+                [str(child_plan["subagent_child_plan_id"])] if isinstance(child_plan, dict) else []
+            )
             worker_result = execute_subagent(decision, execution_result)
             if isinstance(worker_result, dict):
                 completed = complete_subagent_worker_execution(
@@ -116,6 +126,7 @@ class AgentLoopRunner:
                     artifact_refs=list(worker_result.get("artifact_refs") or []),
                     validation_refs=list(worker_result.get("validation_refs") or []),
                     failure_evidence_refs=list(worker_result.get("failure_evidence_refs") or []),
+                    child_plan_refs=child_plan_refs,
                     model_calls=int((worker_result.get("cost") or {}).get("model_calls") or 0),
                     tool_calls=int((worker_result.get("cost") or {}).get("tool_calls") or 0),
                 )

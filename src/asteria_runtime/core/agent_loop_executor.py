@@ -7,6 +7,7 @@ from asteria_runtime.core.agent_loop_decision import (
     recommended_command_for_next_action,
     validate_agent_loop_decision,
 )
+from asteria_runtime.core.subagent_planner import persist_subagent_child_plan
 from asteria_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -92,6 +93,33 @@ def persist_agent_loop_execution_result(
     return result
 
 
+def persist_subagent_child_plan_for_execution(
+    *,
+    run_dir: Path | None,
+    validator: SchemaValidator,
+    decision: dict[str, Any],
+    execution_result: dict[str, Any],
+    task: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if run_dir is None or execution_result.get("action") != "subagent":
+        return None
+    plan = persist_subagent_child_plan(
+        run_dir=run_dir,
+        validator=validator,
+        decision=decision,
+        execution_result=execution_result,
+        task=task,
+    )
+    if isinstance(plan, dict):
+        _record_subagent_child_plan_ref(
+            run_dir,
+            validator,
+            worker_id=str(execution_result.get("worker_invocation_id") or ""),
+            child_plan_id=str(plan.get("subagent_child_plan_id") or ""),
+        )
+    return plan
+
+
 def complete_subagent_worker_execution(
     *,
     run_dir: Path | None,
@@ -102,6 +130,7 @@ def complete_subagent_worker_execution(
     artifact_refs: list[str] | None = None,
     validation_refs: list[str] | None = None,
     failure_evidence_refs: list[str] | None = None,
+    child_plan_refs: list[str] | None = None,
     model_calls: int = 0,
     tool_calls: int = 0,
 ) -> dict[str, Any] | None:
@@ -129,6 +158,7 @@ def complete_subagent_worker_execution(
         summary=summary,
         parent_worker_invocation_id=(worker or {}).get("parent_worker_invocation_id"),
         worker_kind=(worker or {}).get("worker_kind") or "subagent",
+        child_plan_refs=list(child_plan_refs or (worker or {}).get("child_plan_refs") or []),
     )
     worker_update = WorkerInvocation(
         worker_invocation_id=worker_id,
@@ -146,6 +176,7 @@ def complete_subagent_worker_execution(
         parent_task_id=(worker or {}).get("parent_task_id"),
         worker_kind=(worker or {}).get("worker_kind") or "subagent",
         parallel_safety=(worker or {}).get("parallel_safety"),
+        child_plan_refs=list(child_plan_refs or (worker or {}).get("child_plan_refs") or []),
     )
     store = JsonlStore(validator)
     store.append(run_dir / "workers.jsonl", worker_update.to_dict(), "worker_invocation")
@@ -170,6 +201,7 @@ def subagent_worker_observation_payload(
     refs = [
         str(worker_result.get("worker_invocation_id") or ""),
         str(worker_result.get("worker_result_id") or ""),
+        *[str(item) for item in worker_result.get("child_plan_refs") or []],
         *[str(item) for item in worker_result.get("artifact_refs") or []],
         *[str(item) for item in worker_result.get("validation_refs") or []],
         *[str(item) for item in worker_result.get("failure_evidence_refs") or []],
@@ -393,6 +425,42 @@ def _latest_worker_invocation(
         if str(item.get("worker_invocation_id") or "") == worker_id:
             latest = item
     return latest
+
+
+def _record_subagent_child_plan_ref(
+    run_dir: Path,
+    validator: SchemaValidator,
+    *,
+    worker_id: str,
+    child_plan_id: str,
+) -> None:
+    if not worker_id or not child_plan_id:
+        return
+    worker = _latest_worker_invocation(run_dir, validator, worker_id)
+    if not isinstance(worker, dict):
+        return
+    refs = [str(item) for item in worker.get("child_plan_refs") or []]
+    if child_plan_id not in refs:
+        refs.append(child_plan_id)
+    update = WorkerInvocation(
+        worker_invocation_id=worker_id,
+        run_id=str(worker.get("run_id") or ""),
+        task_id=str(worker.get("task_id") or ""),
+        agent_id=str(worker.get("agent_id") or "subagent"),
+        runtime_profile_id=str(worker.get("runtime_profile_id") or ""),
+        status=str(worker.get("status") or "queued"),
+        started_at=str(worker.get("started_at") or now_iso()),
+        ended_at=worker.get("ended_at"),
+        summary=str(worker.get("summary") or ""),
+        delegation_brief=worker.get("delegation_brief"),
+        brief_quality=worker.get("brief_quality"),
+        parent_worker_invocation_id=worker.get("parent_worker_invocation_id"),
+        parent_task_id=worker.get("parent_task_id"),
+        worker_kind=worker.get("worker_kind") or "subagent",
+        parallel_safety=worker.get("parallel_safety"),
+        child_plan_refs=refs,
+    )
+    JsonlStore(validator).append(run_dir / "workers.jsonl", update.to_dict(), "worker_invocation")
 
 
 def _decision_point_from_loop_decision(

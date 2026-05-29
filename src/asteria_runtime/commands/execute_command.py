@@ -17,6 +17,7 @@ from asteria_runtime.core.agent_loop_decision import (
 from asteria_runtime.core.agent_loop_executor import (
     complete_subagent_worker_execution,
     persist_agent_loop_execution_result,
+    persist_subagent_child_plan_for_execution,
     subagent_worker_observation_payload,
 )
 from asteria_runtime.core.agent_loop_observation import (
@@ -387,6 +388,19 @@ class ExecuteCommand:
         )
         child_runtime_context = runtime_mount.runtime_context
         child_runtime_context["subagent_worker"]["runtime_profile_id"] = runtime_mount.runtime_profile_id
+        child_plan = persist_subagent_child_plan_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            decision=parent_decision,
+            execution_result=parent_execution,
+            task=child_task,
+        )
+        child_plan_refs = (
+            [str(child_plan["subagent_child_plan_id"])] if isinstance(child_plan, dict) else []
+        )
+        if isinstance(child_plan, dict):
+            child_runtime_context["subagent_child_plan"] = child_plan
+            child_runtime_context["subagent_worker"]["child_plan_refs"] = child_plan_refs
         child_max_rounds = self._subagent_child_max_rounds(context.policy)
         child_runtime_context["current_worker_invocation_id"] = worker_id
         child_runtime_context["current_worker_result_id"] = str(
@@ -406,6 +420,7 @@ class ExecuteCommand:
                 "worker_invocation_id": worker_id,
                 "runtime_profile_id": runtime_mount.runtime_profile_id,
                 "parallel_safety": child_task.get("parallel_safety"),
+                "subagent_child_plan": child_plan or {},
                 "parent_agent_loop_execution": parent_execution,
             },
         )
@@ -478,6 +493,7 @@ class ExecuteCommand:
                     artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
                     validation_refs=child_validation_refs,
                     failure_evidence_refs=child_failure_refs,
+                    child_plan_refs=child_plan_refs,
                     model_calls=child_model_calls,
                     tool_calls=child_tool_calls,
                     evidence_path=done_evidence_path if previous_done else None,
@@ -534,6 +550,7 @@ class ExecuteCommand:
                     artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
                     validation_refs=child_validation_refs,
                     failure_evidence_refs=child_failure_refs,
+                    child_plan_refs=child_plan_refs,
                     model_calls=child_model_calls,
                     tool_calls=child_tool_calls,
                     evidence_path=attempt.evidence_path,
@@ -561,6 +578,7 @@ class ExecuteCommand:
             artifact_refs=self.evidence_sink.artifact_refs(context, task_id),
             validation_refs=child_validation_refs,
             failure_evidence_refs=child_failure_refs,
+            child_plan_refs=child_plan_refs,
             model_calls=child_model_calls,
             tool_calls=child_tool_calls,
             evidence_path=child_latest_summary.evidence_path if child_latest_summary else None,
@@ -596,6 +614,7 @@ class ExecuteCommand:
         failure_evidence_refs: list[str],
         model_calls: int,
         tool_calls: int,
+        child_plan_refs: list[str] | None = None,
         evidence_path: Path | None = None,
     ) -> tuple[TaskExecutionSummary, dict | None]:
         task_id = str(task["task_id"])
@@ -608,6 +627,7 @@ class ExecuteCommand:
             artifact_refs=artifact_refs,
             validation_refs=validation_refs,
             failure_evidence_refs=failure_evidence_refs,
+            child_plan_refs=list(child_plan_refs or []),
             model_calls=model_calls,
             tool_calls=tool_calls,
         )
@@ -637,6 +657,7 @@ class ExecuteCommand:
                 "task_id": task_id,
                 "parent_agent_loop_execution": parent_execution,
                 "child_agent_loop_execution": child_execution or {},
+                "child_plan_refs": list(child_plan_refs or []),
                 "agent_loop_observation": parent_observation or {},
                 "worker_result": worker_result or {},
             },

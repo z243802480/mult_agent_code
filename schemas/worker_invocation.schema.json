@@ -46,6 +46,11 @@
         "missing_fields": { "type": "array", "items": { "type": "string" } },
         "required_fields": { "type": "array", "items": { "type": "string" } }
       }
-    }
+    },
+    "parent_worker_invocation_id": { "type": "string" },
+    "parent_task_id": { "type": "string" },
+    "worker_kind": { "type": "string" },
+    "parallel_safety": { "type": "string" },
+    "child_plan_refs": { "type": "array", "items": { "type": "string" } }
   }
 }

@@ -21,6 +21,9 @@ class AgentRunGraphBuilder:
         results = jsonl.read_all(run_dir / "worker_results.jsonl", "worker_result")
         events = jsonl.read_all(run_dir / "events.jsonl", "event")
         runtime_profiles = jsonl.read_all(run_dir / "runtime_profiles.jsonl", "runtime_profile")
+        subagent_child_plans = jsonl.read_all(
+            run_dir / "subagent_child_plans.jsonl", "subagent_child_plan"
+        )
         model_profiles = jsonl.read_all(run_dir / "model_profiles.jsonl", "model_profile")
         tool_profiles = jsonl.read_all(
             run_dir / "tool_permission_profiles.jsonl", "tool_permission_profile"
@@ -33,12 +36,16 @@ class AgentRunGraphBuilder:
         tool_by_id = {item["tool_permission_profile_id"]: item for item in tool_profiles}
         task_by_id = {item["task_id"]: item for item in task_plan}
         coordination_by_task = self._coordination_by_task(events)
+        child_plan_by_worker = {
+            str(item.get("worker_invocation_id") or ""): item for item in subagent_child_plans
+        }
 
         child_plans = [
             self._child_worker_plan(
                 worker=worker,
                 result=result_by_worker.get(worker["worker_invocation_id"]),
                 runtime_profile=runtime_by_id.get(worker["runtime_profile_id"], {}),
+                subagent_child_plan=child_plan_by_worker.get(worker["worker_invocation_id"], {}),
                 model_profiles=model_by_id,
                 tool_profiles=tool_by_id,
                 task=task_by_id.get(worker["task_id"], {}),
@@ -72,6 +79,7 @@ class AgentRunGraphBuilder:
         worker: dict,
         result: dict | None,
         runtime_profile: dict,
+        subagent_child_plan: dict,
         model_profiles: dict[str, dict],
         tool_profiles: dict[str, dict],
         task: dict,
@@ -89,7 +97,16 @@ class AgentRunGraphBuilder:
             "child_worker_plan_id": f"child-plan-{worker['worker_invocation_id']}",
             "worker_invocation_id": worker["worker_invocation_id"],
             "worker_result_id": (result or {}).get("worker_result_id"),
-            "parent_worker_invocation_id": None,
+            "parent_worker_invocation_id": worker.get("parent_worker_invocation_id"),
+            "subagent_child_plan_id": str(
+                subagent_child_plan.get("subagent_child_plan_id") or ""
+            ),
+            "decomposition_strategy": str(
+                subagent_child_plan.get("decomposition_strategy") or ""
+            ),
+            "scheduling_strategy": str(subagent_child_plan.get("scheduling_strategy") or ""),
+            "planned_child_count": len(subagent_child_plan.get("child_tasks") or []),
+            "planned_child_tasks": subagent_child_plan.get("child_tasks") or [],
             "task_id": task_id,
             "agent_id": worker["agent_id"],
             "status": worker["status"],

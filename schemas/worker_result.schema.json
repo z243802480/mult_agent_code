@@ -36,6 +36,9 @@
         "tool_calls": { "type": "integer" }
       }
     },
-    "summary": { "type": "string" }
+    "summary": { "type": "string" },
+    "parent_worker_invocation_id": { "type": "string" },
+    "worker_kind": { "type": "string" },
+    "child_plan_refs": { "type": "array", "items": { "type": "string" } }
   }
 }

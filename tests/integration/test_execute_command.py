@@ -1419,6 +1419,12 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
         .read_text(encoding="utf-8")
         .splitlines()
     ]
+    child_plans = [
+        json.loads(line)
+        for line in (run_dir / "subagent_child_plans.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
 
     assert result.completed == 1
     assert result.blocked == 0
@@ -1438,9 +1444,15 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     assert worker["worker_kind"] == "subagent"
     assert worker["parallel_safety"] == "serial"
     assert worker["parent_worker_invocation_id"] == "worker-0001"
+    assert worker["child_plan_refs"] == ["subagent-child-plan-0001"]
     assert worker_result["status"] == "succeeded"
     assert worker_result["worker_kind"] == "subagent"
     assert worker_result["parent_worker_invocation_id"] == "worker-0001"
+    assert worker_result["child_plan_refs"] == ["subagent-child-plan-0001"]
+    assert child_plans[-1]["worker_invocation_id"] == subagent_execution["worker_invocation_id"]
+    assert child_plans[-1]["parent_decision_id"] == subagent_execution["decision_id"]
+    assert child_plans[-1]["child_tasks"][0]["parallel_safety"] == "serial"
+    assert child_plans[-1]["scheduling_strategy"] == "serial_single_worker"
     subagent_profile = next(
         item for item in runtime_profiles if item["runtime_profile_id"] == worker["runtime_profile_id"]
     )
@@ -1475,6 +1487,7 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     assert subagent_observation["observation_type"] == "subagent_result"
     assert subagent_observation["status"] == "succeeded"
     assert subagent_observation["next_recommended_action"] == "stop"
+    assert "subagent-child-plan-0001" in subagent_observation["evidence_refs"]
     assert client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
     assert loop_summary["exit_reason"] == "stop"
@@ -1525,6 +1538,15 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
     assert subagent_result["status"] == "succeeded"
     assert subagent_result["cost"]["model_calls"] == 2
     assert subagent_result["parent_worker_invocation_id"] == "worker-0001"
+    assert subagent_result["child_plan_refs"] == ["subagent-child-plan-0001"]
+    child_plans = [
+        json.loads(line)
+        for line in (run_dir / "subagent_child_plans.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert child_plans[-1]["worker_invocation_id"] == "worker-0002"
+    assert child_plans[-1]["child_tasks"][0]["task_id"] == "task-0001"
     context_mounts = [
         json.loads(line)
         for line in (run_dir / "context_mounts.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1569,6 +1591,14 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
         and item["candidate"].get("parent_worker_invocation_id") == "worker-0002"
         for item in task_evidence
     )
+    agent_graph = json.loads((run_dir / "agent_run_graph.json").read_text(encoding="utf-8"))
+    subagent_plan = [
+        item for item in agent_graph["child_worker_plans"] if item["worker_invocation_id"] == "worker-0002"
+    ][-1]
+    assert subagent_plan["parent_worker_invocation_id"] == "worker-0001"
+    assert subagent_plan["subagent_child_plan_id"] == "subagent-child-plan-0001"
+    assert subagent_plan["planned_child_count"] == 1
+    assert subagent_plan["planned_child_tasks"][0]["task_id"] == "task-0001"
 
 
 def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path) -> None:
