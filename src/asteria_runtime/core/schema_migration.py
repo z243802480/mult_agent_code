@@ -145,6 +145,17 @@ def _policy_010_to_020(data: dict[str, Any]) -> dict[str, Any]:
             "requires": ["provider_streaming"],
         },
     )
+    feature_flags.setdefault(
+        "real_disjoint_write_workers",
+        {
+            "enabled": False,
+            "description": (
+                "Enable true parallel disjoint write workers after validation probes prove "
+                "the gate can block unsafe fanout."
+            ),
+            "requires": ["real_model"],
+        },
+    )
     data.setdefault("capability_flags", {})
     return data
 

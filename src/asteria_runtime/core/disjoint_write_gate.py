@@ -29,6 +29,7 @@ class DisjointWriteGate:
         tasks: list[dict],
         *,
         promotions: list[dict] | None = None,
+        require_candidate_promotions: bool = False,
     ) -> DisjointWriteGateResult:
         violations: list[str] = []
         blocked: list[str] = []
@@ -54,6 +55,10 @@ class DisjointWriteGate:
                 "promotion recovery unresolved: " + ", ".join(unresolved)
             )
             blocked.extend(allowed)
+        if require_candidate_promotions:
+            candidate_result = self._candidate_promotion_violations(tasks, promotions or [])
+            violations.extend(candidate_result.violations)
+            blocked.extend(candidate_result.blocked_task_ids)
         blocked_unique = _unique(blocked)
         allowed_unique = [task_id for task_id in _unique(allowed) if task_id not in blocked_unique]
         return DisjointWriteGateResult(
@@ -63,8 +68,18 @@ class DisjointWriteGate:
             violations=_unique(violations),
         )
 
-    def allows(self, tasks: list[dict], *, promotions: list[dict] | None = None) -> bool:
-        return self.evaluate(tasks, promotions=promotions).ok
+    def allows(
+        self,
+        tasks: list[dict],
+        *,
+        promotions: list[dict] | None = None,
+        require_candidate_promotions: bool = False,
+    ) -> bool:
+        return self.evaluate(
+            tasks,
+            promotions=promotions,
+            require_candidate_promotions=require_candidate_promotions,
+        ).ok
 
     def has_write_conflict(self, left: dict, right: dict) -> bool:
         left_scope = write_scope(left)
@@ -106,6 +121,85 @@ class DisjointWriteGate:
                 refs.append(str(promotion.get("promotion_id") or "unknown"))
         return _unique(refs)
 
+    def _candidate_promotion_violations(
+        self,
+        tasks: list[dict],
+        promotions: list[dict],
+    ) -> DisjointWriteGateResult:
+        blocked: list[str] = []
+        violations: list[str] = []
+        latest_promotions = self._latest_promotions(promotions)
+        for task in tasks:
+            task_id = str(task.get("task_id") or "unknown")
+            promotion = self._promotion_for_task(task, latest_promotions)
+            if promotion is None:
+                blocked.append(task_id)
+                violations.append(f"{task_id}: candidate promotion evidence is required")
+                continue
+            task_violations = self._promotion_violations(task, promotion)
+            if task_violations:
+                blocked.append(task_id)
+                violations.extend(f"{task_id}: {violation}" for violation in task_violations)
+        return DisjointWriteGateResult(
+            ok=not violations,
+            blocked_task_ids=_unique(blocked),
+            violations=_unique(violations),
+        )
+
+    def _promotion_for_task(
+        self,
+        task: dict,
+        latest_promotions: dict[str, dict],
+    ) -> dict | None:
+        task_refs = {
+            str(task.get("task_id") or ""),
+            str(task.get("parent_task_id") or ""),
+        }
+        for ref in task_refs - {""}:
+            if ref in latest_promotions:
+                return latest_promotions[ref]
+        return None
+
+    def _promotion_violations(self, task: dict, promotion: dict) -> list[str]:
+        violations: list[str] = []
+        if not str(promotion.get("candidate_id") or ""):
+            violations.append("candidate_id is required")
+        if not str(promotion.get("workspace") or ""):
+            violations.append("candidate workspace is required")
+        if not str(promotion.get("workspace_policy") or ""):
+            violations.append("candidate workspace_policy is required")
+        merge_gate = promotion.get("merge_gate")
+        merge_gate = merge_gate if isinstance(merge_gate, dict) else {}
+        if merge_gate.get("ok") is not True:
+            details = [
+                str(item)
+                for item in merge_gate.get("violations") or []
+                if str(item)
+            ]
+            suffix = f": {', '.join(details)}" if details else ""
+            violations.append(f"merge gate must pass{suffix}")
+        promotable_files = [str(item) for item in promotion.get("promotable_files") or []]
+        if not promotable_files:
+            violations.append("promotable_files are required")
+        outside_scope = [
+            file_path
+            for file_path in promotable_files
+            if not any(_scope_contains(scope, file_path) for scope in write_scope(task))
+        ]
+        if outside_scope:
+            violations.append(
+                "promotable_files outside write_scope: " + ", ".join(outside_scope)
+            )
+        return violations
+
+    def _latest_promotions(self, promotions: list[dict]) -> dict[str, dict]:
+        latest: dict[str, dict] = {}
+        for promotion in promotions:
+            task_id = str(promotion.get("task_id") or "")
+            if task_id:
+                latest[task_id] = promotion
+        return latest
+
 
 def _scope_overlaps(left: str, right: str) -> bool:
     left_norm = _normalize_scope(left)
@@ -115,6 +209,12 @@ def _scope_overlaps(left: str, right: str) -> bool:
         or left_norm.startswith(right_norm)
         or right_norm.startswith(left_norm)
     )
+
+
+def _scope_contains(scope: str, file_path: str) -> bool:
+    scope_norm = _normalize_scope(scope)
+    file_norm = _normalize_scope(file_path)
+    return scope_norm == file_norm or file_norm.startswith(scope_norm)
 
 
 def _normalize_scope(value: str) -> str:

@@ -74,6 +74,24 @@ def test_validation_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatc
     assert summary["preflight"]["gate_status"]["stage"] == "ready_for_small_real_task_validation"
     assert summary["route_expectations"]["planning_coordinator"] == "strong"
     assert summary["route_expectations"]["worker"] == "medium"
+    assert summary["validation_plan"]["risk_model"] == "adaptive_gates_preserve_agent_flexibility"
+    assert summary["validation_plan"]["parallel_writes"]["real_disjoint_write_workers"] == "disabled"
+    assert summary["validation_plan"]["parallel_writes"]["enablement_flag"] == "real_disjoint_write_workers"
+    assert [
+        probe["id"] for probe in summary["validation_plan"]["probes"]
+    ] == [
+        "parent_selects_subagent",
+        "readonly_fanout_succeeds",
+        "readonly_write_tool_blocked",
+        "disjoint_write_gate_blocks_unsafe_fanout",
+        "parent_loop_stops_after_observation",
+    ]
+    disjoint_probe = next(
+        probe
+        for probe in summary["validation_plan"]["probes"]
+        if probe["id"] == "disjoint_write_gate_blocks_unsafe_fanout"
+    )
+    assert disjoint_probe["gate_policy"] == "strong_block_before_real_parallel_write_enable"
 
 
 def test_validation_run_explains_blocked_route_guidance(
@@ -157,6 +175,19 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     ] == 1.0
     assert summary["evidence"]["runtime_validation_matrix"]["ready"] is True
     assert "recovery_pressure" in summary["evidence"]
+    assert summary["validation_plan"]["flexibility_policy"]["low_risk_exploration"] == "trace_only"
+    probe_results = {
+        probe["id"]: probe for probe in summary["validation_plan"]["probe_results"]
+    }
+    evidence_probe_results = {
+        probe["id"]: probe for probe in summary["evidence"]["validation_probe_results"]
+    }
+    assert probe_results["parent_selects_subagent"]["status"] == "passed"
+    assert probe_results["readonly_write_tool_blocked"]["status"] == "passed"
+    assert probe_results["disjoint_write_gate_blocks_unsafe_fanout"]["status"] == "passed"
+    assert probe_results["parent_loop_stops_after_observation"]["status"] == "passed"
+    assert evidence_probe_results == probe_results
+    assert "Review missing validation probe evidence" in summary["next_actions"][-1]
 
 
 class FakeRunCommand:
@@ -213,6 +244,93 @@ class FakeRunCommand:
                     "created_at": now_iso(),
                 }
             ],
+        )
+        _write_jsonl(
+            run_dir / "workers.jsonl",
+            [
+                {
+                    "schema_version": "0.1.0",
+                    "worker_invocation_id": "worker-invocation-0001",
+                    "run_id": run_id,
+                    "task_id": "task-0001",
+                    "agent_id": "CoderAgent",
+                    "runtime_profile_id": "runtime-profile-subagent",
+                    "status": "succeeded",
+                    "started_at": now_iso(),
+                    "ended_at": now_iso(),
+                    "summary": "Subagent validation worker completed.",
+                    "worker_kind": "subagent_worker",
+                    "parallel_safety": "readonly",
+                }
+            ],
+        )
+        _write_jsonl(
+            run_dir / "agent_loop_decisions.jsonl",
+            [
+                {
+                    "schema_version": "0.1.0",
+                    "decision_id": "agent-loop-decision-0001",
+                    "run_id": run_id,
+                    "task_id": "task-0001",
+                    "created_at": now_iso(),
+                    "next_action": {
+                        "action": "subagent",
+                        "reason": "validate subagent path",
+                        "target_task_id": "task-0001",
+                        "capability_ref": {"type": "subagent", "name": "CoderAgent"},
+                        "expected_observation": {"summary": "subagent result"},
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1},
+                        "evidence_refs": [],
+                    },
+                }
+            ],
+        )
+        _write_jsonl(
+            run_dir / "agent_loop_observations.jsonl",
+            [
+                {
+                    "schema_version": "0.1.0",
+                    "observation_id": "agent-loop-observation-0001",
+                    "run_id": run_id,
+                    "task_id": "task-0001",
+                    "target_task_id": "task-0001",
+                    "created_at": now_iso(),
+                    "observation_type": "subagent_result",
+                    "source_execution_id": "agent-loop-execution-0001",
+                    "source_decision_id": "agent-loop-decision-0001",
+                    "status": "succeeded",
+                    "summary": "subagent result; readonly write tool denied",
+                    "evidence_refs": ["worker_results.jsonl"],
+                    "next_recommended_action": "stop",
+                }
+            ],
+        )
+        _write_jsonl(
+            run_dir / "subagent_child_plans.jsonl",
+            [_disjoint_write_plan(run_id)],
+        )
+        (run_dir / "agent_loop_run_summary.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "run_id": run_id,
+                    "task_id": "task-0001",
+                    "created_at": now_iso(),
+                    "status": "completed",
+                    "exit_reason": "completed",
+                    "rounds_completed": 1,
+                    "max_rounds": 2,
+                    "summary": "Parent loop stopped after subagent observation.",
+                    "recommended_command": None,
+                    "latest_decision_id": "agent-loop-decision-0001",
+                    "latest_execution_id": "agent-loop-execution-0001",
+                    "latest_observation_id": "agent-loop-observation-0001",
+                    "latest_action": "stop",
+                    "evidence_refs": ["agent_loop_observations.jsonl"],
+                }
+            ),
+            encoding="utf-8",
         )
         (run_dir / "agent_loop_dispatch.json").write_text(
             json.dumps(
@@ -366,6 +484,56 @@ def _model_call(
         "status": "success",
         "created_at": now_iso(),
         "summary": "fake call",
+    }
+
+
+def _disjoint_write_plan(run_id: str) -> dict:
+    children = []
+    for index, file_name in ((1, "docs/a.md"), (2, "docs/b.md")):
+        children.append(
+            {
+                "child_task_id": f"task-1-write-{index:02d}",
+                "task_id": "task-0001",
+                "title": f"Write shard {index}",
+                "objective": f"Write {file_name}.",
+                "acceptance": [f"{file_name} written"],
+                "read_scope": ["."],
+                "write_scope": [file_name],
+                "allowed_tools": ["write_file", "run_command"],
+                "depends_on": [],
+                "risk": "medium",
+                "parallel_safety": "disjoint_writes",
+                "worker_role": "implementation_child",
+                "write_allowed": True,
+                "expected_output": [file_name],
+                "verification_expectation": {"requires_verification": True},
+            }
+        )
+    return {
+        "schema_version": "0.1.0",
+        "subagent_child_plan_id": "subagent-child-plan-0001",
+        "run_id": run_id,
+        "parent_task_id": "task-parent",
+        "target_task_id": "task-0001",
+        "parent_decision_id": "agent-loop-decision-0001",
+        "parent_execution_id": "agent-loop-execution-0001",
+        "worker_invocation_id": "worker-invocation-0001",
+        "worker_result_id": "worker-result-0001",
+        "runtime_profile_id": "runtime-profile-subagent",
+        "planner_id": "RuntimeSubagentPlanner",
+        "decomposition_strategy": "disjoint_write_child_tasks",
+        "scheduling_strategy": "parallel_disjoint_writes_after_merge_gate",
+        "max_child_workers": 2,
+        "coordination_policy": {
+            "write_allowed": True,
+            "requires_merge_gate": True,
+            "requires_disjoint_write_scope": True,
+        },
+        "status": "planned",
+        "parallel_safety": "disjoint_writes",
+        "child_tasks": children,
+        "evidence_refs": ["agent_loop_execution_results.jsonl"],
+        "created_at": now_iso(),
     }
 
 

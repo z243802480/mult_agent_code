@@ -543,6 +543,7 @@ def _subagent_disjoint_write_gate_check(
     result = DisjointWriteGate().evaluate(
         gate_tasks,
         promotions=_latest_candidate_promotions(run_dirs, validator),
+        require_candidate_promotions=True,
     )
     if not result.ok:
         return RuntimeReadinessCheck(
@@ -550,8 +551,8 @@ def _subagent_disjoint_write_gate_check(
             status="blocked",
             summary="Disjoint write fanout gate blocked: " + "; ".join(result.violations[:4]),
             recommended_action=(
-                "Fix disjoint child write_scope, verification contract, or promotion recovery "
-                "before enabling real disjoint write workers."
+                "Fix disjoint child write_scope, verification contract, candidate workspace, "
+                "merge gate, or promotion recovery before enabling real disjoint write workers."
             ),
             evidence_refs=[plan_id, *result.blocked_task_ids][:8],
         )
@@ -569,6 +570,7 @@ def _subagent_disjoint_write_gate_check(
 def _disjoint_child_gate_task(child: dict[str, Any]) -> dict[str, Any]:
     return {
         "task_id": str(child.get("child_task_id") or child.get("task_id") or "unknown"),
+        "parent_task_id": str(child.get("task_id") or ""),
         "parallel_safety": str(child.get("parallel_safety") or ""),
         "write_scope": [str(item) for item in child.get("write_scope") or []],
         "completion_contract": {

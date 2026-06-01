@@ -341,25 +341,37 @@ def _disjoint_write_plan(*, overlapping: bool = False) -> dict:
     }
 
 
-def _candidate_promotion(status: str = "pending_manual_approval", merge_ok: bool = True) -> dict:
+def _candidate_promotion(
+    status: str = "pending_manual_approval",
+    merge_ok: bool = True,
+    *,
+    task_id: str = "task-1",
+    candidate_id: str = "candidate-0001",
+    workspace: str = "cw/0001",
+    promotable_files: list[str] | None = None,
+    promoted_files: list[str] | None = None,
+) -> dict:
+    promotable_files = promotable_files or ["src/a.py"]
     return {
         "schema_version": "0.1.0",
-        "promotion_id": "promotion-0001",
+        "promotion_id": f"promotion-{candidate_id}",
         "run_id": "run-1",
-        "task_id": "task-1",
-        "candidate_id": "candidate-0001",
-        "workspace": "cw/0001",
+        "task_id": task_id,
+        "candidate_id": candidate_id,
+        "workspace": workspace,
         "strategy": "temp_workspace",
         "workspace_policy": "isolated_copy",
         "backend_reason": "test",
         "branch_name": None,
-        "promotable_files": ["src/a.py"],
-        "promoted_files": [] if status != "promoted" else ["src/a.py"],
+        "promotable_files": promotable_files,
+        "promoted_files": promoted_files
+        if promoted_files is not None
+        else ([] if status != "promoted" else promotable_files),
         "status": status,
         "approval_mode": "manual",
         "merge_gate": {
             "ok": merge_ok,
-            "promotable_files": ["src/a.py"] if merge_ok else [],
+            "promotable_files": promotable_files if merge_ok else [],
             "violations": [] if merge_ok else ["changed files outside write_scope: src/a.py"],
         },
         "failure": None
@@ -773,6 +785,18 @@ def test_runtime_readiness_gate_accepts_disjoint_write_child_plan_gate(
         _disjoint_write_plan(),
         "subagent_child_plan",
     )
+    for index in (1, 2):
+        JsonlStore(validator).append(
+            run_dir / "candidate_promotions.jsonl",
+            _candidate_promotion(
+                "promoted",
+                task_id=f"task-1-write-{index:02d}",
+                candidate_id=f"candidate-000{index}",
+                workspace=f"cw/000{index}",
+                promotable_files=[f"docs/{'a' if index == 1 else 'b'}.md"],
+            ),
+            "candidate_promotion",
+        )
 
     gate = runtime_readiness_gate(
         root=tmp_path,
@@ -785,6 +809,71 @@ def test_runtime_readiness_gate_accepts_disjoint_write_child_plan_gate(
     disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
     assert disjoint["status"] == "ready"
     assert "allows 2 child" in disjoint["summary"]
+
+
+def test_runtime_readiness_gate_blocks_disjoint_write_plan_without_candidate_evidence(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        _disjoint_write_plan(),
+        "subagent_child_plan",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
+    assert gate["status"] == "blocked"
+    assert disjoint["status"] == "blocked"
+    assert "candidate promotion evidence is required" in disjoint["summary"]
+
+
+def test_runtime_readiness_gate_blocks_disjoint_write_plan_failed_merge_gate(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "subagent_child_plans.jsonl",
+        _disjoint_write_plan(),
+        "subagent_child_plan",
+    )
+    for index in (1, 2):
+        JsonlStore(validator).append(
+            run_dir / "candidate_promotions.jsonl",
+            _candidate_promotion(
+                "promoted",
+                merge_ok=index == 2,
+                task_id=f"task-1-write-{index:02d}",
+                candidate_id=f"candidate-000{index}",
+                workspace=f"cw/000{index}",
+                promotable_files=[f"docs/{'a' if index == 1 else 'b'}.md"],
+            ),
+            "candidate_promotion",
+        )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
+    assert gate["status"] == "blocked"
+    assert disjoint["status"] == "blocked"
+    assert "merge gate must pass" in disjoint["summary"]
 
 
 def test_runtime_readiness_gate_blocks_overlapping_disjoint_write_child_plan(

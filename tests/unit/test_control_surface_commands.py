@@ -767,6 +767,36 @@ def test_gate_status_surfaces_disjoint_write_gate_check(tmp_path: Path) -> None:
         },
         "subagent_child_plan",
     )
+    for index, file_name in ((1, "docs/a.md"), (2, "docs/b.md")):
+        JsonlStore(validator).append(
+            run_dir / "candidate_promotions.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "promotion_id": f"promotion-000{index}",
+                "run_id": run["run_id"],
+                "task_id": f"child-000{index}",
+                "candidate_id": f"candidate-000{index}",
+                "workspace": str(run_dir / "cw" / f"000{index}"),
+                "strategy": "temp_workspace",
+                "workspace_policy": "isolated_copy",
+                "backend_reason": "test",
+                "branch_name": None,
+                "promotable_files": [file_name],
+                "promoted_files": [file_name],
+                "status": "promoted",
+                "approval_mode": "manual",
+                "merge_gate": {
+                    "ok": True,
+                    "promotable_files": [file_name],
+                    "violations": [],
+                },
+                "failure": None,
+                "decision": None,
+                "created_at": now_iso(),
+                "updated_at": now_iso(),
+            },
+            "candidate_promotion",
+        )
 
     result = GateStatusCommand(tmp_path).run()
 

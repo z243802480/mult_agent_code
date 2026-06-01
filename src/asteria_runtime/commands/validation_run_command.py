@@ -17,6 +17,7 @@ from asteria_runtime.core.runtime_validation_evidence import (
     record_runtime_validation_matrix_evidence,
 )
 from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
+from asteria_runtime.core.runtime_readiness_gate import runtime_readiness_gate
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
@@ -202,6 +203,9 @@ class ValidationRunCommand:
         evidence: dict[str, Any],
         next_actions: list[str],
     ) -> dict[str, Any]:
+        validation_plan = self._validation_plan()
+        if run_result and isinstance(evidence.get("validation_probe_results"), list):
+            validation_plan["probe_results"] = evidence["validation_probe_results"]
         return {
             "schema_version": "0.1.0",
             "control_surface": _validation_run_control_surface(),
@@ -237,6 +241,7 @@ class ValidationRunCommand:
                 "medium_provider_target": "MiniMax or configured medium route",
                 "goal_spec_execution_plan": goal_spec_route_plan,
             },
+            "validation_plan": validation_plan,
             "run_id": run_result["run_id"] if run_result else None,
             "run_result": run_result,
             "evidence": evidence,
@@ -246,6 +251,7 @@ class ValidationRunCommand:
 
     def _evidence(self, run_id: str) -> dict[str, Any]:
         run_dir = self.root / ".asteria" / "runs" / run_id
+        validation_probe_results = self._probe_results(run_id)
         model_calls = self.jsonl.read_all(run_dir / "model_calls.jsonl", "model_call")
         worker_results = self.jsonl.read_all(run_dir / "worker_results.jsonl", "worker_result")
         task_evidence = self.jsonl.read_all(
@@ -292,7 +298,211 @@ class ValidationRunCommand:
             "execution_statuses": sorted(
                 {str(item.get("status") or "unknown") for item in task_evidence}
             ),
+            "validation_probe_results": validation_probe_results,
         }
+
+    def _validation_plan(self) -> dict[str, Any]:
+        return {
+            "schema_version": "0.1.0",
+            "purpose": "controlled_real_provider_small_task_gray_validation",
+            "risk_model": "adaptive_gates_preserve_agent_flexibility",
+            "flexibility_policy": {
+                "low_risk_exploration": "trace_only",
+                "readonly_and_fake_path": "allow_iteration_with_light_evidence",
+                "promotion_merge_remote_and_release": "strong_gate",
+            },
+            "parallel_writes": {
+                "real_disjoint_write_workers": "disabled",
+                "enablement_flag": "real_disjoint_write_workers",
+                "disjoint_write_gate": "prove_block_before_enable",
+            },
+            "probes": [
+                {
+                    "id": "parent_selects_subagent",
+                    "intent": "Verify the coordinator can select a subagent path for a scoped task.",
+                    "expected_evidence": [
+                        "agent_loop_decisions.jsonl:next_action=subagent",
+                        "workers.jsonl:subagent worker invocation",
+                        "worker_results.jsonl:subagent result",
+                    ],
+                    "gate_policy": "review_if_missing",
+                },
+                {
+                    "id": "readonly_fanout_succeeds",
+                    "intent": "Verify readonly child fanout can run without write privileges.",
+                    "expected_evidence": [
+                        "subagent_child_plans.jsonl:scheduling_strategy=parallel_readonly_fanout",
+                        "worker_results.jsonl:readonly child workers succeeded",
+                    ],
+                    "gate_policy": "review_if_missing",
+                },
+                {
+                    "id": "readonly_write_tool_blocked",
+                    "intent": "Verify a readonly child cannot use write tools.",
+                    "expected_evidence": [
+                        "agent_loop_observations.jsonl:write tool denied for readonly child",
+                        "runtime_readiness_gate:subagent_readonly_fanout blocked or reviewed",
+                    ],
+                    "gate_policy": "strong_block_on_uncontrolled_write",
+                },
+                {
+                    "id": "disjoint_write_gate_blocks_unsafe_fanout",
+                    "intent": (
+                        "Verify disjoint write fanout remains blocked without candidate workspace, "
+                        "merge gate, or clean promotion recovery evidence."
+                    ),
+                    "expected_evidence": [
+                        "runtime_readiness_gate:subagent_disjoint_write_gate blocked",
+                        "gate-status:Disjoint write gate summary",
+                    ],
+                    "gate_policy": "strong_block_before_real_parallel_write_enable",
+                },
+                {
+                    "id": "parent_loop_stops_after_observation",
+                    "intent": "Verify the parent loop can stop cleanly after consuming child observations.",
+                    "expected_evidence": [
+                        "agent_loop_run_summary.json:exit_reason=completed|stop",
+                        "agent_loop_observations.jsonl:subagent_result",
+                    ],
+                    "gate_policy": "review_if_missing",
+                },
+            ],
+        }
+
+    def _probe_results(self, run_id: str) -> list[dict[str, Any]]:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        plan = self._validation_plan()
+        decisions = self.jsonl.read_all(run_dir / "agent_loop_decisions.jsonl", "agent_loop_decision")
+        workers = self.jsonl.read_all(run_dir / "workers.jsonl", "worker_invocation")
+        worker_results = self.jsonl.read_all(run_dir / "worker_results.jsonl", "worker_result")
+        child_plans = self.jsonl.read_all(run_dir / "subagent_child_plans.jsonl", "subagent_child_plan")
+        observations = self.jsonl.read_all(run_dir / "agent_loop_observations.jsonl", "agent_loop_observation")
+        run_summary = self._read_optional(run_dir / "agent_loop_run_summary.json", "agent_loop_run_summary")
+        readiness = runtime_readiness_gate(
+            root=self.root,
+            validator=self.validator,
+            model_call_contract={"status": "healthy"},
+            context_pressure_summary={"max_context_window_ratio": 0.1},
+            latest_observation_plan={},
+        )
+        readiness_checks = {
+            str(check.get("name") or ""): check
+            for check in readiness.get("checks", [])
+            if isinstance(check, dict)
+        }
+        return [
+            self._evaluate_probe(
+                str(probe["id"]),
+                str(probe["gate_policy"]),
+                decisions=decisions,
+                workers=workers,
+                worker_results=worker_results,
+                child_plans=child_plans,
+                observations=observations,
+                run_summary=run_summary,
+                readiness_checks=readiness_checks,
+            )
+            for probe in plan["probes"]
+        ]
+
+    def _evaluate_probe(
+        self,
+        probe_id: str,
+        gate_policy: str,
+        *,
+        decisions: list[dict[str, Any]],
+        workers: list[dict[str, Any]],
+        worker_results: list[dict[str, Any]],
+        child_plans: list[dict[str, Any]],
+        observations: list[dict[str, Any]],
+        run_summary: dict[str, Any],
+        readiness_checks: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        status, summary, evidence_refs = self._probe_status(
+            probe_id,
+            decisions=decisions,
+            workers=workers,
+            worker_results=worker_results,
+            child_plans=child_plans,
+            observations=observations,
+            run_summary=run_summary,
+            readiness_checks=readiness_checks,
+        )
+        return {
+            "id": probe_id,
+            "status": status,
+            "summary": summary,
+            "gate_policy": gate_policy,
+            "evidence_refs": evidence_refs,
+        }
+
+    def _probe_status(
+        self,
+        probe_id: str,
+        *,
+        decisions: list[dict[str, Any]],
+        workers: list[dict[str, Any]],
+        worker_results: list[dict[str, Any]],
+        child_plans: list[dict[str, Any]],
+        observations: list[dict[str, Any]],
+        run_summary: dict[str, Any],
+        readiness_checks: dict[str, dict[str, Any]],
+    ) -> tuple[str, str, list[str]]:
+        if probe_id == "parent_selects_subagent":
+            has_decision = any(
+                _nested_str(item, ["next_action", "action"]) == "subagent" for item in decisions
+            )
+            worker_ids = [
+                str(item.get("worker_invocation_id") or "")
+                for item in workers
+                if "subagent" in str(item.get("worker_kind") or item.get("agent_id") or "").lower()
+            ]
+            result_ids = [
+                str(item.get("worker_result_id") or "")
+                for item in worker_results
+                if str(item.get("worker_invocation_id") or "") in worker_ids
+                or "subagent" in str(item.get("summary") or "").lower()
+            ]
+            if has_decision and worker_ids and result_ids:
+                return "passed", "Subagent decision, worker, and result evidence are present.", [*worker_ids[:2], *result_ids[:2]]
+            return "missing_evidence", "Subagent path was not fully evidenced in this run.", [*worker_ids[:2], *result_ids[:2]]
+        if probe_id == "readonly_fanout_succeeds":
+            plan_ids = [
+                str(item.get("subagent_child_plan_id") or "")
+                for item in child_plans
+                if str(item.get("scheduling_strategy") or "") == "parallel_readonly_fanout"
+            ]
+            fanout = readiness_checks.get("subagent_readonly_fanout", {})
+            if plan_ids and fanout.get("status") == "ready":
+                return "passed", str(fanout.get("summary") or "Readonly fanout succeeded."), plan_ids[:3]
+            return "missing_evidence", str(fanout.get("summary") or "Readonly fanout evidence was not present."), plan_ids[:3]
+        if probe_id == "readonly_write_tool_blocked":
+            denied = [
+                str(item.get("observation_id") or item.get("execution_id") or "")
+                for item in observations
+                if "readonly" in str(item).lower()
+                and "write" in str(item).lower()
+                and ("denied" in str(item).lower() or "cannot use write tool" in str(item).lower())
+            ]
+            fanout = readiness_checks.get("subagent_readonly_fanout", {})
+            if denied or fanout.get("status") in {"blocked", "review"}:
+                return "passed", "Readonly write attempt was blocked or reviewed.", denied[:3]
+            return "missing_evidence", "No readonly write-tool denial evidence was found.", []
+        if probe_id == "disjoint_write_gate_blocks_unsafe_fanout":
+            disjoint = readiness_checks.get("subagent_disjoint_write_gate", {})
+            refs = [str(item) for item in disjoint.get("evidence_refs") or []][:4]
+            if disjoint.get("status") == "blocked":
+                return "passed", str(disjoint.get("summary") or "Disjoint write gate blocked."), refs
+            if disjoint.get("status") == "ready":
+                return "failed", str(disjoint.get("summary") or "Disjoint write gate did not block unsafe fanout."), refs
+            return "missing_evidence", str(disjoint.get("summary") or "No disjoint write fanout evidence was found."), refs
+        if probe_id == "parent_loop_stops_after_observation":
+            exit_reason = str(run_summary.get("exit_reason") or "")
+            has_subagent_observation = any("subagent" in str(item).lower() for item in observations)
+            if exit_reason in {"completed", "stop"} and has_subagent_observation:
+                return "passed", f"Parent loop stopped with exit_reason={exit_reason}.", [str(run_summary.get("run_id") or "")]
+            return "missing_evidence", "Parent loop stop after subagent observation was not fully evidenced.", [str(run_summary.get("run_id") or "")]
+        return "missing_evidence", "Probe evaluator is not implemented for this probe.", []
 
     def _preflight_evidence(self, matrix_evidence: dict[str, Any]) -> dict[str, Any]:
         progress_metrics = runtime_progress_metrics(self.root, self.validator)
@@ -313,14 +523,42 @@ class ValidationRunCommand:
             and route.get("medium_used")
             and run_result.status not in {"blocked", "paused"}
         ):
+            failed_probes = [
+                item
+                for item in evidence.get("validation_probe_results", [])
+                if isinstance(item, dict) and item.get("status") == "failed"
+            ]
+            if failed_probes:
+                return "failed"
             return "completed"
         return "failed"
 
     def _next_actions(self, status: str, run_id: str, evidence: dict[str, Any]) -> list[str]:
         if status == "completed":
-            return [
+            actions = [
                 f"Inspect `.asteria/validation_runs` summary and run `{run_id}` final report.",
                 "Use this run as evidence before widening real-task validation scope.",
+            ]
+            missing = [
+                str(item.get("id") or "")
+                for item in evidence.get("validation_probe_results", [])
+                if isinstance(item, dict) and item.get("status") == "missing_evidence"
+            ]
+            if missing:
+                actions.append(
+                    "Review missing validation probe evidence before widening scope: "
+                    + ", ".join(item for item in missing if item)
+                )
+            return actions
+        failed = [
+            str(item.get("id") or "")
+            for item in evidence.get("validation_probe_results", [])
+            if isinstance(item, dict) and item.get("status") == "failed"
+        ]
+        if failed:
+            return [
+                "Repair failed validation probe before widening scope: "
+                + ", ".join(item for item in failed if item)
             ]
         route = evidence.get("route_evidence") if isinstance(evidence, dict) else {}
         if isinstance(route, dict) and not route.get("medium_used"):
@@ -371,3 +609,12 @@ def _validation_run_control_surface() -> dict[str, object]:
             "next_actions",
         ],
     )
+
+
+def _nested_str(item: dict[str, Any], path: list[str]) -> str:
+    current: Any = item
+    for key in path:
+        if not isinstance(current, dict):
+            return ""
+        current = current.get(key)
+    return str(current or "")
