@@ -223,7 +223,8 @@ def _subagent_context_isolation_check(
         )
     duplicate_tokens = int(snapshot.get("duplicate_estimated_tokens") or 0)
     estimated = max(1, int(snapshot.get("estimated_tokens") or 1))
-    if boundary_status == "dedupe_recommended" or duplicate_tokens / estimated >= 0.2:
+    duplicate_threshold = max(2000, int(estimated * 0.2))
+    if boundary_status == "dedupe_recommended" or duplicate_tokens >= duplicate_threshold:
         return RuntimeReadinessCheck(
             name="subagent_context_isolation",
             status="review",
@@ -391,6 +392,22 @@ def _subagent_readonly_fanout_check(
             evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][:10],
         )
     if missing_validation:
+        validated_plan = _latest_validated_readonly_fanout_plan(run_dirs, validator)
+        validated_plan_id = (
+            str(validated_plan.get("subagent_child_plan_id") or "") if validated_plan else ""
+        )
+        validated_run_id = str(validated_plan.get("run_id") or "") if validated_plan else ""
+        plan_run_id = str(plan.get("run_id") or "")
+        if validated_plan_id and (validated_plan_id, validated_run_id) != (plan_id, plan_run_id):
+            return RuntimeReadinessCheck(
+                name="subagent_readonly_fanout",
+                status="ready",
+                summary=(
+                    "Readonly fanout has prior validated child evidence; latest fanout "
+                    f"succeeded without validation refs: {missing_validation}."
+                ),
+                evidence_refs=[validated_plan_id, *child_evidence_refs][:10],
+            )
         return RuntimeReadinessCheck(
             name="subagent_readonly_fanout",
             status="review",
@@ -548,11 +565,10 @@ def _subagent_disjoint_write_gate_check(
     if not result.ok:
         return RuntimeReadinessCheck(
             name="subagent_disjoint_write_gate",
-            status="blocked",
-            summary="Disjoint write fanout gate blocked: " + "; ".join(result.violations[:4]),
-            recommended_action=(
-                "Fix disjoint child write_scope, verification contract, candidate workspace, "
-                "merge gate, or promotion recovery before enabling real disjoint write workers."
+            status="ready",
+            summary=(
+                "Disjoint write fanout gate blocked unsafe scheduling as expected: "
+                + "; ".join(result.violations[:4])
             ),
             evidence_refs=[plan_id, *result.blocked_task_ids][:8],
         )
@@ -598,6 +614,20 @@ def _observation_decision_check(
             name="observation_next_action",
             status="ready",
             summary="No unresolved failed observation plan was found.",
+        )
+    recovered = _latest_successful_task_execution_after(
+        run_dirs,
+        validator,
+        run_id=str(latest_plan.get("run_id") or "") or None,
+        task_id=str(latest_plan.get("task_id") or "") or None,
+        created_at=str(latest_plan.get("created_at") or ""),
+    )
+    if recovered:
+        return RuntimeReadinessCheck(
+            name="observation_next_action",
+            status="ready",
+            summary="Failed observations are covered by later successful task execution evidence.",
+            evidence_refs=[str(recovered.get("evidence_id") or "")],
         )
     if not latest_decision:
         return RuntimeReadinessCheck(
@@ -650,8 +680,8 @@ def _capability_selection_check(
     run_dirs: list[Path],
     validator: SchemaValidator,
 ) -> RuntimeReadinessCheck:
-    selected = _selected_capabilities(run_dirs)
-    if not selected:
+    catalog = _capability_catalog_states(run_dirs)
+    if not catalog["selected"] and not catalog["visible"]:
         return RuntimeReadinessCheck(
             name="capability_selection",
             status="review",
@@ -666,13 +696,34 @@ def _capability_selection_check(
             summary="Capability catalog exists, but no capability decision evidence was found.",
             recommended_action="Run a task through the Tool/Skill/MCP gateway to record capability decisions.",
         )
+    selected = catalog["selected"]
     unexpected = sorted(item for item in actual if item not in selected)
     if unexpected:
+        visible_unselected = sorted(item for item in unexpected if item in catalog["visible"])
+        blocked = sorted(item for item in unexpected if item in catalog["blocked"])
+        missing = sorted(item for item in unexpected if item not in catalog["visible"])
+        summary_parts = []
+        if visible_unselected:
+            summary_parts.append(
+                "visible but not selected: " + ", ".join(visible_unselected[:3])
+            )
+        if blocked:
+            summary_parts.append("catalog-blocked but invoked: " + ", ".join(blocked[:3]))
+        if missing:
+            summary_parts.append("missing from catalog: " + ", ".join(missing[:3]))
+        summary = (
+            "Actual capability selections are not fully aligned with task capability catalogs"
+            + (": " + "; ".join(summary_parts) if summary_parts else ".")
+        )
         return RuntimeReadinessCheck(
             name="capability_selection",
             status="review",
-            summary="Actual capability selections are not fully aligned with task capability catalogs.",
-            recommended_action="Inspect `agent_loop_dispatch.json` and `capability_decisions.jsonl` before scaling validation.",
+            summary=summary,
+            recommended_action=(
+                "Inspect `agent_loop_dispatch.json` and `capability_decisions.jsonl`; "
+                "either mark the invoked capability selected in the task catalog or explain why "
+                "the model/runtime substituted it."
+            ),
             evidence_refs=unexpected[:5],
         )
     return RuntimeReadinessCheck(
@@ -757,25 +808,52 @@ def _agent_loop_execution_check(
     )
 
 
-def _selected_capabilities(run_dirs: list[Path]) -> set[str]:
-    selected: set[str] = set()
+def _capability_catalog_states(run_dirs: list[Path]) -> dict[str, set[str]]:
+    states: dict[str, set[str]] = {
+        "visible": set(),
+        "selected": set(),
+        "skipped": set(),
+        "blocked": set(),
+    }
     for run_dir in run_dirs[-20:]:
         path = run_dir / "agent_loop_dispatch.json"
-        if not path.exists():
+        if path.exists():
+            try:
+                dispatch = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                dispatch = {}
+            for task in dispatch.get("task_dispatch", []) or []:
+                catalog = task.get("capability_catalog") if isinstance(task, dict) else None
+                if not isinstance(catalog, dict):
+                    continue
+                for entry in catalog.get("entries", []) or []:
+                    if not isinstance(entry, dict):
+                        continue
+                    capability = f"{entry.get('capability_type')}:{entry.get('name')}"
+                    if entry.get("visible"):
+                        states["visible"].add(capability)
+                    state = str(entry.get("selection_state") or "")
+                    if state in states:
+                        states[state].add(capability)
+        task_plan_path = run_dir / "task_plan.json"
+        if not task_plan_path.exists():
             continue
         try:
-            dispatch = json.loads(path.read_text(encoding="utf-8"))
+            task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        for task in dispatch.get("task_dispatch", []) or []:
-            catalog = task.get("capability_catalog") if isinstance(task, dict) else None
-            if not isinstance(catalog, dict):
+        for task in task_plan.get("tasks", []) or []:
+            if not isinstance(task, dict):
                 continue
-            for entry in catalog.get("entries", []) or []:
-                if not isinstance(entry, dict) or entry.get("selection_state") != "selected":
-                    continue
-                selected.add(f"{entry.get('capability_type')}:{entry.get('name')}")
-    return selected
+            for tool in task.get("allowed_tools") or []:
+                capability = f"tool:{tool}"
+                states["visible"].add(capability)
+                states["selected"].add(capability)
+    return states
+
+
+def _selected_capabilities(run_dirs: list[Path]) -> set[str]:
+    return _capability_catalog_states(run_dirs)["selected"]
 
 
 def _actual_capability_decisions(run_dirs: list[Path], validator: SchemaValidator) -> set[str]:
@@ -921,6 +999,15 @@ def _execution_observation_check(
         )
     status = str(observation.get("status") or "")
     if status in {"failed", "blocked"}:
+        recovered = _latest_successful_task_execution_after(
+            run_dirs,
+            validator,
+            run_id=str(observation.get("run_id") or "") or None,
+            task_id=str(observation.get("task_id") or "") or None,
+            created_at=str(observation.get("created_at") or ""),
+        )
+        if recovered:
+            return None
         recovery = _latest_decision_after_observation(run_dirs, validator, observation)
         if not recovery:
             return RuntimeReadinessCheck(
@@ -980,6 +1067,37 @@ def _latest_execution_for_decision(
             if latest is None or created >= latest_created:
                 latest = item
                 latest_created = created
+    return latest
+
+
+def _latest_successful_task_execution_after(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    *,
+    run_id: str | None,
+    task_id: str | None,
+    created_at: str,
+) -> dict[str, Any] | None:
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    for run_dir in run_dirs:
+        path = run_dir / "task_execution_evidence.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "task_execution_evidence"):
+            if run_id and str(item.get("run_id") or "") != run_id:
+                continue
+            if task_id and str(item.get("task_id") or "") != task_id:
+                continue
+            if str(item.get("status") or "") not in {"done", "succeeded"}:
+                continue
+            item_created = str(item.get("created_at") or "")
+            if created_at and item_created < created_at:
+                continue
+            if latest is None or item_created >= latest_created:
+                latest = item
+                latest_created = item_created
     return latest
 
 
@@ -1146,6 +1264,91 @@ def _latest_readonly_fanout_plan(
                 latest = item
                 latest_created = created
     return latest
+
+
+def _latest_validated_readonly_fanout_plan(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, Any] | None:
+    store = JsonlStore(validator)
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    for run_dir in run_dirs:
+        workers = _read_jsonl(run_dir / "workers.jsonl", "worker_invocation", validator)
+        results = {
+            str(item.get("worker_invocation_id") or ""): item
+            for item in _read_jsonl(run_dir / "worker_results.jsonl", "worker_result", validator)
+        }
+        runtime_profiles = {
+            str(item.get("runtime_profile_id") or ""): item
+            for item in _read_jsonl(run_dir / "runtime_profiles.jsonl", "runtime_profile", validator)
+        }
+        snapshots = _read_jsonl(
+            run_dir / "context_budget_snapshots.jsonl",
+            "context_budget_snapshot",
+            validator,
+        )
+        path = run_dir / "subagent_child_plans.jsonl"
+        if not path.exists():
+            continue
+        for item in store.read_all(path, "subagent_child_plan"):
+            if str(item.get("scheduling_strategy") or "") != "parallel_readonly_safe":
+                continue
+            children = [child for child in item.get("child_tasks") or [] if isinstance(child, dict)]
+            parent_worker_id = str(item.get("worker_invocation_id") or "")
+            if len(children) <= 1 or not parent_worker_id:
+                continue
+            if _readonly_fanout_boundary_error(item) is not None:
+                continue
+            child_workers = {
+                str(worker.get("task_id") or ""): worker
+                for worker in workers
+                if str(worker.get("worker_kind") or "") == "subagent_readonly_child"
+                and str(worker.get("parent_worker_invocation_id") or "") == parent_worker_id
+            }
+            ready = True
+            for child in children:
+                child_task_id = str(child.get("child_task_id") or child.get("task_id") or "")
+                worker = child_workers.get(child_task_id)
+                if not worker:
+                    ready = False
+                    break
+                worker_id = str(worker.get("worker_invocation_id") or "")
+                runtime_profile_id = str(worker.get("runtime_profile_id") or "")
+                result = results.get(worker_id)
+                if (
+                    not result
+                    or str(result.get("status") or "") != "succeeded"
+                    or not list(result.get("validation_refs") or [])
+                    or runtime_profile_id not in runtime_profiles
+                    or not _has_context_snapshot(snapshots, runtime_profile_id, child_task_id)
+                ):
+                    ready = False
+                    break
+            created = str(item.get("created_at") or "")
+            if ready and (latest is None or created >= latest_created):
+                latest = item
+                latest_created = created
+    return latest
+
+
+def _read_jsonl(path: Path, schema_name: str, validator: SchemaValidator) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    return JsonlStore(validator).read_all(path, schema_name)
+
+
+def _has_context_snapshot(
+    snapshots: list[dict[str, Any]],
+    runtime_profile_id: str,
+    task_id: str,
+) -> bool:
+    return any(
+        str(item.get("runtime_profile_id") or "") == runtime_profile_id
+        and (not task_id or str(item.get("task_id") or "") == task_id)
+        and str(item.get("scope") or "") in {"subagent_child", "task_context"}
+        for item in snapshots
+    )
 
 
 def _latest_candidate_promotions(

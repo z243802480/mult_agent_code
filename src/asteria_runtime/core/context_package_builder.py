@@ -23,7 +23,11 @@ class ContextPackageBuilder:
         includes = context_mount.get("includes") if isinstance(context_mount, dict) else {}
         if not isinstance(includes, dict):
             includes = {}
-        read_scope_files = self._read_scope_files(context, task)
+        read_scope_files = self._read_scope_files(
+            context,
+            task,
+            root_guidance_included=bool(includes.get("root_guidance")),
+        )
         artifacts = self._artifacts(context, includes.get("artifact_refs", []))
         failures = self._failures(context, includes.get("failure_evidence_refs", []))
         decisions = self._decisions(context, includes.get("decision_refs", []))
@@ -209,12 +213,20 @@ class ContextPackageBuilder:
             if isinstance(ref, str) and ref in validations
         ]
 
-    def _read_scope_files(self, context: RuntimeContext, task: dict) -> list[dict]:
+    def _read_scope_files(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        *,
+        root_guidance_included: bool = False,
+    ) -> list[dict]:
         files: list[dict] = []
         seen: set[str] = set()
         for scope_item in read_scope(task):
             for path in self._scope_paths(context, scope_item):
                 rel = path.relative_to(context.root).as_posix()
+                if root_guidance_included and rel == "AGENTS.md":
+                    continue
                 if rel in seen:
                     continue
                 seen.add(rel)
@@ -500,6 +512,10 @@ class ContextPackageBuilder:
         if context.run_dir is None:
             return None
         path = context.run_dir / "context_envelopes" / f"context_envelope_{task_id}.json"
+        tmp_path = path.with_name(f"{path.name}.tmp")
+        if len(str(tmp_path)) >= 240:
+            path = context.run_dir / "ctx" / f"ce_{task_id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
         JsonStore(self.validator).write(path, envelope.to_dict(), "context_envelope")
         return path
 

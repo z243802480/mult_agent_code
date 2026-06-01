@@ -24,6 +24,8 @@ def test_task_capability_catalog_records_selected_skipped_and_blocked_reasons() 
     assert catalog["summary"]["visible"] > 0
     assert entries[("tool", "read_file")]["selection_state"] == "selected"
     assert entries[("mcp", "docs")]["selection_state"] == "selected"
+    assert entries[("mcp", "docs/search")]["selection_state"] == "selected"
+    assert entries[("mcp", "docs/search")]["metadata"]["server"] == "docs"
     assert entries[("skill", "documents")]["selection_state"] == "blocked"
     assert entries[("skill", "documents")]["blocked_reason"]
     assert entries[("tool", "write_file")]["selection_state"] == "blocked"

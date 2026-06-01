@@ -69,3 +69,27 @@ def test_context_budget_snapshot_marks_compact_boundary() -> None:
     assert snapshot["pressure_status"] in {"hard_stop", "exceeded"}
     assert snapshot["compact_boundary"]["status"] == "required"
     assert "read_scope_files" in snapshot["compact_boundary"]["droppable_sections"]
+
+
+def test_context_budget_snapshot_does_not_count_persisted_envelope_payload_duplicate() -> None:
+    repeated = "persisted context payload " * 20
+    snapshot = build_context_budget_snapshot(
+        policy={"context": {"model_context_window_tokens": 100_000}},
+        run_id="run-1",
+        task={"task_id": "task-1"},
+        runtime_context={
+            "context_package": {
+                "context_envelope_path": ".asteria/runs/run-1/context_envelope.json",
+                "root_guidance": {"content": repeated},
+                "context_envelope": {
+                    "payload_hash": "sha256:context",
+                    "payload": {"root_guidance": {"content": repeated}},
+                },
+            }
+        },
+        runtime_profile_id="runtime-profile-worker-0001",
+        context_mount_id="context-worker-0001",
+    ).to_dict()
+
+    assert snapshot["duplicate_ref_count"] == 0
+    assert snapshot["duplicate_estimated_tokens"] == 0

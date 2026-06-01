@@ -181,7 +181,7 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
         "description": "Implement the notes module.",
         "acceptance": ["module exists"],
         "task_kind": "report",
-        "read_scope": ["src/"],
+        "read_scope": ["AGENTS.md", "src/"],
         "write_scope": [],
         "parallel_safety": "readonly",
         "context_requirements": {
@@ -212,7 +212,7 @@ def test_context_package_builder_loads_slices_from_mount_refs(tmp_path: Path) ->
     assert package["root_guidance"]["content"] == "root guidance"
     assert package["goal_brief"]["normalized_goal"] == "Build notes"
     assert package["task_brief"]["task_id"] == "task-0001"
-    assert package["scope_summary"]["read_scope"] == ["src/"]
+    assert package["scope_summary"]["read_scope"] == ["AGENTS.md", "src/"]
     assert package["scope_summary"]["read_scope_file_count"] == 1
     assert package["scope_summary"]["evidence_counts"]["recent_failures"] == 1
     assert package["write_scope_files"] == []

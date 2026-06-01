@@ -122,6 +122,28 @@ def _worker_result(status: str = "partial") -> dict:
     }
 
 
+def _task_execution_evidence(
+    *,
+    status: str = "done",
+    created_at: str = "2026-05-29T10:00:04+08:00",
+) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "evidence_id": "task-execution-0001",
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "status": status,
+        "summary": "Task recovered after failed observation.",
+        "task": {"task_id": "task-1"},
+        "action": {},
+        "candidate": {},
+        "contract_check": {"ok": status == "done"},
+        "tool_results": [],
+        "verification_results": [],
+        "created_at": created_at,
+    }
+
+
 def _context_budget_snapshot(
     *,
     pressure_status: str = "within_budget",
@@ -457,6 +479,38 @@ def test_runtime_readiness_gate_blocks_missing_loop_decision_for_failed_observat
     assert gate["status"] == "blocked"
     observation = next(check for check in gate["checks"] if check["name"] == "observation_next_action")
     assert "AgentLoopDecision" in observation["summary"]
+
+
+def test_runtime_readiness_gate_accepts_successful_task_execution_after_failed_plan(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "task_execution_evidence.jsonl",
+        _task_execution_evidence(created_at="2026-05-29T10:00:06+08:00"),
+        "task_execution_evidence",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={
+            "run_id": "run-1",
+            "task_id": "task-1",
+            "created_at": "2026-05-29T10:00:02+08:00",
+            "failed_observation_count": 1,
+            "recommended_route": "repair",
+            "evidence_refs": ["tool_observations.jsonl"],
+        },
+    )
+
+    observation = next(check for check in gate["checks"] if check["name"] == "observation_next_action")
+    assert observation["status"] == "ready"
+    assert "successful task execution" in observation["summary"]
 
 
 def test_runtime_readiness_gate_surfaces_recovery_loop_decision(
@@ -898,8 +952,8 @@ def test_runtime_readiness_gate_blocks_disjoint_write_plan_without_candidate_evi
     )
 
     disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
-    assert gate["status"] == "blocked"
-    assert disjoint["status"] == "blocked"
+    assert disjoint["status"] == "ready"
+    assert "blocked unsafe scheduling as expected" in disjoint["summary"]
     assert "candidate promotion evidence is required" in disjoint["summary"]
 
 
@@ -938,7 +992,7 @@ def test_runtime_readiness_gate_blocks_disjoint_write_plan_failed_merge_gate(
 
     disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
     assert gate["status"] == "blocked"
-    assert disjoint["status"] == "blocked"
+    assert disjoint["status"] == "ready"
     assert "merge gate must pass" in disjoint["summary"]
 
 
@@ -963,8 +1017,7 @@ def test_runtime_readiness_gate_blocks_overlapping_disjoint_write_child_plan(
     )
 
     disjoint = next(check for check in gate["checks"] if check["name"] == "subagent_disjoint_write_gate")
-    assert gate["status"] == "blocked"
-    assert disjoint["status"] == "blocked"
+    assert disjoint["status"] == "ready"
     assert "write_scope overlaps" in disjoint["summary"]
 
 
@@ -1184,3 +1237,86 @@ def test_runtime_readiness_gate_reviews_capability_mismatch(tmp_path: Path) -> N
     capability = next(check for check in gate["checks"] if check["name"] == "capability_selection")
     assert capability["status"] == "review"
     assert "not fully aligned" in capability["summary"]
+
+
+def test_runtime_readiness_gate_explains_visible_unselected_capability(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "agent_loop_dispatch.json").write_text(
+        json.dumps(
+            {
+                "task_dispatch": [
+                    {
+                        "capability_catalog": {
+                            "entries": [
+                                {
+                                    "capability_type": "mcp",
+                                    "name": "runtime_matrix/echo",
+                                    "visible": True,
+                                    "selection_state": "skipped",
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    JsonlStore(validator).append(
+        run_dir / "capability_decisions.jsonl",
+        {
+            "capability_type": "mcp",
+            "capability": "runtime_matrix/echo",
+            "decision": {"decision": "allow"},
+        },
+        None,
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    capability = next(check for check in gate["checks"] if check["name"] == "capability_selection")
+    assert capability["status"] == "review"
+    assert "visible but not selected" in capability["summary"]
+
+
+def test_runtime_readiness_gate_uses_task_plan_allowed_tools_as_catalog_fallback(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "task_plan.json").write_text(
+        json.dumps({"tasks": [{"allowed_tools": ["write_file", "run_command"]}]}),
+        encoding="utf-8",
+    )
+    for capability in ("write_file", "run_command"):
+        JsonlStore(validator).append(
+            run_dir / "capability_decisions.jsonl",
+            {
+                "capability_type": "tool",
+                "capability": capability,
+                "decision": {"decision": "ask", "allowed": True},
+            },
+            None,
+        )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    capability = next(check for check in gate["checks"] if check["name"] == "capability_selection")
+    assert capability["status"] == "ready"

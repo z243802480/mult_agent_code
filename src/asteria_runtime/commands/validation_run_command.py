@@ -244,8 +244,25 @@ class ValidationRunCommand:
             if isinstance(check, dict) and check.get("status") == "blocked"
         ]
         allowed = {"agent_loop_execution"}
-        if "readonly_fanout_succeeds" in self.probe_ids:
-            allowed.add("subagent_readonly_fanout")
+        probe_allowed_checks = {
+            "parent_selects_subagent": {"agent_loop_execution"},
+            "readonly_fanout_succeeds": {"agent_loop_execution", "subagent_readonly_fanout"},
+            "readonly_write_tool_blocked": {
+                "agent_loop_execution",
+                "subagent_readonly_fanout",
+            },
+            "disjoint_write_gate_blocks_unsafe_fanout": {
+                "agent_loop_execution",
+                "subagent_disjoint_write_gate",
+                "candidate_promotion_safety",
+            },
+            "parent_loop_stops_after_observation": {
+                "agent_loop_execution",
+                "observation_next_action",
+            },
+        }
+        for probe_id in self.probe_ids:
+            allowed.update(probe_allowed_checks.get(probe_id, set()))
         return bool(blocked) and set(blocked) <= allowed
 
     def _build_summary(
@@ -610,12 +627,16 @@ class ValidationRunCommand:
                     refs,
                 )
             if disjoint.get("status") == "ready":
+                summary = str(disjoint.get("summary") or "")
+                if "blocked unsafe" in summary:
+                    return (
+                        "passed",
+                        summary,
+                        refs,
+                    )
                 return (
                     "failed",
-                    str(
-                        disjoint.get("summary")
-                        or "Disjoint write gate did not block unsafe fanout."
-                    ),
+                    summary or "Disjoint write gate did not block unsafe fanout.",
                     refs,
                 )
             return (

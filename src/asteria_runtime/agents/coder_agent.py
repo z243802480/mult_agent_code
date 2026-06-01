@@ -9,6 +9,7 @@ from asteria_runtime.core.agent_loop_decision import (
     normalize_agent_loop_decision,
     validate_decision_matches_execution_action,
 )
+from asteria_runtime.core.context_prompt_view import context_prompt_view
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -205,7 +206,7 @@ You must:
             "task": task,
             "goal_spec": goal_spec,
             "project": project_config,
-            "runtime_context": runtime_context,
+            "runtime_context": context_prompt_view(runtime_context),
             "available_tools": available_tools,
             "allowed_tools": task["allowed_tools"],
             "model_tool_surface": runtime_context.get("model_tool_surface", {}),

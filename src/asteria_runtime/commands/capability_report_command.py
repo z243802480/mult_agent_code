@@ -162,6 +162,19 @@ class CapabilityReportResult:
                     "  - selection reasons: "
                     + "; ".join(f"{reason} ({count})" for reason, count in top_reasons)
                 )
+            actual = self.capability_selection.get("actual_selection") or {}
+            if actual:
+                lines.append(
+                    "  - actual decisions: "
+                    f"{actual.get('actual_count', 0)} recorded, "
+                    f"{len(actual.get('actual_not_selected') or [])} not selected"
+                )
+                visible = actual.get("actual_visible_not_selected") or []
+                missing = actual.get("actual_missing_from_catalog") or []
+                if visible:
+                    lines.append("    - visible but not selected: " + ", ".join(visible[:5]))
+                if missing:
+                    lines.append("    - missing from catalog: " + ", ".join(missing[:5]))
         if self.runtime_os:
             label = "Runtime OS release evidence"
             if self.evidence_health.get("status") == "historical_evidence_noise":
@@ -1229,38 +1242,106 @@ class CapabilityReportCommand:
         summary = {"tasks": 0, "visible": 0, "selected": 0, "skipped": 0, "blocked": 0}
         reason_counts: dict[str, int] = {}
         examples: dict[str, list[str]] = {"selected": [], "skipped": [], "blocked": []}
+        selected_capabilities: set[str] = set()
+        visible_capabilities: set[str] = set()
+        blocked_capabilities: set[str] = set()
+        actual_capabilities: set[str] = set()
         for run_dir in self._run_dirs(agent_dir):
             dispatch = self._read_json(run_dir / "agent_loop_dispatch.json")
             task_dispatch = dispatch.get("task_dispatch")
             if not isinstance(task_dispatch, list):
-                continue
+                task_dispatch = []
             for item in task_dispatch:
-                if not isinstance(item, dict):
-                    continue
-                catalog = item.get("capability_catalog")
-                if not isinstance(catalog, dict):
-                    continue
-                summary["tasks"] += 1
-                catalog_summary = catalog.get("summary")
-                if isinstance(catalog_summary, dict):
-                    for key in ("visible", "selected", "skipped", "blocked"):
-                        summary[key] += int(catalog_summary.get(key) or 0)
-                entries = catalog.get("entries")
-                if not isinstance(entries, list):
-                    continue
-                for entry in entries:
-                    if not isinstance(entry, dict):
-                        continue
-                    state = str(entry.get("selection_state") or "unknown")
-                    reason = str(entry.get("selection_reason") or state)
-                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
-                    if state in examples and len(examples[state]) < 8:
-                        examples[state].append(
-                            f"{entry.get('capability_type')}:{entry.get('name')} - {reason}"
-                        )
+                if isinstance(item, dict):
+                    self._add_catalog_audit(
+                        item,
+                        summary,
+                        reason_counts,
+                        examples,
+                        selected_capabilities,
+                        visible_capabilities,
+                        blocked_capabilities,
+                    )
+            actual_capabilities.update(self._actual_capabilities(run_dir))
         if summary["tasks"] == 0:
             return {}
-        return {"summary": summary, "reason_counts": reason_counts, "examples": examples}
+        actual_not_selected = sorted(
+            item for item in actual_capabilities if item not in selected_capabilities
+        )
+        actual_visible_not_selected = sorted(
+            item for item in actual_not_selected if item in visible_capabilities
+        )
+        actual_catalog_blocked = sorted(
+            item for item in actual_not_selected if item in blocked_capabilities
+        )
+        actual_missing_from_catalog = sorted(
+            item for item in actual_not_selected if item not in visible_capabilities
+        )
+        return {
+            "summary": summary,
+            "reason_counts": reason_counts,
+            "examples": examples,
+            "actual_selection": {
+                "actual_count": len(actual_capabilities),
+                "actual_not_selected": actual_not_selected[:12],
+                "actual_visible_not_selected": actual_visible_not_selected[:12],
+                "actual_catalog_blocked": actual_catalog_blocked[:12],
+                "actual_missing_from_catalog": actual_missing_from_catalog[:12],
+            },
+        }
+
+    def _add_catalog_audit(
+        self,
+        task_dispatch: dict[str, Any],
+        summary: dict[str, int],
+        reason_counts: dict[str, int],
+        examples: dict[str, list[str]],
+        selected_capabilities: set[str],
+        visible_capabilities: set[str],
+        blocked_capabilities: set[str],
+    ) -> None:
+        catalog = task_dispatch.get("capability_catalog")
+        if not isinstance(catalog, dict):
+            return
+        summary["tasks"] += 1
+        catalog_summary = catalog.get("summary")
+        if isinstance(catalog_summary, dict):
+            for key in ("visible", "selected", "skipped", "blocked"):
+                summary[key] += int(catalog_summary.get(key) or 0)
+        entries = catalog.get("entries")
+        if not isinstance(entries, list):
+            return
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            capability = f"{entry.get('capability_type')}:{entry.get('name')}"
+            if entry.get("visible"):
+                visible_capabilities.add(capability)
+            state = str(entry.get("selection_state") or "unknown")
+            if state == "selected":
+                selected_capabilities.add(capability)
+            elif state == "blocked":
+                blocked_capabilities.add(capability)
+            reason = str(entry.get("selection_reason") or state)
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            if state in examples and len(examples[state]) < 8:
+                examples[state].append(f"{capability} - {reason}")
+
+    def _actual_capabilities(self, run_dir: Path) -> set[str]:
+        path = run_dir / "capability_decisions.jsonl"
+        if not path.exists():
+            return set()
+        actual: set[str] = set()
+        for item in self.jsonl.read_all(path, None):
+            if not isinstance(item, dict):
+                continue
+            decision = item.get("decision")
+            if isinstance(decision, dict) and decision.get("decision") == "deny":
+                continue
+            capability = str(item.get("capability") or item.get("name") or "")
+            if capability:
+                actual.add(f"{item.get('capability_type') or 'tool'}:{capability}")
+        return actual
 
     def _read_json(self, path: Path) -> dict[str, Any]:
         if not path.exists():

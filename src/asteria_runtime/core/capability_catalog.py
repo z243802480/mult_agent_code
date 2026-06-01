@@ -90,6 +90,7 @@ def task_capability_catalog(
         name = str(server.get("name") or "")
         if not name:
             continue
+        allowed_mcp = {str(item) for item in task.get("allowed_mcp", [])}
         decision = policy.for_capability(
             name,
             intent=intent,
@@ -98,7 +99,7 @@ def task_capability_catalog(
             risk=risk,
             capability_type="mcp",
         )
-        allowed = name in {str(item) for item in task.get("allowed_mcp", [])}
+        allowed = name in allowed_mcp
         entries.append(
             _entry(
                 capability_type="mcp",
@@ -116,6 +117,39 @@ def task_capability_catalog(
                 },
             )
         )
+        for tool in server.get("tools") or []:
+            tool_name = str(tool)
+            if not tool_name:
+                continue
+            capability_name = f"{name}/{tool_name}"
+            tool_decision = policy.for_capability(
+                capability_name,
+                intent=intent,
+                task_kind=task_kind,
+                permission_mode=permission_mode,
+                risk=risk,
+                capability_type="mcp",
+            )
+            tool_allowed = name in allowed_mcp or capability_name in allowed_mcp
+            entries.append(
+                _entry(
+                    capability_type="mcp",
+                    name=capability_name,
+                    source="product_mcp_tool_catalog",
+                    decision=tool_decision,
+                    visible=True,
+                    selected=tool_allowed and tool_decision["decision"] != "deny",
+                    skipped_reason=None if tool_allowed else "not listed in task allowed_mcp",
+                    blocked_reason=None
+                    if tool_decision["decision"] != "deny"
+                    else tool_decision["reason"],
+                    metadata={
+                        "server": name,
+                        "tool": tool_name,
+                        "workspace_override": server.get("workspace_override") or {},
+                    },
+                )
+            )
     return {
         "schema_version": "0.1.0",
         "task_id": task.get("task_id"),

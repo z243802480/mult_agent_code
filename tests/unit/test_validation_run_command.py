@@ -185,6 +185,58 @@ def test_targeted_validation_probe_can_bypass_stale_loop_readiness_block(
     assert reasons == []
 
 
+def test_targeted_disjoint_probe_can_bypass_disjoint_gate_block(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["disjoint_write_gate_blocks_unsafe_fanout"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "agent_loop_execution", "status": "blocked"},
+                    {"name": "subagent_disjoint_write_gate", "status": "blocked"},
+                    {"name": "candidate_promotion_safety", "status": "blocked"},
+                    {"name": "route_guidance", "status": "review"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
+def test_targeted_parent_stop_probe_can_bypass_observation_block(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["parent_loop_stops_after_observation"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "agent_loop_execution", "status": "blocked"},
+                    {"name": "observation_next_action", "status": "blocked"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
 def test_validation_run_explains_blocked_route_guidance(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     _configure_release_routes(monkeypatch)

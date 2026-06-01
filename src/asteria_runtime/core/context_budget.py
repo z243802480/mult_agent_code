@@ -7,6 +7,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any, Iterable
 
+from asteria_runtime.core.context_prompt_view import context_prompt_view
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -193,11 +194,12 @@ def build_context_budget_snapshot(
 ) -> ContextBudgetSnapshot:
     """Build a raw-content-free context attribution snapshot for Runtime gates."""
 
-    sections = _runtime_context_sections(runtime_context)
+    metered_context = context_prompt_view(runtime_context)
+    sections = _runtime_context_sections(metered_context)
     estimated_tokens = max(1, sum(sections.values()))
     pressure = context_pressure(policy, estimated_tokens)
     duplicate_hashes, duplicate_tokens, duplicate_refs = _duplicate_context_signals(
-        runtime_context
+        metered_context
     )
     worker_topology = runtime_context.get("worker_topology")
     worker_topology = worker_topology if isinstance(worker_topology, dict) else {}
