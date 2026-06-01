@@ -67,6 +67,7 @@ def test_ops_signal_cli_outputs_json(tmp_path: Path) -> None:
             "accepted",
             "--note",
             "accepted by maintainer",
+            "--analyze",
             "--json",
         ],
         check=True,
@@ -78,3 +79,27 @@ def test_ops_signal_cli_outputs_json(tmp_path: Path) -> None:
     payload = json.loads(completed.stdout)
     assert payload["signal"]["artifact_outcome"] == "accepted"
     assert payload["summary"]["status"] == "healthy"
+    assert payload["analysis"]["status"] == "healthy"
+
+
+def test_ops_signal_analysis_outputs_priority_items_and_candidate_decisions(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-1",
+        artifact_outcome="blocked",
+        blocker_category="validation_untrusted",
+        trust_risk="report_mismatch",
+        summary="blocked by unclear validation evidence",
+        evidence_refs=["bundle.zip"],
+    ).run()
+
+    result = OpsSignalCommand(tmp_path, summarize_only=True, analyze=True).run()
+
+    assert result.analysis is not None
+    assert result.analysis["status"] == "needs_attention"
+    assert result.analysis["priority_items"][0]["id"] == "usage-unresolved-artifacts"
+    assert result.analysis["roadmap_tasks"][0]["priority"] == "P0"
+    decision = result.analysis["candidate_decision_points"][0]
+    SchemaValidator(Path.cwd() / "schemas").validate("decision_point", decision)
+    assert (tmp_path / ".asteria" / "ops" / "usage_signal_analysis.json").exists()

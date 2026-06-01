@@ -36,6 +36,18 @@ def _assert_validation_run_summary_control_surface(summary: dict) -> None:
     _assert_validation_run_result_control_surface(summary)
     SchemaValidator(Path("schemas")).validate("validation_run", summary)
 
+
+def test_validation_run_ids_are_unique_within_same_second(tmp_path: Path) -> None:
+    command = ValidationRunCommand(tmp_path, dry_run=True)
+
+    first = command._validation_run_id()
+    second = command._validation_run_id()
+
+    assert first != second
+    assert first.startswith("validation-")
+    assert second.startswith("validation-")
+
+
 def test_validation_run_blocks_until_release_gates_are_ready(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 
@@ -187,6 +199,28 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     assert probe_results["disjoint_write_gate_blocks_unsafe_fanout"]["status"] == "passed"
     assert probe_results["parent_loop_stops_after_observation"]["status"] == "passed"
     assert evidence_probe_results == probe_results
+    assert "Review missing validation probe evidence" in summary["next_actions"][-1]
+
+
+def test_validation_run_treats_absent_disjoint_plan_as_missing_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+
+    result = ValidationRunCommand(
+        tmp_path,
+        goal="Create simple validation evidence",
+        run_command_factory=FakeRunCommandWithoutDisjointPlan,
+    ).run()
+
+    assert result.status == "completed"
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    probes = {
+        probe["id"]: probe for probe in summary["evidence"]["validation_probe_results"]
+    }
+    assert probes["disjoint_write_gate_blocks_unsafe_fanout"]["status"] == "missing_evidence"
     assert "Review missing validation probe evidence" in summary["next_actions"][-1]
 
 
@@ -419,6 +453,14 @@ class FakeRunCommand:
             final_report_path=run_dir / "final_report.md",
             steps=[RunStepSummary("execute", "completed", "fake validation execution")],
         )
+
+
+class FakeRunCommandWithoutDisjointPlan(FakeRunCommand):
+    def run(self) -> RunResult:
+        result = super().run()
+        run_dir = self.root / ".asteria" / "runs" / result.run_id
+        (run_dir / "subagent_child_plans.jsonl").unlink()
+        return result
 
 
 def _write_ready_gate_reports(root: Path) -> None:

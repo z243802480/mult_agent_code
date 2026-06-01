@@ -62,8 +62,13 @@ class RoadmapCommand:
         next_actions = [str(item) for item in weekly.get("next_actions", [])] if weekly else []
         usage_signals = weekly.get("usage_signals") if weekly else {}
         usage_signals = usage_signals if isinstance(usage_signals, dict) else {}
+        usage_analysis = weekly.get("usage_signal_analysis") if weekly else {}
+        usage_analysis = usage_analysis if isinstance(usage_analysis, dict) else {}
         capabilities = self._capabilities(acceptance, model_profile)
         milestones = self._milestones(acceptance, model_profile, risks, usage_signals)
+        for task in usage_analysis.get("roadmap_tasks", [])[:3]:
+            if isinstance(task, dict):
+                next_actions.append(str(task.get("title") or task.get("task_id")))
         if not weekly:
             next_actions.append(
                 "Run `asteria daily-plan --objective <goal>` to start evidence collection."
@@ -90,6 +95,7 @@ class RoadmapCommand:
                 "acceptance_suite": acceptance.get("latest_suite"),
                 "model_profile_status": model_profile.get("status"),
                 "usage_signal_status": usage_signals.get("status"),
+                "usage_signal_analysis_status": usage_analysis.get("status"),
             },
         }
 

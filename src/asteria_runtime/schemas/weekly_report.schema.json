@@ -26,6 +26,7 @@
     "acceptance": { "type": "object" },
     "model_profile": { "type": "object" },
     "usage_signals": { "type": "object" },
+    "usage_signal_analysis": { "type": "object" },
     "risks": { "type": "array", "items": { "type": "string" } },
     "next_actions": { "type": "array", "items": { "type": "string" } }
   }

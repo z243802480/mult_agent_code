@@ -12,7 +12,7 @@ from asteria_runtime.commands._runtime_os_helpers import (
     runtime_os_release_evidence,
 )
 from asteria_runtime.core.acceptance_catalog import enrich_acceptance_report
-from asteria_runtime.core.usage_signal import usage_signal_summary
+from asteria_runtime.core.usage_signal import usage_signal_analysis, usage_signal_summary
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -64,11 +64,18 @@ class WeeklyReportCommand:
         runtime_os = self._runtime_os_summary(agent_dir)
         model_profile = self._model_profile(agent_dir)
         usage_signals = usage_signal_summary(agent_dir, self.validator)
+        usage_analysis = usage_signal_analysis(agent_dir, self.validator, write=True)
         risk_summary = self._risk_summary(
-            reports, acceptance, model_profile, runtime_os, usage_signals
+            reports, acceptance, model_profile, runtime_os, usage_signals, usage_analysis
         )
         next_actions = self._next_actions(
-            reports, acceptance, model_profile, risk_summary, runtime_os, usage_signals
+            reports,
+            acceptance,
+            model_profile,
+            risk_summary,
+            runtime_os,
+            usage_signals,
+            usage_analysis,
         )
         report = {
             "schema_version": "0.1.0",
@@ -82,6 +89,7 @@ class WeeklyReportCommand:
             "runtime_os": runtime_os,
             "model_profile": model_profile,
             "usage_signals": usage_signals,
+            "usage_signal_analysis": usage_analysis,
             "risks": risk_summary,
             "next_actions": next_actions,
         }
@@ -215,6 +223,7 @@ class WeeklyReportCommand:
         model_profile: dict[str, Any],
         runtime_os: dict[str, Any],
         usage_signals: dict[str, Any],
+        usage_analysis: dict[str, Any],
     ) -> list[str]:
         risks = []
         if not reports:
@@ -238,6 +247,13 @@ class WeeklyReportCommand:
             risks.append(
                 "Background usage signals need review: "
                 f"unresolved={usage_signals.get('unresolved', 0)}"
+            )
+        if usage_analysis.get("priority_items"):
+            risks.append(
+                "Usage signal analysis has priority item(s): "
+                + ", ".join(
+                    item.get("id", "unknown") for item in usage_analysis["priority_items"][:3]
+                )
             )
         for report in reports:
             for risk in report.get("risks", [])[:3]:
@@ -276,6 +292,7 @@ class WeeklyReportCommand:
         risks: list[str],
         runtime_os: dict[str, Any],
         usage_signals: dict[str, Any],
+        usage_analysis: dict[str, Any],
     ) -> list[str]:
         actions = []
         if not reports:
@@ -294,6 +311,11 @@ class WeeklyReportCommand:
             )
         if usage_signals.get("status") == "needs_attention":
             actions.append("Review `asteria ops-signal --summary` before widening dogfooding.")
+        if usage_analysis.get("roadmap_tasks"):
+            actions.append(
+                "Promote `.asteria/ops/usage_signal_analysis.json` roadmap_tasks "
+                "into the next daily plan."
+            )
         if not risks:
             actions.append("Continue with the next long-run cycle and keep acceptance gated.")
         return list(dict.fromkeys(actions))
@@ -328,6 +350,10 @@ class WeeklyReportCommand:
             f"- Status: {report.get('usage_signals', {}).get('status', 'missing')}",
             f"- Total: {report.get('usage_signals', {}).get('total', 0)}",
             f"- Unresolved: {report.get('usage_signals', {}).get('unresolved', 0)}",
+            "- Priority items: "
+            f"{len((report.get('usage_signal_analysis') or {}).get('priority_items') or [])}",
+            "- Roadmap tasks: "
+            f"{len((report.get('usage_signal_analysis') or {}).get('roadmap_tasks') or [])}",
             "",
             "## Runtime OS",
             "",

@@ -1179,6 +1179,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Only print the aggregate summary without recording a signal",
     )
+    ops_signal_parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Write usage signal analysis with priority items and candidate decisions",
+    )
     ops_signal_parser.add_argument("--json", action="store_true", help="Print JSON")
     roadmap_parser = subcommands.add_parser(
         "roadmap-update",
@@ -1820,6 +1825,7 @@ def main() -> None:
             evidence_refs=args.evidence_ref,
             source=args.source,
             summarize_only=args.ops_summary_only,
+            analyze=args.analyze,
         ).run()
         if args.json:
             print(json.dumps(ops_signal_result.to_dict(), ensure_ascii=False, indent=2))

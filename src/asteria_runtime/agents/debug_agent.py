@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 
 from asteria_runtime.agents.execution_action import normalize_execution_action
@@ -79,6 +80,9 @@ class DebugAgent:
                 )
                 continue
             return action
+        fallback = self._heuristic_repair_action(task, failure_evidence)
+        if fallback:
+            return fallback
         raise DebugAgentError(str(last_error) if last_error else "Repair action generation failed")
 
     def _envelope_metadata(self, runtime_context: dict) -> dict:
@@ -152,6 +156,48 @@ class DebugAgent:
             )
         )
 
+    def _heuristic_repair_action(self, task: dict, failure_evidence: dict) -> dict:
+        evidence_text = json.dumps(failure_evidence, ensure_ascii=False)
+        match = re.search(r"NameError:\s+name '([A-Za-z_][A-Za-z0-9_]*)' is not defined", evidence_text)
+        if not match:
+            return {}
+        undefined = match.group(1)
+        replacement = _collapsed_duplicate_identifier(undefined)
+        if not replacement or replacement == undefined:
+            return {}
+        path = _path_from_traceback_or_scope(evidence_text, task, undefined)
+        if not path or "apply_patch" not in task.get("allowed_tools", []):
+            return {}
+        old_line = _line_with_identifier(evidence_text, undefined)
+        new_line = old_line.replace(undefined, replacement, 1) if old_line else ""
+        if not old_line or not new_line or old_line == new_line:
+            return {}
+        verification = _verification_from_failure(failure_evidence)
+        action = {
+            "schema_version": "0.1.0",
+            "task_id": task["task_id"],
+            "summary": f"Repair undefined identifier {undefined} by replacing it with {replacement}.",
+            "tool_calls": [
+                {
+                    "tool_name": "apply_patch",
+                    "args": {
+                        "patch": (
+                            f"--- a/{path}\n"
+                            f"+++ b/{path}\n"
+                            "@@\n"
+                            f"-{old_line}\n"
+                            f"+{new_line}\n"
+                        )
+                    },
+                    "reason": "Apply a minimal deterministic repair for a repeated-name typo.",
+                }
+            ],
+            "verification": verification,
+            "completion_notes": f"Replaced {undefined} with {replacement} in {path}.",
+        }
+        self.validator.validate("execution_action", action)
+        return action
+
     def _system_prompt(self) -> str:
         return """You are DebugAgent in a local-first autonomous development runtime.
 
@@ -214,3 +260,64 @@ You must:
             },
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _collapsed_duplicate_identifier(identifier: str) -> str:
+    if len(identifier) % 2:
+        return ""
+    half = identifier[: len(identifier) // 2]
+    return half if half and half + half == identifier else ""
+
+
+def _path_from_traceback_or_scope(evidence_text: str, task: dict, identifier: str) -> str:
+    normalized_evidence = re.sub(r"/+", "/", evidence_text.replace("\\", "/"))
+    scope_paths = [
+        re.sub(r"/+", "/", str(path).replace("\\", "/"))
+        for path in [
+            *list(task.get("expected_changed_files") or []),
+            *list(task.get("expected_artifacts") or []),
+        ]
+    ]
+    for path in scope_paths:
+        if path and path in normalized_evidence:
+            return path
+    traceback_paths = re.findall(r'File "([^"]+)"', evidence_text)
+    for raw_path in reversed(traceback_paths):
+        path = raw_path.replace("\\", "/")
+        for candidate in scope_paths:
+            if candidate and path.endswith(candidate):
+                return candidate
+    if len(scope_paths) == 1 and identifier:
+        return scope_paths[0]
+    return ""
+
+
+def _line_with_identifier(evidence_text: str, identifier: str) -> str:
+    decoded = evidence_text.replace("\\n", "\n")
+    for line in decoded.splitlines():
+        stripped = line.rstrip()
+        if identifier in stripped and not stripped.lstrip().startswith(("File ", "NameError:")):
+            return stripped
+    return ""
+
+
+def _verification_from_failure(failure_evidence: dict) -> list[dict]:
+    verification: list[dict] = []
+    for failure in failure_evidence.get("verification_failures") or []:
+        data = failure.get("data") if isinstance(failure, dict) else {}
+        data = data if isinstance(data, dict) else {}
+        command = data.get("requested_command") or data.get("command")
+        if isinstance(command, str) and command:
+            verification.append(
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": command,
+                        "expected_returncodes": data.get("expected_returncodes") or [0],
+                    },
+                    "reason": "Rerun the failed verification after the deterministic repair.",
+                }
+            )
+    if verification:
+        return verification[:3]
+    return []

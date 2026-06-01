@@ -39,6 +39,20 @@ def test_roadmap_update_generates_json_and_markdown_from_weekly_report(
                 "profile_count": 1,
                 "weak_routes": [],
             },
+            "usage_signals": {
+                "status": "needs_attention",
+                "unresolved": 1,
+            },
+            "usage_signal_analysis": {
+                "status": "needs_attention",
+                "roadmap_tasks": [
+                    {
+                        "task_id": "ops-usage-unresolved-artifacts",
+                        "title": "Resolve unresolved artifact outcomes before widening dogfooding.",
+                        "priority": "P0",
+                    }
+                ],
+            },
             "risks": ["Acceptance failures remain: config_driven_report"],
             "next_actions": ["Run failed-only acceptance."],
         },
@@ -52,7 +66,9 @@ def test_roadmap_update_generates_json_and_markdown_from_weekly_report(
     assert result.status == "blocked"
     assert roadmap["source_reports"]["weekly_report"].endswith("weekly_report_2026-W20.json")
     assert roadmap["milestones"][1]["status"] == "blocked"
-    assert roadmap["next_actions"] == ["Run failed-only acceptance."]
+    assert "Run failed-only acceptance." in roadmap["next_actions"]
+    assert any("Resolve unresolved artifact outcomes" in item for item in roadmap["next_actions"])
+    assert roadmap["source_reports"]["usage_signal_analysis_status"] == "needs_attention"
     assert "自动路线图" in markdown
     assert "config_driven_report" in markdown
 

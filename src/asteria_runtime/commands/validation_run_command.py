@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.doctor_command import DoctorCommand
@@ -489,8 +490,16 @@ class ValidationRunCommand:
                 return "passed", "Readonly write attempt was blocked or reviewed.", denied[:3]
             return "missing_evidence", "No readonly write-tool denial evidence was found.", []
         if probe_id == "disjoint_write_gate_blocks_unsafe_fanout":
+            has_disjoint_plan = any(
+                str(item.get("scheduling_strategy") or "")
+                == "parallel_disjoint_writes_after_merge_gate"
+                or str(item.get("parallel_safety") or "") == "disjoint_writes"
+                for item in child_plans
+            )
             disjoint = readiness_checks.get("subagent_disjoint_write_gate", {})
             refs = [str(item) for item in disjoint.get("evidence_refs") or []][:4]
+            if not has_disjoint_plan:
+                return "missing_evidence", str(disjoint.get("summary") or "No disjoint write fanout evidence was found."), refs
             if disjoint.get("status") == "blocked":
                 return "passed", str(disjoint.get("summary") or "Disjoint write gate blocked."), refs
             if disjoint.get("status") == "ready":
@@ -593,7 +602,8 @@ class ValidationRunCommand:
         return self.root / ".asteria" / "validation_runs" / validation_run_id / "summary.json"
 
     def _validation_run_id(self) -> str:
-        return "validation-" + now_iso().replace(":", "").replace("+", "-").replace(".", "")
+        timestamp = now_iso().replace(":", "").replace("+", "-").replace(".", "")
+        return f"validation-{timestamp}-{uuid4().hex[:8]}"
 
 
 def _validation_run_control_surface() -> dict[str, object]:

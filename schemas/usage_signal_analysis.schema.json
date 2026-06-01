@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UsageSignalAnalysis",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "created_at",
+    "status",
+    "source",
+    "summary",
+    "priority_items",
+    "roadmap_tasks",
+    "candidate_decision_points",
+    "next_actions"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "created_at": { "type": "string" },
+    "status": { "type": "string" },
+    "source": { "type": "object" },
+    "summary": { "type": "object" },
+    "priority_items": { "type": "array", "items": { "type": "object" } },
+    "roadmap_tasks": { "type": "array", "items": { "type": "object" } },
+    "candidate_decision_points": { "type": "array", "items": { "type": "object" } },
+    "next_actions": { "type": "array", "items": { "type": "string" } }
+  }
+}

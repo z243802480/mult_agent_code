@@ -116,6 +116,8 @@ class EvidenceBundleCommand:
         manifest = self._manifest(warnings)
         staging["manifest.json"] = _json_text(manifest)
         self._add_summary_files(staging, warnings)
+        self._add_validation_run_summaries(staging, warnings)
+        self._add_ops_signal_files(staging, warnings)
         self._add_recent_runs(staging, warnings)
 
         bundle_path.parent.mkdir(parents=True, exist_ok=True)
@@ -209,6 +211,12 @@ class EvidenceBundleCommand:
                 ],
             },
             "model_route_summary": route_summary,
+            "included_evidence": {
+                "summary_files": True,
+                "validation_runs": True,
+                "ops_signals": True,
+                "recent_runs": True,
+            },
             "warnings": warnings,
         }
 
@@ -224,6 +232,26 @@ class EvidenceBundleCommand:
         ]
         for path in candidates:
             self._stage_file(path, staging, warnings)
+
+    def _add_validation_run_summaries(
+        self,
+        staging: dict[str, str],
+        warnings: list[str],
+    ) -> None:
+        validation_dir = self.agent_dir / "validation_runs"
+        if not validation_dir.exists():
+            return
+        runs = sorted(
+            (path for path in validation_dir.iterdir() if path.is_dir()),
+            reverse=True,
+        )[: self.max_runs]
+        for run_dir in runs:
+            self._stage_file(run_dir / "summary.json", staging, warnings)
+
+    def _add_ops_signal_files(self, staging: dict[str, str], warnings: list[str]) -> None:
+        ops_dir = self.agent_dir / "ops"
+        self._stage_jsonl_tail(ops_dir / "usage_signals.jsonl", staging, warnings, limit=250)
+        self._stage_file(ops_dir / "usage_signal_analysis.json", staging, warnings)
 
     def _add_recent_runs(self, staging: dict[str, str], warnings: list[str]) -> None:
         runs_dir = self.agent_dir / "runs"

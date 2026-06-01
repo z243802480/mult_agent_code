@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from asteria_runtime.commands.doctor_command import DoctorCommand
@@ -694,6 +695,43 @@ def test_gate_status_surfaces_latest_observation_plan(tmp_path: Path) -> None:
     assert "Latest agent next action: ask" in result.to_text()
 
 
+def test_gate_status_ignores_observation_plan_superseded_by_release_evidence(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path("schemas"))
+    agent_dir = tmp_path / ".asteria"
+    run_store = RunStore(agent_dir, validator)
+    run = run_store.create_run("test")
+    run_store.set_current_session(run["run_id"], "test")
+    JsonlStore(validator).append(
+        run_store.run_dir(run["run_id"]) / "observation_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_plan_id": "observation-plan-old",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "trigger": "unit",
+            "failed_observation_count": 1,
+            "actions": [{"action": "repair"}],
+            "blockers": ["old failure"],
+            "evidence_refs": ["tool_calls.jsonl"],
+            "recommended_route": "repair",
+            "reason": "repair: old failure",
+            "created_at": "2020-01-01T00:00:00+00:00",
+        },
+        "observation_plan",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["latest_observation_plan"] == {}
+    assert payload["runtime_readiness_gate"]["status"] != "blocked"
+
+
 def test_gate_status_surfaces_disjoint_write_gate_check(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path("schemas"))
@@ -1190,6 +1228,88 @@ def test_gate_status_uses_latest_validation_acceptance_summary(tmp_path: Path, m
     assert payload["evidence_sources"]["validation_suite"].endswith(
         "real_model_acceptance_validation_after_fix.json"
     )
+
+
+def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _configure_release_routes(monkeypatch)
+    gate_dir = tmp_path / ".asteria" / "model"
+    gate_dir.mkdir(parents=True)
+    (gate_dir / "real_model_gate_report.json").write_text(
+        json.dumps({"ok": True}),
+        encoding="utf-8",
+    )
+    verification_dir = tmp_path / ".asteria" / "verification"
+    verification_dir.mkdir(parents=True)
+    full = verification_dir / "real_model_acceptance_validation.json"
+    targeted = verification_dir / "real_model_acceptance_validation_multi_file_scope.json"
+    full.write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "complete": False,
+                "suite": "validation",
+                "validation_ready": False,
+                "scenario_metadata": [
+                    {"scenario": "validation_file_artifact"},
+                    {"scenario": "validation_multi_file_scope"},
+                    {"scenario": "validation_debug_repair"},
+                    {"scenario": "validation_doc_update"},
+                    {"scenario": "validation_small_cli"},
+                    {"scenario": "validation_refactor"},
+                    {"scenario": "runtime_request_resume"},
+                ],
+                "scenarios": [
+                    {"scenario": "validation_file_artifact", "ok": True},
+                    {"scenario": "validation_multi_file_scope", "ok": False},
+                    {"scenario": "validation_debug_repair", "ok": True},
+                    {"scenario": "validation_doc_update", "ok": True},
+                    {"scenario": "validation_small_cli", "ok": True},
+                    {"scenario": "validation_refactor", "ok": True},
+                    {"scenario": "runtime_request_resume", "ok": True},
+                ],
+                "aggregate": {
+                    "total": 7,
+                    "passed": 6,
+                    "failed": 1,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    targeted.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "suite": "smoke",
+                "requested_scenarios": ["validation_multi_file_scope"],
+                "scenarios": [{"scenario": "validation_multi_file_scope", "ok": True}],
+                "aggregate": {
+                    "total": 1,
+                    "passed": 1,
+                    "failed": 0,
+                    "route_evidence": {"strong_used": True, "medium_used": True},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(targeted, (full.stat().st_mtime + 10, full.stat().st_mtime + 10))
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps({"ok": True, "suite": "core", "aggregate": {"total": 10, "passed": 10}}),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "ready_for_small_real_task_validation"
+    assert payload["gates"]["validation_suite"]["passed"] == 7
+    assert payload["validation_report"]["repair_closure"]["closed_failures"] == [
+        "validation_multi_file_scope"
+    ]
 
 
 def test_gate_status_prefers_passing_canonical_validation_summary(tmp_path: Path, monkeypatch) -> None:

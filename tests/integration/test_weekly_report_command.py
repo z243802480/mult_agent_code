@@ -189,10 +189,14 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
     assert report["model_profile"]["weak_routes"][0]["purpose"] == "task_execution"
     assert report["usage_signals"]["status"] == "needs_attention"
     assert report["usage_signals"]["unresolved"] == 1
+    assert report["usage_signal_analysis"]["priority_items"]
+    assert report["usage_signal_analysis"]["roadmap_tasks"][0]["priority"] == "P0"
     assert any("Acceptance failures remain" in risk for risk in report["risks"])
     assert any("Background usage signals need review" in risk for risk in report["risks"])
+    assert any("Usage signal analysis has priority item" in risk for risk in report["risks"])
     assert "asteria /acceptance --failed-only --promote-failures" in report["next_actions"][0]
     assert any("ops-signal --summary" in action for action in report["next_actions"])
+    assert any("usage_signal_analysis.json" in action for action in report["next_actions"])
     assert "Weekly Production Report" in markdown
     assert "## Background Usage Signals" in markdown
     assert "## Runtime OS" in markdown

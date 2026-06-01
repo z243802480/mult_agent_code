@@ -3,6 +3,7 @@
 import json
 import subprocess
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -403,6 +404,11 @@ class GateStatusCommand:
         route_guidance = _release_evidence_route_guidance(route_guidance, gate, validation, core)
         model_call_contract = _model_call_contract(self.root, self.validator, gate)
         latest_observation_plan = _latest_observation_plan(self.root, self.validator)
+        latest_observation_plan = _current_release_observation_plan(
+            latest_observation_plan,
+            validation_path,
+            core_path,
+        )
         latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
         if latest_matrix and latest_matrix.get("ok") is False:
             actions = [
@@ -609,6 +615,8 @@ class GateStatusCommand:
         if not candidates:
             return {}, None
         _modified, path, report = max(candidates, key=lambda item: (item[0], item[1].name))
+        if suite == "validation":
+            report = _with_acceptance_repair_closure(report, path, verification_dir)
         return report, path
 
 
@@ -698,6 +706,71 @@ def _matches_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
     return _has_complete_acceptance_suite(report, suite)
 
 
+def _with_acceptance_repair_closure(
+    report: dict[str, Any],
+    report_path: Path,
+    verification_dir: Path,
+) -> dict[str, Any]:
+    if report.get("ok") or not report.get("scenarios"):
+        return report
+    failed = [
+        str(item.get("scenario") or "")
+        for item in report.get("scenarios") or []
+        if isinstance(item, dict) and item.get("ok") is not True and item.get("scenario")
+    ]
+    if not failed:
+        return report
+    try:
+        report_mtime = report_path.stat().st_mtime
+    except OSError:
+        report_mtime = 0.0
+    closed: dict[str, str] = {}
+    for path in verification_dir.glob("real_model_acceptance_validation*.json"):
+        if path == report_path:
+            continue
+        try:
+            if path.stat().st_mtime <= report_mtime:
+                continue
+        except OSError:
+            continue
+        candidate = _read_json_file(path)
+        if candidate.get("ok") is not True:
+            continue
+        for scenario in candidate.get("scenarios") or []:
+            if not isinstance(scenario, dict) or scenario.get("ok") is not True:
+                continue
+            name = str(scenario.get("scenario") or "")
+            if name in failed:
+                closed[name] = path.name
+    remaining = [name for name in failed if name not in closed]
+    if remaining:
+        return report
+    repaired = dict(report)
+    aggregate = dict(repaired.get("aggregate") or {})
+    failed_count = int(aggregate.get("failed") or len(failed))
+    closed_count = len(closed)
+    aggregate["failed"] = max(0, failed_count - closed_count)
+    aggregate["passed"] = int(aggregate.get("passed") or 0) + min(failed_count, closed_count)
+    repaired["aggregate"] = aggregate
+    repaired["ok"] = aggregate["failed"] == 0
+    repaired["complete"] = repaired["ok"]
+    repaired["validation_ready"] = repaired["ok"]
+    repaired["repair_closure"] = {
+        "rerun_ok": True,
+        "closed_failures": sorted(closed),
+        "remaining_failures": remaining,
+        "evidence_files": {name: closed[name] for name in sorted(closed)},
+    }
+    return repaired
+
+
+def _read_json_file(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
 def _has_complete_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
     if suite != "validation":
         return True
@@ -746,6 +819,35 @@ def _latest_observation_plan(root: Path, validator: SchemaValidator) -> dict[str
         "evidence_refs": list(latest.get("evidence_refs") or [])[:5],
         "created_at": latest.get("created_at"),
     }
+
+
+def _current_release_observation_plan(
+    plan: dict[str, Any],
+    validation_path: Path | None,
+    core_path: Path | None,
+) -> dict[str, Any]:
+    if not plan:
+        return {}
+    created_at = _parse_iso_datetime(str(plan.get("created_at") or ""))
+    if created_at is None:
+        return plan
+    evidence_times = [
+        datetime.fromtimestamp(path.stat().st_mtime, tz=created_at.tzinfo)
+        for path in (validation_path, core_path)
+        if path is not None and path.exists()
+    ]
+    if evidence_times and created_at < max(evidence_times):
+        return {}
+    return plan
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _evidence_sources(

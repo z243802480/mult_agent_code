@@ -925,9 +925,11 @@ def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]
         (
             item
             for item in profiles
-            if item.get("provider") == "fake"
-            and item.get("model") == "medium-route"
-            and item.get("purpose") == "coding"
+            if item.get("purpose") == "coding"
+            and str(item.get("model_tier") or "") == "medium"
+            and int(item.get("runtime_request_total") or 0) >= 1
+            and int(item.get("merge_gate_blocks") or 0) >= 1
+            and int(item.get("validation_total") or 0) >= 1
         ),
         {},
     )

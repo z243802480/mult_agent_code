@@ -7,6 +7,7 @@ from typing import Any
 from asteria_runtime.core.usage_signal import (
     UsageSignalInput,
     UsageSignalRecorder,
+    usage_signal_analysis,
     usage_signal_summary,
 )
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -17,6 +18,7 @@ class OpsSignalResult:
     root: Path
     signal: dict[str, Any] | None
     summary: dict[str, Any]
+    analysis: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -24,6 +26,7 @@ class OpsSignalResult:
             "root": str(self.root),
             "signal": self.signal,
             "summary": self.summary,
+            "analysis": self.analysis,
         }
 
     def to_text(self) -> str:
@@ -37,6 +40,10 @@ class OpsSignalResult:
         ]
         if self.signal:
             lines.insert(2, f"Recorded: {self.signal.get('signal_id')}")
+        if self.analysis:
+            lines.append(f"Analysis status: {self.analysis.get('status')}")
+            lines.append(f"Priority items: {len(self.analysis.get('priority_items') or [])}")
+            lines.append(f"Roadmap tasks: {len(self.analysis.get('roadmap_tasks') or [])}")
         return "\n".join(lines)
 
 
@@ -55,6 +62,7 @@ class OpsSignalCommand:
         evidence_refs: list[str] | None = None,
         source: str = "maintainer_cli",
         summarize_only: bool = False,
+        analyze: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
@@ -67,6 +75,7 @@ class OpsSignalCommand:
         self.evidence_refs = evidence_refs or []
         self.source = source
         self.summarize_only = summarize_only
+        self.analyze = analyze
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> OpsSignalResult:
@@ -87,8 +96,10 @@ class OpsSignalCommand:
                     source=self.source,
                 ),
             )
+        analysis = usage_signal_analysis(agent_dir, self.validator, write=True) if self.analyze else None
         return OpsSignalResult(
             root=self.root,
             signal=signal,
             summary=usage_signal_summary(agent_dir, self.validator),
+            analysis=analysis,
         )

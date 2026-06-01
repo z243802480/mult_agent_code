@@ -56,6 +56,47 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
         json.dumps({"schema_version": "0.1.0", "profiles": [], "token": "hidden"}),
         encoding="utf-8",
     )
+    validation_dir = tmp_path / ".asteria" / "validation_runs" / "validation-0001"
+    validation_dir.mkdir(parents=True)
+    (validation_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "validation_run_id": "validation-0001",
+                "status": "blocked",
+                "next_actions": ["repair route"],
+                "api_key": "secret-value",
+            }
+        ),
+        encoding="utf-8",
+    )
+    ops_dir = tmp_path / ".asteria" / "ops"
+    ops_dir.mkdir()
+    (ops_dir / "usage_signals.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "usage_signal_id": "usage-signal-0001",
+                "signal_type": "artifact-outcome",
+                "token": "hidden",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (ops_dir / "usage_signal_analysis.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "status": "needs_attention",
+                "priority_items": [],
+                "roadmap_tasks": [],
+                "candidate_decision_points": [],
+                "secret": "hidden",
+            }
+        ),
+        encoding="utf-8",
+    )
 
     result = EvidenceBundleCommand(tmp_path).run()
 
@@ -65,7 +106,12 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
         assert "manifest.json" in names
         assert ".asteria/runs/run-0001/run.json" in names
         assert ".asteria/runs/run-0001/model_calls.jsonl" in names
+        assert ".asteria/validation_runs/validation-0001/summary.json" in names
+        assert ".asteria/ops/usage_signals.jsonl" in names
+        assert ".asteria/ops/usage_signal_analysis.json" in names
         manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        assert manifest["included_evidence"]["validation_runs"] is True
+        assert manifest["included_evidence"]["ops_signals"] is True
         assert (
             manifest["model_route_summary"]["zai/glm-4.7/goal_spec/strong"][
                 "streaming_failed"
@@ -78,6 +124,16 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
             archive.read(".asteria/model/capability_profile.json").decode("utf-8")
         )
         assert profile["token"] == "[REDACTED]"
+        validation = json.loads(
+            archive.read(".asteria/validation_runs/validation-0001/summary.json").decode("utf-8")
+        )
+        assert validation["api_key"] == "[REDACTED]"
+        analysis = json.loads(
+            archive.read(".asteria/ops/usage_signal_analysis.json").decode("utf-8")
+        )
+        assert analysis["secret"] == "[REDACTED]"
+        usage_signal = archive.read(".asteria/ops/usage_signals.jsonl").decode("utf-8")
+        assert "[REDACTED]" in usage_signal
 
 
 def test_evidence_bundle_excludes_protected_route_files(tmp_path: Path) -> None:
