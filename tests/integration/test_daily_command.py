@@ -10,6 +10,7 @@ from asteria_runtime.commands.daily_command import (
     DailyRunCommand,
 )
 from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -228,6 +229,26 @@ def test_daily_plan_prioritizes_blocked_route_guidance(tmp_path: Path) -> None:
     assert plan["signals"]["route_guidance"]["status"] == "blocked"
     assert plan["actions"][0]["kind"] == "route_guidance_review"
     assert plan["actions"][0]["risk"] == "model_route_blocked"
+
+
+def test_daily_plan_consumes_background_usage_signals(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-1",
+        artifact_outcome="partial",
+        blocker_category="report_confusing",
+        trust_risk="unclear_validation",
+        summary="Maintainer diagnostic signal.",
+    ).run()
+
+    result = DailyPlanCommand(tmp_path, date="release-hardening").run()
+
+    plan = json.loads(result.plan_path.read_text(encoding="utf-8"))
+    assert plan["signals"]["usage_signals"]["status"] == "needs_attention"
+    assert plan["signals"]["usage_signals"]["unresolved"] == 1
+    assert plan["actions"][0]["kind"] == "ops_signal_review"
+    assert plan["actions"][0]["responsible_role"] == "Maintainer"
 
 
 def test_daily_report_creates_plan_only_report_when_missing(tmp_path: Path) -> None:

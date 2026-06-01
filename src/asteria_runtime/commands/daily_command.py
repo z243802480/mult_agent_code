@@ -11,6 +11,7 @@ from typing import Any
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.usage_signal import usage_signal_summary
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -247,6 +248,7 @@ class DailyPlanCommand:
             "model_profile": self._model_profile_signal(agent_dir),
             "route_guidance": CapabilityFeedbackAdvisor(self.validator).route_guidance(agent_dir),
             "candidate_promotions": self._candidate_promotion_signal(agent_dir, current_run),
+            "usage_signals": usage_signal_summary(agent_dir, self.validator),
         }
 
     def _latest_acceptance(self, agent_dir: Path) -> dict[str, Any]:
@@ -376,6 +378,21 @@ class DailyPlanCommand:
                     ),
                     "risk": "promotion_release_risk",
                     "responsible_role": "Release",
+                }
+            )
+            return actions
+        usage_signals = signals.get("usage_signals", {})
+        if usage_signals.get("status") == "needs_attention":
+            actions.append(
+                {
+                    "kind": "ops_signal_review",
+                    "command": "python -m asteria_runtime ops-signal --summary --root .",
+                    "summary": (
+                        "Review background usage signals before widening dogfooding "
+                        f"(unresolved={usage_signals.get('unresolved', 0)})."
+                    ),
+                    "risk": "ops_signal_review",
+                    "responsible_role": "Maintainer",
                 }
             )
             return actions

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -164,6 +165,14 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
         },
         "model_capability_profile",
     )
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-1",
+        artifact_outcome="partial",
+        blocker_category="report_confusing",
+        trust_risk="unclear_validation",
+        summary="Maintainer diagnostic signal.",
+    ).run()
 
     result = WeeklyReportCommand(tmp_path, week_id="2026-W20").run()
 
@@ -178,9 +187,14 @@ def test_weekly_report_summarizes_long_run_acceptance_and_model_profile(
     assert report["runtime_os"]["evidence"]["acceptance_worker_results_jsonl"] is True
     assert report["runtime_os"]["evidence"]["task_graph_selections"] == 1
     assert report["model_profile"]["weak_routes"][0]["purpose"] == "task_execution"
+    assert report["usage_signals"]["status"] == "needs_attention"
+    assert report["usage_signals"]["unresolved"] == 1
     assert any("Acceptance failures remain" in risk for risk in report["risks"])
+    assert any("Background usage signals need review" in risk for risk in report["risks"])
     assert "asteria /acceptance --failed-only --promote-failures" in report["next_actions"][0]
+    assert any("ops-signal --summary" in action for action in report["next_actions"])
     assert "Weekly Production Report" in markdown
+    assert "## Background Usage Signals" in markdown
     assert "## Runtime OS" in markdown
     assert "config_driven_report" in markdown
 

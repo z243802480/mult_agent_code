@@ -23,6 +23,7 @@ from asteria_runtime.commands.daily_command import (
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.model_check_command import ModelCheckCommand
 from asteria_runtime.commands.new_command import NewCommand
+from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.decide_command import DecideCommand
@@ -1142,6 +1143,43 @@ def build_parser() -> argparse.ArgumentParser:
         default=7,
         help="Maximum long-run and acceptance records to include",
     )
+    ops_signal_parser = subcommands.add_parser(
+        "ops-signal",
+        aliases=["/ops-signal", "usage-signal", "/usage-signal"],
+        help="Record or summarize background usage signals for maintainer diagnostics",
+    )
+    ops_signal_parser.add_argument("--root", default=".", help="Workspace root path")
+    ops_signal_parser.add_argument("--run-id", default=None, help="Related run id")
+    ops_signal_parser.add_argument("--task-kind", default="unknown")
+    ops_signal_parser.add_argument("--expected-outcome-category", default="unknown")
+    ops_signal_parser.add_argument(
+        "--artifact-outcome",
+        default="unknown",
+        choices=["accepted", "rejected", "blocked", "partial", "unknown"],
+    )
+    ops_signal_parser.add_argument("--blocker-category", default="none")
+    ops_signal_parser.add_argument("--trust-risk", default="none")
+    ops_signal_parser.add_argument("--note", "--signal-summary", dest="signal_summary", default="")
+    ops_signal_parser.add_argument(
+        "--evidence-ref",
+        action="append",
+        default=[],
+        help="Redacted evidence reference such as a run id or evidence-bundle path",
+    )
+    ops_signal_parser.add_argument(
+        "--source",
+        default="maintainer_cli",
+        help="Signal source, e.g. maintainer_cli or diagnostic_bundle",
+    )
+    ops_signal_parser.add_argument(
+        "--summary",
+        "--summary-only",
+        "--summary-report",
+        dest="ops_summary_only",
+        action="store_true",
+        help="Only print the aggregate summary without recording a signal",
+    )
+    ops_signal_parser.add_argument("--json", action="store_true", help="Print JSON")
     roadmap_parser = subcommands.add_parser(
         "roadmap-update",
         aliases=["/roadmap-update", "prd-update", "/prd-update"],
@@ -1283,6 +1321,7 @@ def build_parser() -> argparse.ArgumentParser:
                     ("gate", "Run staged validation checks; use --stage release before release."),
                     ("validation", "Plan controlled real-provider validation tasks."),
                     ("evidence-bundle", "Export a redacted diagnostic bundle."),
+                    ("ops-signal", "Record background usage signals for ops diagnostics."),
                     ("acceptance", "Run reproducible runtime acceptance scenarios."),
                     ("acceptance-gate", "Evaluate acceptance reports as release gates."),
                     ("acceptance-history", "Show acceptance trend history."),
@@ -1766,6 +1805,26 @@ def main() -> None:
             limit=args.limit,
         ).run()
         print(weekly_report_result.to_text())
+        return
+
+    if command in {"ops-signal", "usage-signal"}:
+        ops_signal_result = OpsSignalCommand(
+            root=Path(args.root),
+            run_id=args.run_id,
+            task_kind=args.task_kind,
+            expected_outcome_category=args.expected_outcome_category,
+            artifact_outcome=args.artifact_outcome,
+            blocker_category=args.blocker_category,
+            trust_risk=args.trust_risk,
+            summary=args.signal_summary,
+            evidence_refs=args.evidence_ref,
+            source=args.source,
+            summarize_only=args.ops_summary_only,
+        ).run()
+        if args.json:
+            print(json.dumps(ops_signal_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(ops_signal_result.to_text())
         return
 
     if command in {"roadmap-update", "prd-update"}:

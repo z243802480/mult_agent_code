@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UsageSignal",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "signal_id",
+    "created_at",
+    "source",
+    "run_id",
+    "task_kind",
+    "expected_outcome_category",
+    "artifact_outcome",
+    "blocker_category",
+    "trust_risk",
+    "summary",
+    "evidence_refs",
+    "redacted"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "signal_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "source": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_kind": { "type": "string" },
+    "expected_outcome_category": { "type": "string" },
+    "artifact_outcome": {
+      "type": "string",
+      "enum": ["accepted", "rejected", "blocked", "partial", "unknown"]
+    },
+    "blocker_category": { "type": "string" },
+    "trust_risk": { "type": "string" },
+    "summary": { "type": "string" },
+    "evidence_refs": { "type": "array", "items": { "type": "string" } },
+    "redacted": { "type": "boolean" }
+  },
+  "additionalProperties": false
+}

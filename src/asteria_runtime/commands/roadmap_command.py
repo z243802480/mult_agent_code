@@ -60,8 +60,10 @@ class RoadmapCommand:
         model_profile = model_profile if isinstance(model_profile, dict) else {}
         risks = [str(item) for item in weekly.get("risks", [])] if weekly else []
         next_actions = [str(item) for item in weekly.get("next_actions", [])] if weekly else []
+        usage_signals = weekly.get("usage_signals") if weekly else {}
+        usage_signals = usage_signals if isinstance(usage_signals, dict) else {}
         capabilities = self._capabilities(acceptance, model_profile)
-        milestones = self._milestones(acceptance, model_profile, risks)
+        milestones = self._milestones(acceptance, model_profile, risks, usage_signals)
         if not weekly:
             next_actions.append(
                 "Run `asteria daily-plan --objective <goal>` to start evidence collection."
@@ -87,6 +89,7 @@ class RoadmapCommand:
                 "weekly_report": weekly.get("report_path") if weekly else None,
                 "acceptance_suite": acceptance.get("latest_suite"),
                 "model_profile_status": model_profile.get("status"),
+                "usage_signal_status": usage_signals.get("status"),
             },
         }
 
@@ -141,9 +144,13 @@ class RoadmapCommand:
         acceptance: dict[str, Any],
         model_profile: dict[str, Any],
         risks: list[str],
+        usage_signals: dict[str, Any],
     ) -> list[dict[str, str]]:
         acceptance_done = not acceptance.get("latest_failed", 0)
         model_done = model_profile.get("status") == "ready" and not model_profile.get("weak_routes")
+        ops_done = usage_signals.get("status") in {"healthy", "missing"} and not usage_signals.get(
+            "unresolved", 0
+        )
         return [
             {
                 "id": "M1",
@@ -168,6 +175,12 @@ class RoadmapCommand:
                 "goal": "Automate project Roadmap and PRD updates from runtime evidence.",
                 "status": "done",
                 "evidence": "project_roadmap.json and docs/zh/自动路线图.md",
+            },
+            {
+                "id": "M5",
+                "goal": "Use background usage signals to steer dogfooding without changing the user workflow.",
+                "status": "done" if ops_done else "in_progress",
+                "evidence": "ops/usage_signals.jsonl and weekly_report usage_signals",
             },
         ]
 

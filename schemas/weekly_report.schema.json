@@ -25,6 +25,7 @@
     "long_run": { "type": "object" },
     "acceptance": { "type": "object" },
     "model_profile": { "type": "object" },
+    "usage_signals": { "type": "object" },
     "risks": { "type": "array", "items": { "type": "string" } },
     "next_actions": { "type": "array", "items": { "type": "string" } }
   }

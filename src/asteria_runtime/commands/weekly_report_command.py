@@ -12,6 +12,7 @@ from asteria_runtime.commands._runtime_os_helpers import (
     runtime_os_release_evidence,
 )
 from asteria_runtime.core.acceptance_catalog import enrich_acceptance_report
+from asteria_runtime.core.usage_signal import usage_signal_summary
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -62,9 +63,12 @@ class WeeklyReportCommand:
         acceptance = self._acceptance_summary(agent_dir)
         runtime_os = self._runtime_os_summary(agent_dir)
         model_profile = self._model_profile(agent_dir)
-        risk_summary = self._risk_summary(reports, acceptance, model_profile, runtime_os)
+        usage_signals = usage_signal_summary(agent_dir, self.validator)
+        risk_summary = self._risk_summary(
+            reports, acceptance, model_profile, runtime_os, usage_signals
+        )
         next_actions = self._next_actions(
-            reports, acceptance, model_profile, risk_summary, runtime_os
+            reports, acceptance, model_profile, risk_summary, runtime_os, usage_signals
         )
         report = {
             "schema_version": "0.1.0",
@@ -77,6 +81,7 @@ class WeeklyReportCommand:
             "acceptance": acceptance,
             "runtime_os": runtime_os,
             "model_profile": model_profile,
+            "usage_signals": usage_signals,
             "risks": risk_summary,
             "next_actions": next_actions,
         }
@@ -209,6 +214,7 @@ class WeeklyReportCommand:
         acceptance: dict[str, Any],
         model_profile: dict[str, Any],
         runtime_os: dict[str, Any],
+        usage_signals: dict[str, Any],
     ) -> list[str]:
         risks = []
         if not reports:
@@ -228,6 +234,11 @@ class WeeklyReportCommand:
             risks.append("Weak model routes need review: " + ", ".join(labels))
         if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
             risks.append(f"Runtime OS release evidence is {runtime_os.get('status')}.")
+        if usage_signals.get("status") == "needs_attention":
+            risks.append(
+                "Background usage signals need review: "
+                f"unresolved={usage_signals.get('unresolved', 0)}"
+            )
         for report in reports:
             for risk in report.get("risks", [])[:3]:
                 risks.append(str(risk))
@@ -264,6 +275,7 @@ class WeeklyReportCommand:
         model_profile: dict[str, Any],
         risks: list[str],
         runtime_os: dict[str, Any],
+        usage_signals: dict[str, Any],
     ) -> list[str]:
         actions = []
         if not reports:
@@ -280,6 +292,8 @@ class WeeklyReportCommand:
             actions.append(
                 "Run `asteria /acceptance --suite core` and `asteria /acceptance-gate --suite core`."
             )
+        if usage_signals.get("status") == "needs_attention":
+            actions.append("Review `asteria ops-signal --summary` before widening dogfooding.")
         if not risks:
             actions.append("Continue with the next long-run cycle and keep acceptance gated.")
         return list(dict.fromkeys(actions))
@@ -308,6 +322,12 @@ class WeeklyReportCommand:
             "",
             f"- Status: {report['model_profile']['status']}",
             f"- Profiles: {report['model_profile']['profile_count']}",
+            "",
+            "## Background Usage Signals",
+            "",
+            f"- Status: {report.get('usage_signals', {}).get('status', 'missing')}",
+            f"- Total: {report.get('usage_signals', {}).get('total', 0)}",
+            f"- Unresolved: {report.get('usage_signals', {}).get('unresolved', 0)}",
             "",
             "## Runtime OS",
             "",
