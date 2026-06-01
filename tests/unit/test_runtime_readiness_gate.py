@@ -132,6 +132,7 @@ def _context_budget_snapshot(
     runtime_profile_id: str = "runtime-profile-subagent-subagent",
     parent_worker_invocation_id: str = "worker-0001",
     worker_kind: str = "subagent",
+    scope: str = "subagent_child",
 ) -> dict:
     boundary = "not_required"
     if pressure_status in {"hard_stop", "exceeded"}:
@@ -146,7 +147,7 @@ def _context_budget_snapshot(
         "run_id": "run-1",
         "task_id": task_id,
         "created_at": "2026-05-29T10:00:03+08:00",
-        "scope": "subagent_child",
+        "scope": scope,
         "runtime_profile_id": runtime_profile_id,
         "context_mount_id": "context-worker-0001",
         "worker_kind": worker_kind,
@@ -531,6 +532,42 @@ def test_runtime_readiness_gate_blocks_loop_decision_without_runtime_execution(
     assert "no matching Runtime execution result" in execution["summary"]
 
 
+def test_runtime_readiness_gate_matches_loop_execution_by_run_id(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    old_run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    latest_run_dir = tmp_path / ".asteria" / "runs" / "run-2"
+    old_run_dir.mkdir(parents=True)
+    latest_run_dir.mkdir(parents=True)
+    old_execution = _loop_execution("repair")
+    old_execution["created_at"] = "2026-05-29T12:00:00+08:00"
+    JsonlStore(validator).append(
+        old_run_dir / "agent_loop_execution_results.jsonl",
+        old_execution,
+        "agent_loop_execution_result",
+    )
+    latest_decision = _loop_decision("repair")
+    latest_decision["run_id"] = "run-2"
+    latest_decision["created_at"] = "2026-05-29T11:00:00+08:00"
+    JsonlStore(validator).append(
+        latest_run_dir / "agent_loop_decisions.jsonl",
+        latest_decision,
+        "agent_loop_decision",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    execution = next(check for check in gate["checks"] if check["name"] == "agent_loop_execution")
+    assert execution["status"] == "blocked"
+    assert "no matching Runtime execution result" in execution["summary"]
+    assert execution["evidence_refs"] == ["agent-loop-decision-0001"]
+
+
 def test_runtime_readiness_gate_requires_subagent_worker_evidence(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
     run_dir = tmp_path / ".asteria" / "runs" / "run-1"
@@ -645,6 +682,35 @@ def test_runtime_readiness_gate_accepts_readonly_fanout_child_evidence(
     assert fanout["status"] == "ready"
     assert "2/2 child worker" in fanout["summary"]
     assert "model_calls=2" in fanout["summary"]
+
+
+def test_runtime_readiness_gate_accepts_readonly_fanout_task_context_snapshots(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    _append_ready_readonly_fanout(run_dir, validator)
+    path = run_dir / "context_budget_snapshots.jsonl"
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    for row in rows:
+        if row.get("worker_kind") == "subagent_readonly_child":
+            row["scope"] = "task_context"
+    path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
+    assert fanout["status"] == "ready"
 
 
 def test_runtime_readiness_gate_blocks_incomplete_readonly_fanout_result(

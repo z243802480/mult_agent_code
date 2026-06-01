@@ -81,6 +81,7 @@ class PlanCommand:
         output_root: Path | None = None,
         artifact_root: Path | None = None,
         worktree_policy: str = "controlled_patch",
+        validation_probe_ids: list[str] | None = None,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -95,6 +96,7 @@ class PlanCommand:
         self.output_root = output_root
         self.artifact_root = artifact_root
         self.worktree_policy = worktree_policy
+        self.validation_probe_ids = list(validation_probe_ids or [])
 
     def run(self) -> PlanResult:
         agent_dir = self.root / ".asteria"
@@ -373,6 +375,7 @@ class PlanCommand:
             data={"goal_id": goal_spec["goal_id"]},
         )
         task_plan = RequirementPlanner().build_task_plan(goal_spec, runtime_context=runtime_context)
+        _apply_validation_probe_hints(task_plan, self.validation_probe_ids)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)
         loop_dispatch = AgentLoopProfileRegistry().dispatch_plan(
@@ -651,3 +654,91 @@ class PlanCommand:
             task_plan_status=str(task_plan_eval["status"]),
             task_plan_score=float(task_plan_eval["overall_score"]),
         )
+
+
+def _apply_validation_probe_hints(task_plan: dict, probe_ids: list[str]) -> None:
+    selected = [str(item) for item in probe_ids if str(item)]
+    if not selected:
+        return
+    tasks = [item for item in task_plan.get("tasks") or [] if isinstance(item, dict)]
+    if not tasks:
+        return
+    task = tasks[0]
+    task_plan["tasks"] = [task]
+    hints = dict(task.get("runtime_profile_hints") or {})
+    hints["validation_probe_ids"] = selected
+    hints["runtime_managed_validation_probe"] = True
+    if any(
+        probe_id
+        in {
+            "parent_selects_subagent",
+            "readonly_fanout_succeeds",
+            "readonly_write_tool_blocked",
+            "disjoint_write_gate_blocks_unsafe_fanout",
+        }
+        for probe_id in selected
+    ):
+        hints["force_next_action"] = "subagent"
+    task["runtime_profile_hints"] = hints
+    if any(
+        probe_id in {"readonly_fanout_succeeds", "readonly_write_tool_blocked"}
+        for probe_id in selected
+    ):
+        _apply_readonly_fanout_probe_hint(task)
+    if "disjoint_write_gate_blocks_unsafe_fanout" in selected:
+        _apply_disjoint_write_probe_hint(task)
+
+
+def _apply_readonly_fanout_probe_hint(task: dict) -> None:
+    task["task_kind"] = "research"
+    task["parallel_safety"] = "readonly"
+    task["read_scope"] = [".asteria/project.json"]
+    task["write_scope"] = []
+    task["expected_changed_files"] = []
+    task["expected_artifacts"] = []
+    task["allowed_tools"] = ["list_files", "read_file", "search_text", "run_command"]
+    task["acceptance"] = [
+        "inspect validation probe path alpha without writing files",
+        "inspect validation probe path beta without writing files",
+    ]
+    task["completion_contract"] = {
+        "requires_changed_artifact": False,
+        "requires_verification": True,
+        "allows_expected_failure": False,
+    }
+    task["verification_policy"] = {
+        "required": True,
+        "allow_expected_failure": False,
+        "commands": [],
+    }
+    task["multi_agent_strategy"] = {
+        "mode": "readonly_fanout",
+        "max_child_workers": 2,
+        "planner_child_plan": True,
+        "coordination_policy": {
+            "write_allowed": False,
+            "requires_merge_gate": False,
+            "requires_summary": True,
+            "scale_out_limit": 2,
+        },
+        "reason": "validation probe requires readonly child fanout evidence",
+    }
+
+
+def _apply_disjoint_write_probe_hint(task: dict) -> None:
+    task["parallel_safety"] = "disjoint_writes"
+    task["write_scope"] = ["validation-probe-a.txt", "validation-probe-b.txt"]
+    task["expected_changed_files"] = list(task["write_scope"])
+    task["allowed_tools"] = ["write_file", "run_command"]
+    task["multi_agent_strategy"] = {
+        "mode": "disjoint_write_workers",
+        "max_child_workers": 2,
+        "planner_child_plan": True,
+        "coordination_policy": {
+            "write_allowed": True,
+            "requires_merge_gate": True,
+            "requires_disjoint_write_scope": True,
+            "scale_out_limit": 2,
+        },
+        "reason": "validation probe must prove unsafe disjoint write fanout is blocked",
+    }

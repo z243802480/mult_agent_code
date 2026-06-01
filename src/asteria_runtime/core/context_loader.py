@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from typing import Any
 
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.storage.json_store import JsonStore
@@ -51,7 +53,7 @@ class ContextLoader:
             return []
         entries: list[dict] = []
         for path in sorted(memory_dir.glob("*.jsonl")):
-            entries.extend(self.jsonl.read_all(path, "memory_entry"))
+            entries.extend(self._safe_read_jsonl(path, "memory_entry"))
         entries.sort(key=lambda item: str(item.get("created_at", "")))
         return [
             {
@@ -233,3 +235,24 @@ class ContextLoader:
             return self.store.read(path, schema_name)
         except Exception:  # noqa: BLE001 - context loading should be best effort
             return {}
+
+    def _safe_read_jsonl(self, path: Path, schema_name: str) -> list[dict[str, Any]]:
+        if not path.exists():
+            return []
+        entries: list[dict[str, Any]] = []
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+                if not isinstance(item, dict):
+                    continue
+                self.validator.validate(schema_name, item)
+            except Exception:  # noqa: BLE001 - context loading should skip stale evidence rows
+                continue
+            entries.append(item)
+        return entries

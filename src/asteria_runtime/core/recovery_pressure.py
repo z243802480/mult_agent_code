@@ -110,6 +110,7 @@ def _damaged_memory_evidence(root: Path) -> list[str]:
         for item in recovery_events
         if str(item.get("chain") or "") == "damaged_memory"
     ]
+    damaged.extend(_invalid_memory_jsonl_evidence(root))
     if damaged:
         return sorted(set(damaged))
     memory = _read_json(root / ".asteria" / "memory" / "active_goal.json")
@@ -119,6 +120,35 @@ def _damaged_memory_evidence(root: Path) -> list[str]:
     if "corrupt" in haystack or "damaged" in haystack or "损坏" in haystack:
         return [".asteria/memory/active_goal.json"]
     return []
+
+
+def _invalid_memory_jsonl_evidence(root: Path) -> list[str]:
+    memory_dir = root / ".asteria" / "memory"
+    if not memory_dir.exists():
+        return []
+    refs: list[str] = []
+    for path in sorted(memory_dir.glob("*.jsonl")):
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except ValueError:
+                refs.append(f".asteria/memory/{path.name}")
+                break
+            if not isinstance(item, dict) or not _looks_like_memory_entry(item):
+                refs.append(f".asteria/memory/{path.name}")
+                break
+    return sorted(set(refs))
+
+
+def _looks_like_memory_entry(item: dict[str, Any]) -> bool:
+    required = {"memory_id", "type", "content", "source", "tags", "confidence", "created_at"}
+    return required <= set(item)
 
 
 def _multi_run_conflict_evidence(root: Path) -> list[str]:

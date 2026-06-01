@@ -24,7 +24,9 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "Maintainer / Inspector" in help_text
     assert help_text.index("Start") < help_text.index("Support")
     assert help_text.index("Support") < help_text.index("Maintainer / Inspector")
-    assert "Product workflow commands for ordinary goal -> progress -> review journeys." in help_text
+    assert (
+        "Product workflow commands for ordinary goal -> progress -> review journeys." in help_text
+    )
     assert "goal    Long-task objective mode" in help_text
     assert "plan    Read-only comprehensive plan" in help_text
     assert "status  Show user-level progress" in help_text
@@ -182,6 +184,8 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
             "2",
             "--summary-json",
             "validation.json",
+            "--probe-id",
+            "readonly_fanout_succeeds",
             "--json",
         ]
     )
@@ -366,6 +370,7 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert validation_run_args.dry_run
     assert validation_run_args.max_iterations == 2
     assert validation_run_args.summary_json.as_posix() == "validation.json"
+    assert validation_run_args.probe_id == ["readonly_fanout_succeeds"]
     assert validation_run_args.json
     assert validation_args.command == "/validation"
     assert validation_args.goal == "Create a small probe"

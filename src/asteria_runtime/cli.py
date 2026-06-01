@@ -471,6 +471,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write the validation-run summary to this JSON path",
     )
     validation_run_parser.add_argument(
+        "--probe-id",
+        action="append",
+        choices=[
+            "parent_selects_subagent",
+            "readonly_fanout_succeeds",
+            "readonly_write_tool_blocked",
+            "disjoint_write_gate_blocks_unsafe_fanout",
+            "parent_loop_stops_after_observation",
+        ],
+        default=[],
+        help="Target a specific validation probe; repeat for multiple scoped probes",
+    )
+    validation_run_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
@@ -1500,6 +1513,7 @@ def main() -> None:
             max_iterations=args.max_iterations,
             max_tasks_per_iteration=args.max_tasks_per_iteration,
             summary_json=args.summary_json,
+            probe_ids=args.probe_id,
         ).run()
         if args.json:
             print(json.dumps(validation_run_result.to_dict(), ensure_ascii=False, indent=2))

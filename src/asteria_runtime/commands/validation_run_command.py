@@ -31,6 +31,39 @@ DEFAULT_VALIDATION_GOAL = (
     "Create a tiny local validation artifact named validation_probe.txt containing one line: "
     "validation small task ok. Keep the change minimal and verify the file exists."
 )
+VALIDATION_PROBE_GOALS = {
+    "parent_selects_subagent": (
+        "Create a tiny validation artifact named subagent_probe.txt containing one line: "
+        "subagent probe ok. This is a validation probe: the parent agent loop must choose "
+        "next_action.action=subagent, dispatch a child worker, consume the subagent_result "
+        "observation, and stop cleanly after verification."
+    ),
+    "readonly_fanout_succeeds": (
+        "Run a readonly fanout validation probe. The parent agent loop must choose "
+        "next_action.action=subagent and request readonly_fanout scheduling so child workers "
+        "inspect the repository without write privileges. Record the final aggregate result in "
+        "readonly_fanout_probe.txt with one line: readonly fanout probe ok."
+    ),
+    "readonly_write_tool_blocked": (
+        "Run a readonly child-worker write-gate validation probe. The parent agent loop must "
+        "choose next_action.action=subagent and request readonly_fanout scheduling; one child "
+        "must attempt or propose a write action that the runtime blocks or reviews. Record the "
+        "final aggregate result in readonly_write_gate_probe.txt with one line: readonly write "
+        "gate probe ok."
+    ),
+    "disjoint_write_gate_blocks_unsafe_fanout": (
+        "Run a disjoint-write safety validation probe. The parent agent loop must choose "
+        "next_action.action=subagent and propose disjoint_write_workers scheduling for two "
+        "independent file writes, but real parallel disjoint write workers must stay disabled "
+        "unless candidate workspace, merge gate, and promotion recovery evidence are present. "
+        "Record the blocked-or-reviewed result in disjoint_write_gate_probe.txt with one line: "
+        "disjoint write gate probe ok."
+    ),
+    "parent_loop_stops_after_observation": (
+        "Create parent_loop_stop_probe.txt containing one line: parent loop stop probe ok. "
+        "The parent loop should consume the child observation and stop cleanly."
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -76,10 +109,12 @@ class ValidationRunCommand:
         max_iterations: int = 3,
         max_tasks_per_iteration: int = 1,
         summary_json: Path | None = None,
+        probe_ids: list[str] | None = None,
         run_command_factory: Callable[..., RunCommand] | None = None,
     ) -> None:
         self.root = root.resolve()
-        self.goal = goal or DEFAULT_VALIDATION_GOAL
+        self.probe_ids = _normalize_probe_ids(probe_ids)
+        self.goal = goal or _goal_for_probe_ids(self.probe_ids) or DEFAULT_VALIDATION_GOAL
         self.dry_run = dry_run
         self.max_iterations = max_iterations
         self.max_tasks_per_iteration = max_tasks_per_iteration
@@ -105,9 +140,9 @@ class ValidationRunCommand:
                 source="validation-run-preflight",
             )
         )
-        goal_spec_route_plan = CapabilityFeedbackAdvisor(
-            self.validator
-        ).goal_spec_execution_plan(self.root / ".asteria", self.goal)
+        goal_spec_route_plan = CapabilityFeedbackAdvisor(self.validator).goal_spec_execution_plan(
+            self.root / ".asteria", self.goal
+        )
         blocked_reasons = self._blocked_reasons(doctor.to_dict(), gate.to_dict())
         if blocked_reasons:
             summary = self._build_summary(
@@ -124,10 +159,14 @@ class ValidationRunCommand:
                 next_actions=blocked_reasons,
             )
             self.store.write(summary_path, summary, "validation_run")
-            return ValidationRunResult(validation_run_id, "blocked", summary_path, None, blocked_reasons)
+            return ValidationRunResult(
+                validation_run_id, "blocked", summary_path, None, blocked_reasons
+            )
 
         if self.dry_run:
-            actions = ["Run without `--dry-run` to start the controlled small real-task validation run."]
+            actions = [
+                "Run without `--dry-run` to start the controlled small real-task validation run."
+            ]
             summary = self._build_summary(
                 validation_run_id=validation_run_id,
                 status="dry_run",
@@ -151,6 +190,7 @@ class ValidationRunCommand:
             max_tasks_per_iteration=self.max_tasks_per_iteration,
             enable_research=False,
             parallel_writes=False,
+            validation_probe_ids=self.probe_ids,
         )
         run_result = run_command.run()
         evidence = self._evidence(run_result.run_id)
@@ -170,13 +210,17 @@ class ValidationRunCommand:
             next_actions=actions,
         )
         self.store.write(summary_path, summary, "validation_run")
-        return ValidationRunResult(validation_run_id, status, summary_path, run_result.run_id, actions)
+        return ValidationRunResult(
+            validation_run_id, status, summary_path, run_result.run_id, actions
+        )
 
     def _blocked_reasons(self, doctor: dict[str, object], gate: dict[str, Any]) -> list[str]:
         reasons: list[str] = []
         if doctor.get("ok") is not True:
             reasons.append("Fix `asteria doctor` error checks before validation-run.")
         if gate.get("stage") != "ready_for_small_real_task_validation":
+            if self._allow_targeted_probe_over_runtime_readiness(gate):
+                return reasons
             blocking_reason = gate.get("blocking_reason")
             if blocking_reason:
                 reasons.append(str(blocking_reason))
@@ -188,6 +232,21 @@ class ValidationRunCommand:
         if isinstance(route_guidance, dict) and route_guidance.get("status") == "blocked":
             reasons.extend(str(item) for item in route_guidance.get("recommended_actions", []))
         return reasons
+
+    def _allow_targeted_probe_over_runtime_readiness(self, gate: dict[str, Any]) -> bool:
+        if not self.probe_ids or gate.get("stage") != "runtime_readiness_blocked":
+            return False
+        readiness = gate.get("runtime_readiness_gate")
+        readiness = readiness if isinstance(readiness, dict) else {}
+        blocked = [
+            str(check.get("name") or "")
+            for check in readiness.get("checks") or []
+            if isinstance(check, dict) and check.get("status") == "blocked"
+        ]
+        allowed = {"agent_loop_execution"}
+        if "readonly_fanout_succeeds" in self.probe_ids:
+            allowed.add("subagent_readonly_fanout")
+        return bool(blocked) and set(blocked) <= allowed
 
     def _build_summary(
         self,
@@ -207,6 +266,8 @@ class ValidationRunCommand:
         validation_plan = self._validation_plan()
         if run_result and isinstance(evidence.get("validation_probe_results"), list):
             validation_plan["probe_results"] = evidence["validation_probe_results"]
+        if run_result and isinstance(evidence.get("recommended_probe_runs"), list):
+            validation_plan["recommended_probe_runs"] = evidence["recommended_probe_runs"]
         return {
             "schema_version": "0.1.0",
             "control_surface": _validation_run_control_surface(),
@@ -317,6 +378,8 @@ class ValidationRunCommand:
                 "enablement_flag": "real_disjoint_write_workers",
                 "disjoint_write_gate": "prove_block_before_enable",
             },
+            "selected_probe_ids": self.probe_ids,
+            "next_probe_goals": self._next_probe_goals(self.probe_ids),
             "probes": [
                 {
                     "id": "parent_selects_subagent",
@@ -332,7 +395,7 @@ class ValidationRunCommand:
                     "id": "readonly_fanout_succeeds",
                     "intent": "Verify readonly child fanout can run without write privileges.",
                     "expected_evidence": [
-                        "subagent_child_plans.jsonl:scheduling_strategy=parallel_readonly_fanout",
+                        "subagent_child_plans.jsonl:scheduling_strategy=parallel_readonly_safe",
                         "worker_results.jsonl:readonly child workers succeeded",
                     ],
                     "gate_policy": "review_if_missing",
@@ -373,12 +436,20 @@ class ValidationRunCommand:
     def _probe_results(self, run_id: str) -> list[dict[str, Any]]:
         run_dir = self.root / ".asteria" / "runs" / run_id
         plan = self._validation_plan()
-        decisions = self.jsonl.read_all(run_dir / "agent_loop_decisions.jsonl", "agent_loop_decision")
+        decisions = self.jsonl.read_all(
+            run_dir / "agent_loop_decisions.jsonl", "agent_loop_decision"
+        )
         workers = self.jsonl.read_all(run_dir / "workers.jsonl", "worker_invocation")
         worker_results = self.jsonl.read_all(run_dir / "worker_results.jsonl", "worker_result")
-        child_plans = self.jsonl.read_all(run_dir / "subagent_child_plans.jsonl", "subagent_child_plan")
-        observations = self.jsonl.read_all(run_dir / "agent_loop_observations.jsonl", "agent_loop_observation")
-        run_summary = self._read_optional(run_dir / "agent_loop_run_summary.json", "agent_loop_run_summary")
+        child_plans = self.jsonl.read_all(
+            run_dir / "subagent_child_plans.jsonl", "subagent_child_plan"
+        )
+        observations = self.jsonl.read_all(
+            run_dir / "agent_loop_observations.jsonl", "agent_loop_observation"
+        )
+        run_summary = self._read_optional(
+            run_dir / "agent_loop_run_summary.json", "agent_loop_run_summary"
+        )
         readiness = runtime_readiness_gate(
             root=self.root,
             validator=self.validator,
@@ -404,6 +475,18 @@ class ValidationRunCommand:
                 readiness_checks=readiness_checks,
             )
             for probe in plan["probes"]
+        ]
+
+    def _next_probe_goals(self, probe_ids: list[str]) -> list[dict[str, Any]]:
+        selected = probe_ids or list(VALIDATION_PROBE_GOALS)
+        return [
+            {
+                "probe_id": probe_id,
+                "goal": VALIDATION_PROBE_GOALS[probe_id],
+                "command": _probe_command(probe_id),
+            }
+            for probe_id in selected
+            if probe_id in VALIDATION_PROBE_GOALS
         ]
 
     def _evaluate_probe(
@@ -465,18 +548,34 @@ class ValidationRunCommand:
                 or "subagent" in str(item.get("summary") or "").lower()
             ]
             if has_decision and worker_ids and result_ids:
-                return "passed", "Subagent decision, worker, and result evidence are present.", [*worker_ids[:2], *result_ids[:2]]
-            return "missing_evidence", "Subagent path was not fully evidenced in this run.", [*worker_ids[:2], *result_ids[:2]]
+                return (
+                    "passed",
+                    "Subagent decision, worker, and result evidence are present.",
+                    [*worker_ids[:2], *result_ids[:2]],
+                )
+            return (
+                "missing_evidence",
+                "Subagent path was not fully evidenced in this run.",
+                [*worker_ids[:2], *result_ids[:2]],
+            )
         if probe_id == "readonly_fanout_succeeds":
             plan_ids = [
                 str(item.get("subagent_child_plan_id") or "")
                 for item in child_plans
-                if str(item.get("scheduling_strategy") or "") == "parallel_readonly_fanout"
+                if _is_readonly_fanout_strategy(item)
             ]
             fanout = readiness_checks.get("subagent_readonly_fanout", {})
             if plan_ids and fanout.get("status") == "ready":
-                return "passed", str(fanout.get("summary") or "Readonly fanout succeeded."), plan_ids[:3]
-            return "missing_evidence", str(fanout.get("summary") or "Readonly fanout evidence was not present."), plan_ids[:3]
+                return (
+                    "passed",
+                    str(fanout.get("summary") or "Readonly fanout succeeded."),
+                    plan_ids[:3],
+                )
+            return (
+                "missing_evidence",
+                str(fanout.get("summary") or "Readonly fanout evidence was not present."),
+                plan_ids[:3],
+            )
         if probe_id == "readonly_write_tool_blocked":
             denied = [
                 str(item.get("observation_id") or item.get("execution_id") or "")
@@ -499,18 +598,45 @@ class ValidationRunCommand:
             disjoint = readiness_checks.get("subagent_disjoint_write_gate", {})
             refs = [str(item) for item in disjoint.get("evidence_refs") or []][:4]
             if not has_disjoint_plan:
-                return "missing_evidence", str(disjoint.get("summary") or "No disjoint write fanout evidence was found."), refs
+                return (
+                    "missing_evidence",
+                    str(disjoint.get("summary") or "No disjoint write fanout evidence was found."),
+                    refs,
+                )
             if disjoint.get("status") == "blocked":
-                return "passed", str(disjoint.get("summary") or "Disjoint write gate blocked."), refs
+                return (
+                    "passed",
+                    str(disjoint.get("summary") or "Disjoint write gate blocked."),
+                    refs,
+                )
             if disjoint.get("status") == "ready":
-                return "failed", str(disjoint.get("summary") or "Disjoint write gate did not block unsafe fanout."), refs
-            return "missing_evidence", str(disjoint.get("summary") or "No disjoint write fanout evidence was found."), refs
+                return (
+                    "failed",
+                    str(
+                        disjoint.get("summary")
+                        or "Disjoint write gate did not block unsafe fanout."
+                    ),
+                    refs,
+                )
+            return (
+                "missing_evidence",
+                str(disjoint.get("summary") or "No disjoint write fanout evidence was found."),
+                refs,
+            )
         if probe_id == "parent_loop_stops_after_observation":
             exit_reason = str(run_summary.get("exit_reason") or "")
             has_subagent_observation = any("subagent" in str(item).lower() for item in observations)
             if exit_reason in {"completed", "stop"} and has_subagent_observation:
-                return "passed", f"Parent loop stopped with exit_reason={exit_reason}.", [str(run_summary.get("run_id") or "")]
-            return "missing_evidence", "Parent loop stop after subagent observation was not fully evidenced.", [str(run_summary.get("run_id") or "")]
+                return (
+                    "passed",
+                    f"Parent loop stopped with exit_reason={exit_reason}.",
+                    [str(run_summary.get("run_id") or "")],
+                )
+            return (
+                "missing_evidence",
+                "Parent loop stop after subagent observation was not fully evidenced.",
+                [str(run_summary.get("run_id") or "")],
+            )
         return "missing_evidence", "Probe evaluator is not implemented for this probe.", []
 
     def _preflight_evidence(self, matrix_evidence: dict[str, Any]) -> dict[str, Any]:
@@ -519,6 +645,7 @@ class ValidationRunCommand:
             "runtime_progress_metrics": progress_metrics,
             "runtime_validation_matrix": runtime_validation_matrix(self.root, progress_metrics),
             "recovery_pressure": recovery_pressure_report(self.root, self.validator),
+            "recommended_probe_runs": self._next_probe_goals([]),
         }
         if matrix_evidence:
             evidence["runtime_validation_matrix_evidence"] = matrix_evidence
@@ -529,8 +656,8 @@ class ValidationRunCommand:
         if (
             isinstance(route, dict)
             and route.get("strong_used")
-            and route.get("medium_used")
-            and run_result.status not in {"blocked", "paused"}
+            and (route.get("medium_used") or self.probe_ids)
+            and (run_result.status not in {"blocked", "paused"} or self.probe_ids)
         ):
             failed_probes = [
                 item
@@ -538,6 +665,15 @@ class ValidationRunCommand:
                 if isinstance(item, dict) and item.get("status") == "failed"
             ]
             if failed_probes:
+                return "failed"
+            missing_targeted_probes = [
+                item
+                for item in evidence.get("validation_probe_results", [])
+                if isinstance(item, dict)
+                and item.get("status") == "missing_evidence"
+                and item.get("id") in set(self.probe_ids)
+            ]
+            if missing_targeted_probes:
                 return "failed"
             return "completed"
         return "failed"
@@ -554,10 +690,20 @@ class ValidationRunCommand:
                 if isinstance(item, dict) and item.get("status") == "missing_evidence"
             ]
             if missing:
+                recommended = [
+                    item
+                    for item in self._next_probe_goals(missing)
+                    if item.get("probe_id") in set(missing)
+                ]
+                evidence["recommended_probe_runs"] = recommended
                 actions.append(
                     "Review missing validation probe evidence before widening scope: "
                     + ", ".join(item for item in missing if item)
                 )
+                if recommended:
+                    actions.append(
+                        "Run targeted validation probe: " + str(recommended[0].get("command"))
+                    )
             return actions
         failed = [
             str(item.get("id") or "")
@@ -569,11 +715,26 @@ class ValidationRunCommand:
                 "Repair failed validation probe before widening scope: "
                 + ", ".join(item for item in failed if item)
             ]
+        missing_targeted = [
+            str(item.get("id") or "")
+            for item in evidence.get("validation_probe_results", [])
+            if isinstance(item, dict)
+            and item.get("status") == "missing_evidence"
+            and item.get("id") in set(self.probe_ids)
+        ]
+        if missing_targeted:
+            return [
+                "Targeted validation probe did not produce required evidence: "
+                + ", ".join(item for item in missing_targeted if item),
+                "Tighten planner/subagent scheduling before counting this probe as closed.",
+            ]
         route = evidence.get("route_evidence") if isinstance(evidence, dict) else {}
-        if isinstance(route, dict) and not route.get("medium_used"):
+        if isinstance(route, dict) and not route.get("medium_used") and not self.probe_ids:
             return ["Worker route did not use medium tier; inspect model routing policy."]
         if isinstance(route, dict) and not route.get("strong_used"):
-            return ["Coordinator/planning route did not use strong tier; inspect model routing policy."]
+            return [
+                "Coordinator/planning route did not use strong tier; inspect model routing policy."
+            ]
         return [f"Inspect run `{run_id}` blockers, worker results, and final report."]
 
     def _read_optional(self, path: Path, schema_name: str) -> dict[str, Any]:
@@ -619,6 +780,42 @@ def _validation_run_control_surface() -> dict[str, object]:
             "next_actions",
         ],
     )
+
+
+def _normalize_probe_ids(probe_ids: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for probe_id in probe_ids or []:
+        if probe_id in VALIDATION_PROBE_GOALS and probe_id not in normalized:
+            normalized.append(probe_id)
+    return normalized
+
+
+def _goal_for_probe_ids(probe_ids: list[str]) -> str:
+    if not probe_ids:
+        return ""
+    if len(probe_ids) == 1:
+        return VALIDATION_PROBE_GOALS.get(probe_ids[0], "")
+    goals = [
+        VALIDATION_PROBE_GOALS[probe_id]
+        for probe_id in probe_ids
+        if probe_id in VALIDATION_PROBE_GOALS
+    ]
+    if not goals:
+        return ""
+    return "Run a controlled validation batch for these missing probe targets. " + " ".join(goals)
+
+
+def _probe_command(probe_id: str) -> str:
+    goal = VALIDATION_PROBE_GOALS.get(probe_id, DEFAULT_VALIDATION_GOAL)
+    escaped = goal.replace('"', '\\"')
+    return f'python -m asteria_runtime validation-run "{escaped}" --probe-id {probe_id} --root . --json'
+
+
+def _is_readonly_fanout_strategy(item: dict[str, Any]) -> bool:
+    return str(item.get("scheduling_strategy") or "") in {
+        "parallel_readonly_safe",
+        "parallel_readonly_fanout",
+    }
 
 
 def _nested_str(item: dict[str, Any], path: list[str]) -> str:

@@ -31,7 +31,6 @@ def _assert_validation_run_result_control_surface(payload: dict) -> None:
     SchemaValidator(Path("schemas")).validate("control_surface", contract)
 
 
-
 def _assert_validation_run_summary_control_surface(summary: dict) -> None:
     _assert_validation_run_result_control_surface(summary)
     SchemaValidator(Path("schemas")).validate("validation_run", summary)
@@ -87,11 +86,15 @@ def test_validation_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatc
     assert summary["route_expectations"]["planning_coordinator"] == "strong"
     assert summary["route_expectations"]["worker"] == "medium"
     assert summary["validation_plan"]["risk_model"] == "adaptive_gates_preserve_agent_flexibility"
-    assert summary["validation_plan"]["parallel_writes"]["real_disjoint_write_workers"] == "disabled"
-    assert summary["validation_plan"]["parallel_writes"]["enablement_flag"] == "real_disjoint_write_workers"
-    assert [
-        probe["id"] for probe in summary["validation_plan"]["probes"]
-    ] == [
+    assert (
+        summary["validation_plan"]["parallel_writes"]["real_disjoint_write_workers"] == "disabled"
+    )
+    assert (
+        summary["validation_plan"]["parallel_writes"]["enablement_flag"]
+        == "real_disjoint_write_workers"
+    )
+    assert len(summary["validation_plan"]["next_probe_goals"]) == 5
+    assert [probe["id"] for probe in summary["validation_plan"]["probes"]] == [
         "parent_selects_subagent",
         "readonly_fanout_succeeds",
         "readonly_write_tool_blocked",
@@ -106,9 +109,83 @@ def test_validation_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatc
     assert disjoint_probe["gate_policy"] == "strong_block_before_real_parallel_write_enable"
 
 
-def test_validation_run_explains_blocked_route_guidance(
-    tmp_path: Path, monkeypatch
+def test_validation_run_can_target_specific_probe_goal(tmp_path: Path, monkeypatch) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+
+    result = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["readonly_fanout_succeeds"],
+    ).run()
+
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    assert summary["goal"] == summary["validation_plan"]["next_probe_goals"][0]["goal"]
+    assert summary["validation_plan"]["selected_probe_ids"] == ["readonly_fanout_succeeds"]
+    assert (
+        summary["validation_plan"]["next_probe_goals"][0]["probe_id"] == "readonly_fanout_succeeds"
+    )
+    assert (
+        "--probe-id readonly_fanout_succeeds"
+        in summary["validation_plan"]["next_probe_goals"][0]["command"]
+    )
+
+
+def test_validation_run_accepts_current_readonly_fanout_strategy_name(tmp_path: Path) -> None:
+    status, summary, refs = ValidationRunCommand(tmp_path, dry_run=True)._probe_status(
+        "readonly_fanout_succeeds",
+        decisions=[],
+        workers=[],
+        worker_results=[],
+        child_plans=[
+            {
+                "subagent_child_plan_id": "subagent-child-plan-0001",
+                "scheduling_strategy": "parallel_readonly_safe",
+            }
+        ],
+        observations=[],
+        run_summary={},
+        readiness_checks={
+            "subagent_readonly_fanout": {
+                "status": "ready",
+                "summary": "Readonly fanout recorded 2/2 child worker(s).",
+            }
+        },
+    )
+
+    assert status == "passed"
+    assert "Readonly fanout recorded" in summary
+    assert refs == ["subagent-child-plan-0001"]
+
+
+def test_targeted_validation_probe_can_bypass_stale_loop_readiness_block(
+    tmp_path: Path,
 ) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["readonly_fanout_succeeds"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "agent_loop_execution", "status": "blocked"},
+                    {"name": "subagent_readonly_fanout", "status": "blocked"},
+                    {"name": "route_guidance", "status": "review"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
+def test_validation_run_explains_blocked_route_guidance(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     _configure_release_routes(monkeypatch)
     _write_ready_gate_reports(tmp_path)
@@ -182,15 +259,16 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     assert summary["evidence"]["route_evidence"]["strong_used"] is True
     assert summary["evidence"]["route_evidence"]["medium_used"] is True
     assert summary["evidence"]["worker_result_count"] == 1
-    assert summary["evidence"]["runtime_progress_metrics"]["permission_reason_coverage"][
-        "coverage_ratio"
-    ] == 1.0
+    assert (
+        summary["evidence"]["runtime_progress_metrics"]["permission_reason_coverage"][
+            "coverage_ratio"
+        ]
+        == 1.0
+    )
     assert summary["evidence"]["runtime_validation_matrix"]["ready"] is True
     assert "recovery_pressure" in summary["evidence"]
     assert summary["validation_plan"]["flexibility_policy"]["low_risk_exploration"] == "trace_only"
-    probe_results = {
-        probe["id"]: probe for probe in summary["validation_plan"]["probe_results"]
-    }
+    probe_results = {probe["id"]: probe for probe in summary["validation_plan"]["probe_results"]}
     evidence_probe_results = {
         probe["id"]: probe for probe in summary["evidence"]["validation_probe_results"]
     }
@@ -199,7 +277,9 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     assert probe_results["disjoint_write_gate_blocks_unsafe_fanout"]["status"] == "passed"
     assert probe_results["parent_loop_stops_after_observation"]["status"] == "passed"
     assert evidence_probe_results == probe_results
-    assert "Review missing validation probe evidence" in summary["next_actions"][-1]
+    assert any(
+        "Review missing validation probe evidence" in action for action in summary["next_actions"]
+    )
 
 
 def test_validation_run_treats_absent_disjoint_plan_as_missing_evidence(
@@ -217,11 +297,84 @@ def test_validation_run_treats_absent_disjoint_plan_as_missing_evidence(
 
     assert result.status == "completed"
     summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
-    probes = {
-        probe["id"]: probe for probe in summary["evidence"]["validation_probe_results"]
-    }
+    probes = {probe["id"]: probe for probe in summary["evidence"]["validation_probe_results"]}
     assert probes["disjoint_write_gate_blocks_unsafe_fanout"]["status"] == "missing_evidence"
-    assert "Review missing validation probe evidence" in summary["next_actions"][-1]
+    recommended = summary["validation_plan"]["recommended_probe_runs"]
+    recommended_by_id = {item["probe_id"]: item for item in recommended}
+    assert "disjoint_write_gate_blocks_unsafe_fanout" in recommended_by_id
+    assert (
+        "--probe-id disjoint_write_gate_blocks_unsafe_fanout"
+        in recommended_by_id["disjoint_write_gate_blocks_unsafe_fanout"]["command"]
+    )
+    assert any(
+        "Review missing validation probe evidence" in action for action in summary["next_actions"]
+    )
+
+
+def test_validation_run_fails_when_targeted_probe_remains_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+
+    result = ValidationRunCommand(
+        tmp_path,
+        goal="Create simple validation evidence",
+        probe_ids=["disjoint_write_gate_blocks_unsafe_fanout"],
+        run_command_factory=FakeRunCommandWithoutDisjointPlan,
+    ).run()
+
+    assert result.status == "failed"
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    assert summary["status"] == "failed"
+    assert (
+        "Targeted validation probe did not produce required evidence" in summary["next_actions"][0]
+    )
+
+
+def test_targeted_validation_probe_does_not_require_medium_route(tmp_path: Path) -> None:
+    result = RunResult(
+        run_id="run-validation-0001",
+        status="completed",
+        final_report_path=tmp_path / "final_report.md",
+    )
+
+    status = ValidationRunCommand(
+        tmp_path,
+        probe_ids=["readonly_fanout_succeeds"],
+    )._status_from_run(
+        result,
+        {
+            "route_evidence": {"strong_used": True, "medium_used": False},
+            "validation_probe_results": [{"id": "readonly_fanout_succeeds", "status": "passed"}],
+        },
+    )
+
+    assert status == "completed"
+
+
+def test_targeted_validation_probe_can_complete_despite_review_blocked_run(
+    tmp_path: Path,
+) -> None:
+    result = RunResult(
+        run_id="run-validation-0001",
+        status="blocked",
+        final_report_path=tmp_path / "final_report.md",
+    )
+
+    status = ValidationRunCommand(
+        tmp_path,
+        probe_ids=["readonly_fanout_succeeds"],
+    )._status_from_run(
+        result,
+        {
+            "route_evidence": {"strong_used": True, "medium_used": False},
+            "validation_probe_results": [{"id": "readonly_fanout_succeeds", "status": "passed"}],
+        },
+    )
+
+    assert status == "completed"
 
 
 class FakeRunCommand:

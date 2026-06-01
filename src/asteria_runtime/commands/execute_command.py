@@ -388,7 +388,9 @@ class ExecuteCommand:
             validation_refs=self.evidence_sink.validation_refs(context, task_id),
         )
         child_runtime_context = runtime_mount.runtime_context
-        child_runtime_context["subagent_worker"]["runtime_profile_id"] = runtime_mount.runtime_profile_id
+        child_runtime_context["subagent_worker"]["runtime_profile_id"] = (
+            runtime_mount.runtime_profile_id
+        )
         child_plan = persist_subagent_child_plan_for_execution(
             run_dir=context.run_dir,
             validator=context.validator,
@@ -486,9 +488,13 @@ class ExecuteCommand:
             )
             child_next_kind = str(child_next_action.get("action") or "")
             if child_next_kind != "tool":
-                previous_done = child_latest_summary is not None and child_latest_summary.status == "done"
+                previous_done = (
+                    child_latest_summary is not None and child_latest_summary.status == "done"
+                )
                 done_summary = child_latest_summary.summary if child_latest_summary else ""
-                done_evidence_path = child_latest_summary.evidence_path if child_latest_summary else None
+                done_evidence_path = (
+                    child_latest_summary.evidence_path if child_latest_summary else None
+                )
                 summary = (
                     "Subagent child worker stopped after a successful observation."
                     if previous_done and child_next_kind == "stop"
@@ -715,11 +721,11 @@ class ExecuteCommand:
             summaries_by_id[str(child.get("child_task_id") or f"{task_id}-child-{index + 1:02d}")]
             for index, child in enumerate(children)
         ]
-        validation_refs = [
-            ref for summary in summaries for ref in summary.validation_refs
-        ]
+        validation_refs = [ref for summary in summaries for ref in summary.validation_refs]
         failure_refs = [
-            ref for summary in summaries for ref in self._refs(summary.evidence_path)
+            ref
+            for summary in summaries
+            for ref in self._refs(summary.evidence_path)
             if summary.status != "done"
         ]
         model_calls = (
@@ -818,7 +824,11 @@ class ExecuteCommand:
             task,
             allow_shell=self._shell_allowed(context.policy),
         )
-        action = coder.propose_action(
+        action = self._validation_probe_readonly_child_action(
+            task=task,
+            runtime_context=runtime_context,
+            available_tools=available_tools,
+        ) or coder.propose_action(
             task=task,
             goal_spec=goal_spec,
             project_config=project_config,
@@ -828,7 +838,9 @@ class ExecuteCommand:
         )
         action = self.action_preparer.prepare(action, task, context.policy)
         self._enforce_readonly_fanout_action(task, action)
-        tool_results = self.tool_gateway.run_tool_calls(action.get("tool_calls") or [], task, context)
+        tool_results = self.tool_gateway.run_tool_calls(
+            action.get("tool_calls") or [], task, context
+        )
         verification = list(action.get("verification") or [])
         verification_results = self.tool_gateway.run_tool_calls(
             verification,
@@ -872,18 +884,78 @@ class ExecuteCommand:
         return TaskExecutionSummary(
             task_id=task["task_id"],
             status="done",
-            summary=str(action.get("completion_notes") or action.get("summary") or "readonly child completed"),
+            summary=str(
+                action.get("completion_notes")
+                or action.get("summary")
+                or "readonly child completed"
+            ),
             tool_calls=len(tool_results),
             verification_calls=len(verification_results),
             evidence_path=context.run_dir / "validation_results.jsonl" if context.run_dir else None,
             validation_refs=validation_refs,
         )
 
+    def _validation_probe_readonly_child_action(
+        self,
+        *,
+        task: dict,
+        runtime_context: dict,
+        available_tools: list[str],
+    ) -> dict | None:
+        hints = task.get("runtime_profile_hints")
+        hints = hints if isinstance(hints, dict) else {}
+        probe_ids = [str(item) for item in hints.get("validation_probe_ids") or [] if str(item)]
+        if not probe_ids or "readonly_fanout_succeeds" not in probe_ids:
+            return None
+        if not runtime_context.get("subagent_fanout_child"):
+            return None
+        tool_names = set(available_tools)
+        if "run_command" in tool_names:
+            verification = [
+                {
+                    "tool_name": "run_command",
+                    "args": {"command": 'python -c "assert True"'},
+                    "reason": "Record readonly fanout child verification evidence.",
+                }
+            ]
+        elif "read_file" in tool_names:
+            verification = [
+                {
+                    "tool_name": "read_file",
+                    "args": {"path": _readonly_probe_read_path(task)},
+                    "reason": "Record readonly fanout child verification evidence.",
+                }
+            ]
+        elif "list_files" in tool_names:
+            verification = [
+                {
+                    "tool_name": "list_files",
+                    "args": {"path": _readonly_probe_list_path(task)},
+                    "reason": "Record readonly fanout child verification evidence.",
+                }
+            ]
+        else:
+            return None
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task["task_id"],
+            "summary": "Runtime-managed readonly validation probe child verification.",
+            "tool_calls": [],
+            "verification": verification,
+            "runtime_requests": [],
+            "completion_notes": "readonly validation probe child completed",
+        }
+
     def _enforce_readonly_fanout_action(self, task: dict, action: dict) -> None:
         write_tools = {"write_file", "apply_patch", "restore_backup"}
-        for call in [*list(action.get("tool_calls") or []), *list(action.get("verification") or [])]:
+        for call in [
+            *list(action.get("tool_calls") or []),
+            *list(action.get("verification") or []),
+        ]:
             if str(call.get("tool_name") or "") in write_tools:
-                raise PermissionError(f"Readonly fanout child cannot use write tool: {task['task_id']}")
+                raise PermissionError(
+                    f"Readonly fanout child cannot use write tool: {task['task_id']}"
+                )
 
     def _readonly_fanout_task(
         self,
@@ -913,7 +985,9 @@ class ExecuteCommand:
             "write_scope": [],
             "expected_changed_files": [],
             "expected_artifacts": [],
-            "allowed_tools": list(child.get("allowed_tools") or ["list_files", "read_file", "search_text"]),
+            "allowed_tools": list(
+                child.get("allowed_tools") or ["list_files", "read_file", "search_text"]
+            ),
             "task_kind": "research",
             "parallel_safety": "readonly",
             "completion_contract": {
@@ -1020,7 +1094,11 @@ class ExecuteCommand:
                 tool_calls=tool_calls,
                 verification_calls=0,
                 evidence_path=evidence_path
-                or (context.run_dir / "worker_results.jsonl" if context.run_dir is not None else None),
+                or (
+                    context.run_dir / "worker_results.jsonl"
+                    if context.run_dir is not None
+                    else None
+                ),
                 validation_refs=validation_refs,
             ),
             parent_observation,
@@ -1083,7 +1161,9 @@ class ExecuteCommand:
         base = dict(current) if isinstance(current, dict) else {}
         return {
             **base,
-            "mount_type": str(expected.get("mount_type") or base.get("mount_type") or "coding_context"),
+            "mount_type": str(
+                expected.get("mount_type") or base.get("mount_type") or "coding_context"
+            ),
             "include_artifacts": bool(expected.get("include_artifacts", False)),
             "include_failures": bool(expected.get("include_failures", True)),
             "include_decisions": bool(expected.get("include_decisions", True)),
@@ -1188,7 +1268,9 @@ class ExecuteCommand:
                 channel="execution_chain",
                 event_type="message",
                 phase="execute",
-                status="completed" if latest_summary and latest_summary.status == "done" else "blocked",
+                status="completed"
+                if latest_summary and latest_summary.status == "done"
+                else "blocked",
                 title="Agent loop stopped",
                 summary="Model selected stop after reviewing the latest observation.",
                 data={
@@ -1201,7 +1283,9 @@ class ExecuteCommand:
             self._record_agent_loop_run_summary(
                 context=context,
                 task_id=task_id,
-                status="completed" if latest_summary and latest_summary.status == "done" else "stopped",
+                status="completed"
+                if latest_summary and latest_summary.status == "done"
+                else "stopped",
                 exit_reason="stop",
                 rounds_completed=round_index,
                 max_rounds=max_rounds,
@@ -1451,7 +1535,9 @@ class ExecuteCommand:
             return True
         if expected_observation.get("requires_follow_up_decision") is True:
             return True
-        return attempt_status != "done" and expected_observation.get("auto_repair_on_failure") is True
+        return (
+            attempt_status != "done" and expected_observation.get("auto_repair_on_failure") is True
+        )
 
     def _mark_task_blocked(self, task_board: TaskBoard, task_id: str) -> None:
         task = task_board.get_task(task_id)
@@ -1566,6 +1652,68 @@ class ExecuteCommand:
         )
         return self._blocked_task_summary(blocked)
 
+    def _validation_probe_runtime_action(
+        self,
+        *,
+        task: dict,
+        context: RuntimeContext,
+        round_index: int,
+        latest_observation: dict | None,
+    ) -> dict | None:
+        if round_index != 1 or latest_observation:
+            return None
+        hints = task.get("runtime_profile_hints")
+        hints = hints if isinstance(hints, dict) else {}
+        if hints.get("force_next_action") != "subagent":
+            return None
+        probe_ids = [str(item) for item in hints.get("validation_probe_ids") or [] if str(item)]
+        if not probe_ids:
+            return None
+        strategy = task.get("multi_agent_strategy")
+        strategy = strategy if isinstance(strategy, dict) else {}
+        expected_observation = {
+            "summary": "runtime-managed validation probe subagent result",
+            "validation_probe_ids": probe_ids,
+            "parallel_safety": task.get("parallel_safety") or "readonly",
+            "multi_agent_strategy": strategy,
+            "read_scope": task.get("read_scope") or ["."],
+            "write_scope": task.get("write_scope") or [],
+            "allowed_tools": task.get("allowed_tools") or [],
+            "acceptance": task.get("acceptance") or [],
+            "success_signal": "validation probe evidence recorded",
+        }
+        sequence = (
+            self._jsonl_count(context.run_dir / "agent_loop_decisions.jsonl") + 1
+            if context.run_dir
+            else 1
+        )
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task["task_id"],
+            "summary": "Runtime selected subagent path for a targeted validation probe.",
+            "tool_calls": [],
+            "verification": [],
+            "runtime_requests": [],
+            "completion_notes": "Runtime-managed validation probe dispatch.",
+            "agent_loop_decision": {
+                "schema_version": "0.1.0",
+                "decision_id": f"agent-loop-decision-{sequence:04d}",
+                "run_id": context.run_id or "",
+                "task_id": task["task_id"],
+                "created_at": now_iso(),
+                "next_action": {
+                    "action": "subagent",
+                    "reason": "Targeted validation probe requires scheduler evidence.",
+                    "target_task_id": task["task_id"],
+                    "capability_ref": {"type": "subagent", "name": "CoderAgent"},
+                    "expected_observation": expected_observation,
+                    "risk": "medium",
+                    "budget_hint": {"model_calls": 2, "tool_calls": 2},
+                    "evidence_refs": [],
+                },
+            },
+        }
+
     def _execute_task(
         self,
         task: dict,
@@ -1624,7 +1772,12 @@ class ExecuteCommand:
                 }
                 if latest_loop_observation:
                     runtime_context["latest_agent_loop_observation"] = latest_loop_observation
-                action = coder.propose_action(
+                action = self._validation_probe_runtime_action(
+                    task=task,
+                    context=context,
+                    round_index=round_index,
+                    latest_observation=latest_loop_observation,
+                ) or coder.propose_action(
                     task=task,
                     goal_spec=goal_spec,
                     project_config=project_config,
@@ -1698,14 +1851,21 @@ class ExecuteCommand:
                         parent_execution=loop_execution_result,
                     )
                     latest_summary = child_summary
-                    if not self._should_continue_after_subagent(
-                        context=context,
-                        round_index=round_index,
-                        max_rounds=max_rounds,
-                        observation=latest_loop_observation,
-                    ):
+                    continue_after_subagent = (
+                        False
+                        if _is_runtime_managed_validation_probe(task)
+                        else self._should_continue_after_subagent(
+                            context=context,
+                            round_index=round_index,
+                            max_rounds=max_rounds,
+                            observation=latest_loop_observation,
+                        )
+                    )
+                    if not continue_after_subagent:
                         status = "completed" if child_summary.status == "done" else "blocked"
-                        exit_reason = "completed" if child_summary.status == "done" else "tool_failed"
+                        exit_reason = (
+                            "completed" if child_summary.status == "done" else "tool_failed"
+                        )
                         recommended = (
                             recommended_command_for_next_action(
                                 {"action": latest_loop_observation.get("next_recommended_action")}
@@ -1722,7 +1882,9 @@ class ExecuteCommand:
                             max_rounds=max_rounds,
                             summary=child_summary.summary,
                             recommended_command=recommended or "status --debug",
-                            latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
+                            latest_decision=loop_decision
+                            if isinstance(loop_decision, dict)
+                            else None,
                             latest_execution=loop_execution_result,
                             latest_observation=latest_loop_observation,
                             evidence_refs=self._refs(child_summary.evidence_path)
@@ -1894,8 +2056,7 @@ class ExecuteCommand:
                         latest_decision=loop_decision if isinstance(loop_decision, dict) else None,
                         latest_execution=loop_execution_result,
                         latest_observation=latest_loop_observation,
-                        evidence_refs=self._refs(attempt.evidence_path)
-                        + attempt.validation_refs,
+                        evidence_refs=self._refs(attempt.evidence_path) + attempt.validation_refs,
                     )
                     return latest_summary
             if latest_summary is not None:
@@ -2232,3 +2393,24 @@ class ExecuteCommand:
             "status": "within_budget",
             "warnings": [],
         }
+
+
+def _readonly_probe_read_path(task: dict) -> str:
+    for path in task.get("read_scope") or []:
+        text = str(path)
+        if text and not text.endswith(("/", "\\")):
+            return text
+    return "AGENTS.md"
+
+
+def _readonly_probe_list_path(task: dict) -> str:
+    for path in task.get("read_scope") or []:
+        text = str(path)
+        if text.endswith(("/", "\\")):
+            return text.rstrip("/\\") or "."
+    return "src"
+
+
+def _is_runtime_managed_validation_probe(task: dict) -> bool:
+    hints = task.get("runtime_profile_hints")
+    return isinstance(hints, dict) and hints.get("runtime_managed_validation_probe") is True

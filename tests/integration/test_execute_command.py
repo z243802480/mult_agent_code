@@ -172,9 +172,7 @@ class FakeSubagentExecuteClient:
                         "reason": "The child worker should implement and verify the artifact.",
                         "target_task_id": task_id,
                         "capability_ref": {"type": "tool", "name": "write_file"},
-                        "expected_observation": {
-                            "summary": "Child tool execution succeeds."
-                        },
+                        "expected_observation": {"summary": "Child tool execution succeeds."},
                         "risk": "medium",
                         "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
                         "evidence_refs": [],
@@ -296,9 +294,7 @@ class FakeSubagentMultiRoundExecuteClient:
                             "reason": "Repair with a corrected child tool action.",
                             "target_task_id": task_id,
                             "capability_ref": {"type": "tool", "name": "write_file"},
-                            "expected_observation": {
-                                "summary": "Child repair succeeds."
-                            },
+                            "expected_observation": {"summary": "Child repair succeeds."},
                             "risk": "medium",
                             "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
                             "evidence_refs": [latest_observation["observation_id"]],
@@ -510,6 +506,11 @@ class FakeSubagentReadonlyFanoutClient:
         )
 
 
+class FakeExplodingExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise AssertionError("runtime-managed validation probe should not call model")
+
+
 class FakeSubagentReadonlyFanoutWriteClient(FakeSubagentReadonlyFanoutClient):
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
@@ -624,9 +625,7 @@ class FakeBoundedLoopExecuteClient:
                         "reason": "The latest observation proves the task is complete.",
                         "target_task_id": task_id,
                         "capability_ref": {"type": "runtime", "name": "stop"},
-                        "expected_observation": {
-                            "summary": "Runtime records a stop observation."
-                        },
+                        "expected_observation": {"summary": "Runtime records a stop observation."},
                         "risk": "low",
                         "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
                         "evidence_refs": [latest_observation["observation_id"]],
@@ -677,7 +676,7 @@ class FakeRepairAfterFailureLoopClient:
                     {
                         "tool_name": "run_command",
                         "args": {
-                            "command": "python -c \"raise SystemExit(1)\"",
+                            "command": 'python -c "raise SystemExit(1)"',
                             "expected_returncodes": [0],
                         },
                         "reason": "force validation failure for loop recovery",
@@ -716,9 +715,7 @@ class FakeRepairAfterFailureLoopClient:
                         "reason": "The failed observation needs the debug repair path.",
                         "target_task_id": task_id,
                         "capability_ref": {"type": "runtime", "name": "repair"},
-                        "expected_observation": {
-                            "summary": "Runtime records repair routing."
-                        },
+                        "expected_observation": {"summary": "Runtime records repair routing."},
                         "risk": "medium",
                         "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
                         "evidence_refs": [latest_observation["observation_id"]],
@@ -1597,7 +1594,9 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     assert child_plans[-1]["child_tasks"][0]["parallel_safety"] == "serial"
     assert child_plans[-1]["scheduling_strategy"] == "serial_single_worker"
     subagent_profile = next(
-        item for item in runtime_profiles if item["runtime_profile_id"] == worker["runtime_profile_id"]
+        item
+        for item in runtime_profiles
+        if item["runtime_profile_id"] == worker["runtime_profile_id"]
     )
     assert subagent_profile["worker_kind"] == "subagent"
     assert subagent_profile["parallel_safety"] == "serial"
@@ -1607,7 +1606,9 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     ][-1]
     assert subagent_budget["worker_kind"] == "subagent"
     assert subagent_budget["isolation_policy"] == "subagent_child_context"
-    assert subagent_budget["parent_worker_invocation_id"] == subagent_execution["worker_invocation_id"]
+    assert (
+        subagent_budget["parent_worker_invocation_id"] == subagent_execution["worker_invocation_id"]
+    )
     assert subagent_budget["runtime_profile_id"] == subagent_profile["runtime_profile_id"]
     assert subagent_budget["estimated_tokens"] > 0
     assert subagent_budget["compact_boundary"]["status"] in {
@@ -1631,7 +1632,9 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     assert subagent_observation["status"] == "succeeded"
     assert subagent_observation["next_recommended_action"] == "stop"
     assert "subagent-child-plan-0001" in subagent_observation["evidence_refs"]
-    assert client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
+    assert (
+        client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
+    )
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
     assert loop_summary["exit_reason"] == "stop"
     assert loop_summary["recommended_command"] == "status --debug"
@@ -1657,8 +1660,8 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
     run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
     assert result.completed == 1
     assert client.child_calls == 2
-    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
-        "def add_note"
+    assert (
+        (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
     )
     observations = [
         json.loads(line)
@@ -1668,16 +1671,18 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
     ]
     tool_observations = [item for item in observations if item["observation_type"] == "tool_result"]
     assert [item["status"] for item in tool_observations[-2:]] == ["failed", "succeeded"]
-    subagent_observation = [item for item in observations if item["observation_type"] == "subagent_result"][-1]
+    subagent_observation = [
+        item for item in observations if item["observation_type"] == "subagent_result"
+    ][-1]
     assert subagent_observation["status"] == "succeeded"
-    assert client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
+    assert (
+        client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
+    )
     worker_results = [
         json.loads(line)
         for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    subagent_result = [
-        item for item in worker_results if item.get("worker_kind") == "subagent"
-    ][-1]
+    subagent_result = [item for item in worker_results if item.get("worker_kind") == "subagent"][-1]
     assert subagent_result["status"] == "succeeded"
     assert subagent_result["cost"]["model_calls"] == 2
     assert subagent_result["parent_worker_invocation_id"] == "worker-0001"
@@ -1736,7 +1741,9 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
     )
     agent_graph = json.loads((run_dir / "agent_run_graph.json").read_text(encoding="utf-8"))
     subagent_plan = [
-        item for item in agent_graph["child_worker_plans"] if item["worker_invocation_id"] == "worker-0002"
+        item
+        for item in agent_graph["child_worker_plans"]
+        if item["worker_invocation_id"] == "worker-0002"
     ][-1]
     assert subagent_plan["parent_worker_invocation_id"] == "worker-0001"
     assert subagent_plan["subagent_child_plan_id"] == "subagent-child-plan-0001"
@@ -1764,6 +1771,7 @@ def test_execute_command_runs_subagent_readonly_fanout_child_workers(
             "allowed_tools": ["list_files", "read_file", "search_text", "run_command"],
             "expected_artifacts": [],
             "expected_changed_files": [],
+            "read_scope": [".asteria/project.json"],
             "write_scope": [],
             "task_kind": "research",
             "parallel_safety": "readonly",
@@ -1849,11 +1857,84 @@ def test_execute_command_runs_subagent_readonly_fanout_child_workers(
     readonly_plans = [
         item
         for item in agent_graph["child_worker_plans"]
-        if item["worker_invocation_id"] in {worker["worker_invocation_id"] for worker in readonly_workers}
+        if item["worker_invocation_id"]
+        in {worker["worker_invocation_id"] for worker in readonly_workers}
     ]
     assert len(readonly_plans) == 2
     assert {item["parent_worker_invocation_id"] for item in readonly_plans} == {"worker-0002"}
     assert {item["collaboration_role"] for item in readonly_plans} == {"research_child"}
+
+
+def test_execute_command_runtime_manages_readonly_validation_probe(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "research two local checks", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"] = [task_plan["tasks"][0]]
+    task_plan["tasks"][0].update(
+        {
+            "title": "Runtime managed readonly probe",
+            "description": "Inspect two local facts without writing files.",
+            "acceptance": ["inspect alpha", "inspect beta"],
+            "allowed_tools": ["list_files", "read_file", "search_text", "run_command"],
+            "expected_artifacts": [],
+            "expected_changed_files": [],
+            "read_scope": [".asteria/project.json"],
+            "write_scope": [],
+            "task_kind": "research",
+            "parallel_safety": "readonly",
+            "runtime_profile_hints": {
+                "validation_probe_ids": ["readonly_fanout_succeeds"],
+                "runtime_managed_validation_probe": True,
+                "force_next_action": "subagent",
+            },
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": True,
+                "allows_expected_failure": False,
+            },
+            "multi_agent_strategy": {
+                "mode": "readonly_fanout",
+                "max_child_workers": 2,
+                "planner_child_plan": True,
+                "coordination_policy": {
+                    "write_allowed": False,
+                    "requires_merge_gate": False,
+                    "requires_summary": True,
+                    "scale_out_limit": 2,
+                },
+            },
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeExplodingExecuteClient(),
+    ).run()
+
+    assert result.completed == 1
+    child_plans = [
+        json.loads(line)
+        for line in (run_dir / "subagent_child_plans.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert child_plans[-1]["scheduling_strategy"] == "parallel_readonly_safe"
+    worker_results = [
+        json.loads(line)
+        for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    readonly_results = [
+        item for item in worker_results if item.get("worker_kind") == "subagent_readonly_child"
+    ]
+    assert len(readonly_results) == 2
+    assert {item["status"] for item in readonly_results} == {"succeeded"}
+    assert {item["cost"]["model_calls"] for item in readonly_results} == {0}
 
 
 def test_execute_command_blocks_write_tool_in_subagent_readonly_fanout(

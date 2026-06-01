@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from asteria_runtime.core.context_loader import ContextLoader
@@ -25,6 +26,35 @@ def test_context_loader_includes_small_workspace_files_and_skips_secrets(tmp_pat
     assert files["notes.md"]["content"] == "# Notes\n"
     assert "secrets/api.txt" not in files
     assert ".env" not in files
+
+
+def test_context_loader_skips_stale_memory_rows(tmp_path: Path) -> None:
+    schema_validator = validator()
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "failures.jsonl").write_text(
+        json.dumps({"schema_version": "0.1.0", "content": "old row missing memory_id"})
+        + "\n"
+        + json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "memory_id": "memory-0001",
+                "type": "failure_lesson",
+                "content": "Keep validation probes scoped.",
+                "source": {"kind": "test"},
+                "tags": ["validation"],
+                "confidence": 0.8,
+                "created_at": "2026-06-01T00:00:00+08:00",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    context = ContextLoader(tmp_path, schema_validator).load()
+
+    assert len(context["memory"]) == 1
+    assert context["memory"][0]["content"] == "Keep validation probes scoped."
 
 
 def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: Path) -> None:

@@ -1,4 +1,5 @@
 from asteria_runtime.agents.planner import FollowUpTaskPlanner, RequirementPlanner
+from asteria_runtime.commands.plan_command import _apply_validation_probe_hints
 
 
 def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None:
@@ -38,6 +39,39 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert "list_files" in task["allowed_tools"]
     assert "restore_backup" in task["allowed_tools"]
     assert "Quality:" in task["notes"]
+
+
+def test_validation_probe_hint_forces_readonly_fanout_strategy() -> None:
+    task_plan = {
+        "tasks": [
+            {
+                "task_id": "task-0001",
+                "task_kind": "implementation",
+                "parallel_safety": "serial",
+                "write_scope": ["probe.txt"],
+                "expected_changed_files": ["probe.txt"],
+                "expected_artifacts": ["probe.txt"],
+                "allowed_tools": ["write_file", "run_command"],
+                "acceptance": ["probe artifact exists"],
+            },
+            {
+                "task_id": "task-0002",
+                "task_kind": "implementation",
+            },
+        ]
+    }
+
+    _apply_validation_probe_hints(task_plan, ["readonly_fanout_succeeds"])
+
+    task = task_plan["tasks"][0]
+    assert len(task_plan["tasks"]) == 1
+    assert task["runtime_profile_hints"]["force_next_action"] == "subagent"
+    assert task["runtime_profile_hints"]["validation_probe_ids"] == ["readonly_fanout_succeeds"]
+    assert task["parallel_safety"] == "readonly"
+    assert task["write_scope"] == []
+    assert task["expected_changed_files"] == []
+    assert task["multi_agent_strategy"]["mode"] == "readonly_fanout"
+    assert task["multi_agent_strategy"]["max_child_workers"] == 2
 
 
 def test_requirement_planner_groups_single_concrete_file_goal() -> None:

@@ -694,7 +694,13 @@ def _agent_loop_execution_check(
             summary="No AgentLoopDecision evidence requires Runtime dispatch yet.",
         )
     decision_id = str(latest_decision.get("decision_id") or "")
-    execution = _latest_execution_for_decision(run_dirs, validator, decision_id)
+    decision_run_id = str(latest_decision.get("run_id") or "")
+    execution = _latest_execution_for_decision(
+        run_dirs,
+        validator,
+        decision_id,
+        run_id=decision_run_id,
+    )
     if not execution:
         action = str(((latest_decision.get("next_action") or {}).get("action")) or "unknown")
         return RuntimeReadinessCheck(
@@ -953,6 +959,8 @@ def _latest_execution_for_decision(
     run_dirs: list[Path],
     validator: SchemaValidator,
     decision_id: str,
+    *,
+    run_id: str | None = None,
 ) -> dict[str, Any] | None:
     if not decision_id:
         return None
@@ -965,6 +973,8 @@ def _latest_execution_for_decision(
             continue
         for item in store.read_all(path, "agent_loop_execution_result"):
             if str(item.get("decision_id") or "") != decision_id:
+                continue
+            if run_id and str(item.get("run_id") or "") != run_id:
                 continue
             created = str(item.get("created_at") or "")
             if latest is None or created >= latest_created:
@@ -1214,7 +1224,7 @@ def _latest_context_budget_snapshot_for_worker(
         if not path.exists():
             continue
         for item in store.read_all(path, "context_budget_snapshot"):
-            if str(item.get("scope") or "") != "subagent_child":
+            if str(item.get("scope") or "") not in {"subagent_child", "task_context"}:
                 continue
             if str(item.get("parent_worker_invocation_id") or "") != worker_id:
                 continue
@@ -1241,7 +1251,7 @@ def _latest_context_budget_snapshot_for_runtime_profile(
         if not path.exists():
             continue
         for item in store.read_all(path, "context_budget_snapshot"):
-            if str(item.get("scope") or "") != "subagent_child":
+            if str(item.get("scope") or "") not in {"subagent_child", "task_context"}:
                 continue
             if str(item.get("runtime_profile_id") or "") != runtime_profile_id:
                 continue

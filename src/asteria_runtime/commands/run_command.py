@@ -131,6 +131,7 @@ class RunCommand:
         output_root: Path | None = None,
         artifact_root: Path | None = None,
         worktree_policy: str = "controlled_patch",
+        validation_probe_ids: list[str] | None = None,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -152,6 +153,7 @@ class RunCommand:
         self.output_root = output_root
         self.artifact_root = artifact_root
         self.worktree_policy = worktree_policy
+        self.validation_probe_ids = list(validation_probe_ids or [])
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -204,6 +206,7 @@ class RunCommand:
             output_root=self.output_root,
             artifact_root=self.artifact_root,
             worktree_policy=self.worktree_policy,
+            validation_probe_ids=self.validation_probe_ids,
         ).run()
         steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
@@ -273,9 +276,7 @@ class RunCommand:
                 _progress,
                 run_id=run_id,
                 final_report_path=final_report_path,
-                final_report_summary_path=final_report_path.with_name(
-                    "final_report_summary.json"
-                ),
+                final_report_summary_path=final_report_path.with_name("final_report_summary.json"),
             )
             return self._build_run_result(
                 run_id=run_id,
@@ -377,7 +378,11 @@ class RunCommand:
                     )
                 )
                 break
-            if goal_decision["action"] in {"stop_for_decision", "stop_for_accept", "stop_for_repair"}:
+            if goal_decision["action"] in {
+                "stop_for_decision",
+                "stop_for_accept",
+                "stop_for_repair",
+            }:
                 break
             if index == max_iterations - 1:
                 break
@@ -495,7 +500,6 @@ class RunCommand:
         if not isinstance(value, list):
             return []
         return [str(item) for item in value if str(item).strip()]
-
 
     def _read_final_report_summary(self, path: Path) -> dict:
         if not path.exists():
@@ -981,8 +985,7 @@ class RunCommand:
             status="running",
             title="Agent loop dispatch loaded",
             summary=(
-                "Runtime selected loop profiles before execution: "
-                f"{dispatch['profile_counts']}."
+                f"Runtime selected loop profiles before execution: {dispatch['profile_counts']}."
             ),
             display_level="inspector",
             artifact_refs=[str(dispatch_path)],
@@ -1230,7 +1233,6 @@ class RunCommand:
         run["summary"] = summary
         run_store.update_run(run)
 
-
     def _goal_loop_decision(
         self,
         *,
@@ -1263,7 +1265,10 @@ class RunCommand:
             pending_promotions.get("blocked") or []
         )
         if review_status == "pass":
-            if normalize_permission_mode(self.permission_level) == "auto" and not promotion_blockers:
+            if (
+                normalize_permission_mode(self.permission_level) == "auto"
+                and not promotion_blockers
+            ):
                 return {
                     "action": "auto_accept",
                     "reason": "Review passed, permission level is auto, and no candidate promotion requires approval.",
@@ -1711,7 +1716,8 @@ class RunCommand:
             completion=resolved_completion,
             steps=steps or [],
             artifacts=self._artifact_paths(run_dir),
-            blockers=blockers or self._report_blockers(
+            blockers=blockers
+            or self._report_blockers(
                 blocked_tasks,
                 pending_decisions,
                 self._latest_acceptance_report(),
@@ -1824,7 +1830,6 @@ class RunCommand:
                 }
             )
         return items
-
 
     def _latest_model_selection(self, run_dir: Path) -> dict:
         path = run_dir / "task_execution_evidence.jsonl"

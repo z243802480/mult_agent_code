@@ -109,6 +109,23 @@ def test_recovery_pressure_report_covers_resume_replan_repair_memory_conflicts_a
     assert all(chain["covered"] for chain in report["chains"].values())
 
 
+def test_recovery_pressure_treats_invalid_memory_jsonl_as_damaged_memory(
+    tmp_path: Path,
+) -> None:
+    memory_dir = tmp_path / ".asteria" / "memory"
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "failures.jsonl").write_text(
+        json.dumps({"schema_version": "0.1.0", "content": "old invalid memory row"}) + "\n",
+        encoding="utf-8",
+    )
+
+    report = recovery_pressure_report(tmp_path, SchemaValidator(Path.cwd() / "schemas"))
+
+    damaged = report["chains"]["damaged_memory"]
+    assert damaged["covered"] is True
+    assert ".asteria/memory/failures.jsonl" in damaged["sample_refs"]
+
+
 def _progress_event(
     event_id: str,
     phase: str,
