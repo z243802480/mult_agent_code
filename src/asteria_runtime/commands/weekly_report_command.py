@@ -226,6 +226,7 @@ class WeeklyReportCommand:
         usage_analysis: dict[str, Any],
     ) -> list[str]:
         risks = []
+        effective_usage = _effective_usage_signals(usage_signals, usage_analysis)
         if not reports:
             risks.append("No long-run cycle reports were found for this period.")
         if acceptance.get("latest_failed", 0):
@@ -243,10 +244,10 @@ class WeeklyReportCommand:
             risks.append("Weak model routes need review: " + ", ".join(labels))
         if runtime_os.get("status") in {"fail", "partial", "missing_acceptance"}:
             risks.append(f"Runtime OS release evidence is {runtime_os.get('status')}.")
-        if usage_signals.get("status") == "needs_attention":
+        if effective_usage.get("status") == "needs_attention":
             risks.append(
                 "Background usage signals need review: "
-                f"unresolved={usage_signals.get('unresolved', 0)}"
+                f"unresolved={effective_usage.get('unresolved', 0)}"
             )
         if usage_analysis.get("priority_items"):
             risks.append(
@@ -295,6 +296,7 @@ class WeeklyReportCommand:
         usage_analysis: dict[str, Any],
     ) -> list[str]:
         actions = []
+        effective_usage = _effective_usage_signals(usage_signals, usage_analysis)
         if not reports:
             actions.append(
                 "Run `asteria daily-plan --objective <goal>` to start a bounded cycle."
@@ -309,7 +311,7 @@ class WeeklyReportCommand:
             actions.append(
                 "Run `asteria /acceptance --suite core` and `asteria /acceptance-gate --suite core`."
             )
-        if usage_signals.get("status") == "needs_attention":
+        if effective_usage.get("status") == "needs_attention":
             actions.append("Review `asteria ops-signal --summary` before widening dogfooding.")
         if usage_analysis.get("roadmap_tasks"):
             actions.append(
@@ -386,3 +388,11 @@ class WeeklyReportCommand:
 
     def _read_jsonl(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
         return self.jsonl.read_all(path, schema_name) if path.exists() else []
+
+
+def _effective_usage_signals(
+    usage_signals: dict[str, Any],
+    usage_analysis: dict[str, Any],
+) -> dict[str, Any]:
+    active = usage_analysis.get("active_summary") if isinstance(usage_analysis, dict) else {}
+    return active if isinstance(active, dict) and active else usage_signals

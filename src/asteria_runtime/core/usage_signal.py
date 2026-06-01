@@ -62,6 +62,10 @@ def usage_signal_summary(agent_dir: Path, validator: SchemaValidator, *, limit: 
     path = agent_dir / USAGE_SIGNAL_PATH
     rows = JsonlStore(validator).read_all(path, "usage_signal") if path.exists() else []
     recent = rows[-limit:]
+    return _summary_from_rows(path, rows, recent)
+
+
+def _summary_from_rows(path: Path, rows: list[dict[str, Any]], recent: list[dict[str, Any]]) -> dict[str, Any]:
     outcomes = _counts(str(row.get("artifact_outcome") or "unknown") for row in recent)
     blockers = _counts(
         str(row.get("blocker_category") or "none")
@@ -108,19 +112,23 @@ def usage_signal_analysis(
     rows = JsonlStore(validator).read_all(path, "usage_signal") if path.exists() else []
     recent = rows[-limit:]
     summary = usage_signal_summary(agent_dir, validator, limit=limit)
-    priority_items = _priority_items(summary, recent)
+    active_recent, superseded = _active_rows_after_latest_acceptance(recent)
+    active_summary = _summary_from_rows(path, rows, active_recent)
+    priority_items = _priority_items(active_summary, active_recent)
     roadmap_tasks = [_roadmap_task(item) for item in priority_items[:5]]
     decision_points = [_decision_point(item, index + 1) for index, item in enumerate(priority_items[:3])]
     analysis = {
         "schema_version": "0.1.0",
         "created_at": now_iso(),
-        "status": "needs_attention" if priority_items else summary["status"],
+        "status": "needs_attention" if priority_items else active_summary["status"],
         "source": {
             "usage_signal_path": str(path),
             "total": summary["total"],
             "recent": summary["recent"],
         },
         "summary": summary,
+        "active_summary": active_summary,
+        "superseded_signals": superseded,
         "priority_items": priority_items,
         "roadmap_tasks": roadmap_tasks,
         "candidate_decision_points": decision_points,
@@ -147,6 +155,30 @@ def _counts(values: Any) -> dict[str, int]:
 
 def _allowed(value: str, allowed: set[str], default: str) -> str:
     return value if value in allowed else default
+
+
+def _active_rows_after_latest_acceptance(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    latest_acceptance_index = -1
+    for index, row in enumerate(rows):
+        if str(row.get("artifact_outcome") or "unknown") == "accepted":
+            latest_acceptance_index = index
+    if latest_acceptance_index < 0:
+        return rows, []
+    superseded = [
+        {
+            "signal_id": row.get("signal_id"),
+            "artifact_outcome": row.get("artifact_outcome"),
+            "blocker_category": row.get("blocker_category"),
+            "trust_risk": row.get("trust_risk"),
+            "superseded_by_signal_id": rows[latest_acceptance_index].get("signal_id"),
+            "reason": "A newer accepted artifact signal supersedes earlier unresolved operational blockers.",
+        }
+        for row in rows[:latest_acceptance_index]
+        if str(row.get("artifact_outcome") or "unknown") in {"rejected", "blocked", "partial"}
+        or str(row.get("blocker_category") or "none") != "none"
+        or str(row.get("trust_risk") or "none") != "none"
+    ]
+    return rows[latest_acceptance_index:], superseded
 
 
 def _priority_items(summary: dict[str, Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

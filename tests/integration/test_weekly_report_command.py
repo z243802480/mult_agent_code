@@ -223,6 +223,39 @@ def test_weekly_report_uses_acceptance_runtime_evidence_without_run_jsonl(tmp_pa
     assert report["runtime_os"]["evidence"]["acceptance_worker_results_jsonl"] is True
 
 
+def test_weekly_report_uses_active_usage_signal_status_after_superseded_blocker(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-blocked",
+        artifact_outcome="blocked",
+        blocker_category="route_guidance_blocked",
+        trust_risk="strong_goal_spec_unstable",
+        summary="blocked alpha proof",
+    ).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-accepted",
+        artifact_outcome="accepted",
+        blocker_category="none",
+        trust_risk="none",
+        summary="accepted alpha proof",
+    ).run()
+
+    result = WeeklyReportCommand(tmp_path, week_id="2026-W20").run()
+
+    report = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(
+        result.report_path,
+        "weekly_report",
+    )
+    assert report["usage_signals"]["status"] == "needs_attention"
+    assert report["usage_signal_analysis"]["active_summary"]["status"] == "healthy"
+    assert not any("Background usage signals need review" in risk for risk in report["risks"])
+    assert not any("Usage signal analysis has priority item" in risk for risk in report["risks"])
+
+
 def test_weekly_report_handles_missing_inputs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
 

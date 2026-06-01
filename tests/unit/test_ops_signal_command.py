@@ -103,3 +103,37 @@ def test_ops_signal_analysis_outputs_priority_items_and_candidate_decisions(tmp_
     decision = result.analysis["candidate_decision_points"][0]
     SchemaValidator(Path.cwd() / "schemas").validate("decision_point", decision)
     assert (tmp_path / ".asteria" / "ops" / "usage_signal_analysis.json").exists()
+
+
+def test_ops_signal_analysis_supersedes_old_blockers_after_acceptance(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-blocked",
+        artifact_outcome="blocked",
+        blocker_category="route_guidance_blocked",
+        trust_risk="strong_goal_spec_unstable",
+        summary="alpha proof blocked by stale route guidance",
+        evidence_refs=["old-validation-summary.json"],
+    ).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-accepted",
+        artifact_outcome="accepted",
+        blocker_category="none",
+        trust_risk="none",
+        summary="alpha proof accepted after fresh validation evidence",
+        evidence_refs=["new-validation-summary.json"],
+    ).run()
+
+    result = OpsSignalCommand(tmp_path, summarize_only=True, analyze=True).run()
+
+    assert result.summary["status"] == "needs_attention"
+    assert result.analysis is not None
+    assert result.analysis["status"] == "healthy"
+    assert result.analysis["active_summary"]["status"] == "healthy"
+    assert result.analysis["active_summary"]["unresolved"] == 0
+    assert result.analysis["priority_items"] == []
+    assert result.analysis["roadmap_tasks"] == []
+    assert result.analysis["superseded_signals"][0]["signal_id"] == "usage-signal-0001"
+    assert result.analysis["superseded_signals"][0]["superseded_by_signal_id"] == "usage-signal-0002"

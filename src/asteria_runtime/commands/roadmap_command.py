@@ -64,8 +64,11 @@ class RoadmapCommand:
         usage_signals = usage_signals if isinstance(usage_signals, dict) else {}
         usage_analysis = weekly.get("usage_signal_analysis") if weekly else {}
         usage_analysis = usage_analysis if isinstance(usage_analysis, dict) else {}
+        effective_usage_signals = _effective_usage_signals(usage_signals, usage_analysis)
+        risks = _effective_risks(risks, effective_usage_signals, usage_analysis)
+        next_actions = _effective_next_actions(next_actions, effective_usage_signals, usage_analysis)
         capabilities = self._capabilities(acceptance, model_profile)
-        milestones = self._milestones(acceptance, model_profile, risks, usage_signals)
+        milestones = self._milestones(acceptance, model_profile, risks, effective_usage_signals)
         for task in usage_analysis.get("roadmap_tasks", [])[:3]:
             if isinstance(task, dict):
                 next_actions.append(str(task.get("title") or task.get("task_id")))
@@ -94,7 +97,7 @@ class RoadmapCommand:
                 "weekly_report": weekly.get("report_path") if weekly else None,
                 "acceptance_suite": acceptance.get("latest_suite"),
                 "model_profile_status": model_profile.get("status"),
-                "usage_signal_status": usage_signals.get("status"),
+                "usage_signal_status": effective_usage_signals.get("status"),
                 "usage_signal_analysis_status": usage_analysis.get("status"),
             },
         }
@@ -221,3 +224,45 @@ class RoadmapCommand:
         lines.extend(["", "## 下一步", ""])
         lines.extend(f"- {item}" for item in roadmap["next_actions"])
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _effective_usage_signals(
+    usage_signals: dict[str, Any],
+    usage_analysis: dict[str, Any],
+) -> dict[str, Any]:
+    active = usage_analysis.get("active_summary") if isinstance(usage_analysis, dict) else {}
+    return active if isinstance(active, dict) and active else usage_signals
+
+
+def _effective_risks(
+    risks: list[str],
+    usage_signals: dict[str, Any],
+    usage_analysis: dict[str, Any],
+) -> list[str]:
+    filtered = []
+    has_priority = bool(usage_analysis.get("priority_items"))
+    usage_healthy = usage_signals.get("status") in {"healthy", "missing"}
+    for risk in risks:
+        if usage_healthy and risk.startswith("Background usage signals need review:"):
+            continue
+        if not has_priority and risk.startswith("Usage signal analysis has priority item"):
+            continue
+        filtered.append(risk)
+    return filtered
+
+
+def _effective_next_actions(
+    actions: list[str],
+    usage_signals: dict[str, Any],
+    usage_analysis: dict[str, Any],
+) -> list[str]:
+    filtered = []
+    has_tasks = bool(usage_analysis.get("roadmap_tasks"))
+    usage_healthy = usage_signals.get("status") in {"healthy", "missing"}
+    for action in actions:
+        if usage_healthy and "ops-signal --summary" in action:
+            continue
+        if not has_tasks and "usage_signal_analysis.json" in action:
+            continue
+        filtered.append(action)
+    return filtered
