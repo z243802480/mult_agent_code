@@ -281,10 +281,25 @@ def _effective_next_actions(
     elif dogfooding_gate.get("status") == "blocked":
         filtered.append("Resolve dogfooding gate blockers before the next scoped batch.")
     elif dogfooding_gate.get("status") == "ready":
-        filtered.append("Dogfooding gate is ready; run the next scoped validation batch.")
+        next_batch_plan = _next_batch_plan(usage_analysis)
+        if next_batch_plan.get("ready"):
+            batch_id = str(next_batch_plan.get("batch_id") or "next scoped batch")
+            max_tasks = int(next_batch_plan.get("max_tasks") or 0)
+            task_count = len(next_batch_plan.get("task_candidates") or [])
+            filtered.append(
+                f"Run `{batch_id}`: at most {max_tasks} scoped task(s) "
+                f"from {task_count} candidate(s), then bind results to usage signals."
+            )
+        else:
+            filtered.append("Dogfooding gate is ready; run the next scoped validation batch.")
     return filtered
 
 
 def _dogfooding_gate(usage_analysis: dict[str, Any]) -> dict[str, Any]:
     gate = usage_analysis.get("dogfooding_gate") if isinstance(usage_analysis, dict) else {}
     return gate if isinstance(gate, dict) else {}
+
+
+def _next_batch_plan(usage_analysis: dict[str, Any]) -> dict[str, Any]:
+    plan = usage_analysis.get("next_batch_plan") if isinstance(usage_analysis, dict) else {}
+    return plan if isinstance(plan, dict) else {}

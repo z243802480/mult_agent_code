@@ -265,3 +265,42 @@ def test_weekly_and_roadmap_consume_dogfooding_gate(tmp_path: Path) -> None:
     assert m5["status"] == "in_progress"
     assert "Collect 2 more clean scoped dogfooding signal(s)." in roadmap_payload["next_actions"]
     assert roadmap_payload["next_actions"].count("Collect 2 more clean scoped dogfooding signal(s).") == 1
+
+
+def test_weekly_and_roadmap_consume_ready_next_batch_plan(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    for category in (
+        "repair_replan",
+        "ask_stop",
+        "context_pressure",
+        "capability_selection",
+    ):
+        OpsSignalCommand(
+            tmp_path,
+            run_id=f"run-{category}",
+            task_kind="scoped_validation",
+            expected_outcome_category=category,
+            artifact_outcome="accepted",
+            blocker_category="none",
+            trust_risk="none",
+            summary=f"{category} accepted",
+            evidence_refs=[f"{category}-summary.json"],
+        ).run()
+
+    weekly = WeeklyReportCommand(tmp_path, week_id="2026-W23").run()
+    roadmap = RoadmapCommand(tmp_path).run()
+
+    expected_action = (
+        "Run `alpha2-next-scoped-dogfooding`: at most 3 scoped task(s) "
+        "from 3 candidate(s), then bind results to usage signals."
+    )
+    report = json.loads(weekly.report_path.read_text(encoding="utf-8"))
+    assert report["usage_signal_analysis"]["next_batch_plan"]["ready"] is True
+    assert expected_action in report["next_actions"]
+    assert "Dogfooding gate is ready; run the next scoped validation batch." not in report["next_actions"]
+    roadmap_payload = json.loads(roadmap.roadmap_path.read_text(encoding="utf-8"))
+    assert expected_action in roadmap_payload["next_actions"]
+    assert (
+        "Dogfooding gate is ready; run the next scoped validation batch."
+        not in roadmap_payload["next_actions"]
+    )
