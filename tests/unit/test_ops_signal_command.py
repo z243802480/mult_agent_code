@@ -8,6 +8,8 @@ from pathlib import Path
 
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
+from asteria_runtime.commands.roadmap_command import RoadmapCommand
+from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -79,7 +81,8 @@ def test_ops_signal_cli_outputs_json(tmp_path: Path) -> None:
     payload = json.loads(completed.stdout)
     assert payload["signal"]["artifact_outcome"] == "accepted"
     assert payload["summary"]["status"] == "healthy"
-    assert payload["analysis"]["status"] == "healthy"
+    assert payload["analysis"]["status"] == "collecting"
+    assert payload["analysis"]["dogfooding_gate"]["status"] == "collecting"
 
 
 def test_ops_signal_analysis_outputs_priority_items_and_candidate_decisions(tmp_path: Path) -> None:
@@ -130,10 +133,84 @@ def test_ops_signal_analysis_supersedes_old_blockers_after_acceptance(tmp_path: 
 
     assert result.summary["status"] == "needs_attention"
     assert result.analysis is not None
-    assert result.analysis["status"] == "healthy"
+    assert result.analysis["status"] == "collecting"
     assert result.analysis["active_summary"]["status"] == "healthy"
     assert result.analysis["active_summary"]["unresolved"] == 0
+    assert result.analysis["dogfooding_gate"]["status"] == "collecting"
     assert result.analysis["priority_items"] == []
     assert result.analysis["roadmap_tasks"] == []
     assert result.analysis["superseded_signals"][0]["signal_id"] == "usage-signal-0001"
     assert result.analysis["superseded_signals"][0]["superseded_by_signal_id"] == "usage-signal-0002"
+
+
+def test_ops_signal_dogfooding_gate_blocks_unresolved_active_signals(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-1",
+        artifact_outcome="accepted",
+        summary="first scoped dogfooding task accepted",
+    ).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-2",
+        artifact_outcome="blocked",
+        blocker_category="validation_untrusted",
+        trust_risk="report_mismatch",
+        summary="second scoped dogfooding task blocked",
+    ).run()
+
+    result = OpsSignalCommand(tmp_path, summarize_only=True, analyze=True).run()
+
+    assert result.analysis is not None
+    assert result.analysis["status"] == "needs_attention"
+    assert result.analysis["dogfooding_gate"]["status"] == "blocked"
+    assert result.analysis["dogfooding_gate"]["ready_for_next_batch"] is False
+    assert result.analysis["priority_items"][0]["id"] == "usage-unresolved-artifacts"
+
+
+def test_ops_signal_dogfooding_gate_ready_after_three_clean_signals(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    for index in range(1, 4):
+        OpsSignalCommand(
+            tmp_path,
+            run_id=f"run-{index}",
+            artifact_outcome="accepted",
+            blocker_category="none",
+            trust_risk="none",
+            summary=f"scoped dogfooding task {index} accepted",
+            evidence_refs=[f"evidence-{index}.zip"],
+        ).run()
+
+    result = OpsSignalCommand(tmp_path, summarize_only=True, analyze=True).run()
+
+    assert result.analysis is not None
+    assert result.analysis["status"] == "healthy"
+    assert result.analysis["dogfooding_gate"]["status"] == "ready"
+    assert result.analysis["dogfooding_gate"]["sample_count"] == 3
+    assert result.analysis["dogfooding_gate"]["ready_for_next_batch"] is True
+    assert result.analysis["priority_items"] == []
+
+
+def test_weekly_and_roadmap_consume_dogfooding_gate(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    OpsSignalCommand(
+        tmp_path,
+        run_id="run-1",
+        artifact_outcome="accepted",
+        blocker_category="none",
+        trust_risk="none",
+        summary="first scoped dogfooding task accepted",
+    ).run()
+
+    weekly = WeeklyReportCommand(tmp_path, week_id="2026-W23").run()
+    roadmap = RoadmapCommand(tmp_path).run()
+
+    report = json.loads(weekly.report_path.read_text(encoding="utf-8"))
+    assert report["usage_signal_analysis"]["dogfooding_gate"]["status"] == "collecting"
+    assert "Collect 2 more clean scoped dogfooding signal(s)." in report["next_actions"]
+    roadmap_payload = json.loads(roadmap.roadmap_path.read_text(encoding="utf-8"))
+    m5 = next(item for item in roadmap_payload["milestones"] if item["id"] == "M5")
+    assert m5["status"] == "in_progress"
+    assert "Collect 2 more clean scoped dogfooding signal(s)." in roadmap_payload["next_actions"]
+    assert roadmap_payload["next_actions"].count("Collect 2 more clean scoped dogfooding signal(s).") == 1

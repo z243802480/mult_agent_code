@@ -42,6 +42,13 @@ class OpsSignalResult:
             lines.insert(2, f"Recorded: {self.signal.get('signal_id')}")
         if self.analysis:
             lines.append(f"Analysis status: {self.analysis.get('status')}")
+            gate = self.analysis.get("dogfooding_gate")
+            if isinstance(gate, dict):
+                lines.append(
+                    "Dogfooding gate: "
+                    f"{gate.get('status')} "
+                    f"({gate.get('sample_count')}/{gate.get('min_samples')} samples)"
+                )
             lines.append(f"Priority items: {len(self.analysis.get('priority_items') or [])}")
             lines.append(f"Roadmap tasks: {len(self.analysis.get('roadmap_tasks') or [])}")
         return "\n".join(lines)

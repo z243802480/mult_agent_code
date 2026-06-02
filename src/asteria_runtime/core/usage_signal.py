@@ -117,10 +117,11 @@ def usage_signal_analysis(
     priority_items = _priority_items(active_summary, active_recent)
     roadmap_tasks = [_roadmap_task(item) for item in priority_items[:5]]
     decision_points = [_decision_point(item, index + 1) for index, item in enumerate(priority_items[:3])]
+    dogfooding_gate = _dogfooding_gate(active_summary, active_recent)
     analysis = {
         "schema_version": "0.1.0",
         "created_at": now_iso(),
-        "status": "needs_attention" if priority_items else active_summary["status"],
+        "status": _analysis_status(priority_items, dogfooding_gate, active_summary),
         "source": {
             "usage_signal_path": str(path),
             "total": summary["total"],
@@ -129,10 +130,11 @@ def usage_signal_analysis(
         "summary": summary,
         "active_summary": active_summary,
         "superseded_signals": superseded,
+        "dogfooding_gate": dogfooding_gate,
         "priority_items": priority_items,
         "roadmap_tasks": roadmap_tasks,
         "candidate_decision_points": decision_points,
-        "next_actions": _analysis_next_actions(priority_items),
+        "next_actions": _analysis_next_actions(priority_items, dogfooding_gate),
     }
     if write:
         JsonStore(validator).write(agent_dir / USAGE_SIGNAL_ANALYSIS_PATH, analysis, "usage_signal_analysis")
@@ -178,7 +180,9 @@ def _active_rows_after_latest_acceptance(rows: list[dict[str, Any]]) -> tuple[li
         or str(row.get("blocker_category") or "none") != "none"
         or str(row.get("trust_risk") or "none") != "none"
     ]
-    return rows[latest_acceptance_index:], superseded
+    superseded_ids = {item.get("signal_id") for item in superseded}
+    active = [row for row in rows if row.get("signal_id") not in superseded_ids]
+    return active, superseded
 
 
 def _priority_items(summary: dict[str, Any], rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -217,6 +221,57 @@ def _priority_items(summary: dict[str, Any], rows: list[dict[str, Any]]) -> list
             }
         )
     return sorted(items, key=lambda item: (_severity_rank(item["severity"]), -int(item["count"])))
+
+
+def _dogfooding_gate(summary: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    min_samples = 3
+    sample_count = len(rows)
+    accepted = sum(1 for row in rows if str(row.get("artifact_outcome") or "") == "accepted")
+    unresolved = int(summary.get("unresolved") or 0)
+    raw_blockers = summary.get("blockers")
+    blockers: dict[str, Any] = raw_blockers if isinstance(raw_blockers, dict) else {}
+    raw_trust_risks = summary.get("trust_risks")
+    trust_risks: dict[str, Any] = (
+        raw_trust_risks if isinstance(raw_trust_risks, dict) else {}
+    )
+    blocker_count = sum(int(value or 0) for value in blockers.values())
+    trust_risk_count = sum(int(value or 0) for value in trust_risks.values())
+    if sample_count <= 0:
+        status = "missing"
+        reason = "No active dogfooding usage signals exist yet."
+    elif unresolved or blocker_count or trust_risk_count:
+        status = "blocked"
+        reason = "Active dogfooding signals include unresolved outcomes, blockers, or trust risks."
+    elif sample_count < min_samples:
+        status = "collecting"
+        reason = f"Collect {min_samples - sample_count} more clean scoped dogfooding signal(s)."
+    else:
+        status = "ready"
+        reason = "Active dogfooding signals meet the minimum clean-sample gate."
+    return {
+        "status": status,
+        "sample_count": sample_count,
+        "min_samples": min_samples,
+        "accepted": accepted,
+        "unresolved": unresolved,
+        "blocker_count": blocker_count,
+        "trust_risk_count": trust_risk_count,
+        "ready_for_next_batch": status == "ready",
+        "reason": reason,
+        "evidence_refs": _recent_evidence(rows),
+    }
+
+
+def _analysis_status(
+    priority_items: list[dict[str, Any]],
+    dogfooding_gate: dict[str, Any],
+    active_summary: dict[str, Any],
+) -> str:
+    if priority_items or dogfooding_gate.get("status") == "blocked":
+        return "needs_attention"
+    if dogfooding_gate.get("status") in {"missing", "collecting"}:
+        return "collecting"
+    return str(active_summary.get("status") or "missing")
 
 
 def _roadmap_task(item: dict[str, Any]) -> dict[str, Any]:
@@ -263,9 +318,14 @@ def _decision_point(item: dict[str, Any], index: int) -> dict[str, Any]:
     }
 
 
-def _analysis_next_actions(items: list[dict[str, Any]]) -> list[str]:
+def _analysis_next_actions(
+    items: list[dict[str, Any]],
+    dogfooding_gate: dict[str, Any],
+) -> list[str]:
     if not items:
-        return ["Continue collecting background usage signals during scoped dogfooding."]
+        if dogfooding_gate.get("status") == "ready":
+            return ["Dogfooding signal gate is ready; continue with the next scoped batch."]
+        return [str(dogfooding_gate.get("reason") or "Continue collecting background usage signals during scoped dogfooding.")]
     return [
         "Review `.asteria/ops/usage_signal_analysis.json`.",
         "Promote high-priority roadmap_tasks into the next bounded development cycle.",

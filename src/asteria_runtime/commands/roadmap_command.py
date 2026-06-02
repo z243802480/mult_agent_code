@@ -68,7 +68,7 @@ class RoadmapCommand:
         risks = _effective_risks(risks, effective_usage_signals, usage_analysis)
         next_actions = _effective_next_actions(next_actions, effective_usage_signals, usage_analysis)
         capabilities = self._capabilities(acceptance, model_profile)
-        milestones = self._milestones(acceptance, model_profile, risks, effective_usage_signals)
+        milestones = self._milestones(acceptance, model_profile, risks, effective_usage_signals, usage_analysis)
         for task in usage_analysis.get("roadmap_tasks", [])[:3]:
             if isinstance(task, dict):
                 next_actions.append(str(task.get("title") or task.get("task_id")))
@@ -79,6 +79,7 @@ class RoadmapCommand:
             next_actions.append("Run `asteria /weekly-report` before the next roadmap update.")
         if not next_actions:
             next_actions = [item["goal"] for item in milestones if item["status"] != "done"][:3]
+        next_actions = list(dict.fromkeys(next_actions))
         return {
             "schema_version": "0.1.0",
             "root": str(self.root),
@@ -99,6 +100,7 @@ class RoadmapCommand:
                 "model_profile_status": model_profile.get("status"),
                 "usage_signal_status": effective_usage_signals.get("status"),
                 "usage_signal_analysis_status": usage_analysis.get("status"),
+                "dogfooding_gate_status": _dogfooding_gate(usage_analysis).get("status"),
             },
         }
 
@@ -154,12 +156,17 @@ class RoadmapCommand:
         model_profile: dict[str, Any],
         risks: list[str],
         usage_signals: dict[str, Any],
+        usage_analysis: dict[str, Any],
     ) -> list[dict[str, str]]:
         acceptance_done = not acceptance.get("latest_failed", 0)
         model_done = model_profile.get("status") == "ready" and not model_profile.get("weak_routes")
-        ops_done = usage_signals.get("status") in {"healthy", "missing"} and not usage_signals.get(
-            "unresolved", 0
-        )
+        dogfooding_gate = _dogfooding_gate(usage_analysis)
+        if dogfooding_gate:
+            ops_done = bool(dogfooding_gate.get("ready_for_next_batch"))
+        else:
+            ops_done = usage_signals.get("status") in {"healthy", "missing"} and not usage_signals.get(
+                "unresolved", 0
+            )
         return [
             {
                 "id": "M1",
@@ -242,12 +249,15 @@ def _effective_risks(
     filtered = []
     has_priority = bool(usage_analysis.get("priority_items"))
     usage_healthy = usage_signals.get("status") in {"healthy", "missing"}
+    dogfooding_gate = _dogfooding_gate(usage_analysis)
     for risk in risks:
         if usage_healthy and risk.startswith("Background usage signals need review:"):
             continue
         if not has_priority and risk.startswith("Usage signal analysis has priority item"):
             continue
         filtered.append(risk)
+    if dogfooding_gate.get("status") == "blocked":
+        filtered.append("Dogfooding gate is blocked: " + str(dogfooding_gate.get("reason") or ""))
     return filtered
 
 
@@ -259,10 +269,22 @@ def _effective_next_actions(
     filtered = []
     has_tasks = bool(usage_analysis.get("roadmap_tasks"))
     usage_healthy = usage_signals.get("status") in {"healthy", "missing"}
+    dogfooding_gate = _dogfooding_gate(usage_analysis)
     for action in actions:
         if usage_healthy and "ops-signal --summary" in action:
             continue
         if not has_tasks and "usage_signal_analysis.json" in action:
             continue
         filtered.append(action)
+    if dogfooding_gate.get("status") in {"missing", "collecting"}:
+        filtered.append(str(dogfooding_gate.get("reason") or "Collect scoped dogfooding signals."))
+    elif dogfooding_gate.get("status") == "blocked":
+        filtered.append("Resolve dogfooding gate blockers before the next scoped batch.")
+    elif dogfooding_gate.get("status") == "ready":
+        filtered.append("Dogfooding gate is ready; run the next scoped validation batch.")
     return filtered
+
+
+def _dogfooding_gate(usage_analysis: dict[str, Any]) -> dict[str, Any]:
+    gate = usage_analysis.get("dogfooding_gate") if isinstance(usage_analysis, dict) else {}
+    return gate if isinstance(gate, dict) else {}

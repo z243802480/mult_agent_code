@@ -256,6 +256,9 @@ class WeeklyReportCommand:
                     item.get("id", "unknown") for item in usage_analysis["priority_items"][:3]
                 )
             )
+        dogfooding_gate = _dogfooding_gate(usage_analysis)
+        if dogfooding_gate.get("status") == "blocked":
+            risks.append("Dogfooding gate is blocked: " + str(dogfooding_gate.get("reason") or ""))
         for report in reports:
             for risk in report.get("risks", [])[:3]:
                 risks.append(str(risk))
@@ -313,6 +316,13 @@ class WeeklyReportCommand:
             )
         if effective_usage.get("status") == "needs_attention":
             actions.append("Review `asteria ops-signal --summary` before widening dogfooding.")
+        dogfooding_gate = _dogfooding_gate(usage_analysis)
+        if dogfooding_gate.get("status") in {"missing", "collecting"}:
+            actions.append(str(dogfooding_gate.get("reason") or "Collect scoped dogfooding signals."))
+        elif dogfooding_gate.get("status") == "blocked":
+            actions.append("Resolve dogfooding gate blockers before the next scoped batch.")
+        elif dogfooding_gate.get("status") == "ready":
+            actions.append("Dogfooding gate is ready; run the next scoped validation batch.")
         if usage_analysis.get("roadmap_tasks"):
             actions.append(
                 "Promote `.asteria/ops/usage_signal_analysis.json` roadmap_tasks "
@@ -356,6 +366,8 @@ class WeeklyReportCommand:
             f"{len((report.get('usage_signal_analysis') or {}).get('priority_items') or [])}",
             "- Roadmap tasks: "
             f"{len((report.get('usage_signal_analysis') or {}).get('roadmap_tasks') or [])}",
+            "- Dogfooding gate: "
+            f"{((report.get('usage_signal_analysis') or {}).get('dogfooding_gate') or {}).get('status', 'missing')}",
             "",
             "## Runtime OS",
             "",
@@ -396,3 +408,8 @@ def _effective_usage_signals(
 ) -> dict[str, Any]:
     active = usage_analysis.get("active_summary") if isinstance(usage_analysis, dict) else {}
     return active if isinstance(active, dict) and active else usage_signals
+
+
+def _dogfooding_gate(usage_analysis: dict[str, Any]) -> dict[str, Any]:
+    gate = usage_analysis.get("dogfooding_gate") if isinstance(usage_analysis, dict) else {}
+    return gate if isinstance(gate, dict) else {}
