@@ -84,6 +84,7 @@ def test_ops_signal_cli_outputs_json(tmp_path: Path) -> None:
     assert payload["analysis"]["status"] == "collecting"
     assert payload["analysis"]["dogfooding_gate"]["status"] == "collecting"
     assert payload["analysis"]["acceptance_signal_gate"]["status"] == "collecting"
+    assert payload["analysis"]["next_batch_plan"]["ready"] is False
 
 
 def test_ops_signal_analysis_outputs_priority_items_and_candidate_decisions(tmp_path: Path) -> None:
@@ -191,6 +192,7 @@ def test_ops_signal_dogfooding_gate_ready_after_three_clean_signals(tmp_path: Pa
     assert result.analysis["dogfooding_gate"]["sample_count"] == 3
     assert result.analysis["dogfooding_gate"]["ready_for_next_batch"] is True
     assert result.analysis["acceptance_signal_gate"]["status"] == "collecting"
+    assert result.analysis["next_batch_plan"]["task_candidates"] == []
     assert result.analysis["priority_items"] == []
 
 
@@ -226,9 +228,18 @@ def test_ops_signal_acceptance_signal_gate_ready_after_second_batch_probe_signal
     assert gate["accepted"] == 4
     assert gate["missing_categories"] == []
     assert "capability_selection-summary.json" in gate["evidence_refs"]
+    next_batch = result.analysis["next_batch_plan"]
+    assert next_batch["ready"] is True
+    assert next_batch["max_tasks"] == 3
+    assert [item["id"] for item in next_batch["task_candidates"]] == [
+        "real_repair_task",
+        "multi_file_small_feature",
+        "context_pressure_maintenance",
+    ]
+    assert "Keep real_disjoint_write_workers disabled." in next_batch["guardrails"]
     assert (
         result.analysis["next_actions"][0]
-        == "Acceptance signal gate is ready; prepare the alpha.2 evidence bundle and next scoped dogfooding batch."
+        == "Next batch plan is ready; run at most 3 scoped dogfooding tasks and bind each result to usage signals."
     )
 
 

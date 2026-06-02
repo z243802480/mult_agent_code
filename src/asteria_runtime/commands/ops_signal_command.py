@@ -56,6 +56,13 @@ class OpsSignalResult:
                     f"{acceptance_gate.get('status')} "
                     f"({acceptance_gate.get('accepted')}/{acceptance_gate.get('required')} probes)"
                 )
+            next_batch = self.analysis.get("next_batch_plan")
+            if isinstance(next_batch, dict):
+                lines.append(
+                    "Next batch plan: "
+                    f"{next_batch.get('status')} "
+                    f"({len(next_batch.get('task_candidates') or [])} candidates)"
+                )
             lines.append(f"Priority items: {len(self.analysis.get('priority_items') or [])}")
             lines.append(f"Roadmap tasks: {len(self.analysis.get('roadmap_tasks') or [])}")
         return "\n".join(lines)

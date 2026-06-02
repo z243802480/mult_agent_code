@@ -23,6 +23,7 @@
     "superseded_signals": { "type": "array", "items": { "type": "object" } },
     "dogfooding_gate": { "type": "object" },
     "acceptance_signal_gate": { "type": "object" },
+    "next_batch_plan": { "type": "object" },
     "priority_items": { "type": "array", "items": { "type": "object" } },
     "roadmap_tasks": { "type": "array", "items": { "type": "object" } },
     "candidate_decision_points": { "type": "array", "items": { "type": "object" } },

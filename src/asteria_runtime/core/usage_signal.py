@@ -123,6 +123,7 @@ def usage_signal_analysis(
         active_recent,
         dogfooding_gate,
     )
+    next_batch_plan = _next_batch_plan(dogfooding_gate, acceptance_signal_gate)
     analysis = {
         "schema_version": "0.1.0",
         "created_at": now_iso(),
@@ -142,6 +143,7 @@ def usage_signal_analysis(
         "superseded_signals": superseded,
         "dogfooding_gate": dogfooding_gate,
         "acceptance_signal_gate": acceptance_signal_gate,
+        "next_batch_plan": next_batch_plan,
         "priority_items": priority_items,
         "roadmap_tasks": roadmap_tasks,
         "candidate_decision_points": decision_points,
@@ -149,6 +151,7 @@ def usage_signal_analysis(
             priority_items,
             dogfooding_gate,
             acceptance_signal_gate,
+            next_batch_plan,
         ),
     }
     if write:
@@ -352,6 +355,79 @@ def _analysis_status(
     return str(active_summary.get("status") or "missing")
 
 
+def _next_batch_plan(
+    dogfooding_gate: dict[str, Any],
+    acceptance_signal_gate: dict[str, Any],
+) -> dict[str, Any]:
+    if acceptance_signal_gate.get("status") != "ready":
+        return {
+            "status": str(acceptance_signal_gate.get("status") or "collecting"),
+            "ready": False,
+            "reason": str(
+                acceptance_signal_gate.get("reason")
+                or dogfooding_gate.get("reason")
+                or "Acceptance signal gate is not ready."
+            ),
+            "batch_id": None,
+            "max_tasks": 0,
+            "task_candidates": [],
+            "guardrails": _next_batch_guardrails(),
+        }
+    return {
+        "status": "ready",
+        "ready": True,
+        "reason": "Alpha.2 acceptance signals support the next scoped dogfooding batch.",
+        "batch_id": "alpha2-next-scoped-dogfooding",
+        "max_tasks": 3,
+        "task_candidates": [
+            {
+                "id": "real_repair_task",
+                "title": "Run one real repair task with failing or explicit acceptance evidence.",
+                "task_kind": "repair_validation",
+                "value": "Proves repair/replan moves a realistic user-facing task forward.",
+                "required_evidence": [
+                    "run final_report.md",
+                    "validation or explicit acceptance evidence",
+                    "accepted usage signal",
+                ],
+            },
+            {
+                "id": "multi_file_small_feature",
+                "title": "Run one 2-4 file feature task without enabling real parallel writes.",
+                "task_kind": "multi_file_feature",
+                "value": "Exercises planning, scope control, final report, and promotion guardrails.",
+                "required_evidence": [
+                    "task_plan write_scope",
+                    "changed artifact evidence",
+                    "accepted usage signal",
+                ],
+            },
+            {
+                "id": "context_pressure_maintenance",
+                "title": "Run one context-heavy maintenance task over docs and source slices.",
+                "task_kind": "context_pressure_validation",
+                "value": "Proves context budget and compact-boundary evidence remain understandable.",
+                "required_evidence": [
+                    "context_budget_snapshots.jsonl",
+                    "run final_report.md",
+                    "accepted usage signal",
+                ],
+            },
+        ],
+        "guardrails": _next_batch_guardrails(),
+    }
+
+
+def _next_batch_guardrails() -> list[str]:
+    return [
+        "Keep real_disjoint_write_workers disabled.",
+        "Limit the next batch to at most 3 scoped tasks.",
+        "Bind every completed task to usage_signal evidence refs.",
+        "Export a fresh evidence bundle after the batch.",
+        "Treat provider/network instability as route evidence, not immediate product direction.",
+    ]
+
+
 def _acceptance_signal_category(category: str) -> str:
     aliases = {
         "repair_replan_path": "repair_replan",
@@ -412,8 +488,13 @@ def _analysis_next_actions(
     items: list[dict[str, Any]],
     dogfooding_gate: dict[str, Any],
     acceptance_signal_gate: dict[str, Any],
+    next_batch_plan: dict[str, Any],
 ) -> list[str]:
     if not items:
+        if next_batch_plan.get("ready"):
+            return [
+                "Next batch plan is ready; run at most 3 scoped dogfooding tasks and bind each result to usage signals."
+            ]
         if acceptance_signal_gate.get("status") == "ready":
             return [
                 "Acceptance signal gate is ready; prepare the alpha.2 evidence bundle and next scoped dogfooding batch."
