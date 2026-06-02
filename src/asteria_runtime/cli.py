@@ -1160,6 +1160,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=7,
         help="Maximum long-run and acceptance records to include",
     )
+    weekly_report_parser.add_argument("--json", action="store_true", help="Print JSON")
     ops_signal_parser = subcommands.add_parser(
         "ops-signal",
         aliases=["/ops-signal", "usage-signal", "/usage-signal"],
@@ -1214,6 +1215,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Markdown output path; defaults to docs/zh/自动路线图.md",
     )
+    roadmap_parser.add_argument("--json", action="store_true", help="Print JSON")
     daily_plan_parser = subcommands.add_parser(
         "daily-plan",
         aliases=["/daily-plan", "long-run-plan", "/long-run-plan"],
@@ -1827,7 +1829,10 @@ def main() -> None:
             week_id=args.week_id,
             limit=args.limit,
         ).run()
-        print(weekly_report_result.to_text())
+        if args.json:
+            print(json.dumps(weekly_report_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(weekly_report_result.to_text())
         return
 
     if command in {"ops-signal", "usage-signal"}:
@@ -1856,7 +1861,10 @@ def main() -> None:
             root=Path(args.root),
             output=args.output,
         ).run()
-        print(roadmap_result.to_text())
+        if args.json:
+            print(json.dumps(roadmap_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(roadmap_result.to_text())
         return
 
     if command in {"daily-plan", "long-run-plan"}:

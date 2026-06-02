@@ -123,7 +123,7 @@ def usage_signal_analysis(
         active_recent,
         dogfooding_gate,
     )
-    next_batch_plan = _next_batch_plan(dogfooding_gate, acceptance_signal_gate)
+    next_batch_plan = _next_batch_plan(dogfooding_gate, acceptance_signal_gate, active_recent)
     analysis = {
         "schema_version": "0.1.0",
         "created_at": now_iso(),
@@ -358,6 +358,7 @@ def _analysis_status(
 def _next_batch_plan(
     dogfooding_gate: dict[str, Any],
     acceptance_signal_gate: dict[str, Any],
+    rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
     if acceptance_signal_gate.get("status") != "ready":
         return {
@@ -373,12 +374,35 @@ def _next_batch_plan(
             "task_candidates": [],
             "guardrails": _next_batch_guardrails(),
         }
+    completed_categories = _completed_next_batch_categories(rows)
+    required_categories = {"real_repair_task", "multi_file_small_feature", "context_pressure_maintenance"}
+    if completed_categories >= required_categories:
+        evidence_refs: list[str] = []
+        for row in rows:
+            if _next_batch_category(str(row.get("expected_outcome_category") or "")) in required_categories:
+                evidence_refs.extend(str(item) for item in row.get("evidence_refs") or [])
+        return {
+            "status": "completed",
+            "ready": False,
+            "completed": True,
+            "reason": "Alpha.2 next scoped dogfooding batch has accepted evidence for all required task categories.",
+            "batch_id": "alpha2-next-scoped-dogfooding",
+            "max_tasks": 3,
+            "completed_categories": sorted(completed_categories),
+            "missing_categories": [],
+            "task_candidates": [],
+            "evidence_refs": list(dict.fromkeys(evidence_refs))[:12],
+            "guardrails": _next_batch_guardrails(),
+        }
     return {
         "status": "ready",
         "ready": True,
+        "completed": False,
         "reason": "Alpha.2 acceptance signals support the next scoped dogfooding batch.",
         "batch_id": "alpha2-next-scoped-dogfooding",
         "max_tasks": 3,
+        "completed_categories": sorted(completed_categories),
+        "missing_categories": sorted(required_categories - completed_categories),
         "task_candidates": [
             {
                 "id": "real_repair_task",
@@ -426,6 +450,26 @@ def _next_batch_guardrails() -> list[str]:
         "Export a fresh evidence bundle after the batch.",
         "Treat provider/network instability as route evidence, not immediate product direction.",
     ]
+
+
+def _completed_next_batch_categories(rows: list[dict[str, Any]]) -> set[str]:
+    completed: set[str] = set()
+    for row in rows:
+        if str(row.get("artifact_outcome") or "unknown") != "accepted":
+            continue
+        category = _next_batch_category(str(row.get("expected_outcome_category") or ""))
+        if category:
+            completed.add(category)
+    return completed
+
+
+def _next_batch_category(category: str) -> str | None:
+    aliases = {
+        "real_repair_task": "real_repair_task",
+        "multi_file_small_feature": "multi_file_small_feature",
+        "context_pressure_maintenance": "context_pressure_maintenance",
+    }
+    return aliases.get(category)
 
 
 def _acceptance_signal_category(category: str) -> str:
@@ -491,6 +535,10 @@ def _analysis_next_actions(
     next_batch_plan: dict[str, Any],
 ) -> list[str]:
     if not items:
+        if next_batch_plan.get("status") == "completed":
+            return [
+                "Alpha.2 next scoped dogfooding batch is complete; export a fresh evidence bundle and choose the next gated development lane."
+            ]
         if next_batch_plan.get("ready"):
             return [
                 "Next batch plan is ready; run at most 3 scoped dogfooding tasks and bind each result to usage signals."

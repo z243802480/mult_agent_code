@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -16,6 +17,28 @@ class RoadmapResult:
     markdown_path: Path
     status: str
     next_actions: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": "0.1.0",
+            "root": str(self.root),
+            "roadmap_path": str(self.roadmap_path),
+            "markdown_path": str(self.markdown_path),
+            "status": self.status,
+            "next_actions": self.next_actions,
+            "control_surface": control_surface_contract(
+                command="roadmap-update",
+                audience="maintainer_ops_reporting",
+                stable_fields=[
+                    "schema_version",
+                    "root",
+                    "roadmap_path",
+                    "markdown_path",
+                    "status",
+                    "next_actions",
+                ],
+            ),
+        }
 
     def to_text(self) -> str:
         lines = [
@@ -282,7 +305,12 @@ def _effective_next_actions(
         filtered.append("Resolve dogfooding gate blockers before the next scoped batch.")
     elif dogfooding_gate.get("status") == "ready":
         next_batch_plan = _next_batch_plan(usage_analysis)
-        if next_batch_plan.get("ready"):
+        if next_batch_plan.get("status") == "completed":
+            filtered.append(
+                "Alpha.2 next scoped dogfooding batch is complete; "
+                "review the fresh evidence bundle and choose the next gated development lane."
+            )
+        elif next_batch_plan.get("ready"):
             batch_id = str(next_batch_plan.get("batch_id") or "next scoped batch")
             max_tasks = int(next_batch_plan.get("max_tasks") or 0)
             task_count = len(next_batch_plan.get("task_candidates") or [])

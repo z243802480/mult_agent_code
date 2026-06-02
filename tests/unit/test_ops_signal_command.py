@@ -304,3 +304,55 @@ def test_weekly_and_roadmap_consume_ready_next_batch_plan(tmp_path: Path) -> Non
         "Dogfooding gate is ready; run the next scoped validation batch."
         not in roadmap_payload["next_actions"]
     )
+
+
+def test_next_batch_plan_completes_after_required_scoped_tasks(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    for category in (
+        "repair_replan",
+        "ask_stop",
+        "context_pressure",
+        "capability_selection",
+        "real_repair_task",
+        "multi_file_small_feature",
+        "context_pressure_maintenance",
+    ):
+        OpsSignalCommand(
+            tmp_path,
+            run_id=f"run-{category}",
+            task_kind="scoped_validation",
+            expected_outcome_category=category,
+            artifact_outcome="accepted",
+            blocker_category="none",
+            trust_risk="none",
+            summary=f"{category} accepted",
+            evidence_refs=[f"{category}-summary.json"],
+        ).run()
+
+    result = OpsSignalCommand(tmp_path, summarize_only=True, analyze=True).run()
+    weekly = WeeklyReportCommand(tmp_path, week_id="2026-W23").run()
+    roadmap = RoadmapCommand(tmp_path).run()
+
+    assert result.analysis is not None
+    next_batch = result.analysis["next_batch_plan"]
+    assert next_batch["status"] == "completed"
+    assert next_batch["ready"] is False
+    assert next_batch["completed"] is True
+    assert next_batch["completed_categories"] == [
+        "context_pressure_maintenance",
+        "multi_file_small_feature",
+        "real_repair_task",
+    ]
+    assert next_batch["task_candidates"] == []
+    assert (
+        result.analysis["next_actions"][0]
+        == "Alpha.2 next scoped dogfooding batch is complete; export a fresh evidence bundle and choose the next gated development lane."
+    )
+    expected_action = (
+        "Alpha.2 next scoped dogfooding batch is complete; "
+        "review the fresh evidence bundle and choose the next gated development lane."
+    )
+    report = json.loads(weekly.report_path.read_text(encoding="utf-8"))
+    assert expected_action in report["next_actions"]
+    roadmap_payload = json.loads(roadmap.roadmap_path.read_text(encoding="utf-8"))
+    assert expected_action in roadmap_payload["next_actions"]

@@ -15,6 +15,8 @@ from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
+from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
+from asteria_runtime.commands.roadmap_command import RoadmapCommand
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.real_provider_matrix import summarize_real_provider_matrix
 from asteria_runtime.storage.json_store import JsonStore
@@ -63,6 +65,52 @@ def test_version_command_reports_runtime_diagnostics() -> None:
             "version",
             "python_version",
             "executable",
+        },
+    )
+
+
+def test_weekly_report_command_reports_ops_control_surface(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+
+    result = WeeklyReportCommand(tmp_path, week_id="2026-W23").run()
+    payload = result.to_dict()
+
+    assert payload["schema_version"] == "0.1.0"
+    assert payload["week_id"] == "2026-W23"
+    _assert_control_surface_contract(
+        payload,
+        command="weekly-report",
+        audience="maintainer_ops_reporting",
+        required_fields={
+            "schema_version",
+            "root",
+            "week_id",
+            "report_path",
+            "status",
+            "summary",
+            "next_actions",
+        },
+    )
+
+
+def test_roadmap_command_reports_ops_control_surface(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+
+    result = RoadmapCommand(tmp_path, output=tmp_path / "roadmap.md").run()
+    payload = result.to_dict()
+
+    assert payload["schema_version"] == "0.1.0"
+    _assert_control_surface_contract(
+        payload,
+        command="roadmap-update",
+        audience="maintainer_ops_reporting",
+        required_fields={
+            "schema_version",
+            "root",
+            "roadmap_path",
+            "markdown_path",
+            "status",
+            "next_actions",
         },
     )
 

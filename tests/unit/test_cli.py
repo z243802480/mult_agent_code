@@ -293,10 +293,10 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
         ["/evidence-bundle", "--root", ".", "--max-runs", "3", "--json"]
     )
     weekly_report_args = parser.parse_args(
-        ["/weekly-report", "--root", ".", "--week-id", "2026-W20", "--limit", "4"]
+        ["/weekly-report", "--root", ".", "--week-id", "2026-W20", "--limit", "4", "--json"]
     )
     roadmap_args = parser.parse_args(
-        ["/roadmap-update", "--root", ".", "--output", "docs/zh/自动路线图.md"]
+        ["/roadmap-update", "--root", ".", "--output", "docs/zh/自动路线图.md", "--json"]
     )
     daily_plan_args = parser.parse_args(["/daily-plan", "--root", ".", "--max-model-calls", "10"])
     daily_run_args = parser.parse_args(
@@ -447,6 +447,8 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert long_run_args.execute
     assert run_parallel_args.parallel_disjoint_writes
     assert resume_parallel_args.parallel_disjoint_writes
+    assert weekly_report_args.json
+    assert roadmap_args.json
 
 
 def test_status_json_output_is_machine_readable(
@@ -465,6 +467,47 @@ def test_status_json_output_is_machine_readable(
     payload = json.loads(capsys.readouterr().out)
     assert payload["root"] == str(tmp_path.resolve())
     assert payload["initialized"] is False
+
+
+def test_weekly_report_json_output_is_machine_readable(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    InitCommand(tmp_path).run()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["asteria", "weekly-report", "--root", str(tmp_path), "--week-id", "2026-W23", "--json"],
+    )
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["root"] == str(tmp_path.resolve())
+    assert payload["week_id"] == "2026-W23"
+    assert payload["report_path"].endswith("weekly_report_2026-W23.json")
+
+
+def test_roadmap_update_json_output_is_machine_readable(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    InitCommand(tmp_path).run()
+    output = tmp_path / "roadmap.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["asteria", "roadmap-update", "--root", str(tmp_path), "--output", str(output), "--json"],
+    )
+
+    main()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["root"] == str(tmp_path.resolve())
+    assert payload["markdown_path"] == str(output)
+    assert payload["roadmap_path"].endswith("project_roadmap.json")
 
 
 def test_goal_cli_output_surfaces_workflow_state(
