@@ -221,6 +221,30 @@ class ValidationRunCommand:
             self.store.write(summary_path, summary, "validation_run")
             return ValidationRunResult(validation_run_id, "dry_run", summary_path, None, actions)
 
+        multi_runtime_probe_actions = self._multiple_runtime_managed_probe_actions()
+        if multi_runtime_probe_actions:
+            summary = self._build_summary(
+                validation_run_id=validation_run_id,
+                status="blocked",
+                summary_path=summary_path,
+                version=version,
+                package=package,
+                doctor=doctor.to_dict(),
+                gate=gate.to_dict(),
+                goal_spec_route_plan=goal_spec_route_plan,
+                run_result=None,
+                evidence=self._preflight_evidence(matrix_evidence),
+                next_actions=multi_runtime_probe_actions,
+            )
+            self.store.write(summary_path, summary, "validation_run")
+            return ValidationRunResult(
+                validation_run_id,
+                "blocked",
+                summary_path,
+                None,
+                multi_runtime_probe_actions,
+            )
+
         run_command = self.run_command_factory(
             root=self.root,
             goal=self.goal,
@@ -344,6 +368,19 @@ class ValidationRunCommand:
         if single_iteration_probe_ids & set(self.probe_ids):
             return min(self.max_iterations, 1)
         return self.max_iterations
+
+    def _multiple_runtime_managed_probe_actions(self) -> list[str]:
+        selected = [probe_id for probe_id in self.probe_ids if probe_id in SECOND_BATCH_PROBE_IDS]
+        if len(selected) <= 1:
+            return []
+        commands = ", ".join(_probe_command(probe_id) for probe_id in selected)
+        return [
+            (
+                "Run one second-batch runtime-managed validation probe per validation-run "
+                "command so each probe can own its task contract and stop boundary."
+            ),
+            f"Suggested probe commands: {commands}",
+        ]
 
     def _allow_targeted_probe_over_runtime_readiness(self, gate: dict[str, Any]) -> bool:
         if not self.probe_ids or gate.get("stage") != "runtime_readiness_blocked":

@@ -937,12 +937,15 @@ def _apply_context_pressure_probe_hint(task: dict) -> None:
 
 def _apply_capability_selection_probe_hint(task: dict) -> None:
     task["task_kind"] = "diagnostic"
+    task["risk"] = "medium"
     task["parallel_safety"] = "serial"
     task["read_scope"] = ["AGENTS.md", "docs/zh/运行命令.md"]
     task["write_scope"] = []
     task["expected_changed_files"] = []
     task["expected_artifacts"] = []
     task["allowed_tools"] = ["read_file", "search_text"]
+    task["allowed_mcp"] = ["runtime_matrix/echo"]
+    task["mcp_servers"] = [{"name": "runtime_matrix", "tools": ["echo"]}]
     task["acceptance"] = [
         "runtime records a reasoned capability decision",
         "runtime records adapter invocation evidence with decision reason",

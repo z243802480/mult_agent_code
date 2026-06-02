@@ -279,14 +279,15 @@ def _subagent_readonly_fanout_check(
             evidence_refs=[item for item in evidence_refs if item],
         )
 
-    workers = _workers_for_parent(run_dirs, validator, parent_worker_id)
+    plan_run_dirs = _run_dirs_for_id(run_dirs, str(plan.get("run_id") or ""))
+    workers = _workers_for_parent(plan_run_dirs, validator, parent_worker_id)
     child_workers = {
         str(worker.get("task_id") or ""): worker
         for worker in workers
         if str(worker.get("worker_kind") or "") == "subagent_readonly_child"
     }
-    results = _worker_results_by_worker(run_dirs, validator)
-    runtime_profiles = _runtime_profiles_by_id(run_dirs, validator)
+    results = _worker_results_by_worker(plan_run_dirs, validator)
+    runtime_profiles = _runtime_profiles_by_id(plan_run_dirs, validator)
     missing_workers: list[str] = []
     missing_results: list[str] = []
     missing_profiles: list[str] = []
@@ -334,7 +335,7 @@ def _subagent_readonly_fanout_check(
         if runtime_profile_id not in runtime_profiles:
             missing_profiles.append(worker_id)
         snapshot = _latest_context_budget_snapshot_for_runtime_profile(
-            run_dirs,
+            plan_run_dirs,
             validator,
             runtime_profile_id,
             child_task_id,
@@ -912,6 +913,9 @@ def _capability_key(capability_type: Any, name: Any) -> str | None:
     name_text = str(name or "").strip()
     if not capability_type_text or not name_text:
         return None
+    prefix = f"{capability_type_text}:"
+    if name_text.startswith(prefix):
+        return name_text
     return f"{capability_type_text}:{name_text}"
 
 
@@ -1586,3 +1590,10 @@ def _run_dirs(root: Path) -> list[Path]:
     if not runs_dir.exists():
         return []
     return sorted([path for path in runs_dir.iterdir() if path.is_dir()])
+
+
+def _run_dirs_for_id(run_dirs: list[Path], run_id: str) -> list[Path]:
+    if not run_id:
+        return run_dirs
+    scoped = [run_dir for run_dir in run_dirs if run_dir.name == run_id]
+    return scoped or run_dirs

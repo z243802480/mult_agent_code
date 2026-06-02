@@ -69,6 +69,8 @@
         },
         "recommended_action": { "type": "string" },
         "estimated_tokens_before": { "type": "integer" },
+        "estimated_tokens_after": { "type": "integer" },
+        "estimated_tokens_delta": { "type": "integer" },
         "estimated_duplicate_tokens": { "type": "integer" },
         "preserve_sections": {
           "type": "array",
@@ -78,6 +80,37 @@
           "type": "array",
           "items": { "type": "string" }
         }
+      }
+    },
+    "recovery_summary": {
+      "type": "object",
+      "properties": {
+        "available": { "type": "boolean" },
+        "sections": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "summary": { "type": "string" }
+      }
+    },
+    "noise_attribution": {
+      "type": "object",
+      "properties": {
+        "duplicate_content_hashes": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "duplicate_estimated_tokens": { "type": "integer" },
+        "duplicate_ref_count": { "type": "integer" },
+        "largest_sections": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "file_context": { "type": "object" }
       }
     },
     "evidence_refs": {

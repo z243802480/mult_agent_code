@@ -757,6 +757,42 @@ def test_runtime_readiness_gate_accepts_readonly_fanout_child_evidence(
     assert "model_calls=2" in fanout["summary"]
 
 
+def test_runtime_readiness_gate_scopes_readonly_fanout_results_to_plan_run(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    _append_ready_readonly_fanout(run_dir, validator)
+    polluted_run_dir = tmp_path / ".asteria" / "runs" / "run-2"
+    polluted_run_dir.mkdir(parents=True)
+    for index in (1, 2):
+        JsonlStore(validator).append(
+            polluted_run_dir / "worker_results.jsonl",
+            _readonly_child_result(
+                worker_id=f"worker-000{index + 1}",
+                result_id=f"worker-result-polluted-000{index + 1}",
+                task_id=f"task-2-child-{index:02d}",
+                status="denied",
+                validation_refs=[],
+                summary="Delegation brief quality gate blocked high-risk worker: allowed_writes",
+            ),
+            "worker_result",
+        )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
+    assert fanout["status"] == "ready"
+    assert "2/2 child worker" in fanout["summary"]
+
+
 def test_runtime_readiness_gate_accepts_readonly_fanout_task_context_snapshots(
     tmp_path: Path,
 ) -> None:
@@ -1373,6 +1409,55 @@ def test_runtime_readiness_gate_matches_mcp_server_catalog_to_tool_invocation(
         {
             "capability_type": "mcp",
             "capability": "runtime_matrix/echo",
+            "decision": {"decision": "allow"},
+        },
+        None,
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    capability = next(check for check in gate["checks"] if check["name"] == "capability_selection")
+    assert capability["status"] == "ready"
+
+
+def test_runtime_readiness_gate_normalizes_prefixed_capability_decision(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "agent_loop_dispatch.json").write_text(
+        json.dumps(
+            {
+                "task_dispatch": [
+                    {
+                        "capability_catalog": {
+                            "entries": [
+                                {
+                                    "capability_type": "mcp",
+                                    "name": "runtime_matrix/echo",
+                                    "visible": True,
+                                    "selection_state": "selected",
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    JsonlStore(validator).append(
+        run_dir / "capability_decisions.jsonl",
+        {
+            "capability_type": "mcp",
+            "capability": "mcp:runtime_matrix/echo",
             "decision": {"decision": "allow"},
         },
         None,

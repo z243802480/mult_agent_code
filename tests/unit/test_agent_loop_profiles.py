@@ -77,3 +77,24 @@ def test_agent_loop_profile_registry_dispatches_plan() -> None:
     assert dispatch["task_dispatch"][2]["output_contract"]["artifact"] == (
         "multi_agent_execution_summary"
     )
+
+
+def test_agent_loop_profile_registry_uses_task_local_capability_catalogs() -> None:
+    dispatch = AgentLoopProfileRegistry().dispatch_plan(
+        [
+            {
+                "task_id": "task-1",
+                "task_kind": "diagnostic",
+                "risk": "medium",
+                "allowed_mcp": ["runtime_matrix/echo"],
+                "mcp_servers": [{"name": "runtime_matrix", "tools": ["echo"]}],
+            }
+        ],
+        permission_mode="reviewed_auto",
+    )
+
+    entries = {
+        (item["capability_type"], item["name"]): item
+        for item in dispatch["task_dispatch"][0]["capability_catalog"]["entries"]
+    }
+    assert entries[("mcp", "runtime_matrix/echo")]["selection_state"] == "selected"

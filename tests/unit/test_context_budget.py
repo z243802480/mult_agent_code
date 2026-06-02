@@ -47,6 +47,9 @@ def test_context_budget_snapshot_attributes_subagent_child_context() -> None:
     assert snapshot["duplicate_ref_count"] == 1
     assert snapshot["duplicate_estimated_tokens"] > 0
     assert snapshot["compact_boundary"]["estimated_tokens_before"] == snapshot["estimated_tokens"]
+    assert snapshot["recovery_summary"]["available"] is True
+    assert "worker_results" in snapshot["recovery_summary"]["sections"]
+    assert snapshot["noise_attribution"]["duplicate_ref_count"] == 1
 
 
 def test_context_budget_snapshot_marks_compact_boundary() -> None:
@@ -69,6 +72,8 @@ def test_context_budget_snapshot_marks_compact_boundary() -> None:
     assert snapshot["pressure_status"] in {"hard_stop", "exceeded"}
     assert snapshot["compact_boundary"]["status"] == "required"
     assert "read_scope_files" in snapshot["compact_boundary"]["droppable_sections"]
+    assert snapshot["compact_boundary"]["estimated_tokens_after"] < snapshot["estimated_tokens"]
+    assert snapshot["compact_boundary"]["estimated_tokens_delta"] > 0
 
 
 def test_context_budget_snapshot_does_not_count_persisted_envelope_payload_duplicate() -> None:
@@ -125,3 +130,41 @@ def test_context_budget_snapshot_ignores_repeated_metadata_refs() -> None:
 
     assert snapshot["duplicate_ref_count"] == 1
     assert snapshot["duplicate_estimated_tokens"] > 0
+
+
+def test_context_budget_snapshot_attributes_file_hash_diff_noise() -> None:
+    snapshot = build_context_budget_snapshot(
+        policy={"context": {"model_context_window_tokens": 100_000}},
+        run_id="run-1",
+        task={"task_id": "task-1"},
+        runtime_context={
+            "context_package": {
+                "read_scope_files": [
+                    {
+                        "path": "src/example.py",
+                        "content_hash": "sha256:abc",
+                        "status": "unchanged",
+                    },
+                    {
+                        "path": "tests/test_example.py",
+                        "hash": "sha256:def",
+                        "diff": "@@ changed",
+                        "status": "modified",
+                    },
+                ],
+                "failures": [{"summary": "previous failure"}],
+                "context_envelope_path": ".asteria/runs/run-1/context_envelope.json",
+            }
+        },
+        runtime_profile_id="runtime-profile-worker-0001",
+        context_mount_id="context-worker-0001",
+    ).to_dict()
+
+    file_context = snapshot["noise_attribution"]["file_context"]
+    assert file_context["file_ref_count"] == 2
+    assert file_context["hash_ref_count"] == 2
+    assert file_context["diff_ref_count"] == 1
+    assert file_context["changed_ref_count"] == 1
+    assert file_context["files"][1]["has_diff"] is True
+    assert snapshot["recovery_summary"]["available"] is True
+    assert "failures" in snapshot["recovery_summary"]["sections"]

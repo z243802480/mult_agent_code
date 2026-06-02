@@ -260,8 +260,16 @@ class AgentLoopProfileRegistry:
                         task=task,
                         runtime_tool_names=runtime_tool_names or [],
                         permission_mode=permission_mode,
-                        skill_catalog=skill_catalog or [],
-                        mcp_servers=mcp_servers or [],
+                        skill_catalog=_task_catalog_items(
+                            task,
+                            "skill_catalog",
+                            skill_catalog,
+                        ),
+                        mcp_servers=_task_catalog_items(
+                            task,
+                            "mcp_servers",
+                            mcp_servers,
+                        ),
                         allow_shell=allow_shell,
                     ),
                     "output_contract": profile["output_contract"],
@@ -305,3 +313,15 @@ class AgentLoopProfileRegistry:
         if str(task.get("task_kind") or "").lower() == "research":
             return "medium"
         return "low"
+
+
+def _task_catalog_items(
+    task: dict,
+    field: str,
+    defaults: list[dict] | None,
+) -> list[dict]:
+    items = [item for item in defaults or [] if isinstance(item, dict)]
+    task_items = task.get(field)
+    if isinstance(task_items, list):
+        items.extend(item for item in task_items if isinstance(item, dict))
+    return items

@@ -58,6 +58,18 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
     )
     validation_dir = tmp_path / ".asteria" / "validation_runs" / "validation-0001"
     validation_dir.mkdir(parents=True)
+    root_summary = tmp_path / ".asteria" / "validation_runs" / "alpha2-summary-current.json"
+    root_summary.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "validation_run_id": "validation-current",
+                "status": "completed",
+                "api_key": "secret-value",
+            }
+        ),
+        encoding="utf-8",
+    )
     (validation_dir / "summary.json").write_text(
         json.dumps(
             {
@@ -106,6 +118,7 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
         assert "manifest.json" in names
         assert ".asteria/runs/run-0001/run.json" in names
         assert ".asteria/runs/run-0001/model_calls.jsonl" in names
+        assert ".asteria/validation_runs/alpha2-summary-current.json" in names
         assert ".asteria/validation_runs/validation-0001/summary.json" in names
         assert ".asteria/ops/usage_signals.jsonl" in names
         assert ".asteria/ops/usage_signal_analysis.json" in names
@@ -128,6 +141,10 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
             archive.read(".asteria/validation_runs/validation-0001/summary.json").decode("utf-8")
         )
         assert validation["api_key"] == "[REDACTED]"
+        root_validation = json.loads(
+            archive.read(".asteria/validation_runs/alpha2-summary-current.json").decode("utf-8")
+        )
+        assert root_validation["api_key"] == "[REDACTED]"
         analysis = json.loads(
             archive.read(".asteria/ops/usage_signal_analysis.json").decode("utf-8")
         )

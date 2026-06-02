@@ -579,6 +579,37 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     )
 
 
+def test_validation_run_blocks_multiple_second_batch_runtime_managed_probes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+
+    class ShouldNotRunCommand:
+        def __init__(self, *args, **kwargs) -> None:
+            raise AssertionError("runtime-managed probes must be run one at a time")
+
+    result = ValidationRunCommand(
+        tmp_path,
+        goal="Run multiple second batch probes",
+        probe_ids=["repair_replan_path", "ask_stop_path"],
+        run_command_factory=ShouldNotRunCommand,
+    ).run()
+
+    assert result.status == "blocked"
+    assert result.run_id is None
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    _assert_validation_run_summary_control_surface(summary)
+    assert summary["run_result"] is None
+    assert any(
+        "one second-batch runtime-managed validation probe" in action
+        for action in summary["next_actions"]
+    )
+    assert "repair_replan_path" in summary["next_actions"][1]
+    assert "ask_stop_path" in summary["next_actions"][1]
+
+
 def test_validation_run_records_structured_failure_when_run_raises(
     tmp_path: Path,
     monkeypatch,

@@ -241,6 +241,12 @@ class EvidenceBundleCommand:
         validation_dir = self.agent_dir / "validation_runs"
         if not validation_dir.exists():
             return
+        root_summaries = sorted(
+            (path for path in validation_dir.glob("*.json") if path.is_file()),
+            reverse=True,
+        )[: self.max_runs]
+        for summary_path in root_summaries:
+            self._stage_file(summary_path, staging, warnings)
         runs = sorted(
             (path for path in validation_dir.iterdir() if path.is_dir()),
             reverse=True,

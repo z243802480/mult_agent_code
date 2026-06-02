@@ -71,6 +71,8 @@ class ContextBudgetSnapshot:
     compaction_threshold: float
     hard_stop_threshold: float
     compact_boundary: dict[str, Any]
+    recovery_summary: dict[str, Any]
+    noise_attribution: dict[str, Any]
     evidence_refs: list[str]
 
     def to_dict(self) -> dict[str, Any]:
@@ -98,6 +100,8 @@ class ContextBudgetSnapshot:
             "compaction_threshold": self.compaction_threshold,
             "hard_stop_threshold": self.hard_stop_threshold,
             "compact_boundary": dict(self.compact_boundary),
+            "recovery_summary": dict(self.recovery_summary),
+            "noise_attribution": dict(self.noise_attribution),
             "evidence_refs": list(self.evidence_refs),
         }
 
@@ -245,6 +249,14 @@ def build_context_budget_snapshot(
         compaction_threshold=pressure.compaction_threshold,
         hard_stop_threshold=pressure.hard_stop_threshold,
         compact_boundary=_compact_boundary(pressure, sections, duplicate_tokens),
+        recovery_summary=_recovery_summary(metered_context, sections),
+        noise_attribution=_noise_attribution(
+            metered_context,
+            sections,
+            duplicate_hashes,
+            duplicate_tokens,
+            duplicate_refs,
+        ),
         evidence_refs=_context_evidence_refs(runtime_context),
     )
 
@@ -444,14 +456,121 @@ def _compact_boundary(
         )
         if name in sections
     ]
+    droppable_tokens = sum(sections.get(name, 0) for name in droppable)
+    estimated_after = max(1, pressure.estimated_tokens - droppable_tokens - duplicate_tokens)
     return {
         "status": status,
         "recommended_action": recommended_action,
         "estimated_tokens_before": pressure.estimated_tokens,
+        "estimated_tokens_after": estimated_after,
+        "estimated_tokens_delta": pressure.estimated_tokens - estimated_after,
         "estimated_duplicate_tokens": duplicate_tokens,
         "preserve_sections": preserve,
         "droppable_sections": droppable,
     }
+
+
+def _recovery_summary(runtime_context: dict, sections: dict[str, int]) -> dict[str, Any]:
+    package = runtime_context.get("context_package")
+    package = package if isinstance(package, dict) else {}
+    recovery_sections = [
+        name
+        for name in (
+            "failures",
+            "recent_failures",
+            "decisions",
+            "validations",
+            "runtime_requests",
+            "worker_results",
+            "merge_gate_evidence",
+        )
+        if package.get(name) or name in sections
+    ]
+    refs = []
+    for key in ("context_envelope_path", "recovery_summary_path", "handoff_path"):
+        value = package.get(key)
+        if value:
+            refs.append(str(value))
+    return {
+        "available": bool(recovery_sections or refs),
+        "sections": recovery_sections,
+        "evidence_refs": list(dict.fromkeys(refs)),
+        "summary": (
+            "Recovery context is available from compact evidence sections."
+            if recovery_sections or refs
+            else "No recovery-specific context is present."
+        ),
+    }
+
+
+def _noise_attribution(
+    runtime_context: dict,
+    sections: dict[str, int],
+    duplicate_hashes: list[str],
+    duplicate_tokens: int,
+    duplicate_refs: int,
+) -> dict[str, Any]:
+    largest_sections = [
+        {"section": name, "estimated_tokens": tokens}
+        for name, tokens in sorted(sections.items(), key=lambda item: item[1], reverse=True)[:5]
+    ]
+    return {
+        "duplicate_content_hashes": list(duplicate_hashes),
+        "duplicate_estimated_tokens": duplicate_tokens,
+        "duplicate_ref_count": duplicate_refs,
+        "largest_sections": largest_sections,
+        "file_context": _file_context_attribution(runtime_context),
+    }
+
+
+def _file_context_attribution(runtime_context: dict) -> dict[str, Any]:
+    package = runtime_context.get("context_package")
+    package = package if isinstance(package, dict) else {}
+    files = _as_list(package.get("read_scope_files")) + _as_list(package.get("write_scope_files"))
+    entries: list[dict[str, Any]] = []
+    hash_count = 0
+    diff_count = 0
+    changed_count = 0
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        path = _string_or_none(item.get("path") or item.get("file") or item.get("name"))
+        content_hash = _string_or_none(
+            item.get("content_hash") or item.get("hash") or item.get("sha256")
+        )
+        diff_ref = _string_or_none(item.get("diff_ref") or item.get("diff_path"))
+        has_diff = bool(item.get("diff") or diff_ref)
+        status = _string_or_none(item.get("status") or item.get("change_type"))
+        if content_hash:
+            hash_count += 1
+        if has_diff:
+            diff_count += 1
+        if status and status not in {"unchanged", "clean"}:
+            changed_count += 1
+        entries.append(
+            {
+                "path": path,
+                "content_hash": content_hash,
+                "has_diff": has_diff,
+                "diff_ref": diff_ref,
+                "status": status or ("changed" if has_diff else "unknown"),
+            }
+        )
+    return {
+        "file_ref_count": len(entries),
+        "hash_ref_count": hash_count,
+        "diff_ref_count": diff_count,
+        "changed_ref_count": changed_count,
+        "files": entries[:20],
+    }
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if value:
+        return [value]
+    return []
 
 
 def _context_evidence_refs(runtime_context: dict) -> list[str]:
