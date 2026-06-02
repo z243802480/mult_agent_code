@@ -74,6 +74,34 @@ def test_validation_probe_hint_forces_readonly_fanout_strategy() -> None:
     assert task["multi_agent_strategy"]["max_child_workers"] == 2
 
 
+def test_validation_probe_hint_expands_read_scope_for_readonly_write_gate() -> None:
+    task_plan = {
+        "tasks": [
+            {
+                "task_id": "task-0001",
+                "task_kind": "implementation",
+                "parallel_safety": "serial",
+                "write_scope": ["probe.txt"],
+                "expected_changed_files": ["probe.txt"],
+                "expected_artifacts": ["probe.txt"],
+                "allowed_tools": ["write_file", "run_command"],
+                "acceptance": ["probe artifact exists"],
+            }
+        ]
+    }
+
+    _apply_validation_probe_hints(task_plan, ["readonly_write_tool_blocked"])
+
+    task = task_plan["tasks"][0]
+    assert task["runtime_profile_hints"]["force_next_action"] == "subagent"
+    assert task["runtime_profile_hints"]["validation_probe_ids"] == [
+        "readonly_write_tool_blocked"
+    ]
+    assert task["parallel_safety"] == "readonly"
+    assert task["write_scope"] == []
+    assert "readonly_write_gate_probe.txt" in task["read_scope"]
+
+
 def test_requirement_planner_groups_single_concrete_file_goal() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

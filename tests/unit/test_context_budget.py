@@ -93,3 +93,35 @@ def test_context_budget_snapshot_does_not_count_persisted_envelope_payload_dupli
 
     assert snapshot["duplicate_ref_count"] == 0
     assert snapshot["duplicate_estimated_tokens"] == 0
+
+
+def test_context_budget_snapshot_ignores_repeated_metadata_refs() -> None:
+    repeated_ref = ".asteria/runs/run-1/context_envelopes/context_envelope_task_child_worker_0002.json"
+    repeated_content = "real duplicated context content " * 20
+    snapshot = build_context_budget_snapshot(
+        policy={"context": {"model_context_window_tokens": 100_000}},
+        run_id="run-1",
+        task={"task_id": "task-1"},
+        runtime_context={
+            "context_package": {
+                "read_scope_files": [
+                    {"path": repeated_ref, "content": repeated_content},
+                    {"path": repeated_ref, "content": repeated_content},
+                ],
+                "evidence_scope": {
+                    "evidence_refs": [repeated_ref, repeated_ref],
+                    "runtime_profile_id": "runtime-profile-worker-0002",
+                    "context_envelope_path": repeated_ref,
+                },
+            },
+            "context_mount": {
+                "context_mount_id": "context-mount-task-1",
+                "refs": [repeated_ref, repeated_ref],
+            },
+        },
+        runtime_profile_id="runtime-profile-worker-0001",
+        context_mount_id="context-worker-0001",
+    ).to_dict()
+
+    assert snapshot["duplicate_ref_count"] == 1
+    assert snapshot["duplicate_estimated_tokens"] > 0

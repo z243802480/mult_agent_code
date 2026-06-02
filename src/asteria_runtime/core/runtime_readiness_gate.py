@@ -293,6 +293,7 @@ def _subagent_readonly_fanout_check(
     missing_snapshots: list[str] = []
     missing_validation: list[str] = []
     bad_statuses: list[str] = []
+    bad_summaries: list[str] = []
     total_model_calls = 0
     total_tool_calls = 0
     child_evidence_refs: list[str] = []
@@ -327,6 +328,7 @@ def _subagent_readonly_fanout_check(
         total_tool_calls += int(cost.get("tool_calls") or 0)
         if status != "succeeded":
             bad_statuses.append(f"{worker_id}:{status or 'unknown'}")
+            bad_summaries.append(str(result.get("summary") or ""))
         if not list(result.get("validation_refs") or []) and status == "succeeded":
             missing_validation.append(worker_id)
         if runtime_profile_id not in runtime_profiles:
@@ -381,6 +383,20 @@ def _subagent_readonly_fanout_check(
             evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][:10],
         )
     if bad_statuses:
+        if _is_readonly_write_gate_probe(plan, run_dirs) and _readonly_write_gate_failures(
+            bad_summaries
+        ):
+            return RuntimeReadinessCheck(
+                name="subagent_readonly_fanout",
+                status="ready",
+                summary=(
+                    "Readonly write-gate probe recorded expected blocked child write "
+                    f"attempt(s): {bad_statuses}."
+                ),
+                evidence_refs=[item for item in [*evidence_refs, *child_evidence_refs] if item][
+                    :10
+                ],
+            )
         return RuntimeReadinessCheck(
             name="subagent_readonly_fanout",
             status="blocked",
@@ -697,11 +713,19 @@ def _capability_selection_check(
             recommended_action="Run a task through the Tool/Skill/MCP gateway to record capability decisions.",
         )
     selected = catalog["selected"]
-    unexpected = sorted(item for item in actual if item not in selected)
+    unexpected = sorted(item for item in actual if not _capability_matches_any(item, selected))
     if unexpected:
-        visible_unselected = sorted(item for item in unexpected if item in catalog["visible"])
-        blocked = sorted(item for item in unexpected if item in catalog["blocked"])
-        missing = sorted(item for item in unexpected if item not in catalog["visible"])
+        visible_unselected = sorted(
+            item for item in unexpected if _capability_matches_any(item, catalog["visible"])
+        )
+        blocked = sorted(
+            item for item in unexpected if _capability_matches_any(item, catalog["blocked"])
+        )
+        missing = sorted(
+            item
+            for item in unexpected
+            if not _capability_matches_any(item, catalog["visible"])
+        )
         summary_parts = []
         if visible_unselected:
             summary_parts.append(
@@ -829,7 +853,12 @@ def _capability_catalog_states(run_dirs: list[Path]) -> dict[str, set[str]]:
                 for entry in catalog.get("entries", []) or []:
                     if not isinstance(entry, dict):
                         continue
-                    capability = f"{entry.get('capability_type')}:{entry.get('name')}"
+                    capability = _capability_key(
+                        entry.get("capability_type"),
+                        entry.get("name"),
+                    )
+                    if not capability:
+                        continue
                     if entry.get("visible"):
                         states["visible"].add(capability)
                     state = str(entry.get("selection_state") or "")
@@ -846,7 +875,9 @@ def _capability_catalog_states(run_dirs: list[Path]) -> dict[str, set[str]]:
             if not isinstance(task, dict):
                 continue
             for tool in task.get("allowed_tools") or []:
-                capability = f"tool:{tool}"
+                capability = _capability_key("tool", tool)
+                if not capability:
+                    continue
                 states["visible"].add(capability)
                 states["selected"].add(capability)
     return states
@@ -867,11 +898,30 @@ def _actual_capability_decisions(run_dirs: list[Path], validator: SchemaValidato
             decision = item.get("decision") if isinstance(item, dict) else None
             if isinstance(decision, dict) and decision.get("decision") == "deny":
                 continue
-            capability_type = str(item.get("capability_type") or "tool")
-            capability = str(item.get("capability") or item.get("name") or "")
+            capability = _capability_key(
+                item.get("capability_type") or "tool",
+                item.get("capability") or item.get("name"),
+            )
             if capability:
-                actual.add(f"{capability_type}:{capability}")
+                actual.add(capability)
     return actual
+
+
+def _capability_key(capability_type: Any, name: Any) -> str | None:
+    capability_type_text = str(capability_type or "").strip()
+    name_text = str(name or "").strip()
+    if not capability_type_text or not name_text:
+        return None
+    return f"{capability_type_text}:{name_text}"
+
+
+def _capability_matches_any(actual: str, catalog: set[str]) -> bool:
+    if actual in catalog:
+        return True
+    if not actual.startswith("mcp:") or "/" not in actual:
+        return False
+    server_key = actual.split("/", 1)[0]
+    return server_key in catalog
 
 
 def _latest_decision(
@@ -945,6 +995,10 @@ def _subagent_worker_dispatch_check(
         )
     result_status = str(result.get("status") or "")
     if result_status in {"failed", "denied", "timeout"}:
+        if _is_readonly_write_gate_probe(result, run_dirs) and _readonly_write_gate_failures(
+            [str(result.get("summary") or "")]
+        ):
+            return None
         observation = _latest_observation_for_execution(
             run_dirs,
             validator,
@@ -975,6 +1029,60 @@ def _subagent_worker_dispatch_check(
     return None
 
 
+def _is_readonly_write_gate_probe(item: dict[str, Any], run_dirs: list[Path]) -> bool:
+    run_id = str(item.get("run_id") or "")
+    task_id = str(item.get("target_task_id") or item.get("task_id") or item.get("parent_task_id") or "")
+    return "readonly_write_tool_blocked" in _validation_probe_ids_for_task(
+        run_dirs,
+        run_id,
+        task_id,
+    )
+
+
+def _is_disjoint_write_gate_probe(item: dict[str, Any], run_dirs: list[Path]) -> bool:
+    run_id = str(item.get("run_id") or "")
+    task_id = str(item.get("target_task_id") or item.get("task_id") or item.get("parent_task_id") or "")
+    return "disjoint_write_gate_blocks_unsafe_fanout" in _validation_probe_ids_for_task(
+        run_dirs,
+        run_id,
+        task_id,
+    )
+
+
+def _validation_probe_ids_for_task(
+    run_dirs: list[Path],
+    run_id: str,
+    task_id: str,
+) -> set[str]:
+    if not run_id:
+        return set()
+    for run_dir in run_dirs:
+        if run_dir.name != run_id:
+            continue
+        task_plan_path = run_dir / "task_plan.json"
+        if not task_plan_path.exists():
+            return set()
+        try:
+            task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return set()
+        for task in task_plan.get("tasks") or []:
+            if not isinstance(task, dict):
+                continue
+            if task_id and str(task.get("task_id") or "") != task_id:
+                continue
+            hints = task.get("runtime_profile_hints")
+            hints = hints if isinstance(hints, dict) else {}
+            return {str(item) for item in hints.get("validation_probe_ids") or [] if str(item)}
+    return set()
+
+
+def _readonly_write_gate_failures(summaries: list[str]) -> bool:
+    if not summaries:
+        return False
+    return all("readonly fanout child cannot use write tool" in item.lower() for item in summaries)
+
+
 def _execution_observation_check(
     run_dirs: list[Path],
     validator: SchemaValidator,
@@ -984,6 +1092,8 @@ def _execution_observation_check(
     execution_id = str(execution.get("execution_id") or "")
     observation = _latest_observation_for_execution(run_dirs, validator, execution_id)
     if not observation:
+        if _is_disjoint_write_gate_probe(execution, run_dirs):
+            return None
         return RuntimeReadinessCheck(
             name="agent_loop_execution",
             status="blocked",
@@ -999,6 +1109,10 @@ def _execution_observation_check(
         )
     status = str(observation.get("status") or "")
     if status in {"failed", "blocked"}:
+        if _is_readonly_write_gate_probe(observation, run_dirs) and _readonly_write_gate_failures(
+            [str(observation.get("summary") or "")]
+        ):
+            return None
         recovered = _latest_successful_task_execution_after(
             run_dirs,
             validator,

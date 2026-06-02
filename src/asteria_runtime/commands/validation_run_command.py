@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -186,13 +187,32 @@ class ValidationRunCommand:
         run_command = self.run_command_factory(
             root=self.root,
             goal=self.goal,
-            max_iterations=self.max_iterations,
+            max_iterations=self._effective_max_iterations(),
             max_tasks_per_iteration=self.max_tasks_per_iteration,
             enable_research=False,
             parallel_writes=False,
             validation_probe_ids=self.probe_ids,
         )
-        run_result = run_command.run()
+        try:
+            run_result = run_command.run()
+        except Exception as exc:
+            evidence = self._failed_execution_evidence(exc, matrix_evidence)
+            actions = self._failed_execution_next_actions(evidence)
+            summary = self._build_summary(
+                validation_run_id=validation_run_id,
+                status="failed",
+                summary_path=summary_path,
+                version=version,
+                package=package,
+                doctor=doctor.to_dict(),
+                gate=gate.to_dict(),
+                goal_spec_route_plan=goal_spec_route_plan,
+                run_result=None,
+                evidence=evidence,
+                next_actions=actions,
+            )
+            self.store.write(summary_path, summary, "validation_run")
+            return ValidationRunResult(validation_run_id, "failed", summary_path, None, actions)
         evidence = self._evidence(run_result.run_id)
         status = self._status_from_run(run_result, evidence)
         actions = self._next_actions(status, run_result.run_id, evidence)
@@ -232,6 +252,57 @@ class ValidationRunCommand:
         if isinstance(route_guidance, dict) and route_guidance.get("status") == "blocked":
             reasons.extend(str(item) for item in route_guidance.get("recommended_actions", []))
         return reasons
+
+    def _failed_execution_evidence(
+        self,
+        exc: Exception,
+        matrix_evidence: dict[str, Any],
+    ) -> dict[str, Any]:
+        latest_failure_path = self.root / ".asteria" / "model" / "latest_failure.json"
+        latest_failure = _read_json_file(latest_failure_path)
+        failure_type = "runtime_execution_error"
+        if isinstance(latest_failure, dict):
+            failure_type = str(latest_failure.get("failure_type") or failure_type)
+        return {
+            "execution_failure": {
+                "error_type": type(exc).__name__,
+                "failure_type": failure_type,
+                "summary": str(exc),
+                "latest_failure_path": str(latest_failure_path)
+                if latest_failure_path.exists()
+                else None,
+                "latest_failure": latest_failure if isinstance(latest_failure, dict) else None,
+            },
+            "runtime_validation_matrix_evidence": matrix_evidence,
+            "runtime_progress_metrics": runtime_progress_metrics(self.root, self.validator),
+            "recovery_pressure": recovery_pressure_report(self.root, self.validator),
+        }
+
+    def _failed_execution_next_actions(self, evidence: dict[str, Any]) -> list[str]:
+        failure = evidence.get("execution_failure")
+        failure = failure if isinstance(failure, dict) else {}
+        latest_failure = failure.get("latest_failure")
+        latest_failure = latest_failure if isinstance(latest_failure, dict) else {}
+        recommendations = [
+            str(item) for item in latest_failure.get("recommendations") or [] if item
+        ]
+        if recommendations:
+            return recommendations
+        failure_type = str(failure.get("failure_type") or "")
+        if failure_type in {"network", "timeout", "rate_limited", "server_error"}:
+            return [
+                "Refresh provider route health, then rerun the targeted validation probe.",
+            ]
+        return ["Inspect validation-run execution_failure evidence before rerunning."]
+
+    def _effective_max_iterations(self) -> int:
+        expected_block_probe_ids = {
+            "readonly_write_tool_blocked",
+            "disjoint_write_gate_blocks_unsafe_fanout",
+        }
+        if expected_block_probe_ids & set(self.probe_ids):
+            return min(self.max_iterations, 1)
+        return self.max_iterations
 
     def _allow_targeted_probe_over_runtime_readiness(self, gate: dict[str, Any]) -> bool:
         if not self.probe_ids or gate.get("stage") != "runtime_readiness_blocked":
@@ -824,6 +895,13 @@ def _goal_for_probe_ids(probe_ids: list[str]) -> str:
     if not goals:
         return ""
     return "Run a controlled validation batch for these missing probe targets. " + " ".join(goals)
+
+
+def _read_json_file(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
 
 
 def _probe_command(probe_id: str) -> str:

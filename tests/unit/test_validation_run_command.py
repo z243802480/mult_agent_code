@@ -132,6 +132,16 @@ def test_validation_run_can_target_specific_probe_goal(tmp_path: Path, monkeypat
     )
 
 
+def test_validation_run_caps_expected_block_probe_iterations(tmp_path: Path) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        probe_ids=["readonly_write_tool_blocked"],
+        max_iterations=5,
+    )
+
+    assert command._effective_max_iterations() == 1
+
+
 def test_validation_run_accepts_current_readonly_fanout_strategy_name(tmp_path: Path) -> None:
     status, summary, refs = ValidationRunCommand(tmp_path, dry_run=True)._probe_status(
         "readonly_fanout_succeeds",
@@ -332,6 +342,46 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     assert any(
         "Review missing validation probe evidence" in action for action in summary["next_actions"]
     )
+
+
+def test_validation_run_records_structured_failure_when_run_raises(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+    model_dir = tmp_path / ".asteria" / "model"
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "latest_failure.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "failure_type": "network",
+                "summary": "provider EOF",
+                "recommendations": ["Retry after transient network issues."],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = ValidationRunCommand(
+        tmp_path,
+        goal="Create validation evidence",
+        run_command_factory=FailingRunCommand,
+    ).run()
+
+    assert result.status == "failed"
+    assert result.run_id is None
+    assert result.next_actions == ["Retry after transient network issues."]
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    _assert_validation_run_summary_control_surface(summary)
+    assert summary["status"] == "failed"
+    assert summary["run_result"] is None
+    failure = summary["evidence"]["execution_failure"]
+    assert failure["error_type"] == "RuntimeError"
+    assert failure["failure_type"] == "network"
+    assert failure["latest_failure"]["summary"] == "provider EOF"
 
 
 def test_validation_run_treats_absent_disjoint_plan_as_missing_evidence(
@@ -666,6 +716,14 @@ class FakeRunCommandWithoutDisjointPlan(FakeRunCommand):
         run_dir = self.root / ".asteria" / "runs" / result.run_id
         (run_dir / "subagent_child_plans.jsonl").unlink()
         return result
+
+
+class FailingRunCommand:
+    def __init__(self, **kwargs) -> None:
+        self.root = kwargs["root"]
+
+    def run(self) -> RunResult:
+        raise RuntimeError("GoalSpec model call failed with network")
 
 
 def _write_ready_gate_reports(root: Path) -> None:

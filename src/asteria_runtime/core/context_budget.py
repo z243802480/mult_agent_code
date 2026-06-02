@@ -359,18 +359,46 @@ def _duplicate_context_signals(value: Any) -> tuple[list[str], int, int]:
     return duplicate_hashes[:20], duplicate_tokens, duplicate_refs
 
 
-def _iter_context_strings(value: Any) -> Iterable[str]:
+_METADATA_CONTEXT_SUFFIXES = (
+    "_id",
+    "_ids",
+    "_ref",
+    "_refs",
+    "_path",
+    "_paths",
+)
+_METADATA_CONTEXT_KEYS = {
+    "id",
+    "ids",
+    "ref",
+    "refs",
+    "path",
+    "paths",
+    "evidence_refs",
+}
+
+
+def _iter_context_strings(value: Any, path: tuple[str, ...] = ()) -> Iterable[str]:
+    if path and _is_metadata_context_path(path):
+        return
     if isinstance(value, str):
         if len(" ".join(value.split())) >= 64:
             yield value
         return
     if isinstance(value, dict):
-        for item in value.values():
-            yield from _iter_context_strings(item)
+        if value.get("payload_omitted") is True:
+            return
+        for key, item in value.items():
+            yield from _iter_context_strings(item, (*path, str(key)))
         return
     if isinstance(value, list):
         for item in value:
-            yield from _iter_context_strings(item)
+            yield from _iter_context_strings(item, path)
+
+
+def _is_metadata_context_path(path: tuple[str, ...]) -> bool:
+    key = path[-1].lower()
+    return key in _METADATA_CONTEXT_KEYS or key.endswith(_METADATA_CONTEXT_SUFFIXES)
 
 
 def _compact_boundary(

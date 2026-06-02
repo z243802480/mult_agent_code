@@ -684,15 +684,20 @@ def _apply_validation_probe_hints(task_plan: dict, probe_ids: list[str]) -> None
         probe_id in {"readonly_fanout_succeeds", "readonly_write_tool_blocked"}
         for probe_id in selected
     ):
-        _apply_readonly_fanout_probe_hint(task)
+        _apply_readonly_fanout_probe_hint(task, selected)
     if "disjoint_write_gate_blocks_unsafe_fanout" in selected:
         _apply_disjoint_write_probe_hint(task)
 
 
-def _apply_readonly_fanout_probe_hint(task: dict) -> None:
+def _apply_readonly_fanout_probe_hint(task: dict, probe_ids: list[str]) -> None:
     task["task_kind"] = "research"
     task["parallel_safety"] = "readonly"
     task["read_scope"] = [".asteria/project.json"]
+    if "readonly_write_tool_blocked" in set(probe_ids):
+        task["read_scope"] = [
+            ".asteria/project.json",
+            "readonly_write_gate_probe.txt",
+        ]
     task["write_scope"] = []
     task["expected_changed_files"] = []
     task["expected_artifacts"] = []

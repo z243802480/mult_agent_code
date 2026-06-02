@@ -245,6 +245,7 @@ def _readonly_child_result(
     task_id: str,
     status: str = "succeeded",
     validation_refs: list[str] | None = None,
+    summary: str | None = None,
 ) -> dict:
     return {
         "schema_version": "0.1.0",
@@ -257,7 +258,7 @@ def _readonly_child_result(
         "validation_refs": validation_refs if validation_refs is not None else [f"{task_id}/verify.json"],
         "failure_evidence_refs": [] if status == "succeeded" else [f"{task_id}/failure.json"],
         "cost": {"model_calls": 1, "tool_calls": 2},
-        "summary": f"Readonly child {task_id} result.",
+        "summary": summary or f"Readonly child {task_id} result.",
         "parent_worker_invocation_id": "worker-0001",
         "worker_kind": "subagent_readonly_child",
         "child_plan_refs": ["subagent-child-plan-0001"],
@@ -456,6 +457,24 @@ def _append_ready_readonly_fanout(run_dir: Path, validator: SchemaValidator) -> 
             ),
             "context_budget_snapshot",
         )
+
+
+def _write_readonly_write_gate_task_plan(run_dir: Path) -> None:
+    (run_dir / "task_plan.json").write_text(
+        json.dumps(
+            {
+                "tasks": [
+                    {
+                        "task_id": "task-1",
+                        "runtime_profile_hints": {
+                            "validation_probe_ids": ["readonly_write_tool_blocked"]
+                        },
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_runtime_readiness_gate_blocks_missing_loop_decision_for_failed_observation(
@@ -789,6 +808,39 @@ def test_runtime_readiness_gate_blocks_incomplete_readonly_fanout_result(
     assert fanout["status"] == "blocked"
     assert "execution evidence is incomplete" in fanout["summary"]
     assert "worker-0003" in fanout["summary"]
+
+
+def test_runtime_readiness_gate_accepts_expected_readonly_write_gate_probe_failure(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    _append_ready_readonly_fanout(run_dir, validator)
+    _write_readonly_write_gate_task_plan(run_dir)
+    lines = []
+    for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines():
+        item = json.loads(line)
+        if item.get("worker_kind") == "subagent_readonly_child":
+            item["status"] = "failed"
+            item["summary"] = (
+                "Readonly fanout child cannot use write tool: " + str(item.get("task_id"))
+            )
+            item["validation_refs"] = []
+        lines.append(json.dumps(item))
+    (run_dir / "worker_results.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    fanout = next(check for check in gate["checks"] if check["name"] == "subagent_readonly_fanout")
+    assert fanout["status"] == "ready"
+    assert "Readonly write-gate probe" in fanout["summary"]
 
 
 def test_runtime_readiness_gate_blocks_readonly_fanout_write_boundary(
@@ -1287,6 +1339,55 @@ def test_runtime_readiness_gate_explains_visible_unselected_capability(
     capability = next(check for check in gate["checks"] if check["name"] == "capability_selection")
     assert capability["status"] == "review"
     assert "visible but not selected" in capability["summary"]
+
+
+def test_runtime_readiness_gate_matches_mcp_server_catalog_to_tool_invocation(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "agent_loop_dispatch.json").write_text(
+        json.dumps(
+            {
+                "task_dispatch": [
+                    {
+                        "capability_catalog": {
+                            "entries": [
+                                {
+                                    "capability_type": "mcp",
+                                    "name": "runtime_matrix",
+                                    "visible": True,
+                                    "selection_state": "selected",
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    JsonlStore(validator).append(
+        run_dir / "capability_decisions.jsonl",
+        {
+            "capability_type": "mcp",
+            "capability": "runtime_matrix/echo",
+            "decision": {"decision": "allow"},
+        },
+        None,
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    capability = next(check for check in gate["checks"] if check["name"] == "capability_selection")
+    assert capability["status"] == "ready"
 
 
 def test_runtime_readiness_gate_uses_task_plan_allowed_tools_as_catalog_fallback(

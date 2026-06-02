@@ -905,10 +905,32 @@ class ExecuteCommand:
         hints = task.get("runtime_profile_hints")
         hints = hints if isinstance(hints, dict) else {}
         probe_ids = [str(item) for item in hints.get("validation_probe_ids") or [] if str(item)]
-        if not probe_ids or "readonly_fanout_succeeds" not in probe_ids:
+        if not probe_ids or not (
+            {"readonly_fanout_succeeds", "readonly_write_tool_blocked"} & set(probe_ids)
+        ):
             return None
         if not runtime_context.get("subagent_fanout_child"):
             return None
+        if "readonly_write_tool_blocked" in probe_ids:
+            return {
+                "schema_version": "0.1.0",
+                "task_id": task["task_id"],
+                "summary": "Runtime-managed readonly write-gate validation probe.",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "readonly_fanout_violation.txt",
+                            "content": "must be blocked",
+                            "overwrite": True,
+                        },
+                        "reason": "Probe that readonly fanout blocks write tools.",
+                    }
+                ],
+                "verification": [],
+                "runtime_requests": [],
+                "completion_notes": "readonly write-gate probe attempted a write",
+            }
         tool_names = set(available_tools)
         if "run_command" in tool_names:
             verification = [
