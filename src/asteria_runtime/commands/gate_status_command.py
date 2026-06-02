@@ -956,7 +956,7 @@ def _release_evidence_route_guidance(
     validation: dict[str, Any],
     core: dict[str, Any],
 ) -> dict[str, Any]:
-    if guidance.get("status") != "blocked" or not _release_route_evidence_is_fresh(
+    if guidance.get("status") not in {"blocked", "review"} or not _release_route_evidence_is_fresh(
         gate, validation, core
     ):
         return guidance
@@ -964,32 +964,43 @@ def _release_evidence_route_guidance(
     blocking = [item for item in raw_blocking if isinstance(item, dict)]
     raw_review = guidance.get("review") or []
     review = [item for item in raw_review if isinstance(item, dict)]
+    strategy = guidance.get("provider_route_strategy")
+    strategy = strategy if isinstance(strategy, dict) else {}
     retained: list[dict[str, Any]] = []
-    demoted: list[dict[str, Any]] = []
+    demoted_blocking: list[dict[str, Any]] = []
     for item in blocking:
-        if _is_superseded_route_guidance_block(item, gate, validation):
-            demoted.append({**item, "severity": 2, "release_evidence_status": "superseded"})
+        if _is_superseded_route_guidance_item(item, gate, validation, strategy):
+            demoted_blocking.append(
+                {**item, "severity": 2, "release_evidence_status": "superseded"}
+            )
         else:
             retained.append(item)
-    if not demoted:
+    active_review: list[dict[str, Any]] = []
+    superseded_review: list[dict[str, Any]] = []
+    for item in review:
+        if _is_superseded_route_guidance_item(item, gate, validation, strategy):
+            superseded_review.append(
+                {**item, "severity": 1, "release_evidence_status": "superseded"}
+            )
+        else:
+            active_review.append(item)
+    if not demoted_blocking and not superseded_review:
         return guidance
-    status = "blocked" if retained else "review"
-    actions = (
-        list(guidance.get("recommended_actions") or [])
-        if retained
-        else [
-            "Release evidence is healthy; keep route guidance under review while collecting fresh capability evidence.",
-            "Run `asteria capability-report` after the next real-provider validation task to refresh route guidance.",
-        ]
-    )
+    status = "blocked" if retained else "review" if active_review else "healthy"
+    if retained or active_review:
+        actions = list(guidance.get("recommended_actions") or [])
+    else:
+        actions = ["Fresh release and route evidence supersede stale route guidance noise."]
     return {
         **guidance,
         "status": status,
         "blocking": retained,
-        "review": [*review, *demoted],
+        "review": active_review,
+        "superseded_review": [*superseded_review, *demoted_blocking],
         "release_evidence_override": {
             "applied": True,
-            "demoted_blockers": len(demoted),
+            "demoted_blockers": len(demoted_blocking),
+            "superseded_review": len(superseded_review),
             "reason": "Latest real-model gate and acceptance evidence supersede stale route guidance blockers.",
         },
         "recommended_actions": actions,
@@ -1014,14 +1025,22 @@ def _release_route_evidence_is_fresh(
     return route.get("strong_used") is True and route.get("medium_used") is True
 
 
-def _is_superseded_route_guidance_block(
+def _is_superseded_route_guidance_item(
     item: dict[str, Any],
     gate: dict[str, Any],
     validation: dict[str, Any],
+    strategy: dict[str, Any] | None = None,
 ) -> bool:
+    strategy = strategy or {}
     action = str(item.get("recommended_action") or "")
     provider = str(item.get("provider") or "").lower()
     if provider in {"fake", "offline"}:
+        return True
+    if (
+        strategy.get("decision") == "continue_primary"
+        and item.get("model_tier") == "strong"
+        and _route_model_names_match(str(item.get("model") or ""), str(strategy.get("model") or ""))
+    ):
         return True
     if action == "block_validation_until_strong_goal_spec_stable":
         routes = gate.get("routes")
@@ -1041,6 +1060,15 @@ def _is_superseded_route_guidance_block(
         if item.get("model_tier") == "strong":
             return route.get("strong_used") is True
     return False
+
+
+def _route_model_names_match(left: str, right: str) -> bool:
+    left = left.strip()
+    right = right.strip()
+    if left == right:
+        return True
+    glm5_aliases = {"glm-5", "glm-5.1"}
+    return left in glm5_aliases and right in glm5_aliases
 
 
 def _model_call_contract(

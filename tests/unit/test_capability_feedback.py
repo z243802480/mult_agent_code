@@ -395,6 +395,47 @@ def test_provider_route_strategy_does_not_block_on_stale_non_current_model(
     assert guidance["provider_route_strategy"]["current_model"] == "glm-5.1"
 
 
+def test_provider_route_strategy_matches_glm5_provider_alias_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_NAME", "glm-5")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_API_KEY", "glm-key")
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    _write_provider_route_policy(agent_dir, validator)
+    _write_goal_spec_profile(
+        agent_dir,
+        validator,
+        model="glm-5.1",
+        total_calls=3,
+        success_calls=3,
+        success_rate=1.0,
+        failure_types={},
+    )
+    calls_path = agent_dir / "runs" / "run-0001" / "model_calls.jsonl"
+    store = JsonlStore(validator)
+    for index in range(3):
+        store.append(
+            calls_path,
+            _model_call(
+                f"modelcall-000{index + 1}",
+                "success",
+                f"2026-06-02T10:0{index}:00+08:00",
+                model_name="glm-5.1",
+            ),
+            "model_call",
+        )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    strategy = guidance["provider_route_strategy"]
+    assert strategy["decision"] == "continue_primary"
+    assert strategy["current_model"] == "glm-5"
+    assert strategy["model"] == "glm-5.1"
+    assert strategy["fresh_evidence_window"]["status"] == "healthy"
+
+
 def test_goal_spec_execution_plan_downgrades_low_risk_docs_when_route_blocked(
     tmp_path: Path,
 ) -> None:
@@ -645,6 +686,7 @@ def _write_goal_spec_profile(
     agent_dir: Path,
     validator: SchemaValidator,
     *,
+    model: str = "glm-4.7",
     total_calls: int,
     success_calls: int,
     success_rate: float,
@@ -659,7 +701,7 @@ def _write_goal_spec_profile(
             "profiles": [
                 {
                     "provider": "zai",
-                    "model": "glm-4.7",
+                    "model": model,
                     "purpose": "goal_spec",
                     "model_tier": "strong",
                     "total_calls": total_calls,
@@ -694,6 +736,7 @@ def _model_call(
     status: str,
     created_at: str,
     summary: str = "model call succeeded",
+    model_name: str = "glm-4.7",
 ) -> dict:
     return {
         "schema_version": "0.1.0",
@@ -701,7 +744,7 @@ def _model_call(
         "run_id": "run-0001",
         "purpose": "goal_spec",
         "model_provider": "zai",
-        "model_name": "glm-4.7",
+        "model_name": model_name,
         "model_tier": "strong",
         "status": status,
         "created_at": created_at,

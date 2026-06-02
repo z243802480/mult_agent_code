@@ -343,6 +343,9 @@ def test_next_batch_plan_completes_after_required_scoped_tasks(tmp_path: Path) -
         "multi_file_small_feature",
         "real_repair_task",
     ]
+    assert "run:run-real_repair_task" in next_batch["evidence_refs"]
+    assert "run:run-multi_file_small_feature" in next_batch["evidence_refs"]
+    assert "run:run-context_pressure_maintenance" in next_batch["evidence_refs"]
     assert next_batch["task_candidates"] == []
     assert (
         result.analysis["next_actions"][0]
@@ -356,3 +359,59 @@ def test_next_batch_plan_completes_after_required_scoped_tasks(tmp_path: Path) -
     assert expected_action in report["next_actions"]
     roadmap_payload = json.loads(roadmap.roadmap_path.read_text(encoding="utf-8"))
     assert expected_action in roadmap_payload["next_actions"]
+
+
+def test_usage_signal_recorder_uses_max_existing_signal_sequence(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    path = tmp_path / ".asteria" / "ops" / "usage_signals.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "schema_version": "0.1.0",
+            "signal_id": "usage-signal-0001",
+            "created_at": "2026-06-02T00:00:00+08:00",
+            "source": "test",
+            "run_id": "run-1",
+            "task_kind": "scoped_validation",
+            "expected_outcome_category": "repair_replan",
+            "artifact_outcome": "accepted",
+            "blocker_category": "none",
+            "trust_risk": "none",
+            "summary": "accepted",
+            "evidence_refs": [],
+            "redacted": True,
+        },
+        {
+            "schema_version": "0.1.0",
+            "signal_id": "usage-signal-0001",
+            "created_at": "2026-06-02T00:00:00+08:00",
+            "source": "test",
+            "run_id": "run-duplicate",
+            "task_kind": "scoped_validation",
+            "expected_outcome_category": "ask_stop",
+            "artifact_outcome": "accepted",
+            "blocker_category": "none",
+            "trust_risk": "none",
+            "summary": "accepted",
+            "evidence_refs": [],
+            "redacted": True,
+        },
+    ]
+    path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+        encoding="utf-8",
+    )
+
+    result = OpsSignalCommand(
+        tmp_path,
+        run_id="run-new",
+        task_kind="scoped_validation",
+        expected_outcome_category="context_pressure",
+        artifact_outcome="accepted",
+        blocker_category="none",
+        trust_risk="none",
+        summary="accepted",
+    ).run()
+
+    assert result.signal is not None
+    assert result.signal["signal_id"] == "usage-signal-0002"

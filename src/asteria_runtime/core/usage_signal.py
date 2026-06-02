@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
+import re
 from typing import Any
 
 from asteria_runtime.storage.json_store import JsonStore
@@ -34,27 +37,28 @@ class UsageSignalRecorder:
 
     def record(self, agent_dir: Path, signal: UsageSignalInput) -> dict[str, Any]:
         path = agent_dir / USAGE_SIGNAL_PATH
-        rows = self.jsonl.read_all(path, "usage_signal") if path.exists() else []
-        payload = {
-            "schema_version": "0.1.0",
-            "signal_id": f"usage-signal-{len(rows) + 1:04d}",
-            "created_at": now_iso(),
-            "source": signal.source,
-            "run_id": signal.run_id,
-            "task_kind": signal.task_kind or "unknown",
-            "expected_outcome_category": signal.expected_outcome_category or "unknown",
-            "artifact_outcome": _allowed(
-                signal.artifact_outcome,
-                {"accepted", "rejected", "blocked", "partial", "unknown"},
-                "unknown",
-            ),
-            "blocker_category": signal.blocker_category or "none",
-            "trust_risk": signal.trust_risk or "none",
-            "summary": signal.summary or "",
-            "evidence_refs": signal.evidence_refs,
-            "redacted": True,
-        }
-        self.jsonl.append(path, payload, "usage_signal")
+        with _exclusive_file_lock(path):
+            rows = self.jsonl.read_all(path, "usage_signal") if path.exists() else []
+            payload = {
+                "schema_version": "0.1.0",
+                "signal_id": f"usage-signal-{_next_signal_sequence(rows):04d}",
+                "created_at": now_iso(),
+                "source": signal.source,
+                "run_id": signal.run_id,
+                "task_kind": signal.task_kind or "unknown",
+                "expected_outcome_category": signal.expected_outcome_category or "unknown",
+                "artifact_outcome": _allowed(
+                    signal.artifact_outcome,
+                    {"accepted", "rejected", "blocked", "partial", "unknown"},
+                    "unknown",
+                ),
+                "blocker_category": signal.blocker_category or "none",
+                "trust_risk": signal.trust_risk or "none",
+                "summary": signal.summary or "",
+                "evidence_refs": signal.evidence_refs,
+                "redacted": True,
+            }
+            self.jsonl.append(path, payload, "usage_signal")
         return payload
 
 
@@ -175,6 +179,40 @@ def _counts(values: Any) -> dict[str, int]:
 
 def _allowed(value: str, allowed: set[str], default: str) -> str:
     return value if value in allowed else default
+
+
+def _next_signal_sequence(rows: list[dict[str, Any]]) -> int:
+    max_seen = 0
+    for row in rows:
+        match = re.fullmatch(r"usage-signal-(\d+)", str(row.get("signal_id") or ""))
+        if match:
+            max_seen = max(max_seen, int(match.group(1)))
+    return max_seen + 1
+
+
+@contextmanager
+def _exclusive_file_lock(path: Path) -> Any:
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+b") as handle:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+
+            msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _active_rows_after_latest_acceptance(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -381,6 +419,8 @@ def _next_batch_plan(
         for row in rows:
             if _next_batch_category(str(row.get("expected_outcome_category") or "")) in required_categories:
                 evidence_refs.extend(str(item) for item in row.get("evidence_refs") or [])
+                if row.get("run_id"):
+                    evidence_refs.append(f"run:{row['run_id']}")
         return {
             "status": "completed",
             "ready": False,

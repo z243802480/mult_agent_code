@@ -1076,6 +1076,7 @@ class CapabilityReportCommand:
             for profile in model_profiles
             if int(profile.get("total_calls") or 0) >= 2
             and float(profile.get("success_rate") or 0.0) < 0.8
+            and not self._profile_superseded_by_route_guidance(profile, route_guidance)
         ]
         if weak_models:
             labels = [
@@ -1228,7 +1229,37 @@ class CapabilityReportCommand:
         latest: dict[str, Any],
         route_guidance: dict[str, Any],
     ) -> dict[str, Any]:
-        if route_guidance.get("status") != "blocked" or not latest.get("ok"):
+        if route_guidance.get("status") not in {"blocked", "review"} or not latest.get("ok"):
+            return route_guidance
+        strategy = route_guidance.get("provider_route_strategy")
+        strategy = strategy if isinstance(strategy, dict) else {}
+        if strategy.get("decision") == "continue_primary":
+            review = [
+                item
+                for item in route_guidance.get("review") or []
+                if isinstance(item, dict)
+            ]
+            active_review = [
+                item for item in review if not _route_hint_matches_strategy(item, strategy)
+            ]
+            superseded_review = [
+                {**item, "release_evidence_status": "superseded", "severity": 1}
+                for item in review
+                if _route_hint_matches_strategy(item, strategy)
+            ]
+            if active_review != review:
+                status = "review" if active_review else "healthy"
+                return {
+                    **route_guidance,
+                    "status": status,
+                    "review": active_review,
+                    "superseded_review": superseded_review,
+                    "staleness": "superseded_by_latest_acceptance_and_route_evidence",
+                    "recommended_actions": []
+                    if status == "healthy"
+                    else list(route_guidance.get("recommended_actions") or []),
+                }
+        if route_guidance.get("status") != "blocked":
             return route_guidance
         normalized = dict(route_guidance)
         normalized["status"] = "review"
@@ -1237,6 +1268,25 @@ class CapabilityReportCommand:
             "Latest acceptance is healthy; collect fresh route evidence before widening long-run validation."
         ]
         return normalized
+
+    def _profile_superseded_by_route_guidance(
+        self,
+        profile: dict[str, Any],
+        route_guidance: dict[str, Any],
+    ) -> bool:
+        for item in route_guidance.get("superseded_review") or []:
+            if not isinstance(item, dict):
+                continue
+            if (
+                str(item.get("provider") or "") == str(profile.get("provider") or "")
+                and str(item.get("purpose") or "") == str(profile.get("purpose") or "")
+                and _route_model_names_match(
+                    str(item.get("model") or ""),
+                    str(profile.get("model") or ""),
+                )
+            ):
+                return True
+        return False
 
     def _capability_selection_audit(self, agent_dir: Path) -> dict[str, Any]:
         summary = {"tasks": 0, "visible": 0, "selected": 0, "skipped": 0, "blocked": 0}
@@ -1358,3 +1408,24 @@ class CapabilityReportCommand:
         if closure.get("rerun_ok") is not True or closure.get("remaining_failures"):
             return set()
         return {str(item) for item in closure.get("closed_failures", [])}
+
+
+def _route_hint_matches_strategy(item: dict[str, Any], strategy: dict[str, Any]) -> bool:
+    if item.get("model_tier") != "strong":
+        return False
+    strategy_model = str(strategy.get("model") or "")
+    current_model = str(strategy.get("current_model") or "")
+    item_model = str(item.get("model") or "")
+    return _route_model_names_match(item_model, strategy_model) or _route_model_names_match(
+        item_model,
+        current_model,
+    )
+
+
+def _route_model_names_match(left: str, right: str) -> bool:
+    left = left.strip()
+    right = right.strip()
+    if left == right:
+        return True
+    glm5_aliases = {"glm-5", "glm-5.1"}
+    return left in glm5_aliases and right in glm5_aliases

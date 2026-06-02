@@ -256,7 +256,9 @@ class CapabilityFeedbackAdvisor:
         current_model = _current_configured_strong_model()
         if current_model:
             current_candidates = [
-                item for item in candidates if str(item.get("model") or "") == current_model
+                item
+                for item in candidates
+                if _model_names_match(str(item.get("model") or ""), current_model)
             ]
             if current_candidates:
                 candidates = current_candidates
@@ -303,6 +305,7 @@ class CapabilityFeedbackAdvisor:
             "strategy": strategy,
             "provider": provider,
             "model": model,
+            "current_model": current_model,
             "total_calls": total,
             "success_rate": success_rate,
             "timeout_failures": timeout_failures,
@@ -414,7 +417,7 @@ class CapabilityFeedbackAdvisor:
             if str(call.get("purpose") or "") == "goal_spec"
             and str(call.get("model_tier") or "") == "strong"
             and str(call.get("model_provider") or "") == provider
-            and str(call.get("model_name") or "") == model
+            and _model_names_match(str(call.get("model_name") or ""), model)
         ]
         matching.sort(key=lambda call: str(call.get("created_at") or ""))
         window_size = max(min_calls, 5)
@@ -453,6 +456,15 @@ def _current_configured_strong_model() -> str:
     if not diagnostic.configured or not diagnostic.model_name:
         return ""
     return diagnostic.model_name
+
+
+def _model_names_match(left: str, right: str) -> bool:
+    left = left.strip()
+    right = right.strip()
+    if left == right:
+        return True
+    glm5_aliases = {"glm-5", "glm-5.1"}
+    return left in glm5_aliases and right in glm5_aliases
 
 
 def _summarize_fresh_model_call_window(

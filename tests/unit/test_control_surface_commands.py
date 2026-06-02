@@ -1832,7 +1832,8 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
 
     assert payload["stage"] == "ready_for_small_real_task_validation"
     assert payload["release_ready"] is True
-    assert payload["route_guidance"]["status"] == "review"
+    assert payload["route_guidance"]["status"] == "healthy"
+    assert payload["route_guidance"]["review"] == []
     assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 3
 
 
