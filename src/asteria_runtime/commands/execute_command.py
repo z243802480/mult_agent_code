@@ -1682,14 +1682,21 @@ class ExecuteCommand:
         round_index: int,
         latest_observation: dict | None,
     ) -> dict | None:
-        if round_index != 1 or latest_observation:
-            return None
         hints = task.get("runtime_profile_hints")
         hints = hints if isinstance(hints, dict) else {}
-        if hints.get("force_next_action") != "subagent":
-            return None
         probe_ids = [str(item) for item in hints.get("validation_probe_ids") or [] if str(item)]
         if not probe_ids:
+            return None
+        if "repair_replan_path" in set(probe_ids):
+            return self._repair_replan_probe_runtime_action(
+                task=task,
+                context=context,
+                round_index=round_index,
+                latest_observation=latest_observation,
+            )
+        if round_index != 1 or latest_observation:
+            return None
+        if hints.get("force_next_action") != "subagent":
             return None
         strategy = task.get("multi_agent_strategy")
         strategy = strategy if isinstance(strategy, dict) else {}
@@ -1735,6 +1742,96 @@ class ExecuteCommand:
                 },
             },
         }
+
+    def _repair_replan_probe_runtime_action(
+        self,
+        *,
+        task: dict,
+        context: RuntimeContext,
+        round_index: int,
+        latest_observation: dict | None,
+    ) -> dict | None:
+        sequence = (
+            self._jsonl_count(context.run_dir / "agent_loop_decisions.jsonl") + 1
+            if context.run_dir
+            else 1
+        )
+        task_id = str(task["task_id"])
+        if round_index == 1 and not latest_observation:
+            return {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Runtime created a controlled failing tool action for repair validation.",
+                "tool_calls": [],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": 'python -c "raise SystemExit(1)"',
+                            "expected_returncodes": [0],
+                        },
+                        "reason": "Create a bounded failure observation for repair/replan validation.",
+                    }
+                ],
+                "runtime_requests": [],
+                "completion_notes": "Controlled failure should route into repair/replan.",
+                "agent_loop_decision": {
+                    "schema_version": "0.1.0",
+                    "decision_id": f"agent-loop-decision-{sequence:04d}",
+                    "run_id": context.run_id or "",
+                    "task_id": task_id,
+                    "created_at": now_iso(),
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "Targeted repair/replan probe needs a failed tool observation.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "tool", "name": "run_command"},
+                        "expected_observation": {
+                            "summary": "Failed command should trigger repair/replan routing.",
+                            "auto_repair_on_failure": True,
+                        },
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 1},
+                        "evidence_refs": [],
+                    },
+                },
+            }
+        if (
+            round_index == 2
+            and isinstance(latest_observation, dict)
+            and str(latest_observation.get("status") or "") == "failed"
+        ):
+            observation_id = str(latest_observation.get("observation_id") or "")
+            refs = [observation_id] if observation_id else []
+            return {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Runtime routed the controlled failure into repair.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "completion_notes": "Repair dispatch evidence recorded.",
+                "agent_loop_decision": {
+                    "schema_version": "0.1.0",
+                    "decision_id": f"agent-loop-decision-{sequence:04d}",
+                    "run_id": context.run_id or "",
+                    "task_id": task_id,
+                    "created_at": now_iso(),
+                    "next_action": {
+                        "action": "repair",
+                        "reason": "Controlled failed observation should enter debug repair.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "repair"},
+                        "expected_observation": {
+                            "summary": "Runtime records repair dispatch.",
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                        "evidence_refs": refs,
+                    },
+                },
+            }
+        return None
 
     def _execute_task(
         self,

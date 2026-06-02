@@ -2079,6 +2079,56 @@ def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Pa
     assert loop_summary["recommended_command"] == "debug"
 
 
+def test_execute_command_runtime_manages_repair_replan_validation_probe(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(
+        tmp_path,
+        "run repair validation probe",
+        model_client=FakePlanClient(),
+        validation_probe_ids=["repair_replan_path"],
+    ).run()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=ExplodingExecuteClient(),
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    executions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_execution_results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert [item["next_action"]["action"] for item in decisions[-2:]] == ["tool", "repair"]
+    assert [item["action"] for item in executions[-2:]] == ["tool", "repair"]
+    assert observations[-2]["status"] == "failed"
+    assert observations[-2]["next_recommended_action"] == "repair"
+    assert observations[-1]["observation_type"] == "repair_result"
+    assert observations[-1]["status"] == "pending"
+    assert loop_summary["exit_reason"] == "repair_dispatch"
+    assert loop_summary["recommended_command"] == "debug"
+
+
 def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(
     tmp_path: Path,
 ) -> None:

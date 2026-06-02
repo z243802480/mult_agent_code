@@ -687,6 +687,8 @@ def _apply_validation_probe_hints(task_plan: dict, probe_ids: list[str]) -> None
         _apply_readonly_fanout_probe_hint(task, selected)
     if "disjoint_write_gate_blocks_unsafe_fanout" in selected:
         _apply_disjoint_write_probe_hint(task)
+    if "repair_replan_path" in selected:
+        _apply_repair_replan_probe_hint(task)
 
 
 def _apply_readonly_fanout_probe_hint(task: dict, probe_ids: list[str]) -> None:
@@ -747,3 +749,37 @@ def _apply_disjoint_write_probe_hint(task: dict) -> None:
         },
         "reason": "validation probe must prove unsafe disjoint write fanout is blocked",
     }
+
+
+def _apply_repair_replan_probe_hint(task: dict) -> None:
+    task["task_kind"] = "diagnostic"
+    task["parallel_safety"] = "serial"
+    task["read_scope"] = ["AGENTS.md", "benchmarks/failing_tests_project"]
+    task["write_scope"] = []
+    task["expected_changed_files"] = []
+    task["expected_artifacts"] = []
+    task["allowed_tools"] = ["run_command"]
+    task["acceptance"] = [
+        "runtime records a failed tool observation",
+        "runtime records a repair or replan AgentLoopDecision",
+        "runtime records repair/replan dispatch evidence",
+    ]
+    task["completion_contract"] = {
+        "requires_changed_artifact": False,
+        "requires_verification": True,
+        "allows_expected_failure": False,
+    }
+    task["verification_policy"] = {
+        "required": True,
+        "allow_expected_failure": False,
+        "commands": [],
+    }
+    task["context_requirements"] = {
+        "mount_type": "debug_context",
+        "include_artifacts": False,
+        "include_failures": True,
+        "include_decisions": True,
+        "include_validation": True,
+        "recent_event_count": 10,
+    }
+    task.pop("multi_agent_strategy", None)
