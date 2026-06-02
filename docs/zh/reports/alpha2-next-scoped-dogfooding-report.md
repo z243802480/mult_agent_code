@@ -46,7 +46,7 @@
 维护检查输入：
 
 - `docs/zh/当前状态与路线.md`
-- `docs/zh/代码现状差距与研发计划.md`
+- `docs/zh/当前状态与路线.md`
 - `docs/zh/运行命令.md`
 - `src/asteria_runtime/core/context_budget.py`
 - `src/asteria_runtime/core/usage_signal.py`
