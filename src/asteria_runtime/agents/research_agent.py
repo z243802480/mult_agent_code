@@ -19,14 +19,23 @@ class ResearchAgent:
     model_client: ModelClient
     validator: SchemaValidator
 
-    def synthesize(self, query: str, sources: list[dict], run_id: str | None) -> dict:
+    def synthesize(
+        self,
+        query: str,
+        sources: list[dict],
+        run_id: str | None,
+        research_type: str = "general",
+    ) -> dict:
         role_contract = role_contract_for(role="ResearchAgent", purpose="research")
         request = ChatRequest(
             purpose="research_synthesis",
             model_tier=role_contract.default_model_tier,
             messages=[
                 ChatMessage(role="system", content=self._system_prompt()),
-                ChatMessage(role="user", content=self._user_prompt(query, sources, run_id)),
+                ChatMessage(
+                    role="user",
+                    content=self._user_prompt(query, sources, run_id, research_type),
+                ),
             ],
             response_format="json",
             temperature=0.15,
@@ -42,6 +51,7 @@ class ResearchAgent:
         report.setdefault("schema_version", "0.1.0")
         report.setdefault("run_id", run_id)
         report.setdefault("query", query)
+        report.setdefault("research_type", research_type)
         report.setdefault("created_at", now_iso())
         try:
             self.validator.validate("research_report", report)
@@ -68,17 +78,26 @@ Rules:
 - Convert findings into product/engineering requirements, risks, and decision candidates.
 - Prefer practical implementation guidance over generic summaries.
 - If evidence is weak, mark confidence as low and say what is missing.
+- When research_type is product, architecture, implementation, competitive, open_source, risk, or design_pattern focused, include a design_brief and pattern_candidates when useful.
 """
 
-    def _user_prompt(self, query: str, sources: list[dict], run_id: str | None) -> str:
+    def _user_prompt(
+        self,
+        query: str,
+        sources: list[dict],
+        run_id: str | None,
+        research_type: str,
+    ) -> str:
         payload = {
             "run_id": run_id,
             "query": query,
+            "research_type": research_type,
             "sources": sources,
             "required_output_shape": {
                 "schema_version": "0.1.0",
                 "run_id": run_id,
                 "query": query,
+                "research_type": research_type,
                 "created_at": "ISO-8601 timestamp",
                 "sources": [
                     {
@@ -115,6 +134,23 @@ Rules:
                         "question": "decision to ask user",
                         "options": [],
                         "recommended_option_id": "option-1",
+                    }
+                ],
+                "design_brief": {
+                    "problem": "design problem being researched",
+                    "observed_patterns": [],
+                    "asteria_adaptation": [],
+                    "do_not_copy": [],
+                    "open_questions": [],
+                },
+                "pattern_candidates": [
+                    {
+                        "name": "reusable design pattern",
+                        "seen_in": [],
+                        "why_it_matters": "why this pattern matters",
+                        "asteria_adaptation": "how Asteria should adapt it",
+                        "validation": "how to validate the adaptation",
+                        "source_ids": ["local-0001"],
                     }
                 ],
                 "summary": "research summary",

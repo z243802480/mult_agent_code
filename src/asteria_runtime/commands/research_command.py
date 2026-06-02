@@ -31,11 +31,13 @@ class ResearchResult:
     markdown_path: Path
     source_count: int
     claim_count: int
+    research_type: str = "general"
 
     def to_text(self) -> str:
         return "\n".join(
             [
                 f"Research run: {self.run_id}",
+                f"Type: {self.research_type}",
                 f"Sources: {self.source_count}",
                 f"Claims: {self.claim_count}",
                 f"Report: {self.report_path}",
@@ -54,6 +56,7 @@ class ResearchCommand:
         use_local: bool = True,
         use_serper: bool = False,
         max_sources: int = 12,
+        research_type: str = "general",
         model_client: ModelClient | None = None,
     ) -> None:
         self.root = root.resolve()
@@ -63,6 +66,7 @@ class ResearchCommand:
         self.use_local = use_local
         self.use_serper = use_serper
         self.max_sources = max_sources
+        self.research_type = research_type
         self.model_client = model_client
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
@@ -166,7 +170,12 @@ class ResearchCommand:
             call_chain=["ResearchCommand", "ResearchAgent"],
             execution_chain=["research", "synthesis"],
         )
-        report = agent.synthesize(self.query, source_payload, run_id)
+        report = agent.synthesize(
+            self.query,
+            source_payload,
+            run_id,
+            research_type=self.research_type,
+        )
         report["created_at"] = report.get("created_at") or now_iso()
         report_path = run_dir / "research_report.json"
         markdown_path = run_dir / "research_report.md"
@@ -206,6 +215,7 @@ class ResearchCommand:
             markdown_path=markdown_path,
             source_count=len(report["sources"]),
             claim_count=len(report["claims"]),
+            research_type=str(report.get("research_type") or self.research_type),
         )
 
     def _collect_sources(self, policy: dict) -> list[ResearchSourceRecord]:
@@ -272,6 +282,7 @@ class ResearchCommand:
             "# Research Report",
             "",
             f"- Query: {report['query']}",
+            f"- Type: {report.get('research_type', 'general')}",
             f"- Summary: {report['summary']}",
             "",
             "## Sources",
@@ -288,4 +299,34 @@ class ResearchCommand:
         lines.extend(["", "## Risks", ""])
         for risk in report["risks"]:
             lines.append(f"- {risk['risk']} -> {risk['mitigation']}")
+        design_brief = report.get("design_brief")
+        if isinstance(design_brief, dict):
+            lines.extend(["", "## Design Brief", ""])
+            problem = str(design_brief.get("problem") or "").strip()
+            if problem:
+                lines.append(f"- Problem: {problem}")
+            for key, label in (
+                ("observed_patterns", "Observed patterns"),
+                ("asteria_adaptation", "Asteria adaptation"),
+                ("do_not_copy", "Do not copy"),
+                ("open_questions", "Open questions"),
+            ):
+                values = design_brief.get(key)
+                if isinstance(values, list) and values:
+                    lines.append(f"- {label}: " + "; ".join(str(item) for item in values))
+        patterns = report.get("pattern_candidates")
+        if isinstance(patterns, list) and patterns:
+            lines.extend(["", "## Pattern Candidates", ""])
+            for pattern in patterns:
+                if not isinstance(pattern, dict):
+                    continue
+                name = str(pattern.get("name") or "Unnamed pattern")
+                adaptation = str(pattern.get("asteria_adaptation") or "").strip()
+                validation = str(pattern.get("validation") or "").strip()
+                line = f"- {name}"
+                if adaptation:
+                    line += f": {adaptation}"
+                if validation:
+                    line += f" Validate with: {validation}"
+                lines.append(line)
         return "\n".join(lines) + "\n"

@@ -18,6 +18,20 @@
     "schema_version": { "type": "string" },
     "run_id": { "type": ["string", "null"] },
     "query": { "type": "string" },
+    "research_type": {
+      "type": "string",
+      "enum": [
+        "general",
+        "product_research",
+        "architecture_research",
+        "implementation_research",
+        "competitive_research",
+        "paper_research",
+        "open_source_research",
+        "risk_research",
+        "design_pattern_research"
+      ]
+    },
     "created_at": { "type": "string" },
     "sources": {
       "type": "array",
@@ -79,6 +93,33 @@
           "options": { "type": "array", "items": { "type": "object" } },
           "recommended_option_id": { "type": "string" }
         }
+      }
+    },
+    "design_brief": {
+      "type": "object",
+      "properties": {
+        "problem": { "type": "string" },
+        "observed_patterns": { "type": "array", "items": { "type": "string" } },
+        "asteria_adaptation": { "type": "array", "items": { "type": "string" } },
+        "do_not_copy": { "type": "array", "items": { "type": "string" } },
+        "open_questions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
+    "pattern_candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "asteria_adaptation", "validation"],
+        "properties": {
+          "name": { "type": "string" },
+          "seen_in": { "type": "array", "items": { "type": "string" } },
+          "why_it_matters": { "type": "string" },
+          "asteria_adaptation": { "type": "string" },
+          "validation": { "type": "string" },
+          "source_ids": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
       }
     },
     "summary": { "type": "string" }

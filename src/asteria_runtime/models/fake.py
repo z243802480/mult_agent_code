@@ -220,6 +220,7 @@ class FakeModelClient:
             "schema_version": "0.1.0",
             "run_id": payload.get("run_id"),
             "query": payload.get("query", ""),
+            "research_type": payload.get("research_type", "general"),
             "created_at": "2026-04-28T00:00:00+08:00",
             "sources": [
                 {
@@ -247,6 +248,14 @@ class FakeModelClient:
             ],
             "risks": [],
             "decision_candidates": [],
+            "design_brief": {
+                "problem": "Use local research sources to guide implementation.",
+                "observed_patterns": ["Offline source-grounded synthesis"],
+                "asteria_adaptation": ["Keep research reports tied to local evidence."],
+                "do_not_copy": [],
+                "open_questions": [],
+            },
+            "pattern_candidates": [],
             "summary": "Offline fake research synthesized local sources.",
         }
 

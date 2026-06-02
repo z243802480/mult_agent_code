@@ -587,6 +587,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=12,
         help="Maximum sources to collect",
     )
+    research_parser.add_argument(
+        "--type",
+        dest="research_type",
+        default="general",
+        choices=[
+            "general",
+            "product_research",
+            "architecture_research",
+            "implementation_research",
+            "competitive_research",
+            "paper_research",
+            "open_source_research",
+            "risk_research",
+            "design_pattern_research",
+        ],
+        help="Research synthesis type",
+    )
 
     brainstorm_parser = subcommands.add_parser(
         "brainstorm",
@@ -1582,6 +1599,7 @@ def main() -> None:
             use_local=not args.no_local,
             use_serper=args.serper,
             max_sources=args.max_sources,
+            research_type=args.research_type,
         ).run()
         print(research_result.to_text())
         return

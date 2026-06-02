@@ -12,12 +12,14 @@ class FakeResearchClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
         source = payload["sources"][0]
+        research_type = payload.get("research_type", "general")
         return ChatResponse(
             content=json.dumps(
                 {
                     "schema_version": "0.1.0",
                     "run_id": payload["run_id"],
                     "query": payload["query"],
+                    "research_type": research_type,
                     "created_at": "2026-04-28T10:00:00+08:00",
                     "sources": [
                         {
@@ -59,6 +61,23 @@ class FakeResearchClient:
                             "recommended_option_id": "cli",
                         }
                     ],
+                    "design_brief": {
+                        "problem": "Understand the product workflow.",
+                        "observed_patterns": ["Checkpoint rollback"],
+                        "asteria_adaptation": ["Map checkpoints to run recovery."],
+                        "do_not_copy": ["Do not clone product-specific UI language."],
+                        "open_questions": ["How much state should users see?"],
+                    },
+                    "pattern_candidates": [
+                        {
+                            "name": "checkpoint rollback",
+                            "seen_in": ["Cursor"],
+                            "why_it_matters": "Users need a safe recovery point.",
+                            "asteria_adaptation": "Expose run recovery as a task checkpoint.",
+                            "validation": "Run a small recovery task and inspect report clarity.",
+                            "source_ids": [source["source_id"]],
+                        }
+                    ],
                     "summary": "Research found practical password-tool requirements.",
                 },
                 ensure_ascii=False,
@@ -89,6 +108,7 @@ def test_research_command_collects_local_sources_and_writes_reports(tmp_path: Pa
     assert result.source_count == 1
     assert result.claim_count == 1
     report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["research_type"] == "general"
     assert report["claims"][0]["source_ids"] == ["local-0001"]
     assert "character diversity" in result.markdown_path.read_text(encoding="utf-8")
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
@@ -113,6 +133,33 @@ def test_research_command_collects_local_sources_and_writes_reports(tmp_path: Pa
     cost = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost["research_calls"] == 1
     assert cost["model_calls"] == 1
+
+
+def test_research_command_writes_product_research_design_brief(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "agent-products.md").write_text(
+        "Cursor uses checkpoints and background agents to make agent work recoverable.\n",
+        encoding="utf-8",
+    )
+
+    result = ResearchCommand(
+        tmp_path,
+        "agent product checkpoint design",
+        research_type="product_research",
+        model_client=FakeResearchClient(),
+    ).run()
+
+    assert result.research_type == "product_research"
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    assert report["research_type"] == "product_research"
+    assert report["design_brief"]["observed_patterns"] == ["Checkpoint rollback"]
+    assert report["pattern_candidates"][0]["name"] == "checkpoint rollback"
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+    assert "- Type: product_research" in markdown
+    assert "## Design Brief" in markdown
+    assert "## Pattern Candidates" in markdown
 
 
 def test_research_command_rejects_url_sources_when_network_disabled(tmp_path: Path) -> None:
