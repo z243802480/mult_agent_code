@@ -94,13 +94,30 @@ def test_validation_run_dry_run_writes_auditable_plan(tmp_path: Path, monkeypatc
         == "real_disjoint_write_workers"
     )
     assert len(summary["validation_plan"]["next_probe_goals"]) == 5
-    assert [probe["id"] for probe in summary["validation_plan"]["probes"]] == [
+    first_batch_ids = [
         "parent_selects_subagent",
         "readonly_fanout_succeeds",
         "readonly_write_tool_blocked",
         "disjoint_write_gate_blocks_unsafe_fanout",
         "parent_loop_stops_after_observation",
     ]
+    second_batch_ids = [
+        "repair_replan_path",
+        "ask_stop_path",
+        "context_pressure_path",
+        "capability_selection_path",
+    ]
+    assert [probe["id"] for probe in summary["validation_plan"]["probes"]] == [
+        *first_batch_ids,
+        *second_batch_ids,
+    ]
+    assert [
+        item["probe_id"] for item in summary["validation_plan"]["second_batch_probe_goals"]
+    ] == second_batch_ids
+    assert (
+        summary["validation_plan"]["recommended_scoped_validation_batch"]["avoid"]
+        == "do_not_repeat_tiny_file_artifact_as_primary_proof"
+    )
     disjoint_probe = next(
         probe
         for probe in summary["validation_plan"]["probes"]
@@ -239,6 +256,103 @@ def test_targeted_parent_stop_probe_can_bypass_observation_block(
                 "checks": [
                     {"name": "agent_loop_execution", "status": "blocked"},
                     {"name": "observation_next_action", "status": "blocked"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
+def test_second_batch_probes_evaluate_recovery_ask_context_and_capability(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(tmp_path, dry_run=True)
+
+    repair_status, _summary, repair_refs = command._probe_status(
+        "repair_replan_path",
+        decisions=[_agent_loop_decision("agent-loop-decision-repair", "repair")],
+        workers=[],
+        worker_results=[],
+        child_plans=[],
+        observations=[{"summary": "repair observation completed"}],
+        execution_results=[_agent_loop_execution("agent-loop-execution-repair", "repair")],
+    )
+    ask_status, ask_summary, ask_refs = command._probe_status(
+        "ask_stop_path",
+        decisions=[_agent_loop_decision("agent-loop-decision-ask", "ask")],
+        workers=[],
+        worker_results=[],
+        child_plans=[],
+        observations=[],
+        execution_results=[_agent_loop_execution("agent-loop-execution-ask", "ask")],
+        run_summary={"exit_reason": "ask"},
+    )
+    context_status, _context_summary, context_refs = command._probe_status(
+        "context_pressure_path",
+        decisions=[],
+        workers=[],
+        worker_results=[],
+        child_plans=[],
+        observations=[],
+        context_snapshots=[
+            {
+                "snapshot_id": "context-budget-snapshot-0001",
+                "pressure_status": "near_limit",
+                "compact_boundary": {"status": "recommended"},
+            }
+        ],
+    )
+    capability_status, capability_summary, capability_refs = command._probe_status(
+        "capability_selection_path",
+        decisions=[],
+        workers=[],
+        worker_results=[],
+        child_plans=[],
+        observations=[],
+        progress_metrics={
+            "permission_reason_coverage": {"with_reason": 1},
+            "adapter_invocation_coverage": {
+                "mcp_with_reason": 1,
+                "skill_with_reason": 0,
+                "capability_progress_event_count": 1,
+            },
+        },
+    )
+
+    assert repair_status == "passed"
+    assert repair_refs == ["agent-loop-decision-repair", "agent-loop-execution-repair"]
+    assert ask_status == "passed"
+    assert "exit_reason=ask" in ask_summary
+    assert ask_refs == ["agent-loop-decision-ask", "agent-loop-execution-ask"]
+    assert context_status == "passed"
+    assert context_refs == ["context-budget-snapshot-0001"]
+    assert capability_status == "passed"
+    assert "Capability choices" in capability_summary
+    assert capability_refs == [
+        "capability_decisions.jsonl",
+        "mcp_invocations.jsonl",
+        "skill_invocations.jsonl",
+    ]
+
+
+def test_targeted_second_batch_probe_can_bypass_matching_readiness_block(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["context_pressure_path"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "context_pressure", "status": "blocked"},
+                    {"name": "route_guidance", "status": "review"},
                 ]
             },
         },
@@ -789,6 +903,27 @@ def _model_call(
         "status": "success",
         "created_at": now_iso(),
         "summary": "fake call",
+    }
+
+
+def _agent_loop_decision(decision_id: str, action: str) -> dict:
+    return {
+        "decision_id": decision_id,
+        "next_action": {"action": action},
+    }
+
+
+def _agent_loop_execution(execution_id: str, action: str) -> dict:
+    target = {
+        "repair": "debug_agent",
+        "replan": "replan_command",
+        "ask": "decision_point",
+        "stop": "stop_report",
+    }.get(action, "tool_gateway")
+    return {
+        "execution_id": execution_id,
+        "action": action,
+        "target": target,
     }
 
 

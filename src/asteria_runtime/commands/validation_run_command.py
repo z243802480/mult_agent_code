@@ -64,7 +64,44 @@ VALIDATION_PROBE_GOALS = {
         "Create parent_loop_stop_probe.txt containing one line: parent loop stop probe ok. "
         "The parent loop should consume the child observation and stop cleanly."
     ),
+    "repair_replan_path": (
+        "Run a scoped validation scenario that intentionally exercises recovery. The runtime "
+        "must produce AgentLoopDecision and AgentLoopExecutionResult evidence for repair or "
+        "replan after a bounded failure, then stop with a clear recovery observation. Do not use "
+        "a tiny file artifact as the primary proof."
+    ),
+    "ask_stop_path": (
+        "Run a scoped validation scenario that reaches a runtime-owned ask or explicit stop. "
+        "The runtime must create decision-point or stop-report evidence instead of guessing past "
+        "an ambiguous or policy-sensitive boundary. Do not use a tiny file artifact as the "
+        "primary proof."
+    ),
+    "context_pressure_path": (
+        "Run a scoped validation scenario that creates explainable context pressure. The runtime "
+        "must record context_budget_snapshots.jsonl with a recommended or required compact "
+        "boundary, or a completed compaction count. Do not use a tiny file artifact as the "
+        "primary proof."
+    ),
+    "capability_selection_path": (
+        "Run a scoped validation scenario that requires choosing among tool, Skill, MCP, or "
+        "subagent capabilities. The runtime must record capability decision reasons and selected "
+        "capability evidence that can be reconciled with the catalog. Do not use a tiny file "
+        "artifact as the primary proof."
+    ),
 }
+FIRST_BATCH_PROBE_IDS = [
+    "parent_selects_subagent",
+    "readonly_fanout_succeeds",
+    "readonly_write_tool_blocked",
+    "disjoint_write_gate_blocks_unsafe_fanout",
+    "parent_loop_stops_after_observation",
+]
+SECOND_BATCH_PROBE_IDS = [
+    "repair_replan_path",
+    "ask_stop_path",
+    "context_pressure_path",
+    "capability_selection_path",
+]
 
 
 @dataclass(frozen=True)
@@ -331,6 +368,10 @@ class ValidationRunCommand:
                 "agent_loop_execution",
                 "observation_next_action",
             },
+            "repair_replan_path": {"agent_loop_execution", "observation_next_action"},
+            "ask_stop_path": {"agent_loop_execution", "observation_next_action"},
+            "context_pressure_path": {"context_pressure", "subagent_context_isolation"},
+            "capability_selection_path": {"capability_selection"},
         }
         for probe_id in self.probe_ids:
             allowed.update(probe_allowed_checks.get(probe_id, set()))
@@ -468,6 +509,13 @@ class ValidationRunCommand:
             },
             "selected_probe_ids": self.probe_ids,
             "next_probe_goals": self._next_probe_goals(self.probe_ids),
+            "second_batch_probe_goals": self._next_probe_goals(SECOND_BATCH_PROBE_IDS),
+            "recommended_scoped_validation_batch": {
+                "status": "ready_after_dogfooding_gate",
+                "sample_shape": "repair_replan_ask_stop_context_pressure_capability_selection",
+                "probe_ids": SECOND_BATCH_PROBE_IDS,
+                "avoid": "do_not_repeat_tiny_file_artifact_as_primary_proof",
+            },
             "probes": [
                 {
                     "id": "parent_selects_subagent",
@@ -518,6 +566,45 @@ class ValidationRunCommand:
                     ],
                     "gate_policy": "review_if_missing",
                 },
+                {
+                    "id": "repair_replan_path",
+                    "intent": "Verify bounded failures enter repair or replan evidence paths.",
+                    "expected_evidence": [
+                        "agent_loop_decisions.jsonl:next_action=repair|replan",
+                        "agent_loop_execution_results.jsonl:action=repair|replan",
+                        "agent_loop_observations.jsonl:repair/replan observation",
+                    ],
+                    "gate_policy": "strong_block_if_targeted_missing",
+                },
+                {
+                    "id": "ask_stop_path",
+                    "intent": "Verify ambiguous or policy-sensitive work stops at ask/stop evidence.",
+                    "expected_evidence": [
+                        "agent_loop_decisions.jsonl:next_action=ask|stop",
+                        "agent_loop_execution_results.jsonl:target=decision_point|stop_report",
+                        "agent_loop_run_summary.json:exit_reason=ask|stop",
+                    ],
+                    "gate_policy": "strong_block_if_targeted_missing",
+                },
+                {
+                    "id": "context_pressure_path",
+                    "intent": "Verify context pressure produces compact-boundary evidence.",
+                    "expected_evidence": [
+                        "context_budget_snapshots.jsonl:compact_boundary=recommended|required",
+                        "cost_report.json:context_compactions>0",
+                    ],
+                    "gate_policy": "review_if_missing",
+                },
+                {
+                    "id": "capability_selection_path",
+                    "intent": "Verify capability selection records reasoned catalog-aligned choices.",
+                    "expected_evidence": [
+                        "capability_decisions.jsonl:decision.reason",
+                        "mcp_invocations.jsonl|skill_invocations.jsonl:capability_decision.reason",
+                        "user_progress.jsonl:capability_type=mcp|skill",
+                    ],
+                    "gate_policy": "review_if_missing",
+                },
             ],
         }
 
@@ -535,9 +622,17 @@ class ValidationRunCommand:
         observations = self.jsonl.read_all(
             run_dir / "agent_loop_observations.jsonl", "agent_loop_observation"
         )
+        execution_results = self.jsonl.read_all(
+            run_dir / "agent_loop_execution_results.jsonl", "agent_loop_execution_result"
+        )
+        context_snapshots = self.jsonl.read_all(
+            run_dir / "context_budget_snapshots.jsonl", "context_budget_snapshot"
+        )
         run_summary = self._read_optional(
             run_dir / "agent_loop_run_summary.json", "agent_loop_run_summary"
         )
+        cost_report = self._read_optional(run_dir / "cost_report.json", "cost_report")
+        progress_metrics = runtime_progress_metrics(self.root, self.validator)
         readiness = runtime_readiness_gate(
             root=self.root,
             validator=self.validator,
@@ -559,14 +654,18 @@ class ValidationRunCommand:
                 worker_results=worker_results,
                 child_plans=child_plans,
                 observations=observations,
+                execution_results=execution_results,
+                context_snapshots=context_snapshots,
                 run_summary=run_summary,
+                cost_report=cost_report,
+                progress_metrics=progress_metrics,
                 readiness_checks=readiness_checks,
             )
             for probe in plan["probes"]
         ]
 
     def _next_probe_goals(self, probe_ids: list[str]) -> list[dict[str, Any]]:
-        selected = probe_ids or list(VALIDATION_PROBE_GOALS)
+        selected = probe_ids or FIRST_BATCH_PROBE_IDS
         return [
             {
                 "probe_id": probe_id,
@@ -587,7 +686,11 @@ class ValidationRunCommand:
         worker_results: list[dict[str, Any]],
         child_plans: list[dict[str, Any]],
         observations: list[dict[str, Any]],
+        execution_results: list[dict[str, Any]],
+        context_snapshots: list[dict[str, Any]],
         run_summary: dict[str, Any],
+        cost_report: dict[str, Any],
+        progress_metrics: dict[str, Any],
         readiness_checks: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
         status, summary, evidence_refs = self._probe_status(
@@ -597,7 +700,11 @@ class ValidationRunCommand:
             worker_results=worker_results,
             child_plans=child_plans,
             observations=observations,
+            execution_results=execution_results,
+            context_snapshots=context_snapshots,
             run_summary=run_summary,
+            cost_report=cost_report,
+            progress_metrics=progress_metrics,
             readiness_checks=readiness_checks,
         )
         return {
@@ -617,9 +724,19 @@ class ValidationRunCommand:
         worker_results: list[dict[str, Any]],
         child_plans: list[dict[str, Any]],
         observations: list[dict[str, Any]],
-        run_summary: dict[str, Any],
-        readiness_checks: dict[str, dict[str, Any]],
+        execution_results: list[dict[str, Any]] | None = None,
+        context_snapshots: list[dict[str, Any]] | None = None,
+        run_summary: dict[str, Any] | None = None,
+        cost_report: dict[str, Any] | None = None,
+        progress_metrics: dict[str, Any] | None = None,
+        readiness_checks: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[str, str, list[str]]:
+        execution_results = execution_results or []
+        context_snapshots = context_snapshots or []
+        run_summary = run_summary or {}
+        cost_report = cost_report or {}
+        progress_metrics = progress_metrics or {}
+        readiness_checks = readiness_checks or {}
         if probe_id == "parent_selects_subagent":
             has_decision = any(
                 _nested_str(item, ["next_action", "action"]) == "subagent" for item in decisions
@@ -728,6 +845,82 @@ class ValidationRunCommand:
                 "missing_evidence",
                 "Parent loop stop after subagent observation was not fully evidenced.",
                 [str(run_summary.get("run_id") or "")],
+            )
+        if probe_id == "repair_replan_path":
+            refs = _action_refs(decisions, execution_results, {"repair", "replan"})
+            observed = any(
+                "repair" in str(item).lower() or "replan" in str(item).lower()
+                for item in observations
+            )
+            if refs and observed:
+                return (
+                    "passed",
+                    "Repair or replan path produced decision, execution, and observation evidence.",
+                    refs[:4],
+                )
+            return (
+                "missing_evidence",
+                "No complete repair/replan decision-execution-observation path was found.",
+                refs[:4],
+            )
+        if probe_id == "ask_stop_path":
+            refs = _action_refs(decisions, execution_results, {"ask", "stop"})
+            exit_reason = str(run_summary.get("exit_reason") or "")
+            has_terminal_boundary = exit_reason in {"ask", "stop"} or any(
+                str(item.get("target") or "") in {"decision_point", "stop_report"}
+                for item in execution_results
+            )
+            if refs and has_terminal_boundary:
+                return (
+                    "passed",
+                    f"Ask/stop boundary was evidenced with exit_reason={exit_reason or 'n/a'}.",
+                    refs[:4],
+                )
+            return (
+                "missing_evidence",
+                "No ask/stop DecisionPoint or stop-report boundary evidence was found.",
+                refs[:4],
+            )
+        if probe_id == "context_pressure_path":
+            pressure_refs = [
+                str(item.get("snapshot_id") or "")
+                for item in context_snapshots
+                if _compact_boundary_status(item) in {"dedupe_recommended", "recommended", "required"}
+                or str(item.get("pressure_status") or "") in {"near_limit", "hard_stop", "exceeded"}
+            ]
+            compactions = int(cost_report.get("context_compactions") or 0)
+            if pressure_refs or compactions > 0:
+                return (
+                    "passed",
+                    "Context pressure or compaction evidence was recorded.",
+                    pressure_refs[:4],
+                )
+            return (
+                "missing_evidence",
+                "No context pressure compact-boundary or compaction evidence was found.",
+                [],
+            )
+        if probe_id == "capability_selection_path":
+            adapter = progress_metrics.get("adapter_invocation_coverage")
+            adapter = adapter if isinstance(adapter, dict) else {}
+            permission = progress_metrics.get("permission_reason_coverage")
+            permission = permission if isinstance(permission, dict) else {}
+            has_reason = int(permission.get("with_reason") or 0) > 0
+            has_adapter_reason = (
+                int(adapter.get("mcp_with_reason") or 0) > 0
+                or int(adapter.get("skill_with_reason") or 0) > 0
+            )
+            has_progress_event = int(adapter.get("capability_progress_event_count") or 0) > 0
+            if has_reason and has_adapter_reason and has_progress_event:
+                return (
+                    "passed",
+                    "Capability choices include decision reasons, adapter evidence, and progress events.",
+                    ["capability_decisions.jsonl", "mcp_invocations.jsonl", "skill_invocations.jsonl"],
+                )
+            return (
+                "missing_evidence",
+                "Capability selection evidence lacks reasoned decision, adapter, or progress coverage.",
+                [],
             )
         return "missing_evidence", "Probe evaluator is not implemented for this probe.", []
 
@@ -915,6 +1108,30 @@ def _is_readonly_fanout_strategy(item: dict[str, Any]) -> bool:
         "parallel_readonly_safe",
         "parallel_readonly_fanout",
     }
+
+
+def _action_refs(
+    decisions: list[dict[str, Any]],
+    execution_results: list[dict[str, Any]],
+    actions: set[str],
+) -> list[str]:
+    refs = [
+        str(item.get("decision_id") or "")
+        for item in decisions
+        if _nested_str(item, ["next_action", "action"]) in actions
+    ]
+    refs.extend(
+        str(item.get("execution_id") or "")
+        for item in execution_results
+        if str(item.get("action") or "") in actions
+    )
+    return [item for item in refs if item]
+
+
+def _compact_boundary_status(snapshot: dict[str, Any]) -> str:
+    boundary = snapshot.get("compact_boundary")
+    boundary = boundary if isinstance(boundary, dict) else {}
+    return str(boundary.get("status") or "")
 
 
 def _nested_str(item: dict[str, Any], path: list[str]) -> str:
