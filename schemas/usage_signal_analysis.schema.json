@@ -22,6 +22,7 @@
     "active_summary": { "type": "object" },
     "superseded_signals": { "type": "array", "items": { "type": "object" } },
     "dogfooding_gate": { "type": "object" },
+    "acceptance_signal_gate": { "type": "object" },
     "priority_items": { "type": "array", "items": { "type": "object" } },
     "roadmap_tasks": { "type": "array", "items": { "type": "object" } },
     "candidate_decision_points": { "type": "array", "items": { "type": "object" } },

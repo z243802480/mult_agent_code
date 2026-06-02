@@ -49,6 +49,13 @@ class OpsSignalResult:
                     f"{gate.get('status')} "
                     f"({gate.get('sample_count')}/{gate.get('min_samples')} samples)"
                 )
+            acceptance_gate = self.analysis.get("acceptance_signal_gate")
+            if isinstance(acceptance_gate, dict):
+                lines.append(
+                    "Acceptance signal gate: "
+                    f"{acceptance_gate.get('status')} "
+                    f"({acceptance_gate.get('accepted')}/{acceptance_gate.get('required')} probes)"
+                )
             lines.append(f"Priority items: {len(self.analysis.get('priority_items') or [])}")
             lines.append(f"Roadmap tasks: {len(self.analysis.get('roadmap_tasks') or [])}")
         return "\n".join(lines)

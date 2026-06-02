@@ -118,10 +118,20 @@ def usage_signal_analysis(
     roadmap_tasks = [_roadmap_task(item) for item in priority_items[:5]]
     decision_points = [_decision_point(item, index + 1) for index, item in enumerate(priority_items[:3])]
     dogfooding_gate = _dogfooding_gate(active_summary, active_recent)
+    acceptance_signal_gate = _acceptance_signal_gate(
+        active_summary,
+        active_recent,
+        dogfooding_gate,
+    )
     analysis = {
         "schema_version": "0.1.0",
         "created_at": now_iso(),
-        "status": _analysis_status(priority_items, dogfooding_gate, active_summary),
+        "status": _analysis_status(
+            priority_items,
+            dogfooding_gate,
+            active_summary,
+            acceptance_signal_gate,
+        ),
         "source": {
             "usage_signal_path": str(path),
             "total": summary["total"],
@@ -131,10 +141,15 @@ def usage_signal_analysis(
         "active_summary": active_summary,
         "superseded_signals": superseded,
         "dogfooding_gate": dogfooding_gate,
+        "acceptance_signal_gate": acceptance_signal_gate,
         "priority_items": priority_items,
         "roadmap_tasks": roadmap_tasks,
         "candidate_decision_points": decision_points,
-        "next_actions": _analysis_next_actions(priority_items, dogfooding_gate),
+        "next_actions": _analysis_next_actions(
+            priority_items,
+            dogfooding_gate,
+            acceptance_signal_gate,
+        ),
     }
     if write:
         JsonStore(validator).write(agent_dir / USAGE_SIGNAL_ANALYSIS_PATH, analysis, "usage_signal_analysis")
@@ -262,16 +277,91 @@ def _dogfooding_gate(summary: dict[str, Any], rows: list[dict[str, Any]]) -> dic
     }
 
 
+def _acceptance_signal_gate(
+    summary: dict[str, Any],
+    rows: list[dict[str, Any]],
+    dogfooding_gate: dict[str, Any],
+) -> dict[str, Any]:
+    required_categories = {
+        "repair_replan",
+        "ask_stop",
+        "context_pressure",
+        "capability_selection",
+    }
+    accepted_by_category: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        category = _acceptance_signal_category(
+            str(row.get("expected_outcome_category") or "")
+        )
+        if category not in required_categories:
+            continue
+        if str(row.get("artifact_outcome") or "") != "accepted":
+            continue
+        accepted_by_category[category] = row
+    covered = sorted(accepted_by_category)
+    missing = sorted(required_categories - set(accepted_by_category))
+    unresolved = int(summary.get("unresolved") or 0)
+    blocker_count = sum(int(value or 0) for value in (summary.get("blockers") or {}).values())
+    trust_risk_count = sum(
+        int(value or 0) for value in (summary.get("trust_risks") or {}).values()
+    )
+    if dogfooding_gate.get("status") == "blocked" or unresolved or blocker_count or trust_risk_count:
+        status = "blocked"
+        reason = "Active signals include unresolved outcomes, blockers, or trust risks."
+    elif missing:
+        status = "collecting"
+        reason = "Collect accepted scoped validation signals for: " + ", ".join(missing)
+    elif dogfooding_gate.get("status") != "ready":
+        status = "collecting"
+        reason = str(dogfooding_gate.get("reason") or "Dogfooding gate is not ready yet.")
+    else:
+        status = "ready"
+        reason = "Alpha.2 scoped validation signals meet the acceptance gate."
+    evidence_refs: list[str] = []
+    for category in covered:
+        row = accepted_by_category[category]
+        evidence_refs.extend(str(ref) for ref in row.get("evidence_refs", []) if ref)
+        if row.get("run_id"):
+            evidence_refs.append(f"run:{row['run_id']}")
+    return {
+        "status": status,
+        "ready_for_alpha2_next_batch": status == "ready",
+        "required_categories": sorted(required_categories),
+        "covered_categories": covered,
+        "missing_categories": missing,
+        "accepted": len(covered),
+        "required": len(required_categories),
+        "sample_count": int(dogfooding_gate.get("sample_count") or len(rows)),
+        "reason": reason,
+        "evidence_refs": list(dict.fromkeys(evidence_refs))[:12],
+    }
+
+
 def _analysis_status(
     priority_items: list[dict[str, Any]],
     dogfooding_gate: dict[str, Any],
     active_summary: dict[str, Any],
+    acceptance_signal_gate: dict[str, Any],
 ) -> str:
     if priority_items or dogfooding_gate.get("status") == "blocked":
+        return "needs_attention"
+    if acceptance_signal_gate.get("status") == "blocked":
         return "needs_attention"
     if dogfooding_gate.get("status") in {"missing", "collecting"}:
         return "collecting"
     return str(active_summary.get("status") or "missing")
+
+
+def _acceptance_signal_category(category: str) -> str:
+    aliases = {
+        "repair_replan_path": "repair_replan",
+        "recovery_path": "repair_replan",
+        "ask_stop_path": "ask_stop",
+        "ask_stop_boundary": "ask_stop",
+        "context_pressure_path": "context_pressure",
+        "capability_selection_path": "capability_selection",
+    }
+    return aliases.get(category, category)
 
 
 def _roadmap_task(item: dict[str, Any]) -> dict[str, Any]:
@@ -321,8 +411,20 @@ def _decision_point(item: dict[str, Any], index: int) -> dict[str, Any]:
 def _analysis_next_actions(
     items: list[dict[str, Any]],
     dogfooding_gate: dict[str, Any],
+    acceptance_signal_gate: dict[str, Any],
 ) -> list[str]:
     if not items:
+        if acceptance_signal_gate.get("status") == "ready":
+            return [
+                "Acceptance signal gate is ready; prepare the alpha.2 evidence bundle and next scoped dogfooding batch."
+            ]
+        if acceptance_signal_gate.get("status") == "collecting":
+            return [
+                str(
+                    acceptance_signal_gate.get("reason")
+                    or "Continue collecting accepted scoped validation signals."
+                )
+            ]
         if dogfooding_gate.get("status") == "ready":
             return ["Dogfooding signal gate is ready; continue with the next scoped batch."]
         return [str(dogfooding_gate.get("reason") or "Continue collecting background usage signals during scoped dogfooding.")]

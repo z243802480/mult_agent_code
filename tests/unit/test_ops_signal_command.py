@@ -83,6 +83,7 @@ def test_ops_signal_cli_outputs_json(tmp_path: Path) -> None:
     assert payload["summary"]["status"] == "healthy"
     assert payload["analysis"]["status"] == "collecting"
     assert payload["analysis"]["dogfooding_gate"]["status"] == "collecting"
+    assert payload["analysis"]["acceptance_signal_gate"]["status"] == "collecting"
 
 
 def test_ops_signal_analysis_outputs_priority_items_and_candidate_decisions(tmp_path: Path) -> None:
@@ -189,7 +190,46 @@ def test_ops_signal_dogfooding_gate_ready_after_three_clean_signals(tmp_path: Pa
     assert result.analysis["dogfooding_gate"]["status"] == "ready"
     assert result.analysis["dogfooding_gate"]["sample_count"] == 3
     assert result.analysis["dogfooding_gate"]["ready_for_next_batch"] is True
+    assert result.analysis["acceptance_signal_gate"]["status"] == "collecting"
     assert result.analysis["priority_items"] == []
+
+
+def test_ops_signal_acceptance_signal_gate_ready_after_second_batch_probe_signals(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    for category in [
+        "recovery_path",
+        "ask_stop_boundary",
+        "context_pressure",
+        "capability_selection",
+    ]:
+        OpsSignalCommand(
+            tmp_path,
+            run_id=f"run-{category}",
+            task_kind="scoped_validation",
+            expected_outcome_category=category,
+            artifact_outcome="accepted",
+            blocker_category="none",
+            trust_risk="none",
+            summary=f"{category} accepted",
+            evidence_refs=[f"{category}-summary.json"],
+        ).run()
+
+    result = OpsSignalCommand(tmp_path, summarize_only=True, analyze=True).run()
+
+    assert result.analysis is not None
+    gate = result.analysis["acceptance_signal_gate"]
+    assert result.analysis["status"] == "healthy"
+    assert gate["status"] == "ready"
+    assert gate["ready_for_alpha2_next_batch"] is True
+    assert gate["accepted"] == 4
+    assert gate["missing_categories"] == []
+    assert "capability_selection-summary.json" in gate["evidence_refs"]
+    assert (
+        result.analysis["next_actions"][0]
+        == "Acceptance signal gate is ready; prepare the alpha.2 evidence bundle and next scoped dogfooding batch."
+    )
 
 
 def test_weekly_and_roadmap_consume_dogfooding_gate(tmp_path: Path) -> None:
