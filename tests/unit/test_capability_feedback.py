@@ -4,6 +4,7 @@ from pathlib import Path
 
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -194,6 +195,89 @@ def test_provider_route_strategy_blocks_unstable_strong_goal_spec(tmp_path: Path
     assert guidance["provider_route_strategy"]["decision"] == "block_validation"
     assert guidance["blocking"][0]["recommended_action"] == "block_validation_until_strong_goal_spec_stable"
     assert "Do not widen small real-task validation" in guidance["recommended_actions"][0]
+
+
+def test_provider_route_strategy_reports_fresh_window_with_recent_timeout(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    _write_provider_route_policy(agent_dir, validator)
+    _write_goal_spec_profile(
+        agent_dir,
+        validator,
+        total_calls=6,
+        success_calls=4,
+        success_rate=0.6667,
+        failure_types={"timeout": 2},
+    )
+    calls_path = agent_dir / "runs" / "run-0001" / "model_calls.jsonl"
+    store = JsonlStore(validator)
+    store.append(
+        calls_path,
+        _model_call("modelcall-0001", "failure", "2026-06-02T10:00:00+08:00", "request timed out"),
+        "model_call",
+    )
+    store.append(
+        calls_path,
+        _model_call("modelcall-0002", "success", "2026-06-02T10:01:00+08:00"),
+        "model_call",
+    )
+    store.append(
+        calls_path,
+        _model_call("modelcall-0003", "success", "2026-06-02T10:02:00+08:00"),
+        "model_call",
+    )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    strategy = guidance["provider_route_strategy"]
+    fresh = strategy["fresh_evidence_window"]
+    assert guidance["status"] == "blocked"
+    assert strategy["decision"] == "block_validation"
+    assert fresh["status"] == "blocked"
+    assert fresh["total_calls"] == 3
+    assert fresh["timeout_failures"] == 1
+    assert fresh["success_rate"] == 0.6667
+    assert "Recent window still contains provider failures" in strategy["reason"]
+
+
+def test_provider_route_strategy_uses_clean_fresh_window_as_recovery_signal(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    _write_provider_route_policy(agent_dir, validator)
+    _write_goal_spec_profile(
+        agent_dir,
+        validator,
+        total_calls=8,
+        success_calls=5,
+        success_rate=0.625,
+        failure_types={"timeout": 3},
+    )
+    calls_path = agent_dir / "runs" / "run-0001" / "model_calls.jsonl"
+    store = JsonlStore(validator)
+    for index in range(5):
+        store.append(
+            calls_path,
+            _model_call(
+                f"modelcall-000{index + 1}",
+                "success",
+                f"2026-06-02T10:0{index}:00+08:00",
+            ),
+            "model_call",
+        )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    strategy = guidance["provider_route_strategy"]
+    fresh = strategy["fresh_evidence_window"]
+    assert guidance["status"] == "review"
+    assert strategy["decision"] == "retry_or_downgrade"
+    assert fresh["status"] == "healthy"
+    assert fresh["success_calls"] == 5
+    assert "recent evidence is clean" in strategy["reason"]
 
 
 def test_provider_route_strategy_does_not_block_on_stale_non_current_model(
@@ -490,3 +574,145 @@ def test_capability_feedback_uses_real_provider_matrix_signals(tmp_path: Path) -
     assert guidance["blocking"][0]["matrix_signal_success_rate"] == 0.3333
     assert "bug_fix/repair" in guidance["blocking"][0]["message"]
     assert "Do not widen real-provider matrix routes" in guidance["recommended_actions"][0]
+
+
+def _write_provider_route_policy(agent_dir: Path, validator: SchemaValidator) -> None:
+    JsonStore(validator).write(
+        agent_dir / "policies.json",
+        {
+            "schema_version": "0.3.0",
+            "decision_granularity": "balanced",
+            "budgets": {
+                "max_model_calls_per_goal": 60,
+                "max_tool_calls_per_goal": 120,
+                "max_total_minutes_per_goal": 30,
+                "max_iterations_per_goal": 8,
+                "max_repair_attempts_total": 5,
+                "max_repair_attempts_per_task": 2,
+                "max_replans_per_task": 2,
+                "max_research_calls": 5,
+                "max_user_decisions": 5,
+            },
+            "context": {
+                "compaction_threshold": 0.75,
+                "hard_stop_threshold": 0.9,
+                "phase_boundary_compaction": True,
+                "handoff_compaction": True,
+            },
+            "permissions": {
+                "allow_network": False,
+                "allow_shell": True,
+                "allow_destructive_shell": False,
+                "allow_global_package_install": False,
+                "allow_secret_file_read": False,
+                "allow_remote_push": False,
+                "allow_deploy": False,
+                "allow_restore_delete_created_files": True,
+            },
+            "protected_paths": [],
+            "hooks": {
+                "enabled": True,
+                "plugins_enabled": False,
+                "allowed_hook_names": ["before_worker", "after_worker"],
+                "redacted_data_keys": ["api_key"],
+                "handler_timeout_ms": 1000,
+            },
+            "promotion": {
+                "manual_approval_default": False,
+                "release_blocking_statuses": ["pending_manual_approval"],
+                "max_pending_release_promotions": 0,
+                "max_blocked_release_promotions": 0,
+            },
+            "feature_flags": {},
+            "capability_flags": {},
+            "model_routing": {"goal_spec": "strong"},
+            "provider_route_strategy": {
+                "strong_goal_spec": {
+                    "primary_model": "glm-5",
+                    "cost_saver_model": "glm-4.7",
+                    "min_calls_before_enforcement": 3,
+                    "min_success_rate_for_validation": 0.8,
+                    "max_timeout_failures_for_validation": 1,
+                }
+            },
+            "commands": {},
+        },
+        "policy_config",
+    )
+
+
+def _write_goal_spec_profile(
+    agent_dir: Path,
+    validator: SchemaValidator,
+    *,
+    total_calls: int,
+    success_calls: int,
+    success_rate: float,
+    failure_types: dict[str, int],
+) -> None:
+    JsonStore(validator).write(
+        agent_dir / "model" / "capability_profile.json",
+        {
+            "schema_version": "0.1.0",
+            "root": str(agent_dir.parent),
+            "profile_count": 1,
+            "profiles": [
+                {
+                    "provider": "zai",
+                    "model": "glm-4.7",
+                    "purpose": "goal_spec",
+                    "model_tier": "strong",
+                    "total_calls": total_calls,
+                    "success_calls": success_calls,
+                    "failure_calls": total_calls - success_calls,
+                    "success_rate": success_rate,
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_workers": 0,
+                    "successful_workers": 0,
+                    "failed_workers": 0,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": failure_types,
+                    "recent_failures": [],
+                    "recommended_action": "keep_route",
+                }
+            ],
+        },
+        "model_capability_profile",
+    )
+
+
+def _model_call(
+    model_call_id: str,
+    status: str,
+    created_at: str,
+    summary: str = "model call succeeded",
+) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "model_call_id": model_call_id,
+        "run_id": "run-0001",
+        "purpose": "goal_spec",
+        "model_provider": "zai",
+        "model_name": "glm-4.7",
+        "model_tier": "strong",
+        "status": status,
+        "created_at": created_at,
+        "summary": summary,
+        "deadline_ms": 120000,
+        "duration_ms": 120000 if status == "failure" else 1000,
+        "streaming": {
+            "requested": True,
+            "supported": status == "success",
+            "mode": "streaming" if status == "success" else "streaming_failed",
+            "chunk_count": 1 if status == "success" else 0,
+            "error_type": None if status == "success" else "provider_error",
+        },
+    }

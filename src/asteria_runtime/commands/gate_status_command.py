@@ -1020,6 +1020,9 @@ def _is_superseded_route_guidance_block(
     validation: dict[str, Any],
 ) -> bool:
     action = str(item.get("recommended_action") or "")
+    provider = str(item.get("provider") or "").lower()
+    if provider in {"fake", "offline"}:
+        return True
     if action == "block_validation_until_strong_goal_spec_stable":
         routes = gate.get("routes")
         routes = routes if isinstance(routes, dict) else {}

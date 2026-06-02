@@ -1669,7 +1669,7 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
         {
             "schema_version": "0.1.0",
             "root": str(tmp_path),
-            "profile_count": 3,
+            "profile_count": 4,
             "profiles": [
                 {
                     "provider": "zai",
@@ -1749,6 +1749,32 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
                     "recent_failures": [],
                     "recommended_action": "review_worker_route_before_scaling",
                 },
+                {
+                    "provider": "fake",
+                    "model": "fake-offline",
+                    "purpose": "research",
+                    "model_tier": "cheap",
+                    "total_calls": 0,
+                    "success_calls": 0,
+                    "failure_calls": 0,
+                    "success_rate": 0.0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_workers": 2,
+                    "successful_workers": 0,
+                    "failed_workers": 2,
+                    "worker_success_rate": 0.0,
+                    "validation_total": 0,
+                    "validation_passed": 0,
+                    "validation_pass_rate": 0.0,
+                    "runtime_request_total": 0,
+                    "runtime_request_rate": 0.0,
+                    "runtime_request_types": {},
+                    "merge_gate_blocks": 0,
+                    "failure_types": {},
+                    "recent_failures": [],
+                    "recommended_action": "review_worker_route_before_scaling",
+                },
             ],
         },
         "model_capability_profile",
@@ -1759,7 +1785,7 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
     assert payload["stage"] == "ready_for_small_real_task_validation"
     assert payload["release_ready"] is True
     assert payload["route_guidance"]["status"] == "review"
-    assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 2
+    assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 3
 
 
 def test_gate_status_blocks_release_when_recent_model_call_contract_is_missing(

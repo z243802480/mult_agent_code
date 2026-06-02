@@ -7,6 +7,7 @@ from typing import Any
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.route_diagnostics import route_diagnostic_for_tier
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -289,6 +290,14 @@ class CapabilityFeedbackAdvisor:
         max_timeouts = int(strategy.get("max_timeout_failures_for_validation") or 1)
         provider = str(selected.get("provider") or "unknown")
         model = str(selected.get("model") or "unknown")
+        fresh_window = self._fresh_strong_goal_spec_window(
+            agent_dir=agent_dir,
+            provider=provider,
+            model=model,
+            min_calls=min_calls,
+            min_success=min_success,
+            max_timeouts=max_timeouts,
+        )
 
         base = {
             "strategy": strategy,
@@ -300,6 +309,7 @@ class CapabilityFeedbackAdvisor:
             "min_calls_before_enforcement": min_calls,
             "min_success_rate_for_validation": min_success,
             "max_timeout_failures_for_validation": max_timeouts,
+            "fresh_evidence_window": fresh_window,
         }
         if failure_types.get("authentication") or failure_types.get("budget"):
             return {
@@ -308,16 +318,34 @@ class CapabilityFeedbackAdvisor:
                 "reason": "Strong goal_spec route has authentication or budget failures.",
             }
         if timeout_failures > max_timeouts:
+            if fresh_window.get("status") == "healthy":
+                return {
+                    **base,
+                    "decision": "retry_or_downgrade",
+                    "reason": "Historical strong goal_spec timeouts exceed threshold, but recent evidence is clean; keep retry/downgrade guard before widening scope.",
+                }
             return {
                 **base,
                 "decision": "block_validation",
-                "reason": "Strong goal_spec timeout failures exceed provider route strategy threshold.",
+                "reason": self._fresh_window_reason(
+                    fresh_window,
+                    "Strong goal_spec timeout failures exceed provider route strategy threshold.",
+                ),
             }
         if total >= min_calls and success_rate < min_success:
+            if fresh_window.get("status") == "healthy":
+                return {
+                    **base,
+                    "decision": "retry_or_downgrade",
+                    "reason": "Historical strong goal_spec success rate is below threshold, but recent evidence is clean; keep retry/downgrade guard before widening scope.",
+                }
             return {
                 **base,
                 "decision": "block_validation",
-                "reason": "Strong goal_spec success rate is below provider route strategy threshold.",
+                "reason": self._fresh_window_reason(
+                    fresh_window,
+                    "Strong goal_spec success rate is below provider route strategy threshold.",
+                ),
             }
         if (
             failure_types.get("timeout")
@@ -340,6 +368,63 @@ class CapabilityFeedbackAdvisor:
             "decision": "continue_primary",
             "reason": "Strong goal_spec route is within configured provider strategy thresholds.",
         }
+
+    def _fresh_window_reason(self, window: dict[str, Any], fallback: str) -> str:
+        if not window:
+            return fallback
+        status = str(window.get("status") or "")
+        if status == "needs_more_evidence":
+            remaining = int(window.get("remaining_successes_needed") or 0)
+            return (
+                f"{fallback} Recent window needs {remaining} more successful "
+                "strong goal_spec call(s) before recovery."
+            )
+        if status == "blocked":
+            return f"{fallback} Recent window still contains provider failures."
+        return fallback
+
+    def _fresh_strong_goal_spec_window(
+        self,
+        *,
+        agent_dir: Path,
+        provider: str,
+        model: str,
+        min_calls: int,
+        min_success: float,
+        max_timeouts: int,
+    ) -> dict[str, Any]:
+        runs_dir = agent_dir / "runs"
+        if not runs_dir.exists():
+            return {
+                "status": "missing",
+                "total_calls": 0,
+                "required_successes": min_calls,
+                "remaining_successes_needed": min_calls,
+            }
+        calls: list[dict[str, Any]] = []
+        store = JsonlStore(self.validator)
+        for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+            path = run_dir / "model_calls.jsonl"
+            if not path.exists():
+                continue
+            calls.extend(store.read_all(path, "model_call"))
+        matching = [
+            call
+            for call in calls
+            if str(call.get("purpose") or "") == "goal_spec"
+            and str(call.get("model_tier") or "") == "strong"
+            and str(call.get("model_provider") or "") == provider
+            and str(call.get("model_name") or "") == model
+        ]
+        matching.sort(key=lambda call: str(call.get("created_at") or ""))
+        window_size = max(min_calls, 5)
+        window = matching[-window_size:]
+        return _summarize_fresh_model_call_window(
+            window,
+            min_calls=min_calls,
+            min_success=min_success,
+            max_timeouts=max_timeouts,
+        )
 
     def _strong_goal_spec_strategy(self, agent_dir: Path) -> dict[str, Any]:
         try:
@@ -368,6 +453,88 @@ def _current_configured_strong_model() -> str:
     if not diagnostic.configured or not diagnostic.model_name:
         return ""
     return diagnostic.model_name
+
+
+def _summarize_fresh_model_call_window(
+    calls: list[dict[str, Any]],
+    *,
+    min_calls: int,
+    min_success: float,
+    max_timeouts: int,
+) -> dict[str, Any]:
+    success_calls = sum(1 for call in calls if str(call.get("status") or "") == "success")
+    failure_calls = len(calls) - success_calls
+    failure_types: dict[str, int] = {}
+    for call in calls:
+        if str(call.get("status") or "") == "success":
+            continue
+        failure_type = _model_call_failure_type(call)
+        failure_types[failure_type] = failure_types.get(failure_type, 0) + 1
+    total = len(calls)
+    success_rate = round(success_calls / total, 4) if total else 0.0
+    timeout_failures = int(failure_types.get("timeout") or 0)
+    status = "healthy"
+    if total < min_calls:
+        status = "needs_more_evidence"
+    elif success_rate < min_success or timeout_failures > max_timeouts:
+        status = "blocked"
+    remaining_successes = max(0, min_calls - success_calls)
+    latest = calls[-1] if calls else {}
+    latest_failure = next(
+        (
+            call
+            for call in reversed(calls)
+            if str(call.get("status") or "") != "success"
+        ),
+        {},
+    )
+    latest_success = next(
+        (
+            call
+            for call in reversed(calls)
+            if str(call.get("status") or "") == "success"
+        ),
+        {},
+    )
+    return {
+        "status": status,
+        "window_size": max(min_calls, 5),
+        "total_calls": total,
+        "success_calls": success_calls,
+        "failure_calls": failure_calls,
+        "success_rate": success_rate,
+        "failure_types": failure_types,
+        "timeout_failures": timeout_failures,
+        "required_successes": min_calls,
+        "remaining_successes_needed": remaining_successes,
+        "latest_call_at": str(latest.get("created_at") or ""),
+        "latest_success_at": str(latest_success.get("created_at") or ""),
+        "latest_failure_at": str(latest_failure.get("created_at") or ""),
+    }
+
+
+def _model_call_failure_type(call: dict[str, Any]) -> str:
+    summary = str(call.get("summary") or "").lower()
+    streaming = call.get("streaming")
+    streaming = streaming if isinstance(streaming, dict) else {}
+    error_type = str(streaming.get("error_type") or "").lower()
+    duration_ms = int(call.get("duration_ms") or 0)
+    deadline_ms = int(call.get("deadline_ms") or 0)
+    if "auth" in summary or "api key" in summary or "unauthorized" in summary:
+        return "authentication"
+    if "budget" in summary or "quota" in summary:
+        return "budget"
+    if "rate limit" in summary or "rate_limited" in error_type:
+        return "rate_limited"
+    if "timed out" in summary or "timeout" in summary:
+        return "timeout"
+    if deadline_ms > 0 and duration_ms >= deadline_ms:
+        return "timeout"
+    if "ssl" in summary or "urlopen" in summary or "network" in summary or "eof" in summary:
+        return "network"
+    if error_type:
+        return error_type
+    return "model_call_failed"
 
 
 def _is_low_risk_goal_spec_goal(goal: str) -> bool:
