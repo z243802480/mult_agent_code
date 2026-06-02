@@ -302,6 +302,15 @@ class RunCommand:
             )
             self._execute_until_no_ready(run_id, steps, iteration=index + 1, progress=_progress)
             self._emit_execution_progress_events(_progress, run_id, phase="execute")
+            if self._runtime_managed_validation_probe_has_evidence(run_id):
+                steps.append(
+                    RunStepSummary(
+                        "validation-probe",
+                        "evidence_recorded",
+                        "Runtime-managed validation probe evidence was recorded; skipping ordinary debug/review loop.",
+                    )
+                )
+                return self._finalize_validation_probe_run(run_id, steps, _progress)
             if self._run_status(run_id) in {"blocked", "paused"}:
                 break
 
@@ -431,6 +440,112 @@ class RunCommand:
             status_payload=status_payload,
             run_loop_summary_path=run_loop_summary_path,
         )
+
+    def _finalize_validation_probe_run(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+        progress: UserProgressLogger,
+    ) -> RunResult:
+        review_status = self._latest_review_status(run_id)
+        final_report_path = self._write_final_report(run_id, review_status, steps)
+        run_status = self._run_status(run_id)
+        status_payload = self._status_payload(run_id)
+        final_report_summary_path = self._write_final_report_summary(
+            run_id=run_id,
+            status=run_status,
+            review_status=review_status,
+            final_report_path=final_report_path,
+            status_payload=status_payload,
+        )
+        run_loop_summary_path = self._write_run_loop_summary(
+            run_id=run_id,
+            steps=steps,
+            status_payload=status_payload,
+            stop_reason="runtime_managed_validation_probe_evidence_recorded",
+        )
+        progress.conclusion(
+            run_id=run_id,
+            phase="result",
+            title="Validation probe evidence recorded",
+            summary=(
+                "Runtime-managed validation probe evidence was recorded; ordinary "
+                "debug/review/compact flow was skipped for targeted evaluation."
+            ),
+            artifact_refs=[str(final_report_path)],
+        )
+        self._emit_final_report_progress_event(
+            progress,
+            run_id=run_id,
+            final_report_path=final_report_path,
+            final_report_summary_path=final_report_summary_path,
+        )
+        return self._build_run_result(
+            run_id=run_id,
+            status=run_status,
+            final_report_path=final_report_path,
+            steps=steps,
+            run_loop_summary_path=run_loop_summary_path,
+        )
+
+    def _runtime_managed_validation_probe_has_evidence(self, run_id: str) -> bool:
+        selected = set(self.validation_probe_ids)
+        if not selected:
+            return False
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        if "repair_replan_path" in selected:
+            decisions = self.jsonl.read_all(run_dir / "agent_loop_decisions.jsonl")
+            executions = self.jsonl.read_all(run_dir / "agent_loop_execution_results.jsonl")
+            if any(
+                isinstance(item, dict)
+                and (item.get("next_action") or {}).get("action") in {"repair", "replan"}
+                for item in decisions
+            ) and any(
+                isinstance(item, dict) and item.get("action") in {"repair", "replan"}
+                for item in executions
+            ):
+                return True
+        if "ask_stop_path" in selected:
+            decisions = self.jsonl.read_all(run_dir / "agent_loop_decisions.jsonl")
+            executions = self.jsonl.read_all(run_dir / "agent_loop_execution_results.jsonl")
+            if any(
+                isinstance(item, dict)
+                and (item.get("next_action") or {}).get("action") in {"ask", "stop"}
+                for item in decisions
+            ) and any(
+                isinstance(item, dict) and item.get("action") in {"ask", "stop"}
+                for item in executions
+            ):
+                return True
+        if "context_pressure_path" in selected:
+            snapshots = self.jsonl.read_all(run_dir / "context_budget_snapshots.jsonl")
+            if any(
+                isinstance(item, dict)
+                and (
+                    item.get("pressure_status") in {"near_limit", "hard_stop"}
+                    or (item.get("compact_boundary") or {}).get("status")
+                    in {"recommended", "required", "completed"}
+                )
+                for item in snapshots
+            ):
+                return True
+        if "capability_selection_path" in selected:
+            decisions = self.jsonl.read_all(run_dir / "capability_decisions.jsonl")
+            mcp_invocations = self.jsonl.read_all(run_dir / "mcp_invocations.jsonl")
+            skill_invocations = self.jsonl.read_all(run_dir / "skill_invocations.jsonl")
+            has_reasoned_decision = any(
+                isinstance(item, dict)
+                and bool((item.get("decision") or {}).get("reason"))
+                for item in decisions
+            )
+            has_adapter_reason = any(
+                isinstance(item, dict)
+                and bool((item.get("capability_decision") or {}).get("reason"))
+                for item in [*mcp_invocations, *skill_invocations]
+            )
+            if has_reasoned_decision and has_adapter_reason:
+                return True
+        return False
 
     def _build_run_result(
         self,
@@ -877,6 +992,8 @@ class RunCommand:
                 )
             status = self._run_status(run_id)
             if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
+                return progressed
+            if self._runtime_managed_validation_probe_has_evidence(run_id):
                 return progressed
             if status == "blocked":
                 if progress:

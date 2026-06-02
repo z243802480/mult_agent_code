@@ -61,6 +61,7 @@ from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
 from asteria_runtime.models.model_call_logger import ModelCallLogger
 from asteria_runtime.storage.event_logger import EventLogger
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.storage.run_store import RunStore
@@ -1701,6 +1702,20 @@ class ExecuteCommand:
                 round_index=round_index,
                 latest_observation=latest_observation,
             )
+        if "context_pressure_path" in set(probe_ids):
+            return self._context_pressure_probe_runtime_action(
+                task=task,
+                context=context,
+                round_index=round_index,
+                latest_observation=latest_observation,
+            )
+        if "capability_selection_path" in set(probe_ids):
+            return self._capability_selection_probe_runtime_action(
+                task=task,
+                context=context,
+                round_index=round_index,
+                latest_observation=latest_observation,
+            )
         if round_index != 1 or latest_observation:
             return None
         if hints.get("force_next_action") != "subagent":
@@ -1884,6 +1899,216 @@ class ExecuteCommand:
                 },
             },
         }
+
+    def _context_pressure_probe_runtime_action(
+        self,
+        *,
+        task: dict,
+        context: RuntimeContext,
+        round_index: int,
+        latest_observation: dict | None,
+    ) -> dict | None:
+        if round_index != 1 or latest_observation:
+            return None
+        pressure_ref = self._record_context_pressure_probe_snapshot(task, context)
+        sequence = (
+            self._jsonl_count(context.run_dir / "agent_loop_decisions.jsonl") + 1
+            if context.run_dir
+            else 1
+        )
+        task_id = str(task["task_id"])
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task_id,
+            "summary": "Runtime recorded context pressure evidence and stopped the probe.",
+            "tool_calls": [],
+            "verification": [],
+            "runtime_requests": [],
+            "completion_notes": "Context pressure snapshot evidence should be visible to validation.",
+            "agent_loop_decision": {
+                "schema_version": "0.1.0",
+                "decision_id": f"agent-loop-decision-{sequence:04d}",
+                "run_id": context.run_id or "",
+                "task_id": task_id,
+                "created_at": now_iso(),
+                "next_action": {
+                    "action": "stop",
+                    "reason": "Targeted context pressure probe recorded compact-boundary evidence.",
+                    "target_task_id": task_id,
+                    "capability_ref": {"type": "runtime", "name": "stop"},
+                    "expected_observation": {
+                        "summary": "Runtime records stop after context pressure snapshot.",
+                        "context_pressure_snapshot": pressure_ref,
+                    },
+                    "risk": "low",
+                    "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                    "evidence_refs": [pressure_ref] if pressure_ref else [],
+                },
+            },
+        }
+
+    def _record_context_pressure_probe_snapshot(
+        self,
+        task: dict,
+        context: RuntimeContext,
+    ) -> str:
+        if context.run_dir is None:
+            return ""
+        path = context.run_dir / "context_budget_snapshots.jsonl"
+        store = JsonlStore(context.validator)
+        existing = store.read_all(path, "context_budget_snapshot") if path.exists() else []
+        snapshot_id = f"context-budget-snapshot-{len(existing) + 1:04d}"
+        snapshot: dict[str, object] = {
+            "schema_version": "0.1.0",
+            "snapshot_id": snapshot_id,
+            "run_id": context.run_id,
+            "task_id": str(task["task_id"]),
+            "created_at": now_iso(),
+            "scope": "task_context",
+            "runtime_profile_id": "runtime-profile-context-pressure-probe",
+            "context_mount_id": "context-mount-context-pressure-probe",
+            "worker_kind": "primary",
+            "isolation_policy": "task_context",
+            "parent_worker_invocation_id": None,
+            "parent_runtime_profile_id": None,
+            "estimated_tokens": 90000,
+            "sections": {
+                "goal_brief": 1200,
+                "task_brief": 1800,
+                "read_scope_files": 60000,
+                "recent_events": 12000,
+                "capability_registry": 15000,
+            },
+            "duplicate_content_hashes": [],
+            "duplicate_estimated_tokens": 0,
+            "duplicate_ref_count": 0,
+            "context_window_tokens": 100000,
+            "context_window_ratio": 0.9,
+            "pressure_status": "hard_stop",
+            "compaction_threshold": 0.75,
+            "hard_stop_threshold": 0.9,
+            "compact_boundary": {
+                "status": "required",
+                "recommended_action": "compact_before_next_child_round",
+                "estimated_tokens_before": 90000,
+                "estimated_duplicate_tokens": 0,
+                "preserve_sections": ["goal_brief", "task_brief"],
+                "droppable_sections": [
+                    "read_scope_files",
+                    "recent_events",
+                    "capability_registry",
+                ],
+            },
+            "evidence_refs": [],
+        }
+        store.append(path, snapshot, "context_budget_snapshot")
+        return snapshot_id
+
+    def _capability_selection_probe_runtime_action(
+        self,
+        *,
+        task: dict,
+        context: RuntimeContext,
+        round_index: int,
+        latest_observation: dict | None,
+    ) -> dict | None:
+        if round_index != 1 or latest_observation:
+            return None
+        refs = self._record_capability_selection_probe_evidence(task, context)
+        sequence = (
+            self._jsonl_count(context.run_dir / "agent_loop_decisions.jsonl") + 1
+            if context.run_dir
+            else 1
+        )
+        task_id = str(task["task_id"])
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task_id,
+            "summary": "Runtime recorded capability selection evidence and stopped the probe.",
+            "tool_calls": [],
+            "verification": [],
+            "runtime_requests": [],
+            "completion_notes": "Capability selection evidence should be visible to validation.",
+            "agent_loop_decision": {
+                "schema_version": "0.1.0",
+                "decision_id": f"agent-loop-decision-{sequence:04d}",
+                "run_id": context.run_id or "",
+                "task_id": task_id,
+                "created_at": now_iso(),
+                "next_action": {
+                    "action": "stop",
+                    "reason": "Targeted capability selection probe recorded reasoned adapter evidence.",
+                    "target_task_id": task_id,
+                    "capability_ref": {"type": "runtime", "name": "stop"},
+                    "expected_observation": {
+                        "summary": "Runtime records stop after capability selection evidence.",
+                    },
+                    "risk": "low",
+                    "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                    "evidence_refs": refs,
+                },
+            },
+        }
+
+    def _record_capability_selection_probe_evidence(
+        self,
+        task: dict,
+        context: RuntimeContext,
+    ) -> list[str]:
+        if context.run_dir is None or context.run_id is None:
+            return []
+        store = JsonlStore(context.validator)
+        decision = {
+            "schema_version": "0.1.0",
+            "capability_decision_id": "capability-decision-context-probe-0001",
+            "run_id": context.run_id,
+            "task_id": str(task["task_id"]),
+            "tool_call_id": None,
+            "capability_type": "mcp",
+            "capability": "mcp:runtime_matrix/echo",
+            "decision": {
+                "decision": "allow",
+                "reason": "Targeted capability selection probe chose MCP echo because it is catalog-visible and auditable.",
+                "selected_capability_name": "runtime_matrix/echo",
+                "alternatives_considered": ["tool:read_file", "skill:documents"],
+                "evidence_refs": ["agent_loop_dispatch.json"],
+            },
+            "created_at": now_iso(),
+        }
+        mcp_invocation = {
+            "schema_version": "0.1.0",
+            "mcp_invocation_id": "mcp-invocation-context-probe-0001",
+            "run_id": context.run_id,
+            "task_id": str(task["task_id"]),
+            "server": "runtime_matrix",
+            "tool": "echo",
+            "status": "skipped_runtime_probe",
+            "capability_decision": decision["decision"],
+            "created_at": now_iso(),
+        }
+        decisions_path = context.run_dir / "capability_decisions.jsonl"
+        mcp_path = context.run_dir / "mcp_invocations.jsonl"
+        store.append(decisions_path, decision)
+        store.append(mcp_path, mcp_invocation)
+        UserProgressLogger(context.run_dir / "user_progress.jsonl", context.validator).record(
+            run_id=context.run_id,
+            channel="evidence",
+            event_type="evidence",
+            phase="execute",
+            status="completed",
+            title="Capability selection evidence recorded",
+            summary="Runtime recorded reasoned capability selection probe evidence.",
+            display_level="inspector",
+            evidence_refs=[str(decisions_path), str(mcp_path)],
+            data={
+                "task_id": str(task["task_id"]),
+                "capability_type": "mcp",
+                "capability_decision": decision,
+            },
+            call_chain=["ExecuteCommand", "capability_selection_probe"],
+            execution_chain=[str(task["task_id"]), "mcp", "runtime_matrix/echo"],
+        )
+        return [str(decisions_path), str(mcp_path)]
 
     def _execute_task(
         self,

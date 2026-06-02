@@ -159,6 +159,24 @@ def test_validation_run_caps_expected_block_probe_iterations(tmp_path: Path) -> 
     assert command._effective_max_iterations() == 1
 
 
+def test_validation_run_caps_runtime_managed_second_batch_probe_iterations(
+    tmp_path: Path,
+) -> None:
+    for probe_id in [
+        "repair_replan_path",
+        "ask_stop_path",
+        "context_pressure_path",
+        "capability_selection_path",
+    ]:
+        command = ValidationRunCommand(
+            tmp_path,
+            probe_ids=[probe_id],
+            max_iterations=5,
+        )
+
+        assert command._effective_max_iterations() == 1
+
+
 def test_validation_run_accepts_current_readonly_fanout_strategy_name(tmp_path: Path) -> None:
     status, summary, refs = ValidationRunCommand(tmp_path, dry_run=True)._probe_status(
         "readonly_fanout_succeeds",
@@ -282,6 +300,57 @@ def test_targeted_ask_stop_probe_can_bypass_stale_readonly_fanout_block(
                     {"name": "agent_loop_execution", "status": "blocked"},
                     {"name": "subagent_readonly_fanout", "status": "blocked"},
                     {"name": "observation_next_action", "status": "blocked"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
+def test_targeted_context_pressure_probe_can_bypass_stale_readonly_fanout_block(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["context_pressure_path"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "agent_loop_execution", "status": "blocked"},
+                    {"name": "context_pressure", "status": "blocked"},
+                    {"name": "subagent_readonly_fanout", "status": "blocked"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
+def test_targeted_capability_selection_probe_can_bypass_stale_readonly_fanout_block(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["capability_selection_path"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "capability_selection", "status": "blocked"},
+                    {"name": "subagent_readonly_fanout", "status": "blocked"},
                 ]
             },
         },

@@ -163,6 +163,67 @@ def test_validation_probe_hint_scopes_ask_stop_probe_to_decision_boundary() -> N
     assert "multi_agent_strategy" not in task
 
 
+def test_validation_probe_hint_scopes_context_pressure_probe_to_diagnostic() -> None:
+    task_plan = {
+        "tasks": [
+            {
+                "task_id": "task-0001",
+                "task_kind": "implementation",
+                "parallel_safety": "disjoint_writes",
+                "read_scope": ["benchmarks"],
+                "write_scope": ["probe.txt"],
+                "expected_changed_files": ["probe.txt"],
+                "expected_artifacts": ["probe.txt"],
+                "allowed_tools": ["write_file", "run_command"],
+                "multi_agent_strategy": {"mode": "disjoint_write_workers"},
+            }
+        ]
+    }
+
+    _apply_validation_probe_hints(task_plan, ["context_pressure_path"])
+
+    task = task_plan["tasks"][0]
+    assert task["task_kind"] == "diagnostic"
+    assert task["parallel_safety"] == "serial"
+    assert task["read_scope"] == ["AGENTS.md", "docs/zh/当前状态与路线.md"]
+    assert task["write_scope"] == []
+    assert task["expected_changed_files"] == []
+    assert task["completion_contract"]["requires_changed_artifact"] is False
+    assert task["completion_contract"]["allows_expected_failure"] is True
+    assert "multi_agent_strategy" not in task
+
+
+def test_validation_probe_hint_scopes_capability_selection_probe_to_diagnostic() -> None:
+    task_plan = {
+        "tasks": [
+            {
+                "task_id": "task-0001",
+                "task_kind": "implementation",
+                "parallel_safety": "disjoint_writes",
+                "read_scope": ["benchmarks"],
+                "write_scope": ["capability_decisions.jsonl"],
+                "expected_changed_files": ["capability_decisions.jsonl"],
+                "expected_artifacts": ["capability_decisions.jsonl"],
+                "allowed_tools": ["write_file", "run_command"],
+                "multi_agent_strategy": {"mode": "disjoint_write_workers"},
+            }
+        ]
+    }
+
+    _apply_validation_probe_hints(task_plan, ["capability_selection_path"])
+
+    task = task_plan["tasks"][0]
+    assert task["task_kind"] == "diagnostic"
+    assert task["parallel_safety"] == "serial"
+    assert task["read_scope"] == ["AGENTS.md", "docs/zh/运行命令.md"]
+    assert task["write_scope"] == []
+    assert task["expected_changed_files"] == []
+    assert task["expected_artifacts"] == []
+    assert task["completion_contract"]["requires_changed_artifact"] is False
+    assert task["completion_contract"]["allows_expected_failure"] is True
+    assert "multi_agent_strategy" not in task
+
+
 def test_requirement_planner_groups_single_concrete_file_goal() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

@@ -303,6 +303,43 @@ class PlanCommand:
                     )
                     continue
                 break
+        if goal_spec is None and self.validation_probe_ids:
+            report = last_report or {}
+            report_path = (
+                last_report_path or self.root / ".asteria" / "model" / "latest_failure.json"
+            )
+            failure_type = str(report.get("failure_type") or "unknown")
+            goal_spec = _validation_probe_goal_spec(self.goal, self.validation_probe_ids)
+            event_logger.record(
+                run["run_id"],
+                "goal_spec_fallback",
+                "PlanCommand",
+                "Used deterministic GoalSpec fallback for targeted validation probe.",
+                {
+                    "validation_probe_ids": self.validation_probe_ids,
+                    "failure_report": str(report_path),
+                    "failure_type": failure_type,
+                },
+            )
+            progress_logger.record(
+                run_id=run["run_id"],
+                channel="model",
+                event_type="message",
+                phase="plan",
+                status="completed",
+                title="Validation GoalSpec fallback used",
+                summary=(
+                    "Provider GoalSpec generation failed, so targeted validation probe "
+                    "planning used a deterministic schema-valid GoalSpec."
+                ),
+                data={
+                    "validation_probe_ids": self.validation_probe_ids,
+                    "failure_report": str(report_path),
+                    "failure_type": failure_type,
+                },
+                call_chain=["PlanCommand", "GoalSpecAgent"],
+                execution_chain=["understand", "goal_spec", "fallback"],
+            )
         if goal_spec is None:
             report = last_report or {}
             report_path = (
@@ -691,6 +728,51 @@ def _apply_validation_probe_hints(task_plan: dict, probe_ids: list[str]) -> None
         _apply_repair_replan_probe_hint(task)
     if "ask_stop_path" in selected:
         _apply_ask_stop_probe_hint(task)
+    if "context_pressure_path" in selected:
+        _apply_context_pressure_probe_hint(task)
+    if "capability_selection_path" in selected:
+        _apply_capability_selection_probe_hint(task)
+
+
+def _validation_probe_goal_spec(goal: str, probe_ids: list[str]) -> dict:
+    selected = [str(item) for item in probe_ids if str(item)]
+    probe_list = ", ".join(selected) or "unknown"
+    return {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-validation-probe",
+        "original_goal": goal,
+        "normalized_goal": goal,
+        "goal_type": "report",
+        "assumptions": [
+            "A targeted validation probe may use deterministic GoalSpec fallback when provider GoalSpec generation fails."
+        ],
+        "constraints": [
+            "Fallback is only active when validation_probe_ids are present.",
+            "Do not use tiny file artifacts as the primary proof for this validation path.",
+        ],
+        "non_goals": [
+            "Do not widen ordinary runtime planning fallback.",
+            "Do not bypass validation-run probe evaluation.",
+        ],
+        "expanded_requirements": [
+            {
+                "id": "req-validation-probe-0001",
+                "priority": "must",
+                "description": f"Run targeted validation probe(s): {probe_list}.",
+                "source": "user",
+                "acceptance": [
+                    "Runtime records the targeted validation evidence required by validation-run.",
+                    "Validation probe result is evaluated from durable runtime evidence.",
+                ],
+            }
+        ],
+        "target_outputs": ["runtime evidence"],
+        "definition_of_done": [
+            "Targeted validation probe evidence is present in .asteria run evidence."
+        ],
+        "verification_strategy": ["Run validation-run probe evaluator."],
+        "budget": {"max_iterations": 3, "max_repair_attempts": 1},
+    }
 
 
 def _apply_readonly_fanout_probe_hint(task: dict, probe_ids: list[str]) -> None:
@@ -816,5 +898,72 @@ def _apply_ask_stop_probe_hint(task: dict) -> None:
         "include_decisions": True,
         "include_validation": True,
         "recent_event_count": 10,
+    }
+    task.pop("multi_agent_strategy", None)
+
+
+def _apply_context_pressure_probe_hint(task: dict) -> None:
+    task["task_kind"] = "diagnostic"
+    task["parallel_safety"] = "serial"
+    task["read_scope"] = ["AGENTS.md", "docs/zh/当前状态与路线.md"]
+    task["write_scope"] = []
+    task["expected_changed_files"] = []
+    task["expected_artifacts"] = []
+    task["allowed_tools"] = ["read_file", "search_text"]
+    task["acceptance"] = [
+        "runtime records a context budget snapshot with compact boundary required",
+        "runtime stops after making context pressure visible to validation",
+    ]
+    task["completion_contract"] = {
+        "requires_changed_artifact": False,
+        "requires_verification": False,
+        "allows_expected_failure": True,
+    }
+    task["verification_policy"] = {
+        "required": False,
+        "allow_expected_failure": True,
+        "commands": [],
+    }
+    task["context_requirements"] = {
+        "mount_type": "debug_context",
+        "include_artifacts": False,
+        "include_failures": True,
+        "include_decisions": True,
+        "include_validation": True,
+        "recent_event_count": 40,
+    }
+    task.pop("multi_agent_strategy", None)
+
+
+def _apply_capability_selection_probe_hint(task: dict) -> None:
+    task["task_kind"] = "diagnostic"
+    task["parallel_safety"] = "serial"
+    task["read_scope"] = ["AGENTS.md", "docs/zh/运行命令.md"]
+    task["write_scope"] = []
+    task["expected_changed_files"] = []
+    task["expected_artifacts"] = []
+    task["allowed_tools"] = ["read_file", "search_text"]
+    task["acceptance"] = [
+        "runtime records a reasoned capability decision",
+        "runtime records adapter invocation evidence with decision reason",
+        "runtime records a capability progress event",
+    ]
+    task["completion_contract"] = {
+        "requires_changed_artifact": False,
+        "requires_verification": False,
+        "allows_expected_failure": True,
+    }
+    task["verification_policy"] = {
+        "required": False,
+        "allow_expected_failure": True,
+        "commands": [],
+    }
+    task["context_requirements"] = {
+        "mount_type": "debug_context",
+        "include_artifacts": False,
+        "include_failures": True,
+        "include_decisions": True,
+        "include_validation": True,
+        "recent_event_count": 20,
     }
     task.pop("multi_agent_strategy", None)

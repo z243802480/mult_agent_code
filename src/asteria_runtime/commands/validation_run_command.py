@@ -333,11 +333,15 @@ class ValidationRunCommand:
         return ["Inspect validation-run execution_failure evidence before rerunning."]
 
     def _effective_max_iterations(self) -> int:
-        expected_block_probe_ids = {
+        single_iteration_probe_ids = {
             "readonly_write_tool_blocked",
             "disjoint_write_gate_blocks_unsafe_fanout",
+            "repair_replan_path",
+            "ask_stop_path",
+            "context_pressure_path",
+            "capability_selection_path",
         }
-        if expected_block_probe_ids & set(self.probe_ids):
+        if single_iteration_probe_ids & set(self.probe_ids):
             return min(self.max_iterations, 1)
         return self.max_iterations
 
@@ -378,8 +382,16 @@ class ValidationRunCommand:
                 "observation_next_action",
                 "subagent_readonly_fanout",
             },
-            "context_pressure_path": {"context_pressure", "subagent_context_isolation"},
-            "capability_selection_path": {"capability_selection"},
+            "context_pressure_path": {
+                "agent_loop_execution",
+                "context_pressure",
+                "subagent_context_isolation",
+                "subagent_readonly_fanout",
+            },
+            "capability_selection_path": {
+                "capability_selection",
+                "subagent_readonly_fanout",
+            },
         }
         for probe_id in self.probe_ids:
             allowed.update(probe_allowed_checks.get(probe_id, set()))

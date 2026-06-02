@@ -10,6 +10,7 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
+from asteria_runtime.commands.run_command import RunCommand
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
@@ -51,6 +52,11 @@ class FakePlanClient:
             model_name="fake-plan",
             raw_response={},
         )
+
+
+class ExplodingPlanClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise RuntimeError("provider unavailable")
 
 
 class FakeExecuteClient:
@@ -2176,6 +2182,155 @@ def test_execute_command_runtime_manages_ask_stop_validation_probe(
     assert observations[-1]["status"] == "stopped"
     assert loop_summary["exit_reason"] == "stop"
     assert loop_summary["recommended_command"] == "status --debug"
+
+
+def test_execute_command_runtime_manages_context_pressure_validation_probe(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(
+        tmp_path,
+        "run context pressure validation probe",
+        model_client=FakePlanClient(),
+        validation_probe_ids=["context_pressure_path"],
+    ).run()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=ExplodingExecuteClient(),
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    snapshots = [
+        json.loads(line)
+        for line in (run_dir / "context_budget_snapshots.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    executions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_execution_results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert snapshots[-1]["pressure_status"] == "hard_stop"
+    assert snapshots[-1]["compact_boundary"]["status"] == "required"
+    assert executions[-1]["action"] == "stop"
+    assert executions[-1]["target"] == "stop_report"
+    assert loop_summary["exit_reason"] == "stop"
+
+
+def test_validation_probe_plan_uses_deterministic_goal_spec_fallback(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+
+    plan = PlanCommand(
+        tmp_path,
+        "run capability selection validation probe",
+        model_client=ExplodingPlanClient(),
+        validation_probe_ids=["capability_selection_path"],
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    goal_spec = json.loads((run_dir / "goal_spec.json").read_text(encoding="utf-8"))
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    events = [
+        json.loads(line)
+        for line in (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    task = task_plan["tasks"][0]
+    assert goal_spec["goal_id"] == "goal-validation-probe"
+    assert goal_spec["goal_type"] == "report"
+    assert task["task_kind"] == "diagnostic"
+    assert task["runtime_profile_hints"]["validation_probe_ids"] == [
+        "capability_selection_path"
+    ]
+    assert any(item["type"] == "goal_spec_fallback" for item in events)
+
+
+def test_execute_command_runtime_manages_capability_selection_validation_probe(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(
+        tmp_path,
+        "run capability selection validation probe",
+        model_client=FakePlanClient(),
+        validation_probe_ids=["capability_selection_path"],
+    ).run()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=ExplodingExecuteClient(),
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "capability_decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    invocations = [
+        json.loads(line)
+        for line in (run_dir / "mcp_invocations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert decisions[-1]["capability_type"] == "mcp"
+    assert decisions[-1]["decision"]["reason"]
+    assert invocations[-1]["capability_decision"]["reason"]
+    assert any(
+        event.get("data", {}).get("capability_type") == "mcp"
+        for event in progress
+    )
+    assert loop_summary["exit_reason"] == "stop"
+
+
+def test_run_command_short_circuits_runtime_managed_capability_probe(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+
+    result = RunCommand(
+        tmp_path,
+        goal="run capability selection validation probe",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=ExplodingExecuteClient(),
+        enable_research=False,
+        max_iterations=1,
+        validation_probe_ids=["capability_selection_path"],
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    step_names = [step.name for step in result.steps]
+    loop_summary = json.loads((run_dir / "run_loop_summary.json").read_text(encoding="utf-8"))
+
+    assert "validation-probe" in step_names
+    assert "debug" not in step_names
+    assert "review" not in step_names
+    assert "compact" not in step_names
+    assert (run_dir / "capability_decisions.jsonl").exists()
+    assert (run_dir / "mcp_invocations.jsonl").exists()
+    assert loop_summary["stop_reason"] == "runtime_managed_validation_probe_evidence_recorded"
 
 
 def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(
