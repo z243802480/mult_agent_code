@@ -954,6 +954,17 @@ def test_status_reports_worker_tree_summary(tmp_path: Path) -> None:
                 "started_at": now_iso(),
                 "ended_at": now_iso(),
                 "summary": "test worker",
+                **(
+                    {
+                        "parent_worker_invocation_id": "worker-0001",
+                        "parent_task_id": "task-0001",
+                        "worker_kind": "subagent_readonly_child",
+                        "parallel_safety": "readonly",
+                        "child_plan_refs": ["subagent-child-plan-0001"],
+                    }
+                    if index == 2
+                    else {"worker_kind": "subagent", "parallel_safety": "serial"}
+                ),
             },
             "worker_invocation",
         )
@@ -1003,6 +1014,14 @@ def test_status_reports_worker_tree_summary(tmp_path: Path) -> None:
     assert worker_tree["agent_run_graph"]["status"] == "blocked"
     assert worker_tree["agent_run_graph"]["max_concurrency_observed"] == 2
     assert worker_tree["collaboration_summary"]["failure_evidence_refs"] == ["task-failure-0001"]
+    assert worker_tree["orphan_workers"] == []
+    assert len(worker_tree["roots"]) == 1
+    assert worker_tree["roots"][0]["worker_invocation_id"] == "worker-0001"
+    assert worker_tree["roots"][0]["children"][0]["worker_invocation_id"] == "worker-0002"
+    assert worker_tree["roots"][0]["children"][0]["parent_worker_invocation_id"] == "worker-0001"
+    assert worker_tree["roots"][0]["children"][0]["child_plan_refs"] == [
+        "subagent-child-plan-0001"
+    ]
     assert "Workers: 1 succeeded / 2 total" in result.to_text()
 
 
@@ -1223,6 +1242,50 @@ def test_gate_status_moves_from_gate_to_validation_to_core(tmp_path: Path, monke
         "core_subset",
         "full_validation_core",
     }
+
+
+def test_gate_status_reports_v02_rolling_validation_summary(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+    bundle_dir = tmp_path / ".asteria" / "evidence_bundles"
+    bundle_dir.mkdir(parents=True)
+    (bundle_dir / "evidence-test.manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "v0_2_rolling_validation": {
+                    "status": "needs_evidence",
+                    "sample_count": 5,
+                    "required_sample_range": {"min": 3, "max": 5},
+                    "coverage": {
+                        "route": False,
+                        "context": True,
+                        "capability": True,
+                        "loop": False,
+                        "worker": True,
+                    },
+                    "next_actions": [
+                        "Collect missing evidence categories: route, loop."
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = GateStatusCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    assert payload["v0_2_rolling_validation"]["status"] == "needs_evidence"
+    assert payload["v0_2_rolling_validation"]["sample_count"] == 5
+    assert payload["v0_2_rolling_validation"]["missing_evidence_categories"] == [
+        "route",
+        "loop",
+    ]
+    assert "Collect missing evidence categories: route, loop." in payload["next_actions"]
+    assert "v0.2 rolling validation: needs_evidence" in result.to_text()
 
 
 def test_gate_status_uses_latest_validation_acceptance_summary(tmp_path: Path, monkeypatch) -> None:

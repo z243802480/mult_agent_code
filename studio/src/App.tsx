@@ -5,12 +5,16 @@ import type {
   StudioEvent,
   SettingsPayload,
   OverviewPayload,
+  RunDetailPayload,
+  WorkspaceFile,
+  FilePreview,
 } from "./types";
 import { api, subscribeToEvents } from "./api";
 import { isSessionLive } from "./narrative";
 import { Banner } from "./components/Shared";
 import { Sidebar } from "./components/Sidebar";
 import { Thread } from "./components/Thread";
+import { Inspector } from "./components/Inspector";
 import { Composer, type PromptSignal } from "./components/Composer";
 
 function eventTimeValue(event: StudioEvent): number {
@@ -28,6 +32,10 @@ export function App() {
   const [selectedEvent, setSelectedEvent] = useState<StudioEvent | null>(null);
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
+  const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [preview, setPreview] = useState<FilePreview | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runDetail, setRunDetail] = useState<RunDetailPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [promptSignal, setPromptSignal] = useState<PromptSignal>({ text: "", id: 0 });
@@ -61,6 +69,9 @@ export function App() {
       setSettings(settingsData.settings);
       setOverview(overviewData);
       setActiveSession((current) => current ?? nextSessions[0]);
+      const fileData = await api.files().catch(() => ({ files: [] as WorkspaceFile[] }));
+      setFiles(fileData.files ?? []);
+      await openLatestRun(overviewData);
     } catch (err) {
       setError(String((err as Error).message || err));
     } finally {
@@ -69,6 +80,27 @@ export function App() {
   }
 
   useEffect(() => { void bootstrap(); }, []);
+
+  async function openLatestRun(overviewData: OverviewPayload | null = overview) {
+    const latestRunId = String(overviewData?.runs?.[0]?.run_id ?? "");
+    if (!latestRunId) {
+      setSelectedRunId(null);
+      setRunDetail(null);
+      return;
+    }
+    await openRun(latestRunId);
+  }
+
+  async function openRun(runId: string) {
+    if (!runId) return;
+    setSelectedRunId(runId);
+    const detail = await api.runDetail(runId);
+    setRunDetail(detail);
+  }
+
+  async function openFile(path: string) {
+    setPreview(await api.previewFile(path));
+  }
 
   // Subscribe to events (SSE or polling) when active session changes
   useEffect(() => {
@@ -140,6 +172,13 @@ export function App() {
 
   const isRunning = useMemo(() => isSessionLive(events), [events]);
 
+  function selectEvent(event: StudioEvent) {
+    setSelectedEvent(event);
+    if (event.run_id && event.run_id !== selectedRunId) {
+      void openRun(event.run_id);
+    }
+  }
+
   return (
     <div className="appShell">
       <Sidebar
@@ -169,16 +208,29 @@ export function App() {
           events={events}
           selected={selectedEvent}
           isRunning={isRunning}
-          onSelect={setSelectedEvent}
+          onSelect={selectEvent}
           onPrompt={(text) => setPromptSignal((prev) => ({ text, id: prev.id + 1 }))}
           onPermit={permitJob}
           pendingTurn={pendingTurn}
+          overview={overview}
+          runDetail={runDetail}
         />
         <Composer
           onSend={sendGoal}
           promptSignal={promptSignal}
         />
       </main>
+      <Inspector
+        event={selectedEvent}
+        files={files}
+        preview={preview}
+        settings={settings}
+        overview={overview}
+        selectedRunId={selectedRunId}
+        runDetail={runDetail}
+        onOpenFile={openFile}
+        onOpenRun={openRun}
+      />
     </div>
   );
 }

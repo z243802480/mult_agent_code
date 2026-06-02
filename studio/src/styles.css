@@ -27,7 +27,7 @@ button {
 
 .appShell {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr) minmax(320px, 380px);
   height: 100vh;
   overflow: hidden;
 }
@@ -544,6 +544,106 @@ h2 {
   min-height: 0;
   overflow: auto;
   padding: 20px 24px;
+}
+
+.runtimeSnapshot {
+  background: #15191d;
+  border: 1px solid #303a42;
+  border-radius: 7px;
+  display: grid;
+  gap: 10px;
+  max-width: 920px;
+  padding: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.runtimeSnapshotHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.runtimeSnapshotHeader h2 {
+  font-size: 14px;
+}
+
+.runtimeStatus {
+  border: 1px solid #303a42;
+  border-radius: 999px;
+  color: #c8d0d6;
+  font-size: 11px;
+  font-weight: 760;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.runtimeStatus.good {
+  border-color: #2f6b4d;
+  color: #a8e7c0;
+}
+
+.runtimeStatus.warn {
+  border-color: #8a7135;
+  color: #f0cf8a;
+}
+
+.runtimeStatus.bad {
+  border-color: #8b403a;
+  color: #ffb9b1;
+}
+
+.runtimeSignalGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.runtimeSignalGrid > div {
+  background: #111518;
+  border: 1px solid #293139;
+  border-radius: 7px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.runtimeSignalGrid small,
+.runtimeNextAction,
+.runtimeWorkerHint {
+  color: #9aa6af;
+  font-size: 12px;
+}
+
+.runtimeSignalGrid strong {
+  color: #eef2f4;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtimeSignalGrid span {
+  color: #8c98a2;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.runtimeNextAction,
+.runtimeWorkerHint {
+  align-items: flex-start;
+  display: flex;
+  gap: 7px;
+  line-height: 1.4;
+}
+
+.runtimeNextAction span,
+.runtimeWorkerHint span {
+  overflow-wrap: anywhere;
 }
 
 .emptyThread {
@@ -2040,7 +2140,8 @@ h2 {
   }
 
   .narrativeStats,
-  .reportGrid {
+  .reportGrid,
+  .runtimeSignalGrid {
     grid-template-columns: 1fr;
     min-width: 0;
   }

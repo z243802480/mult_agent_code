@@ -43,6 +43,7 @@ class EvidenceBundleResult:
     manifest_path: Path
     files: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    rolling_validation_summary: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -58,6 +59,12 @@ class EvidenceBundleResult:
             "manifest_path": str(self.manifest_path),
             "files": self.files,
             "warnings": self.warnings,
+            "v0_2_rolling_validation": {
+                "status": self.rolling_validation_summary.get("status"),
+                "sample_count": self.rolling_validation_summary.get("sample_count"),
+                "coverage": self.rolling_validation_summary.get("coverage"),
+                "next_actions": self.rolling_validation_summary.get("next_actions"),
+            },
             "redaction": {
                 "protected_paths_excluded": sorted(PROTECTED_PARTS),
                 "secret_keys_redacted": sorted(SECRET_KEYS),
@@ -77,6 +84,12 @@ class EvidenceBundleResult:
             f"Manifest: {self.manifest_path}",
             f"Files: {len(self.files)}",
         ]
+        if self.rolling_validation_summary:
+            lines.append(
+                "v0.2 rolling validation: "
+                f"{self.rolling_validation_summary.get('status', 'unknown')} "
+                f"({self.rolling_validation_summary.get('sample_count', 0)} sample(s))"
+            )
         if self.warnings:
             lines.append("Warnings:")
             lines.extend(f"  - {warning}" for warning in self.warnings)
@@ -113,8 +126,12 @@ class EvidenceBundleCommand:
         if not self.agent_dir.exists():
             warnings.append(".asteria directory is missing; bundle contains environment only.")
 
-        manifest = self._manifest(warnings)
+        rolling_validation = self._rolling_validation_summary()
+        manifest = self._manifest(warnings, rolling_validation)
         staging["manifest.json"] = _json_text(manifest)
+        staging["v0.2_rolling_validation_summary.json"] = _json_text(
+            _redact(rolling_validation)
+        )
         self._add_summary_files(staging, warnings)
         self._add_validation_run_summaries(staging, warnings)
         self._add_ops_signal_files(staging, warnings)
@@ -132,9 +149,14 @@ class EvidenceBundleCommand:
             manifest_path=manifest_path,
             files=sorted(staging),
             warnings=warnings,
+            rolling_validation_summary=rolling_validation,
         )
 
-    def _manifest(self, warnings: list[str]) -> dict[str, Any]:
+    def _manifest(
+        self,
+        warnings: list[str],
+        rolling_validation: dict[str, Any],
+    ) -> dict[str, Any]:
         model_calls = self._all_model_calls()
         by_route: dict[str, dict[str, Any]] = {}
         for call in model_calls:
@@ -216,6 +238,14 @@ class EvidenceBundleCommand:
                 "validation_runs": True,
                 "ops_signals": True,
                 "recent_runs": True,
+                "v0_2_rolling_validation": True,
+            },
+            "v0_2_rolling_validation": {
+                "status": rolling_validation.get("status"),
+                "sample_count": rolling_validation.get("sample_count"),
+                "required_sample_range": rolling_validation.get("required_sample_range"),
+                "coverage": rolling_validation.get("coverage"),
+                "next_actions": rolling_validation.get("next_actions"),
             },
             "warnings": warnings,
         }
@@ -273,6 +303,7 @@ class EvidenceBundleCommand:
                 self._stage_jsonl_tail(run_dir / "events.jsonl", staging, warnings, limit=250)
             if self.include_model_calls:
                 self._stage_jsonl_tail(run_dir / "model_calls.jsonl", staging, warnings, limit=250)
+            self._stage_jsonl_tail(run_dir / "workers.jsonl", staging, warnings, limit=250)
             self._stage_jsonl_tail(
                 run_dir / "task_execution_evidence.jsonl", staging, warnings, limit=250
             )
@@ -280,6 +311,254 @@ class EvidenceBundleCommand:
             self._stage_jsonl_tail(
                 run_dir / "validation_results.jsonl", staging, warnings, limit=250
             )
+            self._stage_jsonl_tail(
+                run_dir / "context_budget_snapshots.jsonl",
+                staging,
+                warnings,
+                limit=250,
+            )
+            self._stage_jsonl_tail(
+                run_dir / "capability_decisions.jsonl",
+                staging,
+                warnings,
+                limit=250,
+            )
+            self._stage_jsonl_tail(
+                run_dir / "agent_loop_decisions.jsonl",
+                staging,
+                warnings,
+                limit=250,
+            )
+            self._stage_jsonl_tail(
+                run_dir / "agent_loop_execution_results.jsonl",
+                staging,
+                warnings,
+                limit=250,
+            )
+            self._stage_jsonl_tail(
+                run_dir / "agent_loop_observations.jsonl",
+                staging,
+                warnings,
+                limit=250,
+            )
+            self._stage_file(run_dir / "agent_loop_run_summary.json", staging, warnings)
+            self._stage_file(run_dir / "agent_run_graph.json", staging, warnings)
+
+    def _rolling_validation_summary(self) -> dict[str, Any]:
+        runs_dir = self.agent_dir / "runs"
+        run_dirs = (
+            sorted((path for path in runs_dir.iterdir() if path.is_dir()), reverse=True)[
+                : self.max_runs
+            ]
+            if runs_dir.exists()
+            else []
+        )
+        samples = [self._rolling_validation_sample(run_dir) for run_dir in run_dirs]
+        samples = [sample for sample in samples if sample["evidence"]["has_any_runtime_evidence"]]
+        samples = samples[:5]
+        coverage = {
+            "route": any(sample["evidence"]["route"] for sample in samples),
+            "context": any(sample["evidence"]["context"] for sample in samples),
+            "capability": any(sample["evidence"]["capability"] for sample in samples),
+            "loop": any(sample["evidence"]["loop"] for sample in samples),
+            "worker": any(sample["evidence"]["worker"] for sample in samples),
+        }
+        missing = [key for key, covered in coverage.items() if not covered]
+        sample_count = len(samples)
+        if sample_count < 3:
+            status = "needs_more_samples"
+        elif missing:
+            status = "needs_evidence"
+        elif sample_count <= 5:
+            status = "ready"
+        else:
+            status = "oversampled"
+        next_actions = []
+        if sample_count < 3:
+            next_actions.append(
+                f"Collect {3 - sample_count} more scoped real-provider validation sample(s)."
+            )
+        if missing:
+            next_actions.append(
+                "Collect missing evidence categories: " + ", ".join(missing) + "."
+            )
+        if sample_count > 5:
+            next_actions.append("Keep the v0.2 rolling validation bundle focused to 3-5 samples.")
+        if not next_actions:
+            next_actions.append(
+                "Review this bundle with gate-status and capability-report before widening dogfooding."
+            )
+        return {
+            "schema_version": "0.1.0",
+            "created_at": now_iso(),
+            "purpose": "v0.2.0-alpha rolling real-provider scoped task validation",
+            "status": status,
+            "sample_count": sample_count,
+            "required_sample_range": {"min": 3, "max": 5},
+            "coverage": coverage,
+            "missing_evidence_categories": missing,
+            "samples": samples,
+            "next_actions": next_actions,
+        }
+
+    def _rolling_validation_sample(self, run_dir: Path) -> dict[str, Any]:
+        run = self._read_json(run_dir / "run.json")
+        model_calls = self._read_jsonl(run_dir / "model_calls.jsonl")
+        context_snapshots = self._read_jsonl(run_dir / "context_budget_snapshots.jsonl")
+        capability_decisions = self._read_jsonl(run_dir / "capability_decisions.jsonl")
+        loop_decisions = self._read_jsonl(run_dir / "agent_loop_decisions.jsonl")
+        loop_executions = self._read_jsonl(run_dir / "agent_loop_execution_results.jsonl")
+        loop_observations = self._read_jsonl(run_dir / "agent_loop_observations.jsonl")
+        workers = self._read_jsonl(run_dir / "workers.jsonl")
+        worker_results = self._read_jsonl(run_dir / "worker_results.jsonl")
+        task_execution = self._read_jsonl(run_dir / "task_execution_evidence.jsonl")
+        loop_summary = self._read_json(run_dir / "agent_loop_run_summary.json")
+        agent_run_graph = self._read_json(run_dir / "agent_run_graph.json")
+        evidence = {
+            "route": bool(model_calls),
+            "context": bool(context_snapshots),
+            "capability": bool(capability_decisions),
+            "loop": bool(loop_summary or loop_decisions or loop_executions or loop_observations),
+            "worker": bool(workers or worker_results or agent_run_graph),
+        }
+        evidence["has_any_runtime_evidence"] = any(evidence.values()) or bool(task_execution)
+        model_routes = self._model_routes(model_calls)
+        return {
+            "run_id": run_dir.name,
+            "status": str(run.get("status") or "unknown"),
+            "summary": str(run.get("summary") or run.get("goal") or ""),
+            "current_phase": str(run.get("current_phase") or ""),
+            "model_routes": model_routes,
+            "loop_exit_reason": str(loop_summary.get("exit_reason") or ""),
+            "loop_recommended_command": loop_summary.get("recommended_command"),
+            "worker_statuses": self._status_counts(worker_results),
+            "task_execution_statuses": self._status_counts(task_execution),
+            "context_pressure": self._context_pressure(context_snapshots),
+            "capability_decision_count": len(capability_decisions),
+            "agent_run_graph_status": str(agent_run_graph.get("status") or ""),
+            "collaboration_summary": agent_run_graph.get("collaboration_summary") or {},
+            "evidence": evidence,
+            "evidence_refs": self._rolling_validation_refs(run_dir),
+        }
+
+    def _read_json(self, path: Path) -> dict[str, Any]:
+        if not path.exists() or _is_protected(path):
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _read_jsonl(self, path: Path) -> list[dict[str, Any]]:
+        if not path.exists() or _is_protected(path):
+            return []
+        items: list[dict[str, Any]] = []
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        for line in lines:
+            if not line.strip():
+                continue
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict):
+                items.append(data)
+        return items
+
+    def _model_routes(self, model_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        routes: dict[str, dict[str, Any]] = {}
+        for call in model_calls:
+            key = "/".join(
+                [
+                    str(call.get("model_provider") or "unknown"),
+                    str(call.get("model_name") or "unknown"),
+                    str(call.get("purpose") or "unknown"),
+                    str(call.get("model_tier") or "unknown"),
+                ]
+            )
+            route = routes.setdefault(
+                key,
+                {
+                    "route": key,
+                    "total": 0,
+                    "success": 0,
+                    "failure": 0,
+                    "deadline_ms_values": [],
+                    "duration_ms_values": [],
+                },
+            )
+            route["total"] += 1
+            status = str(call.get("status") or "")
+            if status == "success":
+                route["success"] += 1
+            elif status == "failure":
+                route["failure"] += 1
+            for source_key, target_key in (
+                ("deadline_ms", "deadline_ms_values"),
+                ("duration_ms", "duration_ms_values"),
+            ):
+                value = call.get(source_key)
+                if isinstance(value, int | float):
+                    route[target_key].append(int(value))
+        return [
+            {
+                "route": item["route"],
+                "total": item["total"],
+                "success": item["success"],
+                "failure": item["failure"],
+                "deadline_ms_p95": _percentile(item["deadline_ms_values"], 0.95),
+                "duration_ms_p95": _percentile(item["duration_ms_values"], 0.95),
+            }
+            for item in routes.values()
+        ]
+
+    def _status_counts(self, items: list[dict[str, Any]]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in items:
+            status = str(item.get("status") or "unknown")
+            counts[status] = counts.get(status, 0) + 1
+        return counts
+
+    def _context_pressure(self, snapshots: list[dict[str, Any]]) -> dict[str, Any]:
+        ratios = [
+            float(item.get("context_window_ratio") or 0.0)
+            for item in snapshots
+            if isinstance(item.get("context_window_ratio"), int | float)
+        ]
+        boundary_statuses = []
+        for item in snapshots:
+            boundary = item.get("compact_boundary")
+            if isinstance(boundary, dict) and boundary.get("status"):
+                boundary_statuses.append(str(boundary.get("status")))
+        return {
+            "snapshot_count": len(snapshots),
+            "max_context_window_ratio": max(ratios) if ratios else 0.0,
+            "compact_boundary_statuses": sorted(set(boundary_statuses)),
+        }
+
+    def _rolling_validation_refs(self, run_dir: Path) -> list[str]:
+        refs = []
+        for name in [
+            "run.json",
+            "model_calls.jsonl",
+            "context_budget_snapshots.jsonl",
+            "capability_decisions.jsonl",
+            "agent_loop_run_summary.json",
+            "agent_loop_decisions.jsonl",
+            "agent_loop_execution_results.jsonl",
+            "agent_loop_observations.jsonl",
+            "workers.jsonl",
+            "worker_results.jsonl",
+            "agent_run_graph.json",
+        ]:
+            path = run_dir / name
+            if path.exists() and not _is_protected(path):
+                refs.append(_rel(self.root, path))
+        return refs
 
     def _stage_file(self, path: Path, staging: dict[str, str], warnings: list[str]) -> None:
         if not path.exists() or _is_protected(path):

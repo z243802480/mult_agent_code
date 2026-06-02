@@ -9,6 +9,7 @@ const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-smoke-
 const runId = "run-20990101-0001";
 const runDir = path.join(workspace, ".asteria", "runs", runId);
 await fs.mkdir(runDir, { recursive: true });
+await fs.mkdir(path.join(workspace, ".asteria", "evidence_bundles"), { recursive: true });
 
 await writeJson("run.json", {
   run_id: runId,
@@ -23,6 +24,23 @@ await writeJson("run_loop_summary.json", {
   workflow_state: "review_passed",
   current_blocker: "none",
   recommended_next_command: "asteria accept --latest",
+});
+await writeJson("agent_loop_run_summary.json", {
+  schema_version: "0.1.0",
+  run_id: runId,
+  task_id: "task-0001",
+  created_at: "2099-01-01T00:00:00Z",
+  status: "blocked",
+  exit_reason: "max_rounds",
+  rounds_completed: 2,
+  max_rounds: 2,
+  summary: "Loop stopped after reaching max rounds.",
+  recommended_command: "status --debug",
+  latest_decision_id: "loop-decision-0001",
+  latest_execution_id: "loop-execution-0001",
+  latest_observation_id: "loop-observation-0001",
+  latest_action: "replan",
+  evidence_refs: ["agent_loop_decisions.jsonl"],
 });
 await writeJson("final_report_summary.json", {
   workflow_state: "review_passed",
@@ -46,6 +64,95 @@ await writeJson("goal_policy.json", {
   recommended_action: "accept",
 });
 await writeJson("cost_report.json", { total_model_calls: 1 });
+await writeJson("agent_run_graph.json", {
+  schema_version: "0.1.0",
+  agent_run_graph_id: "graph-0001",
+  run_id: runId,
+  status: "blocked",
+  coordination_modes: ["readonly_batch_selection"],
+  max_concurrency_observed: 2,
+  child_worker_plans: [],
+  collaboration_summary: {
+    total_workers: 2,
+    successful_workers: 1,
+    failed_workers: 1,
+    blocked_workers: 0,
+    total_model_calls: 2,
+    total_tool_calls: 1,
+    artifact_refs: ["artifact.md"],
+    validation_refs: ["validation.json"],
+    failure_evidence_refs: ["failure.json"],
+    merge_strategy: "review_promote",
+    collaboration_protocol: {
+      isolation_model: "candidate_workspace",
+      review_agent_role: "review",
+      debug_agent_role: "repair",
+      merge_gate_role: "validate",
+      promotion_queue_role: "promote",
+    },
+    strategy_modes: ["readonly_fanout"],
+    next_actions: ["Inspect failed worker evidence."],
+  },
+  updated_at: "2099-01-01T00:00:00Z",
+});
+await writeJsonl("workers.jsonl", [
+  {
+    schema_version: "0.1.0",
+    worker_invocation_id: "worker-0001",
+    run_id: runId,
+    task_id: "task-0001",
+    agent_id: "planner",
+    runtime_profile_id: "profile-0001",
+    status: "succeeded",
+    started_at: "2099-01-01T00:00:00Z",
+    worker_kind: "planner",
+    parallel_safety: "readonly",
+    child_plan_refs: ["child-plan-0001"],
+  },
+  {
+    schema_version: "0.1.0",
+    worker_invocation_id: "worker-0002",
+    run_id: runId,
+    task_id: "task-0002",
+    agent_id: "readonly-worker",
+    runtime_profile_id: "profile-0002",
+    status: "failed",
+    started_at: "2099-01-01T00:00:01Z",
+    parent_worker_invocation_id: "worker-0001",
+    parent_task_id: "task-0001",
+    worker_kind: "subagent",
+    parallel_safety: "readonly_fanout",
+    child_plan_refs: ["child-plan-0002"],
+  },
+]);
+await writeJsonl("worker_results.jsonl", [
+  {
+    schema_version: "0.1.0",
+    worker_result_id: "worker-result-0001",
+    worker_invocation_id: "worker-0001",
+    run_id: runId,
+    task_id: "task-0001",
+    status: "succeeded",
+    artifact_refs: ["artifact.md"],
+    validation_refs: ["validation.json"],
+    failure_evidence_refs: [],
+    cost: { model_calls: 1, tool_calls: 1 },
+    summary: "Planner worker succeeded.",
+  },
+  {
+    schema_version: "0.1.0",
+    worker_result_id: "worker-result-0002",
+    worker_invocation_id: "worker-0002",
+    run_id: runId,
+    task_id: "task-0002",
+    status: "failed",
+    artifact_refs: [],
+    validation_refs: [],
+    failure_evidence_refs: ["failure.json"],
+    cost: { model_calls: 1, tool_calls: 0 },
+    summary: "Readonly child worker failed for smoke evidence.",
+  },
+]);
 await writeJsonl("user_progress.jsonl", [
   {
     event_id: "upe-0001",
@@ -86,6 +193,20 @@ await writeJsonl("skill_invocations.jsonl", [
     summary: "Document skill completed",
   },
 ]);
+await fs.writeFile(
+  path.join(workspace, ".asteria", "evidence_bundles", "evidence-smoke.manifest.json"),
+  `${JSON.stringify({
+    v0_2_rolling_validation: {
+      status: "needs_evidence",
+      sample_count: 3,
+      required_sample_count: { min: 3, max: 5 },
+      coverage: { route: true, context: true, capability: true, loop: true, worker: false },
+      missing_evidence_categories: ["worker"],
+      next_actions: ["Collect worker evidence for at least one scoped task."],
+    },
+  }, null, 2)}\n`,
+  "utf8"
+);
 
 const port = Number(process.env.ASTERIA_STUDIO_SMOKE_PORT || 18787);
 const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
@@ -104,8 +225,11 @@ try {
   if (!Array.isArray(overview.runs) || !overview.runs.some((run) => run.run_id === runId)) {
     throw new Error("/api/overview did not list the smoke run");
   }
+  if (overview.v0_2_rolling_validation?.status !== "needs_evidence") {
+    throw new Error("/api/overview did not expose v0_2_rolling_validation");
+  }
   const detail = await fetchJson(`http://127.0.0.1:${port}/api/runs/${runId}`);
-  for (const key of ["run_loop_summary", "final_report_summary", "model_route_timeline", "goal_policy"]) {
+  for (const key of ["agent_loop_run_summary", "run_loop_summary", "final_report_summary", "model_route_timeline", "goal_policy", "worker_tree"]) {
     if (!Object.prototype.hasOwnProperty.call(detail, key)) {
       throw new Error(`/api/runs/:id missing ${key}`);
     }
@@ -115,6 +239,12 @@ try {
   }
   if (detail.run_loop_summary.workflow_state !== "review_passed") {
     throw new Error("run_loop_summary content was not returned correctly");
+  }
+  if (detail.agent_loop_run_summary.exit_reason !== "max_rounds") {
+    throw new Error("agent_loop_run_summary content was not returned correctly");
+  }
+  if (detail.worker_tree.total_workers !== 2 || detail.worker_tree.roots?.[0]?.children?.[0]?.worker_invocation_id !== "worker-0002") {
+    throw new Error("worker_tree was not built from worker evidence");
   }
   if (!Array.isArray(detail.model_route_timeline.route_timeline)) {
     throw new Error("model_route_timeline.route_timeline was not returned");

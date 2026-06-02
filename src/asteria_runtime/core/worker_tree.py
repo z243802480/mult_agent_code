@@ -23,12 +23,16 @@ class WorkerTreeBuilder:
         )
         events = JsonlStore(self.validator).read_all(run_dir / "events.jsonl", "event")
         result_by_worker = {item["worker_invocation_id"]: item for item in results}
-        nodes = [
-            self._node(worker, result_by_worker.get(worker["worker_invocation_id"]))
+        nodes = {
+            worker["worker_invocation_id"]: self._node(
+                worker,
+                result_by_worker.get(worker["worker_invocation_id"]),
+            )
             for worker in workers
-        ]
+        }
+        roots, orphan_workers = self._tree(nodes)
         status_counts: dict[str, int] = {}
-        for node in nodes:
+        for node in nodes.values():
             status = str(node.get("result_status") or node.get("status") or "unknown")
             status_counts[status] = status_counts.get(status, 0) + 1
         return {
@@ -40,11 +44,18 @@ class WorkerTreeBuilder:
             ),
             "parallel_batches": self._parallel_batches(events),
             "coordination_modes": self._coordination_modes(events),
-            "total_model_calls": sum(int((node.get("cost") or {}).get("model_calls", 0)) for node in nodes),
-            "total_tool_calls": sum(int((node.get("cost") or {}).get("tool_calls", 0)) for node in nodes),
+            "total_model_calls": sum(
+                int((node.get("cost") or {}).get("model_calls", 0))
+                for node in nodes.values()
+            ),
+            "total_tool_calls": sum(
+                int((node.get("cost") or {}).get("tool_calls", 0))
+                for node in nodes.values()
+            ),
             "agent_run_graph": agent_run_graph,
             "collaboration_summary": agent_run_graph.get("collaboration_summary", {}),
-            "roots": nodes,
+            "orphan_workers": orphan_workers,
+            "roots": roots,
         }
 
     def _agent_run_graph(self, run_dir: Path) -> dict:
@@ -57,7 +68,11 @@ class WorkerTreeBuilder:
         return {
             "worker_invocation_id": worker["worker_invocation_id"],
             "worker_result_id": (result or {}).get("worker_result_id"),
-            "parent_worker_invocation_id": None,
+            "parent_worker_invocation_id": worker.get("parent_worker_invocation_id"),
+            "parent_task_id": worker.get("parent_task_id"),
+            "worker_kind": worker.get("worker_kind"),
+            "parallel_safety": worker.get("parallel_safety"),
+            "child_plan_refs": worker.get("child_plan_refs", []),
             "task_id": worker["task_id"],
             "agent_id": worker["agent_id"],
             "runtime_profile_id": worker["runtime_profile_id"],
@@ -70,6 +85,22 @@ class WorkerTreeBuilder:
             "summary": (result or {}).get("summary") or worker.get("summary") or "",
             "children": [],
         }
+
+    def _tree(self, nodes: dict[str, dict]) -> tuple[list[dict], list[str]]:
+        roots: list[dict] = []
+        orphan_workers: list[str] = []
+        for node in nodes.values():
+            parent_id = str(node.get("parent_worker_invocation_id") or "")
+            if not parent_id:
+                roots.append(node)
+                continue
+            parent = nodes.get(parent_id)
+            if parent is None:
+                roots.append(node)
+                orphan_workers.append(str(node.get("worker_invocation_id") or ""))
+                continue
+            parent.setdefault("children", []).append(node)
+        return roots, orphan_workers
 
     def _coordination_modes(self, events: list[dict]) -> list[str]:
         modes = []

@@ -221,6 +221,126 @@ def test_agent_run_graph_marks_discarded_promotion_as_recovered(
     assert graph["collaboration_summary"]["promotion_recovery_unresolved_count"] == 0
 
 
+def test_agent_run_graph_links_child_worker_to_subagent_child_plan_ref(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    jsonl = JsonlStore(validator)
+    for worker in [
+        {
+            "schema_version": "0.1.0",
+            "worker_invocation_id": "worker-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "agent_id": "subagent",
+            "runtime_profile_id": "runtime-profile-parent",
+            "status": "succeeded",
+            "started_at": "2026-05-29T10:00:00+08:00",
+            "ended_at": "2026-05-29T10:00:01+08:00",
+            "summary": "Parent subagent planned readonly fanout.",
+            "worker_kind": "subagent",
+            "parallel_safety": "serial",
+        },
+        {
+            "schema_version": "0.1.0",
+            "worker_invocation_id": "worker-0002",
+            "run_id": "run-1",
+            "task_id": "task-0001-child-01",
+            "agent_id": "subagent",
+            "runtime_profile_id": "runtime-profile-child",
+            "status": "succeeded",
+            "started_at": "2026-05-29T10:00:02+08:00",
+            "ended_at": "2026-05-29T10:00:03+08:00",
+            "summary": "Readonly child inspected shard.",
+            "parent_worker_invocation_id": "worker-0001",
+            "parent_task_id": "task-0001",
+            "worker_kind": "subagent_readonly_child",
+            "parallel_safety": "readonly",
+            "child_plan_refs": ["subagent-child-plan-0001"],
+        },
+    ]:
+        jsonl.append(tmp_path / "workers.jsonl", worker, "worker_invocation")
+    jsonl.append(
+        tmp_path / "worker_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "worker_result_id": "worker-result-0002",
+            "worker_invocation_id": "worker-0002",
+            "run_id": "run-1",
+            "task_id": "task-0001-child-01",
+            "status": "succeeded",
+            "artifact_refs": [],
+            "validation_refs": ["validation-child-01"],
+            "failure_evidence_refs": [],
+            "cost": {"model_calls": 1, "tool_calls": 1},
+            "summary": "Readonly child result.",
+            "parent_worker_invocation_id": "worker-0001",
+            "worker_kind": "subagent_readonly_child",
+            "child_plan_refs": ["subagent-child-plan-0001"],
+        },
+        "worker_result",
+    )
+    jsonl.append(
+        tmp_path / "subagent_child_plans.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "subagent_child_plan_id": "subagent-child-plan-0001",
+            "run_id": "run-1",
+            "parent_task_id": "task-0001",
+            "target_task_id": "task-0001",
+            "parent_decision_id": "agent-loop-decision-0001",
+            "parent_execution_id": "agent-loop-execution-0001",
+            "worker_invocation_id": "worker-0001",
+            "worker_result_id": "worker-result-0001",
+            "runtime_profile_id": "runtime-profile-parent",
+            "planner_id": "RuntimeSubagentPlanner",
+            "decomposition_strategy": "readonly_fanout",
+            "scheduling_strategy": "parallel_readonly_safe",
+            "max_child_workers": 2,
+            "coordination_policy": {"write_allowed": False},
+            "status": "planned",
+            "parallel_safety": "readonly",
+            "child_tasks": [
+                {
+                    "child_task_id": "task-0001-child-01",
+                    "task_id": "task-0001",
+                    "title": "Inspect shard",
+                    "objective": "Read shard.",
+                    "acceptance": ["shard inspected"],
+                    "read_scope": ["."],
+                    "write_scope": [],
+                    "allowed_tools": ["read_file"],
+                    "depends_on": [],
+                    "risk": "low",
+                    "parallel_safety": "readonly",
+                    "worker_role": "research_child",
+                    "write_allowed": False,
+                    "expected_output": ["validation-child-01"],
+                    "verification_expectation": {"requires_verification": True},
+                }
+            ],
+            "evidence_refs": ["agent_loop_execution_results.jsonl"],
+            "created_at": "2026-05-29T10:00:01+08:00",
+        },
+        "subagent_child_plan",
+    )
+
+    graph = AgentRunGraphBuilder(validator).build(tmp_path, run_id="run-1")
+    child_plan = next(
+        item
+        for item in graph["child_worker_plans"]
+        if item["worker_invocation_id"] == "worker-0002"
+    )
+
+    assert child_plan["parent_worker_invocation_id"] == "worker-0001"
+    assert child_plan["worker_kind"] == "subagent_readonly_child"
+    assert child_plan["parallel_safety"] == "readonly"
+    assert child_plan["child_plan_refs"] == ["subagent-child-plan-0001"]
+    assert child_plan["subagent_child_plan_id"] == "subagent-child-plan-0001"
+    assert child_plan["scheduling_strategy"] == "parallel_readonly_safe"
+    assert child_plan["planned_child_count"] == 1
+
+
 def test_worker_recorder_allocates_ids_from_existing_jsonl(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     context = RuntimeContext(

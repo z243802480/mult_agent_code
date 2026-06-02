@@ -56,6 +56,7 @@ class GateStatusResult:
     runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
     runtime_validation_matrix: dict[str, Any] = field(default_factory=dict)
     runtime_readiness_gate: dict[str, Any] = field(default_factory=dict)
+    v0_2_rolling_validation: dict[str, Any] = field(default_factory=dict)
     recovery_pressure: dict[str, Any] = field(default_factory=dict)
     context_pressure_summary: dict[str, Any] = field(default_factory=dict)
     validation_recommendation: dict[str, Any] = field(default_factory=dict)
@@ -94,6 +95,7 @@ class GateStatusResult:
                     "runtime_progress_metrics",
                     "runtime_validation_matrix",
                     "runtime_readiness_gate",
+                    "v0_2_rolling_validation",
                     "readiness_explanation",
                     "recovery_pressure",
                     "context_pressure_summary",
@@ -125,6 +127,7 @@ class GateStatusResult:
             "runtime_progress_metrics": self.runtime_progress_metrics,
             "runtime_validation_matrix": self.runtime_validation_matrix,
             "runtime_readiness_gate": self.runtime_readiness_gate,
+            "v0_2_rolling_validation": self.v0_2_rolling_validation,
             "readiness_explanation": self._readiness_explanation(release_state),
             "recovery_pressure": self.recovery_pressure,
             "context_pressure_summary": self.context_pressure_summary,
@@ -231,6 +234,17 @@ class GateStatusResult:
                     )
             for action in list(self.runtime_readiness_gate.get("next_actions") or [])[:3]:
                 lines.append(f"  - {action}")
+        if self.v0_2_rolling_validation:
+            coverage = self.v0_2_rolling_validation.get("coverage") or {}
+            covered = [name for name, ok in coverage.items() if ok]
+            missing = self.v0_2_rolling_validation.get("missing_evidence_categories") or []
+            lines.append(
+                "v0.2 rolling validation: "
+                f"{self.v0_2_rolling_validation.get('status', 'unknown')} "
+                f"({self.v0_2_rolling_validation.get('sample_count', 0)} sample(s), "
+                f"covered={','.join(covered) or 'none'}, "
+                f"missing={','.join(str(item) for item in missing) or 'none'})"
+            )
         explanation = self._readiness_explanation(self._release_state())
         if explanation:
             lines.append(
@@ -381,6 +395,7 @@ class GateStatusResult:
             "runtime_validation_gap_summary": gap_summary,
             "route_guidance_status": self.route_guidance.get("status"),
             "runtime_readiness_gate_status": self.runtime_readiness_gate.get("status"),
+            "v0_2_rolling_validation_status": self.v0_2_rolling_validation.get("status"),
         }
 
 
@@ -479,6 +494,7 @@ class GateStatusCommand:
         validation_matrix = runtime_validation_matrix(self.root, progress_metrics)
         recovery_pressure = recovery_pressure_report(self.root, self.validator)
         context_pressure_summary = _context_pressure_summary(self.root)
+        v0_2_rolling_validation = _latest_v0_2_rolling_validation(self.root)
         readiness_gate = runtime_readiness_gate(
             root=self.root,
             validator=self.validator,
@@ -505,6 +521,17 @@ class GateStatusCommand:
                 *actions,
                 *[str(item) for item in readiness_gate.get("next_actions", [])],
             ]
+        rolling_status = str(v0_2_rolling_validation.get("status") or "")
+        if rolling_status in {"needs_more_samples", "needs_evidence"}:
+            actions = [
+                *actions,
+                *[str(item) for item in v0_2_rolling_validation.get("next_actions", [])],
+            ]
+        elif not rolling_status:
+            actions = [
+                *actions,
+                "Export `asteria evidence-bundle --json` after scoped tasks to create v0.2 rolling validation evidence.",
+            ]
 
         return GateStatusResult(
             root=self.root,
@@ -522,6 +549,7 @@ class GateStatusCommand:
             runtime_progress_metrics=progress_metrics,
             runtime_validation_matrix=validation_matrix,
             runtime_readiness_gate=readiness_gate,
+            v0_2_rolling_validation=v0_2_rolling_validation,
             recovery_pressure=recovery_pressure,
             context_pressure_summary=context_pressure_summary,
             validation_recommendation=_validation_recommendation(self.root),
@@ -948,6 +976,49 @@ def _context_pressure_summary(root: Path) -> dict[str, Any]:
 def _route_guidance(root: Path) -> dict[str, Any]:
     validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
     return CapabilityFeedbackAdvisor(validator).route_guidance(root / ".asteria")
+
+
+def _latest_v0_2_rolling_validation(root: Path) -> dict[str, Any]:
+    bundle_dir = root / ".asteria" / "evidence_bundles"
+    if not bundle_dir.exists():
+        return {}
+    manifests = sorted(bundle_dir.glob("*.manifest.json"), reverse=True)
+    for manifest_path in manifests:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        raw = manifest.get("v0_2_rolling_validation")
+        if not isinstance(raw, dict):
+            continue
+        coverage = raw.get("coverage")
+        coverage = coverage if isinstance(coverage, dict) else {}
+        next_actions = [str(item) for item in raw.get("next_actions") or [] if item]
+        missing = [
+            str(name)
+            for name, covered in coverage.items()
+            if name and covered is not True
+        ]
+        status = str(raw.get("status") or "")
+        sample_count = int(raw.get("sample_count") or 0)
+        required_range = raw.get("required_sample_range")
+        required_range = required_range if isinstance(required_range, dict) else {"min": 3, "max": 5}
+        return {
+            "status": status,
+            "sample_count": sample_count,
+            "required_sample_range": required_range,
+            "coverage": {
+                "route": bool(coverage.get("route")),
+                "context": bool(coverage.get("context")),
+                "capability": bool(coverage.get("capability")),
+                "loop": bool(coverage.get("loop")),
+                "worker": bool(coverage.get("worker")),
+            },
+            "missing_evidence_categories": missing,
+            "next_actions": next_actions,
+            "evidence_source": str(manifest_path),
+        }
+    return {}
 
 
 def _release_evidence_route_guidance(

@@ -1500,6 +1500,10 @@ function firstRuntimeText(...items) {
   return "";
 }
 
+function nonEmptyRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
 function trimForUser(text) {
   const clean = String(text || "").trim();
   if (!clean) return "";
@@ -1519,6 +1523,9 @@ async function overview() {
     workspace,
     runtimeRoot,
     gateStatus,
+    v0_2_rolling_validation: nonEmptyRecord(gateStatus?.v0_2_rolling_validation)
+      ? gateStatus.v0_2_rolling_validation
+      : await latestV02RollingValidation(),
     doctor,
     packageCheck,
     runs: runs.slice(0, 10),
@@ -1866,6 +1873,7 @@ async function readRunDetail(runId) {
     task_plan: "task_plan.json",
     task_plan_eval: "task_plan_eval.json",
     agent_run_graph: "agent_run_graph.json",
+    agent_loop_run_summary: "agent_loop_run_summary.json",
     run_loop_summary: "run_loop_summary.json",
     final_report_summary: "final_report_summary.json",
     model_route_timeline: "model_route_timeline.json",
@@ -1881,6 +1889,7 @@ async function readRunDetail(runId) {
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
   payload.mcp_invocations = redact(await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80));
   payload.skill_invocations = redact(await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80));
+  payload.worker_tree = redact(await buildWorkerTree(runDir, payload.agent_run_graph || {}));
   const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
   const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);
   payload.user_progress = redact(userProgress);
@@ -1904,6 +1913,109 @@ async function readRunDetail(runId) {
   );
   payload.files = await listRunEvidenceFiles(runDir, runId);
   return redact(payload);
+}
+
+async function latestV02RollingValidation() {
+  const bundleDir = path.join(workspace, ".asteria", "evidence_bundles");
+  if (!existsSync(bundleDir)) return {};
+  let entries = [];
+  try {
+    entries = await fs.readdir(bundleDir, { withFileTypes: true });
+  } catch {
+    return {};
+  }
+  const manifests = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".manifest.json")) continue;
+    const manifestPath = path.join(bundleDir, entry.name);
+    let stat;
+    try {
+      stat = await fs.stat(manifestPath);
+    } catch {
+      continue;
+    }
+    manifests.push({ path: manifestPath, modified_at: stat.mtimeMs });
+  }
+  manifests.sort((a, b) => b.modified_at - a.modified_at);
+  for (const manifest of manifests) {
+    const raw = await readJson(manifest.path);
+    const summary = raw?.v0_2_rolling_validation;
+    if (summary && typeof summary === "object" && !Array.isArray(summary)) return summary;
+  }
+  return {};
+}
+
+async function buildWorkerTree(runDir, agentRunGraph = {}) {
+  const workers = await readJsonlTail(path.join(runDir, "workers.jsonl"), 500);
+  const results = await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 500);
+  const events = await readJsonlTail(path.join(runDir, "events.jsonl"), 500);
+  const resultByWorker = new Map(results.map((item) => [String(item.worker_invocation_id || ""), item]));
+  const nodes = new Map();
+  for (const worker of workers) {
+    const id = String(worker.worker_invocation_id || "");
+    if (!id) continue;
+    const result = resultByWorker.get(id) || {};
+    nodes.set(id, {
+      worker_invocation_id: id,
+      worker_result_id: result.worker_result_id || null,
+      parent_worker_invocation_id: worker.parent_worker_invocation_id || result.parent_worker_invocation_id || null,
+      parent_task_id: worker.parent_task_id || null,
+      worker_kind: worker.worker_kind || result.worker_kind || null,
+      parallel_safety: worker.parallel_safety || null,
+      child_plan_refs: Array.isArray(worker.child_plan_refs) ? worker.child_plan_refs : Array.isArray(result.child_plan_refs) ? result.child_plan_refs : [],
+      task_id: worker.task_id || result.task_id || "task",
+      agent_id: worker.agent_id || "agent",
+      runtime_profile_id: worker.runtime_profile_id || "unknown",
+      status: worker.status || "unknown",
+      result_status: result.status || null,
+      artifact_refs: Array.isArray(result.artifact_refs) ? result.artifact_refs : [],
+      validation_refs: Array.isArray(result.validation_refs) ? result.validation_refs : [],
+      failure_evidence_refs: Array.isArray(result.failure_evidence_refs) ? result.failure_evidence_refs : [],
+      cost: result.cost || { model_calls: 0, tool_calls: 0 },
+      summary: result.summary || worker.summary || "",
+      children: [],
+    });
+  }
+  const roots = [];
+  const orphanWorkers = [];
+  for (const node of nodes.values()) {
+    const parentId = String(node.parent_worker_invocation_id || "");
+    if (!parentId) {
+      roots.push(node);
+      continue;
+    }
+    const parent = nodes.get(parentId);
+    if (!parent) {
+      roots.push(node);
+      orphanWorkers.push(node.worker_invocation_id);
+      continue;
+    }
+    parent.children.push(node);
+  }
+  const statusCounts = {};
+  for (const node of nodes.values()) {
+    const status = String(node.result_status || node.status || "unknown");
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  }
+  return {
+    total_workers: nodes.size,
+    status_counts: statusCounts,
+    successful_workers: statusCounts.succeeded || 0,
+    failed_workers: (statusCounts.failed || 0) + (statusCounts.denied || 0) + (statusCounts.timeout || 0),
+    parallel_batches: events.filter((event) =>
+      event.type === "task_graph_selection"
+      && ["readonly_batch_selection", "parallel_safe_batch_selection"].includes(String(event.data?.reason || ""))
+    ).length,
+    coordination_modes: [...new Set(events
+      .filter((event) => event.type === "task_graph_selection" && event.data?.reason)
+      .map((event) => String(event.data.reason)))],
+    total_model_calls: [...nodes.values()].reduce((total, node) => total + Number(node.cost?.model_calls || 0), 0),
+    total_tool_calls: [...nodes.values()].reduce((total, node) => total + Number(node.cost?.tool_calls || 0), 0),
+    agent_run_graph: agentRunGraph || {},
+    collaboration_summary: agentRunGraph?.collaboration_summary || {},
+    orphan_workers: orphanWorkers,
+    roots,
+  };
 }
 
 function userProgressToRunDetailEvent(event, runId) {

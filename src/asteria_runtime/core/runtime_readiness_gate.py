@@ -7,6 +7,7 @@ from typing import Any
 
 from asteria_runtime.core.agent_loop_decision import NEXT_ACTIONS
 from asteria_runtime.core.disjoint_write_gate import DisjointWriteGate
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -53,6 +54,7 @@ def runtime_readiness_gate(
         _candidate_promotion_safety_check(run_dirs, validator),
         _observation_decision_check(run_dirs, validator, latest_observation_plan),
         _agent_loop_execution_check(run_dirs, validator),
+        _agent_loop_run_summary_check(run_dirs, validator),
         _capability_selection_check(run_dirs, validator),
     ]
     blocking = [check for check in checks if check.status == "blocked"]
@@ -833,6 +835,170 @@ def _agent_loop_execution_check(
     )
 
 
+def _agent_loop_run_summary_check(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> RuntimeReadinessCheck:
+    summary = _latest_agent_loop_run_summary(run_dirs, validator)
+    latest_decision = _latest_decision(run_dirs, validator)
+    if not summary:
+        if not latest_decision:
+            return RuntimeReadinessCheck(
+                name="agent_loop_run_summary",
+                status="ready",
+                summary="No bounded agent loop summary is required yet.",
+            )
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="review",
+            summary=(
+                "Agent loop evidence exists but no `agent_loop_run_summary.json` was found; "
+                "Studio cannot explain the loop exit yet."
+            ),
+            recommended_action=(
+                "Rerun `asteria execute` so Runtime records bounded loop exit reason, "
+                "latest ids, and recommended next command."
+            ),
+            evidence_refs=[str(latest_decision.get("decision_id") or "")],
+        )
+
+    exit_reason = str(summary.get("exit_reason") or "")
+    expected_command = _recommended_command_for_exit_reason(exit_reason)
+    actual_command = summary.get("recommended_command")
+    summary_id = str(summary.get("run_id") or "")
+    evidence_refs = [item for item in [
+        str(summary.get("latest_decision_id") or ""),
+        str(summary.get("latest_execution_id") or ""),
+        str(summary.get("latest_observation_id") or ""),
+    ] if item]
+
+    rounds_completed = int(summary.get("rounds_completed") or 0)
+    max_rounds = int(summary.get("max_rounds") or 0)
+    if max_rounds < 1 or rounds_completed < 0 or rounds_completed > max_rounds:
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="blocked",
+            summary=(
+                "Agent loop run summary has invalid round accounting: "
+                f"rounds_completed={rounds_completed}, max_rounds={max_rounds}."
+            ),
+            recommended_action="Regenerate `agent_loop_run_summary.json` from current loop evidence.",
+            evidence_refs=evidence_refs,
+        )
+    if exit_reason == "max_rounds" and rounds_completed != max_rounds:
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="blocked",
+            summary="Agent loop exited with `max_rounds` but did not record all rounds completed.",
+            recommended_action="Regenerate the loop summary with consistent max_rounds accounting.",
+            evidence_refs=evidence_refs,
+        )
+    if expected_command != actual_command:
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="blocked",
+            summary=(
+                f"Agent loop exit `{exit_reason}` recommends `{actual_command}`, "
+                f"expected `{expected_command}`."
+            ),
+            recommended_action=(
+                f"Update the bounded loop summary so `{exit_reason}` maps to "
+                + (
+                    f"`asteria {expected_command}`."
+                    if expected_command
+                    else "no follow-up command."
+                )
+            ),
+            evidence_refs=evidence_refs,
+        )
+
+    mismatch = _agent_loop_summary_id_mismatch(run_dirs, validator, summary)
+    if mismatch:
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="blocked",
+            summary=mismatch,
+            recommended_action=(
+                "Regenerate `agent_loop_run_summary.json` so latest decision, execution, "
+                "and observation ids match persisted loop evidence."
+            ),
+            evidence_refs=evidence_refs,
+        )
+
+    return RuntimeReadinessCheck(
+        name="agent_loop_run_summary",
+        status="ready",
+        summary=(
+            f"Bounded loop summary records exit `{exit_reason}` for "
+            f"{rounds_completed}/{max_rounds} round(s), "
+            + (
+                f"next `asteria {expected_command}`."
+                if expected_command
+                else "no follow-up command required."
+            )
+        ),
+        evidence_refs=[summary_id, *evidence_refs][:8],
+    )
+
+
+def _recommended_command_for_exit_reason(exit_reason: str) -> str | None:
+    return {
+        "completed": None,
+        "tool_failed": "debug",
+        "max_rounds": "status --debug",
+        "budget_hard_stop": "compact",
+        "ask": "decide --list",
+        "stop": "status --debug",
+        "subagent_pending": "execute",
+        "repair_dispatch": "debug",
+        "replan_dispatch": "replan",
+        "no_action": "status --debug",
+    }.get(exit_reason, "status --debug")
+
+
+def _agent_loop_summary_id_mismatch(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    summary: dict[str, Any],
+) -> str | None:
+    run_id = str(summary.get("run_id") or "")
+    decision_id = str(summary.get("latest_decision_id") or "")
+    execution_id = str(summary.get("latest_execution_id") or "")
+    observation_id = str(summary.get("latest_observation_id") or "")
+    scoped_run_dirs = _run_dirs_for_id(run_dirs, run_id)
+    decision = _decision_by_id(scoped_run_dirs, validator, decision_id) if decision_id else None
+    execution = (
+        _execution_by_id(scoped_run_dirs, validator, execution_id) if execution_id else None
+    )
+    observation = (
+        _observation_by_id(scoped_run_dirs, validator, observation_id)
+        if observation_id
+        else None
+    )
+    if decision_id and decision is None:
+        return f"Agent loop summary references missing latest_decision_id `{decision_id}`."
+    if execution_id and execution is None:
+        return f"Agent loop summary references missing latest_execution_id `{execution_id}`."
+    if observation_id and observation is None:
+        return f"Agent loop summary references missing latest_observation_id `{observation_id}`."
+    if decision and execution and str(execution.get("decision_id") or "") != decision_id:
+        return (
+            "Agent loop summary latest ids are inconsistent: execution does not reference "
+            f"decision `{decision_id}`."
+        )
+    if execution and observation and str(observation.get("source_execution_id") or "") != execution_id:
+        return (
+            "Agent loop summary latest ids are inconsistent: observation does not reference "
+            f"execution `{execution_id}`."
+        )
+    if decision and observation and str(observation.get("source_decision_id") or "") != decision_id:
+        return (
+            "Agent loop summary latest ids are inconsistent: observation does not reference "
+            f"decision `{decision_id}`."
+        )
+    return None
+
+
 def _capability_catalog_states(run_dirs: list[Path]) -> dict[str, set[str]]:
     states: dict[str, set[str]] = {
         "visible": set(),
@@ -961,6 +1127,56 @@ def _latest_decision(
     if run_id or task_id:
         return fallback
     return latest
+
+
+def _decision_by_id(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    decision_id: str,
+) -> dict[str, Any] | None:
+    if not decision_id:
+        return None
+    for run_dir in run_dirs:
+        for item in _read_jsonl(run_dir / "agent_loop_decisions.jsonl", "agent_loop_decision", validator):
+            if str(item.get("decision_id") or "") == decision_id:
+                return item
+    return None
+
+
+def _execution_by_id(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    execution_id: str,
+) -> dict[str, Any] | None:
+    if not execution_id:
+        return None
+    for run_dir in run_dirs:
+        for item in _read_jsonl(
+            run_dir / "agent_loop_execution_results.jsonl",
+            "agent_loop_execution_result",
+            validator,
+        ):
+            if str(item.get("execution_id") or "") == execution_id:
+                return item
+    return None
+
+
+def _observation_by_id(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+    observation_id: str,
+) -> dict[str, Any] | None:
+    if not observation_id:
+        return None
+    for run_dir in run_dirs:
+        for item in _read_jsonl(
+            run_dir / "agent_loop_observations.jsonl",
+            "agent_loop_observation",
+            validator,
+        ):
+            if str(item.get("observation_id") or "") == observation_id:
+                return item
+    return None
 
 
 def _subagent_worker_dispatch_check(
@@ -1454,6 +1670,25 @@ def _read_jsonl(path: Path, schema_name: str, validator: SchemaValidator) -> lis
     if not path.exists():
         return []
     return JsonlStore(validator).read_all(path, schema_name)
+
+
+def _latest_agent_loop_run_summary(
+    run_dirs: list[Path],
+    validator: SchemaValidator,
+) -> dict[str, Any] | None:
+    latest: dict[str, Any] | None = None
+    latest_created = ""
+    store = JsonStore(validator)
+    for run_dir in run_dirs:
+        path = run_dir / "agent_loop_run_summary.json"
+        if not path.exists():
+            continue
+        item = store.read(path, "agent_loop_run_summary")
+        created = str(item.get("created_at") or "")
+        if latest is None or created >= latest_created:
+            latest = item
+            latest_created = created
+    return latest
 
 
 def _has_context_snapshot(

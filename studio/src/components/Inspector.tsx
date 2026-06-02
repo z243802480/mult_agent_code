@@ -193,6 +193,84 @@ function IntentAuditView({ items }: { items: AnyRecord[] }) {
   );
 }
 
+function asRecord(value: unknown): AnyRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as AnyRecord : {};
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function metricTone(value: string): string {
+  if (/ready|completed|succeeded|pass|healthy/i.test(value)) return "good";
+  if (/blocked|failed|missing|error/i.test(value)) return "bad";
+  return "warn";
+}
+
+function rollingValidationFromOverview(overview: OverviewPayload | null): AnyRecord {
+  const gateStatus = asRecord(overview?.gateStatus);
+  return asRecord(overview?.v0_2_rolling_validation ?? gateStatus.v0_2_rolling_validation);
+}
+
+function workerCountFromTree(workerTree: AnyRecord): number {
+  const direct = Number(workerTree.total_workers);
+  if (Number.isFinite(direct)) return direct;
+  const roots = asArray(workerTree.roots) as AnyRecord[];
+  const countNodes = (items: AnyRecord[]): number =>
+    items.reduce((total, item) => total + 1 + countNodes(asArray(item.children) as AnyRecord[]), 0);
+  return countNodes(roots);
+}
+
+function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload | null; runDetail: RunDetailPayload | null }) {
+  const rolling = rollingValidationFromOverview(overview);
+  const coverage = asRecord(rolling.coverage);
+  const missing = asArray(rolling.missing_evidence_categories).map(String);
+  const rollingStatus = firstText(String(rolling.status ?? ""), "unknown");
+  const sampleCount = Number(rolling.sample_count ?? 0);
+  const agentLoopSummary = asRecord(runDetail?.agent_loop_run_summary);
+  const legacyLoopSummary = asRecord(runDetail?.run_loop_summary);
+  const workerTree = asRecord(runDetail?.worker_tree);
+  const agentRunGraph = asRecord(workerTree.agent_run_graph ?? runDetail?.agent_run_graph);
+  const workerTotal = workerCountFromTree(workerTree);
+  const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(legacyLoopSummary.stop_reason ?? ""), "unknown");
+  const loopRounds = firstText(
+    `${String(agentLoopSummary.rounds_completed ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`,
+    String(legacyLoopSummary.iteration_count ?? "")
+  );
+  const nextAction = firstText(
+    String(asArray(rolling.next_actions)[0] ?? ""),
+    String(agentLoopSummary.recommended_command ?? ""),
+    String(legacyLoopSummary.recommended_next_command ?? ""),
+    "No action recorded"
+  );
+  const coverageLine = ["route", "context", "capability", "loop", "worker"]
+    .map((key) => `${key}=${coverage[key] === true ? "yes" : "no"}`)
+    .join(", ");
+
+  return (
+    <div className="evidenceBlock v02ReadinessPanel">
+      <small>v0.2 Readiness</small>
+      <div className="evidenceStats">
+        <Metric label="Bundle" value={`${rollingStatus} (${sampleCount})`} tone={metricTone(rollingStatus)} />
+        <Metric label="Loop exit" value={loopExit} tone={metricTone(String(agentLoopSummary.status ?? legacyLoopSummary.workflow_state ?? loopExit))} />
+        <Metric label="Workers" value={`${String(workerTree.successful_workers ?? 0)}/${String(workerTotal)}`} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : workerTotal ? "good" : "warn"} />
+      </div>
+      <div className="keyValueList">
+        <div><small>Evidence coverage</small><pre>{coverageLine || "No v0.2 rolling validation bundle found."}</pre></div>
+        <div><small>Missing evidence</small><pre>{missing.length ? missing.join(", ") : "none"}</pre></div>
+        <div><small>Loop summary</small><pre>{`exit=${loopExit}
+rounds=${loopRounds}
+latest_action=${String(agentLoopSummary.latest_action ?? "n/a")}`}</pre></div>
+        <div><small>Worker tree</small><pre>{`roots=${asArray(workerTree.roots).length}
+orphans=${asArray(workerTree.orphan_workers).length}
+graph=${String(agentRunGraph.status ?? "unknown")}
+parallel_batches=${String(workerTree.parallel_batches ?? 0)}`}</pre></div>
+        <div><small>Next action</small><pre>{nextAction}</pre></div>
+      </div>
+    </div>
+  );
+}
+
 function InspectorTabs({ sections }: { sections: InspectorSection[] }) {
   const [active, setActive] = useState(sections.find((s) => s.count > 0)?.id ?? sections[0]?.id ?? "shell");
   useEffect(() => {
@@ -222,6 +300,7 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   const run = (runDetail.run ?? {}) as AnyRecord;
   const finalSummary = (runDetail.final_report_summary ?? {}) as AnyRecord;
   const runLoopSummary = (runDetail.run_loop_summary ?? {}) as AnyRecord;
+  const agentLoopSummary = (runDetail.agent_loop_run_summary ?? {}) as AnyRecord;
   const routeArtifact = (runDetail.model_route_timeline ?? {}) as AnyRecord;
   const goalPolicy = (finalSummary.goal_policy ?? runDetail.goal_policy ?? {}) as AnyRecord;
   const timeline = (
@@ -235,8 +314,9 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   ) as AnyRecord[];
   const latestRoute = timeline.at(-1) ?? {};
   const workflowState = firstText(String(finalSummary.workflow_state ?? ""), String(runLoopSummary.workflow_state ?? ""), String(run.current_phase ?? "unknown"));
-  const nextCommand = firstText(String(finalSummary.recommended_next_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
+  const nextCommand = firstText(String(finalSummary.recommended_next_command ?? ""), String(agentLoopSummary.recommended_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
   const blocker = firstText(String(finalSummary.current_blocker ?? ""), String(runLoopSummary.current_blocker ?? ""), "none");
+  const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(runLoopSummary.stop_reason ?? ""), "n/a");
 
   return (
     <div className="evidenceBlock runStatusPanel">
@@ -252,8 +332,8 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
         <div><small>Recommended command</small><pre>{nextCommand === "none" ? "No action needed" : `asteria ${nextCommand}`}</pre></div>
         <div><small>Goal policy</small><pre>{`${String(goalPolicy.category ?? "none")} -> ${String(goalPolicy.recommended_command ?? goalPolicy.recommended_next_command ?? goalPolicy.recommended_action ?? nextCommand)}
 ${String(goalPolicy.reason ?? "No policy reason recorded.")}`}</pre></div>
-        <div><small>Run loop summary</small><pre>{`iterations=${String(runLoopSummary.iteration_count ?? "n/a")}
-stop=${String(runLoopSummary.stop_reason ?? "n/a")}`}</pre></div>
+        <div><small>Run loop summary</small><pre>{`exit=${loopExit}
+rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre></div>
         <div><small>Model route rationale</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
 reason=${String(latestRoute.reason ?? "No route reason recorded.")}`}</pre></div>
       </div>
@@ -262,12 +342,14 @@ reason=${String(latestRoute.reason ?? "No route reason recorded.")}`}</pre></div
 }
 
 function EvidenceExplorer({
+  overview,
   runs,
   selectedRunId,
   runDetail,
   onOpenRun,
   onOpenFile,
 }: {
+  overview: OverviewPayload | null;
   runs: AnyRecord[];
   selectedRunId: string | null;
   runDetail: RunDetailPayload | null;
@@ -337,6 +419,7 @@ function EvidenceExplorer({
       {runDetail?.error && <p className="muted">{runDetail.error}</p>}
       {runDetail?.ok && (
         <>
+          <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
           <div className="evidenceStats">
             <Metric label="Model calls" value={String(modelCalls.length)} tone={modelCalls.some((m) => m.status === "failure") ? "bad" : "good"} />
@@ -406,6 +489,7 @@ export function Inspector({
       {showRunOverviewFirst && (
         <EvidenceExplorer
           runs={(overview?.runs ?? []) as AnyRecord[]}
+          overview={overview}
           selectedRunId={selectedRunId}
           runDetail={runDetail}
           onOpenRun={onOpenRun}
@@ -441,6 +525,7 @@ export function Inspector({
       {!showRunOverviewFirst && (
         <EvidenceExplorer
           runs={(overview?.runs ?? []) as AnyRecord[]}
+          overview={overview}
           selectedRunId={selectedRunId}
           runDetail={runDetail}
           onOpenRun={onOpenRun}

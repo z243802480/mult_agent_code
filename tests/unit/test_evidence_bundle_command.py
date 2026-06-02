@@ -116,6 +116,7 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
     with zipfile.ZipFile(result.bundle_path) as archive:
         names = set(archive.namelist())
         assert "manifest.json" in names
+        assert "v0.2_rolling_validation_summary.json" in names
         assert ".asteria/runs/run-0001/run.json" in names
         assert ".asteria/runs/run-0001/model_calls.jsonl" in names
         assert ".asteria/validation_runs/alpha2-summary-current.json" in names
@@ -125,6 +126,7 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
         manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
         assert manifest["included_evidence"]["validation_runs"] is True
         assert manifest["included_evidence"]["ops_signals"] is True
+        assert manifest["included_evidence"]["v0_2_rolling_validation"] is True
         assert (
             manifest["model_route_summary"]["zai/glm-4.7/goal_spec/strong"][
                 "streaming_failed"
@@ -151,6 +153,141 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
         assert analysis["secret"] == "[REDACTED]"
         usage_signal = archive.read(".asteria/ops/usage_signals.jsonl").decode("utf-8")
         assert "[REDACTED]" in usage_signal
+
+
+def test_evidence_bundle_writes_v02_rolling_validation_summary(tmp_path: Path) -> None:
+    for index in range(1, 4):
+        run_id = f"run-000{index}"
+        run_dir = tmp_path / ".asteria" / "runs" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "run.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "run_id": run_id,
+                    "status": "completed",
+                    "current_phase": "ACCEPTED",
+                    "summary": f"scoped real-provider task {index}",
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_dir / "model_calls.jsonl").write_text(
+            json.dumps(
+                {
+                    "model_provider": "zai",
+                    "model_name": "glm-4.7",
+                    "purpose": "task_execution",
+                    "model_tier": "medium",
+                    "status": "success",
+                    "deadline_ms": 120000,
+                    "duration_ms": 2500 + index,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "context_budget_snapshots.jsonl").write_text(
+            json.dumps(
+                {
+                    "snapshot_id": f"context-{index}",
+                    "context_window_ratio": 0.1 * index,
+                    "compact_boundary": {"status": "not_required"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "capability_decisions.jsonl").write_text(
+            json.dumps(
+                {
+                    "capability_type": "tool",
+                    "capability": "read_file",
+                    "decision": {"decision": "allow", "reason": "scoped read"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "agent_loop_run_summary.json").write_text(
+            json.dumps(
+                {
+                    "exit_reason": "completed",
+                    "recommended_command": None,
+                    "rounds_completed": 1,
+                    "max_rounds": 2,
+                }
+            ),
+            encoding="utf-8",
+        )
+        (run_dir / "workers.jsonl").write_text(
+            json.dumps(
+                {
+                    "worker_invocation_id": f"worker-{index:04d}",
+                    "status": "succeeded",
+                    "worker_kind": "subagent",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "worker_results.jsonl").write_text(
+            json.dumps(
+                {
+                    "worker_invocation_id": f"worker-{index:04d}",
+                    "status": "succeeded",
+                    "cost": {"model_calls": 1, "tool_calls": 1},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "agent_run_graph.json").write_text(
+            json.dumps(
+                {
+                    "status": "succeeded",
+                    "collaboration_summary": {
+                        "total_workers": 1,
+                        "successful_workers": 1,
+                        "failed_workers": 0,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    result = EvidenceBundleCommand(tmp_path).run()
+    result_payload = result.to_dict()
+    assert result_payload["v0_2_rolling_validation"]["status"] == "ready"
+    assert result_payload["v0_2_rolling_validation"]["sample_count"] == 3
+    assert "v0.2 rolling validation: ready (3 sample(s))" in result.to_text()
+
+    with zipfile.ZipFile(result.bundle_path) as archive:
+        names = set(archive.namelist())
+        assert ".asteria/runs/run-0003/context_budget_snapshots.jsonl" in names
+        assert ".asteria/runs/run-0003/capability_decisions.jsonl" in names
+        assert ".asteria/runs/run-0003/agent_loop_run_summary.json" in names
+        assert ".asteria/runs/run-0003/workers.jsonl" in names
+        assert ".asteria/runs/run-0003/agent_run_graph.json" in names
+        summary = json.loads(
+            archive.read("v0.2_rolling_validation_summary.json").decode("utf-8")
+        )
+        assert summary["status"] == "ready"
+        assert summary["sample_count"] == 3
+        assert summary["coverage"] == {
+            "route": True,
+            "context": True,
+            "capability": True,
+            "loop": True,
+            "worker": True,
+        }
+        assert len(summary["samples"]) == 3
+        assert summary["samples"][0]["model_routes"][0]["route"] == (
+            "zai/glm-4.7/task_execution/medium"
+        )
+        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        assert manifest["v0_2_rolling_validation"]["status"] == "ready"
+        assert manifest["v0_2_rolling_validation"]["sample_count"] == 3
 
 
 def test_evidence_bundle_excludes_protected_route_files(tmp_path: Path) -> None:

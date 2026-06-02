@@ -23,6 +23,7 @@
       "runtime_progress_metrics",
       "runtime_validation_matrix",
       "runtime_readiness_gate",
+      "v0_2_rolling_validation",
       "readiness_explanation",
       "recovery_pressure",
       "context_pressure_summary",
@@ -65,6 +66,7 @@
     "checks": [],
     "next_actions": []
   },
+  "v0_2_rolling_validation": {},
   "route_environment": {
     "ready": true,
     "missing_required": [],

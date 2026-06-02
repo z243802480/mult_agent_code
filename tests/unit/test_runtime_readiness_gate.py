@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from asteria_runtime.core.runtime_readiness_gate import runtime_readiness_gate
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -84,6 +85,49 @@ def _loop_observation(
         "summary": f"{action} observation is {status}.",
         "evidence_refs": ["agent_loop_execution_results.jsonl"],
         "next_recommended_action": "repair" if status == "failed" else None,
+    }
+
+
+def _loop_run_summary(
+    *,
+    exit_reason: str = "ask",
+    recommended_command: str | None = "decide --list",
+    rounds_completed: int = 1,
+    max_rounds: int = 2,
+    latest_decision_id: str | None = "agent-loop-decision-0001",
+    latest_execution_id: str | None = "agent-loop-execution-0001",
+    latest_observation_id: str | None = "agent-loop-observation-0001",
+) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "created_at": "2026-05-29T10:00:03+08:00",
+        "status": (
+            "completed"
+            if exit_reason == "completed"
+            else "waiting_user"
+            if exit_reason == "ask"
+            else "blocked"
+        ),
+        "exit_reason": exit_reason,
+        "rounds_completed": rounds_completed,
+        "max_rounds": max_rounds,
+        "summary": f"Agent loop exited with {exit_reason}.",
+        "recommended_command": recommended_command,
+        "latest_decision_id": latest_decision_id,
+        "latest_execution_id": latest_execution_id,
+        "latest_observation_id": latest_observation_id,
+        "latest_action": "ask",
+        "evidence_refs": [
+            item
+            for item in [
+                latest_observation_id,
+                latest_execution_id,
+                latest_decision_id,
+            ]
+            if item
+        ],
     }
 
 
@@ -1277,6 +1321,169 @@ def test_runtime_readiness_gate_accepts_failed_observation_with_recovery_decisio
     execution_check = next(check for check in gate["checks"] if check["name"] == "agent_loop_execution")
     assert execution_check["status"] == "ready"
     assert "debug_agent" in execution_check["summary"]
+
+
+def test_runtime_readiness_gate_accepts_loop_summary_exit_command_mapping(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_decisions.jsonl",
+        _loop_decision("ask"),
+        "agent_loop_decision",
+    )
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_execution_results.jsonl",
+        _loop_execution("ask"),
+        "agent_loop_execution_result",
+    )
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_observations.jsonl",
+        _loop_observation(action="ask", status="waiting_user"),
+        "agent_loop_observation",
+    )
+    JsonStore(validator).write(
+        run_dir / "agent_loop_run_summary.json",
+        _loop_run_summary(exit_reason="ask", recommended_command="decide --list"),
+        "agent_loop_run_summary",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert summary["status"] == "ready"
+    assert "next `asteria decide --list`" in summary["summary"]
+
+
+def test_runtime_readiness_gate_blocks_loop_summary_wrong_exit_command(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonStore(validator).write(
+        run_dir / "agent_loop_run_summary.json",
+        _loop_run_summary(
+            exit_reason="budget_hard_stop",
+            recommended_command="status --debug",
+            latest_decision_id=None,
+            latest_execution_id=None,
+            latest_observation_id=None,
+        ),
+        "agent_loop_run_summary",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert gate["status"] == "blocked"
+    assert summary["status"] == "blocked"
+    assert "expected `compact`" in summary["summary"]
+
+
+def test_runtime_readiness_gate_accepts_completed_loop_summary_without_next_command(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonStore(validator).write(
+        run_dir / "agent_loop_run_summary.json",
+        _loop_run_summary(
+            exit_reason="completed",
+            recommended_command=None,
+            latest_decision_id=None,
+            latest_execution_id=None,
+            latest_observation_id=None,
+        ),
+        "agent_loop_run_summary",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert summary["status"] == "ready"
+    assert "no follow-up command required" in summary["summary"]
+
+
+def test_runtime_readiness_gate_blocks_loop_summary_id_mismatch(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_decisions.jsonl",
+        _loop_decision("ask"),
+        "agent_loop_decision",
+    )
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_execution_results.jsonl",
+        _loop_execution("ask"),
+        "agent_loop_execution_result",
+    )
+    JsonStore(validator).write(
+        run_dir / "agent_loop_run_summary.json",
+        _loop_run_summary(latest_observation_id="agent-loop-observation-missing"),
+        "agent_loop_run_summary",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert summary["status"] == "blocked"
+    assert "missing latest_observation_id" in summary["summary"]
+
+
+def test_runtime_readiness_gate_reviews_missing_loop_summary_with_loop_evidence(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_decisions.jsonl",
+        _loop_decision("stop"),
+        "agent_loop_decision",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert summary["status"] == "review"
+    assert "no `agent_loop_run_summary.json`" in summary["summary"]
 
 
 def test_runtime_readiness_gate_reviews_capability_mismatch(tmp_path: Path) -> None:

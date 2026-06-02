@@ -53,13 +53,20 @@ class AgentRunGraphBuilder:
         child_plan_by_worker = {
             str(item.get("worker_invocation_id") or ""): item for item in subagent_child_plans
         }
+        child_plan_by_id = {
+            str(item.get("subagent_child_plan_id") or ""): item for item in subagent_child_plans
+        }
 
         child_plans = [
             self._child_worker_plan(
                 worker=worker,
                 result=result_by_worker.get(worker["worker_invocation_id"]),
                 runtime_profile=runtime_by_id.get(worker["runtime_profile_id"], {}),
-                subagent_child_plan=child_plan_by_worker.get(worker["worker_invocation_id"], {}),
+                subagent_child_plan=self._subagent_child_plan_for_worker(
+                    worker,
+                    child_plan_by_worker=child_plan_by_worker,
+                    child_plan_by_id=child_plan_by_id,
+                ),
                 model_profiles=model_by_id,
                 tool_profiles=tool_by_id,
                 task=task_by_id.get(worker["task_id"], {}),
@@ -125,6 +132,9 @@ class AgentRunGraphBuilder:
             "subagent_child_plan_id": str(
                 subagent_child_plan.get("subagent_child_plan_id") or ""
             ),
+            "worker_kind": str(worker.get("worker_kind") or ""),
+            "parallel_safety": str(worker.get("parallel_safety") or ""),
+            "child_plan_refs": [str(item) for item in worker.get("child_plan_refs") or []],
             "decomposition_strategy": str(
                 subagent_child_plan.get("decomposition_strategy") or ""
             ),
@@ -159,6 +169,22 @@ class AgentRunGraphBuilder:
             "cost": (result or {}).get("cost", {"model_calls": 0, "tool_calls": 0}),
             "summary": (result or {}).get("summary") or worker.get("summary") or "",
         }
+
+    def _subagent_child_plan_for_worker(
+        self,
+        worker: dict,
+        *,
+        child_plan_by_worker: dict[str, dict],
+        child_plan_by_id: dict[str, dict],
+    ) -> dict:
+        worker_id = str(worker.get("worker_invocation_id") or "")
+        if worker_id in child_plan_by_worker:
+            return child_plan_by_worker[worker_id]
+        for child_plan_ref in worker.get("child_plan_refs") or []:
+            plan = child_plan_by_id.get(str(child_plan_ref))
+            if plan:
+                return plan
+        return {}
 
     def _collaboration_role(self, task: dict, worker: dict | None = None) -> str:
         worker_kind = str((worker or {}).get("worker_kind") or "")

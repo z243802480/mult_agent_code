@@ -88,6 +88,7 @@ export type OverviewPayload = {
   packageCheck?: AnyRecord;
   runs?: AnyRecord[];
   modelRoutes?: AnyRecord[];
+  v0_2_rolling_validation?: AnyRecord;
 };
 
 export type RunDetailPayload = {
@@ -100,7 +101,9 @@ export type RunDetailPayload = {
   task_plan?: AnyRecord;
   task_plan_eval?: AnyRecord;
   agent_run_graph?: AnyRecord;
+  agent_loop_run_summary?: AnyRecord;
   run_loop_summary?: AnyRecord;
+  worker_tree?: AnyRecord;
   final_report_summary?: AnyRecord;
   model_route_timeline?: AnyRecord;
   goal_policy?: AnyRecord;
