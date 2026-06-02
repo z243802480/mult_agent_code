@@ -2129,6 +2129,55 @@ def test_execute_command_runtime_manages_repair_replan_validation_probe(
     assert loop_summary["recommended_command"] == "debug"
 
 
+def test_execute_command_runtime_manages_ask_stop_validation_probe(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(
+        tmp_path,
+        "run ask stop validation probe",
+        model_client=FakePlanClient(),
+        validation_probe_ids=["ask_stop_path"],
+    ).run()
+
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=ExplodingExecuteClient(),
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_decisions.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    executions = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_execution_results.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert decisions[-1]["next_action"]["action"] == "stop"
+    assert executions[-1]["action"] == "stop"
+    assert executions[-1]["target"] == "stop_report"
+    assert observations[-1]["observation_type"] == "stop_report"
+    assert observations[-1]["status"] == "stopped"
+    assert loop_summary["exit_reason"] == "stop"
+    assert loop_summary["recommended_command"] == "status --debug"
+
+
 def test_execute_command_blocks_high_risk_low_quality_delegation_before_model(
     tmp_path: Path,
 ) -> None:

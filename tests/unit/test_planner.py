@@ -132,6 +132,37 @@ def test_validation_probe_hint_scopes_repair_replan_probe_to_benchmark() -> None
     assert "multi_agent_strategy" not in task
 
 
+def test_validation_probe_hint_scopes_ask_stop_probe_to_decision_boundary() -> None:
+    task_plan = {
+        "tasks": [
+            {
+                "task_id": "task-0001",
+                "task_kind": "implementation",
+                "parallel_safety": "disjoint_writes",
+                "read_scope": ["benchmarks"],
+                "write_scope": ["probe.txt"],
+                "expected_changed_files": ["probe.txt"],
+                "expected_artifacts": ["probe.txt"],
+                "allowed_tools": ["write_file", "run_command"],
+                "multi_agent_strategy": {"mode": "disjoint_write_workers"},
+            }
+        ]
+    }
+
+    _apply_validation_probe_hints(task_plan, ["ask_stop_path"])
+
+    task = task_plan["tasks"][0]
+    assert task["task_kind"] == "diagnostic"
+    assert task["parallel_safety"] == "serial"
+    assert task["read_scope"] == ["AGENTS.md"]
+    assert task["write_scope"] == []
+    assert task["expected_changed_files"] == []
+    assert task["expected_artifacts"] == []
+    assert task["completion_contract"]["requires_changed_artifact"] is False
+    assert task["completion_contract"]["allows_expected_failure"] is True
+    assert "multi_agent_strategy" not in task
+
+
 def test_requirement_planner_groups_single_concrete_file_goal() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

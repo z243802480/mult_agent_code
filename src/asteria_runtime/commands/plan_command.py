@@ -689,6 +689,8 @@ def _apply_validation_probe_hints(task_plan: dict, probe_ids: list[str]) -> None
         _apply_disjoint_write_probe_hint(task)
     if "repair_replan_path" in selected:
         _apply_repair_replan_probe_hint(task)
+    if "ask_stop_path" in selected:
+        _apply_ask_stop_probe_hint(task)
 
 
 def _apply_readonly_fanout_probe_hint(task: dict, probe_ids: list[str]) -> None:
@@ -772,6 +774,39 @@ def _apply_repair_replan_probe_hint(task: dict) -> None:
     task["verification_policy"] = {
         "required": True,
         "allow_expected_failure": False,
+        "commands": [],
+    }
+    task["context_requirements"] = {
+        "mount_type": "debug_context",
+        "include_artifacts": False,
+        "include_failures": True,
+        "include_decisions": True,
+        "include_validation": True,
+        "recent_event_count": 10,
+    }
+    task.pop("multi_agent_strategy", None)
+
+
+def _apply_ask_stop_probe_hint(task: dict) -> None:
+    task["task_kind"] = "diagnostic"
+    task["parallel_safety"] = "serial"
+    task["read_scope"] = ["AGENTS.md"]
+    task["write_scope"] = []
+    task["expected_changed_files"] = []
+    task["expected_artifacts"] = []
+    task["allowed_tools"] = ["list_files", "read_file", "search_text"]
+    task["acceptance"] = [
+        "runtime records a DecisionPoint for ambiguous or policy-sensitive work",
+        "runtime stops instead of guessing past the boundary",
+    ]
+    task["completion_contract"] = {
+        "requires_changed_artifact": False,
+        "requires_verification": False,
+        "allows_expected_failure": True,
+    }
+    task["verification_policy"] = {
+        "required": False,
+        "allow_expected_failure": True,
         "commands": [],
     }
     task["context_requirements"] = {

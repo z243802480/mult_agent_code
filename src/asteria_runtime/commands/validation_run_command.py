@@ -368,8 +368,16 @@ class ValidationRunCommand:
                 "agent_loop_execution",
                 "observation_next_action",
             },
-            "repair_replan_path": {"agent_loop_execution", "observation_next_action"},
-            "ask_stop_path": {"agent_loop_execution", "observation_next_action"},
+            "repair_replan_path": {
+                "agent_loop_execution",
+                "observation_next_action",
+                "subagent_readonly_fanout",
+            },
+            "ask_stop_path": {
+                "agent_loop_execution",
+                "observation_next_action",
+                "subagent_readonly_fanout",
+            },
             "context_pressure_path": {"context_pressure", "subagent_context_isolation"},
             "capability_selection_path": {"capability_selection"},
         }
@@ -625,6 +633,8 @@ class ValidationRunCommand:
         execution_results = self.jsonl.read_all(
             run_dir / "agent_loop_execution_results.jsonl", "agent_loop_execution_result"
         )
+        runtime_requests = self.jsonl.read_all(run_dir / "runtime_requests.jsonl", "runtime_request")
+        decision_points = self.jsonl.read_all(run_dir / "decisions.jsonl", "decision_point")
         context_snapshots = self.jsonl.read_all(
             run_dir / "context_budget_snapshots.jsonl", "context_budget_snapshot"
         )
@@ -655,6 +665,8 @@ class ValidationRunCommand:
                 child_plans=child_plans,
                 observations=observations,
                 execution_results=execution_results,
+                runtime_requests=runtime_requests,
+                decision_points=decision_points,
                 context_snapshots=context_snapshots,
                 run_summary=run_summary,
                 cost_report=cost_report,
@@ -687,6 +699,8 @@ class ValidationRunCommand:
         child_plans: list[dict[str, Any]],
         observations: list[dict[str, Any]],
         execution_results: list[dict[str, Any]],
+        runtime_requests: list[dict[str, Any]],
+        decision_points: list[dict[str, Any]],
         context_snapshots: list[dict[str, Any]],
         run_summary: dict[str, Any],
         cost_report: dict[str, Any],
@@ -701,6 +715,8 @@ class ValidationRunCommand:
             child_plans=child_plans,
             observations=observations,
             execution_results=execution_results,
+            runtime_requests=runtime_requests,
+            decision_points=decision_points,
             context_snapshots=context_snapshots,
             run_summary=run_summary,
             cost_report=cost_report,
@@ -725,6 +741,8 @@ class ValidationRunCommand:
         child_plans: list[dict[str, Any]],
         observations: list[dict[str, Any]],
         execution_results: list[dict[str, Any]] | None = None,
+        runtime_requests: list[dict[str, Any]] | None = None,
+        decision_points: list[dict[str, Any]] | None = None,
         context_snapshots: list[dict[str, Any]] | None = None,
         run_summary: dict[str, Any] | None = None,
         cost_report: dict[str, Any] | None = None,
@@ -732,6 +750,8 @@ class ValidationRunCommand:
         readiness_checks: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[str, str, list[str]]:
         execution_results = execution_results or []
+        runtime_requests = runtime_requests or []
+        decision_points = decision_points or []
         context_snapshots = context_snapshots or []
         run_summary = run_summary or {}
         cost_report = cost_report or {}
@@ -870,6 +890,15 @@ class ValidationRunCommand:
                 str(item.get("target") or "") in {"decision_point", "stop_report"}
                 for item in execution_results
             )
+            runtime_request_refs = _runtime_request_decision_refs(
+                runtime_requests, decision_points
+            )
+            if runtime_request_refs:
+                return (
+                    "passed",
+                    "Ask/stop boundary produced runtime request and DecisionPoint evidence.",
+                    runtime_request_refs[:4],
+                )
             if refs and has_terminal_boundary:
                 return (
                     "passed",
@@ -1125,6 +1154,30 @@ def _action_refs(
         for item in execution_results
         if str(item.get("action") or "") in actions
     )
+    return [item for item in refs if item]
+
+
+def _runtime_request_decision_refs(
+    runtime_requests: list[dict[str, Any]],
+    decision_points: list[dict[str, Any]],
+) -> list[str]:
+    decision_by_id = {
+        str(item.get("decision_id") or ""): item
+        for item in decision_points
+        if str(item.get("decision_id") or "")
+    }
+    refs: list[str] = []
+    for request in runtime_requests:
+        if str(request.get("status") or "") != "decision_created":
+            continue
+        decision_id = str(request.get("decision_id") or "")
+        decision = decision_by_id.get(decision_id)
+        if not decision:
+            continue
+        if str(decision.get("status") or "") not in {"pending", "created"}:
+            continue
+        refs.append(str(request.get("runtime_request_id") or ""))
+        refs.append(decision_id)
     return [item for item in refs if item]
 
 

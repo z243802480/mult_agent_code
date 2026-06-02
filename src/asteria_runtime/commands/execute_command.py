@@ -1694,6 +1694,13 @@ class ExecuteCommand:
                 round_index=round_index,
                 latest_observation=latest_observation,
             )
+        if "ask_stop_path" in set(probe_ids):
+            return self._ask_stop_probe_runtime_action(
+                task=task,
+                context=context,
+                round_index=round_index,
+                latest_observation=latest_observation,
+            )
         if round_index != 1 or latest_observation:
             return None
         if hints.get("force_next_action") != "subagent":
@@ -1832,6 +1839,51 @@ class ExecuteCommand:
                 },
             }
         return None
+
+    def _ask_stop_probe_runtime_action(
+        self,
+        *,
+        task: dict,
+        context: RuntimeContext,
+        round_index: int,
+        latest_observation: dict | None,
+    ) -> dict | None:
+        if round_index != 1 or latest_observation:
+            return None
+        sequence = (
+            self._jsonl_count(context.run_dir / "agent_loop_decisions.jsonl") + 1
+            if context.run_dir
+            else 1
+        )
+        task_id = str(task["task_id"])
+        return {
+            "schema_version": "0.1.0",
+            "task_id": task_id,
+            "summary": "Runtime stopped at an ask/stop validation boundary.",
+            "tool_calls": [],
+            "verification": [],
+            "runtime_requests": [],
+            "completion_notes": "Stop-report evidence should be recorded for ask/stop validation.",
+            "agent_loop_decision": {
+                "schema_version": "0.1.0",
+                "decision_id": f"agent-loop-decision-{sequence:04d}",
+                "run_id": context.run_id or "",
+                "task_id": task_id,
+                "created_at": now_iso(),
+                "next_action": {
+                    "action": "stop",
+                    "reason": "Targeted ask/stop probe requires an explicit boundary instead of guessing.",
+                    "target_task_id": task_id,
+                    "capability_ref": {"type": "runtime", "name": "stop"},
+                    "expected_observation": {
+                        "summary": "Runtime records stop-report evidence.",
+                    },
+                    "risk": "low",
+                    "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                    "evidence_refs": [],
+                },
+            },
+        }
 
     def _execute_task(
         self,

@@ -264,6 +264,32 @@ def test_targeted_parent_stop_probe_can_bypass_observation_block(
     assert reasons == []
 
 
+def test_targeted_ask_stop_probe_can_bypass_stale_readonly_fanout_block(
+    tmp_path: Path,
+) -> None:
+    command = ValidationRunCommand(
+        tmp_path,
+        dry_run=True,
+        probe_ids=["ask_stop_path"],
+    )
+
+    reasons = command._blocked_reasons(
+        {"ok": True},
+        {
+            "stage": "runtime_readiness_blocked",
+            "runtime_readiness_gate": {
+                "checks": [
+                    {"name": "agent_loop_execution", "status": "blocked"},
+                    {"name": "subagent_readonly_fanout", "status": "blocked"},
+                    {"name": "observation_next_action", "status": "blocked"},
+                ]
+            },
+        },
+    )
+
+    assert reasons == []
+
+
 def test_second_batch_probes_evaluate_recovery_ask_context_and_capability(
     tmp_path: Path,
 ) -> None:
@@ -287,6 +313,29 @@ def test_second_batch_probes_evaluate_recovery_ask_context_and_capability(
         observations=[],
         execution_results=[_agent_loop_execution("agent-loop-execution-ask", "ask")],
         run_summary={"exit_reason": "ask"},
+    )
+    request_status, request_summary, request_refs = command._probe_status(
+        "ask_stop_path",
+        decisions=[],
+        workers=[],
+        worker_results=[],
+        child_plans=[],
+        observations=[],
+        runtime_requests=[
+            {
+                "runtime_request_id": "runtime-request-0001",
+                "request_type": "context_request",
+                "status": "decision_created",
+                "decision_id": "decision-0001",
+            }
+        ],
+        decision_points=[
+            {
+                "decision_id": "decision-0001",
+                "status": "pending",
+                "metadata": {"kind": "runtime_request"},
+            }
+        ],
     )
     context_status, _context_summary, context_refs = command._probe_status(
         "context_pressure_path",
@@ -325,6 +374,9 @@ def test_second_batch_probes_evaluate_recovery_ask_context_and_capability(
     assert ask_status == "passed"
     assert "exit_reason=ask" in ask_summary
     assert ask_refs == ["agent-loop-decision-ask", "agent-loop-execution-ask"]
+    assert request_status == "passed"
+    assert "runtime request" in request_summary
+    assert request_refs == ["runtime-request-0001", "decision-0001"]
     assert context_status == "passed"
     assert context_refs == ["context-budget-snapshot-0001"]
     assert capability_status == "passed"
