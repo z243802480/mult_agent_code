@@ -531,6 +531,8 @@ def matrix_case_summary(
         evidence_refs.extend([str(result.transcript), str(summary_json)])
         if result.final_report:
             evidence_refs.append(str(result.final_report))
+    agent_loop = matrix_agent_loop_summary(result, workspace=case_workspace)
+    context_strategy = matrix_context_strategy_summary(result, workspace=case_workspace)
     return {
         "name": case.name,
         "task_kind": case.task_kind,
@@ -544,9 +546,128 @@ def matrix_case_summary(
         "run_id": result.run_id if result else None,
         "final_report": str(result.final_report) if result and result.final_report else None,
         "diagnostics": result.diagnostics if result else {},
+        "agent_loop": agent_loop,
+        "context_strategy": context_strategy,
         "failure_type": type(failure).__name__ if failure else None,
         "failure_summary": redact(str(failure)) if failure else None,
         "evidence_refs": evidence_refs,
+    }
+
+
+def matrix_context_strategy_summary(
+    result: SmokeResult | None,
+    *,
+    workspace: Path | None = None,
+) -> dict[str, Any]:
+    resolved_workspace = result.workspace if result is not None else workspace
+    run_id = result.run_id if result is not None else None
+    if resolved_workspace is not None and not run_id:
+        run_id = current_run_id(resolved_workspace)
+    if resolved_workspace is None or not run_id:
+        return {}
+    path = resolved_workspace / ".asteria" / "runs" / run_id / "model_calls.jsonl"
+    if not path.exists():
+        return {"status": "missing", "model_calls_path": str(path)}
+    try:
+        calls = [
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "unreadable",
+            "model_calls_path": str(path),
+            "failure_summary": redact(str(exc)),
+        }
+    context_modes: dict[str, int] = {}
+    fast_path_kinds: dict[str, int] = {}
+    purpose_context_modes: dict[str, dict[str, int]] = {}
+    context_tokens: list[int] = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        context_mode = str(call.get("context_mode") or "unknown")
+        fast_path_kind = str(call.get("fast_path_task_kind") or "unknown")
+        purpose = str(call.get("purpose") or "unknown")
+        context_modes[context_mode] = context_modes.get(context_mode, 0) + 1
+        fast_path_kinds[fast_path_kind] = fast_path_kinds.get(fast_path_kind, 0) + 1
+        by_mode = purpose_context_modes.setdefault(purpose, {})
+        by_mode[context_mode] = by_mode.get(context_mode, 0) + 1
+        estimate = call.get("context_estimate")
+        estimate = estimate if isinstance(estimate, dict) else {}
+        estimated_tokens = estimate.get("estimated_tokens")
+        if not isinstance(estimated_tokens, int):
+            estimated_tokens = estimate.get("total_tokens")
+        if isinstance(estimated_tokens, int):
+            context_tokens.append(estimated_tokens)
+    known_modes = sum(count for mode, count in context_modes.items() if mode != "unknown")
+    slim_calls = context_modes.get("slim", 0)
+    total_calls = len([call for call in calls if isinstance(call, dict)])
+    return {
+        "status": "recorded",
+        "model_calls_path": str(path),
+        "model_call_count": total_calls,
+        "context_modes": dict(sorted(context_modes.items())),
+        "fast_path_task_kinds": dict(sorted(fast_path_kinds.items())),
+        "purpose_context_modes": {
+            purpose: dict(sorted(modes.items()))
+            for purpose, modes in sorted(purpose_context_modes.items())
+        },
+        "context_mode_recorded": known_modes,
+        "slim_model_calls": slim_calls,
+        "average_context_estimated_tokens": (
+            sum(context_tokens) / len(context_tokens) if context_tokens else None
+        ),
+        "max_context_estimated_tokens": max(context_tokens) if context_tokens else None,
+    }
+
+
+def matrix_agent_loop_summary(
+    result: SmokeResult | None,
+    *,
+    workspace: Path | None = None,
+) -> dict[str, Any]:
+    resolved_workspace = result.workspace if result is not None else workspace
+    run_id = result.run_id if result is not None else None
+    if resolved_workspace is not None and not run_id:
+        run_id = current_run_id(resolved_workspace)
+    if resolved_workspace is None or not run_id:
+        return {}
+    path = resolved_workspace / ".asteria" / "runs" / run_id / "agent_loop_run_summary.json"
+    if not path.exists():
+        return {"status": "missing", "summary_path": str(path)}
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {
+            "status": "unreadable",
+            "summary_path": str(path),
+            "failure_summary": redact(str(exc)),
+        }
+    budget = summary.get("budget") if isinstance(summary.get("budget"), dict) else {}
+    context_pressure = (
+        summary.get("context_pressure")
+        if isinstance(summary.get("context_pressure"), dict)
+        else {}
+    )
+    recovery_chain = (
+        summary.get("recovery_chain") if isinstance(summary.get("recovery_chain"), dict) else {}
+    )
+    return {
+        "status": "recorded",
+        "summary_path": str(path),
+        "exit_reason": summary.get("exit_reason"),
+        "recommended_command": summary.get("recommended_command"),
+        "latest_action": summary.get("latest_action"),
+        "rounds_completed": summary.get("rounds_completed"),
+        "max_rounds": summary.get("max_rounds"),
+        "budget_status": budget.get("status"),
+        "budget_highest_label": budget.get("highest_label"),
+        "context_pressure_status": context_pressure.get("status"),
+        "context_window_ratio": context_pressure.get("context_window_ratio"),
+        "recovery_required": recovery_chain.get("required"),
+        "recovery_satisfied": recovery_chain.get("satisfied"),
     }
 
 

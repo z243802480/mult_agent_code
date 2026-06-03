@@ -116,6 +116,8 @@ class ModelCallLogger:
             "context_envelope_hash": request.metadata.get("context_envelope_hash"),
             "context_envelope_path": request.metadata.get("context_envelope_path"),
             "capability_manifest_hash": request.metadata.get("capability_manifest_hash"),
+            "context_mode": request.metadata.get("context_mode"),
+            "fast_path_task_kind": request.metadata.get("fast_path_task_kind"),
         }
         estimate = estimate_request_context(request)
         record["context_estimate"] = estimate.to_dict()

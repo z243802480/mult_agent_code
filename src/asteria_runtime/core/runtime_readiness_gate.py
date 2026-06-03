@@ -912,6 +912,38 @@ def _agent_loop_run_summary_check(
             evidence_refs=evidence_refs,
         )
 
+    recovery_chain = summary.get("recovery_chain") if isinstance(summary.get("recovery_chain"), dict) else {}
+    if recovery_chain.get("required") is True and recovery_chain.get("satisfied") is not True:
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="blocked",
+            summary=(
+                "Agent loop summary says recovery is required, but the latest loop state "
+                "did not enter repair/replan/ask/stop."
+            ),
+            recommended_action=(
+                "Regenerate the next AgentLoopDecision so failed or blocked observations "
+                "route through repair, replan, ask, or stop."
+            ),
+            evidence_refs=evidence_refs,
+        )
+
+    summary_context = (
+        summary.get("context_pressure") if isinstance(summary.get("context_pressure"), dict) else {}
+    )
+    context_status = str(summary_context.get("status") or "")
+    if context_status in {"hard_stop", "exceeded"} and actual_command != "compact":
+        return RuntimeReadinessCheck(
+            name="agent_loop_run_summary",
+            status="blocked",
+            summary=(
+                f"Agent loop summary records context pressure `{context_status}` "
+                f"but recommends `{actual_command}` instead of `compact`."
+            ),
+            recommended_action="Run `asteria compact` before continuing the bounded loop.",
+            evidence_refs=evidence_refs,
+        )
+
     mismatch = _agent_loop_summary_id_mismatch(run_dirs, validator, summary)
     if mismatch:
         return RuntimeReadinessCheck(

@@ -51,6 +51,43 @@
     "latest_execution_id": { "type": ["string", "null"] },
     "latest_observation_id": { "type": ["string", "null"] },
     "latest_action": { "type": ["string", "null"] },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "status": { "type": ["string", "null"] },
+        "highest_label": { "type": ["string", "null"] },
+        "highest_ratio": { "type": ["number", "null"] },
+        "model_calls": { "type": "integer" },
+        "tool_calls": { "type": "integer" },
+        "tool_budget_units": { "type": "integer" },
+        "repair_attempts": { "type": "integer" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "context_pressure": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "context_window_ratio": { "type": "number" },
+        "context_window_tokens": { "type": "integer" },
+        "latest_context_estimated_tokens": { "type": "integer" },
+        "max_context_estimated_tokens": { "type": "integer" },
+        "context_compactions": { "type": "integer" },
+        "duplicate_content_hash_count": { "type": "integer" }
+      }
+    },
+    "recovery_chain": {
+      "type": "object",
+      "properties": {
+        "required": { "type": "boolean" },
+        "satisfied": { "type": "boolean" },
+        "latest_action": { "type": ["string", "null"] },
+        "observation_status": { "type": ["string", "null"] },
+        "observation_next_recommended_action": { "type": ["string", "null"] },
+        "allowed_actions": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": "string" }
+      }
+    },
     "evidence_refs": { "type": "array", "items": { "type": "string" } }
   }
 }

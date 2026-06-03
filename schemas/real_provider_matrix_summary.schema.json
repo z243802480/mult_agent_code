@@ -58,6 +58,53 @@
           "run_id": { "type": ["string", "null"] },
           "final_report": { "type": ["string", "null"] },
           "diagnostics": { "type": "object" },
+          "agent_loop": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "summary_path": { "type": "string" },
+              "failure_summary": { "type": "string" },
+              "exit_reason": { "type": ["string", "null"] },
+              "recommended_command": { "type": ["string", "null"] },
+              "latest_action": { "type": ["string", "null"] },
+              "rounds_completed": { "type": ["integer", "null"] },
+              "max_rounds": { "type": ["integer", "null"] },
+              "budget_status": { "type": ["string", "null"] },
+              "budget_highest_label": { "type": ["string", "null"] },
+              "context_pressure_status": { "type": ["string", "null"] },
+              "context_window_ratio": { "type": ["number", "null"] },
+              "recovery_required": { "type": ["boolean", "null"] },
+              "recovery_satisfied": { "type": ["boolean", "null"] }
+            }
+          },
+          "context_strategy": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "model_calls_path": { "type": "string" },
+              "failure_summary": { "type": "string" },
+              "model_call_count": { "type": "integer" },
+              "context_modes": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "fast_path_task_kinds": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "purpose_context_modes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": { "type": "integer" }
+                }
+              },
+              "context_mode_recorded": { "type": "integer" },
+              "slim_model_calls": { "type": "integer" },
+              "average_context_estimated_tokens": { "type": ["number", "null"] },
+              "max_context_estimated_tokens": { "type": ["integer", "null"] }
+            }
+          },
           "failure_type": { "type": ["string", "null"] },
           "failure_summary": { "type": ["string", "null"] },
           "evidence_refs": { "type": "array", "items": { "type": "string" } },

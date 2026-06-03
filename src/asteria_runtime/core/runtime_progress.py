@@ -23,6 +23,17 @@ def build_runtime_progress(
     todo = todo_view or path.get("todo_view") or {}
     validation = validation_conclusion or {}
     loop_summary = agent_loop_summary or {}
+    budget = loop_summary.get("budget") if isinstance(loop_summary.get("budget"), dict) else {}
+    context_pressure = (
+        loop_summary.get("context_pressure")
+        if isinstance(loop_summary.get("context_pressure"), dict)
+        else {}
+    )
+    recovery_chain = (
+        loop_summary.get("recovery_chain")
+        if isinstance(loop_summary.get("recovery_chain"), dict)
+        else {}
+    )
     command = canonical_next_command(path, None)
     current_todo = todo.get("current") or {}
     observation = latest_observation or {}
@@ -50,11 +61,53 @@ def build_runtime_progress(
             "latest_observation": _observation_summary(observation),
             "exit_reason": loop_summary.get("exit_reason")
             or loop_summary.get("stop_reason"),
+            "recommended_command": loop_summary.get("recommended_command"),
             "rounds": loop_summary.get("rounds")
             or loop_summary.get("round_count")
             or loop_summary.get("iteration_count"),
+            "rounds_completed": loop_summary.get("rounds_completed"),
+            "max_rounds": loop_summary.get("max_rounds"),
+            "recovery": _recovery_summary(recovery_chain),
+            "budget": _budget_summary(budget),
+            "context_pressure": _context_pressure_summary(context_pressure),
         },
         "evidence_refs": _evidence_refs(path, execution, execution_result, loop_summary),
+    }
+
+
+def _recovery_summary(recovery_chain: dict) -> dict[str, Any]:
+    return {
+        "required": recovery_chain.get("required"),
+        "satisfied": recovery_chain.get("satisfied"),
+        "reason": recovery_chain.get("reason"),
+        "latest_action": recovery_chain.get("latest_action"),
+        "observation_status": recovery_chain.get("observation_status"),
+        "observation_next_recommended_action": recovery_chain.get(
+            "observation_next_recommended_action"
+        ),
+    }
+
+
+def _budget_summary(budget: dict) -> dict[str, Any]:
+    return {
+        "status": budget.get("status"),
+        "highest_label": budget.get("highest_label"),
+        "highest_ratio": budget.get("highest_ratio"),
+        "model_calls": budget.get("model_calls"),
+        "tool_budget_units": budget.get("tool_budget_units"),
+        "repair_attempts": budget.get("repair_attempts"),
+    }
+
+
+def _context_pressure_summary(context_pressure: dict) -> dict[str, Any]:
+    return {
+        "status": context_pressure.get("status"),
+        "context_window_ratio": context_pressure.get("context_window_ratio"),
+        "latest_context_estimated_tokens": context_pressure.get(
+            "latest_context_estimated_tokens"
+        ),
+        "max_context_estimated_tokens": context_pressure.get("max_context_estimated_tokens"),
+        "context_compactions": context_pressure.get("context_compactions"),
     }
 
 

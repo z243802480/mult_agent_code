@@ -51,6 +51,16 @@ test("Studio main path can cancel a gated next action", async ({ page }) => {
   await expect(page.locator(".permissionCard.resolved.deny")).toBeVisible({ timeout: 10_000 });
 });
 
+test("Studio composer exposes product slash actions", async ({ page }) => {
+  await page.goto(`http://127.0.0.1:${port}/`);
+  await page.locator(".composer textarea").fill("/");
+  await expect(page.locator(".slashMenu", { hasText: "Plan" })).toBeVisible();
+  await expect(page.locator(".slashMenu", { hasText: "Goal" })).toBeVisible();
+  await page.locator(".slashMenu button").filter({ hasText: "Plan" }).click();
+  await expect(page.locator(".composerActionBar", { hasText: "Plan" })).toBeVisible();
+  await expect(page.locator(".composer textarea")).toHaveValue(/Create a plan for/);
+});
+
 async function driveToPermissionRequest(page) {
   await page.goto(`http://127.0.0.1:${port}/`);
 
@@ -60,9 +70,22 @@ async function driveToPermissionRequest(page) {
   await expect(page.locator(".contextWindowPanel", { hasText: "Free space" })).toBeVisible();
   await expect(page.locator(".contextWindowPanel", { hasText: "Detailed breakdown is available in diagnostics." })).toBeVisible();
   await page.locator(".contextWindowTrigger").click();
+  await expect(page.locator(".threadProcessControls", { hasText: "Expand process" })).toBeVisible();
+  await expect(page.locator(".runtimeLoopSignals", { hasText: "Recovery" })).toBeVisible();
+  await expect(page.locator(".runtimeLoopSignals", { hasText: "covered" })).toBeVisible();
+  await expect(page.locator(".runtimeLoopSignals", { hasText: "Budget" })).toBeVisible();
+  await expect(page.locator(".runtimeLoopSignals", { hasText: "Context" })).toBeVisible();
+  await page.locator(".threadProcessControls button").filter({ hasText: "Expand process" }).click();
+  await expect(page.locator(".turnMiddleSteps").first()).toBeVisible();
+  await page.locator(".threadProcessControls button").filter({ hasText: "Collapse process" }).click();
+  await expect(page.locator(".turnMiddleSteps")).toHaveCount(0);
   await page.locator(".turnMiddleBadge").first().click();
   await expect(page.locator(".turnMiddleBadge.selected").first()).toBeVisible();
   await expect(page.locator(".detailTitle", { hasText: "Runtime progress" })).toBeVisible();
+  await page.locator(".inspectorTabList button").filter({ hasText: "Artifacts" }).click();
+  await expect(page.locator(".refList button", { hasText: "run_loop_summary.json" })).toBeVisible();
+  await page.locator(".refList button").filter({ hasText: "run_loop_summary.json" }).click();
+  await expect(page.locator(".preview", { hasText: "run_loop_summary.json" })).toBeVisible();
   await expect(page.getByText("Choose the next Studio path.")).toBeVisible();
   await expect(page.locator(".decisionOptions button").filter({ hasText: "Continue" })).toBeVisible();
 
@@ -108,7 +131,36 @@ async function writeFixture() {
     },
     tool_use: { target_task_id: "task-0001", status: "done", summary: "Smoke evidence recorded." },
     verification: { status: "passed", summary: "Smoke validation passed." },
-    loop: { exit_reason: "review_passed", rounds: 1 },
+    loop: {
+      exit_reason: "review_passed",
+      recommended_command: "asteria accept --latest",
+      rounds: 1,
+      rounds_completed: 1,
+      max_rounds: 2,
+      recovery: {
+        required: true,
+        satisfied: true,
+        reason: "Loop exit is covered by `stop` recovery semantics.",
+        latest_action: "stop",
+        observation_status: "succeeded",
+        observation_next_recommended_action: "stop",
+      },
+      budget: {
+        status: "within_budget",
+        highest_label: "model_calls",
+        highest_ratio: 0.1,
+        model_calls: 1,
+        tool_budget_units: 1,
+        repair_attempts: 0,
+      },
+      context_pressure: {
+        status: "within_budget",
+        context_window_ratio: 0.24,
+        latest_context_estimated_tokens: 48_000,
+        max_context_estimated_tokens: 48_000,
+        context_compactions: 0,
+      },
+    },
     evidence_refs: ["run_loop_summary.json", "final_report_summary.json"],
   };
   await writeJson("run_loop_summary.json", {
@@ -194,6 +246,7 @@ async function writeFixture() {
       status: "completed",
       title: "Runtime progress",
       summary: "Interactive smoke runtime progress.",
+      evidence_refs: ["run_loop_summary.json"],
       display_level: "main",
       created_at: "2099-01-01T00:00:00Z",
     },

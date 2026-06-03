@@ -41,6 +41,32 @@ def summarize_real_provider_matrix(
     route = str(latest_case.get("route") or "unknown") if latest_case else "unknown"
     reason = str(latest_case.get("reason") or "No reason recorded.") if latest_case else ""
     evidence_refs = [str(ref) for ref in latest_case.get("evidence_refs") or []][:5]
+    agent_loop_cases = [
+        case.get("agent_loop") for case in cases if isinstance(case.get("agent_loop"), dict)
+    ]
+    recorded_agent_loops = [
+        loop for loop in agent_loop_cases if str(loop.get("status") or "") == "recorded"
+    ]
+    recovery_required = [
+        loop for loop in recorded_agent_loops if loop.get("recovery_required") is True
+    ]
+    recovery_satisfied = [
+        loop for loop in recovery_required if loop.get("recovery_satisfied") is True
+    ]
+    context_strategy_cases = [
+        case.get("context_strategy")
+        for case in cases
+        if isinstance(case.get("context_strategy"), dict)
+    ]
+    recorded_context = [
+        item for item in context_strategy_cases if str(item.get("status") or "") == "recorded"
+    ]
+    context_modes = _sum_nested_counts(recorded_context, "context_modes")
+    fast_path_task_kinds = _sum_nested_counts(recorded_context, "fast_path_task_kinds")
+    context_mode_recorded = sum(int(item.get("context_mode_recorded") or 0) for item in recorded_context)
+    slim_model_calls = sum(int(item.get("slim_model_calls") or 0) for item in recorded_context)
+    model_call_count = sum(int(item.get("model_call_count") or 0) for item in recorded_context)
+    average_context_tokens = _weighted_average_context_tokens(recorded_context)
     failed_summaries = [
         {
             "name": case.get("name"),
@@ -64,6 +90,18 @@ def summarize_real_provider_matrix(
         "latest_route": route,
         "latest_reason": reason,
         "latest_evidence_refs": evidence_refs,
+        "agent_loop_case_count": len(agent_loop_cases),
+        "agent_loop_recorded": len(recorded_agent_loops),
+        "recovery_required": len(recovery_required),
+        "recovery_satisfied": len(recovery_satisfied),
+        "context_strategy_case_count": len(context_strategy_cases),
+        "context_strategy_recorded": len(recorded_context),
+        "context_modes": context_modes,
+        "fast_path_task_kinds": fast_path_task_kinds,
+        "context_mode_recorded": context_mode_recorded,
+        "slim_model_calls": slim_model_calls,
+        "model_call_count": model_call_count,
+        "average_context_estimated_tokens": average_context_tokens,
         "failed_cases": failed_summaries,
     }
     if summary_path is not None:
@@ -84,6 +122,19 @@ def real_provider_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
         f"case={matrix.get('latest_case', 'unknown')}",
         f"  reason: {matrix.get('latest_reason') or 'No reason recorded.'}",
     ]
+    if matrix.get("agent_loop_case_count"):
+        lines.append(
+            "  agent loop: "
+            f"{matrix.get('agent_loop_recorded', 0)}/{matrix.get('agent_loop_case_count', 0)} recorded, "
+            f"recovery {matrix.get('recovery_satisfied', 0)}/{matrix.get('recovery_required', 0)} covered"
+        )
+    if matrix.get("context_strategy_case_count"):
+        lines.append(
+            "  context: "
+            f"{matrix.get('context_strategy_recorded', 0)}/{matrix.get('context_strategy_case_count', 0)} recorded, "
+            f"slim {matrix.get('slim_model_calls', 0)}/{matrix.get('model_call_count', 0)} calls, "
+            f"modes={matrix.get('context_modes') or {}}"
+        )
     evidence_refs = matrix.get("latest_evidence_refs") or []
     if evidence_refs:
         lines.append(f"  evidence: {', '.join(str(ref) for ref in evidence_refs[:3])}")
@@ -101,6 +152,35 @@ def real_provider_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
                 f"({case.get('failure_summary') or case.get('reason') or 'no summary'})"
             )
     return lines
+
+
+def _sum_nested_counts(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        raw = item.get(key)
+        if not isinstance(raw, dict):
+            continue
+        for name, value in raw.items():
+            try:
+                counts[str(name)] = counts.get(str(name), 0) + int(value)
+            except (TypeError, ValueError):
+                continue
+    return dict(sorted(counts.items()))
+
+
+def _weighted_average_context_tokens(items: list[dict[str, Any]]) -> float | None:
+    weighted_sum = 0.0
+    total_weight = 0
+    for item in items:
+        average = item.get("average_context_estimated_tokens")
+        weight = int(item.get("model_call_count") or 0)
+        if not isinstance(average, (int, float)) or weight <= 0:
+            continue
+        weighted_sum += float(average) * weight
+        total_weight += weight
+    if total_weight <= 0:
+        return None
+    return weighted_sum / total_weight
 
 
 def _read_json(path: Path) -> dict[str, Any]:

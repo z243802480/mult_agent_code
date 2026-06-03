@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.models.route_diagnostics import route_diagnostic_for_tier
 from asteria_runtime.storage.json_store import JsonStore
@@ -40,31 +41,37 @@ class CapabilityFeedbackAdvisor:
     def goal_spec_execution_plan(self, agent_dir: Path, goal: str) -> dict[str, Any]:
         evaluation = self._provider_route_strategy_evaluation(agent_dir)
         decision = str(evaluation.get("decision") or "unknown")
-        low_risk = _is_low_risk_goal_spec_goal(goal)
+        fast_path = classify_fast_path(goal)
+        low_risk = fast_path.task_kind in {"doc_update", "simple_file", "single_file_bugfix"}
+        selected_tier = fast_path.goal_spec_tier
         plan: dict[str, Any] = {
             "purpose": "goal_spec",
             "default_model_tier": "strong",
-            "selected_model_tier": "strong",
+            "selected_model_tier": selected_tier,
             "decision": decision,
             "low_risk_goal": low_risk,
+            "fast_path": fast_path.to_dict(),
             "reason": str(evaluation.get("reason") or ""),
             "provider_route_strategy": evaluation,
-            "actions": [],
+            "actions": ["fast_path_goal_spec_medium_first"] if selected_tier == "medium" else [],
         }
         if decision == "retry_or_downgrade":
             plan["actions"].append("retry_strong_goal_spec_once_before_downgrade")
-            if low_risk:
+            if low_risk or selected_tier == "medium":
                 plan["selected_model_tier"] = "medium"
                 plan["actions"].append("downgrade_low_risk_goal_spec_to_medium")
         elif decision == "block_validation":
             plan["actions"].append("block_validation_until_strong_goal_spec_stable")
-            if low_risk and not _hard_provider_failure(evaluation):
+            if (low_risk or selected_tier == "medium") and not _hard_provider_failure(evaluation):
                 plan["selected_model_tier"] = "medium"
                 plan["actions"].append("downgrade_low_risk_goal_spec_to_medium")
         elif decision == "allow_cost_saver":
             plan["actions"].append("allow_cost_saver_strong_goal_spec_for_small_validation")
         elif decision == "continue_primary":
-            plan["actions"].append("continue_primary_strong_goal_spec")
+            if selected_tier == "strong":
+                plan["actions"].append("continue_primary_strong_goal_spec")
+            else:
+                plan["actions"].append("skip_strong_goal_spec_for_fast_path")
         else:
             plan["actions"].append("collect_goal_spec_route_evidence")
         return plan
@@ -574,35 +581,3 @@ def _model_call_failure_type(call: dict[str, Any]) -> str:
     if error_type:
         return error_type
     return "model_call_failed"
-
-
-def _is_low_risk_goal_spec_goal(goal: str) -> bool:
-    text = goal.lower()
-    doc_signals = (
-        "doc",
-        "docs",
-        "documentation",
-        "readme",
-        "markdown",
-        "runbook",
-        "说明",
-        "文档",
-        "手册",
-    )
-    code_signals = (
-        "src/",
-        "test",
-        "pytest",
-        "implement",
-        "refactor",
-        "fix",
-        "cli",
-        "api",
-        "代码",
-        "实现",
-        "修复",
-        "重构",
-    )
-    return any(signal in text for signal in doc_signals) and not any(
-        signal in text for signal in code_signals
-    )

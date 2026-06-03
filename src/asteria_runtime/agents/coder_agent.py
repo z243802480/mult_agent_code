@@ -10,6 +10,7 @@ from asteria_runtime.core.agent_loop_decision import (
     validate_decision_matches_execution_action,
 )
 from asteria_runtime.core.context_prompt_view import context_prompt_view
+from asteria_runtime.core.context_slimming import slim_execution_context
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -33,6 +34,12 @@ class CoderAgent:
         run_id: str,
         runtime_context: dict | None = None,
     ) -> dict:
+        base_runtime_context = runtime_context or {}
+        prompt_runtime_context = slim_execution_context(
+            base_runtime_context,
+            task=task,
+            goal_spec=goal_spec,
+        )
         messages = [
             ChatMessage(role="system", content=self._system_prompt()),
             ChatMessage(
@@ -42,7 +49,7 @@ class CoderAgent:
                     goal_spec,
                     project_config,
                     available_tools,
-                    runtime_context or {},
+                    prompt_runtime_context,
                 ),
             ),
         ]
@@ -60,10 +67,10 @@ class CoderAgent:
                     "agent_id": "CoderAgent",
                     "task_id": task["task_id"],
                     "attempt": attempt + 1,
-                    "runtime_profile_id": (runtime_context or {}).get("runtime_profile_id"),
-                    "model_profile_id": (runtime_context or {}).get("model_profile_id"),
-                    "agent_role_contract": (runtime_context or {}).get("agent_role_contract"),
-                    **self._envelope_metadata(runtime_context or {}),
+                    "runtime_profile_id": base_runtime_context.get("runtime_profile_id"),
+                    "model_profile_id": base_runtime_context.get("model_profile_id"),
+                    "agent_role_contract": base_runtime_context.get("agent_role_contract"),
+                    **self._envelope_metadata(prompt_runtime_context),
                 },
             )
             response = self.model_client.chat(request)
@@ -111,6 +118,12 @@ class CoderAgent:
             if isinstance(context_envelope, dict):
                 metadata["context_envelope_hash"] = context_envelope.get("payload_hash")
             metadata["context_envelope_path"] = context_package.get("context_envelope_path")
+        context_policy = runtime_context.get("context_policy")
+        if isinstance(context_policy, dict):
+            metadata["context_mode"] = context_policy.get("mode")
+            fast_path = context_policy.get("fast_path")
+            if isinstance(fast_path, dict):
+                metadata["fast_path_task_kind"] = fast_path.get("task_kind")
         return metadata
 
     def _validated_action(

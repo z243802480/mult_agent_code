@@ -609,7 +609,33 @@ def test_goal_spec_execution_plan_downgrades_low_risk_docs_when_route_blocked(
 
     assert plan["decision"] == "block_validation"
     assert plan["selected_model_tier"] == "medium"
+    assert plan["fast_path"]["task_kind"] == "doc_update"
     assert "downgrade_low_risk_goal_spec_to_medium" in plan["actions"]
+
+
+def test_goal_spec_execution_plan_keeps_high_risk_goal_on_strong(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    _write_provider_route_policy(agent_dir, validator)
+    _write_goal_spec_profile(
+        agent_dir,
+        validator,
+        model="glm-5.1",
+        total_calls=3,
+        success_calls=3,
+        success_rate=1.0,
+        failure_types={},
+    )
+
+    plan = CapabilityFeedbackAdvisor(validator).goal_spec_execution_plan(
+        agent_dir,
+        "Fix auth permission handling and deploy to production.",
+    )
+
+    assert plan["decision"] == "continue_primary"
+    assert plan["selected_model_tier"] == "strong"
+    assert plan["fast_path"]["task_kind"] == "high_risk"
+    assert "continue_primary_strong_goal_spec" in plan["actions"]
 
 
 def test_capability_feedback_uses_real_provider_matrix_signals(tmp_path: Path) -> None:

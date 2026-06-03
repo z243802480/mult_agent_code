@@ -84,13 +84,44 @@ function debugAnswerFor(question: string, runDetail: RunDetailPayload | null, ru
   return [`Run: ${runId || "latest"}`, `Current blocker: ${blocker}`, `Recommended next action: ${next}`, `Route: ${routeLine}`].join("\n");
 }
 
-function RefList({ title, items }: { title: string; items: string[] }) {
+function RefList({
+  title,
+  items,
+  runId,
+  onOpenFile,
+}: {
+  title: string;
+  items: string[];
+  runId?: string;
+  onOpenFile?: (path: string) => Promise<void>;
+}) {
   return (
     <div className="refList">
       <small>{title}</small>
-      {items.map((item) => <code key={item}>{item}</code>)}
+      {items.map((item) => {
+        const path = evidenceRefToPath(item, runId);
+        if (path && onOpenFile) {
+          return (
+            <button key={item} type="button" onClick={() => void onOpenFile(path)}>
+              <FileText size={12} />
+              <span>{item}</span>
+            </button>
+          );
+        }
+        return <code key={item}>{item}</code>;
+      })}
     </div>
   );
+}
+
+function evidenceRefToPath(value: string, runId?: string): string {
+  const text = String(value || "").trim().replace(/\\/g, "/");
+  if (!text) return "";
+  if (text.startsWith(".asteria/runs/")) return text;
+  if (runId && /^[A-Za-z0-9_.-]+\.(json|jsonl|md|txt|log)$/i.test(text)) {
+    return `.asteria/runs/${runId}/${text}`;
+  }
+  return "";
 }
 
 function KeyValueList({ items }: { items: { label: string; value: string }[] }) {
@@ -119,7 +150,10 @@ function RecordList({ items, render }: { items: AnyRecord[]; render: (item: AnyR
   );
 }
 
-function buildInspectorSections(event: StudioEvent | null): InspectorSection[] {
+function buildInspectorSections(
+  event: StudioEvent | null,
+  onOpenFile?: (path: string) => Promise<void>
+): InspectorSection[] {
   if (!event) return [];
   const shellItems = [
     ...(event.command?.length ? [{ label: "Command", value: event.command.join(" ") }] : []),
@@ -177,8 +211,8 @@ function buildInspectorSections(event: StudioEvent | null): InspectorSection[] {
       empty: "This event has no artifact or evidence references.",
       content: (
         <>
-          {artifacts.length > 0 && <RefList title="Artifacts" items={artifacts} />}
-          {evidence.length > 0 && <RefList title="Evidence" items={evidence} />}
+          {artifacts.length > 0 && <RefList title="Artifacts" items={artifacts} runId={event.run_id} onOpenFile={onOpenFile} />}
+          {evidence.length > 0 && <RefList title="Evidence" items={evidence} runId={event.run_id} onOpenFile={onOpenFile} />}
         </>
       ),
     },
@@ -752,7 +786,7 @@ export function Inspector({
 }) {
   const eventFiles = useMemo(() => files.slice(0, 12), [files]);
   const routes = (overview?.modelRoutes?.slice(0, 5) ?? []) as AnyRecord[];
-  const inspectorSections = useMemo(() => buildInspectorSections(event), [event]);
+  const inspectorSections = useMemo(() => buildInspectorSections(event, onOpenFile), [event, onOpenFile]);
   const showRunOverviewFirst = !event && Boolean(runDetail?.ok);
 
   return (

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import re
 
 from asteria_runtime.core.budget import BudgetController, BudgetExceededError
 from asteria_runtime.core.context_budget import estimate_request_context
@@ -110,11 +112,12 @@ class FakeModelClient:
     def _goal_spec(self, request: ChatRequest) -> dict:
         prompt = request.messages[-1].content
         goal = self._extract_goal(prompt)
+        contract = self._goal_contract(goal)
         return {
             "schema_version": "0.1.0",
             "goal_id": "goal-0001",
             "original_goal": goal,
-            "normalized_goal": f"Deliver offline artifact for: {goal}",
+            "normalized_goal": f"Deliver deterministic fake artifact for: {goal}",
             "goal_type": "software_tool",
             "assumptions": ["offline deterministic fake model is acceptable for verification"],
             "constraints": ["local_first", "no_network"],
@@ -123,63 +126,54 @@ class FakeModelClient:
                 {
                     "id": "req-0001",
                     "priority": "must",
-                    "description": "Create an offline verification artifact",
+                    "description": contract["description"],
                     "source": "inferred",
-                    "acceptance": ["offline_artifact.txt exists"],
+                    "acceptance": contract["acceptance"],
+                    "expected_artifacts": [contract["path"]],
                 }
             ],
-            "target_outputs": ["file"],
-            "definition_of_done": ["offline_artifact.txt exists", "verification passes"],
-            "verification_strategy": ["filesystem smoke check"],
+            "target_outputs": [contract["path"]],
+            "definition_of_done": contract["definition_of_done"],
+            "verification_strategy": [contract["verification_command"]],
             "budget": {"max_iterations": 8, "max_model_calls": 60},
         }
 
     def _execution_action(self, request: ChatRequest) -> dict:
         payload = json.loads(request.messages[-1].content)
         task = payload["task"]
-        tool_calls = [
-            {
-                "tool_name": "write_file",
-                "args": {
-                    "path": "offline_artifact.txt",
-                    "content": "offline verification artifact\n",
-                    "overwrite": True,
-                },
-                "reason": "create deterministic artifact",
-            }
-        ]
-        for path in task.get("expected_changed_files") or []:
-            if not isinstance(path, str) or path == "offline_artifact.txt":
-                continue
+        target_paths = self._task_target_paths(task)
+        tool_calls = []
+        for path in target_paths:
+            content = self._content_for_task_path(task, path)
             tool_calls.append(
                 {
                     "tool_name": "write_file",
                     "args": {
                         "path": path,
-                        "content": "offline verification artifact\n",
+                        "content": content,
                         "overwrite": True,
                     },
-                    "reason": "satisfy declared changed-file contract",
+                    "reason": "satisfy declared fake-model file contract",
+                }
+            )
+        verification = []
+        if target_paths:
+            path = target_paths[0]
+            content = self._content_for_task_path(task, path)
+            verification.append(
+                {
+                    "tool_name": "run_command",
+                    "args": {"command": self._verification_command(path, content.strip())},
+                    "reason": "verify deterministic fake artifact",
                 }
             )
         return {
             "schema_version": "0.1.0",
             "task_id": task["task_id"],
-            "summary": "Create offline verification artifact.",
+            "summary": "Create deterministic fake artifact.",
             "tool_calls": tool_calls,
-            "verification": [
-                {
-                    "tool_name": "run_command",
-                    "args": {
-                        "command": (
-                            "python -c \"from pathlib import Path; "
-                            "assert Path('offline_artifact.txt').exists()\""
-                        )
-                    },
-                    "reason": "verify deterministic artifact",
-                }
-            ],
-            "completion_notes": "offline_artifact.txt exists",
+            "verification": verification,
+            "completion_notes": f"{target_paths[0]} exists" if target_paths else "no artifact target",
         }
 
     def _eval_report(self, request: ChatRequest) -> dict:
@@ -329,6 +323,92 @@ class FakeModelClient:
             return "offline verification"
         after_marker = prompt.split(marker, 1)[1]
         return after_marker.split("Project context:", 1)[0].strip() or "offline verification"
+
+    def _goal_contract(self, goal: str) -> dict:
+        path = self._extract_first_path(goal) or "offline_artifact.txt"
+        content = self._content_for_goal(goal, path)
+        return {
+            "path": path,
+            "description": f"Create or update {path} with deterministic fake-model content.",
+            "acceptance": [
+                f"{path} exists",
+                f"{path} contains {content.strip()!r}",
+                "local verification passes",
+            ],
+            "definition_of_done": [f"{path} exists", f"{path} contains {content.strip()!r}"],
+            "verification_command": self._verification_command(path, content.strip()),
+        }
+
+    def _extract_first_path(self, text: str) -> str | None:
+        match = re.search(
+            r"[\w./-]+\.(?:py|md|txt|json|html|css|js|ts|tsx|pdf)",
+            text,
+            flags=re.I,
+        )
+        return match.group(0).replace("\\", "/") if match else None
+
+    def _content_for_goal(self, goal: str, path: str) -> str:
+        lowered = goal.lower()
+        if path.endswith("calc.py") and "add(2, 3) returns 5" in lowered:
+            return "def add(a, b):\n    return a + b\n"
+        if path.endswith("repair_target.py") and "status() returns 'fixed'" in lowered:
+            return "def status():\n    return 'fixed'\n"
+        explicit = self._extract_content_phrase(goal)
+        if explicit:
+            if path.endswith(".md") and "heading" in lowered:
+                return f"# {explicit}\n\n- Review real-provider smoke evidence.\n"
+            return explicit.rstrip() + "\n"
+        if path.endswith(".md"):
+            title = path.rsplit("/", 1)[-1].rsplit(".", 1)[0].replace("_", " ").title()
+            return f"# {title}\n\n- Fake model deterministic artifact.\n"
+        return "offline verification artifact\n"
+
+    def _extract_content_phrase(self, text: str) -> str | None:
+        patterns = [
+            r"containing one line:\s*(.+)$",
+            r"containing:\s*(.+)$",
+            r"containing\s+(.+)$",
+            r"with the heading\s+(.+?)(?:\s+and\s+|$)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text, flags=re.I | re.S)
+            if match:
+                return " ".join(match.group(1).strip().strip("\"'").split())
+        return None
+
+    def _task_target_paths(self, task: dict) -> list[str]:
+        paths: list[str] = []
+        for field in ("expected_changed_files", "expected_artifacts", "write_scope"):
+            for item in task.get(field) or []:
+                if not isinstance(item, str):
+                    continue
+                path = item.replace("\\", "/")
+                if not self._extract_first_path(path):
+                    continue
+                if path not in paths:
+                    paths.append(path)
+        return paths or ["offline_artifact.txt"]
+
+    def _content_for_task_path(self, task: dict, path: str) -> str:
+        text = " ".join(
+            [
+                str(task.get("description") or ""),
+                " ".join(str(item) for item in task.get("acceptance") or []),
+            ]
+        )
+        quoted_contains = re.search(r"contains\s+(['\"])(.+?)\1", text, flags=re.I | re.S)
+        if quoted_contains:
+            return quoted_contains.group(2).replace("\\n", "\n").rstrip() + "\n"
+        return self._content_for_goal(text, path)
+
+    def _verification_command(self, path: str, expected_text: str) -> str:
+        encoded = base64.b64encode(expected_text.encode("utf-8")).decode("ascii")
+        return (
+            "python -c \"from pathlib import Path; import base64; "
+            f"p=Path({path!r}); assert p.exists(); "
+            f"expected=base64.b64decode({encoded!r}).decode('utf-8'); "
+            "assert expected in p.read_text(encoding='utf-8')\""
+        )
 
     def _estimate_tokens(self, request: ChatRequest) -> int:
         return max(1, sum(len(message.content) for message in request.messages) // 4)

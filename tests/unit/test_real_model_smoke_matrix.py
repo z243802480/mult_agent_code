@@ -9,6 +9,7 @@ from asteria_runtime.real_model_smoke import (
     SmokeResult,
     apply_setup_files,
     build_parser,
+    matrix_case_summary,
     matrix_cases,
     run_from_args,
 )
@@ -55,6 +56,105 @@ def test_p0_matrix_writes_durable_summary(tmp_path: Path, monkeypatch) -> None:
         final_report = workspace / ".asteria" / "runs" / "run-matrix" / "final_report.md"
         final_report.parent.mkdir(parents=True, exist_ok=True)
         final_report.write_text("# Final\n", encoding="utf-8")
+        (final_report.parent / "agent_loop_run_summary.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "run_id": "run-matrix",
+                    "task_id": "task-1",
+                    "created_at": "2026-06-03T10:00:00+08:00",
+                    "status": "completed",
+                    "exit_reason": "completed",
+                    "rounds_completed": 1,
+                    "max_rounds": 2,
+                    "summary": "Matrix case completed.",
+                    "recommended_command": None,
+                    "latest_decision_id": "agent-loop-decision-0001",
+                    "latest_execution_id": "agent-loop-execution-0001",
+                    "latest_observation_id": "agent-loop-observation-0001",
+                    "latest_action": "tool",
+                    "budget": {
+                        "status": "within_budget",
+                        "highest_label": "model_calls",
+                        "highest_ratio": 0.1,
+                        "model_calls": 1,
+                        "tool_calls": 1,
+                        "tool_budget_units": 1,
+                        "repair_attempts": 0,
+                        "warnings": [],
+                    },
+                    "context_pressure": {
+                        "status": "within_budget",
+                        "context_window_ratio": 0.05,
+                        "context_window_tokens": 1000000,
+                        "latest_context_estimated_tokens": 50000,
+                        "max_context_estimated_tokens": 50000,
+                        "context_compactions": 0,
+                        "duplicate_content_hash_count": 0,
+                    },
+                    "recovery_chain": {
+                        "required": False,
+                        "satisfied": True,
+                        "latest_action": "tool",
+                        "observation_status": "succeeded",
+                        "observation_next_recommended_action": None,
+                        "allowed_actions": ["ask", "repair", "replan", "stop"],
+                        "reason": "No recovery required.",
+                    },
+                    "evidence_refs": [],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (final_report.parent / "model_calls.jsonl").write_text(
+            "\n".join(
+                [
+                    json.dumps(
+                        {
+                            "schema_version": "0.1.0",
+                            "model_call_id": "modelcall-0001",
+                            "run_id": "run-matrix",
+                            "agent_id": "CoderAgent",
+                            "purpose": "task_execution",
+                            "model_provider": "fake",
+                            "model_name": "fake",
+                            "model_tier": "medium",
+                            "context_mode": "slim",
+                            "fast_path_task_kind": "simple_file",
+                            "context_estimate": {"estimated_tokens": 1000},
+                            "input_tokens": 10,
+                            "output_tokens": 20,
+                            "status": "success",
+                            "created_at": "2026-06-03T10:00:00+08:00",
+                            "summary": "model call succeeded",
+                        }
+                    ),
+                    json.dumps(
+                        {
+                            "schema_version": "0.1.0",
+                            "model_call_id": "modelcall-0002",
+                            "run_id": "run-matrix",
+                            "agent_id": "ReviewAgent",
+                            "purpose": "run_review",
+                            "model_provider": "fake",
+                            "model_name": "fake",
+                            "model_tier": "medium",
+                            "context_mode": "slim",
+                            "fast_path_task_kind": "simple_file",
+                            "context_estimate": {"estimated_tokens": 2000},
+                            "input_tokens": 10,
+                            "output_tokens": 20,
+                            "status": "success",
+                            "created_at": "2026-06-03T10:00:01+08:00",
+                            "summary": "model call succeeded",
+                        }
+                    ),
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         result = SmokeResult(
             workspace=workspace,
             run_id="run-matrix",
@@ -99,7 +199,61 @@ def test_p0_matrix_writes_durable_summary(tmp_path: Path, monkeypatch) -> None:
         "artifact_creation",
     ]
     assert all(case["evidence_refs"] for case in summary["cases"])
+    assert all(case["agent_loop"]["status"] == "recorded" for case in summary["cases"])
+    assert all(case["agent_loop"]["recovery_satisfied"] is True for case in summary["cases"])
+    assert all(case["context_strategy"]["status"] == "recorded" for case in summary["cases"])
+    assert all(case["context_strategy"]["slim_model_calls"] == 2 for case in summary["cases"])
     SchemaValidator(Path("schemas")).validate("real_provider_matrix_summary", summary)
+
+
+def test_matrix_case_summary_extracts_context_strategy_from_failed_workspace(
+    tmp_path: Path,
+) -> None:
+    case = P0_MATRIX_CASES[0]
+    workspace = tmp_path / "failed-workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-failed"
+    run_dir.mkdir(parents=True)
+    (workspace / ".asteria" / "current_session.json").write_text(
+        json.dumps({"session_id": "run-failed"}),
+        encoding="utf-8",
+    )
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "model_call_id": "modelcall-0001",
+                "run_id": "run-failed",
+                "agent_id": "CoderAgent",
+                "purpose": "task_execution",
+                "model_provider": "fake",
+                "model_name": "fake",
+                "model_tier": "medium",
+                "context_mode": "slim",
+                "fast_path_task_kind": "simple_file",
+                "context_estimate": {"total_tokens": 1200},
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "status": "success",
+                "created_at": "2026-06-03T10:00:00+08:00",
+                "summary": "model call succeeded",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = matrix_case_summary(
+        case,
+        workspace=workspace,
+        summary_json=tmp_path / "case_summary.json",
+        failure=RuntimeError("expected failure"),
+    )
+
+    assert summary["run_id"] is None
+    assert summary["context_strategy"]["status"] == "recorded"
+    assert summary["context_strategy"]["slim_model_calls"] == 1
+    assert summary["context_strategy"]["context_modes"] == {"slim": 1}
+    assert summary["context_strategy"]["average_context_estimated_tokens"] == 1200
 
 
 def test_matrix_setup_files_stay_inside_workspace(tmp_path: Path) -> None:

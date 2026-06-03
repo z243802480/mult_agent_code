@@ -1530,6 +1530,7 @@ class ExecuteCommand:
         latest_observation: dict | None,
         evidence_refs: list[str] | None = None,
     ) -> dict | None:
+        budget_state, context_pressure = self._agent_loop_summary_pressure(context)
         record = build_agent_loop_run_summary(
             run_id=context.run_id,
             task_id=task_id,
@@ -1543,12 +1544,43 @@ class ExecuteCommand:
             latest_execution=latest_execution,
             latest_observation=latest_observation,
             evidence_refs=evidence_refs,
+            budget=budget_state,
+            context_pressure=context_pressure,
         )
         return persist_agent_loop_run_summary(
             run_dir=context.run_dir,
             validator=context.validator,
             summary=record,
         )
+
+    def _agent_loop_summary_pressure(
+        self,
+        context: RuntimeContext,
+    ) -> tuple[dict, dict]:
+        if context.budget is None:
+            return ({}, {})
+        report = context.budget.cost_report()
+        pressure = BudgetController.pressure(context.policy, report)
+        budget_state = {
+            "status": pressure.get("status"),
+            "highest_label": pressure.get("highest_label"),
+            "highest_ratio": pressure.get("highest_ratio"),
+            "model_calls": report.get("model_calls", 0),
+            "tool_calls": report.get("tool_calls", 0),
+            "tool_budget_units": report.get("tool_budget_units", report.get("tool_calls", 0)),
+            "repair_attempts": report.get("repair_attempts", 0),
+            "warnings": list(report.get("warnings") or []),
+        }
+        context_pressure = {
+            "status": report.get("context_pressure_status", "within_budget"),
+            "context_window_ratio": report.get("context_window_ratio", 0.0),
+            "context_window_tokens": report.get("context_window_tokens", 0),
+            "latest_context_estimated_tokens": report.get("latest_context_estimated_tokens", 0),
+            "max_context_estimated_tokens": report.get("max_context_estimated_tokens", 0),
+            "context_compactions": report.get("context_compactions", 0),
+            "duplicate_content_hash_count": len(report.get("context_duplicate_content_hashes") or []),
+        }
+        return (budget_state, context_pressure)
 
     def _loop_continuation_requested(self, *, next_action: dict, attempt_status: str) -> bool:
         expected = next_action.get("expected_observation")

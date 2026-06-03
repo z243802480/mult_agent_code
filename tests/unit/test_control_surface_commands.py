@@ -2343,13 +2343,24 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
     status_result = StatusCommand(tmp_path).run()
     status_payload = status_result.to_dict()
     assert status_payload["latest_real_provider_matrix"]["latest_route"] == "repair"
+    assert status_payload["latest_real_provider_matrix"]["agent_loop_recorded"] == 2
+    assert status_payload["latest_real_provider_matrix"]["recovery_satisfied"] == 1
+    assert status_payload["latest_real_provider_matrix"]["context_strategy_recorded"] == 2
+    assert status_payload["latest_real_provider_matrix"]["context_modes"] == {
+        "focused": 1,
+        "slim": 2,
+    }
+    assert status_payload["latest_real_provider_matrix"]["slim_model_calls"] == 2
     assert "Latest real-provider matrix: 1/2 passed" in status_result.to_text()
+    assert "agent loop: 2/2 recorded, recovery 1/1 covered" in status_result.to_text()
+    assert "context: 2/2 recorded, slim 2/3 calls" in status_result.to_text()
     assert "route=repair" in "\n".join(status_payload["evidence_chain"])
 
     gate_status_result = GateStatusCommand(tmp_path).run()
     gate_status_payload = gate_status_result.to_dict()
     assert gate_status_payload["latest_real_provider_matrix"]["latest_task_kind"] == "bugfix"
     assert "Latest real-provider matrix: 1/2 passed" in gate_status_result.to_text()
+    assert "context: 2/2 recorded, slim 2/3 calls" in gate_status_result.to_text()
     assert "Latest real-provider P0 matrix failed" in gate_status_payload["next_actions"][0]
     assert "requires repair" in gate_status_payload["next_actions"][0]
     assert "asteria debug" in gate_status_payload["next_actions"][1]
@@ -2377,6 +2388,7 @@ def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: P
 
     assert "## Latest Real Provider Matrix" in report
     assert "Latest real-provider matrix: 1/2 passed" in report
+    assert "context: 2/2 recorded, slim 2/3 calls" in report
     assert "single_file_bugfix" in report
     assert "repair" in report
 
@@ -2414,6 +2426,36 @@ def _real_provider_matrix_payload() -> dict:
                 "run_id": "run-file",
                 "final_report": "matrix-output/file_output/.asteria/runs/run-file/final_report.md",
                 "diagnostics": {},
+                "agent_loop": {
+                    "status": "recorded",
+                    "summary_path": "matrix-output/file_output/.asteria/runs/run-file/agent_loop_run_summary.json",
+                    "exit_reason": "completed",
+                    "recommended_command": None,
+                    "latest_action": "tool",
+                    "rounds_completed": 1,
+                    "max_rounds": 2,
+                    "budget_status": "within_budget",
+                    "budget_highest_label": "model_calls",
+                    "context_pressure_status": "within_budget",
+                    "context_window_ratio": 0.1,
+                    "recovery_required": False,
+                    "recovery_satisfied": True,
+                },
+                "context_strategy": {
+                    "status": "recorded",
+                    "model_calls_path": "file_output/model_calls.jsonl",
+                    "model_call_count": 2,
+                    "context_modes": {"slim": 2},
+                    "fast_path_task_kinds": {"simple_file": 2},
+                    "purpose_context_modes": {
+                        "task_execution": {"slim": 1},
+                        "run_review": {"slim": 1},
+                    },
+                    "context_mode_recorded": 2,
+                    "slim_model_calls": 2,
+                    "average_context_estimated_tokens": 1500,
+                    "max_context_estimated_tokens": 2000,
+                },
                 "failure_type": None,
                 "failure_summary": None,
                 "evidence_refs": ["file-output/final_report.json"],
@@ -2431,6 +2473,33 @@ def _real_provider_matrix_payload() -> dict:
                 "run_id": None,
                 "final_report": None,
                 "diagnostics": {},
+                "agent_loop": {
+                    "status": "recorded",
+                    "summary_path": "matrix-output/single_file_bugfix/.asteria/runs/run-bugfix/agent_loop_run_summary.json",
+                    "exit_reason": "tool_failed",
+                    "recommended_command": "debug",
+                    "latest_action": "repair",
+                    "rounds_completed": 2,
+                    "max_rounds": 3,
+                    "budget_status": "within_budget",
+                    "budget_highest_label": "tool_budget_units",
+                    "context_pressure_status": "within_budget",
+                    "context_window_ratio": 0.2,
+                    "recovery_required": True,
+                    "recovery_satisfied": True,
+                },
+                "context_strategy": {
+                    "status": "recorded",
+                    "model_calls_path": "bugfix/model_calls.jsonl",
+                    "model_call_count": 1,
+                    "context_modes": {"focused": 1},
+                    "fast_path_task_kinds": {"complex_change": 1},
+                    "purpose_context_modes": {"task_execution": {"focused": 1}},
+                    "context_mode_recorded": 1,
+                    "slim_model_calls": 0,
+                    "average_context_estimated_tokens": 3000,
+                    "max_context_estimated_tokens": 3000,
+                },
                 "failure_type": "SmokeFailure",
                 "failure_summary": "pytest failed",
                 "evidence_refs": ["bugfix/eval_report.json", "bugfix/tool_calls.jsonl"],

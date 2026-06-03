@@ -288,6 +288,32 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert active_goal["current_result"]["review"] == "passed"
 
 
+def test_review_command_uses_deterministic_first_for_fast_path_without_model_client(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id).run()
+
+    assert result.status == "pass"
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    review_tier = eval_report["trajectory_eval"]["review_tier"]
+    assert review_tier["mode"] == "deterministic_first"
+    assert review_tier["accepted_without_model"] is True
+    assert review_tier["fast_path"]["task_kind"] == "simple_file"
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    assert cost_report["model_calls"] == 2
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["title"] == "确定性评审通过" for event in user_progress)
+
+
 def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()

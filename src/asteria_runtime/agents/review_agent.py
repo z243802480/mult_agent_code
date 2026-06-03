@@ -114,14 +114,23 @@ class ReviewAgent:
         return [tier for tier in dict.fromkeys(tiers) if tier in {"strong", "medium", "cheap"}]
 
     def _prompt_envelope_metadata(self, review_context: dict) -> dict:
+        metadata: dict = {}
         envelope = review_context.get("prompt_envelope")
-        if not isinstance(envelope, dict):
-            return {}
-        return {
-            "prompt_envelope_hash": envelope.get("content_hash"),
-            "prompt_envelope_path": envelope.get("path"),
-            "capability_manifest_hash": envelope.get("capability_manifest_hash"),
-        }
+        if isinstance(envelope, dict):
+            metadata.update(
+                {
+                    "prompt_envelope_hash": envelope.get("content_hash"),
+                    "prompt_envelope_path": envelope.get("path"),
+                    "capability_manifest_hash": envelope.get("capability_manifest_hash"),
+                }
+            )
+        context_policy = review_context.get("context_policy")
+        if isinstance(context_policy, dict):
+            metadata["context_mode"] = context_policy.get("mode")
+            fast_path = context_policy.get("fast_path")
+            if isinstance(fast_path, dict):
+                metadata["fast_path_task_kind"] = fast_path.get("task_kind")
+        return metadata
 
     def _parse_json(self, content: str) -> dict:
         try:

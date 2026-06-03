@@ -402,6 +402,9 @@ function RuntimeSnapshot({
   if (!Object.keys(progress).length && !runDetail?.ok) return null;
   const activeEvent = latestActiveEvent(events);
   const loop = asRecord(progress.loop);
+  const recovery = asRecord(loop.recovery);
+  const budget = asRecord(loop.budget);
+  const loopContext = asRecord(loop.context_pressure);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
   const runId = String(runDetail?.run_id ?? "");
@@ -443,6 +446,12 @@ function RuntimeSnapshot({
           </button>
         )}
       </div>
+      <RuntimeLoopSignals
+        loop={loop}
+        recovery={recovery}
+        budget={budget}
+        contextPressure={loopContext}
+      />
       {runId && decisions.slice(0, 3).map((decision) => (
         <DecisionCard
           key={String(decision.decision_id ?? JSON.stringify(decision))}
@@ -460,6 +469,68 @@ function RuntimeSnapshot({
       )}
     </section>
   );
+}
+
+function RuntimeLoopSignals({
+  loop,
+  recovery,
+  budget,
+  contextPressure,
+}: {
+  loop: AnyRecord;
+  recovery: AnyRecord;
+  budget: AnyRecord;
+  contextPressure: AnyRecord;
+}) {
+  const items = [
+    loopSignal(
+      "Loop",
+      firstText(
+        String(loop.exit_reason ?? ""),
+        String(loop.latest_decision ? asRecord(loop.latest_decision).action ?? "" : ""),
+        "running"
+      ),
+      toneFor(String(loop.exit_reason ?? "ready"))
+    ),
+    loopSignal(
+      "Recovery",
+      recovery.required === true
+        ? recovery.satisfied === true
+          ? "covered"
+          : "needs decision"
+        : recovery.required === false
+          ? "not needed"
+          : "",
+      recovery.required === true && recovery.satisfied !== true ? "bad" : "good",
+      String(recovery.reason ?? "")
+    ),
+    loopSignal(
+      "Budget",
+      firstText(String(budget.status ?? ""), String(budget.highest_label ?? "")),
+      toneFor(String(budget.status ?? "ready"))
+    ),
+    loopSignal(
+      "Context",
+      firstText(String(contextPressure.status ?? ""), percent(Number(contextPressure.context_window_ratio ?? 0))),
+      toneFor(String(contextPressure.status ?? "ready"))
+    ),
+  ].filter((item) => item.value.trim());
+
+  if (!items.length) return null;
+  return (
+    <div className="runtimeLoopSignals" aria-label="Loop state">
+      {items.map((item) => (
+        <span key={item.label} className={`loopSignal ${item.tone}`} title={item.title || undefined}>
+          <small>{item.label}</small>
+          <strong>{item.value}</strong>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function loopSignal(label: string, value: string, tone: string, title = "") {
+  return { label, value, tone, title };
 }
 
 function ContextWindowPopover({ runDetail }: { runDetail: RunDetailPayload | null }) {
@@ -785,16 +856,23 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
   );
 }
 
-function TurnMiddle({ steps, selected, onSelect, onPermit }: {
+type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
+
+function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
+  expandSignal: ProcessExpandSignal;
 }) {
   const hasPendingPermission = steps.some((s) => s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"));
   const representative = middleRepresentativeEvent(steps);
   const selectedInMiddle = Boolean(selected && steps.some((step) => step.events.some((event) => event.event_id === selected.event_id)));
   const [open, setOpen] = useState(hasPendingPermission);
+  useEffect(() => {
+    if (!expandSignal) return;
+    setOpen(expandSignal.mode === "expand");
+  }, [expandSignal?.id, expandSignal?.mode]);
   if (steps.length === 0) return null;
   return (
     <div className="turnMiddle">
@@ -954,13 +1032,14 @@ function renderFinalLine(line: string, index: number) {
   return <p key={index}>{line}</p>;
 }
 
-function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning }: {
+function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
   isLast: boolean;
   isRunning: boolean;
+  expandSignal: ProcessExpandSignal;
 }) {
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
@@ -999,7 +1078,7 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
           <LiveStream steps={middleSteps} onPermit={onPermit} />
         )
       ) : (
-        middleSteps.length > 0 && <TurnMiddle steps={middleSteps} selected={selected} onSelect={onSelect} onPermit={onPermit} />
+        middleSteps.length > 0 && <TurnMiddle steps={middleSteps} selected={selected} onSelect={onSelect} onPermit={onPermit} expandSignal={expandSignal} />
       )}
       {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
     </div>
@@ -1020,6 +1099,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
   runDetail?: RunDetailPayload | null;
 }) {
   const threadRef = useRef<HTMLElement>(null);
+  const [expandSignal, setExpandSignal] = useState<ProcessExpandSignal>(null);
   const mainEvents = useMemo(() => events.filter((e) => !e.display_level || e.display_level === "main"), [events]);
   const shouldShowPending = Boolean(pendingTurn) && !mainEvents.some((event) =>
     event.type === "user_message" && event.content_delta === pendingTurn?.message
@@ -1031,6 +1111,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
+  const hasProcessBlocks = turns.some((turn) => turn.length > 2 || (turn.length > 1 && turn.at(-1)?.kind !== "final" && turn.at(-1)?.kind !== "error"));
 
   useEffect(() => {
     const el = threadRef.current;
@@ -1052,6 +1133,12 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
   return (
     <section className="thread" ref={threadRef}>
       <RuntimeSnapshot overview={overview ?? null} runDetail={runDetail ?? null} events={events} onRuntimeAction={onRuntimeAction} onResolveDecision={onResolveDecision} onPermit={onPermit} />
+      {hasProcessBlocks && (
+        <div className="threadProcessControls" aria-label="Process display controls">
+          <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>Expand process</button>
+          <button type="button" onClick={() => setExpandSignal({ mode: "collapse", id: Date.now() })}>Collapse process</button>
+        </div>
+      )}
       {turns.map((turnSteps, i) => (
         <ConversationTurn
           key={turnSteps[0].id}
@@ -1061,6 +1148,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
           onPermit={onPermit}
           isLast={i === turns.length - 1}
           isRunning={isRunning}
+          expandSignal={expandSignal}
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}

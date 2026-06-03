@@ -208,7 +208,7 @@ def test_plan_command_retries_transient_goal_spec_timeout(tmp_path: Path) -> Non
     result = PlanCommand(tmp_path, "build a local-first helper", model_client=client).run()
 
     assert result.task_count == 2
-    assert [request.model_tier for request in client.requests] == ["strong", "strong"]
+    assert [request.model_tier for request in client.requests] == ["medium", "medium"]
     run_dirs = sorted((tmp_path / ".asteria" / "runs").iterdir(), key=lambda item: item.name)
     events = [
         json.loads(line)

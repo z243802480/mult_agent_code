@@ -647,6 +647,47 @@ h2 {
   cursor: default;
 }
 
+.runtimeLoopSignals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.loopSignal {
+  align-items: center;
+  background: #11161a;
+  border: 1px solid #303a42;
+  border-radius: 6px;
+  color: #9aa6af;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 26px;
+  padding: 3px 8px;
+}
+
+.loopSignal small {
+  color: #8f9aa3;
+  font-size: 11px;
+}
+
+.loopSignal strong {
+  color: #dce3e8;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.loopSignal.good {
+  border-color: rgba(58, 166, 117, 0.45);
+}
+
+.loopSignal.warn {
+  border-color: rgba(204, 143, 63, 0.5);
+}
+
+.loopSignal.bad {
+  border-color: rgba(203, 76, 87, 0.55);
+}
+
 .decisionCard {
   background: #12171b;
   border: 1px solid #34414a;
@@ -938,6 +979,29 @@ h2 {
   gap: 6px;
   max-width: 780px;
   width: 100%;
+}
+
+.threadProcessControls {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  max-width: 780px;
+  width: 100%;
+}
+
+.threadProcessControls button {
+  background: transparent;
+  border: 1px solid #27313a;
+  border-radius: 6px;
+  color: #748491;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.threadProcessControls button:hover {
+  background: #141c24;
+  color: #b8c6cf;
 }
 
 /* User bubble (right-aligned) */
@@ -1829,14 +1893,18 @@ h2 {
   background: #171b1f;
   border: 1px solid #364149;
   border-radius: 7px;
+  box-sizing: border-box;
   color: #eef2f4;
   min-height: 54px;
   padding: 9px 12px;
   resize: vertical;
+  width: 100%;
 }
 
 .composerInputWrap {
+  display: grid;
   position: relative;
+  width: 100%;
 }
 
 .slashMenu {
@@ -2183,6 +2251,32 @@ h2 {
 .evidenceBlock {
   display: grid;
   gap: 8px;
+}
+
+.refList button {
+  align-items: center;
+  background: #111820;
+  border: 1px solid #303a42;
+  border-radius: 6px;
+  color: #c8d0d6;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 7px;
+  text-align: left;
+}
+
+.refList button:hover {
+  border-color: #2e7bb8;
+  color: #eef8ff;
+}
+
+.refList button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inspectorTabs {

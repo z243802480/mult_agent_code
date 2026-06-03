@@ -1395,6 +1395,94 @@ def test_runtime_readiness_gate_blocks_loop_summary_wrong_exit_command(
     assert "expected `compact`" in summary["summary"]
 
 
+def test_runtime_readiness_gate_blocks_unsatisfied_loop_recovery_chain(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonStore(validator).write(
+        run_dir / "agent_loop_run_summary.json",
+        {
+            **_loop_run_summary(
+                exit_reason="tool_failed",
+                recommended_command="debug",
+                latest_decision_id=None,
+                latest_execution_id=None,
+                latest_observation_id=None,
+            ),
+            "recovery_chain": {
+                "required": True,
+                "satisfied": False,
+                "latest_action": "tool",
+                "observation_status": "failed",
+                "observation_next_recommended_action": None,
+                "allowed_actions": ["ask", "repair", "replan", "stop"],
+                "reason": "Loop exit has no repair/replan/ask/stop recovery action.",
+            },
+        },
+        "agent_loop_run_summary",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert gate["status"] == "blocked"
+    assert summary["status"] == "blocked"
+    assert "repair/replan/ask/stop" in summary["summary"]
+
+
+def test_runtime_readiness_gate_blocks_summary_context_hard_stop_without_compact(
+    tmp_path: Path,
+) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    JsonStore(validator).write(
+        run_dir / "agent_loop_run_summary.json",
+        {
+            **_loop_run_summary(
+                exit_reason="max_rounds",
+                recommended_command="status --debug",
+                rounds_completed=2,
+                max_rounds=2,
+                latest_decision_id=None,
+                latest_execution_id=None,
+                latest_observation_id=None,
+            ),
+            "context_pressure": {
+                "status": "hard_stop",
+                "context_window_ratio": 0.92,
+                "context_window_tokens": 1000000,
+                "latest_context_estimated_tokens": 920000,
+                "max_context_estimated_tokens": 920000,
+                "context_compactions": 0,
+                "duplicate_content_hash_count": 0,
+            },
+        },
+        "agent_loop_run_summary",
+    )
+
+    gate = runtime_readiness_gate(
+        root=tmp_path,
+        validator=validator,
+        model_call_contract={"status": "healthy"},
+        context_pressure_summary={"max_context_window_ratio": 0.1},
+        latest_observation_plan={},
+    )
+
+    summary = next(check for check in gate["checks"] if check["name"] == "agent_loop_run_summary")
+    assert gate["status"] == "blocked"
+    assert summary["status"] == "blocked"
+    assert "context pressure `hard_stop`" in summary["summary"]
+
+
 def test_runtime_readiness_gate_accepts_completed_loop_summary_without_next_command(
     tmp_path: Path,
 ) -> None:

@@ -19,6 +19,7 @@ from asteria_runtime.core.active_next_step import capability_feedback_active_nex
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
+from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.real_provider_matrix import (
@@ -27,6 +28,7 @@ from asteria_runtime.core.real_provider_matrix import (
 )
 from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
+from asteria_runtime.core.context_slimming import slim_review_context
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
@@ -145,7 +147,6 @@ class ReviewCommand:
             run_id=run_id,
         )
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
-        reviewer = ReviewAgent(self._model_client(run_dir, budget), self.validator)
 
         run["status"] = "running"
         run["current_phase"] = "REVIEW"
@@ -191,26 +192,53 @@ class ReviewCommand:
             phase="review",
             status="running",
             title="评审分析中",
-            summary="评审模型正在分析执行证据，判断目标完成情况。",
+            summary="正在用分层评审策略分析执行证据，判断目标完成情况。",
             display_level="main",
         )
-        try:
-            eval_report = reviewer.evaluate(review_context, run_id)
-        except Exception as exc:
-            self._record_review_failure_decision(
-                run_dir=run_dir,
+        eval_report = self._deterministic_tiered_eval_report(review_context, run_id)
+        if eval_report is not None:
+            event_logger.record(
+                run_id,
+                "tiered_review_deterministic_pass",
+                "ReviewCommand",
+                "Deterministic-first review accepted the fast-path run without a model call.",
+                eval_report["trajectory_eval"].get("review_tier", {}),
+            )
+            progress.record(
                 run_id=run_id,
-                error=exc,
+                channel="validation",
+                event_type="validation_result",
+                phase="review",
+                status="completed",
+                title="确定性评审通过",
+                summary="执行证据已满足快路径评审条件，无需调用强模型复审。",
+                data={"validation": eval_report["trajectory_eval"].get("review_tier", {})},
+                display_level="main",
             )
-            self.store.write(
-                cost_report_path,
-                self._merge_cost_reports(
-                    budget.cost_report(),
-                    self._read_cost(cost_report_path, run_id),
-                ),
-                "cost_report",
+        else:
+            reviewer = ReviewAgent(self._model_client(run_dir, budget), self.validator)
+            model_review_context = (
+                slim_review_context(review_context)
+                if self.model_client is None
+                else review_context
             )
-            raise
+            try:
+                eval_report = reviewer.evaluate(model_review_context, run_id)
+            except Exception as exc:
+                self._record_review_failure_decision(
+                    run_dir=run_dir,
+                    run_id=run_id,
+                    error=exc,
+                )
+                self.store.write(
+                    cost_report_path,
+                    self._merge_cost_reports(
+                        budget.cost_report(),
+                        self._read_cost(cost_report_path, run_id),
+                    ),
+                    "cost_report",
+                )
+                raise
         eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval") or {})
         eval_report["trajectory_eval"]["route_health"] = review_context["route_health"]
         eval_report["trajectory_eval"]["model_selection"] = review_context["model_selection"]
@@ -336,6 +364,91 @@ class ReviewCommand:
             ),
             failure_classification=failure_classification,
         )
+
+    def _deterministic_tiered_eval_report(self, review_context: dict, run_id: str) -> dict | None:
+        if self.model_client is not None:
+            return None
+        goal_spec = review_context.get("goal_spec")
+        task_plan = review_context.get("task_plan")
+        checks = review_context.get("deterministic_checks")
+        cost_report = review_context.get("cost_report")
+        if not isinstance(goal_spec, dict) or not isinstance(task_plan, dict):
+            return None
+        if not isinstance(checks, dict) or not isinstance(cost_report, dict):
+            return None
+        fast_path = classify_fast_path(
+            str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or ""),
+            target_files=self._review_target_files(goal_spec, task_plan),
+        )
+        if fast_path.task_kind == "high_risk":
+            return None
+        blockers = self._tiered_review_blockers(checks)
+        if blockers:
+            return None
+        report = {
+            "schema_version": "0.1.0",
+            "run_id": run_id,
+            "goal_eval": {"requirement_coverage": 1.0},
+            "artifact_eval": {"artifacts_present": True, "logs_present": True},
+            "outcome_eval": {"verification_pass_rate": 1.0, "run_success": True},
+            "trajectory_eval": {
+                "blocked_task_count": 0,
+                "review_tier": {
+                    "mode": "deterministic_first",
+                    "accepted_without_model": True,
+                    "fast_path": fast_path.to_dict(),
+                    "reason": "Fast-path run completed with deterministic verification evidence.",
+                },
+            },
+            "cost_eval": {
+                "status": cost_report.get("status", "within_budget"),
+                "model_calls": cost_report.get("model_calls", 0),
+                "tool_calls": cost_report.get("tool_calls", 0),
+            },
+            "overall": {
+                "status": "pass",
+                "score": 0.9,
+                "reason": (
+                    "Deterministic-first review passed: all active tasks are done, "
+                    "verification passed, and no unresolved runtime blockers were found."
+                ),
+            },
+        }
+        self.validator.validate("eval_report", report)
+        return report
+
+    def _review_target_files(self, goal_spec: dict, task_plan: dict) -> list[str]:
+        files: list[str] = []
+        for item in goal_spec.get("target_outputs") or []:
+            if isinstance(item, str) and item:
+                files.append(item)
+        for task in task_plan.get("tasks") or []:
+            if not isinstance(task, dict):
+                continue
+            for item in task.get("expected_artifacts") or []:
+                if isinstance(item, str) and item:
+                    files.append(item)
+        return list(dict.fromkeys(files))
+
+    def _tiered_review_blockers(self, checks: dict) -> list[str]:
+        blockers: list[str] = []
+        if float(checks.get("task_completion_rate") or 0) < 1.0:
+            blockers.append("task_completion_incomplete")
+        if int(checks.get("blocked_task_count") or 0) > 0:
+            blockers.append("blocked_tasks_present")
+        if int(checks.get("verification_call_count") or 0) <= 0:
+            blockers.append("missing_verification_call")
+        if float(checks.get("verification_pass_rate") or 0) < 1.0:
+            blockers.append("verification_not_fully_passing")
+        if int(checks.get("failed_worker_result_count") or 0) > 0:
+            blockers.append("failed_worker_results_present")
+        if int(checks.get("merge_gate_block_count") or 0) > 0:
+            blockers.append("merge_gate_blocks_present")
+        if int(checks.get("pending_runtime_request_count") or 0) > 0:
+            blockers.append("pending_runtime_requests_present")
+        if str(checks.get("cost_status") or "within_budget") not in {"within_budget", "healthy"}:
+            blockers.append("cost_not_within_budget")
+        return blockers
 
     def _record_review_failure_decision(
         self,

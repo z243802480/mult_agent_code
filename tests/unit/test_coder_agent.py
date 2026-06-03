@@ -125,3 +125,50 @@ def test_coder_agent_prompt_includes_harness_observations() -> None:
     assert metadata["prompt_envelope_hash"] == "sha256:prompt"
     assert metadata["context_envelope_hash"] == "sha256:context"
     assert metadata["context_envelope_path"].endswith("context_envelope_task-0001.json")
+
+
+def test_coder_agent_prompt_uses_slim_execution_context_for_fast_path() -> None:
+    client = CaptureActionClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+    runtime_context = {
+        "context_package": {
+            "read_scope_files": [
+                {"path": f"file-{index}.py", "content": "x" * 1500}
+                for index in range(7)
+            ],
+            "context_envelope_path": ".asteria/runs/run-1/context_envelopes/context.json",
+            "context_envelope": {"payload": {"large": True}, "payload_hash": "sha256:context"},
+        },
+        "tool_observations": [{"id": f"obs-{index}"} for index in range(9)],
+    }
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.json"],
+            "read_scope": [],
+            "expected_artifacts": ["result.json"],
+        },
+        goal_spec={
+            "goal_id": "goal-1",
+            "original_goal": "Create a local file",
+            "target_outputs": ["result.json"],
+        },
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context=runtime_context,
+    )
+
+    payload = json.loads(client.requests[0].messages[-1].content)
+    metadata = client.requests[0].metadata
+    prompt_context = payload["runtime_context"]
+    assert prompt_context["context_policy"]["mode"] == "slim"
+    assert prompt_context["context_policy"]["fast_path"]["task_kind"] == "simple_file"
+    assert len(prompt_context["tool_observations"]) == 5
+    assert len(prompt_context["context_package"]["read_scope_files"]) == 5
+    assert prompt_context["context_package"]["context_envelope"]["payload_omitted"] is True
+    assert metadata["context_mode"] == "slim"
+    assert metadata["fast_path_task_kind"] == "simple_file"
+    assert len(runtime_context["tool_observations"]) == 9
