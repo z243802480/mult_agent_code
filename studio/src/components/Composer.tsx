@@ -24,6 +24,14 @@ const MODE_PLACEHOLDERS: Record<Mode, string> = {
 
 export type PromptSignal = { text: string; id: number };
 
+const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string }[] = [
+  { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
+  { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
+  { key: "/review", label: "Review", mode: "review", prompt: "Review the current result." },
+  { key: "/debug", label: "Debug", mode: "resume", prompt: "Debug the current blocker." },
+  { key: "/continue", label: "Continue", mode: "resume", prompt: "Continue the current task." },
+];
+
 function actionProfile(mode: Mode, permission: string) {
   const effective = mode === "auto" ? "auto" : mode;
   if (effective === "chat") {
@@ -123,15 +131,39 @@ export function Composer({
   const isChat = mode === "chat";
   const showPermission = mode === "auto" || mode === "run" || mode === "resume";
   const profile = actionProfile(mode, permission);
+  const slashOpen = message.trim() === "/" || /^\/[a-z]*$/i.test(message.trim());
+  const slashQuery = message.trim().toLowerCase();
+  const slashActions = slashOpen
+    ? SLASH_ACTIONS.filter((action) => action.key.startsWith(slashQuery === "/" ? "/" : slashQuery)).slice(0, 5)
+    : [];
 
   return (
     <form className={`composer ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}`} onSubmit={(event) => void submit(event)}>
-      <textarea
-        value={message}
-        onChange={(event) => setMessage(event.target.value)}
-        onKeyDown={onKeyDown}
-        placeholder={MODE_PLACEHOLDERS[mode]}
-      />
+      <div className="composerInputWrap">
+        <textarea
+          value={message}
+          onChange={(event) => setMessage(event.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={MODE_PLACEHOLDERS[mode]}
+        />
+        {slashActions.length > 0 && (
+          <div className="slashMenu">
+            {slashActions.map((action) => (
+              <button
+                type="button"
+                key={action.key}
+                onClick={() => {
+                  setMode(action.mode);
+                  setMessage(action.prompt);
+                }}
+              >
+                <strong>{action.label}</strong>
+                <span>{action.key}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <div className={`composerActionBar ${profile.tone}`} aria-label="Current action and permission">
         <div className="composerActionMain">
           {profile.icon}

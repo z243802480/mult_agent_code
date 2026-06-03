@@ -15,6 +15,9 @@
       "workflow_state",
       "current_phase",
       "current_blocker",
+      "main_path",
+      "todo_view",
+      "runtime_progress",
       "can_review",
       "can_accept",
       "current_session_id",
@@ -114,6 +117,100 @@
   "workflow_state": "running",
   "current_phase": "EXECUTING",
   "current_blocker": null,
+  "main_path": {
+    "schema_version": "0.1.0",
+    "path": "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop",
+    "active_stage": "tool_use",
+    "next_command": "resume",
+    "current_blocker": null,
+    "current_step": "Current session is available.",
+    "permission_boundary": "reviewed_auto",
+    "todo_view": {},
+    "stages": [
+      {
+        "id": "plan_todo",
+        "label": "Plan/Todo",
+        "status": "completed",
+        "summary": "Task plan is available."
+      },
+      {
+        "id": "tool_use",
+        "label": "Tool Use",
+        "status": "running",
+        "summary": "Run is in progress."
+      },
+      {
+        "id": "verify",
+        "label": "Verify",
+        "status": "pending",
+        "summary": "Verification has not run yet."
+      },
+      {
+        "id": "repair",
+        "label": "Repair",
+        "status": "available",
+        "summary": "Repair is available when the loop needs it."
+      },
+      {
+        "id": "ask",
+        "label": "Ask",
+        "status": "available",
+        "summary": "Ask is available when the loop needs it."
+      },
+      {
+        "id": "stop",
+        "label": "Stop",
+        "status": "available",
+        "summary": "Stop preserves evidence and reports the current result."
+      }
+    ],
+    "maintainer_refs": []
+  },
+  "todo_view": {},
+  "runtime_progress": {
+    "schema_version": "0.1.0",
+    "workflow_state": "running",
+    "path": "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop",
+    "active_stage": "tool_use",
+    "current_step": "Current session is available.",
+    "next_command": "resume",
+    "current_blocker": null,
+    "permission_boundary": "reviewed_auto",
+    "todo": {
+      "current": null,
+      "summary": null,
+      "counts": {}
+    },
+    "tool_use": {
+      "target_task_id": null,
+      "status": "running",
+      "summary": "Run is in progress.",
+      "action": null,
+      "worker": null
+    },
+    "verification": {
+      "status": null,
+      "summary": null,
+      "passed": null,
+      "failed": null
+    },
+    "loop": {
+      "latest_decision": {
+        "action": null,
+        "reason": null,
+        "target_task_id": null
+      },
+      "latest_observation": {
+        "status": null,
+        "summary": null,
+        "next_recommended_action": null,
+        "requires_follow_up_decision": null
+      },
+      "exit_reason": null,
+      "rounds": null
+    },
+    "evidence_refs": []
+  },
   "can_review": false,
   "can_accept": false,
   "model_selection": {},

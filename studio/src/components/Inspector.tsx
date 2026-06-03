@@ -12,8 +12,16 @@ type InspectorSection = {
   content: React.ReactNode;
 };
 
+type EvidenceSelection = {
+  title: string;
+  kind: string;
+  summary: string;
+  item: AnyRecord;
+};
+
 function AiDebugAgentCard({ runDetail, selectedRunId }: { runDetail: RunDetailPayload | null; selectedRunId: string | null }) {
   const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
   const latestRunId = selectedRunId || String(runDetail?.run_id ?? "");
   return (
     <section className="debugAgentCard">
@@ -34,6 +42,7 @@ function AiDebugAgentCard({ runDetail, selectedRunId }: { runDetail: RunDetailPa
         onSubmit={(event) => {
           event.preventDefault();
           if (!question.trim()) return;
+          setAnswer(debugAnswerFor(question, runDetail, latestRunId));
           setQuestion("");
         }}
       >
@@ -43,15 +52,36 @@ function AiDebugAgentCard({ runDetail, selectedRunId }: { runDetail: RunDetailPa
           placeholder="Ask an Ops question, e.g. why is this run blocked?"
           rows={2}
         />
-        <button type="submit" title="Debug Agent response is coming next">
+        <button type="submit" title="Ask Debug Agent">
           <SendHorizontal size={14} />
         </button>
       </form>
-      <p className="debugAgentNote">
-        Skeleton only: the next step is to connect this to a read-only debug answer that uses current session/run context{latestRunId ? ` (${latestRunId})` : ""}.
-      </p>
+      {answer ? <pre className="debugAgentAnswer">{answer}</pre> : (
+        <p className="debugAgentNote">
+          Read-only answers use the selected run context{latestRunId ? ` (${latestRunId})` : ""}; they do not execute commands or modify files.
+        </p>
+      )}
     </section>
   );
+}
+
+function debugAnswerFor(question: string, runDetail: RunDetailPayload | null, runId: string): string {
+  const lower = question.toLowerCase();
+  const progress = runtimeProgressFromDetail(runDetail);
+  const loop = asRecord(progress.loop);
+  const blocker = firstText(progress.current_blocker, loop.current_blocker, runDetail?.run_loop_summary?.current_blocker, "No blocker is recorded.");
+  const next = firstText(progress.next_command, runDetail?.main_action?.next_command, "No next action is recorded.");
+  const route = latestRoute(runDetail);
+  const routeLine = route
+    ? `${firstText(route.purpose, "task")} -> ${firstText(route.selected_tier, route.tier, "unknown")}: ${firstText(route.reason, route.model_selection_reason, "No route reason recorded.")}`
+    : "No model route evidence is recorded for this run.";
+  if (lower.includes("route") || lower.includes("model")) {
+    return [`Run: ${runId || "latest"}`, "Model route:", routeLine].join("\n");
+  }
+  if (lower.includes("next") || lower.includes("action")) {
+    return [`Run: ${runId || "latest"}`, `Recommended next action: ${next}`, `Current blocker: ${blocker}`].join("\n");
+  }
+  return [`Run: ${runId || "latest"}`, `Current blocker: ${blocker}`, `Recommended next action: ${next}`, `Route: ${routeLine}`].join("\n");
 }
 
 function RefList({ title, items }: { title: string; items: string[] }) {
@@ -201,10 +231,84 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+function runtimeProgressFromDetail(runDetail: RunDetailPayload | null): AnyRecord {
+  const direct = asRecord(runDetail?.runtime_progress);
+  if (Object.keys(direct).length) return direct;
+  const finalSummary = asRecord(runDetail?.final_report_summary);
+  const loopSummary = asRecord(runDetail?.run_loop_summary);
+  return asRecord(finalSummary.runtime_progress ?? loopSummary.runtime_progress);
+}
+
+function latestRoute(runDetail: RunDetailPayload | null): AnyRecord | null {
+  const routeArtifact = asRecord(runDetail?.model_route_timeline);
+  const finalSummary = asRecord(runDetail?.final_report_summary);
+  const timeline = (
+    Array.isArray(routeArtifact.timeline)
+      ? routeArtifact.timeline
+      : Array.isArray(routeArtifact.route_timeline)
+        ? routeArtifact.route_timeline
+        : Array.isArray(finalSummary.model_route_timeline)
+          ? finalSummary.model_route_timeline
+          : []
+  ) as AnyRecord[];
+  return timeline.length ? timeline.at(-1) ?? null : null;
+}
+
 function metricTone(value: string): string {
   if (/ready|completed|succeeded|pass|healthy/i.test(value)) return "good";
   if (/blocked|failed|missing|error/i.test(value)) return "bad";
   return "warn";
+}
+
+function formatUsage(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
+  return String(Math.round(value));
+}
+
+function contextSectionLabel(value: string): string {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("message") || normalized.includes("conversation")) return "Messages";
+  if (normalized.includes("tool") || normalized.includes("shell")) return "Tool output";
+  if (normalized.includes("skill")) return "Skills";
+  if (normalized.includes("system")) return "System";
+  if (normalized.includes("prompt") || normalized.includes("instruction")) return "Project rules";
+  if (normalized.includes("memory") || normalized.includes("durable")) return "Memory";
+  if (normalized.includes("file") || normalized.includes("context")) return "Files";
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function ContextBreakdownPanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
+  const cost = asRecord(runDetail?.cost_report);
+  const used = Number(cost.latest_context_estimated_tokens ?? cost.max_context_estimated_tokens ?? 0);
+  const capacity = Number(cost.context_window_tokens ?? 0);
+  const ratio = Number(cost.context_window_ratio ?? (capacity > 0 ? used / capacity : 0));
+  const sections = Object.entries(asRecord(cost.latest_context_sections ?? cost.max_context_sections))
+    .map(([id, value]) => ({ id, label: contextSectionLabel(id), value: Number(value ?? 0) }))
+    .filter((item) => Number.isFinite(item.value) && item.value > 0)
+    .sort((a, b) => b.value - a.value);
+  if (!used && !capacity && !sections.length) return null;
+  const total = sections.reduce((sum, item) => sum + item.value, 0);
+  return (
+    <div className="evidenceBlock contextBreakdownPanel">
+      <small>Context window</small>
+      <div className="evidenceStats">
+        <Metric label="Usage" value={percent(ratio)} tone={ratio >= 0.9 ? "bad" : ratio >= 0.75 ? "warn" : "good"} />
+        <Metric label="Used" value={formatUsage(used || total)} tone="warn" />
+        <Metric label="Capacity" value={capacity ? formatUsage(capacity) : "unknown"} tone="warn" />
+      </div>
+      <div className="contextInspectorRows">
+        {sections.slice(0, 8).map((section) => (
+          <div key={section.id} className="contextInspectorRow">
+            <span>{section.label}</span>
+            <strong>{formatUsage(section.value)}</strong>
+            <em>{percent(total ? section.value / total : 0)}</em>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function rollingValidationFromOverview(overview: OverviewPayload | null): AnyRecord {
@@ -271,6 +375,95 @@ parallel_batches=${String(workerTree.parallel_batches ?? 0)}`}</pre></div>
   );
 }
 
+function flattenWorkerTree(workerTree: AnyRecord): AnyRecord[] {
+  const result: AnyRecord[] = [];
+  const visit = (node: AnyRecord, depth: number) => {
+    result.push({ ...node, depth });
+    for (const child of asArray(node.children) as AnyRecord[]) visit(child, depth + 1);
+  };
+  for (const root of asArray(workerTree.roots) as AnyRecord[]) visit(root, 0);
+  for (const orphan of asArray(workerTree.orphan_workers) as AnyRecord[]) visit(orphan, 0);
+  return result;
+}
+
+function EvidenceDetailPanel({ selection }: { selection: EvidenceSelection | null }) {
+  return (
+    <div className="evidenceDetailPanel">
+      <small>Evidence detail</small>
+      {!selection ? (
+        <p className="muted">Select a worker, progress entry, route, validation, or run file to inspect its evidence.</p>
+      ) : (
+        <>
+          <div className="evidenceDetailHeader">
+            <strong>{selection.title}</strong>
+            <span>{selection.kind}</span>
+          </div>
+          <p>{selection.summary}</p>
+          <pre>{JSON.stringify(selection.item, null, 2)}</pre>
+        </>
+      )}
+    </div>
+  );
+}
+
+function WorkerTopologyPanel({
+  runDetail,
+  selectedKey,
+  onSelectEvidence,
+}: {
+  runDetail: RunDetailPayload;
+  selectedKey: string;
+  onSelectEvidence: (selection: EvidenceSelection) => void;
+}) {
+  const workerTree = asRecord(runDetail.worker_tree);
+  const workers = flattenWorkerTree(workerTree);
+  if (!workers.length) return null;
+  return (
+    <div className="evidenceBlock workerTopologyPanel">
+      <small>Worker topology</small>
+      <div className="workerTopologyStats">
+        <Metric label="Roots" value={String(asArray(workerTree.roots).length)} tone="warn" />
+        <Metric label="Parallel" value={String(workerTree.parallel_batches ?? 0)} tone={Number(workerTree.parallel_batches ?? 0) ? "good" : "warn"} />
+        <Metric label="Failed" value={String(workerTree.failed_workers ?? 0)} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : "good"} />
+      </div>
+      <div className="workerTopologyList">
+        {workers.slice(0, 12).map((worker, index) => {
+          const workerId = firstText(worker.worker_invocation_id, worker.worker_id, worker.agent_id, `worker-${index + 1}`);
+          const status = String(worker.status ?? worker.outcome ?? "unknown");
+          const profile = firstText(worker.runtime_profile_id, worker.profile_id, worker.worker_kind, "profile unknown");
+          const safety = firstText(worker.parallel_safety, worker.sandbox_profile_id, "safety unknown");
+          const workspaceRef = firstText(worker.candidate_workspace, worker.workspace, worker.workspace_path, "");
+          const key = `worker:${workerId}`;
+          return (
+            <button
+              key={`${workerId}-${index}`}
+              className={`workerTopologyItem ${selectedKey === key ? "active" : ""}`}
+              onClick={() => onSelectEvidence({
+                title: workerId,
+                kind: "worker",
+                summary: `${status} · ${String(worker.task_id ?? "no task")}`,
+                item: worker,
+              })}
+            >
+              <span className="workerTopologySummary">
+                <span style={{ paddingLeft: `${Math.min(Number(worker.depth ?? 0), 4) * 10}px` }}>{workerId}</span>
+                <Status status={status as StudioEvent["status"]} />
+              </span>
+              <pre>{[
+                `task=${String(worker.task_id ?? "n/a")}`,
+                `parent=${String(worker.parent_worker_invocation_id ?? worker.parent_task_id ?? "root")}`,
+                `profile=${profile}`,
+                `safety=${safety}`,
+                workspaceRef ? `workspace=${workspaceRef}` : "",
+              ].filter(Boolean).join("\n")}</pre>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function InspectorTabs({ sections }: { sections: InspectorSection[] }) {
   const [active, setActive] = useState(sections.find((s) => s.count > 0)?.id ?? sections[0]?.id ?? "shell");
   useEffect(() => {
@@ -301,6 +494,7 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   const finalSummary = (runDetail.final_report_summary ?? {}) as AnyRecord;
   const runLoopSummary = (runDetail.run_loop_summary ?? {}) as AnyRecord;
   const agentLoopSummary = (runDetail.agent_loop_run_summary ?? {}) as AnyRecord;
+  const mainAction = asRecord(runDetail.main_action);
   const routeArtifact = (runDetail.model_route_timeline ?? {}) as AnyRecord;
   const goalPolicy = (finalSummary.goal_policy ?? runDetail.goal_policy ?? {}) as AnyRecord;
   const timeline = (
@@ -314,7 +508,11 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   ) as AnyRecord[];
   const latestRoute = timeline.at(-1) ?? {};
   const workflowState = firstText(String(finalSummary.workflow_state ?? ""), String(runLoopSummary.workflow_state ?? ""), String(run.current_phase ?? "unknown"));
-  const nextCommand = firstText(String(finalSummary.recommended_next_command ?? ""), String(agentLoopSummary.recommended_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
+  const nextCommand = firstText(String(mainAction.next_command ?? ""), String(finalSummary.recommended_next_command ?? ""), String(agentLoopSummary.recommended_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
+  const nextLabel = firstText(String(mainAction.label ?? ""), nextCommand);
+  const commandDisplay = nextCommand === "none"
+    ? "No action needed"
+    : /^asteria\b/i.test(nextCommand) ? nextCommand : `asteria ${nextCommand}`;
   const blocker = firstText(String(finalSummary.current_blocker ?? ""), String(runLoopSummary.current_blocker ?? ""), "none");
   const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(runLoopSummary.stop_reason ?? ""), "n/a");
 
@@ -323,13 +521,18 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
       <small>Long-task loop</small>
       <div className="evidenceStats">
         <Metric label="State" value={workflowState} tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"} />
-        <Metric label="Next" value={nextCommand} tone={nextCommand === "none" ? "good" : "warn"} />
+        <Metric label="Next" value={nextLabel} tone={nextCommand === "none" ? "good" : "warn"} />
         <Metric label="Policy" value={String(goalPolicy.category ?? "none")} tone={String(goalPolicy.category ?? "none") === "none" ? "good" : "warn"} />
       </div>
       <div className="keyValueList">
         <div><small>Current status</small><pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre></div>
         <div><small>Current blocker</small><pre>{blocker}</pre></div>
-        <div><small>Recommended command</small><pre>{nextCommand === "none" ? "No action needed" : `asteria ${nextCommand}`}</pre></div>
+        <div><small>Recommended command</small><pre>{commandDisplay}</pre></div>
+        <div><small>Main action source</small><pre>{`kind=${String(mainAction.kind ?? "unknown")}
+status=${String(mainAction.status ?? "unknown")}
+requires_permission=${String(mainAction.requires_permission ?? "unknown")}
+source=${String(mainAction.source ?? "unknown")}
+evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre></div>
         <div><small>Goal policy</small><pre>{`${String(goalPolicy.category ?? "none")} -> ${String(goalPolicy.recommended_command ?? goalPolicy.recommended_next_command ?? goalPolicy.recommended_action ?? nextCommand)}
 ${String(goalPolicy.reason ?? "No policy reason recorded.")}`}</pre></div>
         <div><small>Run loop summary</small><pre>{`exit=${loopExit}
@@ -341,6 +544,29 @@ reason=${String(latestRoute.reason ?? "No route reason recorded.")}`}</pre></div
   );
 }
 
+function progressToStudioEvent(item: AnyRecord, runId: unknown): StudioEvent {
+  const status = String(item.status ?? "completed") as StudioEvent["status"];
+  const phase = String(item.phase ?? item.channel ?? "execute");
+  return {
+    event_id: String(item.event_id ?? `runtime-progress-${Date.now()}`),
+    session_id: "runtime-progress",
+    type: "assistant_delta",
+    status,
+    title: firstText(String(item.title ?? ""), String(item.event_type ?? ""), "Runtime progress"),
+    summary: firstText(String(item.summary ?? ""), phase),
+    content_delta: String(item.content_delta ?? item.summary ?? ""),
+    evidence_refs: asArray(item.evidence_refs).map(String),
+    artifact_refs: asArray(item.artifact_refs).map(String),
+    runtime_channel: String(item.channel ?? "progress"),
+    runtime_event_type: String(item.event_type ?? "message"),
+    source: "runtime_user_progress",
+    run_id: String(runId ?? item.run_id ?? ""),
+    phase,
+    display_level: "main",
+    created_at: String(item.created_at ?? new Date().toISOString()),
+  };
+}
+
 function EvidenceExplorer({
   overview,
   runs,
@@ -348,6 +574,7 @@ function EvidenceExplorer({
   runDetail,
   onOpenRun,
   onOpenFile,
+  onSelectRunEvent,
 }: {
   overview: OverviewPayload | null;
   runs: AnyRecord[];
@@ -355,7 +582,9 @@ function EvidenceExplorer({
   runDetail: RunDetailPayload | null;
   onOpenRun: (runId: string) => Promise<void>;
   onOpenFile: (path: string) => Promise<void>;
+  onSelectRunEvent: (event: StudioEvent) => void;
 }) {
+  const [selectedEvidence, setSelectedEvidence] = useState<EvidenceSelection | null>(null);
   const modelCalls = (runDetail?.model_calls ?? []) as AnyRecord[];
   const validations = (runDetail?.validation_results ?? []) as AnyRecord[];
   const workers = (runDetail?.worker_results ?? []) as AnyRecord[];
@@ -373,6 +602,22 @@ function EvidenceExplorer({
   ) as AnyRecord[];
   const userProgress = (runDetail?.user_progress ?? []) as AnyRecord[];
   const files = runDetail?.files ?? [];
+  const selectedKey = selectedEvidence ? `${selectedEvidence.kind}:${selectedEvidence.title}` : "";
+
+  function selectEvidence(selection: EvidenceSelection) {
+    setSelectedEvidence(selection);
+  }
+
+  function selectProgress(item: AnyRecord, index: number) {
+    const title = firstText(String(item.title ?? ""), String(item.event_type ?? ""), `progress-${index + 1}`);
+    selectEvidence({
+      title,
+      kind: "progress",
+      summary: firstText(String(item.summary ?? ""), String(item.phase ?? ""), "No summary recorded."),
+      item,
+    });
+    onSelectRunEvent(progressToStudioEvent(item, runDetail?.run_id));
+  }
 
   function renderLine(item: AnyRecord, kind: string): string {
     if (kind === "progress") return firstText(`${String(item.channel ?? "progress")}/${String(item.event_type ?? "message")} ${String(item.phase ?? "")} ${String(item.status ?? "")}`, String(item.summary ?? ""), String(item.title ?? ""));
@@ -392,12 +637,27 @@ function EvidenceExplorer({
       <div className="evidenceBlock">
         <small>{title}</small>
         {!items.length && <p className="muted">No records yet.</p>}
-        {items.map((item, index) => (
-          <details key={`${title}-${index}`}>
-            <summary>{renderLine(item, kind)}</summary>
-            <pre>{JSON.stringify(item, null, 2)}</pre>
-          </details>
-        ))}
+        <div className="evidenceSelectableList">
+          {items.map((item, index) => {
+            const line = renderLine(item, kind);
+            const key = `${kind}:${line}`;
+            return (
+              <button
+                key={`${title}-${index}`}
+                className={selectedKey === key ? "active" : ""}
+                onClick={() => {
+                  if (kind === "progress") {
+                    selectProgress(item, index);
+                    return;
+                  }
+                  selectEvidence({ title: line, kind, summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), line), item });
+                }}
+              >
+                <span>{line}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   }
@@ -421,6 +681,13 @@ function EvidenceExplorer({
         <>
           <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
+          <ContextBreakdownPanel runDetail={runDetail} />
+          <WorkerTopologyPanel
+            runDetail={runDetail}
+            selectedKey={selectedKey}
+            onSelectEvidence={selectEvidence}
+          />
+          <EvidenceDetailPanel selection={selectedEvidence} />
           <div className="evidenceStats">
             <Metric label="Model calls" value={String(modelCalls.length)} tone={modelCalls.some((m) => m.status === "failure") ? "bad" : "good"} />
             <Metric label="Validation" value={String(validations.length)} tone={validations.some((v) => /fail|error/i.test(String(v.status ?? v.outcome ?? ""))) ? "bad" : "warn"} />
@@ -436,7 +703,18 @@ function EvidenceExplorer({
             <div className="runFiles">
               <small>Run files</small>
               {files.slice(0, 6).map((file) => (
-                <button key={file.path} onClick={() => void onOpenFile(file.path)}>
+                <button
+                  key={file.path}
+                  onClick={() => {
+                    selectEvidence({
+                      title: file.path.split("/").pop() || file.path,
+                      kind: "run-file",
+                      summary: file.path,
+                      item: file as unknown as AnyRecord,
+                    });
+                    void onOpenFile(file.path);
+                  }}
+                >
                   <FileText size={13} />
                   <span>{file.path.split("/").pop()}</span>
                 </button>
@@ -459,6 +737,7 @@ export function Inspector({
   runDetail,
   onOpenFile,
   onOpenRun,
+  onSelectRunEvent,
 }: {
   event: StudioEvent | null;
   files: WorkspaceFile[];
@@ -469,6 +748,7 @@ export function Inspector({
   runDetail: RunDetailPayload | null;
   onOpenFile: (path: string) => Promise<void>;
   onOpenRun: (runId: string) => Promise<void>;
+  onSelectRunEvent: (event: StudioEvent) => void;
 }) {
   const eventFiles = useMemo(() => files.slice(0, 12), [files]);
   const routes = (overview?.modelRoutes?.slice(0, 5) ?? []) as AnyRecord[];
@@ -494,6 +774,7 @@ export function Inspector({
           runDetail={runDetail}
           onOpenRun={onOpenRun}
           onOpenFile={onOpenFile}
+          onSelectRunEvent={onSelectRunEvent}
         />
       )}
       <section>
@@ -530,6 +811,7 @@ export function Inspector({
           runDetail={runDetail}
           onOpenRun={onOpenRun}
           onOpenFile={onOpenFile}
+          onSelectRunEvent={onSelectRunEvent}
         />
       )}
       <section>

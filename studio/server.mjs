@@ -106,6 +106,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await handleRuntimeAction(sessionId, await readRequestJson(request)));
     return;
   }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/decisions\/resolve$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-3) || "");
+    sendJson(response, 200, await handleDecisionResolve(sessionId, await readRequestJson(request)));
+    return;
+  }
   if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs\/[^/]+\/permission$/)) {
     const parts = url.pathname.split("/");
     // /api/studio/sessions/SESSION_ID/jobs/JOB_ID/permission
@@ -259,6 +264,56 @@ async function handleRuntimeAction(sessionId, body) {
 
   startRuntimeJob(session.session_id, action.mode, action.goal, action.command);
   return { ok: true, session, started: true, action: action.kind };
+}
+
+async function handleDecisionResolve(sessionId, body) {
+  const session = await ensureSession(sessionId);
+  const runId = String(body?.run_id || "").trim();
+  const decisionId = String(body?.decision_id || "").trim();
+  const optionId = String(body?.option_id || "").trim();
+  if (!isSafeId(runId) || !isSafeId(decisionId) || !isSafeDecisionOptionId(optionId)) {
+    return { ok: false, error: "invalid decision selection" };
+  }
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  const decisions = latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 200));
+  const decision = decisions.find((item) => String(item.decision_id || "") === decisionId);
+  if (!decision || decision.status !== "pending") return { ok: false, error: "decision is not pending" };
+  const options = Array.isArray(decision.options) ? decision.options : [];
+  if (!options.some((option) => String(option.option_id || "") === optionId)) {
+    return { ok: false, error: "option not found" };
+  }
+  const option = options.find((item) => String(item.option_id || "") === optionId) || {};
+  await appendEvent(session.session_id, {
+    type: "user_message",
+    status: "completed",
+    title: "Decision",
+    summary: `${decisionId}: ${String(option.label || optionId)}`,
+    content_delta: `Selected ${String(option.label || optionId)} for ${String(decision.question || decisionId)}.`,
+    phase: "decision",
+    display_level: "main",
+  });
+  await appendEvent(session.session_id, progressEventForMode("decide", String(decision.question || decisionId)));
+  const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--select-option-id", optionId];
+  startRuntimeJob(session.session_id, "decide", `Resolve ${decisionId}.`, command);
+  return { ok: true, session, started: true, decision_id: decisionId, option_id: optionId };
+}
+
+function isSafeDecisionOptionId(value) {
+  return /^[A-Za-z0-9_.:-]{1,120}$/.test(String(value || ""));
+}
+
+function latestDecisions(decisions) {
+  const byId = new Map();
+  const anonymous = [];
+  for (const decision of decisions || []) {
+    const decisionId = String(decision?.decision_id || "").trim();
+    if (!decisionId) {
+      anonymous.push(decision);
+      continue;
+    }
+    byId.set(decisionId, decision);
+  }
+  return [...anonymous, ...byId.values()];
 }
 
 function runtimeActionFor(value) {
@@ -976,7 +1031,7 @@ async function readChatContext(sessionId) {
   const detail = latestRunId ? await readRunDetail(latestRunId) : {};
   const status = await commandJson(["status", "--root", workspace, "--json"]).catch(() => ({}));
   const runDir = latestRunId ? path.join(workspace, ".asteria", "runs", latestRunId) : null;
-  const decisions = runDir ? await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20) : [];
+  const decisions = runDir ? latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20)) : [];
   const pendingDecision = [...decisions].reverse().find((item) => /pending|open|waiting/i.test(String(item.status ?? item.state ?? "pending"))) || decisions.at(-1);
   return {
     sessionId,
@@ -1254,6 +1309,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null) {
     rememberJobRunId(jobId, extractRunId(stdout) || extractRunId(stderr));
     job.status = code === 0 ? "completed" : "failed";
     liveJobs.set(jobId, job);
+    const completedRunId = job.run_id || extractRunId(stdout) || extractRunId(stderr);
     void appendEvent(sessionId, {
       type: "tool_end",
       status: job.status,
@@ -1261,6 +1317,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null) {
       summary: code === 0 ? "Processing completed; preparing the result." : "The task needs attention; preparing the reason and next step.",
       command,
       display_level: "inspector",
+      run_id: completedRunId || undefined,
       content_delta: stderr ? `stderr:
 ${stderr}` : stdout.slice(-4000)
     });
@@ -1273,7 +1330,8 @@ ${stderr}` : stdout.slice(-4000)
       display_level: "main",
       content_delta: await finalTextFor(mode, code, stdout, stderr),
       evidence_refs: [sessionPath(sessionId, "events.jsonl")],
-      artifact_refs: runArtifactRefs(extractRunId(stdout))
+      artifact_refs: runArtifactRefs(completedRunId),
+      run_id: completedRunId || undefined
     });
   });
   child.on("error", (error) => {
@@ -1288,7 +1346,8 @@ ${stderr}` : stdout.slice(-4000)
       title: friendly ? "???????" : "Task failed to start",
       summary: friendlyErrorSummary(rawError) || rawError,
       content_delta: friendly || redactText(rawError),
-      command
+      command,
+      run_id: job.run_id || undefined
     });
   });
 }
@@ -2074,7 +2133,14 @@ async function readRunDetail(runId) {
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
   payload.mcp_invocations = redact(await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80));
   payload.skill_invocations = redact(await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80));
+  const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 120);
+  const currentDecisions = latestDecisions(decisions);
+  payload.decision_requests = redact(currentDecisions.filter((decision) => decision?.status === "pending"));
+  payload.decisions = redact(currentDecisions);
+  payload.decision_history = redact(decisions);
+  payload.main_action = redact(mainActionForRun(payload, currentDecisions));
   payload.worker_tree = redact(await buildWorkerTree(runDir, payload.agent_run_graph || {}));
+  payload.runtime_progress = redact(enrichRuntimeProgress(payload.runtime_progress || {}, payload));
   const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
   const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);
   payload.user_progress = redact(userProgress);
@@ -2098,6 +2164,50 @@ async function readRunDetail(runId) {
   );
   payload.files = await listRunEvidenceFiles(runDir, runId);
   return redact(payload);
+}
+
+function enrichRuntimeProgress(progress, payload) {
+  const agentLoop = payload.agent_loop_run_summary || {};
+  const runLoop = payload.run_loop_summary || {};
+  const workerSummary = workerSummaryForProgress(payload.worker_tree || {}, payload.worker_results || []);
+  return {
+    ...progress,
+    loop: {
+      ...(progress.loop || {}),
+      exit_reason: firstRuntimeText(progress.loop?.exit_reason, agentLoop.exit_reason, runLoop.stop_reason, ""),
+      rounds: progress.loop?.rounds ?? agentLoop.rounds ?? agentLoop.iteration_count ?? runLoop.iteration_count,
+    },
+    worker_summary: workerSummary,
+  };
+}
+
+function workerSummaryForProgress(workerTree, workerResults) {
+  const total = Number(workerTree.total_workers ?? 0) || (Array.isArray(workerResults) ? workerResults.length : 0);
+  if (!total) return {};
+  const failed = Array.isArray(workerResults)
+    ? workerResults.filter((item) => /fail|error|block/i.test(String(item.status ?? item.outcome ?? ""))).length
+    : 0;
+  const successful = Array.isArray(workerResults)
+    ? workerResults.filter((item) => /success|complete|pass/i.test(String(item.status ?? item.outcome ?? ""))).length
+    : Number(workerTree.successful_workers ?? 0);
+  const parallel = Number(workerTree.parallel_batches ?? 0);
+  const status = failed ? "failed" : successful >= total ? "completed" : "running";
+  const profile = firstRuntimeText(
+    Array.isArray(workerResults) ? workerResults.map((item) => item.worker_kind || item.agent_id).filter(Boolean).join(", ") : "",
+    "worker"
+  );
+  return {
+    status,
+    total,
+    successful,
+    failed,
+    parallel_batches: parallel,
+    summary: failed
+      ? `${failed} worker${failed === 1 ? "" : "s"} need attention.`
+      : `${total} worker${total === 1 ? "" : "s"} completed or reported progress.`,
+    worker_profile: profile,
+    evidence_refs: ["workers.jsonl", "worker_results.jsonl", "agent_run_graph.json"],
+  };
 }
 
 async function latestV02RollingValidation() {
@@ -2200,6 +2310,56 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
     collaboration_summary: agentRunGraph?.collaboration_summary || {},
     orphan_workers: orphanWorkers,
     roots,
+  };
+}
+
+function mainActionForRun(payload, currentDecisions) {
+  const pending = (currentDecisions || []).filter((decision) => decision?.status === "pending");
+  if (pending.length) {
+    return {
+      kind: "decide",
+      label: "Decide",
+      next_command: "asteria decide --list-pending",
+      requires_permission: false,
+      status: "waiting_decision",
+      decision_count: pending.length,
+      source: "decisions.jsonl",
+      evidence_refs: ["decisions.jsonl"],
+    };
+  }
+  const finalSummary = payload.final_report_summary || {};
+  const loopSummary = payload.run_loop_summary || {};
+  const agentLoopSummary = payload.agent_loop_run_summary || {};
+  const progress = payload.runtime_progress || {};
+  const nextCommand = firstRuntimeText(
+    progress.next_command,
+    finalSummary.recommended_next_command,
+    agentLoopSummary.recommended_command,
+    loopSummary.recommended_next_command,
+    ""
+  );
+  if (!nextCommand) {
+    return {
+      kind: "done",
+      label: "Done",
+      next_command: "",
+      requires_permission: false,
+      status: "idle",
+      decision_count: 0,
+      source: "runtime_progress",
+      evidence_refs: ["final_report_summary.json", "run_loop_summary.json"],
+    };
+  }
+  const action = runtimeActionFor(nextCommand);
+  return {
+    kind: action?.kind || "continue",
+    label: action?.label || "Continue",
+    next_command: nextCommand,
+    requires_permission: Boolean(action?.requiresPermission),
+    status: action?.requiresPermission ? "needs_permission" : "ready",
+    decision_count: 0,
+    source: progress.next_command ? "runtime_progress.next_command" : "runtime_summary.recommended_next_command",
+    evidence_refs: ["final_report_summary.json", "run_loop_summary.json"],
   };
 }
 

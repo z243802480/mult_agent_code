@@ -41,6 +41,7 @@ export function App() {
   const [promptSignal, setPromptSignal] = useState<PromptSignal>({ text: "", id: 0 });
   const [pendingTurn, setPendingTurn] = useState<{ message: string; mode: string; startedAt: number } | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
+  const refreshedRunEventRef = useRef<string>("");
 
   function mergeEvents(incoming: StudioEvent[]) {
     setEvents((prev) => {
@@ -127,6 +128,20 @@ export function App() {
     return () => { unsubRef.current?.(); unsubRef.current = null; };
   }, [activeSession?.session_id]);
 
+  const latestRunEvent = useMemo(() => {
+    return [...events].reverse().find((event) => (
+      event.run_id
+      && ["tool_end", "final_answer", "error"].includes(String(event.type ?? ""))
+    ));
+  }, [events]);
+
+  useEffect(() => {
+    const runId = String(latestRunEvent?.run_id ?? "");
+    const eventId = String(latestRunEvent?.event_id ?? "");
+    if (!runId || !eventId || eventId === refreshedRunEventRef.current) return;
+    refreshedRunEventRef.current = eventId;
+    void openRun(runId);
+  }, [latestRunEvent?.event_id, latestRunEvent?.run_id]);
 
   async function newSession() {
     const created = await api.createSession();
@@ -185,6 +200,29 @@ export function App() {
     setSessions(refreshed.sessions ?? sessions);
   }
 
+  async function resolveDecision(runId: string, decisionId: string, optionId: string) {
+    if (!activeSession) return;
+    await api.resolveDecision(activeSession.session_id, runId, decisionId, optionId);
+    const [eventData, refreshed] = await Promise.all([
+      api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] })),
+      waitForDecisionState(runId, decisionId).catch(() => api.runDetail(runId).catch(() => null)),
+    ]);
+    mergeEvents(eventData.events ?? []);
+    if (refreshed) setRunDetail(refreshed);
+  }
+
+  async function waitForDecisionState(runId: string, decisionId: string): Promise<RunDetailPayload | null> {
+    const deadline = Date.now() + 15_000;
+    let latest: RunDetailPayload | null = null;
+    while (Date.now() < deadline) {
+      latest = await api.runDetail(runId);
+      const stillPending = (latest.decision_requests ?? []).some((decision) => String(decision.decision_id ?? "") === decisionId);
+      if (!stillPending) return latest;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return latest;
+  }
+
 
   function selectSession(session: StudioSession) {
     setActiveSession(session);
@@ -197,6 +235,14 @@ export function App() {
     setSelectedEvent(event);
     if (event.run_id && event.run_id !== selectedRunId) {
       void openRun(event.run_id);
+    }
+  }
+
+  function selectRunEvidenceEvent(event: StudioEvent) {
+    setSelectedEvent(event);
+    const runId = String(event.run_id ?? "");
+    if (runId && runId !== selectedRunId) {
+      void openRun(runId);
     }
   }
 
@@ -233,6 +279,7 @@ export function App() {
           onPrompt={(text) => setPromptSignal((prev) => ({ text, id: prev.id + 1 }))}
           onPermit={permitJob}
           onRuntimeAction={runRuntimeAction}
+          onResolveDecision={resolveDecision}
           pendingTurn={pendingTurn}
           overview={overview}
           runDetail={runDetail}
@@ -252,6 +299,7 @@ export function App() {
         runDetail={runDetail}
         onOpenFile={openFile}
         onOpenRun={openRun}
+        onSelectRunEvent={selectRunEvidenceEvent}
       />
     </div>
   );

@@ -50,7 +50,7 @@ export function NarrativeStep({
   const primary = step.events[0];
   const time = primary ? formatEventTime(primary.created_at) : "";
 
-  // Goal step → compact user-message bubble, no expand
+  // Goal step stays as a compact user-message bubble.
   if (step.kind === "goal") {
     const userText = primary?.content_delta || step.summary || step.title;
     return (
@@ -77,7 +77,7 @@ export function NarrativeStep({
           {primary?.model_provider && (
             <span>{primary.model_provider}</span>
           )}
-          <span>{step.events.length} 事件</span>
+          <span>{step.events.length} update{step.events.length === 1 ? "" : "s"}</span>
           <span>{time}</span>
         </span>
         <Status status={step.status} />

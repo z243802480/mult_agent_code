@@ -105,6 +105,10 @@ export type RunDetailPayload = {
   agent_loop_run_summary?: AnyRecord;
   run_loop_summary?: AnyRecord;
   runtime_progress?: AnyRecord;
+  main_action?: AnyRecord;
+  decision_requests?: AnyRecord[];
+  decisions?: AnyRecord[];
+  decision_history?: AnyRecord[];
   worker_tree?: AnyRecord;
   final_report_summary?: AnyRecord;
   model_route_timeline?: AnyRecord;

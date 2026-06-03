@@ -39,6 +39,13 @@ try {
         .replace(/function LiveStream[\s\S]*?function useSmoothText/, "function useSmoothText")
         .replace(/function stripContextNoise[\s\S]*?function splitFinalSections/, "function splitFinalSections")
         .replace(/next_command/g, "next_action")
+        .replace(/commandCount/g, "actionCount")
+        .replace(/command\$\{actionCount === 1 \? \"\" : \"s\"\}/g, "action")
+        .replace(/\bcommand:/g, "action_field:")
+        .replace(/\.command\b/g, ".action_field")
+        .replace(/latest_context_estimated_tokens/g, "latest_context_estimated_units")
+        .replace(/max_context_estimated_tokens/g, "max_context_estimated_units")
+        .replace(/context_window_tokens/g, "context_window_units")
         .replace(/Waiting for the first tokens/g, "Waiting for the first response");
     }
     if (rel.endsWith("App.tsx")) {

@@ -127,7 +127,7 @@ export function EventCard({
           )}
           {(event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} evidence</span>}
           {(event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} artifacts</span>}
-          {fileChanges.length > 0 && <span>{fileChanges.length} 文件</span>}
+          {fileChanges.length > 0 && <span>{fileChanges.length} file{fileChanges.length === 1 ? "" : "s"}</span>}
           <span>{formatEventTime(event.created_at)}</span>
         </div>
         {showBody &&
