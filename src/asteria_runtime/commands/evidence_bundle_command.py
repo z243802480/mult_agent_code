@@ -129,9 +129,7 @@ class EvidenceBundleCommand:
         rolling_validation = self._rolling_validation_summary()
         manifest = self._manifest(warnings, rolling_validation)
         staging["manifest.json"] = _json_text(manifest)
-        staging["v0.2_rolling_validation_summary.json"] = _json_text(
-            _redact(rolling_validation)
-        )
+        staging["v0.2_rolling_validation_summary.json"] = _json_text(_redact(rolling_validation))
         self._add_summary_files(staging, warnings)
         self._add_validation_run_summaries(staging, warnings)
         self._add_ops_signal_files(staging, warnings)
@@ -203,9 +201,7 @@ class EvidenceBundleCommand:
                 "success": item["success"],
                 "failure": item["failure"],
                 "streaming_failed": item["streaming_failed"],
-                "success_rate": round(item["success"] / item["total"], 4)
-                if item["total"]
-                else 0.0,
+                "success_rate": round(item["success"] / item["total"], 4) if item["total"] else 0.0,
                 "first_chunk_ms_p50": _percentile(item["first_chunk_ms_values"], 0.5),
                 "first_chunk_ms_p95": _percentile(item["first_chunk_ms_values"], 0.95),
                 "duration_ms_p50": _percentile(item["duration_ms_values"], 0.5),
@@ -347,9 +343,15 @@ class EvidenceBundleCommand:
     def _rolling_validation_summary(self) -> dict[str, Any]:
         runs_dir = self.agent_dir / "runs"
         run_dirs = (
-            sorted((path for path in runs_dir.iterdir() if path.is_dir()), reverse=True)[
-                : self.max_runs
-            ]
+            sorted(
+                (
+                    path
+                    for path in runs_dir.iterdir()
+                    if path.is_dir() and path.name.startswith("run-")
+                ),
+                key=_run_dir_sort_key,
+                reverse=True,
+            )[: self.max_runs]
             if runs_dir.exists()
             else []
         )
@@ -379,9 +381,7 @@ class EvidenceBundleCommand:
                 f"Collect {3 - sample_count} more scoped real-provider validation sample(s)."
             )
         if missing:
-            next_actions.append(
-                "Collect missing evidence categories: " + ", ".join(missing) + "."
-            )
+            next_actions.append("Collect missing evidence categories: " + ", ".join(missing) + ".")
         if sample_count > 5:
             next_actions.append("Keep the v0.2 rolling validation bundle focused to 3-5 samples.")
         if not next_actions:
@@ -596,7 +596,9 @@ class EvidenceBundleCommand:
                 redacted_lines.append(json.dumps(_redact(json.loads(line)), ensure_ascii=False))
             except json.JSONDecodeError:
                 redacted_lines.append(_redact_text(line))
-        staging[_rel(self.root, path)] = "\n".join(redacted_lines) + ("\n" if redacted_lines else "")
+        staging[_rel(self.root, path)] = "\n".join(redacted_lines) + (
+            "\n" if redacted_lines else ""
+        )
 
     def _all_model_calls(self) -> list[dict[str, Any]]:
         calls: list[dict[str, Any]] = []
@@ -664,6 +666,26 @@ def _rel(root: Path, path: Path) -> str:
 
 def _json_text(data: Any) -> str:
     return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+def _run_dir_sort_key(path: Path) -> tuple[float, str]:
+    candidates = [
+        path / "run.json",
+        path / "agent_loop_run_summary.json",
+        path / "cost_report.json",
+    ]
+    mtimes = []
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                mtimes.append(candidate.stat().st_mtime)
+        except OSError:
+            continue
+    try:
+        mtimes.append(path.stat().st_mtime)
+    except OSError:
+        pass
+    return (max(mtimes) if mtimes else 0.0, path.name)
 
 
 def _percentile(values: list[int], q: float) -> int | None:

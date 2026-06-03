@@ -179,7 +179,6 @@ class AcceptCommand:
         if pending_after:
             blockers.append(f"{len(pending_after)} promotion(s) still block acceptance.")
 
-        final_report_path = self._write_final_report(run_id, review_status)
         accepted = not blockers
         run = run_store.load_run(run_id)
         if accepted:
@@ -194,6 +193,7 @@ class AcceptCommand:
             run["current_phase"] = "ACCEPT"
             run["summary"] = "Acceptance blocked; review or candidate promotion issues remain."
         run_store.update_run(run)
+        final_report_path = self._write_final_report(run_id, review_status)
         next_actions = self._next_actions(accepted, blockers)
         recommended_next_command = self._recommended_next_command(accepted, blockers)
         final_report_summary_path = self._write_final_report_summary(
@@ -208,6 +208,18 @@ class AcceptCommand:
         final_report_summary = JsonStore(self.validator).read(
             final_report_summary_path,
             "final_report_summary",
+        )
+        RunCommand(self.root)._write_run_loop_summary(
+            run_id=run_id,
+            steps=[RunStepSummary("accept", "completed", "Operator accepted the reviewed result.")],
+            status_payload={
+                "workflow_state": "accepted" if accepted else "blocked",
+                "current_blocker": blockers[0] if blockers else None,
+                "recommended_next_command": recommended_next_command,
+                "blockers": blockers,
+                "next_actions": next_actions,
+            },
+            stop_reason="accepted" if accepted else "accept_blocked",
         )
         RunCommand(self.root)._write_active_goal_memory(
             run_id=run_id,

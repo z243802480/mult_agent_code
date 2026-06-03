@@ -33,6 +33,8 @@
     "workflow_state": { "type": ["string", "null"] },
     "current_blocker": { "type": ["string", "null"] },
     "recommended_next_command": { "type": ["string", "null"] },
+    "main_path": { "type": "object" },
+    "runtime_progress": { "type": "object" },
     "updated_at": { "type": "string" }
   },
   "additionalProperties": false

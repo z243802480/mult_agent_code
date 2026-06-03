@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
+from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_budget import record_context_budget_snapshot
 from asteria_runtime.core.context_mount_builder import ContextMountBuilder
@@ -490,15 +491,19 @@ class RuntimeProfileBuilder:
         decision: str,
     ) -> dict:
         provider_strategy = guidance.get("provider_route_strategy")
-        return {
+        feedback = {
             "status": guidance.get("status", "healthy"),
             "decision": decision,
             "matched_route": route or None,
             "blocking_count": len(list(guidance.get("blocking") or [])),
             "review_count": len(list(guidance.get("review") or [])),
             "recommended_actions": list(guidance.get("recommended_actions") or [])[:3],
-            "provider_route_strategy": provider_strategy if isinstance(provider_strategy, dict) else {},
+            "provider_route_strategy": provider_strategy
+            if isinstance(provider_strategy, dict)
+            else {},
         }
+        feedback["active_next_step"] = capability_feedback_active_next_step(feedback)
+        return feedback
 
     def _route_guidance_for_task(self, context: RuntimeContext, purpose: str) -> dict:
         guidance = CapabilityFeedbackAdvisor(self.validator).route_guidance(context.asteria_dir)

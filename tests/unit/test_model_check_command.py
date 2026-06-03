@@ -56,10 +56,34 @@ def test_model_check_calls_model_and_accepts_valid_json(tmp_path: Path) -> None:
     assert "Streaming: streaming chunks=1" in result.to_text()
 
 
+def test_model_check_records_route_check_evidence(tmp_path: Path) -> None:
+    result = ModelCheckCommand(tmp_path, model_client=FakeHealthyClient()).run()
+
+    path = tmp_path / ".asteria" / "model" / "model_route_checks.jsonl"
+    payload = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+
+    assert result.call_ok
+    assert payload["tier"] == "cheap"
+    assert payload["purpose"] == "model_check"
+    assert payload["provider"] == "fake"
+    assert payload["model_name"] == "fake-model"
+    assert payload["status"] == "success"
+    assert payload["streaming"]["first_chunk_ms"] == 10
+
+
+def test_model_check_skip_call_does_not_record_route_check(tmp_path: Path) -> None:
+    result = ModelCheckCommand(tmp_path, skip_call=True, model_client=FakeHealthyClient()).run()
+
+    assert not result.call_ok
+    assert not (tmp_path / ".asteria" / "model" / "model_route_checks.jsonl").exists()
+
+
 def test_model_check_uses_requested_model_tier(tmp_path: Path) -> None:
     class TierClient:
         def chat(self, request: ChatRequest) -> ChatResponse:
             assert request.model_tier == "strong"
+            assert request.metadata["agent_role_contract"]["provider_call_seconds"] == 120
+            assert request.metadata["deadline_ms"] == 120000
             return ChatResponse(
                 content=json.dumps({"ok": True}),
                 finish_reason="stop",

@@ -24,6 +24,25 @@ await writeJson("run_loop_summary.json", {
   workflow_state: "review_passed",
   current_blocker: "none",
   recommended_next_command: "asteria accept --latest",
+  runtime_progress: {
+    schema_version: "0.1.0",
+    workflow_state: "review_passed",
+    path: "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop",
+    active_stage: "verify",
+    current_step: "Run `asteria accept --latest`.",
+    next_command: "asteria accept --latest",
+    current_blocker: null,
+    permission_boundary: "reviewed_auto",
+    todo: {
+      current: { id: "task-0001", content: "Smoke-test Studio run detail payload", status: "completed" },
+      summary: "All 1 todo item(s) are complete and verified.",
+      counts: { total: 1, completed: 1 },
+    },
+    tool_use: { target_task_id: "task-0001", status: "done", summary: "Smoke evidence recorded." },
+    verification: { status: "passed", summary: "Smoke validation passed." },
+    loop: { exit_reason: "review_passed", rounds: 1 },
+    evidence_refs: ["run_loop_summary.json"],
+  },
 });
 await writeJson("agent_loop_run_summary.json", {
   schema_version: "0.1.0",
@@ -47,6 +66,25 @@ await writeJson("final_report_summary.json", {
   current_blocker: "none",
   recommended_next_command: "asteria accept --latest",
   model_route_timeline_path: ".asteria/runs/run-20990101-0001/model_route_timeline.json",
+  runtime_progress: {
+    schema_version: "0.1.0",
+    workflow_state: "review_passed",
+    path: "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop",
+    active_stage: "verify",
+    current_step: "Run `asteria accept --latest`.",
+    next_command: "asteria accept --latest",
+    current_blocker: null,
+    permission_boundary: "reviewed_auto",
+    todo: {
+      current: { id: "task-0001", content: "Smoke-test Studio run detail payload", status: "completed" },
+      summary: "All 1 todo item(s) are complete and verified.",
+      counts: { total: 1, completed: 1 },
+    },
+    tool_use: { target_task_id: "task-0001", status: "done", summary: "Smoke evidence recorded." },
+    verification: { status: "passed", summary: "Smoke validation passed." },
+    loop: { exit_reason: "review_passed", rounds: 1 },
+    evidence_refs: ["final_report_summary.json"],
+  },
 });
 await writeJson("model_route_timeline.json", {
   route_timeline: [
@@ -228,8 +266,15 @@ try {
   if (overview.v0_2_rolling_validation?.status !== "needs_evidence") {
     throw new Error("/api/overview did not expose v0_2_rolling_validation");
   }
+  if (overview.diagnostics_loaded !== false) {
+    throw new Error("/api/overview should be lightweight and mark diagnostics_loaded=false");
+  }
+  const diagnostics = await fetchJson(`http://127.0.0.1:${port}/api/diagnostics`);
+  if (diagnostics.diagnostics_loaded !== true) {
+    throw new Error("/api/diagnostics should mark diagnostics_loaded=true");
+  }
   const detail = await fetchJson(`http://127.0.0.1:${port}/api/runs/${runId}`);
-  for (const key of ["agent_loop_run_summary", "run_loop_summary", "final_report_summary", "model_route_timeline", "goal_policy", "worker_tree"]) {
+  for (const key of ["agent_loop_run_summary", "run_loop_summary", "runtime_progress", "final_report_summary", "model_route_timeline", "goal_policy", "worker_tree"]) {
     if (!Object.prototype.hasOwnProperty.call(detail, key)) {
       throw new Error(`/api/runs/:id missing ${key}`);
     }
@@ -239,6 +284,9 @@ try {
   }
   if (detail.run_loop_summary.workflow_state !== "review_passed") {
     throw new Error("run_loop_summary content was not returned correctly");
+  }
+  if (detail.runtime_progress?.active_stage !== "verify" || detail.runtime_progress?.todo?.counts?.completed !== 1) {
+    throw new Error("/api/runs/:id did not expose final summary runtime_progress");
   }
   if (detail.agent_loop_run_summary.exit_reason !== "max_rounds") {
     throw new Error("agent_loop_run_summary content was not returned correctly");
@@ -263,6 +311,29 @@ try {
   }
   if (!Array.isArray(detail.skill_invocations) || detail.skill_invocations[0]?.skill_invocation_id !== "skill-0001") {
     throw new Error("skill_invocations should be available for Inspector");
+  }
+  const sessionCreate = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions`, { method: "POST" });
+  const sessionId = sessionCreate.session?.session_id;
+  if (!sessionId) throw new Error("Studio session was not created for runtime action smoke");
+  const actionResult = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/runtime-actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ next_action: "asteria accept --latest", permission: "ask" }),
+  });
+  if (!actionResult.ok || actionResult.needs_permission !== true || actionResult.action !== "accept") {
+    throw new Error("Accept action should become a permission request");
+  }
+  const actionEvents = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/events`);
+  if (!actionEvents.events?.some((event) => event.type === "permission_request" && event.job_id === actionResult.job_id)) {
+    throw new Error("Runtime action did not write a permission request event");
+  }
+  const rejected = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/runtime-actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ next_action: "rm -rf ." }),
+  });
+  if (rejected.ok !== false) {
+    throw new Error("Unsupported runtime action should be rejected");
   }
   console.log("Studio run detail smoke passed");
 } finally {
@@ -298,8 +369,8 @@ async function waitForHealth(targetPort) {
   throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
+async function fetchJson(url, init = undefined) {
+  const response = await fetch(url, init);
   if (!response.ok) {
     throw new Error(`${url} returned ${response.status}`);
   }

@@ -128,16 +128,11 @@ def test_evidence_bundle_redacts_and_summarizes_model_calls(tmp_path: Path) -> N
         assert manifest["included_evidence"]["ops_signals"] is True
         assert manifest["included_evidence"]["v0_2_rolling_validation"] is True
         assert (
-            manifest["model_route_summary"]["zai/glm-4.7/goal_spec/strong"][
-                "streaming_failed"
-            ]
-            == 1
+            manifest["model_route_summary"]["zai/glm-4.7/goal_spec/strong"]["streaming_failed"] == 1
         )
         run = json.loads(archive.read(".asteria/runs/run-0001/run.json").decode("utf-8"))
         assert run["api_key"] == "[REDACTED]"
-        profile = json.loads(
-            archive.read(".asteria/model/capability_profile.json").decode("utf-8")
-        )
+        profile = json.loads(archive.read(".asteria/model/capability_profile.json").decode("utf-8"))
         assert profile["token"] == "[REDACTED]"
         validation = json.loads(
             archive.read(".asteria/validation_runs/validation-0001/summary.json").decode("utf-8")
@@ -269,9 +264,7 @@ def test_evidence_bundle_writes_v02_rolling_validation_summary(tmp_path: Path) -
         assert ".asteria/runs/run-0003/agent_loop_run_summary.json" in names
         assert ".asteria/runs/run-0003/workers.jsonl" in names
         assert ".asteria/runs/run-0003/agent_run_graph.json" in names
-        summary = json.loads(
-            archive.read("v0.2_rolling_validation_summary.json").decode("utf-8")
-        )
+        summary = json.loads(archive.read("v0.2_rolling_validation_summary.json").decode("utf-8"))
         assert summary["status"] == "ready"
         assert summary["sample_count"] == 3
         assert summary["coverage"] == {
@@ -288,6 +281,50 @@ def test_evidence_bundle_writes_v02_rolling_validation_summary(tmp_path: Path) -
         manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
         assert manifest["v0_2_rolling_validation"]["status"] == "ready"
         assert manifest["v0_2_rolling_validation"]["sample_count"] == 3
+
+
+def test_evidence_bundle_rolling_validation_ignores_matrix_run_dirs(tmp_path: Path) -> None:
+    matrix_dir = tmp_path / ".asteria" / "runs" / "runtime-validation-matrix-2026-06-03"
+    matrix_dir.mkdir(parents=True)
+    (matrix_dir / "capability_decisions.jsonl").write_text(
+        json.dumps({"capability_type": "tool", "capability": "read_file"}) + "\n",
+        encoding="utf-8",
+    )
+    for index in range(1, 4):
+        run_dir = tmp_path / ".asteria" / "runs" / f"run-000{index}"
+        run_dir.mkdir(parents=True)
+        (run_dir / "run.json").write_text(
+            json.dumps({"run_id": f"run-000{index}", "status": "completed"}),
+            encoding="utf-8",
+        )
+        (run_dir / "model_calls.jsonl").write_text(json.dumps({"status": "success"}) + "\n")
+        (run_dir / "context_budget_snapshots.jsonl").write_text(
+            json.dumps({"context_window_ratio": 0.1}) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "capability_decisions.jsonl").write_text(
+            json.dumps({"capability": "read_file"}) + "\n",
+            encoding="utf-8",
+        )
+        (run_dir / "agent_loop_run_summary.json").write_text(
+            json.dumps({"exit_reason": "completed"}),
+            encoding="utf-8",
+        )
+        (run_dir / "worker_results.jsonl").write_text(
+            json.dumps({"status": "succeeded"}) + "\n",
+            encoding="utf-8",
+        )
+
+    result = EvidenceBundleCommand(tmp_path).run()
+
+    with zipfile.ZipFile(result.bundle_path) as archive:
+        summary = json.loads(archive.read("v0.2_rolling_validation_summary.json").decode("utf-8"))
+    assert summary["status"] == "ready"
+    assert [sample["run_id"] for sample in summary["samples"]] == [
+        "run-0003",
+        "run-0002",
+        "run-0001",
+    ]
 
 
 def test_evidence_bundle_excludes_protected_route_files(tmp_path: Path) -> None:

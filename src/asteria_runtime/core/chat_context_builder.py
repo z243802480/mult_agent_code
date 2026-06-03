@@ -11,6 +11,7 @@ from asteria_runtime.core.context_envelope import ContextEnvelope
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.permission_policy import permission_policy_profile
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -182,6 +183,23 @@ class ChatContextBuilder:
             model_route_timeline_path = self._relative_path(run_dir / "model_route_timeline.json")
         workspace_envelope = self._read_json(run_dir / "workspace_envelope.json", "workspace_envelope")
         agent_loop_dispatch = self._agent_loop_dispatch_summary(run_dir)
+        main_path = final_summary.get("main_path") or run_loop_summary.get("main_path") or {}
+        todo_view = final_summary.get("todo_view") or main_path.get("todo_view") or {}
+        if isinstance(main_path, dict) and "next_command" in main_path:
+            recommended_next_command = main_path.get("next_command")
+        else:
+            recommended_next_command = workflow_source.get(
+                "recommended_next_command"
+            ) or self._recommended_next_command(current_run)
+        workflow_state = workflow_source.get("workflow_state") or self._workflow_state(current_run)
+        runtime_progress = build_runtime_progress(
+            workflow_state=workflow_state,
+            main_path=main_path,
+            todo_view=todo_view,
+            latest_execution=final_summary.get("latest_execution_evidence") or {},
+            agent_loop_summary=run_loop_summary,
+            validation_conclusion=final_summary.get("validation_conclusion") or {},
+        )
         return {
             "current_run": {
                 "run_id": current_run.get("run_id"),
@@ -190,11 +208,9 @@ class ChatContextBuilder:
                 "summary": current_run.get("summary"),
             },
             "workflow": {
-                "workflow_state": workflow_source.get("workflow_state")
-                or self._workflow_state(current_run),
+                "workflow_state": workflow_state,
                 "current_blocker": workflow_source.get("current_blocker"),
-                "recommended_next_command": workflow_source.get("recommended_next_command")
-                or self._recommended_next_command(current_run),
+                "recommended_next_command": recommended_next_command,
                 "run_loop_summary_path": self._relative_path(run_dir / "run_loop_summary.json")
                 if run_loop_summary
                 else None,
@@ -205,6 +221,9 @@ class ChatContextBuilder:
                 else None,
             },
             "latest_evidence": latest_evidence,
+            "main_path": main_path,
+            "todo_view": todo_view,
+            "runtime_progress": runtime_progress,
             "model_selection": model_selection,
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,

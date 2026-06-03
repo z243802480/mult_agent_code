@@ -150,7 +150,7 @@ class ActiveGoalMemory:
             "current_result": {
                 "state": state,
                 "review": review,
-                "completion": completion,
+                "completion": self._completion_label(run_status, completion),
             },
             "overall_plan": [
                 {
@@ -291,6 +291,12 @@ class ActiveGoalMemory:
         if review_status == "unknown":
             return "not reviewed yet"
         return review_status
+
+    def _completion_label(self, run_status: dict, completion: str) -> str:
+        phase = str(run_status.get("current_phase") or "").upper()
+        if phase == "ACCEPTED":
+            return "accepted"
+        return completion
 
     def _checkbox(self, task: dict) -> str:
         if task.get("status") == "done":

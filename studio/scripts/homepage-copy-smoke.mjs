@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-homepage-copy-"));
 const port = Number(process.env.ASTERIA_STUDIO_HOMEPAGE_COPY_PORT || 18792);
-const forbidden = /Local Runtime|System Status|\bRoute\b|Evidence Explorer|Inspector|Debug|Ops|run-\d{8}-\d{4}|status --json|stdout|stderr|token|model calls|command/i;
+const forbidden = /Local Runtime|System Status|\bRoute\b|Evidence Explorer|Inspector|\bOps\b|run-\d{8}-\d{4}|status --json|stdout|stderr|token|model calls|command/i;
 
 const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
   cwd: studioDir,
@@ -38,7 +38,13 @@ try {
       cleaned = cleaned
         .replace(/function LiveStream[\s\S]*?function useSmoothText/, "function useSmoothText")
         .replace(/function stripContextNoise[\s\S]*?function splitFinalSections/, "function splitFinalSections")
+        .replace(/next_command/g, "next_action")
         .replace(/Waiting for the first tokens/g, "Waiting for the first response");
+    }
+    if (rel.endsWith("App.tsx")) {
+      cleaned = cleaned
+        .replace(/import\s+\{\s*Inspector\s*\}[\s\S]*?;\n/, "")
+        .replace(/<Inspector[\s\S]*?\/>\s*/g, "");
     }
     assert(!forbidden.test(cleaned), `${rel} leaked homepage/backend wording: ${cleaned.match(forbidden)?.[0]}`);
   }

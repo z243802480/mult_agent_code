@@ -5,8 +5,16 @@ from pathlib import Path
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
 from asteria_runtime.commands.sessions_command import SessionsCommand
+from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
+from asteria_runtime.core.main_path import (
+    build_main_path,
+    canonical_next_command,
+    main_path_text_lines,
+)
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
+from asteria_runtime.core.runtime_progress import build_runtime_progress
+from asteria_runtime.core.todo_view import todo_view_text_lines
 from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
     real_provider_matrix_text_lines,
@@ -76,6 +84,7 @@ class StatusResult:
         final_report_summary = (
             self.current_context.get("final_report_summary") if self.current_context else {}
         ) or {}
+        todo_view = (self.current_context.get("todo_view") if self.current_context else {}) or {}
         final_report_summary_path = (
             self.current_context.get("final_report_summary_path") if self.current_context else None
         )
@@ -94,6 +103,28 @@ class StatusResult:
             can_review=can_review,
             can_accept=can_accept,
         )
+        main_path = build_main_path(
+            workflow_state=workflow_state,
+            recommended_next_command=self._optional_str(recommended),
+            current_blocker=current_blocker,
+            context=self.current_context,
+            validation_conclusion=final_report_summary.get("validation_conclusion") or {},
+        )
+        canonical_recommended = canonical_next_command(
+            main_path,
+            self._optional_str(recommended),
+        )
+        runtime_progress = self.current_context.get("runtime_progress") or build_runtime_progress(
+            workflow_state=workflow_state,
+            main_path=main_path,
+            todo_view=todo_view,
+            latest_execution=self.current_context.get("latest_execution_evidence") or {},
+            latest_decision=latest_agent_loop_decision,
+            latest_execution_result=latest_agent_loop_execution_result,
+            latest_observation=latest_agent_loop_observation,
+            agent_loop_summary=agent_loop_run_summary or run_loop_summary,
+            validation_conclusion=final_report_summary.get("validation_conclusion") or {},
+        )
         return {
             "schema_version": "0.1.0",
             "control_surface": control_surface_contract(
@@ -109,6 +140,9 @@ class StatusResult:
                     "workflow_state",
                     "current_phase",
                     "current_blocker",
+                    "main_path",
+                    "todo_view",
+                    "runtime_progress",
                     "can_review",
                     "can_accept",
                     "current_session_id",
@@ -149,6 +183,9 @@ class StatusResult:
             "workflow_state": workflow_state,
             "current_phase": current_phase,
             "current_blocker": current_blocker,
+            "main_path": main_path,
+            "todo_view": todo_view,
+            "runtime_progress": runtime_progress,
             "can_review": can_review,
             "can_accept": can_accept,
             "evidence_chain": self._evidence_chain(),
@@ -182,8 +219,8 @@ class StatusResult:
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "plugin_control": self.plugin_control,
             "latest_failure": latest_failure,
-            "recommended_next_command": recommended,
-            "next_actions": self._next_actions(recommended),
+            "recommended_next_command": canonical_recommended,
+            "next_actions": self._next_actions(canonical_recommended),
             "recent_sessions": self.recent_sessions,
         }
 
@@ -207,6 +244,12 @@ class StatusResult:
         if self.current_session_id:
             return "active"
         return "idle"
+
+    def _optional_str(self, value: object) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
 
     def _conclusion(self) -> str:
         status = self._status()
@@ -381,8 +424,12 @@ class StatusResult:
             return ["Run `asteria /init --root .`."]
         if recommended:
             return [f"Run `asteria {recommended}`."]
-        latest_plan = self.current_context.get("latest_observation_plan") if self.current_context else {}
-        mapped = self._command_for_observation_route(str((latest_plan or {}).get("recommended_route") or ""))
+        latest_plan = (
+            self.current_context.get("latest_observation_plan") if self.current_context else {}
+        )
+        mapped = self._command_for_observation_route(
+            str((latest_plan or {}).get("recommended_route") or "")
+        )
         if mapped:
             return [f"Run `asteria {mapped}`."]
         route_health = self.current_context.get("route_health") if self.current_context else {}
@@ -413,6 +460,11 @@ class StatusResult:
                 "",
             ]
         if self.active_goal_state:
+            payload = self.to_dict()
+            raw_main_path = payload.get("main_path")
+            main_path = raw_main_path if isinstance(raw_main_path, dict) else {}
+            raw_todo_view = payload.get("todo_view")
+            todo_view = raw_todo_view if isinstance(raw_todo_view, dict) else {}
             lines = [
                 "Asteria progress",
                 "",
@@ -442,6 +494,10 @@ class StatusResult:
                     self.active_goal_state.get("next_task"),
                     fallback="- Choose the next goal to work on.",
                 ),
+                "",
+                *main_path_text_lines(main_path),
+                "",
+                *todo_view_text_lines(main_path.get("todo_view") or todo_view),
                 "",
                 "Runtime details: use `asteria status --debug` or `asteria status --json`.",
             ]
@@ -506,10 +562,30 @@ class StatusResult:
         current_blocker = self._current_blocker()
         can_review = self._can_review(recommended)
         can_accept = self._can_accept(recommended)
-        lines.append(
-            "Workflow: "
-            f"{self._workflow_state(recommended=recommended, current_blocker=current_blocker, can_review=can_review, can_accept=can_accept)}"
+        workflow_state = self._workflow_state(
+            recommended=recommended,
+            current_blocker=current_blocker,
+            can_review=can_review,
+            can_accept=can_accept,
         )
+        main_path = build_main_path(
+            workflow_state=workflow_state,
+            recommended_next_command=self._optional_str(recommended),
+            current_blocker=current_blocker,
+            context=self.current_context,
+            validation_conclusion=(
+                (self.current_context.get("final_report_summary") or {}).get(
+                    "validation_conclusion"
+                )
+                if self.current_context
+                else {}
+            ),
+        )
+        lines.append(
+            "Workflow: " f"{workflow_state}"
+        )
+        lines.extend(main_path_text_lines(main_path))
+        lines.extend(todo_view_text_lines(main_path.get("todo_view") or {}))
         lines.append(f"Current phase: {self._current_phase()}")
         lines.append(f"Can review: {'yes' if can_review else 'no'}")
         lines.append(f"Can accept: {'yes' if can_accept else 'no'}")
@@ -748,9 +824,9 @@ class StatusResult:
                     f"{matched.get('model_tier', 'unknown')} "
                     f"action={matched.get('recommended_action', 'unknown')}"
                 )
-            actions = feedback.get("recommended_actions") or []
-            if actions:
-                lines.append(f"  recommended: {actions[0]}")
+            active_next_step = capability_feedback_active_next_step(feedback)
+            if active_next_step:
+                lines.append(f"  next step: {active_next_step}")
         return lines
 
     def _latest_model_progress_lines(self, progress: dict) -> list[str]:
@@ -761,9 +837,7 @@ class StatusResult:
         event_type = progress.get("event_type") or "unknown"
         status = progress.get("status") or "unknown"
         deadline = progress.get("deadline_remaining_ms")
-        deadline_part = (
-            f", deadline_remaining_ms={deadline}" if deadline is not None else ""
-        )
+        deadline_part = f", deadline_remaining_ms={deadline}" if deadline is not None else ""
         lines = [
             (
                 "Model progress: "

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from asteria_runtime.core.agent_role_policy import role_contract_for
+from asteria_runtime.core.agent_role_policy import AgentRoleContract, role_contract_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient, StreamingTelemetry
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.json_extractor import parse_json_object
@@ -14,7 +14,9 @@ from asteria_runtime.models.model_failure import (
 )
 from asteria_runtime.models.openai_compatible import OpenAICompatibleProviderError
 from asteria_runtime.models.route_resolver import resolve_model_route, route_health_for_tiers
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
 
 
 @dataclass(frozen=True)
@@ -124,15 +126,17 @@ class ModelCheckCommand:
 
         if not route_resolution.configured and self.model_client is None:
             summary = route_resolution.next_action
-            return ModelCheckResult(
-                provider=provider,
-                model_name=model_name,
-                base_url=base_url,
-                config_ok=False,
-                call_ok=False,
-                summary=summary,
-                failure_type="configuration",
-                route_health=route_health,
+            return self._record_and_return(
+                ModelCheckResult(
+                    provider=provider,
+                    model_name=model_name,
+                    base_url=base_url,
+                    config_ok=False,
+                    call_ok=False,
+                    summary=summary,
+                    failure_type="configuration",
+                    route_health=route_health,
+                )
             )
 
         try:
@@ -144,27 +148,31 @@ class ModelCheckCommand:
                 base_url=base_url,
                 error=exc,
             )
-            return ModelCheckResult(
-                provider=provider,
-                model_name=model_name,
-                base_url=base_url,
-                config_ok=False,
-                call_ok=False,
-                summary=str(exc),
-                failure_report_path=report_path,
-                failure_type=report["failure_type"],
-                route_health=route_health,
+            return self._record_and_return(
+                ModelCheckResult(
+                    provider=provider,
+                    model_name=model_name,
+                    base_url=base_url,
+                    config_ok=False,
+                    call_ok=False,
+                    summary=str(exc),
+                    failure_report_path=report_path,
+                    failure_type=report["failure_type"],
+                    route_health=route_health,
+                )
             )
 
         if self.skip_call:
-            return ModelCheckResult(
-                provider=provider,
-                model_name=model_name,
-                base_url=base_url,
-                config_ok=True,
-                call_ok=False,
-                summary="Configuration loaded; model call skipped.",
-                route_health=route_health,
+            return self._record_and_return(
+                ModelCheckResult(
+                    provider=provider,
+                    model_name=model_name,
+                    base_url=base_url,
+                    config_ok=True,
+                    call_ok=False,
+                    summary="Configuration loaded; model call skipped.",
+                    route_health=route_health,
+                )
             )
 
         try:
@@ -177,16 +185,18 @@ class ModelCheckCommand:
                 base_url=base_url,
                 error=exc,
             )
-            return ModelCheckResult(
-                provider=provider,
-                model_name=model_name,
-                base_url=base_url,
-                config_ok=True,
-                call_ok=False,
-                summary=f"Model call failed: {exc}",
-                failure_report_path=report_path,
-                failure_type=report["failure_type"],
-                route_health=route_health,
+            return self._record_and_return(
+                ModelCheckResult(
+                    provider=provider,
+                    model_name=model_name,
+                    base_url=base_url,
+                    config_ok=True,
+                    call_ok=False,
+                    summary=f"Model call failed: {exc}",
+                    failure_report_path=report_path,
+                    failure_type=report["failure_type"],
+                    route_health=route_health,
+                )
             )
 
         if not isinstance(parsed, dict) or parsed.get("ok") is not True:
@@ -196,36 +206,85 @@ class ModelCheckCommand:
                 base_url=base_url,
                 error="Model responded, but did not return the expected JSON payload.",
             )
-            return ModelCheckResult(
-                provider=provider,
-                model_name=response.model_name or model_name,
-                base_url=base_url,
-                config_ok=True,
-                call_ok=False,
-                summary="Model responded, but did not return the expected JSON payload.",
-                failure_report_path=report_path,
-                failure_type=report["failure_type"],
-                route_health=route_health,
+            return self._record_and_return(
+                ModelCheckResult(
+                    provider=provider,
+                    model_name=response.model_name or model_name,
+                    base_url=base_url,
+                    config_ok=True,
+                    call_ok=False,
+                    summary="Model responded, but did not return the expected JSON payload.",
+                    failure_report_path=report_path,
+                    failure_type=report["failure_type"],
+                    route_health=route_health,
+                )
             )
 
         route_fallback = _route_fallback(response.raw_response)
         effective_base_url = base_url
         if route_fallback.get("to_tier"):
             effective_base_url = resolve_model_route(str(route_fallback["to_tier"])).base_url
-        return ModelCheckResult(
-            provider=response.model_provider or provider,
-            model_name=response.model_name or model_name,
-            base_url=effective_base_url or base_url,
-            config_ok=True,
-            call_ok=True,
-            summary="Model returned valid JSON for the health check prompt.",
-            streaming=response.streaming,
-            route_health=route_health,
-            route_fallback=route_fallback,
+        return self._record_and_return(
+            ModelCheckResult(
+                provider=response.model_provider or provider,
+                model_name=response.model_name or model_name,
+                base_url=effective_base_url or base_url,
+                config_ok=True,
+                call_ok=True,
+                summary="Model returned valid JSON for the health check prompt.",
+                streaming=response.streaming,
+                route_health=route_health,
+                route_fallback=route_fallback,
+            )
         )
+
+    def _record_and_return(self, result: ModelCheckResult) -> ModelCheckResult:
+        if self.skip_call:
+            return result
+        path = self.root / ".asteria" / "model" / "model_route_checks.jsonl"
+        JsonlStore(self.validator).append(
+            path,
+            {
+                "schema_version": "0.1.0",
+                "created_at": now_iso(),
+                "tier": self.model_tier,
+                "purpose": "model_check",
+                "provider": result.provider,
+                "model_name": result.model_name,
+                "base_url": result.base_url,
+                "status": "success" if result.call_ok else "failure",
+                "summary": result.summary,
+                "failure_type": result.failure_type,
+                "deadline_ms": (result.streaming or StreamingTelemetry()).deadline_ms,
+                "duration_ms": (result.streaming or StreamingTelemetry()).duration_ms,
+                "streaming": result.streaming.to_dict() if result.streaming else None,
+                "route_fallback": result.route_fallback or {},
+            },
+            "model_route_check",
+        )
+        return result
 
     def _request(self) -> ChatRequest:
         role_contract = role_contract_for(role="ModelCheckAgent", purpose="model_check")
+        route_resolution = resolve_model_route(self.model_tier)
+        if route_resolution.deadline_seconds:
+            role_contract = AgentRoleContract(
+                role=role_contract.role,
+                purpose=role_contract.purpose,
+                default_model_tier=role_contract.default_model_tier,
+                deadline_profile=role_contract.deadline_profile,
+                provider_call_seconds=max(
+                    role_contract.provider_call_seconds,
+                    int(route_resolution.deadline_seconds),
+                ),
+                stream_idle_timeout_seconds=int(
+                    route_resolution.stream_idle_timeout_seconds
+                    or role_contract.stream_idle_timeout_seconds
+                ),
+                max_model_calls=role_contract.max_model_calls,
+                responsibilities=role_contract.responsibilities,
+                escalation_policy=role_contract.escalation_policy,
+            )
         return ChatRequest(
             purpose="model_check",
             model_tier=self.model_tier,
@@ -244,6 +303,7 @@ class ModelCheckCommand:
             metadata={
                 "agent_id": "ModelCheckAgent",
                 "agent_role_contract": role_contract.to_dict(),
+                "deadline_ms": role_contract.provider_call_seconds * 1000,
             },
         )
 

@@ -193,7 +193,10 @@ def test_provider_route_strategy_blocks_unstable_strong_goal_spec(tmp_path: Path
 
     assert guidance["status"] == "blocked"
     assert guidance["provider_route_strategy"]["decision"] == "block_validation"
-    assert guidance["blocking"][0]["recommended_action"] == "block_validation_until_strong_goal_spec_stable"
+    assert (
+        guidance["blocking"][0]["recommended_action"]
+        == "block_validation_until_strong_goal_spec_stable"
+    )
     assert "Do not widen small real-task validation" in guidance["recommended_actions"][0]
 
 
@@ -278,6 +281,64 @@ def test_provider_route_strategy_uses_clean_fresh_window_as_recovery_signal(
     assert fresh["status"] == "healthy"
     assert fresh["success_calls"] == 5
     assert "recent evidence is clean" in strategy["reason"]
+
+
+def test_provider_route_strategy_uses_model_route_checks_as_recovery_signal(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "glm")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_API_KEY", "glm-key")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_NAME", "glm-4.7")
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    _write_provider_route_policy(agent_dir, validator)
+    _write_goal_spec_profile(
+        agent_dir,
+        validator,
+        total_calls=8,
+        success_calls=5,
+        success_rate=0.625,
+        failure_types={"timeout": 3},
+    )
+    store = JsonlStore(validator)
+    for index in range(3):
+        store.append(
+            agent_dir / "model" / "model_route_checks.jsonl",
+            {
+                "schema_version": "0.1.0",
+                "created_at": f"2026-06-02T10:0{index}:00+08:00",
+                "tier": "strong",
+                "purpose": "model_check",
+                "provider": "zai",
+                "model_name": "glm-4.7",
+                "base_url": "https://open.bigmodel.cn/api/coding/paas/v4",
+                "status": "success",
+                "summary": "Model returned valid JSON for the health check prompt.",
+                "failure_type": None,
+                "deadline_ms": 120000,
+                "duration_ms": 1000,
+                "streaming": {
+                    "requested": True,
+                    "supported": True,
+                    "mode": "streaming",
+                    "chunk_count": 1,
+                },
+                "route_fallback": {},
+            },
+            "model_route_check",
+        )
+
+    guidance = CapabilityFeedbackAdvisor(validator).route_guidance(agent_dir)
+
+    strategy = guidance["provider_route_strategy"]
+    fresh = strategy["fresh_evidence_window"]
+    assert guidance["status"] == "review"
+    assert strategy["decision"] == "retry_or_downgrade"
+    assert fresh["status"] == "healthy"
+    assert fresh["total_calls"] == 3
+    assert fresh["success_rate"] == 1.0
+    assert fresh["latest_success_at"] == "2026-06-02T10:02:00+08:00"
 
 
 def test_provider_route_strategy_does_not_block_on_stale_non_current_model(

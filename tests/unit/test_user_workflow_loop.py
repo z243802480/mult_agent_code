@@ -1,4 +1,4 @@
-﻿import json
+import json
 from pathlib import Path
 
 from asteria_runtime.commands.accept_command import AcceptCommand
@@ -185,6 +185,11 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert "- Reason: capability_feedback_escalated_from_medium" in report_text
     assert "- Tier pressure: medium -> strong direction=up delta=1" in report_text
     assert "- Capability feedback: blocked decision=escalated_to_strong" in report_text
+    assert (
+        "- Active next step: Use the selected stronger route for coding/medium; review results before scaling."
+        in report_text
+    )
+    assert "Pause scaling affected routes" not in report_text
     assert "model selection: strong reason=capability_feedback_escalated_from_medium" in report_text
     eval_report = JsonStore(SchemaValidator(Path("schemas"))).read(
         review.eval_report_path,
@@ -227,12 +232,18 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert active_goal_state["updated_by"] == "accept"
     assert active_goal_state["update_reason"] == "accepted_result"
     assert active_goal_state["current_result"]["state"] == "accepted"
+    assert active_goal_state["current_result"]["completion"] == "accepted"
     final_report = accept.final_report_path.read_text(encoding="utf-8")
+    assert "- Completion: accepted" in final_report
     assert "## Model Selection" in final_report
     assert "- Reason: capability_feedback_escalated_from_medium" in final_report
     assert "- Tier pressure: medium -> strong direction=up delta=1" in final_report
     assert "- Capability feedback: blocked decision=escalated_to_strong" in final_report
-    assert "- Matched route: coding/medium action=review_worker_route_before_scaling" in final_report
+    assert (
+        "- Active next step: Use the selected stronger route for coding/medium; review results before scaling."
+        in final_report
+    )
+    assert "Pause scaling affected routes" not in final_report
     summary_path = accept.final_report_path.with_name("final_report_summary.json")
     assert accept.final_report_summary_path == summary_path
     final_summary = JsonStore(SchemaValidator(Path("schemas"))).read(
@@ -242,12 +253,22 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert final_summary["status"] == "completed"
     assert final_summary["review_status"] == "pass"
     assert final_summary["workflow_state"] == "accepted"
+    assert final_summary["main_path"]["path"] == (
+        "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop"
+    )
+    assert final_summary["main_path"]["active_stage"] == "stop"
+    assert final_summary["todo_view"]["counts"]["completed"] == 1
+    assert final_summary["main_path"]["todo_view"]["summary"].startswith("All 1 todo item")
+    assert final_summary["runtime_progress"]["active_stage"] == "stop"
+    assert final_summary["runtime_progress"]["next_command"] is None
+    assert final_summary["runtime_progress"]["todo"]["counts"]["completed"] == 1
     assert final_summary["final_report_path"].endswith("final_report.md")
     assert final_summary["model_selection"]["reason"] == (
         "capability_feedback_escalated_from_medium"
     )
     assert final_summary["blockers"] == []
     assert final_summary["recommended_next_command"] is None
+    assert final_summary["recommended_next_command"] == final_summary["main_path"]["next_command"]
     assert accept.final_report_summary == final_summary
     accept_dict = accept.to_dict()
     assert accept_dict["final_report_summary_path"] == str(summary_path)
@@ -264,6 +285,15 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     assert accepted_payload["current_phase"] == "ACCEPTED"
     assert accepted_payload["can_accept"] is False
     assert accepted_payload["recommended_next_command"] is None
+    assert accepted_payload["recommended_next_command"] == accepted_payload["main_path"][
+        "next_command"
+    ]
+    assert accepted_payload["runtime_progress"]["active_stage"] == "stop"
+    assert accepted_payload["runtime_progress"]["next_command"] is None
+    assert accepted_payload["run_loop_summary"]["workflow_state"] == "accepted"
+    assert accepted_payload["run_loop_summary"]["recommended_next_command"] is None
+    assert accepted_payload["run_loop_summary"]["main_path"]["active_stage"] == "stop"
+    assert accepted_payload["run_loop_summary"]["runtime_progress"]["active_stage"] == "stop"
 
 
 def test_review_failure_text_names_primary_blocker_and_next_command(tmp_path: Path) -> None:
@@ -365,7 +395,11 @@ def test_review_falls_back_to_deterministic_report_when_model_call_fails(
         "cost_report",
     )
     model_call_count = len(
-        [line for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+        [
+            line
+            for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
     )
     assert cost["model_calls"] == model_call_count
     assert review.status == "pass"
@@ -408,12 +442,24 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     )
     assert result.final_report_summary == final_summary
     assert final_summary["workflow_state"] == "ready_for_review"
+    assert final_summary["main_path"]["active_stage"] == "verify"
+    assert final_summary["main_path"]["next_command"] == "review"
+    assert final_summary["recommended_next_command"] == final_summary["main_path"][
+        "next_command"
+    ]
+    assert final_summary["runtime_progress"]["active_stage"] == "verify"
+    assert final_summary["runtime_progress"]["next_command"] == "review"
+    assert final_summary["todo_view"]["current"]["id"] == "task-0001"
+    assert final_summary["main_path"]["todo_view"]["current"]["id"] == "task-0001"
     assert final_summary["output_locations"]["workspace_root"] == str(tmp_path.resolve())
     assert final_summary["output_locations"]["artifact_root"] == str(
         (tmp_path / ".asteria" / "artifacts").resolve()
     )
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "## Workspace and Outputs" in final_report
+    assert "## Main Path" in final_report
+    assert "## Todo" in final_report
+    assert "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop" in final_report
     assert f"- Output root: {tmp_path.resolve()}" in final_report
     assert final_summary["model_selection"]["reason"] == (
         "capability_feedback_escalated_from_medium"
@@ -436,9 +482,7 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
         "model_route_timeline",
     )
     assert route_timeline["record_count"] == 1
-    assert route_timeline["timeline"][0]["reason"] == (
-        "capability_feedback_escalated_from_medium"
-    )
+    assert route_timeline["timeline"][0]["reason"] == ("capability_feedback_escalated_from_medium")
     user_progress = JsonlStore(SchemaValidator(Path("schemas"))).read_all(
         result.final_report_path.with_name("user_progress.jsonl"),
         "user_progress_event",
@@ -450,7 +494,9 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     assert "file_changed" in event_types
     assert "validation_result" in event_types
     assert "final_report" in event_types
-    final_report_event = [event for event in user_progress if event["event_type"] == "final_report"][-1]
+    final_report_event = [
+        event for event in user_progress if event["event_type"] == "final_report"
+    ][-1]
     assert final_report_event["data"]["output_locations"]["workspace_root"] == str(
         tmp_path.resolve()
     )
@@ -511,8 +557,6 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     assert "Loop steps:" in text
 
 
-
-
 def test_goal_loop_policy_auto_accepts_passed_review_in_auto_mode(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
@@ -550,7 +594,9 @@ def test_goal_loop_policy_stops_for_explicit_accept_in_balanced_mode(tmp_path: P
     assert result.workflow_state == "ready_for_accept"
     assert result.current_phase == "REVIEWED"
     assert result.recommended_next_command == "accept"
-    assert any(step.name == "goal-policy" and step.status == "stop_for_accept" for step in result.steps)
+    assert any(
+        step.name == "goal-policy" and step.status == "stop_for_accept" for step in result.steps
+    )
     assert not any(step.name == "accept" for step in result.steps)
 
 
@@ -570,7 +616,9 @@ def test_goal_loop_policy_stops_for_repair_after_failed_review(tmp_path: Path) -
     assert result.status == "running"
     assert result.workflow_state == "needs_action"
     assert result.recommended_next_command == "debug"
-    assert any(step.name == "goal-policy" and step.status == "stop_for_repair" for step in result.steps)
+    assert any(
+        step.name == "goal-policy" and step.status == "stop_for_repair" for step in result.steps
+    )
     assert result.final_report_summary["recommended_next_command"] == "debug"
     assert result.final_report_summary["goal_policy"]["recommended_command"] == "debug"
 
@@ -590,8 +638,7 @@ def test_goal_loop_policy_recommends_replan_for_plan_gap(tmp_path: Path) -> None
 
     assert result.recommended_next_command == "replan"
     assert any(
-        step.name == "goal-policy" and step.status == "stop_for_replan"
-        for step in result.steps
+        step.name == "goal-policy" and step.status == "stop_for_replan" for step in result.steps
     )
     assert result.final_report_summary["goal_policy"]["category"] == "plan_gap"
     assert result.final_report_summary["goal_policy"]["recommended_command"] == "replan"
@@ -615,8 +662,7 @@ def test_goal_loop_policy_creates_decision_for_high_risk_follow_up(tmp_path: Pat
 
     assert result.recommended_next_command == "decide --list"
     assert any(
-        step.name == "goal-policy" and step.status == "stop_for_decision"
-        for step in result.steps
+        step.name == "goal-policy" and step.status == "stop_for_decision" for step in result.steps
     )
     assert result.final_report_summary["goal_policy"]["category"] == "decision_required"
     decisions = JsonlStore(SchemaValidator(Path("schemas"))).read_all(
@@ -672,11 +718,27 @@ def test_status_and_sessions_context_expose_run_loop_summary(tmp_path: Path) -> 
     )
     assert status_payload["run_loop_summary"]["workflow_state"] == "ready_for_review"
     assert status_payload["run_loop_summary"]["recommended_next_command"] == "review"
+    assert status_payload["main_path"]["active_stage"] == "verify"
+    assert status_payload["recommended_next_command"] == status_payload["main_path"][
+        "next_command"
+    ]
+    assert status_payload["main_path"]["current_step"] == "Run `asteria review`."
+    assert status_payload["todo_view"]["current"]["id"] == "task-0001"
+    assert status_payload["main_path"]["todo_view"]["current"]["id"] == "task-0001"
+    assert status_payload["runtime_progress"]["active_stage"] == "verify"
+    assert status_payload["runtime_progress"]["next_command"] == "review"
+    assert status_payload["runtime_progress"]["todo"]["current"]["id"] == "task-0001"
+    assert status_payload["run_loop_summary"]["main_path"]["active_stage"] == "verify"
+    assert status_payload["run_loop_summary"]["runtime_progress"]["active_stage"] == "verify"
     assert status_context["run_loop_summary_path"] == (
         f".asteria/runs/{run_id}/run_loop_summary.json"
     )
     assert status_context["run_loop_summary"]["workflow_state"] == "ready_for_review"
     assert status_context["run_loop_summary"]["recommended_next_command"] == "review"
+    assert status_context["main_path"]["active_stage"] == "verify"
+    assert status_context["recommended_next_command"] == status_context["main_path"][
+        "next_command"
+    ]
     assert status_payload["model_route_timeline"][0]["task_id"] == "task-0001"
     assert status_payload["model_route_timeline"][0]["purpose"] == "coding"
     assert status_payload["model_route_timeline"][0]["reason"] == (
@@ -687,12 +749,20 @@ def test_status_and_sessions_context_expose_run_loop_summary(tmp_path: Path) -> 
     session_context = sessions.context[run_id]
     assert session_context["run_loop_summary_path"] == status_context["run_loop_summary_path"]
     assert session_context["run_loop_summary"] == status_context["run_loop_summary"]
+    assert session_context["main_path"]["path"] == (
+        "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop"
+    )
+    assert session_context["runtime_progress"]["active_stage"] == "verify"
+    assert session_context["runtime_progress"]["next_command"] == "review"
     assert session_context["model_route_timeline"] == status_payload["model_route_timeline"]
     assert "run loop summary:" in sessions.to_text()
-    assert "Model route timeline: 1 recent decision(s)" in StatusCommand(
-        tmp_path
-    ).run().to_text(debug=True)
-    assert session_context["model_route_timeline_path"] == f".asteria/runs/{run_id}/model_route_timeline.json"
+    assert "Model route timeline: 1 recent decision(s)" in StatusCommand(tmp_path).run().to_text(
+        debug=True
+    )
+    assert (
+        session_context["model_route_timeline_path"]
+        == f".asteria/runs/{run_id}/model_route_timeline.json"
+    )
 
 
 def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path) -> None:
@@ -727,6 +797,13 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     assert chat.session_context["current_run"]["run_id"] == run_id
     assert chat.session_context["workflow"]["workflow_state"] == "ready_for_review"
     assert chat.session_context["workflow"]["recommended_next_command"] == "review"
+    assert chat.session_context["main_path"]["active_stage"] == "verify"
+    assert chat.session_context["runtime_progress"]["active_stage"] == "verify"
+    assert chat.session_context["runtime_progress"]["next_command"] == "review"
+    assert chat.session_context["workflow"]["recommended_next_command"] == chat.session_context[
+        "main_path"
+    ]["next_command"]
+    assert chat.session_context["todo_view"]["current"]["id"] == "task-0001"
     assert chat.session_context["latest_evidence"]["path"] == (
         f".asteria/runs/{run_id}/task_execution_evidence.jsonl"
     )
@@ -758,18 +835,19 @@ def test_chat_safely_summarizes_current_session_without_execution(tmp_path: Path
     )
     assert chat_model.context["workspace_envelope"]["workspace_root"] == str(tmp_path.resolve())
     assert chat_model.context["policy"]["permission_mode"] == "reviewed_auto"
-    assert (
-        chat_model.context["session_context"]["workspace_envelope"]["workspace_root"]
-        == str(tmp_path.resolve())
+    assert chat_model.context["session_context"]["workspace_envelope"]["workspace_root"] == str(
+        tmp_path.resolve()
     )
     assert chat_model.context_envelope is not None
     assert chat_model.context_envelope["intent"] == "next_step_question"
     assert chat_model.context_envelope["payload"] == chat_model.context
-    assert chat_model.context_envelope["payload_hash"] == (
-        chat_model.request.metadata["context_envelope_hash"]
+    assert (
+        chat_model.context_envelope["payload_hash"]
+        == (chat_model.request.metadata["context_envelope_hash"])
     )
-    assert chat_model.request.metadata["context_envelope_id"] == (
-        chat_model.context_envelope["envelope_id"]
+    assert (
+        chat_model.request.metadata["context_envelope_id"]
+        == (chat_model.context_envelope["envelope_id"])
     )
     envelope_path = tmp_path / chat_model.request.metadata["context_envelope_path"]
     assert envelope_path.exists()
@@ -869,12 +947,17 @@ def test_status_exposes_latest_model_selection_pressure_and_feedback(tmp_path: P
     assert f"- root: {tmp_path.resolve()}" in status_text
     debug_text = StatusCommand(tmp_path).run().to_text(debug=True)
     assert (
-        "Model selection: strong for coding "
-        "(capability_feedback_escalated_from_medium)"
+        "Model selection: strong for coding (capability_feedback_escalated_from_medium)"
     ) in debug_text
-    assert "pressure: medium -> strong (stronger route selected, direction=up) delta=1" in debug_text
+    assert (
+        "pressure: medium -> strong (stronger route selected, direction=up) delta=1" in debug_text
+    )
     assert "capability feedback: blocked (escalated_to_strong; blocking=1, review=0)" in debug_text
-    assert "matched route: coding/medium action=review_worker_route_before_scaling" in debug_text
+    assert (
+        "next step: Use the selected stronger route for coding/medium; review results before scaling."
+        in debug_text
+    )
+    assert "Pause scaling affected routes" not in debug_text
 
 
 def test_goal_run_result_uses_explicit_session_status_when_not_current(tmp_path: Path) -> None:
@@ -1135,4 +1218,3 @@ def _create_minimal_completed_run(root: Path) -> str:
         "tool_call",
     )
     return run_id
-

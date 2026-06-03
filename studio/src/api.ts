@@ -17,6 +17,12 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ message, mode, permission }),
     }),
+  runtimeAction: (id: string, nextAction: string, permission = "ask") =>
+    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/runtime-actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ next_action: nextAction, permission }),
+    }),
   permitJob: (sessionId: string, jobId: string, action: "allow" | "deny") =>
     requestJson<AnyRecord>(
       `/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs/${encodeURIComponent(jobId)}/permission`,
@@ -31,6 +37,7 @@ export const api = {
     }),
   settings: () => requestJson<{ ok: boolean; settings: SettingsPayload }>("/api/studio/settings"),
   overview: () => requestJson<OverviewPayload>("/api/overview"),
+  diagnostics: () => requestJson<OverviewPayload>("/api/diagnostics"),
   runDetail: (runId: string) => requestJson<RunDetailPayload>(`/api/runs/${encodeURIComponent(runId)}`),
 };
 

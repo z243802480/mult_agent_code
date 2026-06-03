@@ -101,6 +101,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await submitUserGoal(sessionId, await readRequestJson(request)));
     return;
   }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/runtime-actions$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    sendJson(response, 200, await handleRuntimeAction(sessionId, await readRequestJson(request)));
+    return;
+  }
   if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs\/[^/]+\/permission$/)) {
     const parts = url.pathname.split("/");
     // /api/studio/sessions/SESSION_ID/jobs/JOB_ID/permission
@@ -133,6 +138,10 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "GET" && url.pathname === "/api/overview") {
     sendJson(response, 200, await overview());
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/diagnostics") {
+    sendJson(response, 200, await diagnostics());
     return;
   }
   if (request.method === "GET" && url.pathname.match(/^\/api\/runs\/[^/]+$/)) {
@@ -211,6 +220,126 @@ async function submitUserGoal(sessionId, body) {
   return { ok: true, session, started: true };
 }
 
+async function handleRuntimeAction(sessionId, body) {
+  const session = await ensureSession(sessionId);
+  const permission = String(body?.permission || "ask");
+  const action = runtimeActionFor(body?.next_action ?? body?.next_command ?? body?.action);
+  if (!action) return { ok: false, error: "unsupported runtime action" };
+
+  await appendEvent(session.session_id, {
+    type: "assistant_delta",
+    status: "completed",
+    title: "Next step selected",
+    summary: `${action.label} selected from current progress.`,
+    phase: "next",
+    display_level: "main",
+    content_delta: action.summary,
+  });
+  await appendEvent(session.session_id, progressEventForMode(action.mode, action.goal));
+
+  if (action.requiresPermission && permission !== "allow") {
+    const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    pendingJobs.set(pendingJobId, {
+      sessionId: session.session_id,
+      mode: action.mode,
+      goal: action.goal,
+      command: action.command,
+    });
+    await appendEvent(session.session_id, {
+      type: "permission_request",
+      status: "waiting_user",
+      title: "\u9700\u8981\u4f60\u786e\u8ba4",
+      summary: action.permissionSummary,
+      command: action.command,
+      job_id: pendingJobId,
+      content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002",
+    });
+    return { ok: true, session, started: false, needs_permission: true, job_id: pendingJobId, action: action.kind };
+  }
+
+  startRuntimeJob(session.session_id, action.mode, action.goal, action.command);
+  return { ok: true, session, started: true, action: action.kind };
+}
+
+function runtimeActionFor(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  const normalized = raw
+    .replace(/^asteria\s+/, "")
+    .replace(/^python\s+-m\s+\S+\s+/, "")
+    .replace(/\s+--latest\b/g, "")
+    .trim();
+  const first = normalized.split(/\s+/)[0];
+  const kind = {
+    review: "review",
+    accept: "accept",
+    resume: "continue",
+    continue: "continue",
+    run: "continue",
+    debug: "debug",
+    repair: "debug",
+    decide: "decide",
+  }[first];
+  if (!kind) return null;
+  return runtimeActionByKind(kind);
+}
+
+function runtimeActionByKind(kind) {
+  const actions = {
+    review: {
+      kind: "review",
+      label: "Review",
+      mode: "review",
+      goal: "Review the latest runtime result.",
+      command: [python, "-m", moduleName, "review", "--root", workspace],
+      requiresPermission: false,
+      summary: "I will review the latest result and show the outcome.",
+      permissionSummary: "",
+    },
+    accept: {
+      kind: "accept",
+      label: "Accept",
+      mode: "accept",
+      goal: "Accept the latest reviewed result.",
+      command: [python, "-m", moduleName, "accept", "--root", workspace],
+      requiresPermission: true,
+      summary: "I will accept the verified result after confirmation.",
+      permissionSummary: "\u63a5\u53d7\u7ed3\u679c\u4f1a\u66f4\u65b0\u5f53\u524d runtime \u72b6\u6001\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+    },
+    continue: {
+      kind: "continue",
+      label: "Continue",
+      mode: "resume",
+      goal: "Continue the current runtime goal.",
+      command: [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1"],
+      requiresPermission: true,
+      summary: "I will continue the current goal after confirmation.",
+      permissionSummary: "\u7ee7\u7eed\u63a8\u8fdb\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+    },
+    debug: {
+      kind: "debug",
+      label: "Debug",
+      mode: "debug",
+      goal: "Diagnose and repair the latest blocked runtime step.",
+      command: [python, "-m", moduleName, "debug", "--root", workspace],
+      requiresPermission: true,
+      summary: "I will diagnose the blocked step and prepare a repair path after confirmation.",
+      permissionSummary: "\u8c03\u8bd5\u4fee\u590d\u53ef\u80fd\u4f1a\u8bfb\u53d6\u8fd0\u884c\u8bc1\u636e\u5e76\u4fee\u6539\u6587\u4ef6\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+    },
+    decide: {
+      kind: "decide",
+      label: "Decide",
+      mode: "decide",
+      goal: "List pending decisions for the current runtime goal.",
+      command: [python, "-m", moduleName, "decide", "--root", workspace, "--list-pending"],
+      requiresPermission: false,
+      summary: "I will list the decisions that need your input.",
+      permissionSummary: "",
+    },
+  };
+  return actions[kind] ?? null;
+}
+
 // Chat mode: instant local answer, zero CLI overhead
 
 function acknowledgementFor(mode, goal) {
@@ -227,6 +356,9 @@ function progressEventForMode(mode, goal) {
     run: ["Starting", "\u6b63\u5728\u5f00\u59cb\u53d7\u63a7\u5904\u7406\u3002"],
     review: ["Reviewing", "\u6b63\u5728\u68c0\u67e5\u7ed3\u679c\u5e76\u51c6\u5907\u603b\u7ed3\u3002"],
     resume: ["Resuming", "\u6b63\u5728\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\u3002"],
+    accept: ["Accepting", "\u6b63\u5728\u63a5\u53d7\u5df2\u9a8c\u8bc1\u7684\u7ed3\u679c\u3002"],
+    debug: ["Repairing", "\u6b63\u5728\u68c0\u67e5\u95ee\u9898\u5e76\u51c6\u5907\u4fee\u590d\u8def\u5f84\u3002"],
+    decide: ["Deciding", "\u6b63\u5728\u68c0\u67e5\u9700\u8981\u4f60\u5224\u65ad\u7684\u9009\u9879\u3002"],
   };
   const [title, summary] = labels[mode] || ["Processing", "Working on the request."];
   return {
@@ -246,6 +378,9 @@ function runtimeCommand(mode, goal) {
   }
   if (mode === "review") return [python, "-m", moduleName, "review", "--root", workspace];
   if (mode === "resume") return [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1"];
+  if (mode === "accept") return [python, "-m", moduleName, "accept", "--root", workspace];
+  if (mode === "debug") return [python, "-m", moduleName, "debug", "--root", workspace];
+  if (mode === "decide") return [python, "-m", moduleName, "decide", "--root", workspace, "--list-pending"];
   return [python, "-m", moduleName, "plan", "--root", workspace, goal];
 }
 
@@ -253,6 +388,9 @@ function phaseForMode(mode) {
   if (mode === "run") return "execute";
   if (mode === "review") return "review";
   if (mode === "resume") return "resume";
+  if (mode === "accept") return "result";
+  if (mode === "debug") return "repair";
+  if (mode === "decide") return "decision";
   return "plan";
 }
 
@@ -770,7 +908,10 @@ async function chatStatusAnswer(sessionId) {
   const summary = context.finalSummary;
   const loop = context.runLoopSummary;
   const policy = context.goalPolicy;
-  const next = commandFromStatus(status, summary, loop, policy);
+  const progress = context.runtimeProgress || {};
+  const progressTodo = progress.todo || {};
+  const verification = progress.verification || {};
+  const next = firstRuntimeText(progress.next_command, commandFromStatus(status, summary, loop, policy), "");
   const decisionId = context.latestDecision ? (context.latestDecision.decision_id || context.latestDecision.id) : "";
   const blocker = firstRuntimeText(
     summary.current_blocker,
@@ -778,7 +919,7 @@ async function chatStatusAnswer(sessionId) {
     status.current_blocker,
     decisionId ? "\u6709\u4e00\u4e2a\u9700\u8981\u4f60\u786e\u8ba4\u7684\u51b3\u7b56\u70b9\u3002" : "none"
   );
-  const workflow = firstRuntimeText(summary.workflow_state, loop.workflow_state, status.workflow_state, run.current_phase, "unknown");
+  const workflow = firstRuntimeText(progress.workflow_state, summary.workflow_state, loop.workflow_state, status.workflow_state, run.current_phase, "unknown");
   const canReview = Boolean(status.can_review);
   const canAccept = Boolean(status.can_accept);
   const goal = firstRuntimeText(run.goal, run.original_goal, context.goalSpec.normalized_goal, context.goalSpec.original_goal, "\u672a\u8bb0\u5f55\u76ee\u6807");
@@ -787,6 +928,9 @@ async function chatStatusAnswer(sessionId) {
     "",
     `\u4efb\u52a1\u76ee\u6807\uff1a${goal}`,
     `\u8fdb\u5c55\uff1a${friendlyWorkflow(workflow)}`,
+    `\u5f53\u524d\u6b65\u9aa4\uff1a${firstRuntimeText(progress.current_step, "\u8fd8\u6ca1\u6709\u8bb0\u5f55\u660e\u786e\u6b65\u9aa4")}`,
+    `Todo\uff1a${firstRuntimeText(progressTodo.summary, "\u8fd8\u6ca1\u6709 Todo \u6458\u8981")}`,
+    `\u9a8c\u8bc1\uff1a${firstRuntimeText(verification.summary, "\u8fd8\u6ca1\u6709\u9a8c\u8bc1\u7ed3\u679c")}`,
     "",
     "## \u662f\u5426\u6709\u963b\u585e",
     blocker && blocker !== "none" ? `- ${blocker}` : "- \u6682\u65f6\u6ca1\u6709\u770b\u5230\u9700\u8981\u4f60\u5904\u7406\u7684\u963b\u585e\u3002",
@@ -844,6 +988,7 @@ async function readChatContext(sessionId) {
     goalSpec: detail.goal_spec || {},
     finalSummary: detail.final_report_summary || {},
     runLoopSummary: detail.run_loop_summary || {},
+    runtimeProgress: detail.runtime_progress || (detail.final_report_summary || {}).runtime_progress || (detail.run_loop_summary || {}).runtime_progress || {},
     goalPolicy: detail.goal_policy || (detail.final_report_summary || {}).goal_policy || {},
     modelRouteTimeline: detail.model_route_timeline || {},
     latestDecision: pendingDecision || null,
@@ -920,7 +1065,7 @@ async function handlePermission(sessionId, jobId, body) {
       phase: "execute",
       display_level: "main"
     });
-    startRuntimeJob(sessionId, pending.mode, pending.goal);
+    startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command);
     return { ok: true, started: true };
   }
   if (action === "deny") {
@@ -1038,8 +1183,8 @@ function tailUserProgress(sessionId, jobId) {
   return () => { stopped = true; };
 }
 
-function startRuntimeJob(sessionId, mode, goal) {
-  const command = runtimeCommand(mode, goal);
+function startRuntimeJob(sessionId, mode, goal, commandOverride = null) {
+  const command = Array.isArray(commandOverride) && commandOverride.length ? commandOverride : runtimeCommand(mode, goal);
   const jobId = `job-${Date.now()}`;
   const job = {
     job_id: jobId,
@@ -1245,6 +1390,9 @@ function nextStepForMode(mode) {
   if (mode === "run") return "Review the result, then ask me to continue, revise, or summarize.";
   if (mode === "review") return "Use the review result to decide whether to accept or revise.";
   if (mode === "resume") return "Check the latest result and decide whether to continue.";
+  if (mode === "accept") return "The reviewed result is accepted; continue with the next goal when ready.";
+  if (mode === "debug") return "Use the repair result to continue, ask for help, or stop cleanly.";
+  if (mode === "decide") return "Choose one pending decision, then continue the runtime goal.";
   return "Tell me what you want to do next.";
 }
 
@@ -1511,24 +1659,43 @@ function trimForUser(text) {
 }
 
 async function overview() {
-  const [gateStatus, doctor, packageCheck, runs, modelRoutes] = await Promise.all([
+  const [runs, modelRoutes, v0_2_rolling_validation] = await Promise.all([
+    readRuns(),
+    modelRouteSummary(),
+    latestV02RollingValidation()
+  ]);
+  return {
+    ok: true,
+    workspace,
+    runtimeRoot,
+    diagnostics_loaded: false,
+    gateStatus: {},
+    v0_2_rolling_validation,
+    doctor: {},
+    packageCheck: {},
+    runs: runs.slice(0, 10),
+    modelRoutes
+  };
+}
+
+async function diagnostics() {
+  const [gateStatus, doctor, packageCheck, modelRoutes] = await Promise.all([
     commandJson(["gate-status", "--root", workspace, "--json"]),
     commandJson(["doctor", "--root", workspace, "--json"]),
     commandJson(["package-check", "--root", runtimeRoot, "--json"]),
-    readRuns(),
     modelRouteSummary()
   ]);
   return {
     ok: true,
     workspace,
     runtimeRoot,
+    diagnostics_loaded: true,
     gateStatus,
     v0_2_rolling_validation: nonEmptyRecord(gateStatus?.v0_2_rolling_validation)
       ? gateStatus.v0_2_rolling_validation
       : await latestV02RollingValidation(),
     doctor,
     packageCheck,
-    runs: runs.slice(0, 10),
     modelRoutes
   };
 }
@@ -1856,9 +2023,22 @@ async function readRuns() {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const runDir = path.join(runsDir, entry.name);
-    runs.push(redact({ run_id: entry.name, ...(await readJson(path.join(runDir, "run.json"))), cost_report: await readJson(path.join(runDir, "cost_report.json")) }));
+    let stat = null;
+    try { stat = await fs.stat(runDir); } catch {}
+    runs.push(redact({
+      run_id: entry.name,
+      is_runtime_run: /^run-\d{8}-\d{4}$/.test(entry.name),
+      modified_at_ms: stat?.mtimeMs ?? 0,
+      ...(await readJson(path.join(runDir, "run.json"))),
+      cost_report: await readJson(path.join(runDir, "cost_report.json"))
+    }));
   }
-  return runs.sort((a, b) => String(b.run_id).localeCompare(String(a.run_id)));
+  return runs.sort((a, b) => {
+    if (a.is_runtime_run !== b.is_runtime_run) return a.is_runtime_run ? -1 : 1;
+    const byTime = Number(b.modified_at_ms || 0) - Number(a.modified_at_ms || 0);
+    if (byTime) return byTime;
+    return String(b.run_id).localeCompare(String(a.run_id));
+  });
 }
 
 async function readRunDetail(runId) {
@@ -1883,6 +2063,11 @@ async function readRunDetail(runId) {
   for (const [key, file] of Object.entries(jsonFiles)) {
     payload[key] = redact(await readJson(path.join(runDir, file)));
   }
+  payload.runtime_progress = redact(
+    payload.final_report_summary?.runtime_progress
+    || payload.run_loop_summary?.runtime_progress
+    || {}
+  );
   payload.model_calls = redact(await readJsonlTail(path.join(runDir, "model_calls.jsonl"), 120));
   payload.task_execution_evidence = redact(await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 80));
   payload.worker_results = redact(await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80));

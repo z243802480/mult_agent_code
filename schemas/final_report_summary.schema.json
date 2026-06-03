@@ -28,6 +28,9 @@
     "workflow_state": { "type": ["string", "null"] },
     "current_blocker": { "type": ["string", "null"] },
     "recommended_next_command": { "type": ["string", "null"] },
+    "main_path": { "type": "object" },
+    "todo_view": { "type": "object" },
+    "runtime_progress": { "type": "object" },
     "model_selection": { "type": "object" },
     "model_route_timeline_path": { "type": ["string", "null"] },
     "model_route_timeline": {

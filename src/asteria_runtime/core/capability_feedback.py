@@ -114,7 +114,6 @@ class CapabilityFeedbackAdvisor:
             "severity": severity,
         }
 
-
     def _matrix_hint(self, profile: dict) -> dict:
         total = int(profile.get("matrix_signal_total") or 0)
         if total <= 0:
@@ -396,21 +395,15 @@ class CapabilityFeedbackAdvisor:
         min_success: float,
         max_timeouts: int,
     ) -> dict[str, Any]:
-        runs_dir = agent_dir / "runs"
-        if not runs_dir.exists():
-            return {
-                "status": "missing",
-                "total_calls": 0,
-                "required_successes": min_calls,
-                "remaining_successes_needed": min_calls,
-            }
         calls: list[dict[str, Any]] = []
         store = JsonlStore(self.validator)
-        for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
-            path = run_dir / "model_calls.jsonl"
-            if not path.exists():
-                continue
-            calls.extend(store.read_all(path, "model_call"))
+        runs_dir = agent_dir / "runs"
+        if runs_dir.exists():
+            for run_dir in sorted(path for path in runs_dir.iterdir() if path.is_dir()):
+                path = run_dir / "model_calls.jsonl"
+                if not path.exists():
+                    continue
+                calls.extend(store.read_all(path, "model_call"))
         matching = [
             call
             for call in calls
@@ -419,15 +412,57 @@ class CapabilityFeedbackAdvisor:
             and str(call.get("model_provider") or "") == provider
             and _model_names_match(str(call.get("model_name") or ""), model)
         ]
+        route_checks = self._fresh_model_route_checks(
+            agent_dir=agent_dir,
+            provider=provider,
+            model=model,
+        )
+        matching.extend(route_checks)
         matching.sort(key=lambda call: str(call.get("created_at") or ""))
         window_size = max(min_calls, 5)
         window = matching[-window_size:]
-        return _summarize_fresh_model_call_window(
+        summary = _summarize_fresh_model_call_window(
             window,
             min_calls=min_calls,
             min_success=min_success,
             max_timeouts=max_timeouts,
         )
+        if not matching and not runs_dir.exists():
+            return {
+                **summary,
+                "status": "missing",
+            }
+        return summary
+
+    def _fresh_model_route_checks(
+        self,
+        *,
+        agent_dir: Path,
+        provider: str,
+        model: str,
+    ) -> list[dict[str, Any]]:
+        path = agent_dir / "model" / "model_route_checks.jsonl"
+        if not path.exists():
+            return []
+        checks = JsonlStore(self.validator).read_all(path, "model_route_check")
+        return [
+            {
+                "created_at": check.get("created_at"),
+                "status": check.get("status"),
+                "summary": check.get("summary"),
+                "streaming": check.get("streaming"),
+                "duration_ms": check.get("duration_ms"),
+                "deadline_ms": check.get("deadline_ms"),
+                "model_provider": check.get("provider"),
+                "model_name": check.get("model_name"),
+                "model_tier": check.get("tier"),
+                "purpose": "model_check",
+            }
+            for check in checks
+            if str(check.get("tier") or "") == "strong"
+            and str(check.get("provider") or "") == provider
+            and _model_names_match(str(check.get("model_name") or ""), model)
+        ]
 
     def _strong_goal_spec_strategy(self, agent_dir: Path) -> dict[str, Any]:
         try:
@@ -493,19 +528,11 @@ def _summarize_fresh_model_call_window(
     remaining_successes = max(0, min_calls - success_calls)
     latest = calls[-1] if calls else {}
     latest_failure = next(
-        (
-            call
-            for call in reversed(calls)
-            if str(call.get("status") or "") != "success"
-        ),
+        (call for call in reversed(calls) if str(call.get("status") or "") != "success"),
         {},
     )
     latest_success = next(
-        (
-            call
-            for call in reversed(calls)
-            if str(call.get("status") or "") == "success"
-        ),
+        (call for call in reversed(calls) if str(call.get("status") or "") == "success"),
         {},
     )
     return {

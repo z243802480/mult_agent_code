@@ -50,11 +50,13 @@ export function SignalCard({
 }
 
 export function gateStage(overview: OverviewPayload | null): string {
+  if (overview && overview.diagnostics_loaded === false) return "loading";
   const gate = (overview?.gateStatus ?? {}) as Record<string, unknown>;
   return String(gate.stage ?? gate.release_state ?? "unknown");
 }
 
 export function validationTone(overview: OverviewPayload | null): string {
+  if (overview && overview.diagnostics_loaded === false) return "warn";
   const gate = (overview?.gateStatus ?? {}) as Record<string, unknown>;
   if (gate.release_ready || /ready/i.test(String(gate.stage ?? gate.release_state ?? ""))) return "good";
   if (/blocked|failed|missing/i.test(String(gate.stage ?? gate.release_state ?? gate.status ?? ""))) return "bad";

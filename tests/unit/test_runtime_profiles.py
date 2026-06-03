@@ -411,6 +411,9 @@ def test_runtime_profile_builder_uses_strategy_bias_without_clobbering_routes(
             "recommended_actions": [
                 "Keep current model routes and continue collecting capability evidence."
             ],
+            "active_next_step": (
+                "Continue with the selected route and keep collecting capability evidence."
+            ),
             "provider_route_strategy": {"decision": "not_configured"},
         },
     }
@@ -490,7 +493,7 @@ def test_runtime_profile_builder_records_resolved_model_route(
     assert route["provider"] == "openai-compatible"
     assert route["model_name"] == "medium-model"
     assert route["next_action"] == "Model route is configured."
-    model_profiles = (tmp_path / ".asteria" / "runs" / "run-0004" / "model_profiles.jsonl")
+    model_profiles = tmp_path / ".asteria" / "runs" / "run-0004" / "model_profiles.jsonl"
     model_profile_text = model_profiles.read_text(encoding="utf-8")
     assert '"provider": "openai-compatible"' in model_profile_text
     assert '"model_name": "medium-model"' in model_profile_text

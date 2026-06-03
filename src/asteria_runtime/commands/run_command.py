@@ -17,14 +17,22 @@ from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand, StatusResult
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
+from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
+from asteria_runtime.core.main_path import (
+    build_main_path,
+    canonical_next_command,
+    main_path_text_lines,
+)
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.permission_policy import normalize_permission_mode
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
+from asteria_runtime.core.runtime_progress import build_runtime_progress
+from asteria_runtime.core.todo_view import build_todo_view, todo_view_text_lines
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -534,8 +542,7 @@ class RunCommand:
             mcp_invocations = self.jsonl.read_all(run_dir / "mcp_invocations.jsonl")
             skill_invocations = self.jsonl.read_all(run_dir / "skill_invocations.jsonl")
             has_reasoned_decision = any(
-                isinstance(item, dict)
-                and bool((item.get("decision") or {}).get("reason"))
+                isinstance(item, dict) and bool((item.get("decision") or {}).get("reason"))
                 for item in decisions
             )
             has_adapter_reason = any(
@@ -638,6 +645,64 @@ class RunCommand:
         workspace_envelope = self._workspace_envelope(run_dir)
         validation_conclusion = self._validation_conclusion(run_dir)
         file_changes = self._file_change_summary(run_dir)
+        todo_view = self._todo_view(run_dir, validation_conclusion=validation_conclusion)
+        task_plan = self._read_json_if_exists(run_dir / "task_plan.json", "task_board")
+        tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else []
+        task_count = len(tasks or [])
+        done_count = len(
+            [
+                task
+                for task in tasks or []
+                if isinstance(task, dict) and task.get("status") in {"done", "discarded"}
+            ]
+        )
+        execution_evidence = self._execution_evidence(run_dir)
+        workflow_state = self._optional_str(status_payload.get("workflow_state"))
+        status_payload_with_todo = {
+            **status_payload,
+            "run_status": status_payload.get("run_status") or self._run_record_summary(run_id),
+            "task_summary": status_payload.get("task_summary")
+            or {"total": task_count, "remaining": task_count - done_count},
+            "latest_execution_evidence": (
+                status_payload.get("latest_execution_evidence")
+                or (execution_evidence[-1] if execution_evidence else {})
+            ),
+            "workspace_envelope": workspace_envelope,
+            "todo_view": todo_view,
+            "run_loop_summary_path": (
+                f".asteria/runs/{run_id}/run_loop_summary.json"
+                if (run_dir / "run_loop_summary.json").exists()
+                else None
+            ),
+            "final_report_summary_path": f".asteria/runs/{run_id}/final_report_summary.json",
+            "model_route_timeline_path": (
+                f".asteria/runs/{run_id}/model_route_timeline.json"
+                if (run_dir / "model_route_timeline.json").exists()
+                else None
+            ),
+        }
+        main_path = build_main_path(
+            workflow_state=workflow_state,
+            recommended_next_command=recommended,
+            current_blocker=current_blocker,
+            context=status_payload_with_todo,
+            validation_conclusion=validation_conclusion,
+        )
+        recommended = canonical_next_command(main_path, recommended)
+        runtime_progress = build_runtime_progress(
+            workflow_state=workflow_state,
+            main_path=main_path,
+            todo_view=todo_view,
+            latest_execution=status_payload_with_todo.get("latest_execution_evidence") or {},
+            latest_decision=status_payload_with_todo.get("latest_agent_loop_decision") or {},
+            latest_execution_result=status_payload_with_todo.get(
+                "latest_agent_loop_execution_result"
+            )
+            or {},
+            latest_observation=status_payload_with_todo.get("latest_agent_loop_observation") or {},
+            agent_loop_summary=status_payload_with_todo.get("agent_loop_run_summary") or {},
+            validation_conclusion=validation_conclusion,
+        )
         summary = {
             "schema_version": "0.1.0",
             "run_id": run_id,
@@ -646,9 +711,12 @@ class RunCommand:
             "final_report_path": final_report_path.relative_to(self.root).as_posix(),
             "workspace_envelope": workspace_envelope,
             "output_locations": self._output_locations(workspace_envelope),
-            "workflow_state": self._optional_str(status_payload.get("workflow_state")),
+            "workflow_state": workflow_state,
             "current_blocker": current_blocker,
             "recommended_next_command": recommended,
+            "main_path": main_path,
+            "todo_view": todo_view,
+            "runtime_progress": runtime_progress,
             "model_selection": self._latest_model_selection(run_dir),
             "model_route_timeline_path": (
                 model_route_timeline_path.relative_to(self.root).as_posix()
@@ -701,6 +769,59 @@ class RunCommand:
         stop_reason: str,
     ) -> Path:
         run_dir = self.root / ".asteria" / "runs" / run_id
+        task_plan = self._task_plan_for_main_path(run_dir)
+        latest_execution = self._latest_execution_evidence(run_dir)
+        validation_conclusion = self._validation_conclusion(run_dir)
+        run_status = self._run_record_summary(run_id)
+        todo_view = self._todo_view(
+            run_dir,
+            task_plan=task_plan,
+            latest_execution=latest_execution,
+            validation_conclusion=validation_conclusion,
+        )
+        enriched_status = {
+            **status_payload,
+            "run_status": run_status,
+            "task_summary": self._task_summary_for_main_path(task_plan),
+            "latest_execution_evidence": latest_execution,
+            "workspace_envelope": self._workspace_envelope(run_dir),
+            "todo_view": todo_view,
+            "run_loop_summary_path": f".asteria/runs/{run_id}/run_loop_summary.json",
+            "final_report_summary_path": (
+                f".asteria/runs/{run_id}/final_report_summary.json"
+                if (run_dir / "final_report_summary.json").exists()
+                else None
+            ),
+            "model_route_timeline_path": (
+                f".asteria/runs/{run_id}/model_route_timeline.json"
+                if (run_dir / "model_route_timeline.json").exists()
+                else None
+            ),
+        }
+        main_path = build_main_path(
+            workflow_state=self._optional_str(enriched_status.get("workflow_state")),
+            recommended_next_command=self._optional_str(
+                enriched_status.get("recommended_next_command")
+            ),
+            current_blocker=self._optional_str(enriched_status.get("current_blocker")),
+            context=enriched_status,
+            validation_conclusion=validation_conclusion,
+        )
+        recommended = canonical_next_command(
+            main_path,
+            self._optional_str(enriched_status.get("recommended_next_command")),
+        )
+        runtime_progress = build_runtime_progress(
+            workflow_state=self._optional_str(enriched_status.get("workflow_state")),
+            main_path=main_path,
+            todo_view=todo_view,
+            latest_execution=latest_execution,
+            latest_decision=enriched_status.get("latest_agent_loop_decision") or {},
+            latest_execution_result=enriched_status.get("latest_agent_loop_execution_result") or {},
+            latest_observation=enriched_status.get("latest_agent_loop_observation") or {},
+            agent_loop_summary=enriched_status.get("agent_loop_run_summary") or {},
+            validation_conclusion=validation_conclusion,
+        )
         summary = {
             "schema_version": "0.1.0",
             "run_id": run_id,
@@ -709,9 +830,9 @@ class RunCommand:
             "latest_evidence": self._latest_evidence_pointer(run_dir),
             "workflow_state": self._optional_str(status_payload.get("workflow_state")),
             "current_blocker": self._optional_str(status_payload.get("current_blocker")),
-            "recommended_next_command": self._optional_str(
-                status_payload.get("recommended_next_command")
-            ),
+            "recommended_next_command": recommended,
+            "main_path": main_path,
+            "runtime_progress": runtime_progress,
             "updated_at": now_iso(),
         }
         path = run_dir / "run_loop_summary.json"
@@ -908,6 +1029,34 @@ class RunCommand:
                         "summary": str(evidence.get("summary") or ""),
                     }
         return list(changes.values())[-20:]
+
+    def _todo_view(
+        self,
+        run_dir: Path,
+        *,
+        task_plan: dict | None = None,
+        latest_execution: dict | None = None,
+        validation_conclusion: dict | None = None,
+    ) -> dict:
+        loaded_task_plan = task_plan or self._read_json_if_exists(
+            run_dir / "task_plan.json",
+            "task_board",
+        )
+        try:
+            model_todos = self._read_unvalidated_json(run_dir / "model_todos.json")
+        except json.JSONDecodeError:
+            model_todos = {}
+        latest = latest_execution
+        if latest is None:
+            evidence = self._execution_evidence(run_dir)
+            latest = evidence[-1] if evidence else {}
+        validation = validation_conclusion or self._validation_conclusion(run_dir)
+        return build_todo_view(
+            task_plan=loaded_task_plan,
+            model_todos=model_todos,
+            latest_execution=latest,
+            validation_conclusion=validation,
+        )
 
     def _validation_conclusion(self, run_dir: Path) -> dict[str, Any]:
         validation_path = run_dir / "validation_results.jsonl"
@@ -1600,6 +1749,35 @@ class RunCommand:
         run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)
         return run["status"]
 
+    def _run_record_summary(self, run_id: str) -> dict:
+        run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)
+        return {
+            "status": run.get("status"),
+            "current_phase": run.get("current_phase"),
+            "summary": run.get("summary"),
+        }
+
+    def _task_plan_for_main_path(self, run_dir: Path) -> dict:
+        path = run_dir / "task_plan.json"
+        if not path.exists():
+            return {}
+        return self.store.read(path, "task_board")
+
+    def _task_summary_for_main_path(self, task_plan: dict) -> dict:
+        tasks = [task for task in task_plan.get("tasks", []) if isinstance(task, dict)]
+        done = len([task for task in tasks if task.get("status") == "done"])
+        return {
+            "total": len(tasks),
+            "remaining": len(
+                [task for task in tasks if task.get("status") not in {"done", "discarded"}]
+            ),
+            "done": done,
+        }
+
+    def _latest_execution_evidence(self, run_dir: Path) -> dict:
+        execution_evidence = self._execution_evidence(run_dir)
+        return execution_evidence[-1] if execution_evidence else {}
+
     def _task_counts(self, run_id: str) -> dict[str, int]:
         task_plan = self.store.read(
             self.root / ".asteria" / "runs" / run_id / "task_plan.json",
@@ -1648,11 +1826,47 @@ class RunCommand:
             review_status=review_status,
             verification_count=len(verification_evidence),
         )
+        validation_conclusion = self._validation_conclusion(run_dir)
         blockers = self._report_blockers(blocked_tasks, pending_decisions, acceptance)
         risks = self._report_risks(
-            cost_report, task_plan_eval, execution_evidence, acceptance, verification_evidence
+            cost_report,
+            task_plan_eval,
+            execution_evidence,
+            acceptance,
+            verification_evidence,
+            validation_conclusion,
         )
         next_actions = self._final_next_actions(completion, blockers, risks, acceptance)
+        run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)
+        displayed_completion = self._display_completion_state(
+            completion=completion,
+            review_status=review_status,
+            workflow_state=self._report_workflow_state(run),
+            validation_conclusion=validation_conclusion,
+        )
+        report_main_path = build_main_path(
+            workflow_state=self._report_workflow_state(run),
+            recommended_next_command=None,
+            current_blocker=blockers[0] if blockers else None,
+            context={
+                "run_status": run,
+                "task_summary": {
+                    "total": len(task_plan["tasks"]),
+                    "remaining": len(task_plan["tasks"]) - done,
+                },
+                "latest_execution_evidence": execution_evidence[-1]
+                if execution_evidence
+                else {},
+                "workspace_envelope": workspace_envelope,
+                "todo_view": self._todo_view(
+                    run_dir,
+                    task_plan=task_plan,
+                    latest_execution=execution_evidence[-1] if execution_evidence else {},
+                    validation_conclusion=validation_conclusion,
+                ),
+            },
+            validation_conclusion=validation_conclusion,
+        )
         lines = [
             "# Final Report",
             "",
@@ -1660,7 +1874,7 @@ class RunCommand:
             "",
             f"- Run: {run_id}",
             f"- Goal: {goal_spec['normalized_goal']}",
-            f"- Completion: {completion}",
+            f"- Completion: {displayed_completion}",
             f"- Review status: {review_status}",
             f"- Task plan quality: {self._task_plan_quality_summary(task_plan_eval)}",
             f"- Tasks done: {done}/{len(task_plan['tasks'])}",
@@ -1669,6 +1883,14 @@ class RunCommand:
             f"- Release gate signal: {self._acceptance_summary(acceptance)}",
             f"- Model calls: {cost_report['model_calls']}",
             f"- Tool calls: {cost_report['tool_calls']}",
+            "",
+            "## Main Path",
+            "",
+            *main_path_text_lines(report_main_path),
+            "",
+            "## Todo",
+            "",
+            *todo_view_text_lines(report_main_path.get("todo_view") or {}),
             "",
             "## Workspace and Outputs",
             "",
@@ -2018,14 +2240,7 @@ class RunCommand:
                 f"blocking={feedback.get('blocking_count', 0)} "
                 f"review={feedback.get('review_count', 0)}"
             )
-            matched = feedback.get("matched_route") or {}
-            if matched:
-                lines.append(
-                    "- Matched route: "
-                    f"{matched.get('purpose', 'unknown')}/"
-                    f"{matched.get('model_tier', 'unknown')} "
-                    f"action={matched.get('recommended_action', 'unknown')}"
-                )
+            lines.append(f"- Active next step: {capability_feedback_active_next_step(feedback)}")
         return lines
 
     def _latest_observation_plan(self, run_dir: Path) -> dict:
@@ -2073,6 +2288,36 @@ class RunCommand:
             return "implemented_needs_review"
         return "in_progress"
 
+    def _report_workflow_state(self, run: dict) -> str | None:
+        phase = str(run.get("current_phase") or "").upper()
+        status = str(run.get("status") or "").lower()
+        if phase == "ACCEPTED" and status == "completed":
+            return "accepted"
+        if phase == "ACCEPT" and status == "blocked":
+            return "acceptance_blocked"
+        return None
+
+    def _display_completion_state(
+        self,
+        *,
+        completion: str,
+        review_status: str,
+        workflow_state: str | None,
+        validation_conclusion: dict,
+    ) -> str:
+        if workflow_state == "accepted":
+            return "accepted"
+        if workflow_state == "acceptance_blocked":
+            return "acceptance_blocked"
+        if (
+            completion == "implemented_unverified"
+            and review_status == "pass"
+            and validation_conclusion.get("status") == "passed"
+            and int(validation_conclusion.get("validation_result_count") or 0) > 0
+        ):
+            return "reviewed_validated"
+        return completion
+
     def _acceptance_summary(self, acceptance: dict) -> str:
         if not acceptance:
             return "not_run"
@@ -2119,6 +2364,7 @@ class RunCommand:
         execution_evidence: list[dict],
         acceptance: dict,
         verification_evidence: list[dict] | None = None,
+        validation_conclusion: dict | None = None,
     ) -> list[str]:
         risks = []
         if task_plan_eval and task_plan_eval.get("status") in {"warn", "fail"}:
@@ -2132,7 +2378,12 @@ class RunCommand:
             risks.append(f"{len(failed_evidence)} execution evidence item(s) still need repair")
         if acceptance.get("trend_warnings"):
             risks.extend(str(item) for item in acceptance.get("trend_warnings", [])[:3])
-        if verification_evidence is not None and len(verification_evidence) == 0:
+        validation_status = str((validation_conclusion or {}).get("status") or "")
+        if (
+            verification_evidence is not None
+            and len(verification_evidence) == 0
+            and validation_status != "passed"
+        ):
             risks.append(
                 "No verification commands (run_tests/run_command) were recorded — "
                 "completion status cannot be confirmed by evidence."

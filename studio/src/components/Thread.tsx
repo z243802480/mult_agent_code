@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, CircleDot, FileText, GitBranch, Loader2, Route, Terminal, Wrench } from "lucide-react";
+import { CheckCircle2, ChevronDown, ChevronRight, CircleDot, FileText, Loader2, PlayCircle, Terminal, Wrench } from "lucide-react";
 import type { AnyRecord, StudioEvent, NarrativeStep as NarrativeStepType, OverviewPayload, RunDetailPayload } from "../types";
 import { NarrativeStep } from "./NarrativeStep";
 import { PermissionCard } from "./PermissionCard";
@@ -96,10 +96,6 @@ function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? value as AnyRecord : {};
 }
 
-function asArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
 function firstText(...items: string[]): string {
   return items.find((item) => item.trim()) ?? "";
 }
@@ -110,78 +106,110 @@ function toneFor(value: string): string {
   return "warn";
 }
 
-function countWorkers(workerTree: AnyRecord): number {
-  const direct = Number(workerTree.total_workers);
-  if (Number.isFinite(direct)) return direct;
-  const count = (nodes: AnyRecord[]): number =>
-    nodes.reduce((total, node) => total + 1 + count(asArray(node.children) as AnyRecord[]), 0);
-  return count(asArray(workerTree.roots) as AnyRecord[]);
+function runtimeProgress(runDetail: RunDetailPayload | null): AnyRecord {
+  const direct = asRecord(runDetail?.runtime_progress);
+  if (Object.keys(direct).length) return direct;
+  const finalSummary = asRecord(runDetail?.final_report_summary);
+  const finalProgress = asRecord(finalSummary.runtime_progress);
+  if (Object.keys(finalProgress).length) return finalProgress;
+  const loopSummary = asRecord(runDetail?.run_loop_summary);
+  return asRecord(loopSummary.runtime_progress);
 }
 
-function rollingValidation(overview: OverviewPayload | null): AnyRecord {
-  const gate = asRecord(overview?.gateStatus);
-  return asRecord(overview?.v0_2_rolling_validation ?? gate.v0_2_rolling_validation);
+function textOrFallback(value: unknown, fallback: string): string {
+  const text = String(value ?? "").trim();
+  return text || fallback;
 }
 
-function RuntimeSnapshot({ overview, runDetail }: { overview: OverviewPayload | null; runDetail: RunDetailPayload | null }) {
-  const rolling = rollingValidation(overview);
-  const coverage = asRecord(rolling.coverage);
-  const loop = asRecord(runDetail?.agent_loop_run_summary);
-  const legacyLoop = asRecord(runDetail?.run_loop_summary);
-  const workerTree = asRecord(runDetail?.worker_tree);
-  const graph = asRecord(workerTree.agent_run_graph ?? runDetail?.agent_run_graph);
-  const workerTotal = countWorkers(workerTree);
-  const rollingStatus = firstText(String(rolling.status ?? ""), "unknown");
-  const sampleCount = Number(rolling.sample_count ?? 0);
-  const loopExit = firstText(String(loop.exit_reason ?? ""), String(legacyLoop.stop_reason ?? ""), "unknown");
-  const nextAction = firstText(
-    String(asArray(rolling.next_actions)[0] ?? ""),
-    String(loop.recommended_command ?? ""),
-    String(legacyLoop.recommended_next_command ?? ""),
-    "No next action recorded"
-  );
-  const coverageText = ["route", "context", "capability", "loop", "worker"]
-    .map((key) => `${key}:${coverage[key] === true ? "yes" : "no"}`)
-    .join(" ");
+function goalTitle(runDetail: RunDetailPayload | null): string {
+  const goal = asRecord(runDetail?.goal_spec);
+  const run = asRecord(runDetail?.run);
+  return textOrFallback(goal.normalized_goal ?? goal.original_goal ?? run.goal ?? run.summary, "No goal selected yet");
+}
 
-  if (!Object.keys(rolling).length && !runDetail?.ok) return null;
+function actionLabel(value: string): string {
+  const normalized = value.trim().toLowerCase().replace(/^asteria\s+/, "");
+  if (normalized.startsWith("review")) return "Review";
+  if (normalized.startsWith("accept")) return "Accept";
+  if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "Continue";
+  if (normalized.startsWith("decide")) return "Decide";
+  if (normalized.startsWith("debug") || normalized.startsWith("repair")) return "Debug";
+  return "Continue";
+}
+
+function RuntimeSnapshot({
+  overview,
+  runDetail,
+  onRuntimeAction,
+}: {
+  overview: OverviewPayload | null;
+  runDetail: RunDetailPayload | null;
+  onRuntimeAction: (nextAction: string) => Promise<void>;
+}) {
+  void overview;
+  const progress = runtimeProgress(runDetail);
+  if (!Object.keys(progress).length && !runDetail?.ok) return null;
+  const todo = asRecord(progress.todo);
+  const currentTodo = asRecord(todo.current);
+  const todoCounts = asRecord(todo.counts);
+  const toolUse = asRecord(progress.tool_use);
+  const verification = asRecord(progress.verification);
+  const loop = asRecord(progress.loop);
+  const nextActionValue = String(progress.next_command ?? "").trim();
+  const activeStage = textOrFallback(progress.active_stage, "unknown");
+  const verifyStatus = textOrFallback(verification.status, "not recorded");
+  const toolStatus = textOrFallback(toolUse.status, "not started");
+  const todoSummary = textOrFallback(todo.summary, "No todo summary recorded yet.");
+  const currentStep = textOrFallback(progress.current_step, "No current step recorded.");
+  const nextLabel = nextActionValue ? actionLabel(nextActionValue) : "";
+  const nextStep = nextActionValue ? `Ready for ${nextLabel}.` : textOrFallback(loop.exit_reason ? `Stopped: ${loop.exit_reason}` : "", "No action needed right now");
+  const completed = Number(todoCounts.completed ?? 0);
+  const total = Number(todoCounts.total ?? 0);
 
   return (
     <section className="runtimeSnapshot" aria-label="Runtime snapshot">
       <div className="runtimeSnapshotHeader">
         <div>
-          <span className="eyebrow">Runtime evidence</span>
-          <h2>{runDetail?.run_id ? `Latest run ${runDetail.run_id}` : "Latest validation"}</h2>
+          <span className="eyebrow">Progress</span>
+          <h2>{goalTitle(runDetail)}</h2>
         </div>
-        <span className={`runtimeStatus ${toneFor(rollingStatus)}`}>{rollingStatus}</span>
+        <span className={`runtimeStatus ${toneFor(activeStage)}`}>{activeStage}</span>
       </div>
       <div className="runtimeSignalGrid">
         <div>
-          <small>v0.2 rolling</small>
-          <strong>{sampleCount ? `${sampleCount} sample(s)` : "No bundle"}</strong>
-          <span>{coverageText}</span>
+          <small>Todo</small>
+          <strong>{total ? `${completed}/${total} done` : "No todo"}</strong>
+          <span>{currentTodo.content ? String(currentTodo.content) : todoSummary}</span>
         </div>
         <div>
-          <small>Worker tree</small>
-          <strong>{workerTotal ? `${String(workerTree.successful_workers ?? 0)}/${workerTotal} done` : "No workers"}</strong>
-          <span>{String(graph.status ?? "graph unknown")}</span>
+          <small>Current step</small>
+          <strong>{currentStep}</strong>
+          <span>{todoSummary}</span>
         </div>
         <div>
-          <small>Loop exit</small>
-          <strong>{loopExit}</strong>
-          <span>{`rounds ${String(loop.rounds_completed ?? legacyLoop.iteration_count ?? "n/a")}/${String(loop.max_rounds ?? "n/a")}`}</span>
+          <small>Tool use</small>
+          <strong>{toolStatus}</strong>
+          <span>{textOrFallback(toolUse.summary, textOrFallback(toolUse.action, "No tool result yet"))}</span>
+        </div>
+        <div>
+          <small>Verify</small>
+          <strong>{verifyStatus}</strong>
+          <span>{textOrFallback(verification.summary, "Verification has not run yet.")}</span>
         </div>
       </div>
       <div className="runtimeNextAction">
-        <Route size={13} />
-        <span>{nextAction}</span>
+        {nextActionValue ? <PlayCircle size={13} /> : <CheckCircle2 size={13} />}
+        <span>{nextStep}</span>
+        {nextActionValue ? (
+          <button className="runtimeActionButton" onClick={() => void onRuntimeAction(nextActionValue)}>
+            {nextLabel}
+          </button>
+        ) : (
+          <button className="runtimeActionButton done" disabled>
+            Done
+          </button>
+        )}
       </div>
-      {workerTotal > 0 && (
-        <div className="runtimeWorkerHint">
-          <GitBranch size={13} />
-          <span>{`${asArray(workerTree.roots).length} root(s), ${asArray(workerTree.orphan_workers).length} orphan(s), ${String(workerTree.parallel_batches ?? 0)} parallel batch(es)`}</span>
-        </div>
-      )}
     </section>
   );
 }
@@ -515,13 +543,14 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
   );
 }
 
-export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, pendingTurn, overview, runDetail }: {
+export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, onRuntimeAction, pendingTurn, overview, runDetail }: {
   events: StudioEvent[];
   selected: StudioEvent | null;
   isRunning: boolean;
   onSelect: (event: StudioEvent) => void;
   onPrompt: (text: string) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
+  onRuntimeAction: (nextAction: string) => Promise<void>;
   pendingTurn?: { message: string; mode: string; startedAt: number } | null;
   overview?: OverviewPayload | null;
   runDetail?: RunDetailPayload | null;
@@ -545,7 +574,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
   if (!turns.length && !shouldShowPending) {
     return (
       <section className="thread" ref={threadRef}>
-        <RuntimeSnapshot overview={overview ?? null} runDetail={runDetail ?? null} />
+        <RuntimeSnapshot overview={overview ?? null} runDetail={runDetail ?? null} onRuntimeAction={onRuntimeAction} />
         <EmptyState onPrompt={onPrompt} />
       </section>
     );
@@ -553,7 +582,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
 
   return (
     <section className="thread" ref={threadRef}>
-      <RuntimeSnapshot overview={overview ?? null} runDetail={runDetail ?? null} />
+      <RuntimeSnapshot overview={overview ?? null} runDetail={runDetail ?? null} onRuntimeAction={onRuntimeAction} />
       {turns.map((turnSteps, i) => (
         <ConversationTurn
           key={turnSteps[0].id}

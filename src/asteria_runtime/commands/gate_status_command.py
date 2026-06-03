@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import subprocess
@@ -248,8 +248,7 @@ class GateStatusResult:
         explanation = self._readiness_explanation(self._release_state())
         if explanation:
             lines.append(
-                "Readiness explanation: "
-                f"{explanation.get('status')} - {explanation.get('summary')}"
+                f"Readiness explanation: {explanation.get('status')} - {explanation.get('summary')}"
             )
         lines.extend(recovery_pressure_text_lines(self.recovery_pressure))
         if self.context_pressure_summary:
@@ -278,7 +277,9 @@ class GateStatusResult:
             lines.append(f"Feature flags: {len(active)} active of {len(self.feature_flags)}")
         if self.capability_flags:
             available = [n for n, v in self.capability_flags.items() if v.get("available")]
-            lines.append(f"Capabilities: {len(available)} available of {len(self.capability_flags)}")
+            lines.append(
+                f"Capabilities: {len(available)} available of {len(self.capability_flags)}"
+            )
         if self.evidence_sources:
             lines.append("Evidence sources:")
             for name, source in sorted(self.evidence_sources.items()):
@@ -307,7 +308,9 @@ class GateStatusResult:
                 f"progress_events={adapters.get('capability_progress_event_count', 0)}"
             )
         lines.extend(self._report_lines("Real model gate", self.gate_report))
-        lines.extend(self._report_lines("Validation suite", self.validation_report, validation=True))
+        lines.extend(
+            self._report_lines("Validation suite", self.validation_report, validation=True)
+        )
         lines.extend(self._report_lines("Core acceptance", self.core_report))
         if self.next_actions:
             lines.append("Recommended next actions:")
@@ -323,7 +326,9 @@ class GateStatusResult:
         lines.append(f"  - max_repairs: {limits['max_repairs']}")
         return "\n".join(lines)
 
-    def _report_lines(self, label: str, report: dict[str, Any], validation: bool = False) -> list[str]:
+    def _report_lines(
+        self, label: str, report: dict[str, Any], validation: bool = False
+    ) -> list[str]:
         if not report:
             return [f"{label}: missing"]
         status = "pass" if report.get("ok") else "fail"
@@ -378,7 +383,9 @@ class GateStatusResult:
             summary = "provider route health is blocked by recent capability evidence."
             status = "route_health_blocked"
         elif self.runtime_readiness_gate.get("status") == "blocked":
-            summary = "runtime readiness gate blocked on model/context/capability/decision evidence."
+            summary = (
+                "runtime readiness gate blocked on model/context/capability/decision evidence."
+            )
             status = "runtime_readiness_blocked"
         elif self.runtime_readiness_gate.get("status") == "review":
             summary = "runtime readiness gate needs review before widening validation."
@@ -458,9 +465,8 @@ class GateStatusCommand:
                 *[str(item) for item in route_guidance.get("recommended_actions", [])],
                 *actions,
             ]
-        if (
-            stage == "ready_for_small_real_task_validation"
-            and _promotion_risks_exceed_threshold(promotion_release_risks)
+        if stage == "ready_for_small_real_task_validation" and _promotion_risks_exceed_threshold(
+            promotion_release_risks
         ):
             stage = "candidate_promotion_risk_blocked"
             actions = [
@@ -469,10 +475,7 @@ class GateStatusCommand:
                 *actions,
             ]
         plugin_risks = _plugin_risks(self.root, self.validator)
-        if (
-            stage == "ready_for_small_real_task_validation"
-            and plugin_risks["blocked"]
-        ):
+        if stage == "ready_for_small_real_task_validation" and plugin_risks["blocked"]:
             stage = "plugin_manifests_blocked"
             actions = [
                 *plugin_risks["actions"],
@@ -679,7 +682,11 @@ def _validation_failure_next_actions(
         workspace = scenario.get("workspace")
         if not workspace:
             continue
-        run_id = ((scenario.get("summary") or {}).get("run_id")) if isinstance(scenario.get("summary"), dict) else None
+        run_id = (
+            ((scenario.get("summary") or {}).get("run_id"))
+            if isinstance(scenario.get("summary"), dict)
+            else None
+        )
         run_dir = _scenario_run_dir(Path(str(workspace)), str(run_id) if run_id else None)
         execution = latest_agent_loop_execution_result(run_dir, validator) or {}
         command = str(execution.get("recommended_command") or "")
@@ -811,9 +818,7 @@ def _has_complete_acceptance_suite(report: dict[str, Any], suite: str) -> bool:
     raw_metadata = report.get("scenario_metadata")
     if isinstance(raw_metadata, list):
         observed = {
-            str(item.get("scenario") or "")
-            for item in raw_metadata
-            if isinstance(item, dict)
+            str(item.get("scenario") or "") for item in raw_metadata if isinstance(item, dict)
         }
         return expected.issubset(observed)
     aggregate = report.get("aggregate")
@@ -994,15 +999,13 @@ def _latest_v0_2_rolling_validation(root: Path) -> dict[str, Any]:
         coverage = raw.get("coverage")
         coverage = coverage if isinstance(coverage, dict) else {}
         next_actions = [str(item) for item in raw.get("next_actions") or [] if item]
-        missing = [
-            str(name)
-            for name, covered in coverage.items()
-            if name and covered is not True
-        ]
+        missing = [str(name) for name, covered in coverage.items() if name and covered is not True]
         status = str(raw.get("status") or "")
         sample_count = int(raw.get("sample_count") or 0)
         required_range = raw.get("required_sample_range")
-        required_range = required_range if isinstance(required_range, dict) else {"min": 3, "max": 5}
+        required_range = (
+            required_range if isinstance(required_range, dict) else {"min": 3, "max": 5}
+        )
         return {
             "status": status,
             "sample_count": sample_count,
@@ -1058,16 +1061,20 @@ def _release_evidence_route_guidance(
     if not demoted_blocking and not superseded_review:
         return guidance
     status = "blocked" if retained else "review" if active_review else "healthy"
-    if retained or active_review:
-        actions = list(guidance.get("recommended_actions") or [])
-    else:
-        actions = ["Fresh release and route evidence supersede stale route guidance noise."]
+    actions = _product_route_guidance_actions(
+        blocking=retained,
+        review=active_review,
+        strategy=strategy,
+        fallback=list(guidance.get("recommended_actions") or []),
+    )
     return {
         **guidance,
         "status": status,
         "blocking": retained,
         "review": active_review,
+        "active_review": active_review,
         "superseded_review": [*superseded_review, *demoted_blocking],
+        "historical_review": [*superseded_review, *demoted_blocking],
         "release_evidence_override": {
             "applied": True,
             "demoted_blockers": len(demoted_blocking),
@@ -1076,6 +1083,65 @@ def _release_evidence_route_guidance(
         },
         "recommended_actions": actions,
     }
+
+
+def _product_route_guidance_actions(
+    *,
+    blocking: list[dict[str, Any]],
+    review: list[dict[str, Any]],
+    strategy: dict[str, Any],
+    fallback: list[Any],
+) -> list[str]:
+    if blocking:
+        actions: list[str] = []
+        if any(
+            item.get("recommended_action") == "review_real_provider_matrix_before_scaling"
+            for item in blocking
+        ):
+            actions.append(
+                "Rerun or repair failed real-provider matrix task_kind/route evidence before widening validation."
+            )
+        if any(
+            item.get("recommended_action") == "block_validation_until_strong_goal_spec_stable"
+            for item in blocking
+        ):
+            actions.append(
+                "Run `asteria model-check --tier strong --json`, then rerun a small real-task validation sample."
+            )
+        if not actions:
+            actions.append(
+                "Run `asteria capability-report` and repair the active blocked route evidence."
+            )
+        return actions
+    if review:
+        actions = []
+        if (
+            any(
+                item.get("recommended_action") == "retry_or_downgrade_strong_goal_spec"
+                for item in review
+            )
+            or strategy.get("decision") == "retry_or_downgrade"
+        ):
+            actions.append(
+                "Keep strong goal_spec on retry/downgrade guard; rerun one small validation sample before widening."
+            )
+        if any(
+            item.get("recommended_action") == "review_real_provider_matrix_before_scaling"
+            for item in review
+        ):
+            actions.append(
+                "Review real-provider matrix task_kind/route failures before increasing validation batch size."
+            )
+        if not actions:
+            purposes = sorted(
+                {str(item.get("purpose") or "unknown") for item in review if isinstance(item, dict)}
+            )
+            joined = ", ".join(purposes[:3]) if purposes else "affected routes"
+            actions.append(f"Review active route evidence for {joined} before widening scope.")
+        return actions
+    if fallback:
+        return [str(fallback[0])]
+    return ["Fresh release and route evidence supersede stale route guidance noise."]
 
 
 def _release_route_evidence_is_fresh(
@@ -1312,12 +1378,8 @@ def _promotion_risk_policy(policy: dict[str, Any]) -> dict[str, Any]:
                 "promotion_failed",
             ]
         ),
-        "max_pending_release_promotions": int(
-            promotion.get("max_pending_release_promotions", 0)
-        ),
-        "max_blocked_release_promotions": int(
-            promotion.get("max_blocked_release_promotions", 0)
-        ),
+        "max_pending_release_promotions": int(promotion.get("max_pending_release_promotions", 0)),
+        "max_blocked_release_promotions": int(promotion.get("max_blocked_release_promotions", 0)),
     }
 
 
@@ -1443,6 +1505,7 @@ def _validation_recommendation_for_changed_files(changed_files: list[str]) -> di
         "command": "ruff check . && pytest -q",
     }
 
+
 def _plugin_risks(root: Path, validator: SchemaValidator) -> dict[str, Any]:
     try:
         summary = plugin_control_summary(root, validator)
@@ -1469,4 +1532,3 @@ def _plugin_risks(root: Path, validator: SchemaValidator) -> dict[str, Any]:
         "actions": actions,
         "plugin_control": summary,
     }
-

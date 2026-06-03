@@ -15,6 +15,7 @@ from asteria_runtime.core.agent_harness import (
 )
 from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
+from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.decision_policy import DecisionPolicy
@@ -356,17 +357,17 @@ class ReviewCommand:
             run_id=run_id,
             task_id=self._latest_task_id(run_dir),
             action=action,
-            reason=(
-                "Review failed before a model-authored next action was available: "
-                f"{message}"
-            ),
+            reason=(f"Review failed before a model-authored next action was available: {message}"),
             capability_name="review_failure",
             expected_observation={
                 "summary": "Review failure is routed into the agent loop instead of stopping at provider/review.",
                 "success_signal": "Asteria debug, replan, decide, or status can continue from this evidence.",
             },
             risk="medium",
-            evidence_refs=[str(run_dir / "user_progress.jsonl"), str(run_dir / "model_calls.jsonl")],
+            evidence_refs=[
+                str(run_dir / "user_progress.jsonl"),
+                str(run_dir / "model_calls.jsonl"),
+            ],
             budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "review_failure"},
         )
         if decision is not None:
@@ -768,6 +769,7 @@ class ReviewCommand:
             model_selection,
         )
         next_actions = self._human_next_actions(eval_report, effective_plan, blockers)
+        trajectory_eval_for_report = self._product_trajectory_eval(eval_report["trajectory_eval"])
         lines = [
             "# Review Report",
             "",
@@ -845,7 +847,7 @@ class ReviewCommand:
             "",
             "## Trajectory Eval",
             "",
-            f"```json\n{self._json(eval_report['trajectory_eval'])}\n```",
+            f"```json\n{self._json(trajectory_eval_for_report)}\n```",
             "",
             "## Cost Eval",
             "",
@@ -982,15 +984,33 @@ class ReviewCommand:
                 f"blocking={feedback.get('blocking_count', 0)} "
                 f"review={feedback.get('review_count', 0)}"
             )
-            matched = feedback.get("matched_route") or {}
-            if matched:
-                lines.append(
-                    "- Matched route: "
-                    f"{matched.get('purpose', 'unknown')}/"
-                    f"{matched.get('model_tier', 'unknown')} "
-                    f"action={matched.get('recommended_action', 'unknown')}"
-                )
+            lines.append(f"- Active next step: {capability_feedback_active_next_step(feedback)}")
         return lines
+
+    def _product_trajectory_eval(self, trajectory_eval: dict) -> dict:
+        model_selection = trajectory_eval.get("model_selection")
+        if not isinstance(model_selection, dict):
+            return trajectory_eval
+        feedback = model_selection.get("capability_feedback")
+        feedback = feedback if isinstance(feedback, dict) else {}
+        summarized_feedback = {
+            "status": feedback.get("status", "unknown"),
+            "decision": feedback.get("decision", "unknown"),
+            "blocking_count": feedback.get("blocking_count", 0),
+            "review_count": feedback.get("review_count", 0),
+            "active_next_step": capability_feedback_active_next_step(feedback),
+        }
+        summarized_selection = {
+            "purpose": model_selection.get("purpose"),
+            "selected_tier": model_selection.get("selected_tier"),
+            "reason": model_selection.get("reason"),
+            "tier_pressure": model_selection.get("tier_pressure") or {},
+            "capability_feedback": summarized_feedback,
+        }
+        return {
+            **trajectory_eval,
+            "model_selection": summarized_selection,
+        }
 
     def _failure_classification_lines(self, eval_report: dict) -> list[str]:
         classification = (

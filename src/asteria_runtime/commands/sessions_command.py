@@ -12,6 +12,9 @@ from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution
 from asteria_runtime.core.agent_loop_observation import latest_agent_loop_observation
 from asteria_runtime.core.agent_loop_run_summary import latest_agent_loop_run_summary
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
+from asteria_runtime.core.main_path import build_main_path, canonical_next_command
+from asteria_runtime.core.runtime_progress import build_runtime_progress
+from asteria_runtime.core.todo_view import build_todo_view
 from asteria_runtime.core.worker_tree import WorkerTreeBuilder
 from asteria_runtime.models.route_resolver import (
     route_health_for_tiers,
@@ -210,8 +213,11 @@ class SessionsCommand:
         handoff_rel = self._relative_path(handoff.get("_path")) if handoff else None
         verification = self._latest_verification(agent_dir)
         acceptance_failures = self._acceptance_failures(snapshot, handoff)
-        run_status = (snapshot or {}).get("run_status") or self._run_status(run_dir)
-        task_summary = (snapshot or {}).get("task_summary") or self._task_summary(run_dir)
+        run_status = self._run_status(run_dir) or (snapshot or {}).get("run_status") or {}
+        task_plan = self._task_plan(run_dir)
+        task_summary = (snapshot or {}).get("task_summary") or self._task_summary_from_plan(
+            task_plan
+        )
         pending_decisions = (snapshot or {}).get("pending_decisions") or self._pending_decisions(
             run_dir
         )
@@ -287,12 +293,68 @@ class SessionsCommand:
             recommended_next_command = (handoff or {}).get(
                 "recommended_next_command"
             ) or self._first_next_action(snapshot)
+        validation_conclusion = (
+            (final_report_summary.get("validation_conclusion") or {})
+            if final_report_summary
+            else {}
+        )
+        todo_view = self._todo_view(
+            task_plan=task_plan,
+            model_todos=self._read_unvalidated_json(run_dir / "model_todos.json"),
+            latest_execution=execution_evidence[-1] if execution_evidence else {},
+            validation_conclusion=validation_conclusion,
+        )
+        workflow_state = self._workflow_state_for_context(
+            run_status=run_status,
+            recommended_next_command=recommended_next_command,
+            blockers=blockers,
+        )
+        main_path_context = {
+            "run_status": run_status,
+            "task_summary": task_summary,
+            "latest_execution_evidence": execution_evidence[-1] if execution_evidence else {},
+            "latest_agent_loop_decision": latest_loop_decision,
+            "latest_agent_loop_execution_result": latest_loop_execution,
+            "latest_agent_loop_observation": latest_loop_observation,
+            "agent_loop_run_summary": agent_loop_run_summary,
+            "workspace_envelope": workspace_envelope,
+            "todo_view": todo_view,
+            "run_loop_summary_path": self._relative_path(run_dir / "run_loop_summary.json")
+            if run_loop_summary
+            else None,
+            "final_report_summary_path": self._relative_path(run_dir / "final_report_summary.json")
+            if final_report_summary
+            else None,
+            "model_route_timeline_path": model_route_timeline_path,
+        }
+        main_path = build_main_path(
+            workflow_state=workflow_state,
+            recommended_next_command=recommended_next_command,
+            current_blocker=blockers[0] if blockers else None,
+            context=main_path_context,
+            validation_conclusion=validation_conclusion,
+        )
+        recommended_next_command = canonical_next_command(main_path, recommended_next_command)
+        runtime_progress = build_runtime_progress(
+            workflow_state=workflow_state,
+            main_path=main_path,
+            todo_view=todo_view,
+            latest_execution=execution_evidence[-1] if execution_evidence else {},
+            latest_decision=latest_loop_decision,
+            latest_execution_result=latest_loop_execution,
+            latest_observation=latest_loop_observation,
+            agent_loop_summary=agent_loop_run_summary or run_loop_summary,
+            validation_conclusion=validation_conclusion,
+        )
         return {
             "goal_summary": (snapshot or {}).get("goal_summary") or self._goal_summary(run_dir),
             "run_status": run_status,
             "snapshot_path": snapshot_rel,
             "handoff_path": handoff_rel,
             "recommended_next_command": recommended_next_command,
+            "main_path": main_path,
+            "todo_view": todo_view,
+            "runtime_progress": runtime_progress,
             "run_loop_summary_path": self._relative_path(run_dir / "run_loop_summary.json")
             if run_loop_summary
             else None,
@@ -406,7 +468,12 @@ class SessionsCommand:
         }
 
     def _task_summary(self, run_dir: Path) -> dict:
-        task_plan = self._read_json(run_dir / "task_plan.json", "task_board")
+        return self._task_summary_from_plan(self._task_plan(run_dir))
+
+    def _task_plan(self, run_dir: Path) -> dict:
+        return self._read_json(run_dir / "task_plan.json", "task_board")
+
+    def _task_summary_from_plan(self, task_plan: dict) -> dict:
         tasks = task_plan.get("tasks", []) if task_plan else []
         by_status: dict[str, int] = {}
         for task in tasks:
@@ -419,6 +486,21 @@ class SessionsCommand:
                 count for status, count in by_status.items() if status not in {"done", "discarded"}
             ),
         }
+
+    def _todo_view(
+        self,
+        *,
+        task_plan: dict,
+        model_todos: dict,
+        latest_execution: dict,
+        validation_conclusion: dict,
+    ) -> dict:
+        return build_todo_view(
+            task_plan=task_plan,
+            model_todos=model_todos,
+            latest_execution=latest_execution,
+            validation_conclusion=validation_conclusion,
+        )
 
     def _cost_summary(self, run_dir: Path) -> dict:
         cost = self._read_json(run_dir / "cost_report.json", "cost_report")
@@ -756,6 +838,29 @@ class SessionsCommand:
 
     def _final_report_summary(self, run_dir: Path) -> dict:
         return self._read_json(run_dir / "final_report_summary.json", "final_report_summary")
+
+    def _workflow_state_for_context(
+        self,
+        *,
+        run_status: dict,
+        recommended_next_command: str | None,
+        blockers: list[str],
+    ) -> str:
+        phase = str(run_status.get("current_phase") or "").upper()
+        status = str(run_status.get("status") or "").lower()
+        if phase == "ACCEPTED":
+            return "accepted"
+        if recommended_next_command == "accept":
+            return "ready_for_accept"
+        if recommended_next_command == "review":
+            return "ready_for_review"
+        if blockers:
+            return "blocked"
+        if recommended_next_command:
+            return "needs_action"
+        if status == "completed":
+            return "completed"
+        return "in_progress"
 
     def _risks(
         self,

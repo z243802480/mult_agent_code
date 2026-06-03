@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Send } from "lucide-react";
+import { ClipboardList, Eye, MessageCircle, PlayCircle, RotateCw, Send, ShieldCheck } from "lucide-react";
 
 const MODES = ["auto", "chat", "plan", "run", "review", "resume"] as const;
 type Mode = typeof MODES[number];
@@ -23,6 +23,62 @@ const MODE_PLACEHOLDERS: Record<Mode, string> = {
 };
 
 export type PromptSignal = { text: string; id: number };
+
+function actionProfile(mode: Mode, permission: string) {
+  const effective = mode === "auto" ? "auto" : mode;
+  if (effective === "chat") {
+    return {
+      icon: <MessageCircle size={14} />,
+      label: "Chat",
+      detail: "Answers directly. No workspace changes.",
+      permission: "Read-only",
+      tone: "good",
+    };
+  }
+  if (effective === "plan") {
+    return {
+      icon: <ClipboardList size={14} />,
+      label: "Plan",
+      detail: "Builds a development plan before edits.",
+      permission: "Read-only",
+      tone: "good",
+    };
+  }
+  if (effective === "review") {
+    return {
+      icon: <Eye size={14} />,
+      label: "Review",
+      detail: "Checks current evidence and result.",
+      permission: "Read-only evidence",
+      tone: "good",
+    };
+  }
+  if (effective === "resume") {
+    return {
+      icon: <RotateCw size={14} />,
+      label: "Resume",
+      detail: permission === "allow" ? "Continues with approved safe actions." : "Asks before local changes.",
+      permission: permission === "allow" ? "Safe actions allowed" : "Approval required",
+      tone: permission === "allow" ? "warn" : "neutral",
+    };
+  }
+  if (effective === "run") {
+    return {
+      icon: <PlayCircle size={14} />,
+      label: "Goal",
+      detail: permission === "allow" ? "Starts the controlled runtime." : "Prepares work and asks before changes.",
+      permission: permission === "allow" ? "Safe actions allowed" : "Approval required",
+      tone: permission === "allow" ? "warn" : "neutral",
+    };
+  }
+  return {
+    icon: <ShieldCheck size={14} />,
+    label: "Auto",
+    detail: "Chooses chat, plan, or goal from your request.",
+    permission: permission === "allow" ? "Safe actions allowed" : "Approval required for changes",
+    tone: permission === "allow" ? "warn" : "neutral",
+  };
+}
 
 export function Composer({
   onSend,
@@ -66,6 +122,7 @@ export function Composer({
   const isAuto = mode === "auto";
   const isChat = mode === "chat";
   const showPermission = mode === "auto" || mode === "run" || mode === "resume";
+  const profile = actionProfile(mode, permission);
 
   return (
     <form className={`composer ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}`} onSubmit={(event) => void submit(event)}>
@@ -75,6 +132,17 @@ export function Composer({
         onKeyDown={onKeyDown}
         placeholder={MODE_PLACEHOLDERS[mode]}
       />
+      <div className={`composerActionBar ${profile.tone}`} aria-label="Current action and permission">
+        <div className="composerActionMain">
+          {profile.icon}
+          <strong>{profile.label}</strong>
+          <span>{profile.detail}</span>
+        </div>
+        <div className="composerPermissionPill">
+          <ShieldCheck size={12} />
+          <span>{profile.permission}</span>
+        </div>
+      </div>
       <div className="composerBar">
         <div className="modeControls" aria-label="Mode override controls">
           <span className="modeHint">Auto</span>

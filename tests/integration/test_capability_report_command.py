@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
+from asteria_runtime.commands.capability_report_command import (
+    CapabilityReportCommand,
+    _active_route_guidance_actions,
+)
 from asteria_runtime.core.prompt_envelope import capability_manifest_hash
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -13,6 +16,24 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from tests.helpers.runtime_os import runtime_os_pass_report
 
 pytestmark = pytest.mark.release_gate
+
+
+def test_capability_report_route_actions_use_active_review_only() -> None:
+    actions = _active_route_guidance_actions(
+        blocking=[],
+        review=[
+            {
+                "purpose": "goal_spec",
+                "recommended_action": "retry_or_downgrade_strong_goal_spec",
+            }
+        ],
+        strategy={"decision": "retry_or_downgrade"},
+        healthy_message="Fresh evidence is clean.",
+    )
+
+    assert actions == [
+        "Keep strong goal_spec on retry/downgrade guard; rerun one small validation sample before widening."
+    ]
 
 
 def test_capability_report_summarizes_acceptance_and_execution_evidence(
@@ -481,9 +502,7 @@ def test_capability_report_adds_worker_validation_signals_to_model_profile(tmp_p
         },
         "prompt_envelope",
     )
-    context_envelope_path = (
-        run_dir / "context_envelopes" / "context_envelope_task-0001.json"
-    )
+    context_envelope_path = run_dir / "context_envelopes" / "context_envelope_task-0001.json"
     store.write(
         context_envelope_path,
         {

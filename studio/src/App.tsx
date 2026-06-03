@@ -72,6 +72,16 @@ export function App() {
       const fileData = await api.files().catch(() => ({ files: [] as WorkspaceFile[] }));
       setFiles(fileData.files ?? []);
       await openLatestRun(overviewData);
+      void api.diagnostics()
+        .then((diagnostics) => {
+          setOverview((current) => ({
+            ...(current ?? overviewData),
+            ...diagnostics,
+            runs: current?.runs ?? overviewData.runs,
+            modelRoutes: diagnostics.modelRoutes ?? current?.modelRoutes ?? overviewData.modelRoutes,
+          }));
+        })
+        .catch(() => {});
     } catch (err) {
       setError(String((err as Error).message || err));
     } finally {
@@ -164,6 +174,17 @@ export function App() {
     await api.permitJob(activeSession.session_id, jobId, action);
   }
 
+  async function runRuntimeAction(nextAction: string) {
+    if (!activeSession) return;
+    await api.runtimeAction(activeSession.session_id, nextAction, "ask");
+    const [eventData, refreshed] = await Promise.all([
+      api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] })),
+      api.sessions().catch(() => ({ sessions })),
+    ]);
+    mergeEvents(eventData.events ?? []);
+    setSessions(refreshed.sessions ?? sessions);
+  }
+
 
   function selectSession(session: StudioSession) {
     setActiveSession(session);
@@ -211,6 +232,7 @@ export function App() {
           onSelect={selectEvent}
           onPrompt={(text) => setPromptSignal((prev) => ({ text, id: prev.id + 1 }))}
           onPermit={permitJob}
+          onRuntimeAction={runRuntimeAction}
           pendingTurn={pendingTurn}
           overview={overview}
           runDetail={runDetail}

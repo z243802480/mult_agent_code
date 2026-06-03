@@ -62,14 +62,18 @@ class UsageSignalRecorder:
         return payload
 
 
-def usage_signal_summary(agent_dir: Path, validator: SchemaValidator, *, limit: int = 50) -> dict[str, Any]:
+def usage_signal_summary(
+    agent_dir: Path, validator: SchemaValidator, *, limit: int = 50
+) -> dict[str, Any]:
     path = agent_dir / USAGE_SIGNAL_PATH
     rows = JsonlStore(validator).read_all(path, "usage_signal") if path.exists() else []
     recent = rows[-limit:]
     return _summary_from_rows(path, rows, recent)
 
 
-def _summary_from_rows(path: Path, rows: list[dict[str, Any]], recent: list[dict[str, Any]]) -> dict[str, Any]:
+def _summary_from_rows(
+    path: Path, rows: list[dict[str, Any]], recent: list[dict[str, Any]]
+) -> dict[str, Any]:
     outcomes = _counts(str(row.get("artifact_outcome") or "unknown") for row in recent)
     blockers = _counts(
         str(row.get("blocker_category") or "none")
@@ -120,7 +124,9 @@ def usage_signal_analysis(
     active_summary = _summary_from_rows(path, rows, active_recent)
     priority_items = _priority_items(active_summary, active_recent)
     roadmap_tasks = [_roadmap_task(item) for item in priority_items[:5]]
-    decision_points = [_decision_point(item, index + 1) for index, item in enumerate(priority_items[:3])]
+    decision_points = [
+        _decision_point(item, index + 1) for index, item in enumerate(priority_items[:3])
+    ]
     dogfooding_gate = _dogfooding_gate(active_summary, active_recent)
     acceptance_signal_gate = _acceptance_signal_gate(
         active_summary,
@@ -159,7 +165,9 @@ def usage_signal_analysis(
         ),
     }
     if write:
-        JsonStore(validator).write(agent_dir / USAGE_SIGNAL_ANALYSIS_PATH, analysis, "usage_signal_analysis")
+        JsonStore(validator).write(
+            agent_dir / USAGE_SIGNAL_ANALYSIS_PATH, analysis, "usage_signal_analysis"
+        )
     return analysis
 
 
@@ -208,14 +216,19 @@ def _exclusive_file_lock(path: Path) -> Any:
         else:
             import fcntl
 
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            flock = getattr(fcntl, "flock")
+            lock_ex = getattr(fcntl, "LOCK_EX")
+            lock_un = getattr(fcntl, "LOCK_UN")
+            flock(handle.fileno(), lock_ex)
             try:
                 yield
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                flock(handle.fileno(), lock_un)
 
 
-def _active_rows_after_latest_acceptance(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _active_rows_after_latest_acceptance(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     latest_acceptance_index = -1
     for index, row in enumerate(rows):
         if str(row.get("artifact_outcome") or "unknown") == "accepted":
@@ -287,9 +300,7 @@ def _dogfooding_gate(summary: dict[str, Any], rows: list[dict[str, Any]]) -> dic
     raw_blockers = summary.get("blockers")
     blockers: dict[str, Any] = raw_blockers if isinstance(raw_blockers, dict) else {}
     raw_trust_risks = summary.get("trust_risks")
-    trust_risks: dict[str, Any] = (
-        raw_trust_risks if isinstance(raw_trust_risks, dict) else {}
-    )
+    trust_risks: dict[str, Any] = raw_trust_risks if isinstance(raw_trust_risks, dict) else {}
     blocker_count = sum(int(value or 0) for value in blockers.values())
     trust_risk_count = sum(int(value or 0) for value in trust_risks.values())
     if sample_count <= 0:
@@ -331,9 +342,7 @@ def _acceptance_signal_gate(
     }
     accepted_by_category: dict[str, dict[str, Any]] = {}
     for row in rows:
-        category = _acceptance_signal_category(
-            str(row.get("expected_outcome_category") or "")
-        )
+        category = _acceptance_signal_category(str(row.get("expected_outcome_category") or ""))
         if category not in required_categories:
             continue
         if str(row.get("artifact_outcome") or "") != "accepted":
@@ -343,10 +352,13 @@ def _acceptance_signal_gate(
     missing = sorted(required_categories - set(accepted_by_category))
     unresolved = int(summary.get("unresolved") or 0)
     blocker_count = sum(int(value or 0) for value in (summary.get("blockers") or {}).values())
-    trust_risk_count = sum(
-        int(value or 0) for value in (summary.get("trust_risks") or {}).values()
-    )
-    if dogfooding_gate.get("status") == "blocked" or unresolved or blocker_count or trust_risk_count:
+    trust_risk_count = sum(int(value or 0) for value in (summary.get("trust_risks") or {}).values())
+    if (
+        dogfooding_gate.get("status") == "blocked"
+        or unresolved
+        or blocker_count
+        or trust_risk_count
+    ):
         status = "blocked"
         reason = "Active signals include unresolved outcomes, blockers, or trust risks."
     elif missing:
@@ -413,11 +425,18 @@ def _next_batch_plan(
             "guardrails": _next_batch_guardrails(),
         }
     completed_categories = _completed_next_batch_categories(rows)
-    required_categories = {"real_repair_task", "multi_file_small_feature", "context_pressure_maintenance"}
+    required_categories = {
+        "real_repair_task",
+        "multi_file_small_feature",
+        "context_pressure_maintenance",
+    }
     if completed_categories >= required_categories:
         evidence_refs: list[str] = []
         for row in rows:
-            if _next_batch_category(str(row.get("expected_outcome_category") or "")) in required_categories:
+            if (
+                _next_batch_category(str(row.get("expected_outcome_category") or ""))
+                in required_categories
+            ):
                 evidence_refs.extend(str(item) for item in row.get("evidence_refs") or [])
                 if row.get("run_id"):
                     evidence_refs.append(f"run:{row['run_id']}")
@@ -596,7 +615,12 @@ def _analysis_next_actions(
             ]
         if dogfooding_gate.get("status") == "ready":
             return ["Dogfooding signal gate is ready; continue with the next scoped batch."]
-        return [str(dogfooding_gate.get("reason") or "Continue collecting background usage signals during scoped dogfooding.")]
+        return [
+            str(
+                dogfooding_gate.get("reason")
+                or "Continue collecting background usage signals during scoped dogfooding."
+            )
+        ]
     return [
         "Review `.asteria/ops/usage_signal_analysis.json`.",
         "Promote high-priority roadmap_tasks into the next bounded development cycle.",

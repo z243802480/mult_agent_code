@@ -27,6 +27,7 @@ export function Sidebar({
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
   const gate = (overview?.gateStatus ?? {}) as Record<string, unknown>;
+  const diagnosticsLoaded = overview?.diagnostics_loaded !== false;
 
   return (
     <aside className="sidebar">
@@ -47,9 +48,13 @@ export function Sidebar({
           <div className="statusCards">
             <SignalCard
               icon={<Sparkles size={14} />}
-              label="Ready"
+              label={diagnosticsLoaded ? "Ready" : "Checking"}
               value={gateStage(overview)}
-              detail={String(gate.blocking_reason ?? gate.release_state ?? gate.status ?? "Ready to help")}
+              detail={
+                diagnosticsLoaded
+                  ? String(gate.blocking_reason ?? gate.release_state ?? gate.status ?? "Ready to help")
+                  : "Loading deeper checks"
+              }
               tone={validationTone(overview)}
             />
           </div>

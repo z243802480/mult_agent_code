@@ -83,6 +83,7 @@ export type OverviewPayload = {
   ok: boolean;
   workspace: string;
   runtimeRoot: string;
+  diagnostics_loaded?: boolean;
   gateStatus?: AnyRecord;
   doctor?: AnyRecord;
   packageCheck?: AnyRecord;
@@ -103,6 +104,7 @@ export type RunDetailPayload = {
   agent_run_graph?: AnyRecord;
   agent_loop_run_summary?: AnyRecord;
   run_loop_summary?: AnyRecord;
+  runtime_progress?: AnyRecord;
   worker_tree?: AnyRecord;
   final_report_summary?: AnyRecord;
   model_route_timeline?: AnyRecord;

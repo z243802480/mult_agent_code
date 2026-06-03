@@ -598,7 +598,7 @@ h2 {
 .runtimeSignalGrid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .runtimeSignalGrid > div {
@@ -621,9 +621,8 @@ h2 {
 .runtimeSignalGrid strong {
   color: #eef2f4;
   font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .runtimeSignalGrid span {
@@ -644,6 +643,42 @@ h2 {
 .runtimeNextAction span,
 .runtimeWorkerHint span {
   overflow-wrap: anywhere;
+}
+
+.runtimeNextAction {
+  align-items: center;
+}
+
+.runtimeNextAction span {
+  flex: 1;
+}
+
+.runtimeActionButton {
+  align-items: center;
+  background: #dce9ef;
+  border: 1px solid #dce9ef;
+  border-radius: 6px;
+  color: #101417;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 760;
+  min-height: 30px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.runtimeActionButton:hover {
+  background: #ffffff;
+  border-color: #ffffff;
+}
+
+.runtimeActionButton:disabled,
+.runtimeActionButton.done {
+  background: #192025;
+  border-color: #303a42;
+  color: #8f9aa3;
+  cursor: default;
 }
 
 .emptyThread {
@@ -1579,6 +1614,58 @@ h2 {
   border-color: #2e5b83;
 }
 
+.composerActionBar {
+  align-items: center;
+  background: #12171b;
+  border: 1px solid #2b353d;
+  border-radius: 7px;
+  color: #a9b4bc;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 7px 9px;
+}
+
+.composerActionBar.good {
+  border-color: #2d5e47;
+}
+
+.composerActionBar.warn {
+  border-color: #766431;
+}
+
+.composerActionMain,
+.composerPermissionPill {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.composerActionMain strong {
+  color: #edf3f6;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.composerActionMain span {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composerPermissionPill {
+  border: 1px solid #303a42;
+  border-radius: 999px;
+  color: #c4ced6;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
 .composerBar {
   align-items: center;
   display: flex;
@@ -2127,6 +2214,21 @@ h2 {
   .composerBar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .composerActionBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .composerActionMain span {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .composerPermissionPill {
+    justify-content: center;
   }
 
   .narrativeHeader,

@@ -8,6 +8,7 @@ from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.validation_command import ValidationCommand
 from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.gate_status_command import (
+    _release_evidence_route_guidance,
     _validation_recommendation_for_changed_files,
 )
 from asteria_runtime.commands.init_command import InitCommand
@@ -155,7 +156,9 @@ def test_package_check_reports_packaging_preflight() -> None:
     )
     assert payload["runbook"]["path"] == "docs/zh/验证试运行手册.md"
     assert "rollback" in payload["runbook"]["required_sections"]
-    assert any("model.routes.validation.example.ps1" in action for action in payload["next_actions"])
+    assert any(
+        "model.routes.validation.example.ps1" in action for action in payload["next_actions"]
+    )
     assert any("验证试运行手册.md" in action for action in payload["next_actions"])
     assert "Run `asteria version --json`" in payload["next_actions"][-1]
 
@@ -186,6 +189,7 @@ def test_status_reports_uninitialized_workspace(tmp_path: Path) -> None:
             "schema_version",
             "status",
             "workflow_state",
+            "runtime_progress",
             "current_phase",
             "current_blocker",
             "can_review",
@@ -446,7 +450,9 @@ def test_status_recommends_exact_decision_from_runtime_owned_ask(tmp_path: Path)
             "evidence_refs": ["model_calls.jsonl"],
         },
     }
-    JsonlStore(validator).append(run_dir / "agent_loop_decisions.jsonl", decision, "agent_loop_decision")
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_decisions.jsonl", decision, "agent_loop_decision"
+    )
     persist_agent_loop_execution_result(
         run_dir=run_dir,
         validator=validator,
@@ -1019,9 +1025,7 @@ def test_status_reports_worker_tree_summary(tmp_path: Path) -> None:
     assert worker_tree["roots"][0]["worker_invocation_id"] == "worker-0001"
     assert worker_tree["roots"][0]["children"][0]["worker_invocation_id"] == "worker-0002"
     assert worker_tree["roots"][0]["children"][0]["parent_worker_invocation_id"] == "worker-0001"
-    assert worker_tree["roots"][0]["children"][0]["child_plan_refs"] == [
-        "subagent-child-plan-0001"
-    ]
+    assert worker_tree["roots"][0]["children"][0]["child_plan_refs"] == ["subagent-child-plan-0001"]
     assert "Workers: 1 succeeded / 2 total" in result.to_text()
 
 
@@ -1244,9 +1248,7 @@ def test_gate_status_moves_from_gate_to_validation_to_core(tmp_path: Path, monke
     }
 
 
-def test_gate_status_reports_v02_rolling_validation_summary(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_gate_status_reports_v02_rolling_validation_summary(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     _write_release_ready_gate_files(tmp_path)
     bundle_dir = tmp_path / ".asteria" / "evidence_bundles"
@@ -1266,9 +1268,7 @@ def test_gate_status_reports_v02_rolling_validation_summary(
                         "loop": False,
                         "worker": True,
                     },
-                    "next_actions": [
-                        "Collect missing evidence categories: route, loop."
-                    ],
+                    "next_actions": ["Collect missing evidence categories: route, loop."],
                 },
             }
         ),
@@ -1423,7 +1423,9 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
     ]
 
 
-def test_gate_status_prefers_passing_canonical_validation_summary(tmp_path: Path, monkeypatch) -> None:
+def test_gate_status_prefers_passing_canonical_validation_summary(
+    tmp_path: Path, monkeypatch
+) -> None:
     _configure_release_routes(monkeypatch)
     gate_dir = tmp_path / ".asteria" / "model"
     gate_dir.mkdir(parents=True)
@@ -1473,7 +1475,9 @@ def test_gate_status_prefers_passing_canonical_validation_summary(tmp_path: Path
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
     assert payload["gates"]["validation_suite"]["total"] == 7
-    assert payload["evidence_sources"]["validation_suite"].endswith("real_model_acceptance_validation.json")
+    assert payload["evidence_sources"]["validation_suite"].endswith(
+        "real_model_acceptance_validation.json"
+    )
 
 
 def test_gate_status_does_not_treat_validation_subset_as_full_suite(
@@ -1900,6 +1904,65 @@ def test_gate_status_demotes_stale_route_guidance_with_fresh_release_evidence(
     assert payload["route_guidance"]["release_evidence_override"]["demoted_blockers"] == 3
 
 
+def test_release_route_guidance_rewrites_actions_for_active_review_only() -> None:
+    guidance = {
+        "status": "blocked",
+        "blocking": [
+            {
+                "purpose": "coding",
+                "provider": "glm",
+                "model": "glm-4.7",
+                "model_tier": "strong",
+                "recommended_action": "review_worker_route_before_scaling",
+                "severity": 3,
+            }
+        ],
+        "review": [
+            {
+                "purpose": "goal_spec",
+                "provider": "zai",
+                "model": "glm-4.7",
+                "model_tier": "strong",
+                "recommended_action": "retry_or_downgrade_strong_goal_spec",
+                "severity": 2,
+            }
+        ],
+        "provider_route_strategy": {
+            "decision": "retry_or_downgrade",
+            "model": "glm-4.7",
+        },
+        "recommended_actions": [
+            "Pause scaling affected routes until provider, worker, or budget issues are resolved."
+        ],
+    }
+    gate = {
+        "ok": True,
+        "routes": {"strong": {"provider": "glm", "model": "glm-4.7"}},
+        "model_call_summary": {"run_id": "run-fresh"},
+    }
+    validation = {
+        "ok": True,
+        "validation_ready": True,
+        "aggregate": {
+            "route_evidence": {
+                "strong_used": True,
+                "medium_used": True,
+            }
+        },
+    }
+    core = {"ok": True}
+
+    normalized = _release_evidence_route_guidance(guidance, gate, validation, core)
+
+    assert normalized["status"] == "review"
+    assert normalized["blocking"] == []
+    assert normalized["active_review"] == normalized["review"]
+    assert normalized["historical_review"][0]["release_evidence_status"] == "superseded"
+    assert normalized["recommended_actions"] == [
+        "Keep strong goal_spec on retry/downgrade guard; rerun one small validation sample before widening."
+    ]
+
+
 def test_gate_status_blocks_release_when_recent_model_call_contract_is_missing(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -2295,9 +2358,7 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
     gate_payload = gate_result.to_dict()
     assert gate_payload["latest_real_provider_matrix"]["latest_case"] == "single_file_bugfix"
     assert "Latest real-provider matrix: 1/2 passed" in gate_result.to_text()
-    assert "real_provider_matrix=1/2 route=repair" in "\n".join(
-        gate_result._evidence_chain()
-    )
+    assert "real_provider_matrix=1/2 route=repair" in "\n".join(gate_result._evidence_chain())
 
 
 def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: Path) -> None:
@@ -2305,7 +2366,11 @@ def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: P
         _minimal_eval_report(),
         latest_real_provider_matrix=summarize_real_provider_matrix(
             _real_provider_matrix_payload(),
-            tmp_path / ".asteria" / "verification" / "real_provider_matrix" / "run-1"
+            tmp_path
+            / ".asteria"
+            / "verification"
+            / "real_provider_matrix"
+            / "run-1"
             / "matrix_summary.json",
         ),
     )

@@ -69,8 +69,7 @@ class CapabilityReportResult:
                         f"scenarios={self.latest_acceptance.get('passed')}/"
                         f"{self.latest_acceptance.get('total')}"
                     ),
-                    "Latest acceptance state: "
-                    f"{self.latest_acceptance.get('release_validation')}",
+                    f"Latest acceptance state: {self.latest_acceptance.get('release_validation')}",
                 ]
             )
         if self.evidence_health:
@@ -110,8 +109,7 @@ class CapabilityReportResult:
             )
         if self.context_duplicate_content_hashes:
             lines.append(
-                "Repeated context hashes: "
-                + ", ".join(self.context_duplicate_content_hashes[:6])
+                "Repeated context hashes: " + ", ".join(self.context_duplicate_content_hashes[:6])
             )
         if self.model_profiles:
             lines.append("Model capability profiles:")
@@ -140,8 +138,7 @@ class CapabilityReportResult:
             lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
         if self.matrix_route_guidance:
             lines.append(
-                "Matrix route guidance: "
-                f"{self.matrix_route_guidance.get('status', 'unknown')}"
+                f"Matrix route guidance: {self.matrix_route_guidance.get('status', 'unknown')}"
             )
             for action in self.matrix_route_guidance.get("recommended_actions", [])[:3]:
                 lines.append(f"  - {action}")
@@ -210,10 +207,7 @@ class CapabilityReportResult:
                     str(item) for item in manifest_audit.get("cache_break_reasons", [])
                 ]
                 if cache_break_reasons:
-                    lines.append(
-                        "  - cache break reasons: "
-                        + ", ".join(cache_break_reasons[:6])
-                    )
+                    lines.append("  - cache break reasons: " + ", ".join(cache_break_reasons[:6]))
             missing = gate.get("missing_capabilities") or []
             if missing:
                 lines.append("  - missing capabilities: " + ", ".join(missing))
@@ -407,7 +401,9 @@ class CapabilityReportCommand:
                 )
                 blocker_counts[summary] = blocker_counts.get(summary, 0) + 1
 
-    def _cost_signals(self, agent_dir: Path) -> tuple[
+    def _cost_signals(
+        self, agent_dir: Path
+    ) -> tuple[
         int,
         int,
         int,
@@ -691,7 +687,9 @@ class CapabilityReportCommand:
         plans = self._read_jsonl(plans_path, "observation_plan")
         for plan in plans:
             task_id = str(plan.get("task_id") or "")
-            profile = profile_by_task.get(task_id) or self._profile_from_latest_call(calls, profiles)
+            profile = profile_by_task.get(task_id) or self._profile_from_latest_call(
+                calls, profiles
+            )
             route = str(plan.get("recommended_route") or "unknown")
             task_kind = task_kind_by_id.get(task_id, "unknown")
             success = task_id in done_tasks if task_id else False
@@ -700,7 +698,9 @@ class CapabilityReportCommand:
                 profile["route_signal_success"] += 1
             else:
                 profile["route_signal_failure"] += 1
-            profile["route_task_kinds"][task_kind] = profile["route_task_kinds"].get(task_kind, 0) + 1
+            profile["route_task_kinds"][task_kind] = (
+                profile["route_task_kinds"].get(task_kind, 0) + 1
+            )
             profile["route_decisions"][route] = profile["route_decisions"].get(route, 0) + 1
             if len(profile["recent_route_signals"]) < 5:
                 profile["recent_route_signals"].append(
@@ -1114,10 +1114,7 @@ class CapabilityReportCommand:
         gate: dict[str, Any] = raw_gate if isinstance(raw_gate, dict) else {}
         missing_capabilities = list(gate.get("missing_capabilities") or [])
         missing_evidence = list(gate.get("missing_evidence") or [])
-        if (
-            missing_capabilities
-            and runtime_os.get("evidence_class") == "historical_evidence_noise"
-        ):
+        if missing_capabilities and runtime_os.get("evidence_class") == "historical_evidence_noise":
             return {
                 "status": "historical_evidence_noise",
                 "summary": (
@@ -1151,7 +1148,9 @@ class CapabilityReportCommand:
             return {
                 "status": "real_provider_matrix_blocked",
                 "summary": "Latest real-provider matrix needs repair before widening validation.",
-                "recommended_actions": list(matrix_route_guidance.get("recommended_actions") or [])[:5],
+                "recommended_actions": list(matrix_route_guidance.get("recommended_actions") or [])[
+                    :5
+                ],
             }
         if runtime_status in {"pass", "ready"}:
             return {
@@ -1234,11 +1233,7 @@ class CapabilityReportCommand:
         strategy = route_guidance.get("provider_route_strategy")
         strategy = strategy if isinstance(strategy, dict) else {}
         if strategy.get("decision") == "continue_primary":
-            review = [
-                item
-                for item in route_guidance.get("review") or []
-                if isinstance(item, dict)
-            ]
+            review = [item for item in route_guidance.get("review") or [] if isinstance(item, dict)]
             active_review = [
                 item for item in review if not _route_hint_matches_strategy(item, strategy)
             ]
@@ -1253,20 +1248,36 @@ class CapabilityReportCommand:
                     **route_guidance,
                     "status": status,
                     "review": active_review,
+                    "active_review": active_review,
                     "superseded_review": superseded_review,
+                    "historical_review": superseded_review,
                     "staleness": "superseded_by_latest_acceptance_and_route_evidence",
-                    "recommended_actions": []
-                    if status == "healthy"
-                    else list(route_guidance.get("recommended_actions") or []),
+                    "recommended_actions": _active_route_guidance_actions(
+                        blocking=[],
+                        review=active_review,
+                        strategy=strategy,
+                        healthy_message="Fresh acceptance and route evidence supersede stale route guidance noise.",
+                    ),
                 }
         if route_guidance.get("status") != "blocked":
             return route_guidance
         normalized = dict(route_guidance)
         normalized["status"] = "review"
-        normalized["staleness"] = "superseded_by_latest_acceptance"
-        normalized["recommended_actions"] = [
-            "Latest acceptance is healthy; collect fresh route evidence before widening long-run validation."
+        normalized["active_review"] = [
+            item for item in route_guidance.get("review") or [] if isinstance(item, dict)
         ]
+        normalized["historical_review"] = [
+            item for item in route_guidance.get("blocking") or [] if isinstance(item, dict)
+        ]
+        normalized["staleness"] = "superseded_by_latest_acceptance"
+        normalized["recommended_actions"] = _active_route_guidance_actions(
+            blocking=[],
+            review=normalized["active_review"],
+            strategy=strategy,
+            healthy_message=(
+                "Latest acceptance is healthy; collect fresh route evidence before widening long-run validation."
+            ),
+        )
         return normalized
 
     def _profile_superseded_by_route_guidance(
@@ -1420,6 +1431,55 @@ def _route_hint_matches_strategy(item: dict[str, Any], strategy: dict[str, Any])
         item_model,
         current_model,
     )
+
+
+def _active_route_guidance_actions(
+    *,
+    blocking: list[dict[str, Any]],
+    review: list[dict[str, Any]],
+    strategy: dict[str, Any],
+    healthy_message: str,
+) -> list[str]:
+    if blocking:
+        if any(
+            item.get("recommended_action") == "review_real_provider_matrix_before_scaling"
+            for item in blocking
+        ):
+            return [
+                "Rerun or repair failed real-provider matrix task_kind/route evidence before widening validation."
+            ]
+        if any(
+            item.get("recommended_action") == "block_validation_until_strong_goal_spec_stable"
+            for item in blocking
+        ):
+            return [
+                "Run `asteria model-check --tier strong --json`, then rerun a small real-task validation sample."
+            ]
+        return ["Run `asteria capability-report` and repair the active blocked route evidence."]
+    if review:
+        if (
+            any(
+                item.get("recommended_action") == "retry_or_downgrade_strong_goal_spec"
+                for item in review
+            )
+            or strategy.get("decision") == "retry_or_downgrade"
+        ):
+            return [
+                "Keep strong goal_spec on retry/downgrade guard; rerun one small validation sample before widening."
+            ]
+        if any(
+            item.get("recommended_action") == "review_real_provider_matrix_before_scaling"
+            for item in review
+        ):
+            return [
+                "Review real-provider matrix task_kind/route failures before increasing validation batch size."
+            ]
+        purposes = sorted(
+            {str(item.get("purpose") or "unknown") for item in review if isinstance(item, dict)}
+        )
+        joined = ", ".join(purposes[:3]) if purposes else "affected routes"
+        return [f"Review active route evidence for {joined} before widening scope."]
+    return [healthy_message]
 
 
 def _route_model_names_match(left: str, right: str) -> bool:

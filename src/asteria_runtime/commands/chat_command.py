@@ -74,6 +74,7 @@ class ChatResult:
         if self.debug_details and self.session_context:
             current = self.session_context.get("current_run") or {}
             workflow = self.session_context.get("workflow") or {}
+            main_path = self.session_context.get("main_path") or {}
             route_timeline = self.session_context.get("model_route_timeline") or []
             lines.extend(
                 [
@@ -82,6 +83,7 @@ class ChatResult:
                     f"- run: {current.get('run_id') or 'none'}",
                     f"- state: {workflow.get('workflow_state') or 'unknown'}",
                     f"- next: {workflow.get('recommended_next_command') or 'none'}",
+                    f"- main path: {main_path.get('current_step') or 'unknown'}",
                 ]
             )
             if route_timeline:

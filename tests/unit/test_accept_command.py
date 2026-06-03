@@ -24,10 +24,20 @@ def test_accept_command_promotes_pending_candidate_and_finalizes_run(tmp_path: P
     assert result.promoted_files == ["tool.py"]
     assert (root / "tool.py").read_text(encoding="utf-8") == "VALUE = 2\n"
     assert result.final_report_path.exists()
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "- Completion: accepted" in final_report
+    assert "completion status cannot be confirmed" not in final_report
     assert result.final_report_summary_path == run_dir / "final_report_summary.json"
     assert result.final_report_summary["status"] == "completed"
     assert result.to_dict()["final_report_summary"] == result.final_report_summary
     assert "Final report summary:" in result.to_text()
+    run_loop_summary = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(
+        run_dir / "run_loop_summary.json",
+        "run_loop_summary",
+    )
+    assert run_loop_summary["workflow_state"] == "accepted"
+    assert run_loop_summary["recommended_next_command"] is None
+    assert run_loop_summary["main_path"]["active_stage"] == "stop"
     run = JsonStore(SchemaValidator(Path.cwd() / "schemas")).read(run_dir / "run.json", "run")
     assert run["current_phase"] == "ACCEPTED"
     assert "Accepted by operator" in run["summary"]
@@ -170,7 +180,8 @@ def _workspace_ready_for_accept(
         "eval_report",
     )
     candidate = CandidateWorkspace.create(root, run_dir, "task-0001")
-    JsonlStore(validator).append(
+    jsonl = JsonlStore(validator)
+    jsonl.append(
         run_dir / "candidate_promotions.jsonl",
         {
             "schema_version": "0.1.0",
@@ -194,5 +205,22 @@ def _workspace_ready_for_accept(
             "updated_at": now_iso(),
         },
         "candidate_promotion",
+    )
+    jsonl.append(
+        run_dir / "validation_results.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "validation_result_id": "validation-0001",
+            "run_id": run["run_id"],
+            "task_id": "task-0001",
+            "tool_name": "review",
+            "command": None,
+            "status": "passed",
+            "summary": "Review validation passed.",
+            "error": None,
+            "data": {},
+            "created_at": now_iso(),
+        },
+        "validation_result",
     )
     return root, run_dir, candidate
