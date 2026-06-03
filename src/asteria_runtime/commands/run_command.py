@@ -31,6 +31,10 @@ from asteria_runtime.core.main_path import (
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.permission_policy import normalize_permission_mode
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
+from asteria_runtime.core.real_provider_matrix import (
+    latest_real_provider_matrix,
+    real_provider_matrix_text_lines,
+)
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.core.todo_view import build_todo_view, todo_view_text_lines
 from asteria_runtime.models.base import ModelClient
@@ -646,6 +650,7 @@ class RunCommand:
         validation_conclusion = self._validation_conclusion(run_dir)
         file_changes = self._file_change_summary(run_dir)
         todo_view = self._todo_view(run_dir, validation_conclusion=validation_conclusion)
+        provider_matrix_guidance = self._provider_matrix_guidance_summary()
         task_plan = self._read_json_if_exists(run_dir / "task_plan.json", "task_board")
         tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else []
         task_count = len(tasks or [])
@@ -718,6 +723,7 @@ class RunCommand:
             "todo_view": todo_view,
             "runtime_progress": runtime_progress,
             "model_selection": self._latest_model_selection(run_dir),
+            "provider_matrix_guidance": provider_matrix_guidance,
             "model_route_timeline_path": (
                 model_route_timeline_path.relative_to(self.root).as_posix()
                 if model_route_timeline_path
@@ -740,6 +746,41 @@ class RunCommand:
             next_actions=self._string_list(status_payload.get("next_actions")),
         )
         return path
+
+    def _provider_matrix_guidance_summary(self) -> dict[str, Any]:
+        matrix = latest_real_provider_matrix(self.root / ".asteria")
+        if not matrix:
+            return {"status": "missing"}
+        summary_path = matrix.get("summary_path")
+        if isinstance(summary_path, str):
+            try:
+                summary_path = Path(summary_path).relative_to(self.root).as_posix()
+            except ValueError:
+                summary_path = str(summary_path)
+        trend = matrix.get("trend") if isinstance(matrix.get("trend"), dict) else {}
+        return {
+            "status": "recorded",
+            "matrix": matrix.get("matrix"),
+            "matrix_preset": matrix.get("matrix_preset"),
+            "provider_mode": matrix.get("provider_mode"),
+            "created_at": matrix.get("created_at"),
+            "ok": matrix.get("ok"),
+            "case_count": matrix.get("case_count"),
+            "passed": matrix.get("passed"),
+            "failed": matrix.get("failed"),
+            "summary_path": summary_path,
+            "latest_case": matrix.get("latest_case"),
+            "latest_task_kind": matrix.get("latest_task_kind"),
+            "latest_route": matrix.get("latest_route"),
+            "model_call_count": matrix.get("model_call_count"),
+            "strong_model_calls": matrix.get("strong_model_calls"),
+            "task_execution_model_calls": matrix.get("task_execution_model_calls"),
+            "task_repair_model_calls": matrix.get("task_repair_model_calls"),
+            "run_review_model_calls": matrix.get("run_review_model_calls"),
+            "budget_repair_attempts": matrix.get("budget_repair_attempts"),
+            "trend": trend,
+            "trend_warnings": list(trend.get("warnings") or []),
+        }
 
     def _write_model_route_timeline(self, run_id: str) -> Path | None:
         run_dir = self.root / ".asteria" / "runs" / run_id
@@ -1814,6 +1855,7 @@ class RunCommand:
         execution_evidence = self._execution_evidence(run_dir)
         latest_model_selection = self._latest_model_selection(run_dir)
         latest_observation_plan = self._latest_observation_plan(run_dir)
+        latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         acceptance = self._latest_acceptance_report()
         verification_evidence = self._verification_evidence(run_dir)
@@ -1934,6 +1976,9 @@ class RunCommand:
             )
         lines.extend(["", "## Model Selection", ""])
         lines.extend(self._model_selection_report_lines(latest_model_selection))
+        if latest_matrix:
+            lines.extend(["", "## Provider Matrix Guidance", ""])
+            lines.extend(f"- {line.strip()}" for line in real_provider_matrix_text_lines(latest_matrix))
         if promotion_summary["total"]:
             lines.extend(["", "## Promotion Queue", ""])
             counts = promotion_summary["status_counts"]

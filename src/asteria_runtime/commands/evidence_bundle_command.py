@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime import __version__
+from asteria_runtime.core.real_provider_matrix import classify_matrix_case_retry
 from asteria_runtime.utils.time import now_iso
 
 
@@ -468,6 +469,7 @@ class EvidenceBundleCommand:
             "slim_model_calls": context_strategy.get("slim_model_calls"),
             "fast_path_task_kinds": context_strategy.get("fast_path_task_kinds") or {},
             "budget_repair_attempts": agent_loop.get("budget_repair_attempts"),
+            "retry_classification": classify_matrix_case_retry(case),
             "final_report": case.get("final_report"),
         }
 

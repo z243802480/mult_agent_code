@@ -32,6 +32,7 @@
     "todo_view": { "type": "object" },
     "runtime_progress": { "type": "object" },
     "model_selection": { "type": "object" },
+    "provider_matrix_guidance": { "type": "object" },
     "model_route_timeline_path": { "type": ["string", "null"] },
     "model_route_timeline": {
       "type": "array",

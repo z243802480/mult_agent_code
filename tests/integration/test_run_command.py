@@ -691,6 +691,103 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert "Run `asteria /acceptance --suite core` before release." in final_report
 
 
+def test_final_report_includes_provider_matrix_guidance(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    _write_single_file_bugfix_matrix(tmp_path)
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    final_report = result.final_report_path.read_text(encoding="utf-8")
+    assert "## Provider Matrix Guidance" in final_report
+    assert "Latest real-provider matrix: 1/1 passed" in final_report
+    assert "single_file_bugfix: task_execution avg=2.0" in final_report
+    assert "class=extra_execution_without_repair" in final_report
+    summary = result.final_report_summary
+    guidance = summary["provider_matrix_guidance"]
+    assert guidance["status"] == "recorded"
+    assert guidance["summary_path"] == (
+        ".asteria/verification/real_provider_matrix/matrix-1/matrix_summary.json"
+    )
+    assert guidance["latest_case"] == "single_file_bugfix"
+    assert guidance["task_execution_model_calls"] == 2
+    bugfix_trend = guidance["trend"]["cases"]["single_file_bugfix"]
+    assert bugfix_trend["task_execution_model_calls_avg"] == 2.0
+    assert bugfix_trend["latest_retry_classification"] == "extra_execution_without_repair"
+
+
+def _write_single_file_bugfix_matrix(root: Path) -> None:
+    matrix_dir = root / ".asteria" / "verification" / "real_provider_matrix" / "matrix-1"
+    matrix_dir.mkdir(parents=True)
+    (matrix_dir / "matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "matrix": "p0",
+                "provider_mode": "real",
+                "created_at": "2026-06-04T10:00:00Z",
+                "ok": True,
+                "case_count": 1,
+                "passed": 1,
+                "failed": 0,
+                "duration_seconds": 41.0,
+                "output_dir": str(matrix_dir),
+                "cases": [
+                    {
+                        "name": "single_file_bugfix",
+                        "task_kind": "bug_fix",
+                        "route": "repair",
+                        "reason": "Focused bugfix probe.",
+                        "ok": True,
+                        "workspace": "matrix-output/single_file_bugfix",
+                        "summary_json": "matrix-output/single_file_bugfix_summary.json",
+                        "expected_file": "calc.py",
+                        "expected_text": "return a + b",
+                        "run_id": "run-bugfix",
+                        "final_report": "matrix-output/final_report.md",
+                        "diagnostics": {},
+                        "agent_loop": {
+                            "status": "recorded",
+                            "recovery_required": False,
+                            "recovery_satisfied": True,
+                            "budget_repair_attempts": 0,
+                        },
+                        "context_strategy": {
+                            "status": "recorded",
+                            "model_call_count": 3,
+                            "context_modes": {"slim": 2, "unknown": 1},
+                            "fast_path_task_kinds": {"single_file_bugfix": 2},
+                            "model_tiers": {"medium": 3},
+                            "purposes": {"goal_spec": 1, "task_execution": 2},
+                            "purpose_context_modes": {
+                                "goal_spec": {"unknown": 1},
+                                "task_execution": {"slim": 2},
+                            },
+                            "context_mode_recorded": 2,
+                            "slim_model_calls": 2,
+                            "strong_model_calls": 0,
+                            "failed_model_calls": 0,
+                            "task_execution_model_calls": 2,
+                            "task_repair_model_calls": 0,
+                            "run_review_model_calls": 0,
+                        },
+                        "failure_type": None,
+                        "failure_summary": None,
+                        "evidence_refs": ["matrix-output/final_report.md"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_run_command_keeps_default_review_deterministic_when_model_client_is_shared(
     tmp_path: Path,
 ) -> None:

@@ -432,9 +432,10 @@ class GateStatusCommand:
             core_path,
         )
         latest_matrix = latest_real_provider_matrix(self.root / ".asteria")
-        if latest_matrix and latest_matrix.get("ok") is False:
+        matrix_actions = _real_provider_matrix_next_actions(latest_matrix) if latest_matrix else []
+        if matrix_actions:
             actions = [
-                *_real_provider_matrix_next_actions(latest_matrix),
+                *matrix_actions,
                 *actions,
             ]
         promotion_release_risks = _promotion_release_risks(self.root, self._policy())
@@ -1323,26 +1324,66 @@ def _model_calls_for_run(
 
 
 def _real_provider_matrix_next_actions(matrix: dict[str, Any]) -> list[str]:
+    actions: list[str] = []
     route = str(matrix.get("latest_route") or "unknown")
     task_kind = str(matrix.get("latest_task_kind") or "unknown")
     case = str(matrix.get("latest_case") or "unknown")
     summary_path = str(matrix.get("summary_path") or "matrix_summary.json")
-    route_command = {
-        "repair": "Run the failed matrix case through `asteria debug` or rerun `asteria real-model-smoke --matrix p0 --matrix-case <case>` after fixing verification.",
-        "replan": "Run `asteria replan` for the failed matrix case contract, then rerun the targeted matrix case.",
-        "ask": "Resolve the permission or scope question before rerunning the targeted matrix case.",
-        "stop": "Stop widening validation until repeated no-new-evidence is investigated.",
-    }.get(
-        route,
-        "Inspect the failed matrix case and rerun the targeted matrix case after repair.",
-    )
-    return [
-        (
-            "Latest real-provider P0 matrix failed: "
-            f"{case} requires {route} for task_kind={task_kind}; inspect {summary_path}."
-        ),
-        route_command,
-    ]
+    if matrix.get("ok") is False:
+        route_command = {
+            "repair": "Run the failed matrix case through `asteria debug` or rerun `asteria real-model-smoke --matrix p0 --matrix-case <case>` after fixing verification.",
+            "replan": "Run `asteria replan` for the failed matrix case contract, then rerun the targeted matrix case.",
+            "ask": "Resolve the permission or scope question before rerunning the targeted matrix case.",
+            "stop": "Stop widening validation until repeated no-new-evidence is investigated.",
+        }.get(
+            route,
+            "Inspect the failed matrix case and rerun the targeted matrix case after repair.",
+        )
+        actions.extend(
+            [
+                (
+                    "Latest real-provider P0 matrix failed: "
+                    f"{case} requires {route} for task_kind={task_kind}; inspect {summary_path}."
+                ),
+                route_command,
+            ]
+        )
+    actions.extend(_real_provider_matrix_trend_next_actions(matrix))
+    return list(dict.fromkeys(actions))
+
+
+def _real_provider_matrix_trend_next_actions(matrix: dict[str, Any]) -> list[str]:
+    trend = matrix.get("trend")
+    trend = trend if isinstance(trend, dict) else {}
+    cases = trend.get("cases")
+    cases = cases if isinstance(cases, dict) else {}
+    bugfix = cases.get("single_file_bugfix")
+    bugfix = bugfix if isinstance(bugfix, dict) else {}
+    classifications = bugfix.get("retry_classifications")
+    classifications = classifications if isinstance(classifications, dict) else {}
+    summary_path = str(matrix.get("summary_path") or "matrix_summary.json")
+    actions: list[str] = []
+    if classifications.get("extra_execution_without_repair"):
+        actions.append(
+            "Review single_file_bugfix prompt/schema for extra medium execution without repair; "
+            f"compare task_execution model calls in {summary_path}."
+        )
+    if classifications.get("fast_path_mismatch"):
+        actions.append(
+            "Tighten single_file_bugfix fast-path/context target detection before widening this case."
+        )
+    if classifications.get("repair_loop") or classifications.get("failed_after_repair"):
+        actions.append(
+            "Inspect single_file_bugfix planner/tool-contract evidence; recent matrix trend still shows repair-loop behavior."
+        )
+    if int(float(bugfix.get("strong_model_calls_max") or 0)) > 0:
+        actions.append(
+            "Investigate why single_file_bugfix used strong model calls in recent matrix samples."
+        )
+    warnings = [str(item) for item in trend.get("warnings") or [] if item]
+    if warnings:
+        actions.append("Review real-provider matrix trend warnings: " + "; ".join(warnings[:2]))
+    return actions
 
 
 def _promotion_release_risks(root: Path, policy: dict[str, Any] | None = None) -> dict[str, Any]:

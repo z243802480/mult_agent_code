@@ -8,6 +8,7 @@ from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.validation_command import ValidationCommand
 from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.gate_status_command import (
+    _real_provider_matrix_next_actions,
     _release_evidence_route_guidance,
     _validation_recommendation_for_changed_files,
 )
@@ -20,6 +21,7 @@ from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
 from asteria_runtime.commands.roadmap_command import RoadmapCommand
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.real_provider_matrix import (
+    classify_matrix_case_retry,
     latest_real_provider_matrix,
     summarize_real_provider_matrix,
 )
@@ -2360,10 +2362,17 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
     assert status_payload["latest_real_provider_matrix"]["task_repair_model_calls"] == 1
     assert status_payload["latest_real_provider_matrix"]["run_review_model_calls"] == 1
     assert status_payload["latest_real_provider_matrix"]["budget_repair_attempts"] == 1
+    trend = status_payload["latest_real_provider_matrix"]["trend"]
+    assert trend["sample_count"] == 1
+    assert (
+        trend["cases"]["single_file_bugfix"]["latest_retry_classification"]
+        == "failed_after_repair"
+    )
     assert "Latest real-provider matrix: 1/2 passed" in status_result.to_text()
     assert "agent loop: 2/2 recorded, recovery 1/1 covered" in status_result.to_text()
     assert "context: 2/2 recorded, slim 2/3 calls" in status_result.to_text()
     assert "models: strong=1, task_execution=2, task_repair=1, run_review=1" in status_result.to_text()
+    assert "single_file_bugfix: task_execution avg=1.0" in status_result.to_text()
     assert "route=repair" in "\n".join(status_payload["evidence_chain"])
 
     gate_status_result = GateStatusCommand(tmp_path).run()
@@ -2374,6 +2383,10 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
     assert "Latest real-provider P0 matrix failed" in gate_status_payload["next_actions"][0]
     assert "requires repair" in gate_status_payload["next_actions"][0]
     assert "asteria debug" in gate_status_payload["next_actions"][1]
+    assert any(
+        "planner/tool-contract evidence" in action
+        for action in gate_status_payload["next_actions"]
+    )
 
     gate_result = GateCommand(tmp_path).run()
     gate_payload = gate_result.to_dict()
@@ -2412,6 +2425,77 @@ def test_latest_real_provider_matrix_prefers_real_over_newer_fake(tmp_path: Path
     ].endswith("real-run/matrix_summary.json")
 
 
+def test_latest_real_provider_matrix_trends_single_file_bugfix_retries(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".asteria"
+    matrix_root = agent_dir / "verification" / "real_provider_matrix"
+    first = dict(_real_provider_matrix_payload())
+    first["created_at"] = "2026-06-03T10:00:00Z"
+    second = dict(_real_provider_matrix_payload())
+    second["created_at"] = "2026-06-04T10:00:00Z"
+    second["ok"] = True
+    second["passed"] = 2
+    second["failed"] = 0
+    second["cases"] = [_single_file_bugfix_case(task_execution_calls=3, repair_attempts=0)]
+    second["case_count"] = 1
+    _write_matrix_payload(matrix_root / "matrix-1", first)
+    _write_matrix_payload(matrix_root / "matrix-2", second)
+
+    latest = latest_real_provider_matrix(agent_dir)
+
+    trend = latest["trend"]
+    bugfix = trend["cases"]["single_file_bugfix"]
+    assert trend["sample_count"] == 2
+    assert bugfix["sample_count"] == 2
+    assert bugfix["task_execution_model_calls_max"] == 3
+    assert bugfix["retry_classifications"] == {
+        "extra_execution_without_repair": 1,
+        "failed_after_repair": 1,
+    }
+    assert any("single_file_bugfix still entered repair" in item for item in trend["warnings"])
+
+
+def test_matrix_case_retry_classification_names_extra_execution_without_repair() -> None:
+    case = _single_file_bugfix_case(task_execution_calls=2, repair_attempts=0)
+
+    assert classify_matrix_case_retry(case) == "extra_execution_without_repair"
+
+
+def test_matrix_case_retry_classification_uses_legacy_purpose_counts() -> None:
+    case = _single_file_bugfix_case(task_execution_calls=0, repair_attempts=0)
+    context = case["context_strategy"]
+    context.pop("task_execution_model_calls", None)
+    context.pop("task_repair_model_calls", None)
+    context.pop("run_review_model_calls", None)
+    context["purposes"] = {"task_execution": 2}
+
+    assert classify_matrix_case_retry(case) == "extra_execution_without_repair"
+
+
+def test_real_provider_matrix_next_actions_explain_extra_bugfix_execution() -> None:
+    matrix = {
+        "ok": True,
+        "summary_path": "matrix-summary.json",
+        "trend": {
+            "cases": {
+                "single_file_bugfix": {
+                    "retry_classifications": {"extra_execution_without_repair": 2},
+                    "strong_model_calls_max": 0,
+                }
+            },
+            "warnings": [],
+        },
+    }
+
+    actions = _real_provider_matrix_next_actions(matrix)
+
+    assert actions == [
+        (
+            "Review single_file_bugfix prompt/schema for extra medium execution without repair; "
+            "compare task_execution model calls in matrix-summary.json."
+        )
+    ]
+
+
 def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: Path) -> None:
     report = ReviewCommand(tmp_path)._markdown_report(
         _minimal_eval_report(),
@@ -2435,10 +2519,52 @@ def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: P
 
 def _write_real_provider_matrix_summary(root: Path) -> Path:
     path = root / ".asteria" / "verification" / "real_provider_matrix" / "run-1"
+    return _write_matrix_payload(path, _real_provider_matrix_payload())
+
+
+def _write_matrix_payload(path: Path, payload: dict) -> Path:
     path.mkdir(parents=True)
     summary_path = path / "matrix_summary.json"
-    summary_path.write_text(json.dumps(_real_provider_matrix_payload()), encoding="utf-8")
+    summary_path.write_text(json.dumps(payload), encoding="utf-8")
     return summary_path
+
+
+def _single_file_bugfix_case(
+    *,
+    task_execution_calls: int,
+    repair_attempts: int,
+) -> dict:
+    case = dict(_real_provider_matrix_payload()["cases"][1])
+    case["ok"] = True
+    case["failure_type"] = None
+    case["failure_summary"] = None
+    case["agent_loop"] = {
+        **case["agent_loop"],
+        "exit_reason": "completed",
+        "recommended_command": None,
+        "budget_repair_attempts": repair_attempts,
+        "recovery_required": False,
+        "recovery_satisfied": True,
+    }
+    case["context_strategy"] = {
+        **case["context_strategy"],
+        "model_call_count": task_execution_calls + repair_attempts + 1,
+        "strong_model_calls": 0,
+        "failed_model_calls": 0,
+        "task_execution_model_calls": task_execution_calls,
+        "task_repair_model_calls": repair_attempts,
+        "run_review_model_calls": 0,
+        "fast_path_task_kinds": {"single_file_bugfix": task_execution_calls},
+        "purposes": {
+            "task_execution": task_execution_calls,
+            "task_repair": repair_attempts,
+        },
+        "purpose_context_modes": {
+            "task_execution": {"slim": task_execution_calls},
+            "task_repair": {"slim": repair_attempts},
+        },
+    }
+    return case
 
 
 def _real_provider_matrix_payload() -> dict:

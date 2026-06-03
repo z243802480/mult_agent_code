@@ -384,6 +384,7 @@ def test_evidence_bundle_includes_real_provider_matrix_summary(tmp_path: Path) -
     assert matrix["provider_mode"] == "real"
     assert matrix["cases"][0]["strong_model_calls"] == 0
     assert matrix["cases"][0]["task_execution_model_calls"] == 2
+    assert matrix["cases"][0]["retry_classification"] == "extra_execution_without_repair"
     with zipfile.ZipFile(result.bundle_path) as archive:
         summary = json.loads(archive.read("v0.2_rolling_validation_summary.json"))
     assert summary["matrix_summary_count"] == 1
