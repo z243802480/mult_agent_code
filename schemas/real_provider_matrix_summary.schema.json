@@ -17,6 +17,8 @@
   "properties": {
     "schema_version": { "type": "string" },
     "matrix": { "type": "string" },
+    "matrix_preset": { "type": ["string", "null"] },
+    "provider_mode": { "type": "string" },
     "created_at": { "type": "string" },
     "ok": { "type": "boolean" },
     "output_dir": { "type": "string" },
@@ -71,6 +73,9 @@
               "max_rounds": { "type": ["integer", "null"] },
               "budget_status": { "type": ["string", "null"] },
               "budget_highest_label": { "type": ["string", "null"] },
+              "budget_model_calls": { "type": ["integer", "null"] },
+              "budget_tool_calls": { "type": ["integer", "null"] },
+              "budget_repair_attempts": { "type": ["integer", "null"] },
               "context_pressure_status": { "type": ["string", "null"] },
               "context_window_ratio": { "type": ["number", "null"] },
               "recovery_required": { "type": ["boolean", "null"] },
@@ -92,6 +97,14 @@
                 "type": "object",
                 "additionalProperties": { "type": "integer" }
               },
+              "model_tiers": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "purposes": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
               "purpose_context_modes": {
                 "type": "object",
                 "additionalProperties": {
@@ -101,6 +114,11 @@
               },
               "context_mode_recorded": { "type": "integer" },
               "slim_model_calls": { "type": "integer" },
+              "strong_model_calls": { "type": "integer" },
+              "failed_model_calls": { "type": "integer" },
+              "task_execution_model_calls": { "type": "integer" },
+              "task_repair_model_calls": { "type": "integer" },
+              "run_review_model_calls": { "type": "integer" },
               "average_context_estimated_tokens": { "type": ["number", "null"] },
               "max_context_estimated_tokens": { "type": ["integer", "null"] }
             }

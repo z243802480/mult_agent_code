@@ -325,7 +325,11 @@ class FakeModelClient:
         return after_marker.split("Project context:", 1)[0].strip() or "offline verification"
 
     def _goal_contract(self, goal: str) -> dict:
-        path = self._extract_first_path(goal) or "offline_artifact.txt"
+        path = (
+            self._extract_output_path(goal)
+            or self._extract_first_path(goal)
+            or "offline_artifact.txt"
+        )
         content = self._content_for_goal(goal, path)
         return {
             "path": path,
@@ -338,6 +342,14 @@ class FakeModelClient:
             "definition_of_done": [f"{path} exists", f"{path} contains {content.strip()!r}"],
             "verification_command": self._verification_command(path, content.strip()),
         }
+
+    def _extract_output_path(self, text: str) -> str | None:
+        match = re.search(
+            r"\b(?:create|write|update)\s+([\w./-]+\.(?:py|md|txt|json|html|css|js|ts|tsx|pdf))",
+            text,
+            flags=re.I,
+        )
+        return match.group(1).replace("\\", "/") if match else None
 
     def _extract_first_path(self, text: str) -> str | None:
         match = re.search(

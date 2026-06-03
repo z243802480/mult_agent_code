@@ -20,11 +20,13 @@ class ExecutionActionPreparer:
         if self._runtime_managed_action(action):
             self.require_non_empty(action)
             return action
-        prepared = self._normalize_inline_verification(action, task)
+        prepared = self._normalize_structured_patches(action)
+        prepared = self._normalize_inline_verification(prepared, task)
         prepared = self._ensure_planned_verification(prepared, task)
         prepared = self._replace_unsafe_verification(prepared, task, policy)
         prepared = self._stabilize_text_artifact_verification(prepared, task)
         prepared = self._prepend_python_compile_verification(prepared, task)
+        prepared = self._drop_parent_list_for_text_artifact_write(prepared, task)
         prepared = self._drop_redundant_root_list_for_standalone_artifact(prepared, task)
         self.require_non_empty(prepared)
         return prepared
@@ -46,6 +48,68 @@ class ExecutionActionPreparer:
         next_action = decision.get("next_action") if isinstance(decision, dict) else None
         kind = str((next_action or {}).get("action") or "")
         return kind in {"subagent", "repair", "replan", "stop"}
+
+    def _normalize_structured_patches(self, action: dict) -> dict:
+        tool_calls = list(action.get("tool_calls") or [])
+        normalized_calls = []
+        changed = False
+        for call in tool_calls:
+            if call.get("tool_name") != "apply_patch":
+                normalized_calls.append(call)
+                continue
+            args = dict(call.get("args") or {})
+            patch_value = args.get("patch") if args.get("patch") is not None else args.get("diff")
+            if isinstance(patch_value, str):
+                normalized_calls.append(call)
+                continue
+            patch_text = self._structured_patch_to_unified_diff(patch_value)
+            if not patch_text:
+                normalized_calls.append(call)
+                continue
+            args["patch"] = patch_text
+            args.pop("diff", None)
+            updated = dict(call)
+            updated["args"] = args
+            normalized_calls.append(updated)
+            changed = True
+        if not changed:
+            return action
+        normalized = dict(action)
+        normalized["tool_calls"] = normalized_calls
+        return normalized
+
+    def _structured_patch_to_unified_diff(self, patch_value: object) -> str | None:
+        if not isinstance(patch_value, list):
+            return None
+        chunks: list[str] = []
+        for file_patch in patch_value:
+            if not isinstance(file_patch, dict):
+                return None
+            path = str(file_patch.get("path") or "").replace("\\", "/").strip()
+            operations = file_patch.get("operations")
+            if not path or not isinstance(operations, list):
+                return None
+            hunks: list[str] = []
+            for operation in operations:
+                if not isinstance(operation, dict) or operation.get("op") != "replace":
+                    return None
+                old_text = operation.get("old_text")
+                new_text = operation.get("new_text")
+                if not isinstance(old_text, str) or not isinstance(new_text, str):
+                    return None
+                hunks.append(self._replace_hunk(old_text, new_text))
+            chunks.append(f"--- a/{path}\n+++ b/{path}\n" + "".join(hunks))
+        return "".join(chunks) if chunks else None
+
+    def _replace_hunk(self, old_text: str, new_text: str) -> str:
+        old_lines = old_text.splitlines()
+        new_lines = new_text.splitlines()
+        old_count = max(1, len(old_lines))
+        new_count = max(1, len(new_lines))
+        lines = [f"@@ -1,{old_count} +1,{new_count} @@\n"]
+        lines.extend(f"-{line}\n" for line in old_lines)
+        lines.extend(f"+{line}\n" for line in new_lines)
+        return "".join(lines)
 
     def _normalize_inline_verification(self, action: dict, task: dict) -> dict:
         if action.get("verification") or not task.get("verification_policy", {}).get("required"):
@@ -305,6 +369,50 @@ class ExecutionActionPreparer:
             if not (
                 call.get("tool_name") == "list_files"
                 and str((call.get("args") or {}).get("path") or ".").strip() in {"", "."}
+            )
+        ]
+        if len(filtered) == len(tool_calls):
+            return action
+        normalized = dict(action)
+        normalized["tool_calls"] = filtered
+        return normalized
+
+    def _drop_parent_list_for_text_artifact_write(self, action: dict, task: dict) -> dict:
+        """Avoid probing a parent directory that a scoped text artifact write may create.
+
+        Real models often list ``docs`` before writing ``docs/foo.md``. In an empty smoke workspace
+        that read fails before the write gets a chance to create the artifact, causing an otherwise
+        deterministic low-risk task to enter repair. If the task has explicit text artifacts and the
+        same action writes one of them, the parent listing is not needed for safety or verification.
+        """
+        artifacts = self._text_only_artifacts(task)
+        if not artifacts:
+            return action
+        tool_calls = list(action.get("tool_calls") or [])
+        write_paths = {
+            str((call.get("args") or {}).get("path") or "").replace("\\", "/").strip()
+            for call in tool_calls
+            if call.get("tool_name") in {"write_file", "apply_patch"}
+        }
+        if not write_paths:
+            return action
+        parent_dirs = {
+            path.rsplit("/", 1)[0]
+            for path in artifacts
+            if "/" in path and path in write_paths
+        }
+        if not parent_dirs:
+            return action
+        filtered = [
+            call
+            for call in tool_calls
+            if not (
+                call.get("tool_name") == "list_files"
+                and str((call.get("args") or {}).get("path") or ".")
+                .replace("\\", "/")
+                .strip()
+                .rstrip("/")
+                in parent_dirs
             )
         ]
         if len(filtered) == len(tool_calls):

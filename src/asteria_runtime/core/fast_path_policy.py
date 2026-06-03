@@ -204,4 +204,17 @@ def _is_simple_file_goal(text: str, files: list[str]) -> bool:
 
 
 def _is_single_file_bugfix(text: str, files: list[str]) -> bool:
-    return len(files) == 1 and any(signal in text for signal in BUGFIX_SIGNALS)
+    primary_targets = [path for path in files if not _test_or_directory_hint(path)]
+    return len(primary_targets) == 1 and any(signal in text for signal in BUGFIX_SIGNALS)
+
+
+def _test_or_directory_hint(path: str) -> bool:
+    name = path.rsplit("/", 1)[-1]
+    if not name or "." not in name:
+        return True
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or path.startswith("tests/")
+        or "/tests/" in path
+    )

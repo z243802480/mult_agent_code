@@ -336,7 +336,7 @@ class RunCommand:
             review = ReviewCommand(
                 self.root,
                 run_id=run_id,
-                model_client=self.review_model_client or self.model_client,
+                model_client=self.review_model_client,
             ).run()
             steps.append(
                 RunStepSummary(

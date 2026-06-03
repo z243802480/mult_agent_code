@@ -97,3 +97,23 @@ def test_slim_execution_context_trims_task_prompt_context_without_mutating_sourc
         "omitted": 2,
     }
     assert len(runtime_context["context_package"]["read_scope_files"][0]["content"]) == 1500
+
+
+def test_slim_execution_context_ignores_read_scope_for_bugfix_classification() -> None:
+    slimmed = slim_execution_context(
+        {"context_package": {"read_scope_files": []}},
+        task={
+            "task_id": "task-1",
+            "expected_artifacts": ["calc.py"],
+            "expected_changed_files": ["calc.py"],
+            "write_scope": ["calc.py"],
+            "read_scope": ["AGENTS.md", "calc.py", "test_calc.py"],
+        },
+        goal_spec={
+            "original_goal": "Fix calc.py so add(2, 3) returns 5 while preserving tests.",
+            "target_outputs": ["calc.py"],
+        },
+    )
+
+    assert slimmed["context_policy"]["mode"] == "slim"
+    assert slimmed["context_policy"]["fast_path"]["task_kind"] == "single_file_bugfix"

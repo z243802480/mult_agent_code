@@ -92,6 +92,81 @@ class FakeExecuteClient:
         )
 
 
+class FakeDocPlanClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "goal_id": "goal-0001",
+                    "original_goal": "Create docs/p0_matrix_doc_update.md with heading",
+                    "normalized_goal": "Create a small documentation artifact",
+                    "goal_type": "documentation",
+                    "assumptions": [],
+                    "constraints": ["local filesystem only"],
+                    "non_goals": [],
+                    "expanded_requirements": [
+                        {
+                            "id": "req-0001",
+                            "priority": "must",
+                            "description": "Create a markdown file with a heading",
+                            "source": "user",
+                            "acceptance": ["file can be read back"],
+                        }
+                    ],
+                    "target_outputs": ["docs/p0_matrix_doc_update.md"],
+                    "definition_of_done": ["document exists"],
+                    "verification_strategy": ["read generated artifact"],
+                    "budget": {"max_iterations": 3, "max_model_calls": 10},
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(10, 20, 30),
+            model_provider="fake",
+            model_name="fake-doc-plan",
+            raw_response={},
+        )
+
+
+class FakeDocReadbackExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "Create documentation and read it back.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "docs/p0_matrix_doc_update.md",
+                                "content": "# P0 Matrix Doc Update\n\n- Evidence captured\n",
+                                "overwrite": True,
+                            },
+                            "reason": "create documentation artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "read_file",
+                            "args": {"path": "docs/p0_matrix_doc_update.md"},
+                            "reason": "verify the artifact can be read back",
+                        }
+                    ],
+                    "completion_notes": "documentation artifact exists",
+                },
+                ensure_ascii=False,
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-doc-execute",
+            raw_response={},
+        )
+
+
 class FakeReviewClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         payload = json.loads(request.messages[-1].content)
@@ -312,6 +387,97 @@ def test_review_command_uses_deterministic_first_for_fast_path_without_model_cli
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert any(event["title"] == "确定性评审通过" for event in user_progress)
+
+
+def test_review_command_accepts_recovered_fast_path_worker_failure_without_model_call(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()
+    execute = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+    assert execute.completed == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    with (run_dir / "worker_results.jsonl").open("a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "worker_result_id": "worker-result-recovered-failure",
+                    "worker_invocation_id": "worker-recovered-failure",
+                    "run_id": plan.run_id,
+                    "task_id": "task-0001",
+                    "status": "failed",
+                    "artifact_refs": [],
+                    "validation_refs": [],
+                    "failure_evidence_refs": ["task_execution_evidence.jsonl"],
+                    "cost": {"model_calls": 1, "tool_calls": 0},
+                    "summary": "Earlier attempt failed before a later successful repair.",
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id).run()
+
+    assert result.status == "pass"
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    review_tier = eval_report["trajectory_eval"]["review_tier"]
+    assert review_tier["mode"] == "deterministic_first"
+    assert review_tier["accepted_without_model"] is True
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    assert cost_report["model_calls"] == 2
+
+
+def test_review_command_accepts_doc_fast_path_readback_without_model_call(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(
+        tmp_path,
+        "create a documentation artifact",
+        model_client=FakeDocPlanClient(),
+    ).run()
+    execute = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeDocReadbackExecuteClient(),
+    ).run()
+    assert execute.completed == 1
+
+    result = ReviewCommand(tmp_path, run_id=plan.run_id).run()
+
+    assert result.status == "pass"
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    review_tier = eval_report["trajectory_eval"]["review_tier"]
+    assert review_tier["mode"] == "deterministic_first"
+    assert review_tier["accepted_without_model"] is True
+    assert review_tier["fast_path"]["task_kind"] == "doc_update"
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+    assert cost_report["model_calls"] == 2
+
+
+def test_review_command_requires_command_verification_for_bugfix_fast_path(
+    tmp_path: Path,
+) -> None:
+    blockers = ReviewCommand(tmp_path)._tiered_review_blockers(
+        {
+            "task_completion_rate": 1.0,
+            "blocked_task_count": 0,
+            "verification_call_count": 1,
+            "verification_pass_rate": 1.0,
+            "command_verification_call_count": 0,
+            "command_verification_pass_rate": 0.0,
+            "unrecovered_failed_worker_result_count": 0,
+            "merge_gate_block_count": 0,
+            "pending_runtime_request_count": 0,
+            "cost_status": "within_budget",
+        },
+        fast_path_task_kind="bug_fix",
+    )
+
+    assert "missing_command_verification_call" in blockers
 
 
 def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path) -> None:

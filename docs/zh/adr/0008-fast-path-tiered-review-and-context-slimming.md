@@ -4,7 +4,7 @@
 
 ## 背景
 
-真实 provider 小灰度显示，简单任务的大部分耗时不在工具调用、文件读写或 Runtime 调度，而在模型等待：强 `goal_spec`、强 `review` 和偏大的上下文包会把本该 2-3 分钟完成的小任务拉长到十几分钟。成熟产品的共同做法不是为每个失败尾巴继续堆规则，而是保持一条短、快、可恢复的主路径：
+真实 provider 小灰度显示，简单任务的大部分耗时不在工具调用、文件读写或 Runtime 调度，而在模型等待：强 `goal_spec`、强 `review` 和偏大的上下文包会把本该 2-3 分钟完成的小任务拉长到十几分钟。2026-06-03 的 `doc_update` P0 case 进一步证明：移除无意义父目录探测、默认强 review 和文档 readback 误判后，真实 provider 路径可从 4 次模型调用、1 次 strong review、1 次 repair、103.024 秒降到 2 次 medium 调用、0 strong、0 repair，最新复验为 47.850 秒。成熟产品的共同做法不是为每个失败尾巴继续堆规则，而是保持一条短、快、可恢复的主路径：
 
 ```text
 Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop
@@ -44,7 +44,9 @@ Review 不再等同于“每次强模型复审”。默认顺序是：
 deterministic verify -> medium semantic review -> strong review
 ```
 
-只有 deterministic verify 不足、模型输出和证据冲突、风险等级升高、或用户/发布要求时，才进入更强审查。
+只有 deterministic verify 不足、模型输出和证据冲突、风险等级升高、或用户/发布要求时，才进入更强审查。文档/简单文件任务可用 artifact readback 作为确定性证据；代码修复仍必须保留 command-level verification。
+
+默认 `/run` 不应因为共享 plan/execute model client 而强制模型 review；只有显式传入 `review_model_client` 的维护者、测试或发布复验路径才绕过 deterministic-first。
 
 ### 3. Context Slimming
 
@@ -79,6 +81,7 @@ deterministic verify -> medium semantic review -> strong review
 - Studio 主屏只能展示用户语义过程和结果；内部字段不得重新搬回主屏。
 - provider 慢、超时或 streaming 失败优先调整 route/deadline/downgrade 策略，不把慢调用包装成更多 loop。
 - 如果模型输出宽泛，优先简化 schema/prompt/任务形态，而不是继续写特殊规则兜底。
+- 对明确文本产物，执行准备器应避免“写入前列出父目录”这类会在空 workspace 中制造 repair 的探测；验证应由 expected artifact、changed files 和稳定 verification evidence 承担。
 
 ## 结果
 

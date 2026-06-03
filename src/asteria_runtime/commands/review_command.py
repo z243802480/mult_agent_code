@@ -382,7 +382,7 @@ class ReviewCommand:
         )
         if fast_path.task_kind == "high_risk":
             return None
-        blockers = self._tiered_review_blockers(checks)
+        blockers = self._tiered_review_blockers(checks, fast_path_task_kind=fast_path.task_kind)
         if blockers:
             return None
         report = {
@@ -430,17 +430,23 @@ class ReviewCommand:
                     files.append(item)
         return list(dict.fromkeys(files))
 
-    def _tiered_review_blockers(self, checks: dict) -> list[str]:
+    def _tiered_review_blockers(self, checks: dict, *, fast_path_task_kind: str) -> list[str]:
         blockers: list[str] = []
         if float(checks.get("task_completion_rate") or 0) < 1.0:
             blockers.append("task_completion_incomplete")
         if int(checks.get("blocked_task_count") or 0) > 0:
             blockers.append("blocked_tasks_present")
-        if int(checks.get("verification_call_count") or 0) <= 0:
-            blockers.append("missing_verification_call")
-        if float(checks.get("verification_pass_rate") or 0) < 1.0:
-            blockers.append("verification_not_fully_passing")
-        if int(checks.get("failed_worker_result_count") or 0) > 0:
+        if fast_path_task_kind in {"doc_update", "simple_file"}:
+            if int(checks.get("verification_call_count") or 0) <= 0:
+                blockers.append("missing_verification_call")
+            if float(checks.get("verification_pass_rate") or 0) < 1.0:
+                blockers.append("verification_not_fully_passing")
+        else:
+            if int(checks.get("command_verification_call_count") or 0) <= 0:
+                blockers.append("missing_command_verification_call")
+            if float(checks.get("command_verification_pass_rate") or 0) < 1.0:
+                blockers.append("command_verification_not_fully_passing")
+        if int(checks.get("unrecovered_failed_worker_result_count") or 0) > 0:
             blockers.append("failed_worker_results_present")
         if int(checks.get("merge_gate_block_count") or 0) > 0:
             blockers.append("merge_gate_blocks_present")
@@ -815,10 +821,17 @@ class ReviewCommand:
         active_tasks = [task for task in tasks if task["status"] != "discarded"]
         done = [task for task in active_tasks if task["status"] == "done"]
         blocked = [task for task in active_tasks if task["status"] == "blocked"]
-        verification_calls = [
+        command_verification_calls = [
             call for call in tool_calls if call["tool_name"] in {"run_tests", "run_command"}
         ]
+        artifact_readback_calls = [
+            call for call in tool_calls if call["tool_name"] in {"read_file"}
+        ]
+        verification_calls = [*command_verification_calls, *artifact_readback_calls]
         passed_verification = [call for call in verification_calls if call["status"] == "success"]
+        passed_command_verification = [
+            call for call in command_verification_calls if call["status"] == "success"
+        ]
         return {
             "task_completion_rate": len(done) / len(active_tasks) if active_tasks else 0,
             "blocked_task_count": len(blocked),
@@ -830,6 +843,10 @@ class ReviewCommand:
             "worker_result_count": len(worker_results),
             "failed_worker_result_count": len(
                 [item for item in worker_results if item.get("status") != "succeeded"]
+            ),
+            "unrecovered_failed_worker_result_count": self._unrecovered_failed_worker_count(
+                worker_results,
+                execution_evidence,
             ),
             "merge_gate_block_count": len(
                 [
@@ -852,8 +869,55 @@ class ReviewCommand:
             "verification_pass_rate": (
                 len(passed_verification) / len(verification_calls) if verification_calls else 0
             ),
+            "command_verification_call_count": len(command_verification_calls),
+            "command_verification_pass_rate": (
+                len(passed_command_verification) / len(command_verification_calls)
+                if command_verification_calls
+                else 0
+            ),
+            "artifact_readback_call_count": len(artifact_readback_calls),
             "cost_status": cost_report.get("status", "within_budget"),
         }
+
+    def _unrecovered_failed_worker_count(
+        self,
+        worker_results: list[dict],
+        execution_evidence: list[dict],
+    ) -> int:
+        recovered_tasks = self._recovered_task_ids(execution_evidence)
+        return len(
+            [
+                item
+                for item in worker_results
+                if item.get("status") != "succeeded"
+                and str(item.get("task_id") or "") not in recovered_tasks
+            ]
+        )
+
+    def _recovered_task_ids(self, execution_evidence: list[dict]) -> set[str]:
+        latest_by_task: dict[str, dict] = {}
+        for item in execution_evidence:
+            task_id = str(item.get("task_id") or "")
+            if task_id:
+                latest_by_task[task_id] = item
+        return {
+            task_id
+            for task_id, item in latest_by_task.items()
+            if self._execution_evidence_is_recovered(item)
+        }
+
+    def _execution_evidence_is_recovered(self, evidence: dict) -> bool:
+        if evidence.get("status") != "done":
+            return False
+        contract = evidence.get("contract_check")
+        if isinstance(contract, dict) and contract.get("ok") is False:
+            return False
+        verification_results = evidence.get("verification_results")
+        if isinstance(verification_results, list) and any(
+            isinstance(item, dict) and item.get("ok") is False for item in verification_results
+        ):
+            return False
+        return True
 
     def _markdown_report(
         self,

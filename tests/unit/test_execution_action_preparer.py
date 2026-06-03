@@ -187,7 +187,7 @@ def test_preparer_drops_redundant_root_list_after_verified_standalone_artifact()
     assert [call["tool_name"] for call in prepared["tool_calls"]] == ["write_file"]
 
 
-def test_preparer_keeps_scoped_list_for_artifact_task() -> None:
+def test_preparer_drops_parent_list_before_text_artifact_write() -> None:
     action = {
         "tool_calls": [
             {
@@ -195,6 +195,86 @@ def test_preparer_keeps_scoped_list_for_artifact_task() -> None:
                 "args": {"path": "docs/hello.txt", "content": "hello"},
             },
             {"tool_name": "list_files", "args": {"path": "docs"}},
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": "python -c \"from pathlib import Path; assert Path('docs/hello.txt').exists()\""
+                },
+            }
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            allowed_tools=["write_file", "list_files", "run_command"],
+            expected_artifacts=["docs/hello.txt"],
+            expected_changed_files=["docs/hello.txt"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    assert [call["tool_name"] for call in prepared["tool_calls"]] == ["write_file"]
+
+
+def test_preparer_normalizes_structured_apply_patch_replace() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "apply_patch",
+                "args": {
+                    "patch": [
+                        {
+                            "path": "calc.py",
+                            "operations": [
+                                {
+                                    "op": "replace",
+                                    "old_text": "def add(a, b):\n    return a - b",
+                                    "new_text": "def add(a, b):\n    return a + b",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {"command": "python -m py_compile calc.py"},
+            }
+        ],
+    }
+
+    prepared = ExecutionActionPreparer(lambda _policy, _command: None).prepare(
+        action,
+        _task(
+            expected_artifacts=["calc.py"],
+            expected_changed_files=["calc.py"],
+            allowed_tools=["apply_patch", "run_command"],
+            verification_required=True,
+        ),
+        {},
+    )
+
+    patch = prepared["tool_calls"][0]["args"]["patch"]
+    assert isinstance(patch, str)
+    assert "--- a/calc.py" in patch
+    assert "-    return a - b" in patch
+    assert "+    return a + b" in patch
+
+
+def test_preparer_keeps_scoped_list_that_is_not_text_artifact_parent() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "docs/hello.txt", "content": "hello"},
+            },
+            {"tool_name": "list_files", "args": {"path": "fixtures"}},
         ],
         "verification": [
             {

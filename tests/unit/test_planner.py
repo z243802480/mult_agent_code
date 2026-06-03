@@ -626,6 +626,51 @@ def test_requirement_planner_excludes_tests_when_goal_forbids_test_modification(
     assert "diff_workspace" in task["allowed_tools"]
 
 
+def test_requirement_planner_groups_named_single_file_bugfix_with_test_context() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-calc-fix",
+        "original_goal": (
+            "Fix calc.py so add(2, 3) returns 5. Keep the change limited to calc.py "
+            "and preserve the existing test intent."
+        ),
+        "normalized_goal": "Fix calc.py add behavior",
+        "target_outputs": ["calc.py", "test_calc.py"],
+        "definition_of_done": ["add(2, 3) returns 5", "pytest test_calc.py passes"],
+        "verification_strategy": ["pytest test_calc.py"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Change calc.py so add uses addition",
+                "acceptance": ["add(2, 3) returns 5"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Ensure existing test in test_calc.py passes",
+                "acceptance": ["pytest test_calc.py passes"],
+            },
+            {
+                "id": "req-0003",
+                "priority": "must",
+                "description": "Keep the fix contained to calc.py only",
+                "acceptance": ["No modifications to test_calc.py"],
+            },
+        ],
+    }
+
+    task_plan = RequirementPlanner().build_task_plan(goal_spec)
+
+    assert len(task_plan["tasks"]) == 1
+    task = task_plan["tasks"][0]
+    assert task["expected_artifacts"] == ["calc.py", "test_calc.py"]
+    assert task["expected_changed_files"] == ["calc.py"]
+    assert task["write_scope"] == ["calc.py"]
+    assert "test_calc.py" in task["read_scope"]
+    assert "targeted repair slice" in task["notes"]
+
+
 def test_requirement_planner_marks_diagnostic_tasks() -> None:
     goal_spec = {
         "schema_version": "0.1.0",

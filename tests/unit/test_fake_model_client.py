@@ -77,6 +77,35 @@ def test_fake_model_goal_spec_tracks_requested_file_contract() -> None:
     assert "P0 matrix file output ok" in payload["definition_of_done"][1]
 
 
+def test_fake_model_goal_spec_prefers_created_output_over_read_context_paths() -> None:
+    response = FakeModelClient().chat(
+        ChatRequest(
+            purpose="goal_spec",
+            model_tier="medium",
+            messages=[
+                ChatMessage(
+                    role="user",
+                    content=(
+                        "User goal:\n"
+                        "Read docs/route_notes.md and docs/context_notes.md. "
+                        "Create docs/context_maintenance_summary.md with heading "
+                        "Context Maintenance Summary.\n\n"
+                        "Project context:\n{}"
+                    ),
+                )
+            ],
+            response_format="json",
+        )
+    )
+
+    payload = json.loads(response.content)
+
+    assert payload["target_outputs"] == ["docs/context_maintenance_summary.md"]
+    assert payload["expanded_requirements"][0]["expected_artifacts"] == [
+        "docs/context_maintenance_summary.md"
+    ]
+
+
 def test_fake_model_returns_execution_action_for_task() -> None:
     response = FakeModelClient().chat(
         ChatRequest(

@@ -184,9 +184,12 @@ class RequirementPlanner:
             for item in self._explicit_goal_files(goal_spec)
             if not self._is_runtime_data_artifact(item)
         ]
+        has_code_repair_target = any(item.endswith(".py") for item in explicit_files)
         has_repair_intent = any(
             marker in text
             for marker in {
+                "fix ",
+                "repair ",
                 "fix the failing tests",
                 "fix failing tests",
                 "repair failing tests",
@@ -194,7 +197,7 @@ class RequirementPlanner:
                 "bug in",
             }
         )
-        return has_repair_intent and bool(explicit_files)
+        return has_repair_intent and has_code_repair_target
 
     def _targeted_repair_task(self, goal_spec: dict, runtime_context: dict) -> dict:
         artifacts = [
@@ -723,6 +726,7 @@ class RequirementPlanner:
             only_target = non_test_paths[0].lower()
             if (
                 f"only {only_target}" in lowered
+                or f"limited to {only_target}" in lowered
                 or "no other files were modified" in lowered
                 or "no other files are modified" in lowered
                 or "no other lines or files are modified" in lowered

@@ -142,6 +142,50 @@ P0_MATRIX_CASES: tuple[SmokeCase, ...] = (
         expected_text="P0 Matrix Doc Update",
     ),
     SmokeCase(
+        name="context_maintenance",
+        task_kind="doc_update",
+        route="context_slimming",
+        reason=(
+            "Verifies a bounded maintenance task can read several local context files "
+            "and produce a concise durable summary."
+        ),
+        goal=(
+            "Read docs/route_notes.md, docs/context_notes.md, and docs/capability_notes.md. "
+            "Create docs/context_maintenance_summary.md with heading Context Maintenance Summary "
+            "and three bullet sections named Route, Context, and Capability. Keep it concise "
+            "and preserve the phrase real provider subsets."
+        ),
+        expected_file="docs/context_maintenance_summary.md",
+        expected_text="Context Maintenance Summary",
+        setup_files={
+            "docs/route_notes.md": (
+                "# Route Notes\n\n"
+                "- Low-risk documentation and simple file tasks should prefer medium routes.\n"
+                "- Strong routes are reserved for release gates, high-risk architecture review, "
+                "and difficult repair.\n"
+                "- Provider matrix results should record purpose, tier, latency, context mode, "
+                "and repair count.\n"
+            ),
+            "docs/context_notes.md": (
+                "# Context Notes\n\n"
+                "- Fast path task execution should mount slim context for documentation-only "
+                "artifact creation.\n"
+                "- Focused context is appropriate for single-file bug fixes where target files "
+                "are known.\n"
+                "- Context compaction should preserve evidence refs and next actions before "
+                "long pauses.\n"
+            ),
+            "docs/capability_notes.md": (
+                "# Capability Notes\n\n"
+                "- Fake/offline suites are used for quick main-path health checks.\n"
+                "- real provider subsets calibrate latency and output quality after fake "
+                "health passes.\n"
+                "- A provider run should avoid unnecessary strong model calls on low-risk "
+                "fast paths.\n"
+            ),
+        },
+    ),
+    SmokeCase(
         name="contract_mismatch_replan",
         task_kind="contract_mismatch",
         route="replan",
@@ -183,6 +227,14 @@ P0_MATRIX_CASES: tuple[SmokeCase, ...] = (
     ),
 )
 
+MATRIX_PRESETS: dict[str, tuple[str, ...]] = {
+    "rolling-fastpath-v1": (
+        "doc_update",
+        "single_file_bugfix",
+        "context_maintenance",
+    ),
+}
+
 
 def matrix_cases(matrix: str, selected_names: list[str] | None = None) -> list[SmokeCase]:
     if matrix != "p0":
@@ -200,6 +252,19 @@ def matrix_cases(matrix: str, selected_names: list[str] | None = None) -> list[S
             + ", ".join(sorted(known))
         )
     return [known[name] for name in selected_names]
+
+
+def matrix_preset_case_names(preset: str | None) -> list[str]:
+    if not preset:
+        return []
+    if preset not in MATRIX_PRESETS:
+        raise SmokeFailure(
+            "Unknown matrix preset: "
+            + preset
+            + ". Known: "
+            + ", ".join(sorted(MATRIX_PRESETS))
+        )
+    return list(MATRIX_PRESETS[preset])
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -231,6 +296,8 @@ def run_from_args(args: argparse.Namespace) -> None:
             str(args.model_max_retries),
         )
         apply_deadline_budget_env(os.environ, timeout_budget)
+        if getattr(args, "matrix_preset", None) and not getattr(args, "matrix", None):
+            args.matrix = "p0"
         if getattr(args, "matrix", None):
             run_matrix_from_args(args, timeout_budget=timeout_budget)
             return
@@ -362,6 +429,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run a curated smoke matrix instead of a single smoke goal.",
     )
     parser.add_argument(
+        "--matrix-preset",
+        choices=sorted(MATRIX_PRESETS),
+        default=None,
+        help="Run a named smoke matrix subset, for example rolling-fastpath-v1.",
+    )
+    parser.add_argument(
         "--matrix-case",
         action="append",
         default=[],
@@ -436,7 +509,11 @@ def prepare_single_result(
 
 
 def run_matrix_from_args(args: argparse.Namespace, *, timeout_budget: DeadlineBudget) -> None:
-    cases = matrix_cases(str(args.matrix), list(getattr(args, "matrix_case", []) or []))
+    selected_names = [
+        *matrix_preset_case_names(getattr(args, "matrix_preset", None)),
+        *list(getattr(args, "matrix_case", []) or []),
+    ]
+    cases = matrix_cases(str(args.matrix), selected_names)
     output_dir = matrix_output_dir(args)
     workspaces_dir = output_dir / "workspaces"
     workspaces_dir.mkdir(parents=True, exist_ok=True)
@@ -475,6 +552,8 @@ def run_matrix_from_args(args: argparse.Namespace, *, timeout_budget: DeadlineBu
     summary = {
         "schema_version": "0.1.0",
         "matrix": args.matrix,
+        "matrix_preset": getattr(args, "matrix_preset", None),
+        "provider_mode": "fake" if args.allow_fake else "real",
         "created_at": datetime.now(UTC).isoformat(),
         "ok": all(item["ok"] for item in case_summaries),
         "output_dir": str(output_dir),
@@ -584,14 +663,22 @@ def matrix_context_strategy_summary(
     fast_path_kinds: dict[str, int] = {}
     purpose_context_modes: dict[str, dict[str, int]] = {}
     context_tokens: list[int] = []
+    model_tiers: dict[str, int] = {}
+    purposes: dict[str, int] = {}
+    failed_calls = 0
     for call in calls:
         if not isinstance(call, dict):
             continue
         context_mode = str(call.get("context_mode") or "unknown")
         fast_path_kind = str(call.get("fast_path_task_kind") or "unknown")
         purpose = str(call.get("purpose") or "unknown")
+        tier = str(call.get("model_tier") or "unknown")
         context_modes[context_mode] = context_modes.get(context_mode, 0) + 1
         fast_path_kinds[fast_path_kind] = fast_path_kinds.get(fast_path_kind, 0) + 1
+        model_tiers[tier] = model_tiers.get(tier, 0) + 1
+        purposes[purpose] = purposes.get(purpose, 0) + 1
+        if str(call.get("status") or "") == "failure":
+            failed_calls += 1
         by_mode = purpose_context_modes.setdefault(purpose, {})
         by_mode[context_mode] = by_mode.get(context_mode, 0) + 1
         estimate = call.get("context_estimate")
@@ -610,12 +697,19 @@ def matrix_context_strategy_summary(
         "model_call_count": total_calls,
         "context_modes": dict(sorted(context_modes.items())),
         "fast_path_task_kinds": dict(sorted(fast_path_kinds.items())),
+        "model_tiers": dict(sorted(model_tiers.items())),
+        "purposes": dict(sorted(purposes.items())),
         "purpose_context_modes": {
             purpose: dict(sorted(modes.items()))
             for purpose, modes in sorted(purpose_context_modes.items())
         },
         "context_mode_recorded": known_modes,
         "slim_model_calls": slim_calls,
+        "strong_model_calls": model_tiers.get("strong", 0),
+        "failed_model_calls": failed_calls,
+        "task_execution_model_calls": purposes.get("task_execution", 0),
+        "task_repair_model_calls": purposes.get("task_repair", 0),
+        "run_review_model_calls": purposes.get("run_review", 0),
         "average_context_estimated_tokens": (
             sum(context_tokens) / len(context_tokens) if context_tokens else None
         ),
@@ -664,6 +758,9 @@ def matrix_agent_loop_summary(
         "max_rounds": summary.get("max_rounds"),
         "budget_status": budget.get("status"),
         "budget_highest_label": budget.get("highest_label"),
+        "budget_model_calls": budget.get("model_calls"),
+        "budget_tool_calls": budget.get("tool_calls"),
+        "budget_repair_attempts": budget.get("repair_attempts"),
         "context_pressure_status": context_pressure.get("status"),
         "context_window_ratio": context_pressure.get("context_window_ratio"),
         "recovery_required": recovery_chain.get("required"),

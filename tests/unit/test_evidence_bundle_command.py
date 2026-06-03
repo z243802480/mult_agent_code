@@ -273,6 +273,7 @@ def test_evidence_bundle_writes_v02_rolling_validation_summary(tmp_path: Path) -
             "capability": True,
             "loop": True,
             "worker": True,
+            "provider_matrix": False,
         }
         assert len(summary["samples"]) == 3
         assert summary["samples"][0]["model_routes"][0]["route"] == (
@@ -325,6 +326,67 @@ def test_evidence_bundle_rolling_validation_ignores_matrix_run_dirs(tmp_path: Pa
         "run-0002",
         "run-0001",
     ]
+
+
+def test_evidence_bundle_includes_real_provider_matrix_summary(tmp_path: Path) -> None:
+    matrix_dir = (
+        tmp_path
+        / ".asteria"
+        / "verification"
+        / "real_provider_matrix"
+        / "rolling-fastpath-v1"
+    )
+    matrix_dir.mkdir(parents=True)
+    (matrix_dir / "matrix_summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "matrix": "p0",
+                "matrix_preset": "rolling-fastpath-v1",
+                "provider_mode": "real",
+                "created_at": "2026-06-03T10:00:00+00:00",
+                "ok": True,
+                "output_dir": str(matrix_dir),
+                "case_count": 3,
+                "passed": 3,
+                "failed": 0,
+                "duration_seconds": 74.399,
+                "cases": [
+                    {
+                        "name": "single_file_bugfix",
+                        "task_kind": "bug_fix",
+                        "route": "repair",
+                        "ok": True,
+                        "context_strategy": {
+                            "model_call_count": 3,
+                            "strong_model_calls": 0,
+                            "task_execution_model_calls": 2,
+                            "task_repair_model_calls": 0,
+                            "run_review_model_calls": 0,
+                            "slim_model_calls": 2,
+                            "fast_path_task_kinds": {"single_file_bugfix": 2},
+                        },
+                        "agent_loop": {"budget_repair_attempts": 0},
+                        "final_report": "final_report.md",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = EvidenceBundleCommand(tmp_path).run()
+
+    assert result.rolling_validation_summary["matrix_summary_count"] == 1
+    assert result.rolling_validation_summary["coverage"]["provider_matrix"] is True
+    matrix = result.rolling_validation_summary["matrix_summaries"][0]
+    assert matrix["matrix_preset"] == "rolling-fastpath-v1"
+    assert matrix["provider_mode"] == "real"
+    assert matrix["cases"][0]["strong_model_calls"] == 0
+    assert matrix["cases"][0]["task_execution_model_calls"] == 2
+    with zipfile.ZipFile(result.bundle_path) as archive:
+        summary = json.loads(archive.read("v0.2_rolling_validation_summary.json"))
+    assert summary["matrix_summary_count"] == 1
 
 
 def test_evidence_bundle_excludes_protected_route_files(tmp_path: Path) -> None:

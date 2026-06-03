@@ -23,6 +23,17 @@ def test_fast_path_policy_classifies_single_file_bugfix_without_strong_default()
     assert policy.deterministic_first is True
 
 
+def test_fast_path_policy_allows_test_file_as_bugfix_verification_context() -> None:
+    policy = classify_fast_path(
+        "Fix calc.py so add(2, 3) returns 5 and keep the existing test intent.",
+        target_files=["calc.py", "test_calc.py"],
+    )
+
+    assert policy.task_kind == "single_file_bugfix"
+    assert policy.context_mode == "slim"
+    assert policy.strong_allowed is False
+
+
 def test_fast_path_policy_keeps_high_risk_on_strong_route() -> None:
     policy = classify_fast_path("Fix auth permissions and deploy to production.")
 

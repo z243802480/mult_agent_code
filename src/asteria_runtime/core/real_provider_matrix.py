@@ -11,22 +11,23 @@ def latest_real_provider_matrix(agent_dir: Path) -> dict[str, Any]:
     matrix_dir = agent_dir / "verification" / "real_provider_matrix"
     if not matrix_dir.exists():
         return {}
-    candidates: list[tuple[str, float, Path, dict[str, Any]]] = []
+    candidates: list[tuple[bool, str, float, Path, dict[str, Any]]] = []
     for path in matrix_dir.glob("*/matrix_summary.json"):
         summary = _read_json(path)
         if not summary:
             continue
         created_at = str(summary.get("created_at") or "")
+        is_real = _matrix_provider_mode(summary, path) == "real"
         try:
             modified = path.stat().st_mtime
         except OSError:
             modified = 0.0
-        candidates.append((created_at, modified, path, summary))
+        candidates.append((is_real, created_at, modified, path, summary))
     if not candidates:
         return {}
-    _created_at, _modified, path, summary = max(
+    _is_real, _created_at, _modified, path, summary = max(
         candidates,
-        key=lambda item: (item[0], item[1], item[2].as_posix()),
+        key=lambda item: (item[0], item[1], item[2], item[3].as_posix()),
     )
     return summarize_real_provider_matrix(summary, path)
 
@@ -66,6 +67,20 @@ def summarize_real_provider_matrix(
     context_mode_recorded = sum(int(item.get("context_mode_recorded") or 0) for item in recorded_context)
     slim_model_calls = sum(int(item.get("slim_model_calls") or 0) for item in recorded_context)
     model_call_count = sum(int(item.get("model_call_count") or 0) for item in recorded_context)
+    strong_model_calls = sum(int(item.get("strong_model_calls") or 0) for item in recorded_context)
+    failed_model_calls = sum(int(item.get("failed_model_calls") or 0) for item in recorded_context)
+    task_execution_model_calls = sum(
+        int(item.get("task_execution_model_calls") or 0) for item in recorded_context
+    )
+    task_repair_model_calls = sum(
+        int(item.get("task_repair_model_calls") or 0) for item in recorded_context
+    )
+    run_review_model_calls = sum(
+        int(item.get("run_review_model_calls") or 0) for item in recorded_context
+    )
+    repair_attempts = sum(
+        int(loop.get("budget_repair_attempts") or 0) for loop in recorded_agent_loops
+    )
     average_context_tokens = _weighted_average_context_tokens(recorded_context)
     failed_summaries = [
         {
@@ -80,6 +95,8 @@ def summarize_real_provider_matrix(
     ]
     result: dict[str, Any] = {
         "matrix": summary.get("matrix"),
+        "matrix_preset": summary.get("matrix_preset"),
+        "provider_mode": _matrix_provider_mode(summary, summary_path),
         "created_at": summary.get("created_at"),
         "ok": bool(summary.get("ok")),
         "case_count": int(summary.get("case_count") or len(cases)),
@@ -101,6 +118,12 @@ def summarize_real_provider_matrix(
         "context_mode_recorded": context_mode_recorded,
         "slim_model_calls": slim_model_calls,
         "model_call_count": model_call_count,
+        "strong_model_calls": strong_model_calls,
+        "failed_model_calls": failed_model_calls,
+        "task_execution_model_calls": task_execution_model_calls,
+        "task_repair_model_calls": task_repair_model_calls,
+        "run_review_model_calls": run_review_model_calls,
+        "budget_repair_attempts": repair_attempts,
         "average_context_estimated_tokens": average_context_tokens,
         "failed_cases": failed_summaries,
     }
@@ -134,6 +157,14 @@ def real_provider_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
             f"{matrix.get('context_strategy_recorded', 0)}/{matrix.get('context_strategy_case_count', 0)} recorded, "
             f"slim {matrix.get('slim_model_calls', 0)}/{matrix.get('model_call_count', 0)} calls, "
             f"modes={matrix.get('context_modes') or {}}"
+        )
+        lines.append(
+            "  models: "
+            f"strong={matrix.get('strong_model_calls', 0)}, "
+            f"task_execution={matrix.get('task_execution_model_calls', 0)}, "
+            f"task_repair={matrix.get('task_repair_model_calls', 0)}, "
+            f"run_review={matrix.get('run_review_model_calls', 0)}, "
+            f"repair_attempts={matrix.get('budget_repair_attempts', 0)}"
         )
     evidence_refs = matrix.get("latest_evidence_refs") or []
     if evidence_refs:
@@ -189,3 +220,14 @@ def _read_json(path: Path) -> dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return raw if isinstance(raw, dict) else {}
+
+
+def _matrix_provider_mode(summary: dict[str, Any], path: Path | None = None) -> str:
+    mode = str(summary.get("provider_mode") or "").strip().lower()
+    if mode:
+        return mode
+    output_dir = str(summary.get("output_dir") or "").lower()
+    path_text = path.as_posix().lower() if path is not None else ""
+    if any(marker in output_dir or marker in path_text for marker in ("fake", "offline")):
+        return "fake"
+    return "real"

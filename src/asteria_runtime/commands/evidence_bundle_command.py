@@ -62,6 +62,9 @@ class EvidenceBundleResult:
             "v0_2_rolling_validation": {
                 "status": self.rolling_validation_summary.get("status"),
                 "sample_count": self.rolling_validation_summary.get("sample_count"),
+                "matrix_summary_count": self.rolling_validation_summary.get(
+                    "matrix_summary_count"
+                ),
                 "coverage": self.rolling_validation_summary.get("coverage"),
                 "next_actions": self.rolling_validation_summary.get("next_actions"),
             },
@@ -239,6 +242,7 @@ class EvidenceBundleCommand:
             "v0_2_rolling_validation": {
                 "status": rolling_validation.get("status"),
                 "sample_count": rolling_validation.get("sample_count"),
+                "matrix_summary_count": rolling_validation.get("matrix_summary_count"),
                 "required_sample_range": rolling_validation.get("required_sample_range"),
                 "coverage": rolling_validation.get("coverage"),
                 "next_actions": rolling_validation.get("next_actions"),
@@ -358,14 +362,17 @@ class EvidenceBundleCommand:
         samples = [self._rolling_validation_sample(run_dir) for run_dir in run_dirs]
         samples = [sample for sample in samples if sample["evidence"]["has_any_runtime_evidence"]]
         samples = samples[:5]
+        matrix_summaries = self._rolling_matrix_summaries()
         coverage = {
             "route": any(sample["evidence"]["route"] for sample in samples),
             "context": any(sample["evidence"]["context"] for sample in samples),
             "capability": any(sample["evidence"]["capability"] for sample in samples),
             "loop": any(sample["evidence"]["loop"] for sample in samples),
             "worker": any(sample["evidence"]["worker"] for sample in samples),
+            "provider_matrix": bool(matrix_summaries),
         }
-        missing = [key for key, covered in coverage.items() if not covered]
+        required_coverage = ["route", "context", "capability", "loop", "worker"]
+        missing = [key for key in required_coverage if not coverage[key]]
         sample_count = len(samples)
         if sample_count < 3:
             status = "needs_more_samples"
@@ -394,11 +401,74 @@ class EvidenceBundleCommand:
             "purpose": "v0.2.0-alpha rolling real-provider scoped task validation",
             "status": status,
             "sample_count": sample_count,
+            "matrix_summary_count": len(matrix_summaries),
             "required_sample_range": {"min": 3, "max": 5},
             "coverage": coverage,
             "missing_evidence_categories": missing,
             "samples": samples,
+            "matrix_summaries": matrix_summaries,
             "next_actions": next_actions,
+        }
+
+    def _rolling_matrix_summaries(self) -> list[dict[str, Any]]:
+        matrix_dir = self.agent_dir / "verification" / "real_provider_matrix"
+        if not matrix_dir.exists():
+            return []
+        paths = sorted(
+            (
+                path
+                for path in matrix_dir.glob("**/matrix_summary.json")
+                if path.is_file() and not _is_protected(path)
+            ),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )[: self.max_runs]
+        summaries: list[dict[str, Any]] = []
+        for path in paths:
+            summary = self._read_json(path)
+            if not summary:
+                continue
+            cases = summary.get("cases")
+            compact_cases = [
+                self._rolling_matrix_case_sample(case)
+                for case in cases
+                if isinstance(case, dict)
+            ] if isinstance(cases, list) else []
+            summaries.append(
+                {
+                    "path": _rel(self.root, path),
+                    "matrix": str(summary.get("matrix") or ""),
+                    "matrix_preset": summary.get("matrix_preset"),
+                    "provider_mode": str(summary.get("provider_mode") or "real"),
+                    "ok": bool(summary.get("ok")),
+                    "case_count": int(summary.get("case_count") or 0),
+                    "passed": int(summary.get("passed") or 0),
+                    "failed": int(summary.get("failed") or 0),
+                    "duration_seconds": summary.get("duration_seconds"),
+                    "cases": compact_cases,
+                }
+            )
+        return summaries
+
+    def _rolling_matrix_case_sample(self, case: dict[str, Any]) -> dict[str, Any]:
+        context_strategy = case.get("context_strategy")
+        context_strategy = context_strategy if isinstance(context_strategy, dict) else {}
+        agent_loop = case.get("agent_loop")
+        agent_loop = agent_loop if isinstance(agent_loop, dict) else {}
+        return {
+            "name": str(case.get("name") or ""),
+            "task_kind": str(case.get("task_kind") or ""),
+            "route": str(case.get("route") or ""),
+            "ok": bool(case.get("ok")),
+            "model_call_count": context_strategy.get("model_call_count"),
+            "strong_model_calls": context_strategy.get("strong_model_calls"),
+            "task_execution_model_calls": context_strategy.get("task_execution_model_calls"),
+            "task_repair_model_calls": context_strategy.get("task_repair_model_calls"),
+            "run_review_model_calls": context_strategy.get("run_review_model_calls"),
+            "slim_model_calls": context_strategy.get("slim_model_calls"),
+            "fast_path_task_kinds": context_strategy.get("fast_path_task_kinds") or {},
+            "budget_repair_attempts": agent_loop.get("budget_repair_attempts"),
+            "final_report": case.get("final_report"),
         }
 
     def _rolling_validation_sample(self, run_dir: Path) -> dict[str, Any]:

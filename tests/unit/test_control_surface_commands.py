@@ -19,7 +19,10 @@ from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
 from asteria_runtime.commands.roadmap_command import RoadmapCommand
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
-from asteria_runtime.core.real_provider_matrix import summarize_real_provider_matrix
+from asteria_runtime.core.real_provider_matrix import (
+    latest_real_provider_matrix,
+    summarize_real_provider_matrix,
+)
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -2342,6 +2345,7 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
 
     status_result = StatusCommand(tmp_path).run()
     status_payload = status_result.to_dict()
+    assert status_payload["latest_real_provider_matrix"]["provider_mode"] == "real"
     assert status_payload["latest_real_provider_matrix"]["latest_route"] == "repair"
     assert status_payload["latest_real_provider_matrix"]["agent_loop_recorded"] == 2
     assert status_payload["latest_real_provider_matrix"]["recovery_satisfied"] == 1
@@ -2351,9 +2355,15 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
         "slim": 2,
     }
     assert status_payload["latest_real_provider_matrix"]["slim_model_calls"] == 2
+    assert status_payload["latest_real_provider_matrix"]["strong_model_calls"] == 1
+    assert status_payload["latest_real_provider_matrix"]["task_execution_model_calls"] == 2
+    assert status_payload["latest_real_provider_matrix"]["task_repair_model_calls"] == 1
+    assert status_payload["latest_real_provider_matrix"]["run_review_model_calls"] == 1
+    assert status_payload["latest_real_provider_matrix"]["budget_repair_attempts"] == 1
     assert "Latest real-provider matrix: 1/2 passed" in status_result.to_text()
     assert "agent loop: 2/2 recorded, recovery 1/1 covered" in status_result.to_text()
     assert "context: 2/2 recorded, slim 2/3 calls" in status_result.to_text()
+    assert "models: strong=1, task_execution=2, task_repair=1, run_review=1" in status_result.to_text()
     assert "route=repair" in "\n".join(status_payload["evidence_chain"])
 
     gate_status_result = GateStatusCommand(tmp_path).run()
@@ -2370,6 +2380,36 @@ def test_status_gate_and_gate_status_include_latest_real_provider_matrix(
     assert gate_payload["latest_real_provider_matrix"]["latest_case"] == "single_file_bugfix"
     assert "Latest real-provider matrix: 1/2 passed" in gate_result.to_text()
     assert "real_provider_matrix=1/2 route=repair" in "\n".join(gate_result._evidence_chain())
+
+
+def test_latest_real_provider_matrix_prefers_real_over_newer_fake(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".asteria"
+    real_dir = agent_dir / "verification" / "real_provider_matrix" / "real-run"
+    fake_dir = agent_dir / "verification" / "real_provider_matrix" / "fake-run"
+    real_dir.mkdir(parents=True)
+    fake_dir.mkdir(parents=True)
+    real_payload = dict(_real_provider_matrix_payload())
+    real_payload["provider_mode"] = "real"
+    real_payload["created_at"] = "2026-06-03T10:00:00Z"
+    fake_payload = dict(_real_provider_matrix_payload())
+    fake_payload["provider_mode"] = "fake"
+    fake_payload["created_at"] = "2026-06-04T10:00:00Z"
+    fake_payload["cases"] = [
+        {
+            **fake_payload["cases"][0],
+            "name": "context_maintenance",
+            "route": "context_slimming",
+        }
+    ]
+    (real_dir / "matrix_summary.json").write_text(json.dumps(real_payload), encoding="utf-8")
+    (fake_dir / "matrix_summary.json").write_text(json.dumps(fake_payload), encoding="utf-8")
+
+    latest = latest_real_provider_matrix(agent_dir)
+
+    assert latest["provider_mode"] == "real"
+    assert latest["summary_path"].endswith("real-run\\matrix_summary.json") or latest[
+        "summary_path"
+    ].endswith("real-run/matrix_summary.json")
 
 
 def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: Path) -> None:
@@ -2405,6 +2445,7 @@ def _real_provider_matrix_payload() -> dict:
     return {
         "schema_version": "0.1.0",
         "matrix": "p0",
+        "provider_mode": "real",
         "created_at": "2026-05-24T19:00:00Z",
         "ok": False,
         "case_count": 2,
@@ -2436,6 +2477,9 @@ def _real_provider_matrix_payload() -> dict:
                     "max_rounds": 2,
                     "budget_status": "within_budget",
                     "budget_highest_label": "model_calls",
+                    "budget_model_calls": 2,
+                    "budget_tool_calls": 3,
+                    "budget_repair_attempts": 0,
                     "context_pressure_status": "within_budget",
                     "context_window_ratio": 0.1,
                     "recovery_required": False,
@@ -2447,12 +2491,19 @@ def _real_provider_matrix_payload() -> dict:
                     "model_call_count": 2,
                     "context_modes": {"slim": 2},
                     "fast_path_task_kinds": {"simple_file": 2},
+                    "model_tiers": {"medium": 2},
+                    "purposes": {"task_execution": 1, "run_review": 1},
                     "purpose_context_modes": {
                         "task_execution": {"slim": 1},
                         "run_review": {"slim": 1},
                     },
                     "context_mode_recorded": 2,
                     "slim_model_calls": 2,
+                    "strong_model_calls": 0,
+                    "failed_model_calls": 0,
+                    "task_execution_model_calls": 1,
+                    "task_repair_model_calls": 0,
+                    "run_review_model_calls": 1,
                     "average_context_estimated_tokens": 1500,
                     "max_context_estimated_tokens": 2000,
                 },
@@ -2483,6 +2534,9 @@ def _real_provider_matrix_payload() -> dict:
                     "max_rounds": 3,
                     "budget_status": "within_budget",
                     "budget_highest_label": "tool_budget_units",
+                    "budget_model_calls": 4,
+                    "budget_tool_calls": 7,
+                    "budget_repair_attempts": 1,
                     "context_pressure_status": "within_budget",
                     "context_window_ratio": 0.2,
                     "recovery_required": True,
@@ -2494,9 +2548,16 @@ def _real_provider_matrix_payload() -> dict:
                     "model_call_count": 1,
                     "context_modes": {"focused": 1},
                     "fast_path_task_kinds": {"complex_change": 1},
+                    "model_tiers": {"strong": 1},
+                    "purposes": {"task_execution": 1, "task_repair": 1},
                     "purpose_context_modes": {"task_execution": {"focused": 1}},
                     "context_mode_recorded": 1,
                     "slim_model_calls": 0,
+                    "strong_model_calls": 1,
+                    "failed_model_calls": 1,
+                    "task_execution_model_calls": 1,
+                    "task_repair_model_calls": 1,
+                    "run_review_model_calls": 0,
                     "average_context_estimated_tokens": 3000,
                     "max_context_estimated_tokens": 3000,
                 },

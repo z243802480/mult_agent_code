@@ -129,7 +129,7 @@ def _execution_target_files(task: dict[str, Any], goal_spec: dict[str, Any]) -> 
     for item in goal_spec.get("target_outputs") or []:
         if isinstance(item, str) and item:
             files.append(item)
-    for key in ("expected_artifacts", "write_scope", "read_scope"):
+    for key in ("expected_artifacts", "expected_changed_files", "write_scope"):
         for item in task.get(key) or []:
             if isinstance(item, str) and item:
                 files.append(item)

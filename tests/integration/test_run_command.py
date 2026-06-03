@@ -120,6 +120,15 @@ class FakeReviewClient:
         )
 
 
+class CombinedFastPathClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        if request.purpose == "goal_spec":
+            return FakePlanClient().chat(request)
+        if request.purpose == "task_execution":
+            return FakeExecuteClient().chat(request)
+        raise AssertionError(f"Unexpected model call purpose: {request.purpose}")
+
+
 class FakePartialThenPassReviewClient:
     def __init__(self) -> None:
         self.calls = 0
@@ -680,6 +689,29 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert "promoted=1" in final_report
     assert "task_execution_evidence.jsonl" in final_report
     assert "Run `asteria /acceptance --suite core` before release." in final_report
+
+
+def test_run_command_keeps_default_review_deterministic_when_model_client_is_shared(
+    tmp_path: Path,
+) -> None:
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        model_client=CombinedFastPathClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "completed"
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    review_tier = eval_report["trajectory_eval"]["review_tier"]
+    assert review_tier["mode"] == "deterministic_first"
+    assert review_tier["accepted_without_model"] is True
+    model_calls = [
+        json.loads(line)
+        for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [call["purpose"] for call in model_calls] == ["goal_spec", "task_execution"]
 
 
 def test_run_command_pauses_before_execute_when_task_plan_quality_fails(
