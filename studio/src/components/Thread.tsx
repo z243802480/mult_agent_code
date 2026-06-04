@@ -108,12 +108,6 @@ function firstText(...items: string[]): string {
   return items.find((item) => item.trim()) ?? "";
 }
 
-function toneFor(value: string): string {
-  if (/ready|completed|succeeded|pass|healthy|none/i.test(value)) return "good";
-  if (/blocked|failed|missing|error|needs/i.test(value)) return "bad";
-  return "warn";
-}
-
 function runtimeProgress(runDetail: RunDetailPayload | null): AnyRecord {
   const direct = asRecord(runDetail?.runtime_progress);
   if (Object.keys(direct).length) return direct;
@@ -202,14 +196,15 @@ function runtimeProgressEvent(
   data: AnyRecord,
   startedAt: string
 ): StudioEvent | null {
-  const text = firstText(summary, title);
+  const copy = userFacingRuntimeCopy(title, summary, data);
+  const text = firstText(copy.summary, copy.title);
   if (!text) return null;
   return {
     event_id: `runtime-progress-${runId || "latest"}-${index}`,
     session_id: "runtime-session",
     type: phase === "review" ? "tool_observation" : "assistant_delta",
     status,
-    title,
+    title: copy.title,
     summary: text,
     content_delta: text,
     data,
@@ -268,7 +263,7 @@ function synthesizedRuntimeProgressEvents(runDetail: RunDetailPayload | null, st
     runtimeProgressEvent(
       runId,
       4,
-      "Worker progress",
+      "Background work",
       firstText(String(workerSummary.summary ?? ""), String(workerSummary.status ?? "")),
       "execute",
       eventStatus(workerSummary.status ?? progress.workflow_state),
@@ -278,7 +273,7 @@ function synthesizedRuntimeProgressEvents(runDetail: RunDetailPayload | null, st
     runtimeProgressEvent(
       runId,
       5,
-      "Repair/Ask/Stop",
+      "Next step",
       firstText(String(progress.current_blocker ?? ""), exitReason, String(progress.next_step ?? ""), String(progress.next_command ?? "")),
       exitReason || progress.current_blocker ? "next" : "result",
       eventStatus(progress.current_blocker ? "blocked" : exitReason || progress.workflow_state),
@@ -301,12 +296,49 @@ function goalTitle(runDetail: RunDetailPayload | null): string {
 
 function actionLabel(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/^asteria\s+/, "");
+  if (normalized.startsWith("model-check")) return "Check connection";
   if (normalized.startsWith("review")) return "Review";
   if (normalized.startsWith("accept")) return "Accept";
   if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "Continue";
   if (normalized.startsWith("decide")) return "Decide";
   if (normalized.startsWith("debug") || normalized.startsWith("repair")) return "Debug";
   return "Continue";
+}
+
+function userFacingRuntimeCopy(title: string, summary: string, data: AnyRecord): { title: string; summary: string } {
+  if (isProviderTransientCopy(title, summary, data)) {
+    return {
+      title: "Model connection interrupted",
+      summary: "The model connection failed before Asteria received an executable step. No file changes were made for this step; Asteria can check the connection and retry when it recovers.",
+    };
+  }
+  return {
+    title: stripBackendWording(title),
+    summary: stripBackendWording(summary),
+  };
+}
+
+function isProviderTransientCopy(title: string, summary: string, data: AnyRecord): boolean {
+  const text = `${title}\n${summary}\n${JSON.stringify(data)}`.toLowerCase();
+  return (
+    text.includes("provider route blocked")
+    || text.includes("provider_transient")
+    || text.includes("provider_network")
+    || text.includes("provider_timeout")
+    || text.includes("provider_rate_limited")
+    || text.includes("provider_server_error")
+    || text.includes("model-check")
+  );
+}
+
+function stripBackendWording(value: string): string {
+  return String(value || "")
+    .replace(/\bprovider route blocked\b/gi, "model connection interrupted")
+    .replace(/\bmodel-check\b/gi, "connection check")
+    .replace(/\bgate-status\b/gi, "diagnostics")
+    .replace(/\bruntime_progress\b/gi, "progress")
+    .replace(/\buser_progress\.jsonl\b/gi, "progress log")
+    .trim();
 }
 
 function latestActiveEvent(events: StudioEvent[]): StudioEvent | null {
@@ -402,9 +434,6 @@ function RuntimeSnapshot({
   if (!Object.keys(progress).length && !runDetail?.ok) return null;
   const activeEvent = latestActiveEvent(events);
   const loop = asRecord(progress.loop);
-  const recovery = asRecord(loop.recovery);
-  const budget = asRecord(loop.budget);
-  const loopContext = asRecord(loop.context_pressure);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
   const runId = String(runDetail?.run_id ?? "");
@@ -415,7 +444,7 @@ function RuntimeSnapshot({
   const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
   const nextStep = decisions.length
     ? `${decisions.length} decision${decisions.length === 1 ? "" : "s"} need your input.`
-    : nextActionValue ? `Ready for ${nextLabel}.` : textOrFallback(loop.exit_reason ? `Stopped: ${loop.exit_reason}` : "", "No action needed right now");
+    : nextActionValue ? `Ready for ${nextLabel}.` : textOrFallback(loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "", "No action needed right now");
   if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason) return null;
 
   return (
@@ -446,12 +475,6 @@ function RuntimeSnapshot({
           </button>
         )}
       </div>
-      <RuntimeLoopSignals
-        loop={loop}
-        recovery={recovery}
-        budget={budget}
-        contextPressure={loopContext}
-      />
       {runId && decisions.slice(0, 3).map((decision) => (
         <DecisionCard
           key={String(decision.decision_id ?? JSON.stringify(decision))}
@@ -471,66 +494,14 @@ function RuntimeSnapshot({
   );
 }
 
-function RuntimeLoopSignals({
-  loop,
-  recovery,
-  budget,
-  contextPressure,
-}: {
-  loop: AnyRecord;
-  recovery: AnyRecord;
-  budget: AnyRecord;
-  contextPressure: AnyRecord;
-}) {
-  const items = [
-    loopSignal(
-      "Loop",
-      firstText(
-        String(loop.exit_reason ?? ""),
-        String(loop.latest_decision ? asRecord(loop.latest_decision).action ?? "" : ""),
-        "running"
-      ),
-      toneFor(String(loop.exit_reason ?? "ready"))
-    ),
-    loopSignal(
-      "Recovery",
-      recovery.required === true
-        ? recovery.satisfied === true
-          ? "covered"
-          : "needs decision"
-        : recovery.required === false
-          ? "not needed"
-          : "",
-      recovery.required === true && recovery.satisfied !== true ? "bad" : "good",
-      String(recovery.reason ?? "")
-    ),
-    loopSignal(
-      "Budget",
-      firstText(String(budget.status ?? ""), String(budget.highest_label ?? "")),
-      toneFor(String(budget.status ?? "ready"))
-    ),
-    loopSignal(
-      "Context",
-      firstText(String(contextPressure.status ?? ""), percent(Number(contextPressure.context_window_ratio ?? 0))),
-      toneFor(String(contextPressure.status ?? "ready"))
-    ),
-  ].filter((item) => item.value.trim());
-
-  if (!items.length) return null;
-  return (
-    <div className="runtimeLoopSignals" aria-label="Loop state">
-      {items.map((item) => (
-        <span key={item.label} className={`loopSignal ${item.tone}`} title={item.title || undefined}>
-          <small>{item.label}</small>
-          <strong>{item.value}</strong>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function loopSignal(label: string, value: string, tone: string, title = "") {
-  return { label, value, tone, title };
+function userFacingStateLabel(value: string): string {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("provider") || normalized.includes("model-check")) return "model connection issue";
+  if (normalized.includes("tool_failed")) return "tool step failed";
+  if (normalized.includes("max_rounds")) return "needs a decision";
+  if (normalized.includes("budget_hard_stop")) return "budget limit reached";
+  return stripBackendWording(value.replace(/_/g, " "));
 }
 
 function ContextWindowPopover({ runDetail }: { runDetail: RunDetailPayload | null }) {
@@ -604,9 +575,10 @@ function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[]
         status: eventStatus(event.status),
         title: userProgressTitle(event),
         summary: userProgressSummary(event),
-        content_delta: String(event.content_delta ?? event.summary ?? ""),
+        content_delta: userProgressSummary(event),
         command: Array.isArray(event.command) ? event.command.map(String) : undefined,
         data: asRecord(event.data),
+        actions: asArray(event.actions) as StudioEvent["actions"],
         artifact_refs: asArray(event.artifact_refs).map(String),
         evidence_refs: asArray(event.evidence_refs).map(String),
         runtime_channel: String(event.channel ?? "progress"),
@@ -625,7 +597,7 @@ function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[]
       session_id: "runtime-session",
       type: "user_message",
       status: "completed",
-      title: "Runtime goal",
+      title: "Goal",
       summary: goalText,
       content_delta: goalText,
       run_id: runId,
@@ -652,7 +624,7 @@ function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[]
       session_id: "runtime-session",
       type: "final_answer",
       status: String(run.status ?? "").toLowerCase() === "blocked" ? "blocked" : "completed",
-      title: "Runtime result",
+      title: "Result",
       summary: finalText,
       content_delta: finalText,
       run_id: runId,
@@ -665,6 +637,14 @@ function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[]
 }
 
 function userProgressType(event: AnyRecord): StudioEvent["type"] {
+  const transcriptKind = String(event.transcript_kind ?? "");
+  if (transcriptKind === "final" || transcriptKind === "stop") return "final_answer";
+  if (transcriptKind === "tool_use") return "tool_start";
+  if (transcriptKind === "tool_result") return "tool_end";
+  if (transcriptKind === "file_change") return "file_changed";
+  if (transcriptKind === "verification") return "tool_observation";
+  if (transcriptKind === "permission_request") return "permission_request";
+  if (transcriptKind === "decision_request" || transcriptKind === "ask") return "assistant_delta";
   const channel = String(event.channel ?? "");
   const eventType = String(event.event_type ?? "");
   const phase = String(event.phase ?? "");
@@ -679,19 +659,31 @@ function userProgressType(event: AnyRecord): StudioEvent["type"] {
 
 function userProgressTitle(event: AnyRecord): string {
   const title = String(event.title ?? "").trim();
-  if (title) return title;
+  const transcriptKind = String(event.transcript_kind ?? "");
+  if (title) return transcriptKind ? title : userFacingRuntimeCopy(title, String(event.summary ?? ""), asRecord(event.data)).title;
+  if (transcriptKind === "plan" || transcriptKind === "todo_update") return "Plan/Todo";
+  if (transcriptKind === "tool_use") return "Tool Use";
+  if (transcriptKind === "tool_result") return "Tool Result";
+  if (transcriptKind === "file_change") return "File Change";
+  if (transcriptKind === "verification") return "Verify";
+  if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") return "Next step";
+  if (transcriptKind === "subagent_summary") return "Background work";
+  if (transcriptKind === "final" || transcriptKind === "stop") return "Result";
   const channel = String(event.channel ?? "");
   const phase = String(event.phase ?? "");
-  if (channel === "execution_chain") return "Agent loop";
+  if (channel === "execution_chain") return "Agent step";
   if (channel === "tool") return "Tool Use";
   if (phase === "review") return "Verify";
   if (phase === "plan") return "Plan/Todo";
-  if (phase === "next") return "Repair/Ask/Stop";
-  return "Runtime progress";
+  if (phase === "next") return "Next step";
+  return "Progress";
 }
 
 function userProgressSummary(event: AnyRecord): string {
-  return firstText(String(event.summary ?? ""), String(event.content_delta ?? ""), userProgressTitle(event));
+  const title = userProgressTitle(event);
+  const summary = firstText(String(event.summary ?? ""), String(event.content_delta ?? ""), title);
+  if (event.transcript_kind) return summary;
+  return userFacingRuntimeCopy(title, summary, asRecord(event.data)).summary;
 }
 
 function PendingTurn({ message, mode, startedAt }: { message: string; mode: string; startedAt: number }) {

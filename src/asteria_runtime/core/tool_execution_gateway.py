@@ -498,6 +498,14 @@ class ToolExecutionGateway:
         logger = self._progress_logger(context)
         if logger is None:
             return None
+        transcript_kind = self._harness_transcript_kind(event_type)
+        title, summary = self._harness_user_copy(
+            event_type=event_type,
+            status=status,
+            title=title,
+            summary=summary,
+            data=data or {},
+        )
         return logger.record(
             run_id=context.run_id,
             channel="execution_chain",
@@ -515,6 +523,7 @@ class ToolExecutionGateway:
             execution_chain=[str(task.get("task_id", "")), execution_step or event_type],
             file_changes=file_changes,
             data=data,
+            transcript_kind=transcript_kind,
         )
 
     def _record_file_progress(
@@ -549,6 +558,7 @@ class ToolExecutionGateway:
             call_chain=[self.actor, tool_name],
             execution_chain=[str(task.get("task_id", "")), tool_name],
             file_changes=changes,
+            transcript_kind="file_change",
         )
 
     def _last_model_telemetry(self, context: RuntimeContext) -> dict[str, Any] | None:
@@ -586,12 +596,54 @@ class ToolExecutionGateway:
 
     def _tool_start_summary(self, tool_name: str, args: dict[str, Any]) -> str:
         if tool_name in {"run_command", "run_tests"} and args.get("command"):
-            return f"Running command: {args['command']}"
+            return f"Running {args['command']}"
         if tool_name in {"write_file", "read_file", "diff_workspace"} and args.get("path"):
-            return f"{tool_name}: {args['path']}"
+            return f"{self._tool_display_name(tool_name)}: {args['path']}"
         if tool_name == "apply_patch":
             return "Applying patch"
-        return f"Running tool: {tool_name}"
+        return f"Using {self._tool_display_name(tool_name)}"
+
+    def _tool_display_name(self, tool_name: str) -> str:
+        return {
+            "run_command": "command",
+            "run_tests": "tests",
+            "read_file": "file read",
+            "write_file": "file write",
+            "diff_workspace": "diff",
+            "apply_patch": "patch",
+            "restore_backup": "restore",
+        }.get(tool_name, tool_name.replace("_", " "))
+
+    def _harness_transcript_kind(self, event_type: str) -> str:
+        if event_type == "turn_start":
+            return "tool_use"
+        if event_type in {"tool_observation", "turn_end"}:
+            return "tool_result"
+        return "progress"
+
+    def _harness_user_copy(
+        self,
+        *,
+        event_type: str,
+        status: str,
+        title: str,
+        summary: str,
+        data: dict[str, Any],
+    ) -> tuple[str, str]:
+        tool_name = str(data.get("tool_name") or data.get("model_tool_name") or "")
+        observation = data.get("observation")
+        if event_type == "turn_start":
+            name = self._tool_display_name(tool_name) if tool_name else "tool"
+            return f"Using {name}", summary
+        if isinstance(observation, dict):
+            observed_summary = str(observation.get("summary") or summary)
+        else:
+            observed_summary = summary
+        if event_type in {"tool_observation", "turn_end"}:
+            if status == "failed":
+                return "Tool step needs attention", observed_summary
+            return "Tool result", observed_summary
+        return title, summary
 
     def _command_args(self, tool_name: str, args: dict[str, Any]) -> list[str]:
         if tool_name not in {"run_command", "run_tests"}:

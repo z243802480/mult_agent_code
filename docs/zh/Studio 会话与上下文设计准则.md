@@ -225,9 +225,10 @@ Asteria 主会话应采用相同节奏：
 
 Studio 主会话必须遵守单一语义数据源原则：
 
-- 主会话 timeline 只消费 `runtime_progress` 与 `user_progress`。
-- `user_progress` 是首选来源；它承载用户可读的过程消息、工具摘要、验证摘要、失败原因、下一步。
-- `runtime_progress` 只用于补足没有 `user_progress` 的 run，并且必须先合成为用户语义：Plan/Todo、Tool Use、Verify、Repair/Ask/Stop、Result。
+- 主会话 timeline 只消费 `user_progress` 中 `display_level=main` 的会话事件。
+- `user_progress.transcript_kind` 是首选语义来源；`channel` / `event_type` 只作为旧 run 兼容字段。
+- `runtime_progress` 只用于补足没有 `user_progress` 的 run，并且必须先合成为用户语义：Plan/Todo、Tool Use、Verify、Next step、Result。
+- Studio 不应继续手写大量 runtime event 映射。需要展示给用户的进展必须由 Runtime 生产侧先写成 `transcript_kind` + `ui_intent` 的主会话事件。
 - `worker_results`、`workers.jsonl`、`agent_run_graph`、`model_calls`、`route_timeline`、`validation_results`、`raw_evidence`、run files 只能进入 Inspector。
 - 如果 subagent/worker 的结果需要出现在主会话，Runtime 必须先写入 `runtime_progress.worker_summary` 或 `user_progress`，不能让 Studio 主屏直接解释 worker JSONL。
 - Context window 主屏只显示比例、健康和 free space；context attribution、section breakdown、compact boundary、token/cost 明细只进入 Inspector。

@@ -233,6 +233,8 @@ class RunCommand:
             title="计划完成，开始执行",
             summary=f"已生成 {plan.task_count} 个任务，正在启动执行阶段。",
             display_level="main",
+            transcript_kind="plan",
+            ui_intent="work_progress",
         )
         return self.continue_run(plan.run_id, steps, _progress=progress)
 
@@ -255,6 +257,8 @@ class RunCommand:
                 title="恢复执行",
                 summary="正在检查任务状态，准备继续推进。",
                 display_level="main",
+                transcript_kind="progress",
+                ui_intent="work_progress",
             )
         self._emit_workspace_progress_event(_progress, run_id, phase="execute")
         self._emit_agent_loop_dispatch(_progress, run_id, phase="execute")
@@ -311,6 +315,8 @@ class RunCommand:
                 title=f"执行迭代 {index + 1}",
                 summary=f"正在执行第 {index + 1} 轮任务，最多处理 {self.max_tasks_per_iteration} 个任务。",
                 display_level="main",
+                transcript_kind="progress",
+                ui_intent="work_progress",
             )
             self._execute_until_no_ready(run_id, steps, iteration=index + 1, progress=_progress)
             self._emit_execution_progress_events(_progress, run_id, phase="execute")
@@ -336,6 +342,8 @@ class RunCommand:
                 title="评审阶段",
                 summary="正在评审本轮执行结果，判断是否需要修复或继续。",
                 display_level="main",
+                transcript_kind="verification",
+                ui_intent="work_progress",
             )
             review = ReviewCommand(
                 self.root,
@@ -365,6 +373,12 @@ class RunCommand:
                     f"{review.decision_count} 个待决策点。"
                 ),
                 display_level="main",
+                transcript_kind="verification",
+                ui_intent="work_progress" if review.follow_up_count == 0 and review.decision_count == 0 else "needs_input",
+                actions=self._review_progress_actions(
+                    follow_up_count=review.follow_up_count,
+                    decision_count=review.decision_count,
+                ),
             )
             self._emit_execution_progress_events(_progress, run_id, phase="review")
             goal_decision = self._goal_loop_decision(
@@ -979,6 +993,7 @@ class RunCommand:
                 title="Model route decision",
                 summary=self._model_selection_summary(model_selection),
                 model_selection=model_selection,
+                status="completed",
             )
         file_changes = self._file_change_summary(run_dir)
         if file_changes:
@@ -1040,6 +1055,18 @@ class RunCommand:
                 f"({pressure.get('default_tier', 'unknown')} -> {selected})."
             )
         return f"Selected {selected} for {purpose}: {reason}."
+
+    def _review_progress_actions(
+        self,
+        *,
+        follow_up_count: int,
+        decision_count: int,
+    ) -> list[dict[str, str]]:
+        if decision_count:
+            return [{"kind": "decision", "label": "Decide", "command": "decide --list"}]
+        if follow_up_count:
+            return [{"kind": "continue", "label": "Continue", "command": "run --resume"}]
+        return [{"kind": "accept", "label": "Accept", "command": "accept --latest"}]
 
     def _file_change_summary(self, run_dir: Path) -> list[dict[str, str]]:
         changes: dict[str, dict[str, str]] = {}
@@ -1179,6 +1206,8 @@ class RunCommand:
                         f"阻塞 {execute.blocked} 个任务。"
                     ),
                     display_level="main",
+                    transcript_kind="tool_result",
+                    ui_intent="work_progress",
                 )
             status = self._run_status(run_id)
             if self._ready_count(run_id) > 0 and self._task_plan_quality_gate(run_id, steps):
@@ -1215,6 +1244,8 @@ class RunCommand:
                                 "failure_type": provider_blocker.get("failure_type"),
                                 "recommended_command": "model-check --tier medium",
                             },
+                            transcript_kind="diagnostic",
+                            ui_intent="needs_attention",
                         )
                     self._write_goal_policy_marker(
                         run_id,
@@ -1241,6 +1272,37 @@ class RunCommand:
                     run_id=run_id,
                     model_client=self.debug_model_client or self.model_client,
                 ).run()
+                if progress:
+                    progress.record(
+                        run_id=run_id,
+                        channel="progress",
+                        phase="execute",
+                        status="blocked" if debug.still_blocked else "completed",
+                        title="Repair attempted",
+                        summary=(
+                            f"Asteria repaired {debug.repaired} task(s); "
+                            f"{debug.still_blocked} task(s) still need attention."
+                        ),
+                        display_level="main",
+                        transcript_kind="repair",
+                        ui_intent="needs_attention" if debug.still_blocked else "work_progress",
+                        actions=(
+                            [
+                                {
+                                    "kind": "replan",
+                                    "label": "Replan",
+                                    "command": "replan",
+                                },
+                                {
+                                    "kind": "ask",
+                                    "label": "Decide",
+                                    "command": "decide --list",
+                                },
+                            ]
+                            if debug.still_blocked
+                            else []
+                        ),
+                    )
                 steps.append(
                     RunStepSummary(
                         "debug",

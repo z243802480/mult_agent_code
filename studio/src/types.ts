@@ -49,6 +49,9 @@ export type StudioEvent = {
   file_changes?: AnyRecord[];
   runtime_channel?: string;
   runtime_event_type?: string;
+  transcript_kind?: string;
+  ui_intent?: string;
+  actions?: AnyRecord[];
   source?: string;
   run_id?: string;
   job_id?: string;

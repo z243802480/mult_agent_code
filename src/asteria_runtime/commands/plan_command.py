@@ -208,11 +208,13 @@ class PlanCommand:
             event_type="start",
             phase="plan",
             status="running",
-            title="制定计划",
-            summary="Selecting a model route and generating a structured goal specification.",
+            title="Plan draft started",
+            summary="Asteria is turning the goal into a structured plan.",
             data={"model_route": goal_spec_route_plan},
             call_chain=["PlanCommand", "GoalSpecAgent"],
             execution_chain=["understand", "goal_spec"],
+            transcript_kind="plan",
+            ui_intent="work_progress",
         )
         progress_logger.workspace_event(
             run_id=run["run_id"],

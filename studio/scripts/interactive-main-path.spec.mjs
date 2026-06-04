@@ -71,17 +71,15 @@ async function driveToPermissionRequest(page) {
   await expect(page.locator(".contextWindowPanel", { hasText: "Detailed breakdown is available in diagnostics." })).toBeVisible();
   await page.locator(".contextWindowTrigger").click();
   await expect(page.locator(".threadProcessControls", { hasText: "Expand process" })).toBeVisible();
-  await expect(page.locator(".runtimeLoopSignals", { hasText: "Recovery" })).toBeVisible();
-  await expect(page.locator(".runtimeLoopSignals", { hasText: "covered" })).toBeVisible();
-  await expect(page.locator(".runtimeLoopSignals", { hasText: "Budget" })).toBeVisible();
-  await expect(page.locator(".runtimeLoopSignals", { hasText: "Context" })).toBeVisible();
+  await expect(page.locator(".runtimeLoopSignals")).toHaveCount(0);
+  await expect(page.locator(".runtimeSnapshot", { hasText: "1 decision need your input." })).toBeVisible();
   await page.locator(".threadProcessControls button").filter({ hasText: "Expand process" }).click();
   await expect(page.locator(".turnMiddleSteps").first()).toBeVisible();
   await page.locator(".threadProcessControls button").filter({ hasText: "Collapse process" }).click();
   await expect(page.locator(".turnMiddleSteps")).toHaveCount(0);
   await page.locator(".turnMiddleBadge").first().click();
   await expect(page.locator(".turnMiddleBadge.selected").first()).toBeVisible();
-  await expect(page.locator(".detailTitle", { hasText: "Runtime progress" })).toBeVisible();
+  await expect(page.locator(".detailTitle", { hasText: "Progress" })).toBeVisible();
   await page.locator(".inspectorTabList button").filter({ hasText: "Artifacts" }).click();
   await expect(page.locator(".refList button", { hasText: "run_loop_summary.json" })).toBeVisible();
   await page.locator(".refList button").filter({ hasText: "run_loop_summary.json" }).click();
@@ -118,7 +116,7 @@ async function writeFixture() {
   const runtimeProgress = {
     schema_version: "0.1.0",
     workflow_state: "review_passed",
-    path: "Plan/Todo -> Tool Use -> Verify -> Repair/Ask/Stop",
+    path: "Plan/Todo -> Tool Use -> Verify -> Next step",
     active_stage: "verify",
     current_step: "Review passed; accept when ready.",
     next_command: "asteria accept --latest",
@@ -244,8 +242,11 @@ async function writeFixture() {
       event_type: "message",
       phase: "review",
       status: "completed",
-      title: "Runtime progress",
-      summary: "Interactive smoke runtime progress.",
+      title: "Progress",
+      summary: "Interactive smoke progress.",
+      transcript_kind: "verification",
+      ui_intent: "work_progress",
+      actions: [],
       evidence_refs: ["run_loop_summary.json"],
       display_level: "main",
       created_at: "2099-01-01T00:00:00Z",

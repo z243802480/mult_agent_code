@@ -174,6 +174,8 @@ class ReplanCommand:
                 },
                 call_chain=["ReplanCommand"],
                 execution_chain=["replan", "repair_task_created"],
+                transcript_kind="repair",
+                ui_intent="work_progress",
             )
 
         self._mirror_backlog(agent_dir, task_board)

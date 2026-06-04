@@ -647,47 +647,6 @@ h2 {
   cursor: default;
 }
 
-.runtimeLoopSignals {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.loopSignal {
-  align-items: center;
-  background: #11161a;
-  border: 1px solid #303a42;
-  border-radius: 6px;
-  color: #9aa6af;
-  display: inline-flex;
-  gap: 6px;
-  min-height: 26px;
-  padding: 3px 8px;
-}
-
-.loopSignal small {
-  color: #8f9aa3;
-  font-size: 11px;
-}
-
-.loopSignal strong {
-  color: #dce3e8;
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.loopSignal.good {
-  border-color: rgba(58, 166, 117, 0.45);
-}
-
-.loopSignal.warn {
-  border-color: rgba(204, 143, 63, 0.5);
-}
-
-.loopSignal.bad {
-  border-color: rgba(203, 76, 87, 0.55);
-}
-
 .decisionCard {
   background: #12171b;
   border: 1px solid #34414a;

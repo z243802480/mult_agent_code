@@ -45,8 +45,8 @@ class ModelProgressSink:
             event_type="start",
             phase=self._phase(),
             status="running",
-            title="Model response started",
-            summary=self._summary("started", provider, model, mode),
+            title="Thinking",
+            summary="Asteria is preparing the next step.",
             display_level="main",
             model_provider=provider,
             model_name=model,
@@ -54,6 +54,8 @@ class ModelProgressSink:
             call_chain=[str(self.request.metadata.get("agent_id") or "ModelClient"), provider],
             execution_chain=[self.request.purpose, self.request.model_tier],
             data=context["data"],
+            transcript_kind="progress",
+            ui_intent="work_progress",
         )
         self._start_event_id = str(event["event_id"])
 
@@ -67,10 +69,10 @@ class ModelProgressSink:
             event_type="delta",
             phase=self._phase(),
             status="running",
-            title="Model response",
-            summary="Model streamed a response chunk.",
+            title="Drafting",
+            summary="Asteria is drafting a response.",
             content_delta=content,
-            display_level="main",
+            display_level="inspector",
             parent_event_id=self._start_event_id,
             model_provider=provider,
             model_name=model,
@@ -78,6 +80,8 @@ class ModelProgressSink:
             call_chain=[str(self.request.metadata.get("agent_id") or "ModelClient"), provider],
             execution_chain=[self.request.purpose, self.request.model_tier],
             data=context["data"],
+            transcript_kind="assistant_message",
+            ui_intent="inform",
         )
 
     def model_end(
@@ -96,8 +100,8 @@ class ModelProgressSink:
             event_type="end",
             phase=self._phase(),
             status="completed",
-            title="Model response completed",
-            summary=self._summary("completed", provider, model, str((telemetry or {}).get("mode") or "")),
+            title="Draft complete",
+            summary="Asteria finished drafting this step.",
             display_level="main",
             parent_event_id=self._start_event_id,
             model_provider=provider,
@@ -106,6 +110,8 @@ class ModelProgressSink:
             call_chain=[str(self.request.metadata.get("agent_id") or "ModelClient"), provider],
             execution_chain=[self.request.purpose, self.request.model_tier],
             data=context["data"],
+            transcript_kind="progress",
+            ui_intent="work_progress",
         )
 
     def model_error(self, *, provider: str, model: str | None, error: str) -> None:
@@ -118,8 +124,8 @@ class ModelProgressSink:
             event_type="error",
             phase=self._phase(),
             status="failed",
-            title="Model response failed",
-            summary=error,
+            title="Model connection interrupted",
+            summary="The model response failed before Asteria received a usable step.",
             display_level="main",
             parent_event_id=self._start_event_id,
             model_provider=provider,
@@ -128,6 +134,7 @@ class ModelProgressSink:
             call_chain=[str(self.request.metadata.get("agent_id") or "ModelClient"), provider],
             execution_chain=[self.request.purpose, self.request.model_tier],
             data={**context["data"], "error": error},
+            transcript_kind="diagnostic",
         )
 
     def _run_id(self) -> str | None:

@@ -30,7 +30,7 @@ class StudioModelEventSink:
                 "type": "model_start",
                 "status": "running",
                 "title": _title_for_phase(self.phase, "start"),
-                "summary": f"{provider}/{model or 'unknown'} is returning {_label_for_phase(self.phase)}.",
+                "summary": f"Asteria is preparing {_label_for_phase(self.phase)}.",
                 "content_delta": "",
                 "phase": self.phase,
                 "display_level": "main",
@@ -49,7 +49,7 @@ class StudioModelEventSink:
                 "type": "model_delta",
                 "status": "running",
                 "title": _title_for_phase(self.phase, "delta"),
-                "summary": f"Receiving {_label_for_phase(self.phase)} content.",
+                "summary": f"Asteria is drafting {_label_for_phase(self.phase)}.",
                 "content_delta": text,
                 "phase": self.phase,
                 "display_level": "main",
@@ -60,19 +60,12 @@ class StudioModelEventSink:
         )
 
     def model_end(self, *, provider: str, model: str | None, telemetry: dict[str, Any] | None = None) -> None:
-        chunks = (telemetry or {}).get("chunk_count")
-        duration = (telemetry or {}).get("duration_ms")
-        summary_parts = []
-        if chunks is not None:
-            summary_parts.append(f"chunks={chunks}")
-        if duration is not None:
-            summary_parts.append(f"duration_ms={duration}")
         self._append(
             {
                 "type": "model_end",
                 "status": "completed",
                 "title": _title_for_phase(self.phase, "end"),
-                "summary": " / ".join(summary_parts) if summary_parts else f"{_label_for_phase(self.phase)} completed.",
+                "summary": f"Asteria finished {_label_for_phase(self.phase)}.",
                 "content_delta": "",
                 "phase": self.phase,
                 "display_level": "main",
@@ -88,9 +81,9 @@ class StudioModelEventSink:
             {
                 "type": "model_error",
                 "status": "failed",
-                "title": "Model response failed",
-                "summary": error[:240],
-                "content_delta": error,
+                "title": "Model connection interrupted",
+                "summary": "The model response failed before Asteria received a usable step.",
+                "content_delta": "",
                 "phase": self.phase,
                 "display_level": "main",
                 "parent_event_id": self._start_event_id,

@@ -108,6 +108,9 @@ def test_http_transport_stream_writes_studio_model_events(
     ]
     assert "".join(event.get("content_delta", "") for event in events) == '{"ok": true}'
     assert events[0]["model_provider"] == "minimax"
+    assert events[0]["summary"] == "Asteria is preparing plan."
+    assert "minimax" not in events[0]["summary"].lower()
+    assert events[-1]["summary"] == "Asteria finished plan."
     assert events[-1]["telemetry"]["chunk_count"] == 2
 
 
@@ -163,6 +166,10 @@ def test_http_transport_stream_writes_runtime_user_progress_events(
     ]
     assert "".join(event.get("content_delta", "") for event in events) == '{"ok": true}'
     assert events[0]["phase"] == "execute"
+    assert events[0]["title"] == "Thinking"
+    assert events[0]["summary"] == "Asteria is preparing the next step."
+    assert events[0]["transcript_kind"] == "progress"
+    assert events[0]["ui_intent"] == "work_progress"
     assert events[0]["model_provider"] == "minimax"
     assert events[0]["telemetry"]["role"] == "CoderAgent"
     assert events[0]["telemetry"]["deadline_profile"] == "worker"
@@ -170,5 +177,10 @@ def test_http_transport_stream_writes_runtime_user_progress_events(
     assert events[0]["telemetry"]["provider_call_seconds"] == 5
     assert events[0]["data"]["agent_role_contract"]["role"] == "CoderAgent"
     assert events[1]["telemetry"]["deadline_remaining_ms"] <= 5000
+    assert events[1]["title"] == "Drafting"
+    assert events[1]["display_level"] == "inspector"
+    assert events[1]["transcript_kind"] == "assistant_message"
     assert events[-1]["telemetry"]["chunk_count"] == 2
     assert events[-1]["telemetry"]["role"] == "CoderAgent"
+    assert events[-1]["title"] == "Draft complete"
+    assert events[-1]["transcript_kind"] == "progress"

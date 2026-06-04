@@ -1990,8 +1990,21 @@ function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {
 function userProgressToStudioEvent(event, sessionId, runId) {
   const channel = String(event.channel || "");
   const eventType = String(event.event_type || "");
+  const transcriptKind = String(event.transcript_kind || "");
   let type = "reasoning_delta";
-  if (channel === "model") {
+  if (transcriptKind === "final" || transcriptKind === "stop") {
+    type = "final_answer";
+  } else if (transcriptKind === "tool_use") {
+    type = "tool_start";
+  } else if (transcriptKind === "tool_result") {
+    type = "tool_end";
+  } else if (transcriptKind === "file_change") {
+    type = "file_changed";
+  } else if (transcriptKind === "verification") {
+    type = "tool_observation";
+  } else if (transcriptKind === "permission_request") {
+    type = "permission_request";
+  } else if (channel === "model") {
     if (eventType === "start") type = "model_start";
     else if (eventType === "delta") type = "model_delta";
     else if (eventType === "end") type = "model_end";
@@ -2035,6 +2048,9 @@ function userProgressToStudioEvent(event, sessionId, runId) {
     source: "runtime_user_progress",
     runtime_channel: channel,
     runtime_event_type: eventType,
+    transcript_kind: transcriptKind,
+    ui_intent: event.ui_intent,
+    actions: event.actions || [],
     file_changes: event.file_changes || [],
     run_id: runId
   });

@@ -128,12 +128,18 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     assert events[1]["tool_call_id"] == "toolcall-0001"
     assert events[1]["data"]["turn_event"]["event_type"] == "turn_start"
     assert events[1]["data"]["capability_decision"]["decision"] == "ask"
+    assert events[1]["title"] == "Using command"
+    assert events[1]["transcript_kind"] == "tool_use"
     assert events[2]["command"] == ["pytest -q"]
     assert events[2]["data"]["permission"]["mode"] == "reviewed_auto"
     assert events[2]["data"]["capability_decision"]["reason"]
+    assert events[2]["transcript_kind"] == "tool_use"
     assert events[3]["status"] == "completed"
     assert events[3]["parent_event_id"] == events[2]["event_id"]
+    assert events[3]["transcript_kind"] == "tool_result"
     assert events[4]["display_level"] == "main"
+    assert events[4]["title"] == "Tool result"
+    assert events[4]["transcript_kind"] == "tool_result"
     assert events[4]["data"]["observation"]["tool_name"] == "run_command"
     assert events[4]["data"]["observation"]["ok"] is True
     assert events[4]["data"]["capability_decision"]["decision"] == "ask"
@@ -153,6 +159,8 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     assert capability_decisions[0]["decision"]["reason"]
     assert events[5]["data"]["turn_event"]["event_type"] == "turn_end"
     assert events[5]["parent_event_id"] == events[1]["event_id"]
+    assert events[5]["title"] == "Tool result"
+    assert events[5]["transcript_kind"] == "tool_result"
     assert getattr(results[0], "harness_observation").model_summary() == (
         "run_command ok: tests passed"
     )
@@ -181,6 +189,7 @@ def test_tool_gateway_records_user_progress_file_events(tmp_path: Path) -> None:
     assert len(file_events) == 1
     assert file_events[0]["event_type"] == "file_created"
     assert file_events[0]["display_level"] == "main"
+    assert file_events[0]["transcript_kind"] == "file_change"
     assert file_events[0]["file_changes"][0]["path"] == "src/app.py"
     assert observations[0]["data"]["observation"]["artifact_refs"] == ["src/app.py"]
     assert observations[0]["data"]["observation"]["file_changes"][0]["path"] == "src/app.py"
@@ -208,12 +217,16 @@ def test_tool_gateway_records_user_progress_errors(tmp_path: Path) -> None:
     assert events[-3]["data"]["capability_decision"]["reason"]
     assert events[-2]["channel"] == "execution_chain"
     assert events[-2]["event_type"] == "tool_observation"
+    assert events[-2]["title"] == "Tool step needs attention"
+    assert events[-2]["transcript_kind"] == "tool_result"
     assert events[-2]["data"]["observation"]["ok"] is False
     assert events[-2]["data"]["observation"]["tool_name"] == "run_command"
     assert events[-2]["data"]["observation"]["data"]["error_type"] == "RuntimeError"
     assert events[-2]["data"]["capability_decision"]["reason"]
     assert events[-1]["status"] == "failed"
     assert events[-1]["event_type"] == "turn_end"
+    assert events[-1]["title"] == "Tool step needs attention"
+    assert events[-1]["transcript_kind"] == "tool_result"
     assert events[-1]["data"]["observation"]["ok"] is False
     assert events[-1]["data"]["error_type"] == "RuntimeError"
     assert events[-1]["data"]["capability_decision"]["reason"]

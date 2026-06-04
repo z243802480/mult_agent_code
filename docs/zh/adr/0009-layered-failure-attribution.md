@@ -17,7 +17,7 @@ Asteria 前期把不少失败都汇入 `blocked -> debug -> repair/replan`，短
 Runtime 必须先归因，再决定恢复动作。默认边界如下：
 
 ```text
-Provider/transport -> route retry / model-check / provider fallback
+Provider/transport -> retry / connection check / provider fallback
 Model schema/action -> schema repair / action preparer / one bounded retry
 Tool/permission -> tool gateway / permission decision
 Verification/contract -> repair | replan | ask | stop
@@ -33,7 +33,7 @@ Budget/context -> compact | budget decision | stop
 - rate limit
 - provider 5xx
 
-这些失败应记录为 route/deadline/provider health evidence，并给出 `model-check`、retry 或 fallback 建议。除非已经拿到模型输出并产生了 tool observation，否则不得默认消耗 DebugAgent repair attempt。
+这些失败应记录为 route/deadline/provider health evidence，并给出连接检查、retry 或 fallback 建议。除非已经拿到模型输出并产生了 tool observation，否则不得默认消耗 DebugAgent repair attempt。
 
 ### 2. Agent repair 只处理可行动失败
 
@@ -57,9 +57,11 @@ Gate 不能为了追赶模型宽泛回答而不断增加细碎规则。新增 ga
 
 ### 4. 产品展示遵守 Active Next Step
 
-Studio / status / gate-status 默认只展示当前可执行下一步：
+Studio / status / gate-status 默认只展示当前可执行下一步，但不同产品面使用不同语言：
 
-- provider transient：`model-check` 或 retry。
+- Studio 主会话：用户语义，例如“模型连接中断，尚未写入文件；我可以检查连接并重试”。
+- status：用户语义 + 受控动作，例如“检查模型连接 / retry”。
+- gate-status / Inspector：维护者语义，可以包含 `model-check`、route、deadline 和 evidence refs。
 - schema/action：repair action 或 bounded retry。
 - tool/verification：debug、replan、ask 或 stop。
 - budget/context：compact 或 decision。
@@ -72,13 +74,14 @@ Studio / status / gate-status 默认只展示当前可执行下一步：
 - `/run` 主循环遇到 retryable provider failure 时，不应自动进入 DebugCommand；应记录 provider blocker 并停止当前 loop，等待 provider health 或用户继续。
 - `task_failures.jsonl` 可记录 provider failure，但 recommendations 必须说明它不是 DebugAgent repair。
 - Real provider matrix 统计中，provider transient 不应被解释成任务语义失败。
+- Studio 主会话不得直接展示 `provider route blocked`、`model-check`、route/deadline/gate 字段名；这些只能进入 Inspector 或按钮背后的受控 action。
 
 ## 验收
 
 - 模型调用发生 TLS EOF 且没有返回 action 时，`task_failures.jsonl.failure_type` 为 `provider_network`。
 - 同一 run 不应创建 `task_repair` model call。
-- `user_progress.jsonl` 主屏事件应显示 provider route blocked，而不是“debug started”。
-- `status` / `gate-status` 的下一步应指向 `model-check`、retry 或 provider fallback。
+- `user_progress.jsonl` 可以保留 provider failure evidence，但 Studio 主屏必须转成用户语义：“模型连接中断，尚未执行写入；可以检查连接并重试”。
+- `status` 的下一步应显示“检查连接 / retry”，`gate-status` / Inspector 可以指向 `model-check`、retry 或 provider fallback。
 
 ## 结果
 

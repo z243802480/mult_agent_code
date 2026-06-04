@@ -10,6 +10,36 @@ from asteria_runtime.utils.time import now_iso
 
 
 _USER_PROGRESS_LOCK = RLock()
+_TRANSCRIPT_KINDS = {
+    "user_message",
+    "assistant_message",
+    "plan",
+    "todo_update",
+    "tool_use",
+    "tool_result",
+    "file_change",
+    "verification",
+    "permission_request",
+    "decision_request",
+    "repair",
+    "ask",
+    "stop",
+    "final",
+    "context_status",
+    "subagent_summary",
+    "progress",
+    "diagnostic",
+}
+_MAIN_COPY_REPLACEMENTS = {
+    "provider route blocked": "model connection interrupted",
+    "model-check": "connection check",
+    "gate-status": "diagnostics",
+    "runtime_progress": "progress",
+    "user_progress.jsonl": "progress log",
+    "agent_loop_execution_results.jsonl": "agent step evidence",
+    "agent_loop_decisions.jsonl": "agent decision evidence",
+    "agent_loop_observations.jsonl": "agent observation evidence",
+}
 
 
 class UserProgressLogger:
@@ -51,9 +81,33 @@ class UserProgressLogger:
         execution_chain: list[str] | None = None,
         file_changes: list[dict[str, Any]] | None = None,
         data: dict[str, Any] | None = None,
+        transcript_kind: str | None = None,
+        ui_intent: str | None = None,
+        actions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         with _USER_PROGRESS_LOCK:
             self._counter += 1
+            safe_title, safe_summary, safe_content_delta = self._main_copy(
+                display_level=display_level,
+                title=title,
+                summary=summary,
+                content_delta=content_delta,
+            )
+            safe_transcript_kind = self._transcript_kind(
+                transcript_kind=transcript_kind,
+                channel=channel,
+                event_type=event_type,
+                phase=phase,
+            )
+            safe_title, safe_summary, safe_content_delta = self._repair_corrupt_main_copy(
+                display_level=display_level,
+                transcript_kind=safe_transcript_kind,
+                phase=phase,
+                status=status,
+                title=safe_title,
+                summary=safe_summary,
+                content_delta=safe_content_delta,
+            )
             event = {
                 "schema_version": "0.1.0",
                 "event_id": f"upe-{self._counter:04d}",
@@ -67,10 +121,17 @@ class UserProgressLogger:
                 "tool_call_id": tool_call_id,
                 "phase": phase,
                 "status": status,
-                "title": title,
-                "summary": summary,
-                "content_delta": content_delta,
+                "title": safe_title,
+                "summary": safe_summary,
+                "content_delta": safe_content_delta,
                 "display_level": display_level,
+                "transcript_kind": safe_transcript_kind,
+                "ui_intent": ui_intent or self._ui_intent(safe_transcript_kind, status),
+                "actions": actions or self._default_actions(
+                    title=safe_title,
+                    summary=safe_summary,
+                    data=data or {},
+                ),
                 "model_provider": model_provider,
                 "model_name": model_name,
                 "command": command or [],
@@ -84,6 +145,205 @@ class UserProgressLogger:
             }
             self.store.append(self.path, event, "user_progress_event")
             return event
+
+    def _main_copy(
+        self,
+        *,
+        display_level: str,
+        title: str,
+        summary: str,
+        content_delta: str,
+    ) -> tuple[str, str, str]:
+        if display_level != "main":
+            return title, summary, content_delta
+        if self._looks_like_provider_blocker(title, summary, content_delta):
+            return (
+                "Model connection interrupted",
+                (
+                    "The model connection failed before Asteria received an executable step. "
+                    "No repair was started; check the connection and retry when it recovers."
+                ),
+                "",
+            )
+        return (
+            self._replace_backend_terms(title),
+            self._replace_backend_terms(summary),
+            self._replace_backend_terms(content_delta),
+        )
+
+    def _looks_like_provider_blocker(self, *values: str) -> bool:
+        text = "\n".join(str(value or "") for value in values).lower()
+        return (
+            "provider route blocked" in text
+            or "provider/network" in text
+            or "provider_transient" in text
+            or "provider_network" in text
+            or "model-check" in text
+        )
+
+    def _replace_backend_terms(self, value: str) -> str:
+        result = str(value or "")
+        for raw, replacement in _MAIN_COPY_REPLACEMENTS.items():
+            result = result.replace(raw, replacement)
+            result = result.replace(raw.upper(), replacement)
+        return result
+
+    def _repair_corrupt_main_copy(
+        self,
+        *,
+        display_level: str,
+        transcript_kind: str,
+        phase: str,
+        status: str,
+        title: str,
+        summary: str,
+        content_delta: str,
+    ) -> tuple[str, str, str]:
+        if display_level != "main":
+            return title, summary, content_delta
+        if not self._looks_corrupt_copy(title, summary, content_delta):
+            return title, summary, content_delta
+        fallback_title, fallback_summary = self._fallback_main_copy(
+            transcript_kind=transcript_kind,
+            phase=phase,
+            status=status,
+        )
+        return fallback_title, fallback_summary, ""
+
+    def _looks_corrupt_copy(self, *values: str) -> bool:
+        text = "\n".join(str(value or "") for value in values)
+        if not text.strip():
+            return False
+        if "�" in text or "€" in text:
+            return True
+        mojibake_markers = (
+            "銆",
+            "锛",
+            "绛",
+            "浠",
+            "璇",
+            "妫",
+            "闃",
+            "鎵",
+            "姝",
+            "鍒",
+            "鐞",
+            "鑳",
+            "藉",
+            "勫",
+            "垝",
+            "渶",
+        )
+        return sum(1 for marker in mojibake_markers if marker in text) >= 2
+
+    def _fallback_main_copy(
+        self,
+        *,
+        transcript_kind: str,
+        phase: str,
+        status: str,
+    ) -> tuple[str, str]:
+        if transcript_kind in {"plan", "todo_update"}:
+            return "Plan ready", "Asteria prepared the plan and is ready to continue."
+        if transcript_kind == "tool_use":
+            return "Using a tool", "Asteria started a tool step for the current task."
+        if transcript_kind == "tool_result":
+            return "Tool step updated", "Asteria recorded the latest tool result."
+        if transcript_kind == "file_change":
+            return "File change recorded", "Asteria recorded file changes for this run."
+        if transcript_kind == "verification":
+            return "Verification updated", "Asteria checked the latest result and recorded the outcome."
+        if transcript_kind == "repair":
+            return "Repair updated", "Asteria attempted recovery and recorded what changed."
+        if transcript_kind in {"permission_request", "decision_request", "ask"}:
+            return "Decision needed", "Asteria needs input before it can safely continue."
+        if transcript_kind in {"final", "stop"}:
+            return "Result ready", "Asteria recorded the result and the next available step."
+        if status in {"failed", "blocked"}:
+            return "Needs attention", "Asteria stopped at a point that needs recovery or input."
+        if phase == "review":
+            return "Verification updated", "Asteria checked the latest result and recorded the outcome."
+        return "Progress updated", "Asteria recorded progress for the current run."
+
+    def _transcript_kind(
+        self,
+        *,
+        transcript_kind: str | None,
+        channel: str,
+        event_type: str,
+        phase: str,
+    ) -> str:
+        if transcript_kind in _TRANSCRIPT_KINDS:
+            return transcript_kind
+        if channel == "tool":
+            return "tool_result" if event_type in {"tool_output", "tool_observation", "end", "error"} else "tool_use"
+        if channel == "file":
+            return "file_change"
+        if channel == "validation":
+            return "verification"
+        if channel == "permission":
+            return "permission_request" if event_type == "permission_request" else "decision_request"
+        if channel == "conclusion":
+            return "final"
+        if channel == "diagnostic":
+            return "diagnostic"
+        if event_type == "decision":
+            return "decision_request"
+        if phase == "blocked":
+            return "ask"
+        if phase == "plan":
+            return "plan"
+        if phase == "review":
+            return "verification"
+        if phase == "result":
+            return "final"
+        if phase == "next":
+            return "progress"
+        return "progress"
+
+    def _ui_intent(self, transcript_kind: str, status: str) -> str:
+        if status in {"failed", "blocked"}:
+            return "needs_attention"
+        if status == "waiting_user":
+            return "needs_input"
+        if transcript_kind in {"permission_request", "decision_request", "ask"}:
+            return "needs_input"
+        if transcript_kind in {"final", "stop"}:
+            return "result"
+        if transcript_kind in {"plan", "todo_update", "tool_use", "tool_result", "file_change", "verification", "subagent_summary"}:
+            return "work_progress"
+        return "inform"
+
+    def _default_actions(
+        self,
+        *,
+        title: str,
+        summary: str,
+        data: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        text = f"{title}\n{summary}\n{data}".lower()
+        if "model connection interrupted" in text or "model-check" in text:
+            return [
+                {
+                    "kind": "connection_check",
+                    "label": "Check connection",
+                    "command": "model-check --tier medium",
+                },
+                {
+                    "kind": "continue",
+                    "label": "Retry run",
+                    "command": "run --resume",
+                },
+            ]
+        if "pending_decision_ids" in text or "decision_id" in text:
+            return [
+                {
+                    "kind": "decision",
+                    "label": "Decide",
+                    "command": "decide --list",
+                }
+            ]
+        return []
 
     def conclusion(
         self,
@@ -107,6 +367,7 @@ class UserProgressLogger:
             content_delta=content_delta,
             artifact_refs=artifact_refs,
             evidence_refs=evidence_refs,
+            transcript_kind="final",
         )
 
     def heartbeat(
@@ -126,6 +387,7 @@ class UserProgressLogger:
             title=title,
             summary=summary,
             display_level="inspector",
+            transcript_kind="diagnostic",
         )
 
     def artifact_event(
@@ -169,6 +431,7 @@ class UserProgressLogger:
             title=title,
             summary=summary,
             data={"workspace": workspace, "output_locations": output_locations or {}},
+            transcript_kind="progress",
         )
 
     def permission_event(
@@ -190,6 +453,7 @@ class UserProgressLogger:
             title=title,
             summary=summary,
             data={"permission": permission},
+            transcript_kind="decision_request",
         )
 
     def decision_event(
@@ -213,6 +477,7 @@ class UserProgressLogger:
             summary=summary,
             display_level=display_level,
             data={"decision": decision},
+            transcript_kind="decision_request",
         )
 
     def model_decision_event(
@@ -224,6 +489,7 @@ class UserProgressLogger:
         model_selection: dict[str, Any],
         phase: str = "execute",
         status: str = "completed",
+        display_level: str = "inspector",
     ) -> dict[str, Any]:
         return self.record(
             run_id=run_id,
@@ -233,9 +499,12 @@ class UserProgressLogger:
             status=status,
             title=title,
             summary=summary,
+            display_level=display_level,
             data={"model_selection": model_selection},
             call_chain=["RunCommand"],
             execution_chain=[phase, "model_selection"],
+            transcript_kind="diagnostic",
+            ui_intent="inform",
         )
 
     def file_change_event(
@@ -264,6 +533,7 @@ class UserProgressLogger:
             data={"changed_file_count": len(file_changes)},
             call_chain=["RunCommand"],
             execution_chain=[phase, "file_changes"],
+            transcript_kind="file_change",
         )
 
     def validation_event(
@@ -289,6 +559,7 @@ class UserProgressLogger:
             data={"validation": validation},
             call_chain=["RunCommand"],
             execution_chain=[phase, "validation"],
+            transcript_kind="verification",
         )
 
     def final_report_event(
@@ -327,6 +598,7 @@ class UserProgressLogger:
             },
             call_chain=["RunCommand"],
             execution_chain=["result", "final_report"],
+            transcript_kind="final",
         )
 
     def read_all(self) -> list[dict[str, Any]]:

@@ -106,6 +106,8 @@ class ResumeCommand:
             display_level="main",
             call_chain=["ResumeCommand"],
             execution_chain=["resume", "decision_replay"],
+            transcript_kind="progress",
+            ui_intent="work_progress",
         )
         applied_decisions, created_tasks = self._apply_resolved_decisions(
             agent_dir,

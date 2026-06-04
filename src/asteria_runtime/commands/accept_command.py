@@ -123,6 +123,8 @@ class AcceptCommand:
             display_level="main",
             call_chain=["AcceptCommand"],
             execution_chain=["accept", "preflight"],
+            transcript_kind="verification",
+            ui_intent="work_progress",
         )
 
         review_status = self._latest_review_status(run_dir)
@@ -145,6 +147,8 @@ class AcceptCommand:
                 data={"pending_promotions": len(pending), "promote_all": self.promote_all},
                 call_chain=["AcceptCommand", "PromotionsCommand"],
                 execution_chain=["accept", "promotion"],
+                transcript_kind="verification",
+                ui_intent="work_progress",
             )
             promotion_result = PromotionsCommand(
                 self.root,

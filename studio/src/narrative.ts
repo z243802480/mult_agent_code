@@ -67,7 +67,7 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string {
   if (kind === "observation") return "Observation";
-  if (kind === "turn") return "Agent turn";
+  if (kind === "turn") return "Agent step";
   if (kind === "goal") return "User message";
   if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "Structured generation";
   if (kind === "thinking") return "Thinking";
@@ -194,8 +194,8 @@ export function summarizeProcess(steps: NarrativeStep[]): string[] {
   if (labels.has("User message")) items.push("Received the user message and attached it to this turn.");
   if (labels.has("Thinking") || labels.has("Structured generation")) items.push("Collected model output and folded it into the visible reasoning flow.");
   if (labels.has("Plan")) items.push("Generated a read-only task plan with boundaries and validation criteria.");
-  if (labels.has("Tool call") || labels.has("Action")) items.push("Called the local runtime command and kept raw command details in Inspector.");
-  if (labels.has("Agent turn")) items.push("Grouped tool calls, observations, and next-step decisions into an auditable agent turn.");
+  if (labels.has("Tool call") || labels.has("Action")) items.push("Used local tools and recorded what changed.");
+  if (labels.has("Agent step")) items.push("Connected tool results to the next step.");
   if (labels.has("Verification")) items.push("Collected verification or review signals to judge whether the result is trustworthy.");
   if (labels.has("Final answer")) items.push("Collapsed the process into a final answer with outcome, evidence, risks, and next steps.");
   if (labels.has("Observation")) items.push("Read tool observations and fed them back into the next agent decision.");

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-user-thread-copy-"));
 const port = Number(process.env.ASTERIA_STUDIO_USER_THREAD_COPY_PORT || 18791);
-const forbidden = /\bcommand\b|Inspector|Evidence Explorer|\brun-\d{8}-\d{4}\b|stdout|stderr|status\s+--json|\.asteria|model route|token|backend metadata/i;
+const forbidden = /\bcommand\b|Inspector|Evidence Explorer|\brun-\d{8}-\d{4}\b|stdout|stderr|status\s+--json|\.asteria|model route|provider route|provider_transient|provider_network|model-check|Runtime progress|Runtime goal|Runtime result|Agent loop|Run activity|gate-status|route guidance|token|backend metadata/i;
 
 const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
   cwd: studioDir,
