@@ -2451,13 +2451,25 @@ def test_latest_real_provider_matrix_trends_single_file_bugfix_retries(tmp_path:
         "extra_execution_without_repair": 1,
         "failed_after_repair": 1,
     }
-    assert any("single_file_bugfix still entered repair" in item for item in trend["warnings"])
+    assert not any("single_file_bugfix still entered repair" in item for item in trend["warnings"])
 
 
 def test_matrix_case_retry_classification_names_extra_execution_without_repair() -> None:
     case = _single_file_bugfix_case(task_execution_calls=2, repair_attempts=0)
 
     assert classify_matrix_case_retry(case) == "extra_execution_without_repair"
+
+
+def test_matrix_case_retry_classification_prioritizes_provider_transient() -> None:
+    case = _single_file_bugfix_case(task_execution_calls=1, repair_attempts=1)
+    case["failure_summary"] = "TLS EOF while reading provider stream"
+    case["context_strategy"] = {
+        **case["context_strategy"],
+        "failed_model_calls": 1,
+        "failed_model_call_types": {"network": 1},
+    }
+
+    assert classify_matrix_case_retry(case) == "provider_transient"
 
 
 def test_matrix_case_retry_classification_uses_legacy_purpose_counts() -> None:
@@ -2494,6 +2506,53 @@ def test_real_provider_matrix_next_actions_explain_extra_bugfix_execution() -> N
             "compare task_execution model calls in matrix-summary.json."
         )
     ]
+
+
+def test_real_provider_matrix_next_actions_follow_latest_bugfix_classification() -> None:
+    matrix = {
+        "ok": True,
+        "summary_path": "matrix-summary.json",
+        "trend": {
+            "cases": {
+                "single_file_bugfix": {
+                    "latest_retry_classification": "stable_single_execution",
+                    "retry_classifications": {
+                        "repair_loop": 1,
+                        "stable_single_execution": 1,
+                    },
+                    "strong_model_calls_max": 0,
+                }
+            },
+            "warnings": [],
+        },
+    }
+
+    assert _real_provider_matrix_next_actions(matrix) == []
+
+
+def test_real_provider_matrix_next_actions_route_provider_transient_to_model_check() -> None:
+    matrix = {
+        "ok": False,
+        "latest_route": "repair",
+        "latest_task_kind": "bugfix",
+        "latest_case": "single_file_bugfix",
+        "latest_retry_classification": "provider_transient",
+        "summary_path": "matrix_summary.json",
+        "trend": {
+            "cases": {
+                "single_file_bugfix": {
+                    "latest_retry_classification": "provider_transient",
+                    "retry_classifications": {"provider_transient": 1},
+                }
+            }
+        },
+    }
+
+    actions = _real_provider_matrix_next_actions(matrix)
+
+    assert any("model-check" in action for action in actions)
+    assert any("provider transient" in action for action in actions)
+    assert not any("asteria debug" in action for action in actions)
 
 
 def test_review_markdown_report_includes_latest_real_provider_matrix(tmp_path: Path) -> None:

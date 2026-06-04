@@ -9,8 +9,10 @@ from asteria_runtime.real_model_smoke import (
     SmokeResult,
     apply_setup_files,
     build_parser,
+    matrix_agent_loop_summary,
     matrix_case_summary,
     matrix_cases,
+    matrix_context_strategy_summary,
     matrix_preset_case_names,
     run_from_args,
 )
@@ -226,6 +228,41 @@ def test_p0_matrix_writes_durable_summary(tmp_path: Path, monkeypatch) -> None:
     SchemaValidator(Path("schemas")).validate("real_provider_matrix_summary", summary)
 
 
+def test_matrix_context_strategy_summarizes_failed_model_call_types(tmp_path: Path) -> None:
+    run_dir = tmp_path / ".asteria" / "runs" / "run-provider"
+    run_dir.mkdir(parents=True)
+    (run_dir / "model_calls.jsonl").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "model_call_id": "modelcall-0001",
+                "run_id": "run-provider",
+                "agent_id": "CoderAgent",
+                "purpose": "task_execution",
+                "model_provider": "minimax",
+                "model_name": "MiniMax-M2.7",
+                "model_tier": "medium",
+                "context_mode": "slim",
+                "fast_path_task_kind": "single_file_bugfix",
+                "context_estimate": {"estimated_tokens": 1000},
+                "input_tokens": None,
+                "output_tokens": None,
+                "status": "failure",
+                "created_at": "2026-06-04T10:00:00+08:00",
+                "summary": "TLS EOF while reading provider stream",
+                "streaming": {"error_type": "provider_error", "mode": "streaming_failed"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = matrix_context_strategy_summary(None, workspace=tmp_path)
+
+    assert summary["failed_model_calls"] == 1
+    assert summary["failed_model_call_types"] == {"network": 1}
+
+
 def test_p0_matrix_preset_writes_fixed_rolling_subset(tmp_path: Path, monkeypatch) -> None:
     calls: list[str] = []
 
@@ -330,6 +367,45 @@ def test_matrix_case_summary_extracts_context_strategy_from_failed_workspace(
     assert summary["context_strategy"]["task_execution_model_calls"] == 1
     assert summary["context_strategy"]["task_repair_model_calls"] == 0
     assert summary["context_strategy"]["average_context_estimated_tokens"] == 1200
+
+
+def test_matrix_agent_loop_summary_falls_back_to_run_loop_summary(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
+    run_dir.mkdir(parents=True)
+    (workspace / ".asteria" / "current_session.json").write_text(
+        json.dumps({"session_id": "run-1"}),
+        encoding="utf-8",
+    )
+    (run_dir / "run_loop_summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "run_id": "run-1",
+                "stop_reason": "review_passed",
+                "recommended_next_command": "accept",
+                "runtime_progress": {
+                    "tool_use": {"action": "tool"},
+                    "loop": {
+                        "latest_decision": {"action": "tool"},
+                        "budget": {"status": "within_budget", "model_calls": 2},
+                        "context_pressure": {"status": "within_budget"},
+                        "recovery": {"required": False, "satisfied": True},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = matrix_agent_loop_summary(None, workspace=workspace)
+
+    assert summary["status"] == "run_loop_recorded"
+    assert summary["source"] == "run_loop_summary"
+    assert summary["exit_reason"] == "review_passed"
+    assert summary["recommended_command"] == "accept"
+    assert summary["latest_action"] == "tool"
+    assert summary["recovery_satisfied"] is True
 
 
 def test_matrix_setup_files_stay_inside_workspace(tmp_path: Path) -> None:

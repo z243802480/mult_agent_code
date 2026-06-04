@@ -64,10 +64,15 @@ class ExecutionActionPreparer:
                 continue
             patch_text = self._structured_patch_to_unified_diff(patch_value)
             if not patch_text:
+                patch_text = self._path_replace_args_to_unified_diff(args)
+            if not patch_text:
                 normalized_calls.append(call)
                 continue
             args["patch"] = patch_text
             args.pop("diff", None)
+            args.pop("path", None)
+            args.pop("old_text", None)
+            args.pop("new_text", None)
             updated = dict(call)
             updated["args"] = args
             normalized_calls.append(updated)
@@ -100,6 +105,14 @@ class ExecutionActionPreparer:
                 hunks.append(self._replace_hunk(old_text, new_text))
             chunks.append(f"--- a/{path}\n+++ b/{path}\n" + "".join(hunks))
         return "".join(chunks) if chunks else None
+
+    def _path_replace_args_to_unified_diff(self, args: dict) -> str | None:
+        path = str(args.get("path") or "").replace("\\", "/").strip()
+        old_text = args.get("old_text")
+        new_text = args.get("new_text")
+        if not path or not isinstance(old_text, str) or not isinstance(new_text, str):
+            return None
+        return f"--- a/{path}\n+++ b/{path}\n{self._replace_hunk(old_text, new_text)}"
 
     def _replace_hunk(self, old_text: str, new_text: str) -> str:
         old_lines = old_text.splitlines()

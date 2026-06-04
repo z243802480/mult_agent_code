@@ -819,6 +819,9 @@ class ReviewCommand:
         runtime_summary = runtime_os_evidence.get("summary") or {}
         tasks = task_plan.get("tasks", [])
         active_tasks = [task for task in tasks if task["status"] != "discarded"]
+        discarded_task_ids = {
+            str(task.get("task_id") or "") for task in tasks if task.get("status") == "discarded"
+        }
         done = [task for task in active_tasks if task["status"] == "done"]
         blocked = [task for task in active_tasks if task["status"] == "blocked"]
         command_verification_calls = [
@@ -847,6 +850,8 @@ class ReviewCommand:
             "unrecovered_failed_worker_result_count": self._unrecovered_failed_worker_count(
                 worker_results,
                 execution_evidence,
+                discarded_task_ids=discarded_task_ids,
+                all_active_tasks_done=len(done) == len(active_tasks) and bool(active_tasks),
             ),
             "merge_gate_block_count": len(
                 [
@@ -883,16 +888,37 @@ class ReviewCommand:
         self,
         worker_results: list[dict],
         execution_evidence: list[dict],
+        *,
+        discarded_task_ids: set[str] | None = None,
+        all_active_tasks_done: bool = False,
     ) -> int:
         recovered_tasks = self._recovered_task_ids(execution_evidence)
+        discarded_task_ids = discarded_task_ids or set()
         return len(
             [
                 item
                 for item in worker_results
                 if item.get("status") != "succeeded"
-                and str(item.get("task_id") or "") not in recovered_tasks
+                and not self._worker_failure_is_recovered(
+                    str(item.get("task_id") or ""),
+                    recovered_tasks=recovered_tasks,
+                    discarded_task_ids=discarded_task_ids,
+                    all_active_tasks_done=all_active_tasks_done,
+                )
             ]
         )
+
+    def _worker_failure_is_recovered(
+        self,
+        task_id: str,
+        *,
+        recovered_tasks: set[str],
+        discarded_task_ids: set[str],
+        all_active_tasks_done: bool,
+    ) -> bool:
+        if task_id in recovered_tasks:
+            return True
+        return all_active_tasks_done and task_id in discarded_task_ids
 
     def _recovered_task_ids(self, execution_evidence: list[dict]) -> set[str]:
         latest_by_task: dict[str, dict] = {}

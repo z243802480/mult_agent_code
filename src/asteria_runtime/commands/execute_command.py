@@ -59,6 +59,7 @@ from asteria_runtime.core.worker_runner import WorkerRunner
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.models.metered import MeteredModelClient
+from asteria_runtime.models.model_failure import classify_model_failure
 from asteria_runtime.models.model_call_logger import ModelCallLogger
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -2759,6 +2760,11 @@ class ExecuteCommand:
             return "tool_failure"
         if "no tool calls or verification" in message:
             return "empty_action"
+        model_failure = classify_model_failure(str(exc))
+        if model_failure in {"network", "timeout", "rate_limited", "server_error"}:
+            return f"provider_{model_failure}"
+        if model_failure in {"configuration", "authentication", "budget"}:
+            return f"provider_{model_failure}"
         return "exception"
 
     def _shell_allowed(self, policy: dict) -> bool:

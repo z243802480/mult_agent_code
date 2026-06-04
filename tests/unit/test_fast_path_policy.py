@@ -34,6 +34,25 @@ def test_fast_path_policy_allows_test_file_as_bugfix_verification_context() -> N
     assert policy.strong_allowed is False
 
 
+def test_fast_path_policy_inferrers_single_file_bugfix_from_goal_text() -> None:
+    policy = classify_fast_path(
+        "Fix calc.py so add(2, 3) returns 5. Keep the change limited to calc.py."
+    )
+
+    assert policy.task_kind == "single_file_bugfix"
+    assert policy.context_mode == "slim"
+    assert policy.strong_allowed is False
+
+
+def test_fast_path_policy_treats_test_file_as_bugfix_context_from_goal_text() -> None:
+    policy = classify_fast_path(
+        "Fix src/parser.py so the failing pytest in tests/test_parser.py passes."
+    )
+
+    assert policy.task_kind == "single_file_bugfix"
+    assert policy.review_tier == "deterministic_then_medium"
+
+
 def test_fast_path_policy_keeps_high_risk_on_strong_route() -> None:
     policy = classify_fast_path("Fix auth permissions and deploy to production.")
 

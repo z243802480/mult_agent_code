@@ -94,7 +94,12 @@ class ListFilesTool:
         guard = PathGuard(context.root, context.policy["protected_paths"])
         resolved = guard.resolve_for_read(path)
         if not resolved.exists():
-            return ToolResult(ok=False, summary=f"Path not found: {path}", error="path_not_found")
+            return ToolResult(
+                ok=True,
+                summary=f"Listed 0 entries under {path} (path does not exist yet)",
+                data={"entries": [], "path_exists": False},
+                warnings=["path_not_found"],
+            )
         if not resolved.is_dir():
             return ToolResult(ok=False, summary=f"Not a directory: {path}", error="not_a_directory")
 
@@ -113,6 +118,6 @@ class ListFilesTool:
         return ToolResult(
             ok=True,
             summary=f"Listed {len(entries)} entries under {path}",
-            data={"entries": entries},
+            data={"entries": entries, "path_exists": True},
             warnings=warnings,
         )

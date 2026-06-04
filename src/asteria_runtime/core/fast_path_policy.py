@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -93,8 +94,10 @@ class FastPathPolicy:
 
 
 def classify_fast_path(goal: str, *, target_files: list[str] | None = None) -> FastPathPolicy:
-    text = " ".join([goal, " ".join(target_files or [])]).lower()
-    files = [_normalize_path(item) for item in target_files or [] if item]
+    explicit_files = [_normalize_path(item) for item in target_files or [] if item]
+    inferred_files = _file_hints_from_goal(goal)
+    files = list(dict.fromkeys([*explicit_files, *inferred_files]))
+    text = " ".join([goal, " ".join(files)]).lower()
     if _has_high_risk_signal(text, files):
         return FastPathPolicy(
             task_kind="high_risk",
@@ -167,6 +170,13 @@ def _normalize_path(value: str) -> str:
         return Path(value).as_posix().lower()
     except Exception:  # noqa: BLE001 - path hints can be arbitrary model/user text
         return value.replace("\\", "/").lower()
+
+
+def _file_hints_from_goal(goal: str) -> list[str]:
+    hints: list[str] = []
+    for match in re.finditer(r"(?<![\w/.-])[\w.-]+(?:/[\w.-]+)*\.[A-Za-z0-9]+(?![\w/.-])", goal):
+        hints.append(_normalize_path(match.group(0)))
+    return hints
 
 
 def _has_high_risk_signal(text: str, files: list[str]) -> bool:

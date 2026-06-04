@@ -6,7 +6,7 @@ from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.command_tools import RunCommandTool, RunTestsTool
-from asteria_runtime.tools.file_tools import ReadFileTool, WriteFileTool
+from asteria_runtime.tools.file_tools import ListFilesTool, ReadFileTool, WriteFileTool
 from asteria_runtime.tools.registry import ToolRegistry
 from asteria_runtime.tools.search_tools import SearchTextTool
 
@@ -56,6 +56,7 @@ def registry() -> ToolRegistry:
     tools = ToolRegistry()
     tools.register(ReadFileTool())
     tools.register(WriteFileTool())
+    tools.register(ListFilesTool())
     tools.register(SearchTextTool())
     tools.register(RunCommandTool(default_timeout_seconds=10))
     tools.register(RunTestsTool(RunCommandTool(default_timeout_seconds=10)))
@@ -91,6 +92,18 @@ def test_write_file_preserves_lf_bytes(tmp_path: Path) -> None:
 
     assert write.ok
     assert (tmp_path / "notes" / "lf.txt").read_bytes() == b"one\ntwo\n"
+
+
+def test_list_files_missing_directory_is_empty_observation(tmp_path: Path) -> None:
+    ctx = context(tmp_path)
+    tools = registry()
+
+    result = tools.call("list_files", ctx, path="docs")
+
+    assert result.ok
+    assert result.data["entries"] == []
+    assert result.data["path_exists"] is False
+    assert result.warnings == ["path_not_found"]
 
 
 def test_search_tool_finds_text(tmp_path: Path) -> None:

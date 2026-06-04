@@ -267,6 +267,44 @@ def test_preparer_normalizes_structured_apply_patch_replace() -> None:
     assert "+    return a + b" in patch
 
 
+def test_preparer_normalizes_apply_patch_path_old_new_args() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "apply_patch",
+                "args": {
+                    "path": "calc.py",
+                    "old_text": "def add(a, b):\n    return a - b",
+                    "new_text": "def add(a, b):\n    return a + b",
+                },
+            }
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {"command": "python -m py_compile calc.py"},
+            }
+        ],
+    }
+
+    prepared = ExecutionActionPreparer(lambda _policy, _command: None).prepare(
+        action,
+        _task(
+            expected_artifacts=["calc.py"],
+            expected_changed_files=["calc.py"],
+            allowed_tools=["apply_patch", "run_command"],
+            verification_required=True,
+        ),
+        {},
+    )
+
+    args = prepared["tool_calls"][0]["args"]
+    assert set(args) == {"patch"}
+    assert "--- a/calc.py" in args["patch"]
+    assert "-    return a - b" in args["patch"]
+    assert "+    return a + b" in args["patch"]
+
+
 def test_preparer_keeps_scoped_list_that_is_not_text_artifact_parent() -> None:
     action = {
         "tool_calls": [

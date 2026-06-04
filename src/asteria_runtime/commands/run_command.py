@@ -1186,6 +1186,46 @@ class RunCommand:
             if self._runtime_managed_validation_probe_has_evidence(run_id):
                 return progressed
             if status == "blocked":
+                provider_blocker = self._latest_provider_transient_failure(run_id)
+                if provider_blocker:
+                    steps.append(
+                        RunStepSummary(
+                            "provider",
+                            "retryable_blocker",
+                            (
+                                "Provider transport failed before a usable model action; "
+                                "retry the run after provider health recovers."
+                            ),
+                        )
+                    )
+                    if progress:
+                        progress.record(
+                            run_id=run_id,
+                            channel="progress",
+                            phase="execute",
+                            status="blocked",
+                            title="Provider route blocked",
+                            summary=(
+                                "模型调用在返回可执行动作前发生可重试的 provider/network "
+                                "故障；先不要进入 DebugAgent，恢复 provider 后继续运行。"
+                            ),
+                            display_level="main",
+                            evidence_refs=provider_blocker.get("evidence_refs") or [],
+                            data={
+                                "failure_type": provider_blocker.get("failure_type"),
+                                "recommended_command": "model-check --tier medium",
+                            },
+                        )
+                    self._write_goal_policy_marker(
+                        run_id,
+                        {
+                            "category": "provider_transient",
+                            "recommended_command": "model-check --tier medium",
+                            "reason": provider_blocker.get("summary")
+                            or "Provider transport failed before a usable model action.",
+                        },
+                    )
+                    return progressed
                 if progress:
                     progress.record(
                         run_id=run_id,
@@ -2463,3 +2503,22 @@ class RunCommand:
         if not plan:
             return None
         return str(plan.get("recommended_route") or recommended_route_from_observation_plan(plan))
+
+    def _latest_provider_transient_failure(self, run_id: str) -> dict | None:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        path = run_dir / "task_failures.jsonl"
+        failures = (
+            self.jsonl.read_all(path, "task_failure_evidence") if path.exists() else []
+        )
+        for failure in reversed(failures):
+            failure_type = str(failure.get("failure_type") or "")
+            if failure_type in {
+                "provider_network",
+                "provider_timeout",
+                "provider_rate_limited",
+                "provider_server_error",
+            }:
+                result = dict(failure)
+                result["evidence_refs"] = [str(run_dir / "task_failures.jsonl")]
+                return result
+        return None

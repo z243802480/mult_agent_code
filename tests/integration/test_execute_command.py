@@ -1392,6 +1392,13 @@ class FakeInvalidExecuteClient:
         )
 
 
+class FakeProviderNetworkFailureClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise RuntimeError(
+            "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>"
+        )
+
+
 def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
@@ -2425,6 +2432,38 @@ def test_execute_command_records_pre_tool_user_progress_when_action_fails(
     assert failure_event["status"] == "blocked"
     assert failure_event["evidence_refs"]
     assert failure_event["data"]["failure_type"] == "exception"
+    assert not (run_dir / "tool_calls.jsonl").exists()
+
+
+def test_execute_command_attributes_provider_network_failure_before_tools(
+    tmp_path: Path,
+) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeProviderNetworkFailureClient()
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    failures = [
+        json.loads(line)
+        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert failures[-1]["failure_type"] == "provider_network"
+    assert "provider route evidence" in "\n".join(failures[-1]["recommendations"])
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    failure_event = next(
+        event for event in progress if event["title"] == "Task action failed before tools"
+    )
+    assert failure_event["data"]["failure_type"] == "provider_network"
     assert not (run_dir / "tool_calls.jsonl").exists()
 
 

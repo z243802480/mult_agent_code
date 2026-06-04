@@ -17,6 +17,7 @@ from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_
 from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
+from asteria_runtime.models.model_failure import classify_model_failure
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
@@ -665,6 +666,7 @@ def matrix_context_strategy_summary(
     context_tokens: list[int] = []
     model_tiers: dict[str, int] = {}
     purposes: dict[str, int] = {}
+    failed_model_call_types: dict[str, int] = {}
     failed_calls = 0
     for call in calls:
         if not isinstance(call, dict):
@@ -679,6 +681,10 @@ def matrix_context_strategy_summary(
         purposes[purpose] = purposes.get(purpose, 0) + 1
         if str(call.get("status") or "") == "failure":
             failed_calls += 1
+            failure_type = _model_call_failure_type(call)
+            failed_model_call_types[failure_type] = (
+                failed_model_call_types.get(failure_type, 0) + 1
+            )
         by_mode = purpose_context_modes.setdefault(purpose, {})
         by_mode[context_mode] = by_mode.get(context_mode, 0) + 1
         estimate = call.get("context_estimate")
@@ -707,6 +713,7 @@ def matrix_context_strategy_summary(
         "slim_model_calls": slim_calls,
         "strong_model_calls": model_tiers.get("strong", 0),
         "failed_model_calls": failed_calls,
+        "failed_model_call_types": dict(sorted(failed_model_call_types.items())),
         "task_execution_model_calls": purposes.get("task_execution", 0),
         "task_repair_model_calls": purposes.get("task_repair", 0),
         "run_review_model_calls": purposes.get("run_review", 0),
@@ -715,6 +722,19 @@ def matrix_context_strategy_summary(
         ),
         "max_context_estimated_tokens": max(context_tokens) if context_tokens else None,
     }
+
+
+def _model_call_failure_type(call: dict[str, Any]) -> str:
+    streaming = call.get("streaming")
+    streaming = streaming if isinstance(streaming, dict) else {}
+    text = "\n".join(
+        [
+            str(call.get("summary") or ""),
+            str(streaming.get("error_type") or ""),
+            str(streaming.get("mode") or ""),
+        ]
+    )
+    return classify_model_failure(text)
 
 
 def matrix_agent_loop_summary(
@@ -728,9 +748,15 @@ def matrix_agent_loop_summary(
         run_id = current_run_id(resolved_workspace)
     if resolved_workspace is None or not run_id:
         return {}
-    path = resolved_workspace / ".asteria" / "runs" / run_id / "agent_loop_run_summary.json"
+    run_dir = resolved_workspace / ".asteria" / "runs" / run_id
+    path = run_dir / "agent_loop_run_summary.json"
+    source = "agent_loop_run_summary"
     if not path.exists():
-        return {"status": "missing", "summary_path": str(path)}
+        run_loop_path = run_dir / "run_loop_summary.json"
+        if not run_loop_path.exists():
+            return {"status": "missing", "summary_path": str(path)}
+        path = run_loop_path
+        source = "run_loop_summary"
     try:
         summary = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
@@ -748,9 +774,53 @@ def matrix_agent_loop_summary(
     recovery_chain = (
         summary.get("recovery_chain") if isinstance(summary.get("recovery_chain"), dict) else {}
     )
+    if source == "run_loop_summary":
+        runtime_progress = (
+            summary.get("runtime_progress")
+            if isinstance(summary.get("runtime_progress"), dict)
+            else {}
+        )
+        loop = runtime_progress.get("loop") if isinstance(runtime_progress.get("loop"), dict) else {}
+        tool_use = (
+            runtime_progress.get("tool_use")
+            if isinstance(runtime_progress.get("tool_use"), dict)
+            else {}
+        )
+        latest_decision = (
+            loop.get("latest_decision")
+            if isinstance(loop.get("latest_decision"), dict)
+            else {}
+        )
+        budget = loop.get("budget") if isinstance(loop.get("budget"), dict) else {}
+        context_pressure = (
+            loop.get("context_pressure")
+            if isinstance(loop.get("context_pressure"), dict)
+            else {}
+        )
+        recovery = loop.get("recovery") if isinstance(loop.get("recovery"), dict) else {}
+        return {
+            "status": "run_loop_recorded",
+            "summary_path": str(path),
+            "source": source,
+            "exit_reason": summary.get("stop_reason"),
+            "recommended_command": summary.get("recommended_next_command"),
+            "latest_action": tool_use.get("action") or latest_decision.get("action"),
+            "rounds_completed": loop.get("rounds_completed"),
+            "max_rounds": loop.get("max_rounds"),
+            "budget_status": budget.get("status"),
+            "budget_highest_label": budget.get("highest_label"),
+            "budget_model_calls": budget.get("model_calls"),
+            "budget_tool_calls": budget.get("tool_budget_units"),
+            "budget_repair_attempts": budget.get("repair_attempts"),
+            "context_pressure_status": context_pressure.get("status"),
+            "context_window_ratio": context_pressure.get("context_window_ratio"),
+            "recovery_required": recovery.get("required"),
+            "recovery_satisfied": recovery.get("satisfied"),
+        }
     return {
         "status": "recorded",
         "summary_path": str(path),
+        "source": source,
         "exit_reason": summary.get("exit_reason"),
         "recommended_command": summary.get("recommended_command"),
         "latest_action": summary.get("latest_action"),

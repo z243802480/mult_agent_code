@@ -4,6 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.models.model_failure import classify_model_failure
+
+
+PROVIDER_TRANSIENT_FAILURE_TYPES = {"network", "timeout", "rate_limited", "server_error"}
+
 
 def latest_real_provider_matrix(agent_dir: Path) -> dict[str, Any]:
     """Return a compact summary for the latest real-provider P0 matrix run."""
@@ -123,6 +128,9 @@ def summarize_real_provider_matrix(
     cases = [item for item in summary.get("cases") or [] if isinstance(item, dict)]
     failed_cases = [case for case in cases if case.get("ok") is not True]
     latest_case = failed_cases[-1] if failed_cases else (cases[-1] if cases else {})
+    latest_retry_classification = (
+        classify_matrix_case_retry(latest_case) if latest_case else None
+    )
     route = str(latest_case.get("route") or "unknown") if latest_case else "unknown"
     reason = str(latest_case.get("reason") or "No reason recorded.") if latest_case else ""
     evidence_refs = [str(ref) for ref in latest_case.get("evidence_refs") or []][:5]
@@ -190,6 +198,7 @@ def summarize_real_provider_matrix(
         "latest_task_kind": latest_case.get("task_kind") if latest_case else None,
         "latest_route": route,
         "latest_reason": reason,
+        "latest_retry_classification": latest_retry_classification,
         "latest_evidence_refs": evidence_refs,
         "agent_loop_case_count": len(agent_loop_cases),
         "agent_loop_recorded": len(recorded_agent_loops),
@@ -219,6 +228,8 @@ def summarize_real_provider_matrix(
 def classify_matrix_case_retry(case: dict[str, Any]) -> str:
     metrics = _matrix_case_metrics(case)
     name = str(case.get("name") or "")
+    if _case_provider_transient(case, metrics):
+        return "provider_transient"
     if case.get("ok") is not True:
         if metrics["budget_repair_attempts"] > 0 or metrics["task_repair_model_calls"] > 0:
             return "failed_after_repair"
@@ -239,6 +250,27 @@ def classify_matrix_case_retry(case: dict[str, Any]) -> str:
     if metrics["task_execution_model_calls"] > 1:
         return "multiple_execution_calls"
     return "stable"
+
+
+def _case_provider_transient(case: dict[str, Any], metrics: dict[str, Any]) -> bool:
+    failed_types = metrics.get("failed_model_call_types")
+    if isinstance(failed_types, dict) and any(
+        str(name) in PROVIDER_TRANSIENT_FAILURE_TYPES and int(count or 0) > 0
+        for name, count in failed_types.items()
+    ):
+        return True
+    raw_failure_type = str(case.get("failure_type") or "").lower()
+    if raw_failure_type.startswith("provider_"):
+        raw_failure_type = raw_failure_type.removeprefix("provider_")
+    if raw_failure_type in PROVIDER_TRANSIENT_FAILURE_TYPES:
+        return True
+    text = "\n".join(
+        [
+            str(case.get("failure_summary") or ""),
+            str(case.get("reason") or ""),
+        ]
+    )
+    return classify_model_failure(text) in PROVIDER_TRANSIENT_FAILURE_TYPES
 
 
 def real_provider_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
@@ -355,11 +387,16 @@ def _matrix_case_metrics(case: dict[str, Any]) -> dict[str, Any]:
     model_tiers = model_tiers if isinstance(model_tiers, dict) else {}
     purpose_context_modes = context_strategy.get("purpose_context_modes")
     purpose_context_modes = purpose_context_modes if isinstance(purpose_context_modes, dict) else {}
+    failed_model_call_types = context_strategy.get("failed_model_call_types")
+    failed_model_call_types = (
+        failed_model_call_types if isinstance(failed_model_call_types, dict) else {}
+    )
     return {
         "model_call_count": int(context_strategy.get("model_call_count") or 0),
         "strong_model_calls": _count_metric(context_strategy, "strong_model_calls")
         or _count_from_mapping(model_tiers, "strong"),
         "failed_model_calls": int(context_strategy.get("failed_model_calls") or 0),
+        "failed_model_call_types": failed_model_call_types,
         "task_execution_model_calls": _purpose_count(
             context_strategy,
             purposes,
@@ -444,11 +481,18 @@ def _trend_warnings(cases: dict[str, dict[str, Any]]) -> list[str]:
     warnings: list[str] = []
     bugfix = cases.get("single_file_bugfix")
     if bugfix:
+        latest_classification = str(bugfix.get("latest_retry_classification") or "")
         if int(bugfix.get("strong_model_calls_max") or 0) > 0:
             warnings.append("single_file_bugfix used strong model calls in recent matrix samples.")
-        if int(bugfix.get("budget_repair_attempts_max") or 0) > 0:
+        if (
+            latest_classification in {"repair_loop", "failed_after_repair"}
+            and int(bugfix.get("budget_repair_attempts_max") or 0) > 0
+        ):
             warnings.append("single_file_bugfix still entered repair in recent matrix samples.")
-        if float(bugfix.get("task_execution_model_calls_avg") or 0.0) > 2.0:
+        if (
+            latest_classification == "extra_execution_without_repair"
+            and float(bugfix.get("task_execution_model_calls_avg") or 0.0) > 2.0
+        ):
             warnings.append("single_file_bugfix averages more than two execution model calls.")
     return warnings
 

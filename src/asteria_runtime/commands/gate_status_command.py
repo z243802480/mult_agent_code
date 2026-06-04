@@ -1329,16 +1329,23 @@ def _real_provider_matrix_next_actions(matrix: dict[str, Any]) -> list[str]:
     task_kind = str(matrix.get("latest_task_kind") or "unknown")
     case = str(matrix.get("latest_case") or "unknown")
     summary_path = str(matrix.get("summary_path") or "matrix_summary.json")
+    latest_classification = str(matrix.get("latest_retry_classification") or "")
     if matrix.get("ok") is False:
-        route_command = {
-            "repair": "Run the failed matrix case through `asteria debug` or rerun `asteria real-model-smoke --matrix p0 --matrix-case <case>` after fixing verification.",
-            "replan": "Run `asteria replan` for the failed matrix case contract, then rerun the targeted matrix case.",
-            "ask": "Resolve the permission or scope question before rerunning the targeted matrix case.",
-            "stop": "Stop widening validation until repeated no-new-evidence is investigated.",
-        }.get(
-            route,
-            "Inspect the failed matrix case and rerun the targeted matrix case after repair.",
-        )
+        if latest_classification == "provider_transient":
+            route_command = (
+                "Run `asteria model-check --tier medium --json`, then rerun the targeted "
+                "real-provider matrix case after provider health recovers."
+            )
+        else:
+            route_command = {
+                "repair": "Run the failed matrix case through `asteria debug` or rerun `asteria real-model-smoke --matrix p0 --matrix-case <case>` after fixing verification.",
+                "replan": "Run `asteria replan` for the failed matrix case contract, then rerun the targeted matrix case.",
+                "ask": "Resolve the permission or scope question before rerunning the targeted matrix case.",
+                "stop": "Stop widening validation until repeated no-new-evidence is investigated.",
+            }.get(
+                route,
+                "Inspect the failed matrix case and rerun the targeted matrix case after repair.",
+            )
         actions.extend(
             [
                 (
@@ -1361,18 +1368,33 @@ def _real_provider_matrix_trend_next_actions(matrix: dict[str, Any]) -> list[str
     bugfix = bugfix if isinstance(bugfix, dict) else {}
     classifications = bugfix.get("retry_classifications")
     classifications = classifications if isinstance(classifications, dict) else {}
+    latest_classification = str(bugfix.get("latest_retry_classification") or "")
     summary_path = str(matrix.get("summary_path") or "matrix_summary.json")
     actions: list[str] = []
-    if classifications.get("extra_execution_without_repair"):
+    if latest_classification == "provider_transient" or (
+        not latest_classification and classifications.get("provider_transient")
+    ):
+        actions.append(
+            "Treat single_file_bugfix provider transient evidence as route/provider health; "
+            f"inspect failed model call types in {summary_path} before spending repair attempts."
+        )
+    if latest_classification == "extra_execution_without_repair" or (
+        not latest_classification and classifications.get("extra_execution_without_repair")
+    ):
         actions.append(
             "Review single_file_bugfix prompt/schema for extra medium execution without repair; "
             f"compare task_execution model calls in {summary_path}."
         )
-    if classifications.get("fast_path_mismatch"):
+    if latest_classification == "fast_path_mismatch" or (
+        not latest_classification and classifications.get("fast_path_mismatch")
+    ):
         actions.append(
             "Tighten single_file_bugfix fast-path/context target detection before widening this case."
         )
-    if classifications.get("repair_loop") or classifications.get("failed_after_repair"):
+    if latest_classification in {"repair_loop", "failed_after_repair"} or (
+        not latest_classification
+        and (classifications.get("repair_loop") or classifications.get("failed_after_repair"))
+    ):
         actions.append(
             "Inspect single_file_bugfix planner/tool-contract evidence; recent matrix trend still shows repair-loop behavior."
         )

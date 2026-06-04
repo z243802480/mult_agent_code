@@ -498,6 +498,18 @@ class FakeDebugClient:
         )
 
 
+class FakeProviderNetworkFailureClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise RuntimeError(
+            "<urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred>"
+        )
+
+
+class DebugMustNotRunClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        raise AssertionError("provider transient blockers must not enter DebugAgent")
+
+
 def set_budget_policy(
     root: Path,
     *,
@@ -1214,6 +1226,41 @@ def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "debug: completed" in final_report
     assert "Blocked tasks: 0" in final_report
+
+
+def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -> None:
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeProviderNetworkFailureClient(),
+        debug_model_client=DebugMustNotRunClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    assert result.status == "blocked"
+    assert any(step.name == "provider" for step in result.steps)
+    assert not any(step.name == "debug" for step in result.steps)
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    failures = [
+        json.loads(line)
+        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert failures[-1]["failure_type"] == "provider_network"
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(event["title"] == "Provider route blocked" for event in progress)
+    model_calls = [
+        json.loads(line)
+        for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert not any(call.get("purpose") == "task_repair" for call in model_calls)
 
 
 def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:

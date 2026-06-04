@@ -480,6 +480,36 @@ def test_review_command_requires_command_verification_for_bugfix_fast_path(
     assert "missing_command_verification_call" in blockers
 
 
+def test_review_command_treats_discarded_replanned_worker_failure_as_recovered(
+    tmp_path: Path,
+) -> None:
+    command = ReviewCommand(tmp_path)
+
+    count = command._unrecovered_failed_worker_count(
+        [{"task_id": "task-0001", "status": "failed"}],
+        [{"task_id": "task-0002", "status": "done", "contract_check": {"ok": True}}],
+        discarded_task_ids={"task-0001"},
+        all_active_tasks_done=True,
+    )
+
+    assert count == 0
+
+
+def test_review_command_keeps_discarded_worker_failure_when_active_work_not_done(
+    tmp_path: Path,
+) -> None:
+    command = ReviewCommand(tmp_path)
+
+    count = command._unrecovered_failed_worker_count(
+        [{"task_id": "task-0001", "status": "failed"}],
+        [{"task_id": "task-0002", "status": "blocked"}],
+        discarded_task_ids={"task-0001"},
+        all_active_tasks_done=False,
+    )
+
+    assert count == 1
+
+
 def test_review_command_escalates_high_risk_follow_up_to_decision(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a reviewed module", model_client=FakePlanClient()).run()

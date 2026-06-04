@@ -75,6 +75,18 @@ def recommendations_for_failure(failure_type: str, contract_check: dict) -> list
         recommendations.append(
             "Repair the execution action so it satisfies schema, policy, and tool contracts."
         )
+    if failure_type in {
+        "provider_network",
+        "provider_timeout",
+        "provider_rate_limited",
+        "provider_server_error",
+    }:
+        recommendations.append(
+            "Treat this as provider route evidence; run model-check or retry after provider health recovers."
+        )
+        recommendations.append(
+            "Do not spend DebugAgent repair attempts until a usable model action or tool observation exists."
+        )
     return recommendations or ["Use the failure summary as the next debug input."]
 
 
