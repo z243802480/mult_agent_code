@@ -1200,28 +1200,11 @@ function tailUserProgress(sessionId, jobId) {
               if (seq > lastSeq) {
                 lastSeq = seq;
                 // Emit via appendEvent so it persists in events.jsonl AND hits SSE
+                const mapped = userProgressToStudioEvent(evt, sessionId, path.basename(runDir));
                 void appendEvent(sessionId, {
-                  event_id: evt.event_id,           // preserve original ID for client dedup
-                  type: userProgressChannelToEventType(evt.channel, evt.event_type, evt.phase),
-                  status: evt.status || "running",
-                  title: evt.title || "",
-                  summary: evt.summary || "",
-                  phase: evt.phase || "",
-                  content_delta: evt.content_delta || "",
-                  display_level: evt.display_level || "main",
-                  artifact_refs: evt.artifact_refs || [],
-                  evidence_refs: evt.evidence_refs || [],
-                  command: evt.command || [],
-                  data: evt.data || {},
-                  tool_call_id: evt.tool_call_id,
-                  parent_event_id: evt.parent_event_id,
-                  model_provider: evt.model_provider,
-                  model_name: evt.model_name,
-                  telemetry: evt.telemetry || {},
-                  runtime_channel: evt.channel || "",
-                  runtime_event_type: evt.event_type || "",
-                  file_changes: evt.file_changes || [],
-                  run_id: path.basename(runDir),
+                  ...mapped,
+                  event_id: evt.event_id,
+                  job_id: jobId,
                 });
               }
             } catch {}
@@ -1321,18 +1304,30 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null) {
       content_delta: stderr ? `stderr:
 ${stderr}` : stdout.slice(-4000)
     });
-    void appendEvent(sessionId, {
-      type: code === 0 ? "final_answer" : "error",
-      status: code === 0 ? "completed" : "failed",
-      title: code === 0 ? "Result" : "Needs attention",
-      summary: code === 0 ? "Result prepared." : "The task needs attention; here is the reason and suggestion.",
-      phase: code === 0 ? "result" : "review",
-      display_level: "main",
-      content_delta: await finalTextFor(mode, code, stdout, stderr),
-      evidence_refs: [sessionPath(sessionId, "events.jsonl")],
-      artifact_refs: runArtifactRefs(completedRunId),
-      run_id: completedRunId || undefined
-    });
+    const userProgressRows = completedRunId ? await readRunUserProgress(completedRunId) : [];
+    const mainFinal = latestMainFinalEvent(userProgressRows);
+    if (mainFinal) {
+      const mapped = userProgressToStudioEvent(mainFinal, sessionId, completedRunId || "");
+      void appendEvent(sessionId, {
+        ...mapped,
+        event_id: mainFinal.event_id,
+        job_id: jobId,
+      });
+    } else {
+      void appendEvent(sessionId, {
+        type: code === 0 ? "final_answer" : "error",
+        status: code === 0 ? "completed" : "failed",
+        title: code === 0 ? "Result" : "Needs attention",
+        summary: code === 0 ? "Result prepared." : "The task needs attention; here is the reason and suggestion.",
+        phase: code === 0 ? "result" : "review",
+        display_level: "main",
+        content_delta: await finalTextFor(mode, code, stdout, stderr),
+        evidence_refs: [sessionPath(sessionId, "events.jsonl")],
+        artifact_refs: runArtifactRefs(completedRunId),
+        run_id: completedRunId || undefined,
+        job_id: jobId,
+      });
+    }
   });
   child.on("error", (error) => {
     stopTail();
@@ -2182,12 +2177,73 @@ async function readRunDetail(runId) {
   return redact(payload);
 }
 
+function latestMainTranscriptEvent(events, transcriptKind) {
+  if (!Array.isArray(events)) return null;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.display_level === "inspector") continue;
+    if (event.transcript_kind === transcriptKind) return event;
+  }
+  return null;
+}
+
+function latestMainToolEvent(events) {
+  return latestMainTranscriptEvent(events, "tool_use") || latestMainTranscriptEvent(events, "tool_result");
+}
+
+function latestMainFinalEvent(events) {
+  return latestMainTranscriptEvent(events, "final") || latestMainTranscriptEvent(events, "stop");
+}
+
+function buildTranscriptRuntimeProgress(event, transcriptKind, taskSummary = null) {
+  if (!event) return null;
+  const data = event.data && typeof event.data === "object" ? event.data : {};
+  const taskCount = Number(taskSummary?.total || 0) || Number(data.task_count || 0);
+  const projection = {
+    transcript_kind: transcriptKind,
+    ui_intent: event.ui_intent || "work_progress",
+    phase: event.phase,
+    status: event.status,
+    title: event.title,
+    summary: event.summary,
+    content_delta: event.content_delta || "",
+    event_id: event.event_id,
+    created_at: event.created_at,
+  };
+  if (taskCount) projection.task_count = taskCount;
+  if (event.tool_call_id) projection.tool_call_id = event.tool_call_id;
+  return projection;
+}
+
+async function readRunUserProgress(runId) {
+  if (!runId) return [];
+  const progressPath = path.join(workspace, ".asteria", "runs", runId, "user_progress.jsonl");
+  return readJsonlTail(progressPath, 500);
+}
+
 function enrichRuntimeProgress(progress, payload) {
   const agentLoop = payload.agent_loop_run_summary || {};
   const runLoop = payload.run_loop_summary || {};
   const workerSummary = workerSummaryForProgress(payload.worker_tree || {}, payload.worker_results || []);
+  const userProgress = payload.user_progress || [];
+  const taskPlan = payload.task_plan || {};
+  const taskSummary = Array.isArray(taskPlan.tasks) && taskPlan.tasks.length
+    ? { total: taskPlan.tasks.length }
+    : (progress.todo?.counts || null);
+  const toolEvent = latestMainToolEvent(userProgress);
+  const toolKind = toolEvent?.transcript_kind || "tool_use";
+  const finalEvent = latestMainFinalEvent(userProgress);
+  const finalKind = finalEvent?.transcript_kind || "final";
+  const planProjection = buildTranscriptRuntimeProgress(latestMainTranscriptEvent(userProgress, "plan"), "plan", taskSummary);
+  const toolProjection = buildTranscriptRuntimeProgress(toolEvent, toolKind);
+  const verifyProjection = buildTranscriptRuntimeProgress(latestMainTranscriptEvent(userProgress, "verification"), "verification");
+  const finalProjection = buildTranscriptRuntimeProgress(finalEvent, finalKind);
   return {
     ...progress,
+    ...(planProjection ? { plan: planProjection } : {}),
+    ...(toolProjection ? { tool: toolProjection } : {}),
+    ...(verifyProjection ? { verify: verifyProjection } : {}),
+    ...(finalProjection ? { final: finalProjection } : {}),
     loop: {
       ...(progress.loop || {}),
       exit_reason: firstRuntimeText(progress.loop?.exit_reason, agentLoop.exit_reason, runLoop.stop_reason, ""),

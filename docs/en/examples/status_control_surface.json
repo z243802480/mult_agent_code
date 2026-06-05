@@ -181,6 +181,10 @@
       "summary": null,
       "counts": {}
     },
+    "plan": null,
+    "tool": null,
+    "verify": null,
+    "final": null,
     "tool_use": {
       "target_task_id": null,
       "status": "running",

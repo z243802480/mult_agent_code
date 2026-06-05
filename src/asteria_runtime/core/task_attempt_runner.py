@@ -89,17 +89,20 @@ class TaskAttemptRunner:
             stage="tool_calls",
         )
         task_board.update_status(task_id, "testing")
-        self._record_progress(
-            context,
-            task,
-            channel="progress",
-            event_type="message",
-            phase="execute",
-            status="running",
-            title="Verification started",
-            summary=f"Running {len(action['verification'])} verification call(s) for {task_id}.",
-            data={"verification_count": len(action["verification"])},
-        )
+        logger = self._progress_logger(context)
+        if logger:
+            logger.validation_event(
+                run_id=context.run_id,
+                phase="execute",
+                status="running",
+                title="开始验证",
+                summary=f"正在为 {task_id} 运行 {len(action['verification'])} 项验证。",
+                validation={
+                    "task_id": task_id,
+                    "verification_count": len(action["verification"]),
+                    "status": "running",
+                },
+            )
         verification_results = run_tool_calls(
             action["verification"],
             task,
@@ -121,6 +124,26 @@ class TaskAttemptRunner:
             verification_results,
         )
         verification_passed = len([result for result in verification_results if result.ok])
+        if logger:
+            passed = verification_passed == len(verification_results) and verification_results
+            logger.validation_event(
+                run_id=context.run_id,
+                phase="review",
+                status="completed" if passed else "failed",
+                title="验证完成" if passed else "验证未通过",
+                summary=(
+                    f"{task_id}：{verification_passed}/{len(verification_results)} 项验证通过。"
+                    if verification_results
+                    else f"{task_id}：未记录验证命令。"
+                ),
+                validation={
+                    "task_id": task_id,
+                    "passed": verification_passed,
+                    "total": len(verification_results),
+                    "status": "passed" if passed else "failed",
+                },
+                evidence_refs=self._run_refs(context, "validation_results.jsonl"),
+            )
         self._record_progress(
             context,
             task,

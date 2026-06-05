@@ -32,7 +32,6 @@ from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.evidence_bundle_command import EvidenceBundleCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.gate_command import GateCommand
-from asteria_runtime.commands.validation_command import ValidationCommand
 from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
@@ -275,7 +274,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sessions_parser = subcommands.add_parser(
         "sessions",
-        aliases=["/sessions", "runs", "/runs", "history", "/history"],
+        aliases=["/sessions"],
         help="List, show, or select session contexts",
     )
     sessions_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -439,6 +438,7 @@ def build_parser() -> argparse.ArgumentParser:
         "validation-run",
         aliases=["/validation-run"],
         help="Run a controlled small real-task validation after release gates pass",
+        epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
     validation_run_parser.add_argument(
         "goal",
@@ -493,41 +493,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print machine-readable JSON",
     )
 
-    validation_parser = subcommands.add_parser(
-        "validation",
-        aliases=["/validation"],
-        help="Prepare a dry-run validation plan without changing candidate writes",
-        epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
-    )
-    validation_parser.add_argument(
-        "goal",
-        nargs="?",
-        default=None,
-        help="Small real-task goal; defaults to the validation artifact probe",
-    )
-    validation_parser.add_argument("--root", default=".", help="Workspace root path")
-    validation_parser.add_argument(
-        "--summary-json",
-        type=Path,
-        default=None,
-        help="Write the validation dry-run summary to this JSON path",
-    )
-    validation_parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print machine-readable JSON",
-    )
-
     verification_parser = subcommands.add_parser(
         "verification",
-        aliases=["/verification", "verify-status", "/verify-status"],
+        aliases=["/verification"],
         help="Show the latest local verification summary",
     )
     verification_parser.add_argument("--root", default=".", help="Workspace root path")
 
     package_check_parser = subcommands.add_parser(
         "package-check",
-        aliases=["/package-check", "packaging", "/packaging"],
+        aliases=["/package-check"],
         help="Check local packaging metadata before validation run",
     )
     package_check_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -790,7 +765,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     promotions_parser = subcommands.add_parser(
         "promotions",
-        aliases=["/promotions", "candidates", "/candidates"],
+        aliases=["/promotions"],
         help="Inspect and operate candidate promotion queue entries",
     )
     promotions_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1021,7 +996,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     acceptance_history_parser = subcommands.add_parser(
         "acceptance-history",
-        aliases=["/acceptance-history", "acceptance-trend", "/acceptance-trend"],
+        aliases=["/acceptance-history"],
         help="Show persisted acceptance history and trend deltas",
     )
     acceptance_history_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1074,7 +1049,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     acceptance_gate_parser = subcommands.add_parser(
         "acceptance-gate",
-        aliases=["/acceptance-gate", "release-gate", "/release-gate"],
+        aliases=["/acceptance-gate"],
         help="Evaluate the latest acceptance report as a release gate",
         epilog=f"{MAINTAINER_COMMAND_HELP} {SLASH_ALIAS_HELP}",
     )
@@ -1125,7 +1100,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     capability_report_parser = subcommands.add_parser(
         "capability-report",
-        aliases=["/capability-report", "capabilities", "/capabilities"],
+        aliases=["/capability-report"],
         help="Summarize acceptance trends, failures, repair rounds, and cost signals",
     )
     capability_report_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1137,7 +1112,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evidence_bundle_parser = subcommands.add_parser(
         "evidence-bundle",
-        aliases=["/evidence-bundle", "diagnostic-bundle", "/diagnostic-bundle"],
+        aliases=["/evidence-bundle"],
         help="Export a redacted post-run evidence bundle for dogfooding analysis",
     )
     evidence_bundle_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1166,7 +1141,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     weekly_report_parser = subcommands.add_parser(
         "weekly-report",
-        aliases=["/weekly-report", "production-report", "/production-report"],
+        aliases=["/weekly-report"],
         help="Summarize long-run cycles, acceptance, model capability, and weekly risks",
     )
     weekly_report_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1180,7 +1155,7 @@ def build_parser() -> argparse.ArgumentParser:
     weekly_report_parser.add_argument("--json", action="store_true", help="Print JSON")
     ops_signal_parser = subcommands.add_parser(
         "ops-signal",
-        aliases=["/ops-signal", "usage-signal", "/usage-signal"],
+        aliases=["/ops-signal"],
         help="Record or summarize background usage signals for maintainer diagnostics",
     )
     ops_signal_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1222,7 +1197,7 @@ def build_parser() -> argparse.ArgumentParser:
     ops_signal_parser.add_argument("--json", action="store_true", help="Print JSON")
     roadmap_parser = subcommands.add_parser(
         "roadmap-update",
-        aliases=["/roadmap-update", "prd-update", "/prd-update"],
+        aliases=["/roadmap-update"],
         help="Update project roadmap and PRD-style Markdown from runtime evidence",
     )
     roadmap_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1235,7 +1210,7 @@ def build_parser() -> argparse.ArgumentParser:
     roadmap_parser.add_argument("--json", action="store_true", help="Print JSON")
     daily_plan_parser = subcommands.add_parser(
         "daily-plan",
-        aliases=["/daily-plan", "long-run-plan", "/long-run-plan"],
+        aliases=["/daily-plan"],
         help="Create a bounded long-run production cycle plan",
     )
     daily_plan_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1257,7 +1232,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     daily_run_parser = subcommands.add_parser(
         "daily-run",
-        aliases=["/daily-run", "long-run", "/long-run"],
+        aliases=["/daily-run"],
         help="Run or stage a bounded long-run production cycle",
     )
     daily_run_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1285,7 +1260,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     daily_report_parser = subcommands.add_parser(
         "daily-report",
-        aliases=["/daily-report", "long-run-report", "/long-run-report"],
+        aliases=["/daily-report"],
         help="Show or create a long-run production cycle report",
     )
     daily_report_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1304,7 +1279,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     studio_benchmark_parser = subcommands.add_parser(
         "studio-benchmark",
-        aliases=["/studio-benchmark", "ux-benchmark", "/ux-benchmark"],
+        aliases=["/studio-benchmark"],
         help="Evaluate Studio sessions against user-side agent workspace benchmarks",
     )
     studio_benchmark_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1348,45 +1323,6 @@ def build_parser() -> argparse.ArgumentParser:
                     ("chat", "Lightweight Q&A mode for everyday questions."),
                     ("sessions", "List, inspect, or select session contexts."),
                     ("doctor", "Diagnose local runtime setup and model route health."),
-                ],
-            ),
-            (
-                "Maintainer / Inspector",
-                "Raw runtime controls and evidence surfaces for experts, validation, and CI.",
-                [
-                    ("run", "Compatibility alias for goal mode."),
-                    ("execute", "Run ready task graph work directly."),
-                    ("replan", "Create follow-up tasks from blockers."),
-                    ("compact", "Create context snapshots."),
-                    ("handoff", "Write recovery handoff context."),
-                    ("promotions", "Inspect and operate candidate promotions."),
-                    ("plugins", "Inspect plugin manifest policy state."),
-                    ("decide", "Create or resolve DecisionPoints."),
-                    ("research", "Collect research context."),
-                    ("brainstorm", "Generate early solution options."),
-                    ("gate", "Run staged validation checks; use --stage release before release."),
-                    ("validation", "Plan controlled real-provider validation tasks."),
-                    ("evidence-bundle", "Export a redacted diagnostic bundle."),
-                    ("ops-signal", "Record background usage signals for ops diagnostics."),
-                    ("acceptance", "Run reproducible runtime acceptance scenarios."),
-                    ("acceptance-gate", "Evaluate acceptance reports as release gates."),
-                    ("acceptance-history", "Show acceptance trend history."),
-                    ("capability-report", "Summarize capability and failure trends."),
-                    ("weekly-report", "Summarize long-run and release risks."),
-                    ("roadmap-update", "Update roadmap artifacts from runtime evidence."),
-                    ("daily-plan", "Plan a bounded long-run cycle."),
-                    ("daily-run", "Run or stage a bounded long-run cycle."),
-                    ("daily-report", "Report on a bounded long-run cycle."),
-                    ("verification", "Show latest verification summary."),
-                    ("package-check", "Check packaging metadata and docs."),
-                    ("gate-status", "Show release validation evidence."),
-                    ("version", "Show runtime version diagnostics."),
-                    ("studio-benchmark", "Evaluate Studio sessions against UX benchmarks."),
-                    ("model-check", "Validate provider configuration."),
-                    ("real-model-smoke", "Run an isolated real-model smoke test."),
-                    ("real-model-gate", "Run controlled real-model preflight gate."),
-                    ("real-model-acceptance", "Run validation/core real-provider suites."),
-                    ("validation-run", "Run or dry-run controlled validation tasks."),
                 ],
             ),
         ]
@@ -1465,7 +1401,7 @@ def main() -> None:
         print(new_result.to_text())
         return
 
-    if command in {"sessions", "runs", "history"}:
+    if command == "sessions":
         sessions_result = SessionsCommand(
             root=Path(args.root),
             session_id=args.session_id,
@@ -1551,26 +1487,12 @@ def main() -> None:
             raise SystemExit(1)
         return
 
-    if command == "validation":
-        validation_result = ValidationCommand(
-            root=Path(args.root),
-            goal=args.goal,
-            summary_json=args.summary_json,
-        ).run()
-        if args.json:
-            print(json.dumps(validation_result.to_dict(), ensure_ascii=False, indent=2))
-        else:
-            print(validation_result.to_text())
-        if validation_result.status == "blocked":
-            raise SystemExit(1)
-        return
-
-    if command in {"verification", "verify-status"}:
+    if command == "verification":
         verification_result = VerificationStatusCommand(root=Path(args.root)).run()
         print(verification_result.to_text())
         return
 
-    if command in {"package-check", "packaging"}:
+    if command == "package-check":
         package_result = PackageCheckCommand(root=Path(args.root)).run()
         if args.json:
             print(json.dumps(package_result.to_dict(), ensure_ascii=False, indent=2))
@@ -1686,7 +1608,7 @@ def main() -> None:
         print(execute_result.to_text())
         return
 
-    if command in {"promotions", "candidates"}:
+    if command == "promotions":
         promotions_command = PromotionsCommand(
             root=Path(args.root),
             run_id=args.session_id,
@@ -1789,7 +1711,7 @@ def main() -> None:
             raise SystemExit(acceptance_result.returncode)
         return
 
-    if command in {"acceptance-history", "acceptance-trend"}:
+    if command == "acceptance-history":
         acceptance_history_result = AcceptanceHistoryCommand(
             root=Path(args.root),
             limit=args.limit,
@@ -1805,7 +1727,7 @@ def main() -> None:
             raise SystemExit(1)
         return
 
-    if command in {"acceptance-gate", "release-gate"}:
+    if command == "acceptance-gate":
         acceptance_gate_result = AcceptanceGateCommand(
             root=Path(args.root),
             report_path=args.report,
@@ -1822,7 +1744,7 @@ def main() -> None:
             raise SystemExit(1)
         return
 
-    if command in {"capability-report", "capabilities"}:
+    if command == "capability-report":
         capability_report_result = CapabilityReportCommand(
             root=Path(args.root),
             limit=args.limit,
@@ -1830,7 +1752,7 @@ def main() -> None:
         print(capability_report_result.to_text())
         return
 
-    if command in {"evidence-bundle", "diagnostic-bundle"}:
+    if command == "evidence-bundle":
         evidence_bundle_result = EvidenceBundleCommand(
             root=Path(args.root),
             output=args.output,
@@ -1846,7 +1768,7 @@ def main() -> None:
             raise SystemExit(1)
         return
 
-    if command in {"weekly-report", "production-report"}:
+    if command == "weekly-report":
         weekly_report_result = WeeklyReportCommand(
             root=Path(args.root),
             week_id=args.week_id,
@@ -1858,7 +1780,7 @@ def main() -> None:
             print(weekly_report_result.to_text())
         return
 
-    if command in {"ops-signal", "usage-signal"}:
+    if command == "ops-signal":
         ops_signal_result = OpsSignalCommand(
             root=Path(args.root),
             run_id=args.run_id,
@@ -1879,7 +1801,7 @@ def main() -> None:
             print(ops_signal_result.to_text())
         return
 
-    if command in {"roadmap-update", "prd-update"}:
+    if command == "roadmap-update":
         roadmap_result = RoadmapCommand(
             root=Path(args.root),
             output=args.output,
@@ -1890,7 +1812,7 @@ def main() -> None:
             print(roadmap_result.to_text())
         return
 
-    if command in {"daily-plan", "long-run-plan"}:
+    if command == "daily-plan":
         daily_plan_result = DailyPlanCommand(
             root=Path(args.root),
             date=args.cycle_id or args.date,
@@ -1903,7 +1825,7 @@ def main() -> None:
         print(daily_plan_result.to_text())
         return
 
-    if command in {"daily-run", "long-run"}:
+    if command == "daily-run":
         daily_run_result = DailyRunCommand(
             root=Path(args.root),
             date=args.cycle_id or args.date,
@@ -1918,7 +1840,7 @@ def main() -> None:
         print(daily_run_result.to_text())
         return
 
-    if command in {"daily-report", "long-run-report"}:
+    if command == "daily-report":
         daily_report_result = DailyReportCommand(
             root=Path(args.root),
             date=args.cycle_id or args.date,
@@ -1927,7 +1849,7 @@ def main() -> None:
         print(daily_report_result.to_text())
         return
 
-    if command in {"studio-benchmark", "ux-benchmark"}:
+    if command == "studio-benchmark":
         studio_benchmark_result = StudioBenchmarkCommand(
             root=Path(args.root),
             manifest=args.manifest,

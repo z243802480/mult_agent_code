@@ -49,6 +49,14 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
 }
 
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
+  const transcriptKind = String(event.transcript_kind ?? "");
+  if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
+  if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
+  if (transcriptKind === "verification") return "verification";
+  if (transcriptKind === "final" || transcriptKind === "stop") return "final";
+  if (transcriptKind === "file_change") return "result";
+  if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") return "tool";
+  if (transcriptKind === "subagent_summary") return "tool";
   if (event.type === "user_message") return "goal";
   if (event.type === "agent_turn" || event.runtime_event_type === "turn_start" || event.runtime_event_type === "turn_end") return "turn";
   if (event.type === "intent_route") return "thinking";

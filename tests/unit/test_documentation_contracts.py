@@ -7,7 +7,6 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
-from asteria_runtime.commands.validation_command import ValidationCommand
 from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
@@ -18,11 +17,15 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 
 def test_readme_points_to_existing_chinese_source_of_truth() -> None:
     readme = Path("README.md").read_text(encoding="utf-8")
-    match = re.search(r"`(docs/zh/[^`]+\.md)`", readme)
+    doc_links = re.findall(r"`(docs/zh/[^`]+\.md)`", readme)
 
-    assert match, "README should link to the Chinese current-state source of truth."
-    assert "当前状态" in match.group(1)
-    assert Path(match.group(1)).exists()
+    assert doc_links, "README should link to Chinese documentation."
+    assert any("研发总计划" in link for link in doc_links)
+    assert any("当前状态" in link for link in doc_links)
+    assert "docs/zh/研发总计划.md" in readme
+    assert "docs/zh/当前状态与路线.md" in readme
+    assert Path("docs/zh/研发总计划.md").exists()
+    assert Path("docs/zh/当前状态与路线.md").exists()
     assert "slash-prefixed forms" in readme
     assert "compatibility aliases" in readme
     assert "`asteria accept` finalizes one reviewed run" in readme
@@ -31,8 +34,10 @@ def test_readme_points_to_existing_chinese_source_of_truth() -> None:
     assert "path. Use plain command names" in readme
     assert "Maintainer-facing validation commands stay separate" in readme
     assert "`asteria gate`" in readme
-    assert "`asteria validation`" in readme
+    assert "`asteria validation-run --dry-run`" in readme
     assert "`asteria acceptance-gate`" in readme
+    assert "研发总计划" in readme
+    assert "`asteria goal" in readme
 
 
 def test_runtime_command_docs_describe_accept_workflow_and_alias_policy() -> None:
@@ -68,7 +73,7 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "`asteria doctor --json`",
         "`asteria gate-status --json`",
         "`asteria gate --json`",
-        "`asteria validation --json`",
+        "`asteria validation-run --dry-run --json`",
         "`asteria validation-run --json`",
         "`asteria weekly-report --json`",
         "`asteria roadmap-update --json`",
@@ -87,7 +92,6 @@ def test_runtime_command_docs_describe_control_surface_contract() -> None:
         "docs/en/examples/doctor_control_surface.json",
         "docs/en/examples/gate_status_control_surface.json",
         "docs/en/examples/gate_control_surface.json",
-        "docs/en/examples/validation_control_surface.json",
         "docs/en/examples/validation_run_control_surface.json",
         "schemas/control_surface.schema.json",
         "`stability=additive`",
@@ -141,7 +145,6 @@ def test_control_surface_examples_keep_runtime_stable_fields_in_sync(tmp_path: P
         "doctor_control_surface.json": DoctorCommand(tmp_path).run().to_dict(),
         "gate_status_control_surface.json": GateStatusCommand(tmp_path).run().to_dict(),
         "gate_control_surface.json": GateCommand(Path.cwd()).run().to_dict(),
-        "validation_control_surface.json": ValidationCommand(Path.cwd()).run().to_dict(),
         "validation_run_control_surface.json": ValidationRunCommand(Path.cwd(), dry_run=True).run().to_dict(),
     }
 
@@ -164,7 +167,6 @@ def test_control_surface_examples_match_documented_contracts() -> None:
             "maintainer_release_validation",
         ),
         ("gate_control_surface.json", "gate", "maintainer_release_validation"),
-        ("validation_control_surface.json", "validation", "maintainer_release_validation"),
         ("validation_run_control_surface.json", "validation-run", "maintainer_validation_execution"),
     ]
 
@@ -232,3 +234,22 @@ def test_runtime_command_docs_keep_user_workflow_sections_in_order() -> None:
 
     assert positions == sorted(positions)
     assert docs.count("### 3.8 ") == 1
+
+
+def test_master_plan_exists_and_is_execution_entry() -> None:
+    master_plan = Path("docs/zh/研发总计划.md")
+    agents = Path("AGENTS.md").read_text(encoding="utf-8")
+    current_state = Path("docs/zh/当前状态与路线.md").read_text(encoding="utf-8")
+    navigation = Path("docs/zh/文档导航.md").read_text(encoding="utf-8")
+
+    assert master_plan.exists()
+    body = master_plan.read_text(encoding="utf-8")
+    assert "Vibe Slice" in body
+    assert "代码 Triage 锁" in body
+    assert "docs/zh/研发总计划.md" in agents
+    assert "ACTIVE_SLICE" in agents
+    assert "研发总计划" in current_state
+    assert "研发总计划" in navigation
+    assert Path("benchmarks/vibe_slices.json").exists()
+    assert Path("benchmarks/reference_briefs/README.md").exists()
+    assert Path("benchmarks/phase2_mvp_gate.json").exists()

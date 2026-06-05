@@ -559,6 +559,8 @@ class UserProgressLogger:
             data={"validation": validation},
             call_chain=["RunCommand"],
             execution_chain=[phase, "validation"],
+            display_level="main",
+            ui_intent="work_progress",
             transcript_kind="verification",
         )
 
@@ -598,6 +600,8 @@ class UserProgressLogger:
             },
             call_chain=["RunCommand"],
             execution_chain=["result", "final_report"],
+            display_level="main",
+            ui_intent="result",
             transcript_kind="final",
         )
 

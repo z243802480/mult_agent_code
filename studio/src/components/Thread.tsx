@@ -212,6 +212,8 @@ function runtimeProgressEvent(
     source: "runtime_progress",
     runtime_channel: "progress",
     runtime_event_type: String(data.kind ?? "summary"),
+    transcript_kind: data.transcript_kind ? String(data.transcript_kind) : undefined,
+    ui_intent: data.ui_intent ? String(data.ui_intent) : undefined,
     run_id: runId,
     phase,
     display_level: "main",
@@ -222,9 +224,12 @@ function runtimeProgressEvent(
 function synthesizedRuntimeProgressEvents(runDetail: RunDetailPayload | null, startedAt: string): StudioEvent[] {
   const progress = runtimeProgress(runDetail);
   const runId = String(runDetail?.run_id ?? "");
+  const plan = asRecord(progress.plan);
   const todo = asRecord(progress.todo);
   const currentTodo = asRecord(todo.current);
+  const tool = asRecord(progress.tool);
   const toolUse = asRecord(progress.tool_use);
+  const verify = asRecord(progress.verify);
   const verification = asRecord(progress.verification);
   const loop = asRecord(progress.loop);
   const workerSummary = asRecord(progress.worker_summary);
@@ -234,30 +239,30 @@ function synthesizedRuntimeProgressEvents(runDetail: RunDetailPayload | null, st
       runId,
       1,
       "Plan/Todo",
-      firstText(String(todo.summary ?? ""), String(currentTodo.content ?? ""), String(progress.current_step ?? "")),
+      firstText(String(plan.summary ?? ""), String(plan.title ?? ""), String(todo.summary ?? ""), String(currentTodo.content ?? ""), String(progress.current_step ?? "")),
       "plan",
-      eventStatus(currentTodo.status ?? todo.status ?? progress.workflow_state),
-      { kind: "todo", ...todo },
+      eventStatus(plan.status ?? currentTodo.status ?? todo.status ?? progress.workflow_state),
+      { kind: "plan", transcript_kind: plan.transcript_kind ?? "plan", ...plan, ...todo },
       startedAt
     ),
     runtimeProgressEvent(
       runId,
       2,
       "Tool Use",
-      firstText(String(toolUse.summary ?? ""), String(progress.current_step ?? "")),
+      firstText(String(tool.summary ?? ""), String(toolUse.summary ?? ""), String(progress.current_step ?? "")),
       "execute",
-      eventStatus(toolUse.status ?? progress.workflow_state),
-      { kind: "tool_use", ...toolUse },
+      eventStatus(tool.status ?? toolUse.status ?? progress.workflow_state),
+      { kind: "tool_use", transcript_kind: tool.transcript_kind ?? "tool_use", ...tool, ...toolUse },
       startedAt
     ),
     runtimeProgressEvent(
       runId,
       3,
       "Verify",
-      firstText(String(verification.summary ?? ""), String(verification.status ?? "")),
+      firstText(String(verify.summary ?? ""), String(verification.summary ?? ""), String(verification.status ?? "")),
       "review",
-      eventStatus(verification.status ?? progress.workflow_state),
-      { kind: "verification", ...verification },
+      eventStatus(verify.status ?? verification.status ?? progress.workflow_state),
+      { kind: "verification", transcript_kind: verify.transcript_kind ?? "verification", ...verify, ...verification },
       startedAt
     ),
     runtimeProgressEvent(
@@ -583,6 +588,9 @@ function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[]
         evidence_refs: asArray(event.evidence_refs).map(String),
         runtime_channel: String(event.channel ?? "progress"),
         runtime_event_type: String(event.event_type ?? "message"),
+        transcript_kind: event.transcript_kind ? String(event.transcript_kind) : undefined,
+        ui_intent: event.ui_intent ? String(event.ui_intent) : undefined,
+        job_id: event.job_id ? String(event.job_id) : undefined,
         source: "runtime_user_progress",
         run_id: runId,
         phase: String(event.phase ?? "execute"),
@@ -609,16 +617,23 @@ function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[]
 
   events.push(...(userProgress.length ? userProgress : synthesizedRuntimeProgressEvents(runDetail, startedAt)));
 
+  const hasMainFinalInProgress = ((runDetail.user_progress ?? []) as AnyRecord[]).some(
+    (event) => event.display_level !== "inspector"
+      && (event.transcript_kind === "final" || event.transcript_kind === "stop")
+  );
   const finalSummary = asRecord(runDetail.final_report_summary);
   const progress = runtimeProgress(runDetail);
+  const progressFinal = asRecord(progress.final);
   const finalText = firstText(
+    String(progressFinal.summary ?? ""),
+    String(progressFinal.content_delta ?? ""),
     String(progress.result_summary ?? ""),
     String(progress.summary ?? ""),
     String(finalSummary.summary ?? ""),
     String(run.summary ?? ""),
     String(progress.workflow_state ?? finalSummary.workflow_state ?? "")
   );
-  if (finalText) {
+  if (finalText && !hasMainFinalInProgress) {
     events.push({
       event_id: `runtime-final-${runId || "latest"}`,
       session_id: "runtime-session",

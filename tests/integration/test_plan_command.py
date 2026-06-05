@@ -130,10 +130,17 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
         if line.strip()
     ]
     assert [event["phase"] for event in user_progress[:2]] == ["understand", "plan"]
-    assert user_progress[-2]["phase"] == "result"
+    plan_events = [
+        event
+        for event in user_progress
+        if event.get("transcript_kind") == "plan" and event.get("display_level") == "main"
+    ]
+    assert plan_events
+    assert plan_events[-1]["phase"] == "plan"
+    assert plan_events[-1]["title"] == "计划已生成"
     assert user_progress[-1]["phase"] == "next"
     channels = {event["channel"] for event in user_progress}
-    assert {"conclusion", "model", "tool", "file", "evidence"}.issubset(channels)
+    assert {"conclusion", "progress", "tool", "file", "evidence"}.issubset(channels)
     assert any(
         event["channel"] == "tool" and event["event_type"] == "tool_call"
         for event in user_progress
@@ -163,7 +170,7 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
         for event in user_progress
         if event["call_chain"] == ["PlanCommand", "AgentHarness"]
     )
-    assert user_progress[-2]["artifact_refs"]
+    assert plan_events[-1]["artifact_refs"]
 
     backlog = json.loads(
         (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")

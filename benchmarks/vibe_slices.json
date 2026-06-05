@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
+  "master_plan": "docs/zh/研发总计划.md",
+  "active_slice": "S7",
+  "active_phase": "Phase 2",
+  "mvp_benchmark_task_id": "small_code_change",
+  "slices": [
+    {
+      "id": "S0",
+      "name": "执行锁",
+      "phase": "0",
+      "depends_on": [],
+      "user_demo": "AGENTS + 研发总计划 + triage + vibe_slices 就位",
+      "green_checks": ["pytest tests/unit/test_documentation_contracts.py -q"]
+    },
+    {
+      "id": "S1",
+      "name": "Plan 可见",
+      "phase": "1",
+      "depends_on": ["S0"],
+      "user_demo": "goal 后 status 显示中文 plan 摘要",
+      "green_checks": ["status --json 含 transcript_kind=plan"],
+      "reference_brief": "benchmarks/reference_briefs/S1-plan.md"
+    },
+    {
+      "id": "S2",
+      "name": "Tool 可见",
+      "phase": "1",
+      "depends_on": ["S1"],
+      "user_demo": "status/Thread 显示工具过程块",
+      "green_checks": ["user_progress.jsonl 含 tool_use"],
+      "reference_brief": "benchmarks/reference_briefs/S2-tool.md"
+    },
+    {
+      "id": "S3",
+      "name": "Verify 可见",
+      "phase": "1",
+      "depends_on": ["S2"],
+      "user_demo": "验证结论用户可读",
+      "green_checks": ["user_progress.jsonl 含 verification"],
+      "reference_brief": "benchmarks/reference_briefs/S3-verify.md"
+    },
+    {
+      "id": "S4",
+      "name": "Final 可见",
+      "phase": "1",
+      "depends_on": ["S3"],
+      "user_demo": "Result / Next step 固定结构",
+      "green_checks": ["required_user_progress_kinds 齐"],
+      "reference_brief": "benchmarks/reference_briefs/S4-final.md"
+    },
+    {
+      "id": "S1b",
+      "name": "MERGE_TRIM",
+      "phase": "1",
+      "depends_on": ["S4"],
+      "user_demo": "CLI 减别名；删 runs_command",
+      "green_checks": ["pytest -q"]
+    },
+    {
+      "id": "S5",
+      "name": "Studio 对齐",
+      "phase": "2",
+      "depends_on": ["S1b"],
+      "user_demo": "Thread 与 status 同一 run 叙事一致",
+      "green_checks": ["node studio/scripts/run-detail-smoke.mjs"],
+      "reference_brief": "benchmarks/reference_briefs/S5-studio.md"
+    },
+    {
+      "id": "S6",
+      "name": "权限卡",
+      "phase": "2",
+      "depends_on": ["S5"],
+      "user_demo": "permission_request UI",
+      "green_checks": ["node studio/scripts/interactive-main-path.spec.mjs"],
+      "reference_brief": "benchmarks/reference_briefs/S6-perm.md"
+    },
+    {
+      "id": "S7",
+      "name": "MVP 终点",
+      "phase": "2",
+      "depends_on": ["S6"],
+      "user_demo": "small_code_change E2E",
+      "green_checks": [
+        "python -m asteria_runtime studio-benchmark --root . --json",
+        "real provider pass"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S7-benchmark.md"
+    },
+    {
+      "id": "S8",
+      "name": "续作",
+      "phase": "3",
+      "depends_on": ["S7"],
+      "user_demo": "同 session 第二条 goal 带上文",
+      "green_checks": ["manual demo"],
+      "reference_brief": "benchmarks/reference_briefs/S8-resume.md"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.run_config import apply_run_config, write_run_config
 from asteria_runtime.core.workspace_registry import WorkspaceRegistry
+from asteria_runtime.core.user_progress_view import build_plan_completion_copy
 from asteria_runtime.core.workspace_envelope import (
     build_workspace_envelope,
     workspace_summary,
@@ -204,15 +205,16 @@ class PlanCommand:
         )
         progress_logger.record(
             run_id=run["run_id"],
-            channel="model",
+            channel="progress",
             event_type="start",
             phase="plan",
             status="running",
-            title="Plan draft started",
-            summary="Asteria is turning the goal into a structured plan.",
+            title="制定计划",
+            summary="正在把目标拆成可执行步骤。",
             data={"model_route": goal_spec_route_plan},
             call_chain=["PlanCommand", "GoalSpecAgent"],
             execution_chain=["understand", "goal_spec"],
+            display_level="main",
             transcript_kind="plan",
             ui_intent="work_progress",
         )
@@ -334,6 +336,8 @@ class PlanCommand:
                     "Provider GoalSpec generation failed, so targeted validation probe "
                     "planning used a deterministic schema-valid GoalSpec."
                 ),
+                display_level="inspector",
+                transcript_kind="diagnostic",
                 data={
                     "validation_probe_ids": self.validation_probe_ids,
                     "failure_report": str(report_path),
@@ -647,14 +651,27 @@ class PlanCommand:
         run_store.update_run(run)
         run_store.set_current_session(run["run_id"], "plan_created")
         event_logger.record(run["run_id"], "run_completed", "PlanCommand", run["summary"])
+        task_titles = [
+            str(task.get("title") or task.get("description") or "").strip()
+            for task in task_plan.get("tasks") or []
+        ]
+        plan_title, plan_summary = build_plan_completion_copy(
+            task_count=len(task_plan["tasks"]),
+            task_titles=task_titles,
+            quality_status=str(task_plan_eval["status"]),
+            quality_score=float(task_plan_eval["overall_score"]),
+        )
         progress_logger.record(
             run_id=run["run_id"],
-            channel="conclusion",
+            channel="progress",
             event_type="message",
-            phase="result",
+            phase="plan",
             status="completed",
-            title="计划已生成",
-            summary=run["summary"],
+            title=plan_title,
+            summary=plan_summary,
+            display_level="main",
+            transcript_kind="plan",
+            ui_intent="work_progress",
             artifact_refs=[
                 str(goal_spec_path),
                 str(task_plan_path),
@@ -668,17 +685,26 @@ class PlanCommand:
                 str(cost_report_path),
             ],
             call_chain=["PlanCommand", "GoalSpecAgent", "RequirementPlanner", "TaskPlanEvaluator"],
-            execution_chain=["understand", "goal_spec", "task_plan", "task_plan_eval", "result"],
+            execution_chain=["understand", "goal_spec", "task_plan", "task_plan_eval", "plan"],
+            data={
+                "task_count": len(task_plan["tasks"]),
+                "task_titles": task_titles[:5],
+                "quality_status": task_plan_eval["status"],
+                "quality_score": task_plan_eval["overall_score"],
+            },
         )
         progress_logger.record(
             run_id=run["run_id"],
-            channel="conclusion",
+            channel="progress",
             event_type="message",
             phase="next",
             status="completed",
             title="下一步",
-            summary="Review the plan, then run it with bounded permissions or adjust scope.",
-            content_delta="You can continue with `asteria run --root <workspace>` or ask Studio to execute the plan after confirming permissions.",
+            summary="请查看计划，确认权限后执行或调整范围。",
+            content_delta="可继续 `asteria run --root <workspace>`，或在 Studio 确认权限后执行计划。",
+            display_level="main",
+            transcript_kind="progress",
+            ui_intent="inform",
         )
 
         return PlanResult(

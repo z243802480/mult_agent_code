@@ -372,6 +372,19 @@ class ToolExecutionGateway:
         logger = self._progress_logger(context)
         if logger is None:
             return None
+        transcript_kind = {
+            "tool_call": "tool_use",
+            "tool_output": "tool_result",
+            "error": "tool_result",
+        }.get(event_type, "progress")
+        display_level = "main" if event_type in {"tool_call", "tool_output", "error"} else "inspector"
+        title, summary = self._tool_user_copy(
+            tool_name=tool_name,
+            event_type=event_type,
+            status=status,
+            title=title,
+            summary=summary,
+        )
         return logger.record(
             run_id=context.run_id,
             channel="tool",
@@ -380,7 +393,9 @@ class ToolExecutionGateway:
             status=status,
             title=title,
             summary=summary,
-            display_level="inspector",
+            display_level=display_level,
+            transcript_kind=transcript_kind,
+            ui_intent="work_progress" if display_level == "main" else "inform",
             parent_event_id=parent_event_id,
             tool_call_id=tool_call_id,
             command=command,
@@ -633,16 +648,36 @@ class ToolExecutionGateway:
         tool_name = str(data.get("tool_name") or data.get("model_tool_name") or "")
         observation = data.get("observation")
         if event_type == "turn_start":
-            name = self._tool_display_name(tool_name) if tool_name else "tool"
-            return f"Using {name}", summary
+            name = self._tool_display_name(tool_name) if tool_name else "工具"
+            return f"正在使用 {name}", summary
         if isinstance(observation, dict):
             observed_summary = str(observation.get("summary") or summary)
         else:
             observed_summary = summary
         if event_type in {"tool_observation", "turn_end"}:
             if status == "failed":
-                return "Tool step needs attention", observed_summary
-            return "Tool result", observed_summary
+                return "工具步骤需要处理", observed_summary
+            return "工具结果", observed_summary
+        return title, summary
+
+    def _tool_user_copy(
+        self,
+        *,
+        tool_name: str,
+        event_type: str,
+        status: str,
+        title: str,
+        summary: str,
+    ) -> tuple[str, str]:
+        name = self._tool_display_name(tool_name)
+        if event_type == "tool_call":
+            return f"正在使用 {name}", summary or f"正在执行 {name}。"
+        if event_type == "tool_output":
+            if status == "failed":
+                return f"{name} 未完成", summary or f"{name} 执行失败。"
+            return f"{name} 已完成", summary or f"{name} 执行完成。"
+        if event_type == "error":
+            return f"{name} 失败", summary or str(title)
         return title, summary
 
     def _command_args(self, tool_name: str, args: dict[str, Any]) -> list[str]:

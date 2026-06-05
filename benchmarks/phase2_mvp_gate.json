@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 2 MVP gate checklist (S7). Real provider runs require local API credentials.",
+  "task_id": "small_code_change",
+  "score_threshold": 0.8,
+  "contract_fixture_run_id": "s7-golden-run",
+  "contract_test": "tests/integration/test_s7_golden_benchmark.py",
+  "required_checks": [
+    "pytest tests/integration/test_s7_golden_benchmark.py -q",
+    "python -m asteria_runtime studio-benchmark --root <workspace> --run-id <run_id> --json",
+    "python -m asteria_runtime model-check --root <workspace> --tier medium --json",
+    "python -m asteria_runtime model-check --root <workspace> --tier strong --json"
+  ],
+  "real_provider_e2e": {
+    "task_id": "small_code_change",
+    "goal_ref": "benchmarks/studio_user_tasks.json",
+    "steps": [
+      "asteria init --root <workspace>",
+      "asteria goal \"<small_code_change goal>\" --root <workspace>",
+      "asteria status --json --root <workspace>",
+      "python -m asteria_runtime studio-benchmark --root <workspace> --run-id <run_id> --json",
+      "python -m asteria_runtime evidence-bundle --root <workspace> (optional)"
+    ],
+    "signoff_report": "docs/zh/reports/S7-mvp-signoff-pending.md"
+  },
+  "required_user_progress_kinds": [
+    "plan",
+    "tool_use",
+    "tool_result",
+    "verification",
+    "final"
+  ],
+  "notes": "Use run-scoped studio-benchmark for S7 pass/fail. Workspace-wide benchmark may fail on legacy Studio sessions. Fake provider passes CI contract tests; real provider sign-off is manual."
+}

@@ -21,9 +21,8 @@ def test_top_level_help_groups_command_surface() -> None:
 
     assert "Start" in help_text
     assert "Support" in help_text
-    assert "Maintainer / Inspector" in help_text
+    assert "Maintainer / Inspector" not in help_text
     assert help_text.index("Start") < help_text.index("Support")
-    assert help_text.index("Support") < help_text.index("Maintainer / Inspector")
     assert (
         "Product workflow commands for ordinary goal -> progress -> review journeys." in help_text
     )
@@ -38,9 +37,9 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "chat      Lightweight Q&A mode" in help_text
     assert help_text.index("goal    Long-task") < help_text.index("status  Show user-level")
     assert help_text.index("debug   Repair") < help_text.index("Support")
-    assert "run                    Compatibility alias for goal mode." in help_text
-    assert "gate                   Run staged validation checks" in help_text
-    assert "real-model-acceptance" in help_text
+    assert "run                    Compatibility alias for goal mode." not in help_text
+    assert "gate                   Run staged validation checks" not in help_text
+    assert "real-model-acceptance" not in help_text
     assert "Compatibility" in help_text
     assert "slash-prefixed command forms such as `asteria /run` remain aliases" in help_text
     assert "use plain command names in new docs and scripts" in help_text
@@ -89,7 +88,7 @@ def test_maintainer_command_help_stays_outside_default_completion_path() -> None
         "resume -> review -> accept workflow"
     )
 
-    for command in ("gate", "validation", "acceptance", "acceptance-gate"):
+    for command in ("gate", "validation-run", "acceptance", "acceptance-gate"):
         help_text = " ".join(_command_help(command).split())
         assert expected in help_text
         assert "not as an ordinary completion step" in help_text
@@ -197,18 +196,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     model_check_args = parser.parse_args(
         ["/model-check", "--root", ".", "--tier", "strong", "--json"]
     )
-    validation_args = parser.parse_args(
-        [
-            "/validation",
-            "Create a small probe",
-            "--root",
-            ".",
-            "--summary-json",
-            "validation-plan.json",
-            "--json",
-        ]
-    )
-    runs_args = parser.parse_args(["/runs", "--root", ".", "--run-id", "run-1"])
     execute_args = parser.parse_args(
         [
             "/execute",
@@ -316,18 +303,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
         ]
     )
     daily_report_args = parser.parse_args(["/daily-report", "--root", "."])
-    long_run_args = parser.parse_args(
-        [
-            "/long-run",
-            "--root",
-            ".",
-            "--cycle-id",
-            "release-hardening",
-            "--objective",
-            "run a long autonomous task safely",
-            "--execute",
-        ]
-    )
     run_parallel_args = parser.parse_args(["/run", "build", "--parallel-disjoint-writes"])
     resume_parallel_args = parser.parse_args(["/resume", "--parallel-disjoint-writes"])
 
@@ -372,10 +347,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert validation_run_args.summary_json.as_posix() == "validation.json"
     assert validation_run_args.probe_id == ["readonly_fanout_succeeds"]
     assert validation_run_args.json
-    assert validation_args.command == "/validation"
-    assert validation_args.goal == "Create a small probe"
-    assert validation_args.summary_json.as_posix() == "validation-plan.json"
-    assert validation_args.json
     assert verification_args.command == "/verification"
     assert package_check_args.command == "/package-check"
     assert package_check_args.json
@@ -386,8 +357,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert model_check_args.command == "/model-check"
     assert model_check_args.json
     assert model_check_args.tier == "strong"
-    assert runs_args.command == "/runs"
-    assert runs_args.session_id == "run-1"
     assert execute_args.session_id == "run-1"
     assert execute_args.parallel_readonly
     assert execute_args.parallel_disjoint_writes
@@ -441,10 +410,6 @@ def test_slash_command_aliases_parse_like_regular_commands() -> None:
     assert daily_run_args.max_runtime_minutes == 3
     assert daily_run_args.max_repair_attempts == 1
     assert daily_report_args.command == "/daily-report"
-    assert long_run_args.command == "/long-run"
-    assert long_run_args.cycle_id == "release-hardening"
-    assert long_run_args.objective == "run a long autonomous task safely"
-    assert long_run_args.execute
     assert run_parallel_args.parallel_disjoint_writes
     assert resume_parallel_args.parallel_disjoint_writes
     assert weekly_report_args.json

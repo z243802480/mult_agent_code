@@ -3,7 +3,6 @@ from pathlib import Path
 
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.new_command import NewCommand
-from asteria_runtime.commands.runs_command import RunsCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
@@ -137,10 +136,10 @@ def test_sessions_context_falls_back_to_legacy_events_without_user_progress(
     assert context["progress_timeline"][-1]["source"] == "events"
 
 
-def test_runs_command_remains_a_compatibility_alias(tmp_path: Path) -> None:
+def test_runs_alias_uses_sessions_command(tmp_path: Path) -> None:
     session = NewCommand(tmp_path, "create alpha", model_client=GoalEchoPlanClient()).run()
 
-    runs = RunsCommand(tmp_path, run_id=session.run_id).run()
+    runs = SessionsCommand(tmp_path, session_id=session.run_id).run()
 
     assert runs.current_run_id == session.run_id
     assert runs.runs[0]["run_id"] == session.run_id

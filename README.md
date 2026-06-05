@@ -4,10 +4,13 @@ Local-first multi-agent autonomous development runtime. The current MVP path is 
 turns a goal into a GoalSpec, task plan, controlled tool execution, repair, review, context
 snapshot, and final report.
 
-The active product direction is Asteria Runtime OS for long-task autonomous
-development: task contracts, worker invocation evidence, isolated candidates, merge gates,
-resume/handoff, acceptance gates, and cost controls. The Chinese documents are the current
-source of truth; start with `docs/zh/当前状态与路线.md`.
+The active product direction is a harness-first general long-task agent runtime
+(local-first, auditable, multi-provider). The Chinese documents are the source of truth.
+
+## Chinese Documentation
+
+- `docs/zh/研发总计划.md` — long-term execution plan (read first)
+- `docs/zh/当前状态与路线.md` — implementation snapshot and gate status
 
 ## Quick Start
 
@@ -18,20 +21,22 @@ asteria init --root .
 asteria status --root .
 ```
 
-The default user workflow is `init -> run -> status -> resume -> review -> accept`:
-start a goal with `asteria run "goal"`, inspect progress with `asteria status`, resolve
-runtime decisions with `asteria resume` after `asteria decide`, verify the result with
-`asteria review`, then finalize reviewed candidate outputs with `asteria accept`.
+The default user workflow is `init -> goal -> status -> resume -> review -> accept`.
+Start a goal with `asteria goal "goal"` (preferred) or the compatibility alias
+`asteria run "goal"`. Inspect progress with `asteria status`, resolve runtime decisions
+with `asteria resume` after `asteria decide`, verify with `asteria review`, then finalize
+with `asteria accept`. Use `asteria plan` for read-only planning and `asteria chat` for
+lightweight Ask mode.
 `asteria accept` finalizes one reviewed run; `asteria acceptance` runs validation
 suites for maintainers and CI, so it is not part of the ordinary user completion
 path. Use plain command names in new docs and scripts; slash-prefixed forms such as
 `asteria /run` remain compatibility aliases for older automation.
 
 Maintainer-facing validation commands stay separate from that completion path: `asteria gate`,
-`asteria validation`, `asteria acceptance`, and `asteria acceptance-gate` are for release checks,
+`asteria validation-run --dry-run`, `asteria acceptance`, and `asteria acceptance-gate` are for release checks,
 validation, acceptance history, and CI/release gates after or around a completed run.
 
-`asteria run "goal"` writes run artifacts under `.asteria/runs/<run_id>/`, including
+`asteria goal "goal"` writes run artifacts under `.asteria/runs/<run_id>/`, including
 `goal_spec.json`, `task_plan.json`, `task_plan_eval.json`, logs, `review_report.md`, and
 `final_report.md`.
 Execute and debug attempts run in isolated candidate workspaces under the active run directory.

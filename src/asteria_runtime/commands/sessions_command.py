@@ -15,6 +15,9 @@ from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQue
 from asteria_runtime.core.main_path import build_main_path, canonical_next_command
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.core.todo_view import build_todo_view
+from asteria_runtime.core.user_progress_view import (
+    build_user_progress_projections,
+)
 from asteria_runtime.core.worker_tree import WorkerTreeBuilder
 from asteria_runtime.models.route_resolver import (
     route_health_for_tiers,
@@ -231,6 +234,14 @@ class SessionsCommand:
         model_route_timeline_path = self._model_route_timeline_path(run_dir)
         latest_model_progress = self._latest_model_progress(run_dir)
         progress_timeline = self._progress_timeline(run_dir, execution_evidence)
+        user_progress_events = self._read_jsonl(
+            run_dir / "user_progress.jsonl",
+            "user_progress_event",
+        )
+        user_progress_projections = build_user_progress_projections(
+            user_progress_events,
+            task_summary=task_summary,
+        )
         latest_observation_plan = self._latest_observation_plan(run_dir)
         latest_loop_decision = latest_agent_loop_decision(run_dir, self.validator) or {}
         latest_loop_execution = latest_agent_loop_execution_result(run_dir, self.validator) or {}
@@ -345,6 +356,10 @@ class SessionsCommand:
             latest_observation=latest_loop_observation,
             agent_loop_summary=agent_loop_run_summary or run_loop_summary,
             validation_conclusion=validation_conclusion,
+            plan_progress=user_progress_projections.get("plan"),
+            tool_progress=user_progress_projections.get("tool"),
+            verify_progress=user_progress_projections.get("verify"),
+            final_progress=user_progress_projections.get("final"),
         )
         return {
             "goal_summary": (snapshot or {}).get("goal_summary") or self._goal_summary(run_dir),
@@ -355,6 +370,10 @@ class SessionsCommand:
             "main_path": main_path,
             "todo_view": todo_view,
             "runtime_progress": runtime_progress,
+            "latest_user_progress_plan": user_progress_projections.get("plan"),
+            "latest_user_progress_tool": user_progress_projections.get("tool"),
+            "latest_user_progress_verify": user_progress_projections.get("verify"),
+            "latest_user_progress_final": user_progress_projections.get("final"),
             "run_loop_summary_path": self._relative_path(run_dir / "run_loop_summary.json")
             if run_loop_summary
             else None,
@@ -712,6 +731,8 @@ class SessionsCommand:
                         "title": event.get("title"),
                         "summary": event.get("summary"),
                         "display_level": event.get("display_level"),
+                        "transcript_kind": event.get("transcript_kind"),
+                        "ui_intent": event.get("ui_intent"),
                         "artifact_refs": event.get("artifact_refs", []),
                         "evidence_refs": event.get("evidence_refs", []),
                         "created_at": event.get("created_at"),

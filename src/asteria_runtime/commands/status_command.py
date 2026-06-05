@@ -124,6 +124,10 @@ class StatusResult:
             latest_observation=latest_agent_loop_observation,
             agent_loop_summary=agent_loop_run_summary or run_loop_summary,
             validation_conclusion=final_report_summary.get("validation_conclusion") or {},
+            plan_progress=self.current_context.get("latest_user_progress_plan"),
+            tool_progress=self.current_context.get("latest_user_progress_tool"),
+            verify_progress=self.current_context.get("latest_user_progress_verify"),
+            final_progress=self.current_context.get("latest_user_progress_final"),
         )
         return {
             "schema_version": "0.1.0",

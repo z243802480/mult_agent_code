@@ -5,7 +5,6 @@ from pathlib import Path
 from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
-from asteria_runtime.commands.validation_command import ValidationCommand
 from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.gate_status_command import (
     _real_provider_matrix_next_actions,
@@ -598,27 +597,23 @@ def test_validation_run_command_reports_execution_control_surface(tmp_path: Path
     )
 
 
-def test_validation_command_reports_dry_run_control_surface(tmp_path: Path) -> None:
+def test_validation_run_dry_run_reports_control_surface(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
-    result = ValidationCommand(tmp_path).run()
+    result = ValidationRunCommand(tmp_path, dry_run=True).run()
     payload = result.to_dict()
 
     assert payload["schema_version"] == "0.1.0"
-    assert payload["mode"] == "dry_run"
-    assert "gate_status" in payload
-    assert "validation_run" in payload
+    assert payload["status"] in {"dry_run", "blocked"}
     _assert_control_surface_contract(
         payload,
-        command="validation",
-        audience="maintainer_release_validation",
+        command="validation-run",
+        audience="maintainer_validation_execution",
         required_fields={
             "schema_version",
-            "root",
+            "validation_run_id",
             "status",
-            "ok",
-            "mode",
-            "gate_status",
-            "validation_run",
+            "summary_path",
+            "run_id",
             "next_actions",
         },
     )

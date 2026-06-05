@@ -16,6 +16,10 @@ def build_runtime_progress(
     latest_observation: dict | None = None,
     agent_loop_summary: dict | None = None,
     validation_conclusion: dict | None = None,
+    plan_progress: dict | None = None,
+    tool_progress: dict | None = None,
+    verify_progress: dict | None = None,
+    final_progress: dict | None = None,
 ) -> dict[str, Any]:
     """Collapse user-facing runtime progress into one stable product object."""
 
@@ -54,6 +58,10 @@ def build_runtime_progress(
             "summary": todo.get("summary"),
             "counts": todo.get("counts") or {},
         },
+        "plan": plan_progress,
+        "tool": tool_progress,
+        "verify": verify_progress,
+        "final": final_progress,
         "tool_use": _tool_use(execution, execution_result),
         "verification": _verification(validation, todo),
         "loop": {

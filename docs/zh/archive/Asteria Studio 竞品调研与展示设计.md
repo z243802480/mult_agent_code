@@ -1,3 +1,5 @@
+> **非当前依据（archive）**：机制摘要已并入 [研发总计划.md](../研发总计划.md) §5。下文 dashboard/mission control 方案 **不再执行**；Studio 以 [Studio 会话与上下文设计准则.md](../Studio%20会话与上下文设计准则.md) 为准。
+
 # Asteria Studio 竞品调研与展示设计
 
 本文记录 2026-05-20 对 opencode、Claude Code 和 Codex 的产品调研结论，并把结论转化为 Asteria Studio 的展示设计方案。

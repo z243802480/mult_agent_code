@@ -209,7 +209,6 @@ class PackageCheckCommand:
             "src/asteria_runtime/real_model_gate.py",
             "src/asteria_runtime/real_model_acceptance.py",
             "src/asteria_runtime/commands/gate_command.py",
-            "src/asteria_runtime/commands/validation_command.py",
             "src/asteria_runtime/commands/validation_run_command.py",
             "src/asteria_runtime/commands/evidence_bundle_command.py",
             "src/asteria_runtime/schemas/validation_run.schema.json",
@@ -220,7 +219,7 @@ class PackageCheckCommand:
             not missing,
             (
                 "real-model smoke/gate/acceptance package modules present"
-                " and gate/validation/validation-run command modules present"
+                " and gate/validation-run command modules present"
                 if not missing
                 else "missing: " + ", ".join(missing)
             ),

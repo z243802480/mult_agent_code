@@ -7,10 +7,41 @@ This project is an agent-ready workspace. Agents must use this file as high-prio
 Project purpose:
 
 ```text
-Build a local-first multi-agent autonomous development runtime. The system should turn a compact user goal into verified artifacts through goal specification, task decomposition, controlled tool use, validation, repair, context compression, cost control, and final reporting.
+Build a local-first harness for general long-task agents: turn compact goals into verified
+artifacts through goal specification, on-demand planning, controlled tool/MCP/skill use,
+validation, repair, context compression, cost control, and final reporting—with a friendly
+CLI and Studio surface (not command-only UX).
 ```
 
-## 2. Non-Goals
+## 2. Execution Plan (mandatory)
+
+```text
+执行计划唯一入口：docs/zh/研发总计划.md
+当前 ACTIVE_PHASE：Phase 2
+当前 ACTIVE_SLICE：S7
+事实快照：docs/zh/当前状态与路线.md
+设计索引：docs/zh/文档导航.md
+```
+
+Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start North Star,
+swarm parallel write, or new maintainer commands unless the master plan todo explicitly allows it.
+
+Reference-first: before each Vibe Slice, read `benchmarks/reference_briefs/Sn.md` (create if missing).
+No brief → no coding. Learn from OpenCode / Claude Code / Codex-rs mechanisms; do not reinvent wheels.
+
+## 3. Code Triage Lock (Phase 0–2)
+
+| Tier | Rule |
+| --- | --- |
+| **KEEP_CORE** | Do not delete: run/execute/plan/chat/status/review/accept/debug, agent_loop_*, user_progress_logger, runtime_progress, candidate/merge/promotion, studio server/Thread/Composer, schemas, core tests |
+| **KEEP_PLACEHOLDER** | Do not expand: disjoint_write real parallel, sandbox rollout, deferred Agent classes, legacy event_logger fallback |
+| **HIDE_NOT_DELETE** | Hide from user help, keep for CI: daily/weekly/roadmap, gate/acceptance/validation/real-model-*, evidence-bundle |
+| **MERGE_OR_TRIM** | Phase 1b only: delete runs_command.py; merge validation→validation-run; trim CLI aliases; remove Studio fake completion |
+| **DO_NOT_TOUCH** | No refactor: execute_command.py, run_command.py, gate_status_command.py, acceptance/real_model stack (append user_progress only) |
+
+Full table: `docs/zh/研发总计划.md` §6.
+
+## 4. Non-Goals
 
 Agents must not silently expand the project beyond these boundaries:
 
@@ -19,31 +50,33 @@ Do not build an unrestricted agent chatroom.
 Do not allow destructive shell actions without policy approval.
 Do not depend on a single model provider.
 Do not skip schema validation for persisted runtime objects.
-Do not prioritize a dashboard before the core CLI/runtime loop works.
+Do not prioritize a gate dashboard before harness + user_progress work.
+Do not copy proprietary implementations from reference products.
 ```
 
-## 3. Current Assumptions
+## 5. Current Assumptions
 
 ```text
-The current implementation phase is the orchestrated Agent Runtime OS stage.
-The product capability target is a long-task autonomous development runtime: orchestrated, isolated, resumable, auditable, and cost-controlled.
-The Chinese main documents in docs/zh are the most detailed project source of truth.
-Start from docs/zh/当前状态与路线.md before using older phase documents.
-The runtime should avoid fake stubs; implemented features must have real behavior and tests.
+MVP proof: coding harness first (Goal→Plan→Execute→Verify→resume); doc/creative tasks reuse the same loop.
+Autonomy: supervised_auto (reviewed_auto); hard-stop, promotion, release, irreversible actions must interrupt.
+Backend first + Studio in parallel on user_progress / runtime_progress contract.
+MVP endpoint: studio-benchmark task small_code_change score >= 0.8 with real provider (Slice S7).
+North Star and swarm parallel write: only after S7 gate (Phase 3+).
 MVP uses filesystem + JSON/JSONL before SQLite.
+User-facing CLI: goal, plan, ask/chat (run remains compatibility alias).
 ```
 
-## 4. Architecture Notes
+## 6. Architecture Notes
 
 ```text
-Runtime layers: CLI, command router, orchestrator, context layer, agent layer, tool layer, evaluation layer, persistence layer.
-MVP implementation uses Python standard library where possible, with optional future dependencies documented in pyproject.toml.
-Current working commands: python -m asteria_runtime init --root <path>, python -m asteria_runtime /run "<goal>" --root <path>, and python -m asteria_runtime /acceptance --suite offline --allow-fake --root <path>
-Current Runtime OS objects include TaskGraph, WorkerInvocation, WorkerResult, RuntimeProfile, ContextMount, TaskExecutionEvidence, and MergeGate.
+Runtime layers: CLI, command router, harness (Run/Execute/AgentLoop), context layer, agent layer,
+tool layer, evaluation layer, persistence layer.
 Root runtime state lives in .asteria/.
+Primary user workflow: init -> goal -> status -> resume/decide -> review -> accept.
+Maintainer/CI: gate, validation-run, acceptance, evidence-bundle (hidden from default help).
 ```
 
-## 5. Commands
+## 7. Commands
 
 Use these commands when available:
 
@@ -57,35 +90,29 @@ build: None
 format: ruff format .
 ```
 
+Phase 0 verification:
+
+```yaml
+doc_contracts: pytest tests/unit/test_documentation_contracts.py -q
+```
+
 If a command is unknown, do not invent it. Detect it from project files or create a DecisionPoint when the choice matters.
 
-## 6. Coding Conventions
+## 8. Coding Conventions
 
 - Follow existing project style before introducing new style.
-- Prefer small, verifiable changes.
+- Prefer small, verifiable Vibe Slices (see benchmarks/vibe_slices.json).
 - Add tests when behavior changes.
-- Avoid unrelated refactors.
+- Avoid unrelated refactors and DO_NOT_TOUCH files.
 - Keep generated code readable and maintainable.
 
-Project-specific conventions:
+## 9. UI and Experience Conventions
 
-```text
-Follow existing project conventions.
-```
+- Studio is a first-class client of runtime evidence (not a second runtime).
+- Default UX: Goal / Plan / Ask + session narrative; Inspector for raw evidence.
+- Do not expose maintainer gate vocabulary on the main thread.
 
-## 7. UI and Experience Conventions
-
-- Choose the output medium based on the task, not habit.
-- Do not create a web UI when CLI, report, or automation is the better product shape.
-- If a UI is needed, define the primary workflow and acceptance criteria before implementation.
-
-Project-specific UI notes:
-
-```text
-Choose output medium based on task fit.
-```
-
-## 8. Safety Boundaries
+## 10. Safety Boundaries
 
 Protected paths:
 
@@ -110,7 +137,7 @@ Agents must not:
 - Deploy to production.
 - Send sensitive local data to network services.
 
-## 9. Decision Policy
+## 11. Decision Policy
 
 Default decision granularity:
 
@@ -118,17 +145,9 @@ Default decision granularity:
 balanced
 ```
 
-Create a DecisionPoint for:
+Create a DecisionPoint for major product direction, stack tradeoffs, privacy/security/network, scope expansion, high cost, irreversible changes, and budget hard-stop (0.90).
 
-- Major product direction choices.
-- Output medium choices.
-- Technology stack choices with meaningful tradeoffs.
-- Privacy, security, or network decisions.
-- Scope expansion beyond the original goal.
-- High additional cost.
-- Irreversible or high-risk changes.
-
-## 10. Cost Policy
+## 12. Cost Policy
 
 Default budgets:
 
@@ -142,50 +161,18 @@ context_compaction_threshold: 0.75
 hard_stop_threshold: 0.90
 ```
 
-`max_tool_calls_per_goal` is a risk-weighted emergency brake, not a raw call-count cap
-and not the main stability mechanism. Raw `tool_calls` are still recorded for audit.
-Low-risk read/search/list/diff exploration has weight 0 by default; verification/state
-tools have low weight; write, shell, external MCP, and Skill calls consume more budget
-and remain permission-gated. Long-running autonomy should be governed primarily by
-goal progress, context pressure, repair/replan limits, permission risk, provider health,
-and repeated low-value loop detection.
+See full policy in prior AGENTS sections; long-task autonomy is governed by goal progress, context pressure, repair/replan limits, permission risk, provider health, and loop detection.
 
-Budget policies may define profiles such as `validation`, `balanced`, and
-`autonomous_long_task`. Use stricter profiles for release validation and wider profiles
-for long-horizon development where the agent should keep iterating toward the goal.
-
-When approaching budget:
-
-1. Compact context.
-2. Reduce candidate count.
-3. Stop low-value branches.
-4. Downgrade non-critical model calls.
-5. Ask the user before continuing.
-
-The runtime must create a budget DecisionPoint before crossing hard-stop thresholds.
-
-## 11. Agent Operating Rules
+## 13. Agent Operating Rules
 
 All agents must:
 
-- Read root guidance and relevant context before acting.
+- Read AGENTS.md + 研发总计划 + ACTIVE_SLICE before acting.
 - Produce durable artifacts, not only chat text.
-- Use structured tools where available.
-- Respect permissions and protected paths.
-- Record decisions, tool calls, model calls, and artifacts.
-- Verify changes before reporting success.
-- Preserve user-authored content.
+- Respect triage lock and reference briefs.
+- Verify changes before reporting success (pytest/smoke for the slice).
+- Update ACTIVE_SLICE handoff when pausing.
 
-## 12. Handoff Requirements
+## 14. Handoff Requirements
 
-Before long pauses, context compaction, or delegation, create a ContextSnapshot that preserves:
-
-- Goal.
-- Definition of done.
-- Accepted decisions.
-- Active tasks.
-- Modified files and reasons.
-- Verification results.
-- Failures and repair attempts.
-- Open risks.
-- Next actions.
+Before long pauses, preserve: goal, definition of done, ACTIVE_SLICE, modified files, verification results, failures, open risks, next actions.
