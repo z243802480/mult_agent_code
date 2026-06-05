@@ -564,6 +564,9 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     )
     assert summary["evidence"]["runtime_validation_matrix"]["ready"] is True
     assert "recovery_pressure" in summary["evidence"]
+    studio_benchmark = summary["evidence"]["studio_runtime_progress_benchmark"]
+    assert studio_benchmark["ok"] is True
+    assert studio_benchmark["scope"] == "run:run-validation-0001"
     assert summary["validation_plan"]["flexibility_policy"]["low_risk_exploration"] == "trace_only"
     probe_results = {probe["id"]: probe for probe in summary["validation_plan"]["probe_results"]}
     evidence_probe_results = {
@@ -576,6 +579,28 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     assert evidence_probe_results == probe_results
     assert any(
         "Review missing validation probe evidence" in action for action in summary["next_actions"]
+    )
+
+
+def test_validation_run_fails_when_studio_runtime_progress_contract_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    InitCommand(tmp_path).run()
+    _configure_release_routes(monkeypatch)
+    _write_ready_gate_reports(tmp_path)
+
+    result = ValidationRunCommand(
+        tmp_path,
+        goal="Create validation evidence",
+        run_command_factory=BadStudioProgressRunCommand,
+    ).run()
+
+    assert result.status == "failed"
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    studio_benchmark = summary["evidence"]["studio_runtime_progress_benchmark"]
+    assert studio_benchmark["ok"] is False
+    assert any(
+        "Studio runtime progress contract" in action for action in summary["next_actions"]
     )
 
 
@@ -925,27 +950,7 @@ class FakeRunCommand:
         )
         _write_jsonl(
             run_dir / "user_progress.jsonl",
-            [
-                {
-                    "schema_version": "0.1.0",
-                    "event_id": "upe-1",
-                    "run_id": run_id,
-                    "created_at": now_iso(),
-                    "channel": "permission",
-                    "event_type": "permission_decision",
-                    "phase": "execute",
-                    "status": "running",
-                    "title": "Capability decision recorded",
-                    "summary": "recorded",
-                    "display_level": "main",
-                    "artifact_refs": [],
-                    "evidence_refs": [],
-                    "call_chain": [],
-                    "execution_chain": [],
-                    "file_changes": [],
-                    "data": {"capability_type": "skill"},
-                }
-            ],
+            _semantic_user_progress(run_id),
         )
         (run_dir / "cost_report.json").write_text(
             json.dumps(
@@ -992,6 +997,39 @@ class FailingRunCommand:
         raise RuntimeError("GoalSpec model call failed with network")
 
 
+class BadStudioProgressRunCommand(FakeRunCommand):
+    def run(self) -> RunResult:
+        result = super().run()
+        run_dir = self.root / ".asteria" / "runs" / result.run_id
+        _write_jsonl(
+            run_dir / "user_progress.jsonl",
+            [
+                {
+                    "schema_version": "0.1.0",
+                    "event_id": "upe-bad-1",
+                    "run_id": result.run_id,
+                    "created_at": now_iso(),
+                    "channel": "model",
+                    "event_type": "delta",
+                    "phase": "execute",
+                    "status": "running",
+                    "title": "Raw model",
+                    "summary": "raw",
+                    "content_delta": "<think>raw provider trace</think>",
+                    "display_level": "main",
+                    "transcript_kind": "assistant_message",
+                    "artifact_refs": [],
+                    "evidence_refs": [],
+                    "call_chain": [],
+                    "execution_chain": [],
+                    "file_changes": [],
+                    "data": {},
+                }
+            ],
+        )
+        return result
+
+
 def _write_ready_gate_reports(root: Path) -> None:
     model_dir = root / ".asteria" / "model"
     verification_dir = root / ".asteria" / "verification"
@@ -1019,6 +1057,58 @@ def _write_ready_gate_reports(root: Path) -> None:
         json.dumps({"ok": True, "aggregate": {"total": 6, "passed": 6}}),
         encoding="utf-8",
     )
+
+
+def _semantic_user_progress(run_id: str) -> list[dict]:
+    base = {
+        "schema_version": "0.1.0",
+        "run_id": run_id,
+        "created_at": now_iso(),
+        "phase": "execute",
+        "status": "completed",
+        "display_level": "main",
+        "artifact_refs": [],
+        "evidence_refs": [],
+        "call_chain": [],
+        "execution_chain": [],
+        "file_changes": [],
+        "data": {},
+    }
+    events = [
+        ("upe-plan", "progress", "start", "plan", "Plan ready", "Validation task is planned."),
+        ("upe-tool-use", "tool", "tool_call", "tool_use", "Using tool", "Writing validation artifact."),
+        ("upe-tool-result", "tool", "tool_observation", "tool_result", "Tool result", "Validation artifact was written."),
+        ("upe-file", "file", "file_changed", "file_change", "File changed", "Updated validation_probe.txt."),
+        ("upe-verify", "validation", "validation_result", "verification", "Verification passed", "Validation checks passed."),
+        ("upe-final", "conclusion", "final_report", "final", "Result ready", "Validation run summary is ready."),
+    ]
+    payloads = []
+    for event_id, channel, event_type, transcript_kind, title, summary in events:
+        item = {
+            **base,
+            "event_id": event_id,
+            "channel": channel,
+            "event_type": event_type,
+            "title": title,
+            "summary": summary,
+            "transcript_kind": transcript_kind,
+        }
+        if transcript_kind == "file_change":
+            item["file_changes"] = [{"path": "validation_probe.txt", "operation": "modified"}]
+        payloads.append(item)
+    payloads.append(
+        {
+            **base,
+            "event_id": "upe-capability",
+            "channel": "permission",
+            "event_type": "permission_decision",
+            "title": "Capability decision recorded",
+            "summary": "recorded",
+            "transcript_kind": "permission_request",
+            "data": {"capability_type": "skill"},
+        }
+    )
+    return payloads
 
 
 def _configure_release_routes(monkeypatch) -> None:

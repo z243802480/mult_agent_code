@@ -309,13 +309,13 @@ class RunCommand:
                 break
             _progress.record(
                 run_id=run_id,
-                channel="progress",
+                channel="tool",
                 phase="execute",
                 status="running",
                 title=f"执行迭代 {index + 1}",
                 summary=f"正在执行第 {index + 1} 轮任务，最多处理 {self.max_tasks_per_iteration} 个任务。",
                 display_level="main",
-                transcript_kind="progress",
+                transcript_kind="tool_use",
                 ui_intent="work_progress",
             )
             self._execute_until_no_ready(run_id, steps, iteration=index + 1, progress=_progress)

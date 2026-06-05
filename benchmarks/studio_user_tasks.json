@@ -2,7 +2,7 @@
   "schema_version": "0.1.0",
   "purpose": "Asteria Studio user-side task benchmark. These tasks prove whether the product feels like an agent workspace instead of a backend dashboard.",
   "minimum_ready_score": 0.8,
-  "required_user_progress_channels": ["model", "tool", "file", "evidence", "execution_chain"],
+  "required_user_progress_kinds": ["plan", "tool_use", "tool_result", "file_change", "verification", "final"],
   "tasks": [
     {
       "id": "travel_plan_qingdao",
@@ -14,7 +14,7 @@
         "final answer has result and next step",
         "no raw stdout is required to understand the answer"
       ],
-      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+      "required_events": ["user_message", "assistant_delta", "final_answer"]
     },
     {
       "id": "small_code_change",
@@ -37,7 +37,7 @@
         "internal command output is kept in Inspector",
         "the user can continue the same session"
       ],
-      "required_events": ["user_message", "assistant_delta", "reasoning_delta"]
+      "required_events": ["user_message", "assistant_delta"]
     },
     {
       "id": "document_synthesis",
@@ -48,7 +48,7 @@
         "final artifact is readable without backend knowledge",
         "the next step asks for scope confirmation or execution"
       ],
-      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+      "required_events": ["user_message", "assistant_delta", "final_answer"]
     },
     {
       "id": "resume_previous_task",
@@ -59,7 +59,7 @@
         "completed work is separated from next work",
         "risks and blockers are visible"
       ],
-      "required_events": ["user_message", "assistant_delta", "reasoning_delta"]
+      "required_events": ["user_message", "assistant_delta"]
     },
     {
       "id": "profile_research_runtime_native",
@@ -70,7 +70,7 @@
         "source or artifact evidence is inspectable",
         "the answer separates claims, evidence, and next action"
       ],
-      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+      "required_events": ["user_message", "assistant_delta", "final_answer"]
     },
     {
       "id": "profile_brainstorm_runtime_native",
@@ -81,7 +81,7 @@
         "tradeoffs and a recommended option are visible",
         "a DecisionPoint or next action is explicit"
       ],
-      "required_events": ["user_message", "assistant_delta", "reasoning_delta", "final_answer"]
+      "required_events": ["user_message", "assistant_delta", "final_answer"]
     },
     {
       "id": "profile_multi_agent_runtime_native",

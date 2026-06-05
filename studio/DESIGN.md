@@ -29,13 +29,13 @@ Everything in between — planning, tool calls, model reasoning, repair loops �
 ```
 User: "Refactor the auth module"
 
-[Live: 思考中… tokens stream in…]
-[Live: ⚡ read_file  ✓ completed]
-[Live: ⚡ write_file  ✓ 3 files changed]
+[Live: Planning the change...]
+[Live: Tool use: read_file ✓ completed]
+[Live: File change: 3 files changed]
 
 → collapses when done →
 
-▶ 🔧 6步 · 思考 · 工具调用 · 验证     ← optional inspection
+▶ 6 steps · plan · tool use · verification     ← optional inspection
 
 A Asteria
 已完成 auth 模块重构。抽取了 AuthContext，
@@ -44,22 +44,22 @@ A Asteria
 
 ---
 
-## 2. Streaming Is the Primary Experience
+## 2. Session Progress Is the Primary Experience
 
 Long-running tasks can take 5–30 minutes. Users must never stare at a blank screen.
 
 **While a turn is running, show:**
-1. **Phase indicator** — where in the pipeline we are (思考中 / 规划中 / 执行工具 / 验证中)
-2. **LLM token stream** — the model's actual words as they arrive, exactly like ChatGPT
-3. **Tool chips** — each tool invocation appears inline as a small badge with status
-4. **File change chips** — modified files appear as `📄 App.tsx +12 -3`
+1. **Phase indicator** — where in the user workflow we are (planning / tool use / verification / repair / ask / stop)
+2. **Runtime user progress** — compact `user_progress.jsonl` events with `transcript_kind`, `ui_intent`, and optional actions
+3. **Tool chips** — each user-meaningful tool invocation appears inline as a small badge with status
+4. **File change chips** — modified files appear as `App.tsx +12 -3`
 5. **Permission cards** — surface immediately when the runtime needs approval
 
 **After the turn completes:**
 1. Collapse the live view into a small badge (expandable for inspection)
 2. Show the formal reply card prominently
 
-This pattern is identical to how Claude Code, Codex, and Cursor show their work.
+This follows the shape of mature agent products: the main session explains how the task is being solved; raw telemetry and internal contracts stay inspectable without becoming the story.
 
 ---
 
@@ -105,18 +105,26 @@ Never promote inspector-level content to primary without a strong reason.
 Studio can only be as good as the events the Runtime emits. The contract:
 
 ### Model output
-- `model_delta.content_delta` — stream every token; Studio renders it live
-- `model_end.telemetry` — include `{input_tokens, output_tokens, latency_ms}`; Studio shows it in the reply header
+- Raw `model_delta.content_delta` — Inspector-only. It must not be rendered in the main session, especially `<think>`, schema JSON, provider route text, or model contract payloads.
+- User-facing model progress is emitted separately through `user_progress.jsonl` with `display_level: "main"` and a stable `transcript_kind` such as `assistant_message`, `plan`, `verification`, or `final`.
+- `model_end.telemetry` — Inspector by default; Studio may summarize cost/latency in a lightweight header only when it helps the user understand a stop or retry.
 
 ### Tool calls
-- `tool_start.command` — the full command array; Studio shows it as a chip label
-- `tool_end.content_delta` — stdout/stderr; Studio can surface it inline
-- `tool_end.file_changes` — array of `{path, additions, deletions}`; Studio shows file chips
+- `user_progress.transcript_kind=tool_use` — Studio shows the product label, target, and status.
+- `user_progress.transcript_kind=tool_result` — Studio shows the outcome, not raw stdout.
+- Full `command`, stdout/stderr, tool observations, and provider/tool gateway internals remain Inspector evidence.
+- `file_changes` — array of `{path, additions, deletions}`; Studio shows file chips and lets Inspector open the detailed diff/evidence.
 
 ### Final answers
 - `final_answer.content_delta` — **the full human-readable conclusion in markdown**  
   This is what the user reads. One-line summaries are not acceptable here.  
   Include: what was done, key results, evidence pointers, next steps.
+
+### Runtime user progress
+- `user_progress.jsonl` is the primary source for the main session timeline.
+- Main events must carry `transcript_kind` so Studio does not infer semantics from backend event names.
+- Stable main kinds include: `plan`, `todo_update`, `tool_use`, `tool_result`, `file_change`, `verification`, `permission_request`, `decision_request`, `repair`, `ask`, `stop`, `subagent_summary`, and `final`.
+- `display_level: "inspector"` is used for diagnostic events, raw model deltas, route/deadline/context/capability evidence, worker JSONL, validation raw output, and internal schema payloads.
 
 ### Permissions
 - `permission_request.job_id` — **always set**; Studio routes Allow/Deny by this ID
@@ -124,6 +132,7 @@ Studio can only be as good as the events the Runtime emits. The contract:
 ### Display filtering
 - `display_level: "inspector"` — hides event from Thread, shows only in Inspector
 - `display_level: "main"` or absent — shows in Thread
+- Main events are still subject to the user-facing copy rule: no raw provider/model route, schema JSON, `model-check`, `gate-status`, stdout/stderr dumps, or internal object names unless the user explicitly opens Inspector.
 
 ---
 

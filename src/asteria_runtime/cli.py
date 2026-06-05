@@ -1319,6 +1319,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Evaluate only one Studio session id",
     )
+    studio_benchmark_parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Evaluate only one runtime run id for user_progress contract checks",
+    )
     studio_benchmark_parser.add_argument("--json", action="store_true", help="Print JSON")
     parser.set_command_groups(
         [
@@ -1927,6 +1932,7 @@ def main() -> None:
             root=Path(args.root),
             manifest=args.manifest,
             session_id=args.session_id,
+            run_id=args.run_id,
         ).run()
         if args.json:
             print(json.dumps(studio_benchmark_result.to_dict(), ensure_ascii=False, indent=2))

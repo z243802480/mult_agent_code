@@ -178,7 +178,10 @@ benchmarks/studio_user_tasks.json
 python -m asteria_runtime studio-benchmark --root .
 python -m asteria_runtime studio-benchmark --root . --json
 python -m asteria_runtime studio-benchmark --root . --session-id session-xxx
+python -m asteria_runtime studio-benchmark --root . --run-id run-xxx --json
 ```
+
+`--run-id` 用于小灰度和回归：只检查某次新运行的 `user_progress.jsonl` 语义契约，避免历史 run 的旧事件污染判断。全量 benchmark 仍用于进入内测前的 UI 会话覆盖率评估。
 
 最低门槛：
 

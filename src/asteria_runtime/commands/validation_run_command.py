@@ -12,6 +12,7 @@ from asteria_runtime.commands.doctor_command import DoctorCommand
 from asteria_runtime.commands.gate_status_command import GateStatusCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.run_command import RunCommand, RunResult
+from asteria_runtime.commands.studio_benchmark_command import StudioBenchmarkCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.recovery_pressure import recovery_pressure_report
@@ -529,6 +530,7 @@ class ValidationRunCommand:
             },
         }
         progress_metrics = runtime_progress_metrics(self.root, self.validator)
+        studio_benchmark = self._studio_runtime_progress_benchmark(run_id)
         return {
             "run_dir": str(run_dir),
             "model_call_count": len(model_calls),
@@ -537,6 +539,7 @@ class ValidationRunCommand:
             "merge_gate_evidence_count": len(merge_gate),
             "route_evidence": route_evidence,
             "runtime_progress_metrics": progress_metrics,
+            "studio_runtime_progress_benchmark": studio_benchmark,
             "runtime_validation_matrix": runtime_validation_matrix(self.root, progress_metrics),
             "recovery_pressure": recovery_pressure_report(self.root, self.validator),
             "cost_report": cost_report,
@@ -1022,6 +1025,9 @@ class ValidationRunCommand:
             and (route.get("medium_used") or self.probe_ids)
             and (run_result.status not in {"blocked", "paused"} or self.probe_ids)
         ):
+            studio_benchmark = evidence.get("studio_runtime_progress_benchmark")
+            if isinstance(studio_benchmark, dict) and studio_benchmark.get("ok") is False:
+                return "failed"
             failed_probes = [
                 item
                 for item in evidence.get("validation_probe_results", [])
@@ -1078,6 +1084,18 @@ class ValidationRunCommand:
                 "Repair failed validation probe before widening scope: "
                 + ", ".join(item for item in failed if item)
             ]
+        studio_benchmark = evidence.get("studio_runtime_progress_benchmark")
+        if isinstance(studio_benchmark, dict) and studio_benchmark.get("ok") is False:
+            failed_checks = [
+                str(check.get("name") or "")
+                for check in studio_benchmark.get("checks", [])
+                if isinstance(check, dict) and check.get("ok") is False
+            ]
+            return [
+                "Fix Studio runtime progress contract before widening scope: "
+                + ", ".join(item for item in failed_checks if item),
+                f"Run `asteria studio-benchmark --run-id {run_id} --json` after the repair.",
+            ]
         missing_targeted = [
             str(item.get("id") or "")
             for item in evidence.get("validation_probe_results", [])
@@ -1099,6 +1117,23 @@ class ValidationRunCommand:
                 "Coordinator/planning route did not use strong tier; inspect model routing policy."
             ]
         return [f"Inspect run `{run_id}` blockers, worker results, and final report."]
+
+    def _studio_runtime_progress_benchmark(self, run_id: str) -> dict[str, Any]:
+        manifest = self._studio_benchmark_manifest()
+        result = StudioBenchmarkCommand(
+            root=self.root,
+            manifest=manifest,
+            run_id=run_id,
+        ).run()
+        payload = result.to_dict()
+        payload["manifest_path"] = str(manifest)
+        return payload
+
+    def _studio_benchmark_manifest(self) -> Path:
+        workspace_manifest = self.root / "benchmarks" / "studio_user_tasks.json"
+        if workspace_manifest.exists():
+            return workspace_manifest
+        return Path(__file__).resolve().parents[3] / "benchmarks" / "studio_user_tasks.json"
 
     def _read_optional(self, path: Path, schema_name: str) -> dict[str, Any]:
         if not path.exists():

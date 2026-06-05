@@ -488,12 +488,24 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
         "user_progress_event",
     )
     event_types = [event["event_type"] for event in user_progress]
+    transcript_kinds = {
+        event.get("transcript_kind")
+        for event in user_progress
+        if event.get("display_level") == "main"
+    }
     assert "workspace_selected" in event_types
     assert "evidence" in event_types
     assert "model_decision" in event_types
     assert "file_changed" in event_types
     assert "validation_result" in event_types
     assert "final_report" in event_types
+    assert {"file_change", "verification", "final"}.issubset(transcript_kinds)
+    assert not any(
+        event.get("channel") == "model"
+        and event.get("event_type") == "delta"
+        and event.get("display_level") == "main"
+        for event in user_progress
+    )
     final_report_event = [
         event for event in user_progress if event["event_type"] == "final_report"
     ][-1]

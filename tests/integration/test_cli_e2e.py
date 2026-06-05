@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -42,3 +43,49 @@ def test_cli_e2e_offline_session_run(tmp_path: Path) -> None:
     assert "Status: completed" in run.stdout
     assert "Created handoff package" in handoff.stdout
     assert (workspace / "offline_artifact.txt").exists()
+
+
+def test_cli_e2e_scoped_studio_runtime_progress_benchmark(tmp_path: Path) -> None:
+    workspace = tmp_path / "studio-gray-workspace"
+
+    run = run_agent(
+        tmp_path,
+        "run",
+        "--root",
+        str(workspace),
+        "--no-research",
+        "--max-iterations",
+        "1",
+        "--max-tasks-per-iteration",
+        "1",
+        "--permission-level",
+        "auto",
+        "--model-strategy",
+        "economy",
+        "--json",
+        "Create a small verification note file named studio_gray_note.md.",
+    )
+    run_payload = json.loads(run.stdout)
+    benchmark = run_agent(
+        tmp_path,
+        "studio-benchmark",
+        "--root",
+        str(workspace),
+        "--manifest",
+        str(Path.cwd() / "benchmarks" / "studio_user_tasks.json"),
+        "--run-id",
+        run_payload["run_id"],
+        "--json",
+    )
+    benchmark_payload = json.loads(benchmark.stdout)
+
+    assert run_payload["status"] == "completed"
+    assert (workspace / "studio_gray_note.md").exists()
+    assert benchmark_payload["ok"] is True
+    assert benchmark_payload["scope"] == f"run:{run_payload['run_id']}"
+    assert {
+        "task_progress",
+        "process_kind_coverage",
+        "main_thread_no_raw_model_delta",
+        "inspector_model_delta_boundary",
+    }.issubset({check["name"] for check in benchmark_payload["checks"]})
