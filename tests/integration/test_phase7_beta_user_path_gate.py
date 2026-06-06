@@ -45,7 +45,9 @@ def test_studio_command_resolves_repo_studio_dir() -> None:
     assert (studio_dir / "server.mjs").is_file()
 
 
-def test_beta_b6_trial_artifacts_exist() -> None:
+def test_beta_b6_restricted_sim_artifacts_exist() -> None:
+    assert Path(GATE["b6_restricted_sim_script"]).exists()
+    assert Path(GATE["b6_restricted_sim_report"]).exists()
     assert Path(GATE["b6_trial_checklist"]).exists()
     assert Path(GATE["b6_maintainer_template"]).exists()
     criteria = GATE.get("b6_pass_criteria") or {}

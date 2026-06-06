@@ -19,8 +19,11 @@
   ],
   "studio_smokes": [
     "node studio/scripts/run-detail-smoke.mjs",
-    "node studio/scripts/beta-workflow-smoke.mjs"
+    "node studio/scripts/beta-workflow-smoke.mjs",
+    "node studio/scripts/b6-restricted-user-sim.mjs"
   ],
+  "b6_restricted_sim_script": "studio/scripts/b6-restricted-user-sim.mjs",
+  "b6_restricted_sim_report": "docs/zh/reports/S14-beta-user-trial-20260606-agent-restricted-sim.md",
   "wheel_path_runbook": "docs/zh/验证试运行手册.md#31-安装包复验",
   "b6_trial_checklist": "docs/zh/Beta试跑清单.md",
   "b6_maintainer_template": "docs/zh/reports/S14-beta-user-trial-template.md",
