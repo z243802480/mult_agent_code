@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SwarmExecutionPlan",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "swarm_execution_plan_id",
+    "subagent_child_plan_id",
+    "run_id",
+    "parent_task_id",
+    "scheduling_mode",
+    "fake_path",
+    "parallel_writes",
+    "spawn_plan",
+    "child_task_ids",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "swarm_execution_plan_id": { "type": "string" },
+    "subagent_child_plan_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "parent_task_id": { "type": "string" },
+    "scheduling_mode": { "type": "string" },
+    "fake_path": { "type": "boolean" },
+    "parallel_writes": { "type": "boolean" },
+    "spawn_kind": { "type": "string" },
+    "spawn_plan": { "type": "object" },
+    "coordinator": { "type": "object" },
+    "child_task_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": "string" }
+  },
+  "additionalProperties": true
+}

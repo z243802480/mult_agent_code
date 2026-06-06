@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S25",
+  "active_slice": "S29",
   "active_phase": "Phase 5",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -309,6 +309,45 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S25-phase5-wave2-signoff.md"
+    },
+    {
+      "id": "S26",
+      "name": "Agent loop swarm evidence",
+      "phase": "5",
+      "depends_on": ["S25"],
+      "user_demo": "subagent 分解写入 swarm_execution_plans.jsonl",
+      "green_checks": ["pytest tests/integration/test_swarm_agent_loop_integration.py -q"],
+      "reference_brief": "benchmarks/reference_briefs/S26-agent-loop-swarm-evidence.md"
+    },
+    {
+      "id": "S27",
+      "name": "Studio scheduling semantics",
+      "phase": "5",
+      "depends_on": ["S26"],
+      "user_demo": "WorkerProgressBar 显示 fake_serial vs parallel",
+      "green_checks": ["node studio/scripts/s20-worker-promotion-smoke.mjs"],
+      "reference_brief": "benchmarks/reference_briefs/S27-studio-scheduling-semantics.md"
+    },
+    {
+      "id": "S28",
+      "name": "Swarm main chain integration",
+      "phase": "5",
+      "depends_on": ["S27"],
+      "user_demo": "phase5c 闸门 + maintainer bundle",
+      "green_checks": ["python scripts/swarm_integration_check.py --root ."],
+      "reference_brief": "benchmarks/reference_briefs/S28-swarm-main-chain-integration.md"
+    },
+    {
+      "id": "S29",
+      "name": "Phase 5 wave3 signoff",
+      "phase": "5",
+      "depends_on": ["S28"],
+      "user_demo": "Layer0/1 证据同 run 可审计",
+      "green_checks": [
+        "python scripts/swarm_integration_check.py --root .",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S29-phase5-wave3-signoff.md"
     }
   ]
 }

@@ -17,10 +17,23 @@ export function WorkerProgressBar({ data }: { data: AnyRecord }) {
   const running = Math.max(0, total - successful - failed);
   const percent = Number(data.progress_percent ?? Math.round((successful / total) * 100));
   const promotionHint = String(data.promotion_hint ?? "").trim();
+  const schedulingMode = String(data.scheduling_mode ?? "").trim();
+  const fakePath = data.fake_path;
   const workers = asArray(data.workers) as AnyRecord[];
+
+  const schedulingLabel = schedulingMode
+    ? fakePath === true
+      ? `${schedulingMode} (preview)`
+      : schedulingMode
+    : "";
 
   return (
     <div className="workerProgressBar" aria-label="Background worker progress">
+      {schedulingLabel && (
+        <div className="workerSchedulingBadge" data-fake-path={fakePath === true ? "true" : "false"}>
+          {schedulingLabel}
+        </div>
+      )}
       <div className="workerProgressTrack">
         <span className="workerProgressFill success" style={{ width: `${(successful / total) * 100}%` }} />
         <span className="workerProgressFill failed" style={{ width: `${(failed / total) * 100}%` }} />
@@ -36,10 +49,12 @@ export function WorkerProgressBar({ data }: { data: AnyRecord }) {
           {workers.slice(0, 6).map((worker, index) => {
             const id = String(worker.worker_invocation_id ?? worker.worker_id ?? `worker-${index + 1}`);
             const status = String(worker.result_status ?? worker.status ?? "unknown");
+            const mode = String(worker.scheduling_mode ?? "").trim();
             return (
               <li key={id}>
                 <span>{id}</span>
                 <span>{String(worker.task_id ?? "task")}</span>
+                {mode && <span>{mode}</span>}
                 <span>{status}</span>
               </li>
             );

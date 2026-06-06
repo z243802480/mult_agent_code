@@ -804,6 +804,20 @@ h2 {
   margin-top: 8px;
 }
 
+.workerSchedulingBadge {
+  color: #9eb0c4;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.workerSchedulingBadge[data-fake-path="true"] {
+  color: #c4a86a;
+}
+
+.workerSchedulingBadge[data-fake-path="false"] {
+  color: #6ab88a;
+}
+
 .workerProgressTrack {
   background: #1a2128;
   border-radius: 999px;

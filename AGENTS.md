@@ -17,8 +17,8 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Phase 5（蜂群 · wave2 灰度）
-当前 ACTIVE_SLICE：S25（flag rollout + real disjoint probe + orchestrator hook）
+当前 ACTIVE_PHASE：Phase 5（蜂群 · 主链集成）
+当前 ACTIVE_SLICE：S29（agent loop 证据 + Studio 调度语义 + wave3 签字）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 设计索引：docs/zh/文档导航.md

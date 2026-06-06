@@ -2323,6 +2323,11 @@ function workerSummaryForProgress(workerTree, workerResults, promotionPreview = 
   );
   const workers = flattenWorkerNodes(workerTree);
   const promotionHint = promotionPreviewHint(promotionPreview);
+  const latestSwarm = workerTree.latest_swarm_plan && typeof workerTree.latest_swarm_plan === "object"
+    ? workerTree.latest_swarm_plan
+    : null;
+  const schedulingMode = String(latestSwarm?.scheduling_mode || "").trim();
+  const fakePath = latestSwarm?.fake_path;
   return {
     status,
     total,
@@ -2335,8 +2340,12 @@ function workerSummaryForProgress(workerTree, workerResults, promotionPreview = 
       : `${successful}/${total} background task${total === 1 ? "" : "s"} completed.`,
     worker_profile: profile,
     promotion_hint: promotionHint,
+    scheduling_mode: schedulingMode || null,
+    fake_path: typeof fakePath === "boolean" ? fakePath : null,
+    parallel_writes: latestSwarm?.parallel_writes ?? null,
+    spawn_kind: latestSwarm?.spawn_kind || null,
     workers,
-    evidence_refs: ["workers.jsonl", "worker_results.jsonl", "agent_run_graph.json"],
+    evidence_refs: ["workers.jsonl", "worker_results.jsonl", "swarm_execution_plans.jsonl", "agent_run_graph.json"],
   };
 }
 
@@ -2351,6 +2360,8 @@ function flattenWorkerNodes(workerTree) {
       result_status: node.result_status,
       execution_profile_id: node.execution_profile_id,
       spawn_kind: node.spawn_kind,
+      fake_path: node.fake_path ?? null,
+      scheduling_mode: node.scheduling_mode || null,
       depth,
     });
     for (const child of Array.isArray(node.children) ? node.children : []) visit(child, depth + 1);
@@ -2467,6 +2478,7 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
   const workers = await readJsonlTail(path.join(runDir, "workers.jsonl"), 500);
   const results = await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 500);
   const events = await readJsonlTail(path.join(runDir, "events.jsonl"), 500);
+  const swarmPlans = await readJsonlTail(path.join(runDir, "swarm_execution_plans.jsonl"), 20);
   const resultByWorker = new Map(results.map((item) => [String(item.worker_invocation_id || ""), item]));
   const nodes = new Map();
   for (const worker of workers) {
@@ -2487,6 +2499,7 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
       execution_profile_id: worker.execution_profile_id || null,
       spawn_kind: worker.spawn_kind || null,
       fake_path: worker.fake_path ?? null,
+      scheduling_mode: worker.scheduling_mode || null,
       status: worker.status || "unknown",
       result_status: result.status || null,
       artifact_refs: Array.isArray(result.artifact_refs) ? result.artifact_refs : [],
@@ -2534,6 +2547,8 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
     total_tool_calls: [...nodes.values()].reduce((total, node) => total + Number(node.cost?.tool_calls || 0), 0),
     agent_run_graph: agentRunGraph || {},
     collaboration_summary: agentRunGraph?.collaboration_summary || {},
+    swarm_execution_plans: swarmPlans,
+    latest_swarm_plan: swarmPlans.length ? swarmPlans[swarmPlans.length - 1] : null,
     orphan_workers: orphanWorkers,
     roots,
   };
