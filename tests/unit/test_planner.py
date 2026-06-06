@@ -1,5 +1,6 @@
 from asteria_runtime.agents.planner import FollowUpTaskPlanner, RequirementPlanner
 from asteria_runtime.commands.plan_command import _apply_validation_probe_hints
+from asteria_runtime.core.execution_profile import SESSION_AGENT
 
 
 def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None:
@@ -727,7 +728,7 @@ def test_requirement_planner_splits_oversized_requirement_by_acceptance() -> Non
         ],
     }
 
-    tasks = RequirementPlanner().build_task_plan(goal_spec)["tasks"]
+    tasks = RequirementPlanner().build_task_plan(goal_spec, execution_profile="harness")["tasks"]
 
     assert len(tasks) == 3
     assert [len(task["acceptance"]) for task in tasks] == [3, 3, 1]
@@ -755,7 +756,7 @@ def test_requirement_planner_splits_oversized_requirement_by_artifact() -> None:
         ],
     }
 
-    tasks = RequirementPlanner().build_task_plan(goal_spec)["tasks"]
+    tasks = RequirementPlanner().build_task_plan(goal_spec, execution_profile="harness")["tasks"]
 
     assert len(tasks) == 4
     assert [task["expected_artifacts"] for task in tasks] == [
@@ -890,3 +891,34 @@ def test_planner_notes_include_capability_feedback_hint() -> None:
     task = RequirementPlanner().build_task_plan(goal_spec, runtime_context)["tasks"][0]
 
     assert "capability feedback: prefer narrower read/write scope" in task["notes"]
+
+
+def test_session_agent_unified_task_collapses_beta_coding_goal() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": "给一个小 CLI 增加 --version 参数，并补一个测试。",
+        "normalized_goal": "给一个小 CLI 增加 --version 参数，并补一个测试。",
+        "target_outputs": ["local_cli"],
+        "definition_of_done": ["--version 可用", "pytest 通过"],
+        "verification_strategy": ["pytest -q"],
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Add --version flag to CLI",
+                "acceptance": ["--version prints version"],
+            },
+            {
+                "id": "req-0002",
+                "priority": "must",
+                "description": "Add pytest coverage",
+                "acceptance": ["pytest passes"],
+            },
+        ],
+    }
+
+    tasks = RequirementPlanner().build_task_plan(goal_spec, execution_profile=SESSION_AGENT)["tasks"]
+    assert tasks[0]["execution_profile"] == "session_agent"
+    assert "--version prints version" in tasks[0]["acceptance"]
+    assert "pytest passes" in tasks[0]["acceptance"]

@@ -233,7 +233,7 @@ function resolveRuntimeAction(rec) {
   if (normalized.startsWith("decide")) return null;
   if (normalized.includes("debug")) return "debug";
   if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "resume";
-  if (normalized.startsWith("replan")) return "replan";
+  if (normalized.startsWith("replan")) return "resume";
   if (normalized.startsWith("review")) return "review";
   return null;
 }
@@ -274,6 +274,15 @@ function pickDecisionOption(decision) {
   const metadata = decision?.metadata || {};
   const requestTypes = metadata.request_types || [];
   const kind = String(metadata.kind || "");
+  if (kind === "execution_policy_approval") {
+    const options = Array.isArray(decision.options) ? decision.options : [];
+    if (options.some((option) => option.option_id === "approve_once")) {
+      return "approve_once";
+    }
+    if (options.some((option) => option.option_id === "approve_similar_for_session")) {
+      return "approve_similar_for_session";
+    }
+  }
   if (kind === "runtime_request" || requestTypes.length > 0) {
     return "review_contract";
   }

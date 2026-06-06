@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S16",
+  "active_slice": "S17",
   "active_phase": "Phase 4",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -201,6 +201,19 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S16-steady-vibe-iteration.md"
+    },
+    {
+      "id": "S17",
+      "name": "Runtime session agent",
+      "phase": "4",
+      "depends_on": ["S16"],
+      "user_demo": "Beta 小改默认单任务 CC 路径；Harness 仅显式启用",
+      "green_checks": [
+        "pytest tests/unit/test_execution_profile.py -q",
+        "pytest tests/unit/test_planner.py::test_session_agent_unified_task_collapses_beta_coding_goal -q",
+        "python scripts/steady_iteration_check.py --root . --skip-b6"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S17-runtime-session-agent.md"
     }
   ]
 }

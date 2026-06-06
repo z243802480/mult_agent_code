@@ -45,6 +45,19 @@
         "notes": { "type": "string" }
       }
     },
-    "created_at": { "type": "string" }
+    "created_at": { "type": "string" },
+    "execution_profile": {
+      "type": "object",
+      "properties": {
+        "profile_id": { "type": "string", "enum": ["session_agent", "harness"] },
+        "loop_profile_id": { "type": "string" },
+        "collapse_to_single_task": { "type": "boolean" },
+        "use_replan_lineage": { "type": "boolean" },
+        "use_repair_limit_decisions": { "type": "boolean" },
+        "reason": { "type": "string" },
+        "fast_path_task_kind": { "type": "string" }
+      }
+    },
+    "fast_path": { "type": "object" }
   }
 }

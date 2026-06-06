@@ -24,9 +24,11 @@ def build_run_config(
     permission_level: str,
     model_strategy: str,
     workspace_envelope: dict | None = None,
+    execution_profile: dict | None = None,
+    fast_path: dict | None = None,
 ) -> dict:
     permission_mode = normalize_permission_mode(permission_level)
-    return {
+    config = {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
         "mode": mode,
@@ -41,6 +43,11 @@ def build_run_config(
         "workspace_envelope": workspace_envelope or {},
         "created_at": now_iso(),
     }
+    if execution_profile:
+        config["execution_profile"] = execution_profile
+    if fast_path:
+        config["fast_path"] = fast_path
+    return config
 
 
 def write_run_config(
@@ -52,6 +59,8 @@ def write_run_config(
     permission_level: str,
     model_strategy: str,
     workspace_envelope: dict | None = None,
+    execution_profile: dict | None = None,
+    fast_path: dict | None = None,
 ) -> dict:
     config = build_run_config(
         run_id=run_id,
@@ -59,6 +68,8 @@ def write_run_config(
         permission_level=permission_level,
         model_strategy=model_strategy,
         workspace_envelope=workspace_envelope,
+        execution_profile=execution_profile,
+        fast_path=fast_path,
     )
     JsonStore(validator).write(run_dir / "run_config.json", config, "run_config")
     return config

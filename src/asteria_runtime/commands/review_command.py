@@ -26,7 +26,11 @@ from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
     real_provider_matrix_text_lines,
 )
-from asteria_runtime.core.run_config import effective_policy_for_run
+from asteria_runtime.core.execution_profile import (
+    execution_profile_from_run_config,
+    session_agent_recommended_command,
+)
+from asteria_runtime.core.run_config import effective_policy_for_run, load_run_config
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
 from asteria_runtime.core.context_slimming import slim_review_context
 from asteria_runtime.models.base import ModelClient
@@ -589,11 +593,12 @@ class ReviewCommand:
         blocked_tasks = int(trajectory_eval.get("blocked_task_count", 0) or 0)
         verification_rate = float(outcome_eval.get("verification_pass_rate", 1.0) or 0.0)
         if coverage < 0.8 or artifacts_present is False:
-            return {
+            classification = {
                 "category": "plan_gap",
                 "recommended_command": "replan",
                 "reason": "Requirement coverage or artifact fit is insufficient; revise the plan before more execution.",
             }
+            return self._soften_failure_classification(eval_report, classification)
         if blocked_tasks > 0:
             return {
                 "category": "execution_blocked",
@@ -611,6 +616,25 @@ class ReviewCommand:
             "recommended_command": "debug",
             "reason": f"Review status is {status}; inspect eval_report.json before continuing.",
         }
+
+    def _soften_failure_classification(self, eval_report: dict, classification: dict) -> dict:
+        run_id = str(eval_report.get("run_id") or "").strip()
+        if not run_id:
+            return classification
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        profile = execution_profile_from_run_config(load_run_config(run_dir, self.validator))
+        command = str(classification.get("recommended_command") or "")
+        softened = session_agent_recommended_command(command, is_session_agent=profile.is_session_agent)
+        if softened == command:
+            return classification
+        updated = dict(classification)
+        updated["recommended_command"] = softened
+        if softened == "resume":
+            updated["reason"] = (
+                f"{classification.get('reason', '')} "
+                "Session-agent profile retries in-place via resume."
+            ).strip()
+        return updated
 
     def _needs_decision(self, eval_report: dict) -> bool:
         follow_ups = self._follow_ups(eval_report)

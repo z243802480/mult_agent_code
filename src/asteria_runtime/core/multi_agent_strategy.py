@@ -29,6 +29,15 @@ class MultiAgentStrategyAdvisor:
     """Classify task complexity into safe child-worker scaling guidance."""
 
     def for_task(self, task: dict) -> MultiAgentStrategy:
+        if str(task.get("execution_profile") or "") == "session_agent":
+            return self._strategy(
+                mode="serial_worker",
+                max_child_workers=1,
+                planner_child_plan=False,
+                reason="session-agent profile keeps a single CC-like worker",
+                suggested_model_tier="medium",
+                write_allowed=True,
+            )
         complexity = self._complexity(task)
         write_scope = [str(item) for item in task.get("write_scope", []) if item]
         task_kind = str(task.get("task_kind") or "")

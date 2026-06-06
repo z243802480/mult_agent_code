@@ -169,6 +169,41 @@ class AgentLoopProfileRegistry:
                     "budget reaches hard stop",
                 ],
             ),
+            "session_agent": AgentLoopProfile(
+                loop_profile_id="session_agent",
+                intent="implementation_goal",
+                task_kinds=["implementation", "diagnostic", "verification", "report"],
+                default_agents=["CoderAgent"],
+                capability_groups=["direct_tools", "verification"],
+                max_iterations=6,
+                parallelism="serial",
+                stop_conditions=["task_done", "decision_required", "budget_limit"],
+                summary=(
+                    "CC-like single session: tool use, verify, retry in-place; "
+                    "evidence async, no replan lineage."
+                ),
+                output_contract={
+                    "required": ["artifact_refs", "verification", "final_report"],
+                    "artifact": "session_agent_summary",
+                    "user_visible_shape": "result_with_verification",
+                },
+                validation_contract={
+                    "checks": [
+                        "verification command or rationale is recorded",
+                        "failures become observations for the same task",
+                    ],
+                },
+                failure_recovery={
+                    "on_tool_failure": "record_observation_and_retry_same_task",
+                    "on_validation_failure": "record_observation_and_retry_same_task",
+                    "on_blocked": "debug_then_requeue_same_task_before_ask",
+                },
+                decision_escalation=[
+                    "permission is denied",
+                    "budget reaches hard stop",
+                    "recovery cycle limit reached",
+                ],
+            ),
         }
         self._registrations = [
             CapabilityRegistration(
@@ -286,20 +321,24 @@ class AgentLoopProfileRegistry:
         }
 
     def _profile_for_task(self, task: dict) -> AgentLoopProfile:
+        if str(task.get("execution_profile") or "") == "session_agent":
+            return self._profiles["session_agent"]
         kind = str(task.get("task_kind") or "").lower()
         if kind == "research":
             return self._profiles["research"]
         if kind in {"brainstorm", "decision"}:
             return self._profiles["brainstorm"]
         strategy = task.get("multi_agent_strategy") or {}
-        if isinstance(strategy, dict) and str(strategy.get("mode") or "serial") != "serial":
-            return self._profiles["multi_agent"]
+        if isinstance(strategy, dict):
+            mode = str(strategy.get("mode") or "serial")
+            if mode in {"disjoint_write_workers", "plan_then_serial"}:
+                return self._profiles["multi_agent"]
         return self._profiles["default"]
 
     def _primary_profile_id(self, counts: dict[str, int]) -> str:
         if not counts:
             return "default"
-        priority = ["multi_agent", "research", "brainstorm", "default"]
+        priority = ["multi_agent", "research", "brainstorm", "session_agent", "default"]
         return sorted(
             counts,
             key=lambda item: (-counts[item], priority.index(item) if item in priority else 99),

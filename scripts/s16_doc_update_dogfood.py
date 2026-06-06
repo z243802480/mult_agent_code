@@ -99,6 +99,12 @@ def main() -> None:
 def _pick_option(decision: dict) -> str:
     metadata = decision.get("metadata") or {}
     kind = str(metadata.get("kind") or "")
+    if kind == "execution_policy_approval":
+        options = decision.get("options") or []
+        if any(option.get("option_id") == "approve_once" for option in options):
+            return "approve_once"
+        if any(option.get("option_id") == "approve_similar_for_session" for option in options):
+            return "approve_similar_for_session"
     if kind == "runtime_request" or metadata.get("request_types"):
         return "review_contract"
     if kind == "replan_decision" or metadata.get("reason") == "repair_limit":
@@ -171,6 +177,8 @@ def _resolve_action(rec: str) -> str | None:
         return "resume"
     if rec.startswith("review"):
         return "review"
+    if rec.startswith("replan"):
+        return "resume"
     return None
 
 

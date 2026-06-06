@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.task_contract import (
     completion_contract,
@@ -21,7 +22,13 @@ class RequirementPlanner:
     def __init__(self) -> None:
         self.multi_agent_strategy = MultiAgentStrategyAdvisor()
 
-    def build_task_plan(self, goal_spec: dict, runtime_context: dict | None = None) -> dict:
+    def build_task_plan(
+        self,
+        goal_spec: dict,
+        runtime_context: dict | None = None,
+        *,
+        execution_profile: str = HARNESS,
+    ) -> dict:
         runtime_context = runtime_context or {}
         if self._is_targeted_repair_goal(goal_spec):
             return {
@@ -37,6 +44,11 @@ class RequirementPlanner:
             return {
                 "schema_version": "0.1.0",
                 "tasks": [self._atomic_multifile_task(goal_spec, runtime_context)],
+            }
+        if execution_profile == SESSION_AGENT:
+            return {
+                "schema_version": "0.1.0",
+                "tasks": [self._session_agent_unified_task(goal_spec, runtime_context)],
             }
 
         requirements: list[dict] = []
@@ -415,6 +427,100 @@ class RequirementPlanner:
             if command.strip().startswith(("python ", "pytest", "ruff ", "mypy "))
         ][:5]
 
+    def _session_agent_unified_task(self, goal_spec: dict, runtime_context: dict) -> dict:
+        """One CC-like task slice: implement + verify in a single agent session."""
+        artifacts = self._explicit_goal_files(goal_spec)
+        source_artifacts = [
+            artifact for artifact in artifacts if not self._is_runtime_data_artifact(artifact)
+        ]
+        requirements = [
+            requirement
+            for requirement in goal_spec.get("expanded_requirements", [])
+            if requirement.get("priority") != "wont"
+        ]
+        acceptance = self._session_agent_acceptance(goal_spec, requirements, artifacts)
+        description_lines = [
+            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or "").strip()
+        ]
+        for requirement in requirements[:12]:
+            description_lines.append(f"- {requirement.get('description', '')}")
+        requirement = {
+            "id": "req-session-agent",
+            "priority": "must",
+            "description": "\n".join(line for line in description_lines if line.strip()),
+            "acceptance": acceptance,
+            "expected_artifacts": artifacts or source_artifacts or ["implementation artifact"],
+        }
+        quality = self._quality_assessment(
+            requirement,
+            requirement["expected_artifacts"],
+        )
+        expected_changed = source_artifacts or self._expected_changed_files(
+            "implementation",
+            requirement["expected_artifacts"],
+            requirement,
+        )
+        task = {
+            "schema_version": "0.1.0",
+            "task_id": "task-0001",
+            "title": self._title(requirement["description"]),
+            "description": requirement["description"],
+            "status": "ready",
+            "priority": "high",
+            "role": "CoderAgent",
+            "depends_on": [],
+            "acceptance": acceptance,
+            "allowed_tools": self._allowed_tools("implementation"),
+            "expected_artifacts": requirement["expected_artifacts"],
+            "task_kind": "implementation",
+            "expected_changed_files": expected_changed,
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "quality": quality,
+            "execution_profile": SESSION_AGENT,
+            "notes": (
+                "Session-agent unified slice: one task loop with in-session retry; "
+                "no replan lineage for Beta/single-writer work. "
+                + self._notes(
+                    "req-session-agent",
+                    requirement,
+                    requirement["expected_artifacts"],
+                    runtime_context,
+                    quality,
+                )
+            ),
+        }
+        task["completion_contract"] = completion_contract(task)
+        task["verification_policy"] = self._verification_policy(task, goal_spec)
+        self._apply_runtime_contract(task)
+        return task
+
+    def _session_agent_acceptance(
+        self,
+        goal_spec: dict,
+        requirements: list[dict],
+        artifacts: list[str],
+    ) -> list[str]:
+        acceptance: list[str] = []
+        for item in goal_spec.get("definition_of_done", []):
+            if isinstance(item, str) and item.strip():
+                acceptance.append(item.strip())
+        for requirement in requirements:
+            for item in requirement.get("acceptance", []):
+                if isinstance(item, str) and item.strip():
+                    acceptance.append(item.strip())
+        for command in self._command_examples(goal_spec):
+            acceptance.append(f"`{command}` exits successfully")
+        for artifact in artifacts:
+            if self._is_runtime_data_artifact(artifact):
+                acceptance.append(f"Runtime commands create or update {artifact} as specified")
+            elif artifact not in {"implementation artifact", "planning artifact"}:
+                acceptance.append(f"{artifact} is created or updated")
+        return list(dict.fromkeys(acceptance))[:16] or [
+            "Goal is implemented and verified in one session"
+        ]
+
     def _single_file_task(self, goal_spec: dict, runtime_context: dict) -> dict:
         artifact = self._single_file_artifact(goal_spec)
         requirements = [
@@ -454,6 +560,7 @@ class RequirementPlanner:
             "created_at": now_iso(),
             "updated_at": now_iso(),
             "quality": quality,
+            "execution_profile": SESSION_AGENT,
             "notes": (
                 "Grouped into one complete single-file tool/artifact slice because the goal targets one concrete file. "
                 + self._notes("req-single-file", requirement, [artifact], runtime_context, quality)

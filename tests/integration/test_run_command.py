@@ -1316,6 +1316,7 @@ def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
         debug_model_client=FakeFailingDebugClient(),
         review_model_client=FakeReviewClient(),
         enable_research=False,
+        force_harness=True,
     ).run()
 
     assert result.status == "completed"

@@ -12,6 +12,8 @@ from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
+from asteria_runtime.core.execution_profile import resolve_execution_profile
+from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.run_config import apply_run_config, write_run_config
 from asteria_runtime.core.workspace_registry import WorkspaceRegistry
 from asteria_runtime.core.user_progress_view import build_plan_completion_copy
@@ -83,6 +85,7 @@ class PlanCommand:
         artifact_root: Path | None = None,
         worktree_policy: str = "controlled_patch",
         validation_probe_ids: list[str] | None = None,
+        force_harness: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -98,6 +101,7 @@ class PlanCommand:
         self.artifact_root = artifact_root
         self.worktree_policy = worktree_policy
         self.validation_probe_ids = list(validation_probe_ids or [])
+        self.force_harness = force_harness
 
     def run(self) -> PlanResult:
         agent_dir = self.root / ".asteria"
@@ -134,6 +138,12 @@ class PlanCommand:
         )
         run["workspace"] = workspace_summary(workspace_envelope)
         run_store.update_run(run)
+        profile_resolution = resolve_execution_profile(
+            self.goal,
+            parallel_writes=self.worktree_policy == "disjoint_parallel",
+            force_harness=self.force_harness,
+        )
+        fast_path = classify_fast_path(self.goal)
         run_config = write_run_config(
             run_dir=run_dir,
             validator=self.validator,
@@ -142,6 +152,8 @@ class PlanCommand:
             permission_level=self.permission_level,
             model_strategy=self.model_strategy,
             workspace_envelope=workspace_envelope,
+            execution_profile=profile_resolution.to_dict(),
+            fast_path=fast_path.to_dict(),
         )
         policy = apply_run_config(policy, run_config)
         event_logger = EventLogger(run_dir / "events.jsonl", self.validator)
@@ -417,7 +429,11 @@ class PlanCommand:
             execution_chain=["goal_spec", "task_plan"],
             data={"goal_id": goal_spec["goal_id"]},
         )
-        task_plan = RequirementPlanner().build_task_plan(goal_spec, runtime_context=runtime_context)
+        task_plan = RequirementPlanner().build_task_plan(
+            goal_spec,
+            runtime_context=runtime_context,
+            execution_profile=profile_resolution.profile_id,
+        )
         _apply_validation_probe_hints(task_plan, self.validation_probe_ids)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)

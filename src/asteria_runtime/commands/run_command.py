@@ -28,7 +28,9 @@ from asteria_runtime.core.main_path import (
     canonical_next_command,
     main_path_text_lines,
 )
+from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.permission_policy import normalize_permission_mode
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.real_provider_matrix import (
@@ -144,6 +146,7 @@ class RunCommand:
         artifact_root: Path | None = None,
         worktree_policy: str = "controlled_patch",
         validation_probe_ids: list[str] | None = None,
+        force_harness: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -166,6 +169,7 @@ class RunCommand:
         self.artifact_root = artifact_root
         self.worktree_policy = worktree_policy
         self.validation_probe_ids = list(validation_probe_ids or [])
+        self.force_harness = force_harness
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -219,6 +223,7 @@ class RunCommand:
             artifact_root=self.artifact_root,
             worktree_policy=self.worktree_policy,
             validation_probe_ids=self.validation_probe_ids,
+            force_harness=self.force_harness,
         ).run()
         steps.append(RunStepSummary("plan", "completed", f"Created {plan.task_count} task(s)."))
 
@@ -1175,7 +1180,7 @@ class RunCommand:
     ) -> bool:
         progressed = False
         inner_cycles = 0
-        max_inner_cycles = self._policy_max_inner_execute_cycles()
+        max_inner_cycles = self._policy_max_inner_execute_cycles(run_id)
         while self._ready_count(run_id) > 0:
             inner_cycles += 1
             if inner_cycles > max_inner_cycles:
@@ -1332,6 +1337,28 @@ class RunCommand:
                     )
                 if self._run_status(run_id) == "blocked":
                     blocked_route = self._blocked_route_from_observation_plan(run_id)
+                    profile = self._execution_profile(run_id)
+                    if profile.is_session_agent:
+                        requeued = self._requeue_blocked_tasks_for_session_agent(run_id)
+                        if requeued:
+                            if progress:
+                                progress.record(
+                                    run_id=run_id,
+                                    channel="progress",
+                                    phase="execute",
+                                    status="running",
+                                    title="同任务重试",
+                                    summary=(
+                                        f"Session-agent 模式：{requeued} 个阻塞任务已重新排队，"
+                                        "继续在同一会话内修复。"
+                                    ),
+                                    display_level="main",
+                                    transcript_kind="repair",
+                                    ui_intent="work_progress",
+                                )
+                            progressed = True
+                            continue
+                        blocked_route = blocked_route or "ask"
                     if blocked_route in {"ask", "stop"}:
                         steps.append(
                             RunStepSummary(
@@ -1341,6 +1368,15 @@ class RunCommand:
                                     "Observation plan selected "
                                     f"{blocked_route}; not replanning automatically."
                                 ),
+                            )
+                        )
+                        return progressed
+                    if profile.is_session_agent:
+                        steps.append(
+                            RunStepSummary(
+                                "observe",
+                                "ask",
+                                "Session-agent mode paused for operator review; no replan lineage.",
                             )
                         )
                         return progressed
@@ -1715,6 +1751,16 @@ class RunCommand:
                 "recommended_command": "decide --list",
             }
         if failure_classification.get("recommended_command") == "replan":
+            if self._execution_profile(run_id).is_session_agent:
+                return {
+                    "action": "continue_repair",
+                    "reason": str(
+                        failure_classification.get("reason")
+                        or "Session-agent mode retries in-place instead of replan lineage."
+                    ),
+                    "category": failure_classification.get("category") or "plan_gap",
+                    "recommended_command": "resume",
+                }
             return {
                 "action": "stop_for_replan",
                 "reason": str(
@@ -1809,15 +1855,45 @@ class RunCommand:
         policy = self._policy()
         return int(policy["budgets"].get("max_replans_per_task", 2))
 
-    def _policy_max_inner_execute_cycles(self) -> int:
+    def _policy_max_inner_execute_cycles(self, run_id: str | None = None) -> int:
         if not (self.root / ".asteria" / "policies.json").exists():
-            return 6
-        policy = self._policy()
-        budgets = policy.get("budgets") or {}
-        replans = int(budgets.get("max_replans_per_task") or 2)
-        repairs = int(budgets.get("max_repair_attempts_per_task") or 4)
-        iterations = int(budgets.get("max_iterations_per_goal") or 8)
-        return max(3, min(iterations, replans + repairs + 1))
+            base = 6
+        else:
+            policy = self._policy()
+            budgets = policy.get("budgets") or {}
+            replans = int(budgets.get("max_replans_per_task") or 2)
+            repairs = int(budgets.get("max_repair_attempts_per_task") or 4)
+            iterations = int(budgets.get("max_iterations_per_goal") or 8)
+            base = max(3, min(iterations, replans + repairs + 1))
+        if run_id and self._execution_profile(run_id).is_session_agent:
+            return max(base, 8)
+        return base
+
+    def _execution_profile(self, run_id: str):
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        return execution_profile_from_run_config(load_run_config(run_dir, self.validator))
+
+    def _requeue_blocked_tasks_for_session_agent(self, run_id: str) -> int:
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        task_plan_path = run_dir / "task_plan.json"
+        task_plan = self.store.read(task_plan_path, "task_board")
+        requeued = 0
+        for task in task_plan.get("tasks") or []:
+            if task.get("status") != "blocked":
+                continue
+            task["status"] = "ready"
+            task["updated_at"] = now_iso()
+            requeued += 1
+        if not requeued:
+            return 0
+        self.store.write(task_plan_path, task_plan, "task_board")
+        run_store = RunStore(self.root / ".asteria", self.validator)
+        run = run_store.load_run(run_id)
+        if run.get("status") == "blocked":
+            run["status"] = "running"
+            run["summary"] = "Session-agent requeued blocked task(s) for in-session retry."
+            run_store.update_run(run)
+        return requeued
 
     def _pause_for_recovery_limit(
         self,
