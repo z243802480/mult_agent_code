@@ -81,6 +81,18 @@ export type SettingsPayload = {
   workspace: string;
   workspaceName?: string;
   runtimeRoot: string;
+  workspaceProfile?: WorkspaceProfile;
+};
+
+export type WorkspaceProfile = {
+  ok?: boolean;
+  workspace_root?: string;
+  initialized?: boolean;
+  has_git?: boolean;
+  has_agents_md?: boolean;
+  project_name?: string;
+  workspace_type?: string;
+  error?: string;
 };
 
 export type WorkspaceEntry = {
@@ -90,6 +102,7 @@ export type WorkspaceEntry = {
   output_root?: string;
   artifact_root?: string;
   last_opened_at?: string;
+  profile?: WorkspaceProfile | null;
 };
 
 export type WorkspacesPayload = {
@@ -97,6 +110,7 @@ export type WorkspacesPayload = {
   workspace: string;
   runtimeRoot: string;
   current_workspace_root?: string;
+  workspace_profile?: WorkspaceProfile;
   recent_workspaces: WorkspaceEntry[];
 };
 
@@ -106,6 +120,7 @@ export type OpenWorkspacePayload = {
   runtimeRoot?: string;
   workspace_name?: string;
   initialized?: boolean;
+  profile?: WorkspaceProfile;
   error?: string;
 };
 
@@ -128,6 +143,7 @@ export type OverviewPayload = {
   modelRoutes?: AnyRecord[];
   v0_2_rolling_validation?: AnyRecord;
   long_horizon?: AnyRecord;
+  background_runs?: AnyRecord;
   workflow?: {
     can_review?: boolean;
     can_accept?: boolean;

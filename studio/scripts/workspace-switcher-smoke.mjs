@@ -68,6 +68,9 @@ try {
   }
   await fs.access(path.join(initTarget, ".asteria", "project.json"));
 
+  const profile = await fetchJson(`http://127.0.0.1:${port}/api/studio/workspace/profile?path=${encodeURIComponent(workspaceB)}`);
+  if (!profile.initialized) throw new Error(`profile missing initialized flag: ${JSON.stringify(profile)}`);
+
   console.log(JSON.stringify({
     ok: true,
     summary: "workspace switcher smoke passed",

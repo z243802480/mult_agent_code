@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, FolderOpen } from "lucide-react";
 import type {
   StudioSession,
   StudioEvent,
@@ -40,6 +40,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [promptSignal, setPromptSignal] = useState<PromptSignal>({ text: "", id: 0 });
   const [pendingTurn, setPendingTurn] = useState<{ message: string; mode: string; startedAt: number } | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const unsubRef = useRef<(() => void) | null>(null);
   const refreshedRunEventRef = useRef<string>("");
 
@@ -257,6 +258,8 @@ export function App() {
         onNew={() => void newSession()}
         onDelete={(session) => void deleteSession(session)}
         onWorkspaceChanged={() => void bootstrap()}
+        workspaceOpen={workspaceOpen}
+        onWorkspaceOpenChange={setWorkspaceOpen}
       />
       <main className="missionPane">
         <header className="topBar">
@@ -264,6 +267,15 @@ export function App() {
             <p className="eyebrow">Asteria</p>
             <h1>{activeSession?.title ?? "New task"}</h1>
             <p>Ask, plan, or continue a goal.</p>
+            <button
+              type="button"
+              className="workspaceChip"
+              title={settings?.workspace ?? "Open workspace folder"}
+              onClick={() => setWorkspaceOpen(true)}
+            >
+              <FolderOpen size={14} />
+              <span>{settings?.workspaceName ?? "Workspace"}</span>
+            </button>
           </div>
           <div className="topActions">
             <button title="Refresh" onClick={() => void bootstrap()} disabled={loading}>

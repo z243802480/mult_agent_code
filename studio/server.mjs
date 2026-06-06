@@ -145,6 +145,10 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await browseWorkspaceFolder());
     return;
   }
+  if (request.method === "GET" && url.pathname === "/api/studio/workspace/profile") {
+    sendJson(response, 200, await describeWorkspaceProfile(url.searchParams.get("path") || workspace));
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/api/studio/settings") {
     sendJson(response, 200, {
       ok: true,
@@ -155,7 +159,8 @@ async function handleApi(request, response, url) {
         streamMode: "runtime-model-events",
         workspace,
         workspaceName: workspaceBasename(workspace),
-        runtimeRoot
+        runtimeRoot,
+        workspaceProfile: await describeWorkspaceProfile(workspace)
       }
     });
     return;
@@ -2835,16 +2840,45 @@ function isAbsoluteWorkspacePath(value) {
   return path.isAbsolute(text);
 }
 
+async function describeWorkspaceProfile(targetPath) {
+  const resolved = path.resolve(String(targetPath || workspace));
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+    return { ok: false, error: `not a directory: ${resolved}` };
+  }
+  const described = await commandJson(["workspaces", "describe", "--root", resolved, "--json"]);
+  if (described.ok === false) {
+    return {
+      ok: true,
+      workspace_root: resolved,
+      initialized: existsSync(path.join(resolved, ".asteria", "project.json")),
+      has_git: existsSync(path.join(resolved, ".git")),
+      has_agents_md: existsSync(path.join(resolved, "AGENTS.md")),
+      project_name: workspaceBasename(resolved),
+    };
+  }
+  const profile = described.profile && typeof described.profile === "object" ? described.profile : described;
+  return { ok: true, ...profile };
+}
+
 async function listWorkspaceRegistry() {
   const listed = await commandJson(["workspaces", "list", "--json"]);
   const registry = listed.registry && typeof listed.registry === "object" ? listed.registry : listed;
   const recent = Array.isArray(registry.recent_workspaces) ? registry.recent_workspaces : [];
+  const recentWithProfiles = [];
+  for (const entry of recent.slice(0, 8)) {
+    const root = String(entry.workspace_root || "");
+    recentWithProfiles.push({
+      ...entry,
+      profile: root ? await describeWorkspaceProfile(root) : null,
+    });
+  }
   return {
     ok: true,
     workspace,
     runtimeRoot,
     current_workspace_root: registry.current_workspace_root || workspace,
-    recent_workspaces: redact(recent),
+    workspace_profile: await describeWorkspaceProfile(workspace),
+    recent_workspaces: redact(recentWithProfiles),
     registry: redact(registry),
   };
 }
@@ -2875,12 +2909,16 @@ async function openWorkspace(body) {
 
   workspace = path.resolve(String(registered.workspace || resolved));
   runtimeRoot = path.resolve(String(body?.runtime_root || workspace));
+  const profile = registered.profile && typeof registered.profile === "object"
+    ? registered.profile
+    : await describeWorkspaceProfile(workspace);
   return {
     ok: true,
     workspace,
     runtimeRoot,
     initialized: Boolean(registered.initialized),
     workspace_name: workspaceBasename(workspace),
+    profile,
     registry: redact(registered.registry || {}),
   };
 }

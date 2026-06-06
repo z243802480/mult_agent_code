@@ -3006,6 +3006,41 @@ h2 {
   margin: 0;
 }
 
+.workspaceBadge {
+  background: #1f2830;
+  border: 1px solid #33414b;
+  border-radius: 999px;
+  color: #b8c4ce;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.workspaceBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.workspaceChip {
+  align-items: center;
+  background: #1a2026;
+  border: 1px solid #33414b;
+  border-radius: 999px;
+  color: #dce3ea;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+  margin-top: 8px;
+  max-width: 100%;
+  padding: 4px 10px;
+}
+
+.workspaceChip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .primaryButton,
 .secondaryButton,
 .iconButton {

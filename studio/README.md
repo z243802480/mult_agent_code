@@ -79,6 +79,7 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | Model route viewer | ✅ |
 | Workspace file list | ✅ |
 | **Workspace switcher (open folder / recent)** | ✅ |
+| **Primary cwd chip + project profile (init/git/AGENTS.md)** | ✅ |
 | Token / cost limits display | 🔲 planned |
 | File diff viewer (inline git-style) | 🔲 planned |
 | Git integration (changed files, branch status) | 🔲 planned |

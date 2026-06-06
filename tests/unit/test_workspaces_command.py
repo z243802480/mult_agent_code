@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from asteria_runtime.commands.workspaces_command import WorkspacesCommand
+from asteria_runtime.commands.workspaces_command import WorkspacesCommand, resolve_studio_launch_root
 
 
 def test_workspaces_register_initializes_missing_workspace(tmp_path: Path) -> None:
@@ -43,3 +43,27 @@ def test_workspaces_list_returns_registry(tmp_path: Path) -> None:
     assert listed.ok is True
     recent = (listed.registry or {}).get("recent_workspaces") or []
     assert recent[0]["workspace_root"] == str(workspace.resolve())
+
+
+def test_workspaces_describe_reports_project_signals(tmp_path: Path) -> None:
+    workspace = tmp_path / "demo"
+    workspace.mkdir()
+    (workspace / "AGENTS.md").write_text("# Demo", encoding="utf-8")
+    command = WorkspacesCommand()
+    described = command.describe(workspace)
+    assert described.ok is True
+    profile = described.profile or {}
+    assert profile.get("has_agents_md") is True
+    assert profile.get("initialized") is False
+
+
+def test_resolve_studio_launch_root_uses_remembered_workspace(tmp_path: Path, monkeypatch) -> None:
+    launch_cwd = tmp_path / "repo"
+    launch_cwd.mkdir()
+    remembered = tmp_path / "project"
+    remembered.mkdir()
+    global_dir = tmp_path / "global"
+    WorkspacesCommand(global_config_dir=global_dir).register(remembered)
+    monkeypatch.chdir(launch_cwd)
+    resolved = resolve_studio_launch_root(Path("."), global_config_dir=global_dir)
+    assert resolved == remembered.resolve()

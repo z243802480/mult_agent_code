@@ -48,7 +48,7 @@ from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.studio_benchmark_command import StudioBenchmarkCommand
 from asteria_runtime.commands.studio_command import StudioCommand
-from asteria_runtime.commands.workspaces_command import WorkspacesCommand
+from asteria_runtime.commands.workspaces_command import WorkspacesCommand, resolve_studio_launch_root
 from asteria_runtime.commands.verification_command import VerificationStatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
@@ -1395,6 +1395,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not run init when .asteria/project.json is missing",
     )
     workspaces_register.add_argument("--json", action="store_true", help="Print JSON")
+    workspaces_describe = workspaces_sub.add_parser(
+        "describe",
+        help="Describe workspace readiness (init, git, AGENTS.md)",
+    )
+    workspaces_describe.add_argument("--root", required=True, help="Workspace directory path")
+    workspaces_describe.add_argument("--json", action="store_true", help="Print JSON")
     parser.set_command_groups(
         [
             (
@@ -2003,9 +2009,10 @@ def main() -> None:
         return
 
     if command == "studio":
-        runtime_root = Path(args.runtime_root) if args.runtime_root else Path(args.root)
+        launch_root = resolve_studio_launch_root(Path(args.root))
+        runtime_root = Path(args.runtime_root) if args.runtime_root else launch_root
         studio_command = StudioCommand(
-            root=Path(args.root),
+            root=launch_root,
             runtime_root=runtime_root,
             api_port=args.api_port,
             ui_port=args.ui_port,
@@ -2031,6 +2038,8 @@ def main() -> None:
                 Path(args.root),
                 init_if_needed=not args.no_init,
             )
+        elif action == "describe":
+            result = workspaces_command.describe(Path(args.root))
         else:
             parser.error(f"Unsupported workspaces action: {action}")
             return

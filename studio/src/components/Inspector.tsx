@@ -535,7 +535,9 @@ function PromotionPreviewPanel({
         <Metric label="Preview" value={mergeStatus === "ready" ? "ready" : mergeStatus === "needs_review" ? "review" : "—"} tone={mergeStatus === "ready" ? "good" : mergeStatus === "needs_review" ? "bad" : "warn"} />
         <Metric label="Pending" value={String(preview.pending_promotions ?? 0)} tone={Number(preview.pending_promotions ?? 0) ? "warn" : "good"} />
       </div>
-      {preview.merge_preview_summary && <p className="promotionPreviewSummary">{String(preview.merge_preview_summary)}</p>}
+      {preview.merge_preview_summary ? (
+        <p className="promotionPreviewSummary">{String(preview.merge_preview_summary)}</p>
+      ) : null}
       <div className="promotionPreviewList">
         {items.slice(0, 8).map((item, index) => {
           const kind = String(item.kind ?? "item");

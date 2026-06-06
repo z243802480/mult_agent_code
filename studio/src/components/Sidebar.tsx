@@ -23,6 +23,8 @@ export function Sidebar({
   onNew,
   onDelete,
   onWorkspaceChanged,
+  workspaceOpen,
+  onWorkspaceOpenChange,
 }: {
   sessions: StudioSession[];
   active: StudioSession | null;
@@ -32,9 +34,10 @@ export function Sidebar({
   onNew: () => void;
   onDelete: (session: StudioSession) => void;
   onWorkspaceChanged: () => void;
+  workspaceOpen: boolean;
+  onWorkspaceOpenChange: (open: boolean) => void;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
-  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const gate = (overview?.gateStatus ?? {}) as Record<string, unknown>;
   const diagnosticsLoaded = overview?.diagnostics_loaded !== false;
 
@@ -96,14 +99,14 @@ export function Sidebar({
         ))}
       </nav>
 
-      <button className="settingsLink workspaceButton" type="button" onClick={() => setWorkspaceOpen(true)}>
+      <button className="settingsLink workspaceButton" type="button" onClick={() => onWorkspaceOpenChange(true)}>
         <FolderOpen size={15} />
         <span title={settings?.workspace ?? ""}>{workspaceLabel(settings)}</span>
       </button>
       <WorkspaceSwitcher
         open={workspaceOpen}
         currentWorkspace={settings?.workspace ?? ""}
-        onClose={() => setWorkspaceOpen(false)}
+        onClose={() => onWorkspaceOpenChange(false)}
         onOpened={onWorkspaceChanged}
       />
     </aside>

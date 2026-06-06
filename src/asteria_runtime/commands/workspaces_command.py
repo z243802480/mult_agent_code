@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,12 +10,49 @@ from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
+def describe_workspace_root(workspace_root: Path) -> dict[str, object]:
+    root = workspace_root.expanduser().resolve()
+    project_json = root / ".asteria" / "project.json"
+    agents_md = root / "AGENTS.md"
+    git_dir = root / ".git"
+    project: dict[str, object] = {}
+    if project_json.exists():
+        try:
+            project = json.loads(project_json.read_text(encoding="utf-8"))
+        except Exception:
+            project = {}
+    return {
+        "workspace_root": str(root),
+        "initialized": project_json.exists(),
+        "has_git": git_dir.exists(),
+        "has_agents_md": agents_md.exists(),
+        "project_name": project.get("project_name") or root.name,
+        "workspace_type": project.get("workspace_type"),
+    }
+
+
+def resolve_studio_launch_root(requested: Path, *, global_config_dir: Path | None = None) -> Path:
+    """Prefer the global current workspace when CLI launches Studio from repo cwd."""
+    candidate = requested.expanduser().resolve()
+    registry = WorkspaceRegistry(global_config_dir, SchemaValidator(schema_dir())).read()
+    remembered = registry.get("current_workspace_root")
+    if not remembered:
+        return candidate
+    remembered_path = Path(str(remembered)).expanduser().resolve()
+    if not remembered_path.is_dir():
+        return candidate
+    if candidate == Path.cwd().resolve() and not (candidate / ".asteria" / "project.json").exists():
+        return remembered_path
+    return candidate
+
+
 @dataclass(frozen=True)
 class WorkspacesResult:
     ok: bool
     workspace: str | None = None
     initialized: bool = False
     registry: dict | None = None
+    profile: dict | None = None
     error: str | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -25,6 +63,8 @@ class WorkspacesResult:
             payload["initialized"] = self.initialized
         if self.registry is not None:
             payload["registry"] = self.registry
+        if self.profile is not None:
+            payload["profile"] = self.profile
         if self.error:
             payload["error"] = self.error
         return payload
@@ -58,6 +98,12 @@ class WorkspacesCommand:
         registry = WorkspaceRegistry(self.global_config_dir, self.validator).read()
         return WorkspacesResult(ok=True, registry=registry)
 
+    def describe(self, workspace_root: Path) -> WorkspacesResult:
+        root = workspace_root.expanduser().resolve()
+        if not root.exists() or not root.is_dir():
+            return WorkspacesResult(ok=False, error=f"Workspace path is not a directory: {root}")
+        return WorkspacesResult(ok=True, workspace=str(root), profile=describe_workspace_root(root))
+
     def register(
         self,
         workspace_root: Path,
@@ -86,4 +132,5 @@ class WorkspacesCommand:
             workspace=str(root),
             initialized=initialized,
             registry=registry,
+            profile=describe_workspace_root(root),
         )

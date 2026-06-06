@@ -1,12 +1,28 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FolderOpen, X } from "lucide-react";
-import type { WorkspaceEntry } from "../types";
+import type { WorkspaceEntry, WorkspaceProfile } from "../types";
 import { api } from "../api";
 
 function basename(value: string): string {
   const normalized = value.replace(/[\\/]+$/, "");
   const parts = normalized.split(/[\\/]/);
   return parts[parts.length - 1] || normalized || "workspace";
+}
+
+function WorkspaceProfileBadges({ profile }: { profile: WorkspaceProfile | null | undefined }) {
+  if (!profile) return null;
+  const badges = [
+    profile.initialized ? "Asteria init" : "Needs init",
+    profile.has_git ? "Git" : "No git",
+    profile.has_agents_md ? "AGENTS.md" : "No AGENTS.md",
+  ];
+  return (
+    <div className="workspaceBadges">
+      {badges.map((badge) => (
+        <span key={badge} className="workspaceBadge">{badge}</span>
+      ))}
+    </div>
+  );
 }
 
 export function WorkspaceSwitcher({
@@ -22,6 +38,7 @@ export function WorkspaceSwitcher({
 }) {
   const [pathValue, setPathValue] = useState(currentWorkspace);
   const [recent, setRecent] = useState<WorkspaceEntry[]>([]);
+  const [previewProfile, setPreviewProfile] = useState<WorkspaceProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +50,21 @@ export function WorkspaceSwitcher({
       .then((payload) => setRecent(payload.recent_workspaces ?? []))
       .catch(() => setRecent([]));
   }, [open, currentWorkspace]);
+
+  useEffect(() => {
+    if (!open) return;
+    const trimmed = pathValue.trim();
+    if (!trimmed) {
+      setPreviewProfile(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void api.workspaceProfile(trimmed)
+        .then((profile) => setPreviewProfile(profile))
+        .catch(() => setPreviewProfile(null));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [open, pathValue]);
 
   const currentLabel = useMemo(() => basename(currentWorkspace), [currentWorkspace]);
 
@@ -90,9 +122,11 @@ export function WorkspaceSwitcher({
       >
         <header className="workspaceModalHeader">
           <div>
-            <p className="eyebrow">Project</p>
+            <p className="eyebrow">Project folder</p>
             <h2>Open workspace</h2>
-            <p className="muted">Goals, plans, and code changes run in the selected folder.</p>
+            <p className="muted">
+              Like Claude Code&apos;s project picker: goals, plans, and file edits use this folder as the primary working directory.
+            </p>
           </div>
           <button className="iconButton" title="Close" aria-label="Close" onClick={onClose}>
             <X size={18} />
@@ -100,7 +134,7 @@ export function WorkspaceSwitcher({
         </header>
 
         <div className="workspaceCurrent">
-          <small>Current</small>
+          <small>Current primary cwd</small>
           <strong title={currentWorkspace}>{currentLabel}</strong>
           <span className="muted" title={currentWorkspace}>{currentWorkspace}</span>
         </div>
@@ -124,6 +158,8 @@ export function WorkspaceSwitcher({
           </div>
         </label>
 
+        <WorkspaceProfileBadges profile={previewProfile} />
+
         {recent.length > 0 && (
           <div className="workspaceRecent">
             <p className="sideTitle">Recent</p>
@@ -143,6 +179,7 @@ export function WorkspaceSwitcher({
                   >
                     <strong>{label}</strong>
                     <small>{root}</small>
+                    <WorkspaceProfileBadges profile={entry.profile} />
                   </button>
                 );
               })}
