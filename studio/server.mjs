@@ -96,6 +96,11 @@ async function handleApi(request, response, url) {
     });
     return;
   }
+  if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    sendJson(response, 200, sessionJobsPayload(sessionId));
+    return;
+  }
   if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/messages$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, await submitUserGoal(sessionId, await readRequestJson(request)));
@@ -294,8 +299,10 @@ async function handleDecisionResolve(sessionId, body) {
   });
   await appendEvent(session.session_id, progressEventForMode("decide", String(decision.question || decisionId)));
   const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--select-option-id", optionId];
-  startRuntimeJob(session.session_id, "decide", `Resolve ${decisionId}.`, command);
-  return { ok: true, session, started: true, decision_id: decisionId, option_id: optionId };
+  const metadata = decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
+  const followUpMode = metadata.kind === "runtime_request" && optionId === "review_contract" ? "resume" : null;
+  startRuntimeJob(session.session_id, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
+  return { ok: true, session, started: true, decision_id: decisionId, option_id: optionId, follow_up_mode: followUpMode };
 }
 
 function isSafeDecisionOptionId(value) {
@@ -1221,16 +1228,34 @@ function tailUserProgress(sessionId, jobId) {
   return () => { stopped = true; };
 }
 
-function startRuntimeJob(sessionId, mode, goal, commandOverride = null) {
+function sessionJobsPayload(sessionId) {
+  const jobs = [...liveJobs.values()]
+    .filter((job) => job.session_id === sessionId)
+    .map((job) => ({
+      job_id: job.job_id,
+      status: job.status,
+      mode: job.mode || null,
+      run_id: job.run_id || null,
+    }));
+  return {
+    ok: true,
+    running: jobs.filter((job) => job.status === "running").length,
+    jobs,
+  };
+}
+
+function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
   const command = Array.isArray(commandOverride) && commandOverride.length ? commandOverride : runtimeCommand(mode, goal);
   const jobId = `job-${Date.now()}`;
   const job = {
     job_id: jobId,
     session_id: sessionId,
     status: "running",
+    mode,
     command,
     started_at_ms: Date.now(),
-    run_id: null
+    run_id: null,
+    follow_up_mode: options.followUpMode || null,
   };
   liveJobs.set(jobId, job);
 
@@ -1327,6 +1352,13 @@ ${stderr}` : stdout.slice(-4000)
         run_id: completedRunId || undefined,
         job_id: jobId,
       });
+    }
+    const followUpMode = job.follow_up_mode;
+    if (code === 0 && followUpMode) {
+      const followUp = runtimeActionByKind(followUpMode);
+      if (followUp) {
+        startRuntimeJob(sessionId, followUp.mode, followUp.goal, followUp.command);
+      }
     }
   });
   child.on("error", (error) => {

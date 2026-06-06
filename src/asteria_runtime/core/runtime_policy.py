@@ -8,7 +8,11 @@ from typing import Callable
 
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.permission_policy import permission_policy_profile
-from asteria_runtime.core.runtime_request import RuntimeRequest
+from asteria_runtime.core.runtime_request import (
+    RuntimeRequest,
+    apply_runtime_request_to_task,
+    effective_runtime_request_risk,
+)
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.task_contract import parallel_safety, read_scope, write_scope
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
@@ -335,6 +339,15 @@ class RuntimeRequestPolicy:
         ]
         if not recorded:
             return None
+        auto_allow = ToolPermissionPolicy(context.root, self.validator).permission_profile(context).get(
+            "auto_allow_low_risk",
+            False,
+        )
+        for request in recorded:
+            request["risk"] = effective_runtime_request_risk(request, auto_allow_low_risk=auto_allow)
+        if auto_allow and all(request["risk"] == "low" for request in recorded):
+            if self._auto_apply_runtime_requests(context, task, recorded):
+                return None
         needs_decision = [request for request in recorded if request["risk"] in {"medium", "high"}]
         decision = (
             self._create_runtime_request_decision(context, task, needs_decision)
@@ -404,6 +417,52 @@ class RuntimeRequestPolicy:
             summary=reason,
             evidence_path=evidence_path,
         )
+
+    def _auto_apply_runtime_requests(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        requests: list[dict],
+    ) -> bool:
+        if context.run_dir is None:
+            return False
+        task_plan_path = context.run_dir / "task_plan.json"
+        store = JsonStore(self.validator)
+        task_plan = store.read(task_plan_path, "task_board")
+        target = next(
+            (item for item in task_plan["tasks"] if item["task_id"] == task["task_id"]),
+            None,
+        )
+        if target is None:
+            return False
+        prior_status = target.get("status")
+        changed = False
+        for request in requests:
+            changed |= apply_runtime_request_to_task(target, request)
+            updated = dict(request)
+            updated["status"] = "auto_applied"
+            self._rewrite_runtime_request(context, updated)
+        if not changed:
+            return False
+        ids = ", ".join(request["runtime_request_id"] for request in requests)
+        target["notes"] = f"Auto-applied low-risk runtime request(s): {ids}."
+        target["updated_at"] = now_iso()
+        if prior_status == "blocked":
+            target["status"] = "ready"
+        self.validator.validate("task", target)
+        store.write(task_plan_path, task_plan, "task_board")
+        if context.event_logger:
+            context.event_logger.record(
+                context.run_id,
+                "runtime_request_auto_applied",
+                "RuntimeRequestPolicy",
+                target["notes"],
+                {
+                    "task_id": task["task_id"],
+                    "runtime_request_ids": [request["runtime_request_id"] for request in requests],
+                },
+            )
+        return True
 
     def _record_runtime_request(
         self,

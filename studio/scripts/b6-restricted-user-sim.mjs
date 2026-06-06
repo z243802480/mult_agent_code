@@ -14,6 +14,7 @@ const python = process.env.ASTERIA_PYTHON || "python";
 const goalText = "给一个小 CLI 增加 --version 参数，并补一个测试。";
 const startedAt = Date.now();
 const log = [];
+const friction = { decide: 0, debug: 0, resume: 0 };
 
 function note(step, detail) {
   const entry = { step, detail, elapsed_s: Math.round((Date.now() - startedAt) / 1000) };
@@ -70,7 +71,7 @@ if (!types.has("permission_request")) throw new Error("missing permission_reques
 note("B2", `session events: ${[...types].slice(0, 12).join(", ")}`);
 
 const diagnostics = await getJson(`${base}/api/diagnostics`);
-note("B4", `workflow=${JSON.stringify(diagnostics.workflow)}`);
+note("B4", `workflow=${JSON.stringify(diagnostics.workflow)} friction=${JSON.stringify(friction)}`);
 
 server.kill("SIGTERM");
 await sleep(500);
@@ -85,12 +86,27 @@ const versionTrimmed = versionOut.trim();
 if (!versionTrimmed || !/(greet_cli|\d+\.\d+)/i.test(versionTrimmed)) {
   throw new Error(`--version failed: ${versionOut}`);
 }
-const pytest = await runPythonCapture(["-m", "pytest", path.join(workspace, "test_greet_cli.py"), "-q"], workspace);
+const testPath = resolveGreetTestPath(workspace);
+if (!testPath) throw new Error("greet_cli test file not found");
+const pytest = await runPythonCapture(["-m", "pytest", testPath, "-q"], workspace);
 if (!/passed/i.test(pytest)) throw new Error(`pytest: ${pytest}`);
 note("C3", pytest.trim());
 
 const totalMin = Math.round((Date.now() - startedAt) / 60000);
-console.log(JSON.stringify({ ok: true, workspace, total_min: totalMin, log }, null, 2));
+console.log(JSON.stringify({ ok: true, workspace, total_min: totalMin, log, friction }, null, 2));
+
+function resolveGreetTestPath(root) {
+  for (const rel of [
+    "test_greet_cli.py",
+    "tests/test_greet_cli.py",
+    "greet_cli_test.py",
+    "tests/greet_cli_test.py",
+  ]) {
+    const candidate = path.join(root, rel);
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
 
 function isReady(status) {
   return Boolean(
@@ -105,8 +121,14 @@ async function waitForReadyOrAssist(base, sessionId) {
   let lastSig = "";
   let stagnant = 0;
   let actionCooldown = 0;
+  let awaitJobs = false;
 
   await waitFor(async () => {
+    if (awaitJobs) {
+      await waitForSessionJobsIdle(base, sessionId);
+      awaitJobs = false;
+    }
+
     if (actionCooldown > 0) {
       actionCooldown -= 1;
       return false;
@@ -121,7 +143,9 @@ async function waitForReadyOrAssist(base, sessionId) {
     if (Number(status.pending_decision_count) > 0 || rec.startsWith("decide")) {
       const advanced = await resolvePendingDecisions(base, sessionId, status);
       if (advanced) {
-        actionCooldown = 3;
+        friction.decide += 1;
+        actionCooldown = 8;
+        awaitJobs = true;
         stagnant = 0;
         lastSig = "";
         return false;
@@ -130,9 +154,17 @@ async function waitForReadyOrAssist(base, sessionId) {
 
     if (/^(resume|replan|debug|review)/.test(rec)) {
       const action = rec.split(/\s+/)[0];
+      if (action === "debug") {
+        friction.debug += 1;
+        if (friction.debug > 4) {
+          throw new Error(`too many debug cycles (${friction.debug}) at ${sig}`);
+        }
+      }
+      if (action === "resume") friction.resume += 1;
       await triggerRuntimeAction(base, sessionId, action);
       note("B1x", `Studio runtime action: ${action}`);
-      actionCooldown = 5;
+      actionCooldown = action === "debug" ? 8 : 6;
+      awaitJobs = true;
       stagnant = 0;
       lastSig = "";
       return false;
@@ -148,6 +180,13 @@ async function waitForReadyOrAssist(base, sessionId) {
     }
     return false;
   }, 600000, "Studio run did not reach ready_for_accept");
+}
+
+async function waitForSessionJobsIdle(base, sessionId) {
+  await waitFor(async () => {
+    const payload = await getJson(`${base}/api/studio/sessions/${sessionId}/jobs`);
+    return Number(payload.running || 0) === 0;
+  }, 300000, "Studio jobs did not finish");
 }
 
 function normalizeCommand(raw) {
