@@ -116,12 +116,34 @@ def is_benign_workspace_scope(paths: list[str]) -> bool:
     return True
 
 
+def is_benign_context_paths(paths: list[str]) -> bool:
+    if not paths:
+        return False
+    for raw in paths:
+        normalized = str(raw).replace("\\", "/").strip().lstrip("./")
+        if normalized in {"", "."}:
+            continue
+        if ".." in normalized:
+            return False
+        if normalized.startswith(".env") or normalized.startswith("secrets/"):
+            return False
+        if normalized == "docs" or normalized.startswith("docs/"):
+            continue
+        candidate = str(raw).replace("\\", "/").strip()
+        if not is_benign_workspace_scope([candidate]):
+            return False
+    return True
+
+
 def effective_runtime_request_risk(request: dict, *, auto_allow_low_risk: bool) -> str:
     risk = str(request.get("risk") or _infer_risk(str(request.get("request_type") or ""), request.get("details")))
     if not auto_allow_low_risk:
         return risk
     request_type = str(request.get("request_type") or "")
-    if risk == "medium" and request_type == "scope_expansion" and is_benign_workspace_scope(scope_paths(request)):
+    paths = scope_paths(request)
+    if request_type == "context_request" and is_benign_context_paths(paths):
+        return "low"
+    if risk == "medium" and request_type == "scope_expansion" and is_benign_workspace_scope(paths):
         return "low"
     return risk
 

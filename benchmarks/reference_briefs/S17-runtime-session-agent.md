@@ -17,7 +17,7 @@
 | status/review replan 软化 | session_agent → `resume` | ✅ |
 | RFC | `docs/zh/plans/RUNTIME_SESSION_AGENT_RFC.md` | ✅ |
 | B6 复验 | 连续 2 绿（#4+#5） | ✅ |
-| doc_update dogfood | `s16_doc_update_dogfood.py --fresh` | ✅ |
+| `s16_doc_update_dogfood.py --fresh` | ✅ friction 0/0/0 |
 
 ## focus
 

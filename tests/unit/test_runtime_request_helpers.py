@@ -3,6 +3,7 @@ from __future__ import annotations
 from asteria_runtime.core.runtime_request import (
     apply_runtime_request_to_task,
     effective_runtime_request_risk,
+    is_benign_context_paths,
     is_benign_workspace_scope,
 )
 
@@ -25,6 +26,17 @@ def test_effective_runtime_request_risk_downgrades_benign_scope_for_reviewed_aut
     }
     assert effective_runtime_request_risk(request, auto_allow_low_risk=True) == "low"
     assert effective_runtime_request_risk(request, auto_allow_low_risk=False) == "medium"
+
+
+def test_effective_runtime_request_risk_downgrades_benign_context_request() -> None:
+    request = {
+        "request_type": "context_request",
+        "risk": "medium",
+        "details": {"read_scope": ["."], "context_requirements": {"requested_paths": ["."]}},
+    }
+    assert effective_runtime_request_risk(request, auto_allow_low_risk=True) == "low"
+    assert is_benign_context_paths(["."])
+    assert is_benign_context_paths(["README.md", "docs/zh/Beta用户入门.md"])
 
 
 def test_apply_runtime_request_to_task_merges_write_scope() -> None:

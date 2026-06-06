@@ -32,7 +32,7 @@
     "risk": { "type": "string", "enum": ["low", "medium", "high"] },
     "reason": { "type": "string" },
     "details": { "type": "object" },
-    "status": { "type": "string", "enum": ["recorded", "decision_created", "denied"] },
+    "status": { "type": "string", "enum": ["recorded", "auto_applied", "decision_created", "denied"] },
     "decision_id": { "type": ["string", "null"] },
     "created_at": { "type": "string" }
   }

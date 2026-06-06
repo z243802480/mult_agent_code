@@ -41,8 +41,8 @@ Harness（显式）  ≈  多 task 图 + replan lineage + repair_limit + promoti
 - [x] `RequirementPlanner._session_agent_unified_task`
 - [x] `AgentLoopProfileRegistry.session_agent`
 - [x] `RunCommand` session_agent requeue + skip replan
-- [ ] B6 连续 2 绿
-- [ ] Studio create_repair_task 链与 session_agent 对齐（若仍摩擦）
+- [x] `runtime_request.status=auto_applied` schema + benign `context_request` 自动合并
+- [ ] B6 连续 2 绿（maintainer 复验）
 
 ## 非目标（S17）
 

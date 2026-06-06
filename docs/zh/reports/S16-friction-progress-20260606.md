@@ -23,10 +23,5 @@ S16/S17 退出：B6 **连续 2 次绿**；`friction.debug` ≤2；session_agent 
 ## 状态
 
 - **B6 连续 2 绿**：✅（#4 + #5）
-- **doc_update dogfood**：✅（121s；decide 1 / debug 0 / resume 1）
-- **friction.debug 中位数**：1（目标 ≤2）✅
-
-## 下一步
-
-- S17 signoff 报告
-- 可选：doc_update `context_request` 低风险自动放行（减 decide 1 次）
+- **doc_update dogfood**：✅（152s；**friction 0/0/0** — context_request 自动放行）
+- **Phase 5 蜂群 RFC**：✅ 扩展 [`SWARM_SANDBOX_RFC.md`](./deferred/SWARM_SANDBOX_RFC.md)（harness 分层 + S18–S21 里程碑）

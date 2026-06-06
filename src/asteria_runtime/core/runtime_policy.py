@@ -17,6 +17,7 @@ from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.task_contract import parallel_safety, read_scope, write_scope
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.security.shell_guard import ShellGuard, ShellPolicyError
+from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.patch_tools import PatchApplyError, parse_unified_diff
