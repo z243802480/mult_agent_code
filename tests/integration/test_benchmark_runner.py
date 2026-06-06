@@ -3,7 +3,11 @@ from pathlib import Path
 from scripts.run_benchmarks import run_benchmarks
 
 
-def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path) -> None:
+def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_CHEAP_PROVIDER", "fake")
     results = run_benchmarks(work_dir=tmp_path)
 
     assert {result.benchmark_id for result in results} == {

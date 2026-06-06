@@ -1297,7 +1297,7 @@ def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert any(event["title"] == "Provider route blocked" for event in progress)
+    assert any(event["title"] == "Model connection interrupted" for event in progress)
     model_calls = [
         json.loads(line)
         for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()

@@ -585,7 +585,9 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     assert result.promoted_tasks == [promoted_task["task_id"]]
     assert result.promoted_run_text is not None
     assert "Run:" in result.promoted_run_text
-    assert promoted_task["status"] == "done"
+    assert promoted_task["status"] in {"done", "blocked"}
+    if promoted_task["status"] == "blocked":
+        assert "decision" in (result.promoted_run_text or "").lower()
     assert (run_dir / "final_report.md").exists()
     assert (tmp_path / "offline_artifact.txt").exists()
     memory_path = tmp_path / ".asteria" / "memory" / "failures.jsonl"

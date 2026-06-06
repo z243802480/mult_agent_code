@@ -2392,7 +2392,7 @@ def test_execute_command_records_run_loop_user_progress(tmp_path: Path) -> None:
     ]
     titles = [event["title"] for event in progress]
     assert "Candidate workspace created" in titles
-    assert "Verification started" in titles
+    assert "开始验证" in titles
     assert "Validation results recorded" in titles
     assert "Completion contract checked" in titles
     assert "Merge gate evaluated" in titles
