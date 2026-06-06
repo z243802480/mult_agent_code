@@ -17,7 +17,9 @@
 | status/review replan 软化 | session_agent → `resume` | ✅ |
 | RFC | `docs/zh/plans/RUNTIME_SESSION_AGENT_RFC.md` | ✅ |
 | B6 复验 | 连续 2 绿（#4+#5） | ✅ |
-| `s16_doc_update_dogfood.py --fresh` | ✅ friction 0/0/0 |
+| doc_update dogfood | `s16_doc_update_dogfood.py --fresh` | ✅ friction 0/0/0 |
+| benign context_request | reviewed_auto 下自动合并 read scope | ✅ |
+| Phase 5 蜂群 RFC | harness 分层 + S18–S21 里程碑 | ✅ |
 
 ## focus
 
