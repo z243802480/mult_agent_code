@@ -111,6 +111,95 @@ def write_scope(task: dict) -> list[str]:
     return _string_list(task.get("expected_artifacts", []))
 
 
+GENERIC_ARTIFACT_SCOPES = frozenset({"implementation artifact", "planning artifact"})
+
+
+def path_in_write_scope(path: str, scope: list[str], *, kind: str | None = None) -> bool:
+    """Match a concrete path against task write_scope, including generic artifact placeholders."""
+    normalized_path = _normalize_path(path)
+    if not normalized_path or ".." in normalized_path:
+        return False
+    resolved_kind = kind or "implementation"
+    for item in scope:
+        normalized_scope = _normalize_path(str(item))
+        if not normalized_scope:
+            continue
+        if normalized_scope in GENERIC_ARTIFACT_SCOPES:
+            if normalized_scope == "implementation artifact" and _implementation_artifact_path_allowed(
+                normalized_path, resolved_kind
+            ):
+                return True
+            if normalized_scope == "planning artifact" and _planning_artifact_path_allowed(normalized_path):
+                return True
+            continue
+        if normalized_scope.endswith("/"):
+            prefix = normalized_scope.rstrip("/")
+            if normalized_path == prefix or normalized_path.startswith(prefix + "/"):
+                return True
+            continue
+        if normalized_path == normalized_scope or normalized_path.startswith(normalized_scope + "/"):
+            return True
+    return False
+
+
+def _implementation_artifact_path_allowed(path: str, kind: str) -> bool:
+    if kind not in {"implementation", "report", "ui", "verification", "diagnostic"}:
+        return False
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return False
+    if parts[0] in {".git", "secrets"} or parts[0].startswith(".env"):
+        return False
+    if parts[0] in {"src", "tests", "docs", "generated", "studio"}:
+        return True
+    if len(parts) == 1 and parts[0].endswith((".py", ".md", ".txt", ".json", ".tsx", ".ts", ".jsx", ".js")):
+        return True
+    return False
+
+
+def _planning_artifact_path_allowed(path: str) -> bool:
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return False
+    if parts[0] in {"docs", "benchmarks", ".asteria"}:
+        return True
+    return path.endswith((".md", ".json"))
+
+
+def path_in_read_scope(path: str, scope: list[str], *, kind: str | None = None) -> bool:
+    """Match a concrete path against task read_scope, including generic artifact placeholders."""
+    normalized_path = _normalize_path(path)
+    if not normalized_path or ".." in normalized_path:
+        return False
+    resolved_kind = kind or "implementation"
+    if path_in_write_scope(path, scope, kind=kind):
+        return True
+    for item in scope:
+        normalized_scope = _normalize_path(str(item))
+        if normalized_scope == "implementation artifact" and _implementation_artifact_read_allowed(
+            normalized_path, resolved_kind
+        ):
+            return True
+        if normalized_scope == "planning artifact" and _planning_artifact_path_allowed(normalized_path):
+            return True
+    return False
+
+
+def _implementation_artifact_read_allowed(path: str, kind: str) -> bool:
+    if kind not in {"implementation", "report", "ui", "verification", "diagnostic"}:
+        return False
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return False
+    if parts[0] in {".git", "secrets"} or parts[0].startswith(".env"):
+        return False
+    if parts[0] in {"src", "tests", "docs", "generated", "studio"}:
+        return True
+    if path in {"AGENTS.md"} or path.endswith((".py", ".md", ".txt", ".json", ".tsx", ".ts", ".jsx", ".js")):
+        return True
+    return False
+
+
 def validation_commands(task: dict) -> list[str]:
     explicit = task.get("validation_commands")
     if isinstance(explicit, list):

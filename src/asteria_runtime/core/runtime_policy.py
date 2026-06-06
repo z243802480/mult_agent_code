@@ -14,7 +14,7 @@ from asteria_runtime.core.runtime_request import (
     effective_runtime_request_risk,
 )
 from asteria_runtime.core.task_board import TaskBoard
-from asteria_runtime.core.task_contract import parallel_safety, read_scope, write_scope
+from asteria_runtime.core.task_contract import parallel_safety, path_in_read_scope, path_in_write_scope, read_scope, task_kind, write_scope
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.security.shell_guard import ShellGuard, ShellPolicyError
 from asteria_runtime.storage.json_store import JsonStore
@@ -79,7 +79,7 @@ class ToolPermissionPolicy:
         if not isinstance(task.get("write_scope"), list):
             return
         for path in self._write_paths_for_tool(tool_name, args):
-            if not self._path_in_scope(path, write_scope(task)):
+            if not path_in_write_scope(path, write_scope(task), kind=task_kind(task)):
                 raise ToolPermissionDenied(
                     f"ToolPermissionProfile denied write path for {task['task_id']}: {path}",
                     request_type="scope_expansion",
@@ -171,7 +171,7 @@ class ToolPermissionPolicy:
         if not isinstance(task.get("read_scope"), list):
             return
         scope = read_scope(task)
-        if scope and not self._path_in_scope(path, scope):
+        if scope and not path_in_read_scope(path, scope, kind=task_kind(task)):
             raise ToolPermissionDenied(
                 f"ToolPermissionProfile denied read path for {task['task_id']}: {path}",
                 request_type="context_request",

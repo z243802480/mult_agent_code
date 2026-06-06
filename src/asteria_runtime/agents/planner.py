@@ -438,6 +438,7 @@ class RequirementPlanner:
             for requirement in goal_spec.get("expanded_requirements", [])
             if requirement.get("priority") != "wont"
         ]
+        task_kind = self._session_agent_task_kind(requirements, goal_spec)
         acceptance = self._session_agent_acceptance(goal_spec, requirements, artifacts)
         description_lines = [
             str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or "").strip()
@@ -455,11 +456,11 @@ class RequirementPlanner:
             requirement,
             requirement["expected_artifacts"],
         )
-        expected_changed = source_artifacts or self._expected_changed_files(
-            "implementation",
+        expected_changed = self._expected_changed_files(
+            task_kind,
             requirement["expected_artifacts"],
             requirement,
-        )
+        ) or source_artifacts
         task = {
             "schema_version": "0.1.0",
             "task_id": "task-0001",
@@ -470,9 +471,9 @@ class RequirementPlanner:
             "role": "CoderAgent",
             "depends_on": [],
             "acceptance": acceptance,
-            "allowed_tools": self._allowed_tools("implementation"),
+            "allowed_tools": self._allowed_tools(task_kind),
             "expected_artifacts": requirement["expected_artifacts"],
-            "task_kind": "implementation",
+            "task_kind": task_kind,
             "expected_changed_files": expected_changed,
             "assigned_agent_id": None,
             "created_at": now_iso(),
@@ -495,6 +496,27 @@ class RequirementPlanner:
         task["verification_policy"] = self._verification_policy(task, goal_spec)
         self._apply_runtime_contract(task)
         return task
+
+    def _session_agent_task_kind(self, requirements: list[dict], goal_spec: dict) -> str:
+        for requirement in requirements:
+            explicit = str(requirement.get("task_kind") or "").strip().lower()
+            if explicit:
+                return explicit
+        description_lines = [
+            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or "").strip()
+        ]
+        for requirement in requirements[:12]:
+            description_lines.append(f"- {requirement.get('description', '')}")
+        merged = {
+            "description": "\n".join(line for line in description_lines if line.strip()),
+            "acceptance": self._session_agent_acceptance(
+                goal_spec,
+                requirements,
+                self._explicit_goal_files(goal_spec),
+            ),
+        }
+        artifacts = self._explicit_goal_files(goal_spec) or ["implementation artifact"]
+        return self._task_kind(merged, artifacts, goal_spec)
 
     def _session_agent_acceptance(
         self,

@@ -72,8 +72,8 @@ def test_status_json_exposes_plan_summary_after_plan(tmp_path: Path) -> None:
     assert plan is not None
     assert plan["transcript_kind"] == "plan"
     assert plan["title"] == "计划已生成"
-    assert "共 2 个任务" in str(plan["summary"])
-    assert plan["task_count"] == 2
+    assert "共 1 个任务" in str(plan["summary"])
+    assert plan["task_count"] == 1
 
     run_dirs = sorted((tmp_path / ".asteria" / "runs").iterdir(), key=lambda item: item.name)
     user_progress = [

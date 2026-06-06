@@ -310,7 +310,18 @@ class SessionsCommand:
                 "recommended_next_command"
             ) or self._first_next_action(snapshot)
         profile = execution_profile_from_run_config(load_run_config(run_dir, self.validator))
-        if recommended_next_command:
+        phase = str(run_status.get("current_phase") or "")
+        policy_command = str(goal_policy.get("recommended_command") or "")
+        if (
+            policy_command
+            and phase != "ACCEPTED"
+            and not pending_decisions
+        ):
+            recommended_next_command = session_agent_recommended_command(
+                policy_command,
+                is_session_agent=profile.is_session_agent,
+            )
+        elif recommended_next_command:
             recommended_next_command = session_agent_recommended_command(
                 recommended_next_command,
                 is_session_agent=profile.is_session_agent,
@@ -937,7 +948,7 @@ class SessionsCommand:
         ) or {}
         classified_command = str(failure_classification.get("recommended_command") or "")
         if review_status in {"partial", "fail"}:
-            if classified_command in {"debug", "replan", "decide --list"}:
+            if classified_command in {"debug", "replan", "resume", "decide --list"}:
                 return classified_command
             return "debug"
         if phase == "REVIEWED" and review_status == "pass":

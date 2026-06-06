@@ -648,14 +648,14 @@ def test_goal_loop_policy_recommends_replan_for_plan_gap(tmp_path: Path) -> None
         permission_level="auto",
     ).continue_run(run_id)
 
-    assert result.recommended_next_command == "replan"
+    assert result.recommended_next_command == "resume"
     assert any(
-        step.name == "goal-policy" and step.status == "stop_for_replan" for step in result.steps
+        step.name == "goal-policy" and step.status == "continue_repair" for step in result.steps
     )
     assert result.final_report_summary["goal_policy"]["category"] == "plan_gap"
-    assert result.final_report_summary["goal_policy"]["recommended_command"] == "replan"
+    assert result.final_report_summary["goal_policy"]["recommended_command"] == "resume"
     status_payload = StatusCommand(tmp_path).run().to_dict()
-    assert status_payload["recommended_next_command"] == "replan"
+    assert status_payload["recommended_next_command"] == "resume"
     assert status_payload["goal_policy"]["category"] == "plan_gap"
 
 

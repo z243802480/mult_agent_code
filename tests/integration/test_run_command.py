@@ -1822,7 +1822,12 @@ class FakeResearchExecuteClient:
 
 def test_final_report_marks_implemented_unverified_when_no_verification_calls(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "fake")
+    monkeypatch.setenv("AGENT_MODEL_CHEAP_PROVIDER", "fake")
     # Use a research task (requires_verification=False) so the task completes without
     # needing a debug cycle, while still leaving tool_calls.jsonl with no run_command calls.
     result = RunCommand(

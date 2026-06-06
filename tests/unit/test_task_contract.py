@@ -4,6 +4,8 @@ from asteria_runtime.core.task_contract import (
     context_requirements,
     failure_policy,
     parallel_safety,
+    path_in_read_scope,
+    path_in_write_scope,
     read_scope,
     requires_changed_artifact,
     task_kind,
@@ -116,3 +118,15 @@ def test_task_contract_marks_tasks_without_write_scope_as_readonly() -> None:
     assert write_scope(task) == []
     assert parallel_safety(task) == "readonly"
     assert failure_policy(task) == "continue_other_branches"
+
+
+def test_path_in_write_scope_accepts_implementation_artifact_for_src_paths() -> None:
+    scope = ["implementation artifact"]
+    assert path_in_write_scope("src/notes_tool.py", scope, kind="implementation") is True
+    assert path_in_write_scope("blocked/output.txt", scope, kind="implementation") is False
+
+
+def test_path_in_read_scope_accepts_src_directory_for_implementation_artifact() -> None:
+    scope = ["AGENTS.md", "implementation artifact"]
+    assert path_in_read_scope("src", scope, kind="implementation") is True
+    assert path_in_read_scope("secrets/key.txt", scope, kind="implementation") is False

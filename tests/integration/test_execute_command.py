@@ -1472,13 +1472,9 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
         json.loads(line)
         for line in (run_dir / "validation_results.jsonl").read_text(encoding="utf-8").splitlines()
     ]
-    assert [item["validation_result_id"] for item in validation_results] == [
-        "validation-0001",
-        "validation-0002",
-    ]
-    assert [item["status"] for item in validation_results] == ["passed", "passed"]
-    assert validation_results[0]["command"] == "python -m py_compile src/notes_tool.py"
-    assert "notes_tool import add_note" in validation_results[1]["command"]
+    assert [item["validation_result_id"] for item in validation_results] == ["validation-0001"]
+    assert [item["status"] for item in validation_results] == ["passed"]
+    assert "notes_tool import add_note" in validation_results[0]["command"]
     workers = [
         json.loads(line)
         for line in (run_dir / "workers.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1504,9 +1500,9 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
     assert worker_results[0]["worker_invocation_id"] == workers[0]["worker_invocation_id"]
     assert worker_results[0]["status"] == "succeeded"
     assert worker_results[0]["artifact_refs"] == ["artifact-0001"]
-    assert worker_results[0]["validation_refs"] == ["validation-0001", "validation-0002"]
+    assert worker_results[0]["validation_refs"] == ["validation-0001"]
     assert worker_results[0]["cost"]["model_calls"] == 1
-    assert worker_results[0]["cost"]["tool_calls"] == 3
+    assert worker_results[0]["cost"]["tool_calls"] == 2
     model_calls = [
         json.loads(line)
         for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1520,7 +1516,7 @@ def test_execute_command_runs_ready_task_and_updates_logs(tmp_path: Path) -> Non
 
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     assert cost_report["model_calls"] == 2
-    assert cost_report["tool_calls"] == 3
+    assert cost_report["tool_calls"] == 2
     assert cost_report["estimated_input_tokens"] == 25
     assert cost_report["estimated_output_tokens"] == 45
     loop_observations = [
@@ -3242,7 +3238,7 @@ def test_execute_command_blocks_when_verification_fails(tmp_path: Path) -> None:
         for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert experiments[0]["decision"] == "discard"
-    assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.5
+    assert experiments[0]["metrics_after"]["verification_pass_rate"] == 0.0
     assert experiments[0]["candidate"]["workspace"]
     assert (Path(experiments[0]["candidate"]["workspace"]) / "src" / "notes_tool.py").exists()
     assert experiments[0]["candidate"]["rollback"] == []
@@ -3395,7 +3391,7 @@ def test_execute_command_treats_inline_run_command_as_verification(tmp_path: Pat
         .splitlines()
     ]
     assert evidence[0]["verification_results"][0]["ok"] is True
-    assert evidence[0]["contract_check"]["verification_total"] == 2
+    assert evidence[0]["contract_check"]["verification_total"] == 1
 
 
 def test_execute_command_filters_reserved_model_tool_args(tmp_path: Path) -> None:

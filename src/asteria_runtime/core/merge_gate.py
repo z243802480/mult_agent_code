@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from asteria_runtime.core.task_contract import requires_changed_artifact, write_scope
+from asteria_runtime.core.task_contract import path_in_write_scope, requires_changed_artifact, task_kind, write_scope
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,9 @@ class MergeGate:
         if requires_promotion and not normalized_changes:
             violations.append("no changed files were proposed for promotion")
         denied = [
-            path for path in normalized_changes if not _path_in_scope(path, write_scope(task))
+            path
+            for path in normalized_changes
+            if not path_in_write_scope(path, write_scope(task), kind=task_kind(task))
         ]
         if denied:
             violations.append("changed files outside write_scope: " + ", ".join(denied))
@@ -53,21 +55,6 @@ class MergeGate:
             promotable_files=[] if violations else normalized_changes,
             violations=violations,
         )
-
-
-def _path_in_scope(path: str, scope: list[str]) -> bool:
-    normalized_path = _normalize_path(path)
-    for item in scope:
-        normalized_scope = _normalize_path(item)
-        if not normalized_scope:
-            continue
-        if normalized_scope.endswith("/"):
-            if normalized_path.startswith(normalized_scope):
-                return True
-            continue
-        if normalized_path == normalized_scope or normalized_path.startswith(normalized_scope + "/"):
-            return True
-    return False
 
 
 def _normalize_path(value: str) -> str:

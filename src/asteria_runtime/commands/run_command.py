@@ -401,6 +401,14 @@ class RunCommand:
                     str(goal_decision["reason"]),
                 )
             )
+            self._write_goal_policy_marker(
+                run_id,
+                {
+                    "category": str(goal_decision.get("category") or "none"),
+                    "recommended_command": str(goal_decision.get("recommended_command") or ""),
+                    "reason": str(goal_decision.get("reason") or ""),
+                },
+            )
             if goal_decision["action"] == "auto_accept":
                 from asteria_runtime.commands.accept_command import AcceptCommand
 
@@ -1750,25 +1758,29 @@ class RunCommand:
                 "category": failure_classification.get("category") or "decision_required",
                 "recommended_command": "decide --list",
             }
-        if failure_classification.get("recommended_command") == "replan":
-            if self._execution_profile(run_id).is_session_agent:
+        if failure_classification.get("category") == "plan_gap":
+            if (
+                failure_classification.get("recommended_command") == "resume"
+                or self._execution_profile(run_id).is_session_agent
+            ):
                 return {
                     "action": "continue_repair",
                     "reason": str(
                         failure_classification.get("reason")
                         or "Session-agent mode retries in-place instead of replan lineage."
                     ),
-                    "category": failure_classification.get("category") or "plan_gap",
+                    "category": "plan_gap",
                     "recommended_command": "resume",
                 }
-            return {
-                "action": "stop_for_replan",
-                "reason": str(
-                    failure_classification.get("reason") or "Review identified a plan gap."
-                ),
-                "category": failure_classification.get("category") or "plan_gap",
-                "recommended_command": "replan",
-            }
+            if failure_classification.get("recommended_command") == "replan":
+                return {
+                    "action": "stop_for_replan",
+                    "reason": str(
+                        failure_classification.get("reason") or "Review identified a plan gap."
+                    ),
+                    "category": "plan_gap",
+                    "recommended_command": "replan",
+                }
         if follow_up_count > 0 and iteration < max_iterations:
             return {
                 "action": "continue_repair",
@@ -2118,6 +2130,7 @@ class RunCommand:
             review_status=review_status,
             workflow_state=self._report_workflow_state(run),
             validation_conclusion=validation_conclusion,
+            verification_count=len(verification_evidence),
         )
         report_main_path = build_main_path(
             workflow_state=self._report_workflow_state(run),
@@ -2582,6 +2595,7 @@ class RunCommand:
         review_status: str,
         workflow_state: str | None,
         validation_conclusion: dict,
+        verification_count: int = 0,
     ) -> str:
         if workflow_state == "accepted":
             return "accepted"
@@ -2590,6 +2604,7 @@ class RunCommand:
         if (
             completion == "implemented_unverified"
             and review_status == "pass"
+            and verification_count > 0
             and validation_conclusion.get("status") == "passed"
             and int(validation_conclusion.get("validation_result_count") or 0) > 0
         ):

@@ -83,7 +83,7 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
 
     result = PlanCommand(tmp_path, "做一个密码测试工具", model_client=FakePlanClient()).run()
 
-    assert result.task_count == 2
+    assert result.task_count == 1
     assert result.goal_spec_path.exists()
     assert result.task_plan_path.exists()
     assert result.task_plan_eval_path.exists()
@@ -91,18 +91,19 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     assert result.task_plan_status in {"pass", "warn"}
 
     task_plan = json.loads(result.task_plan_path.read_text(encoding="utf-8"))
+    assert len(task_plan["tasks"]) == 1
     assert task_plan["tasks"][0]["status"] == "ready"
-    assert task_plan["tasks"][1]["depends_on"] == ["task-0001"]
     assert task_plan["tasks"][0]["agent_loop_profile"]["loop_profile_id"] in {
         "default",
         "multi_agent",
         "research",
         "brainstorm",
+        "session_agent",
     }
     assert task_plan["tasks"][0]["agent_loop_profile"]["output_contract"]
     task_plan_eval = json.loads(result.task_plan_eval_path.read_text(encoding="utf-8"))
     assert task_plan_eval["run_id"] == result.run_id
-    assert task_plan_eval["task_count"] == 2
+    assert task_plan_eval["task_count"] == 1
     assert task_plan_eval["overall_score"] == result.task_plan_score
     assert "Task plan quality" in result.to_text()
 
@@ -175,7 +176,7 @@ def test_plan_command_creates_run_goal_spec_tasks_and_logs(tmp_path: Path) -> No
     backlog = json.loads(
         (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")
     )
-    assert len(backlog["tasks"]) == 2
+    assert len(backlog["tasks"]) == 1
 
 
 def test_plan_command_records_model_failure_report_and_failed_run(tmp_path: Path) -> None:
@@ -214,7 +215,7 @@ def test_plan_command_retries_transient_goal_spec_timeout(tmp_path: Path) -> Non
 
     result = PlanCommand(tmp_path, "build a local-first helper", model_client=client).run()
 
-    assert result.task_count == 2
+    assert result.task_count == 1
     assert [request.model_tier for request in client.requests] == ["medium", "medium"]
     run_dirs = sorted((tmp_path / ".asteria" / "runs").iterdir(), key=lambda item: item.name)
     events = [

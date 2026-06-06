@@ -173,6 +173,26 @@ def _evaluate_case(
             "matrix_evidence_coverage_ratio": matrix_ratio,
         }
         gap_type = "none" if ok else "historical_evidence_noise"
+    elif evidence == "swarm_scenario_audit":
+        from asteria_runtime.core.swarm_scenario_audit import SwarmScenarioAuditor
+        from asteria_runtime.storage.schema_validator import SchemaValidator
+
+        validator = SchemaValidator(root / "schemas")
+        auditor = SwarmScenarioAuditor(validator)
+        passed = 0
+        scanned = 0
+        runs_root = root / ".asteria" / "runs"
+        if runs_root.is_dir():
+            for run_dir in sorted(runs_root.iterdir(), reverse=True):
+                if not run_dir.is_dir():
+                    continue
+                scanned += 1
+                if auditor.evaluate_run_dir(run_dir).ok:
+                    passed += 1
+                    break
+        ok = passed > 0
+        details = {"scanned_runs": scanned, "passed_runs": passed}
+        gap_type = "none" if ok else "evidence_missing"
     else:
         details = {"unknown_evidence": evidence, "root": str(root)}
         gap_type = "implementation_missing"
