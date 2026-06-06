@@ -170,6 +170,15 @@ async function waitForReadyOrAssist(base, sessionId) {
       return false;
     }
 
+    const stillRunning = /in_progress|running|execute/i.test(
+      `${status.workflow_state || ""} ${status.current_phase || ""}`,
+    );
+    if (!rec && stillRunning) {
+      stagnant = 0;
+      lastSig = sig;
+      return false;
+    }
+
     if (sig === lastSig) stagnant += 1;
     else {
       stagnant = 0;
