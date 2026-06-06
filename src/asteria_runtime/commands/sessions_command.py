@@ -374,7 +374,7 @@ class SessionsCommand:
         )
         return {
             "execution_profile": {
-                "profile_id": profile.resolution.profile_id,
+                "profile_id": profile.profile_id,
                 "is_session_agent": profile.is_session_agent,
             },
             "goal_summary": (snapshot or {}).get("goal_summary") or self._goal_summary(run_dir),
