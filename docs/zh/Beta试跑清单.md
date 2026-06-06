@@ -69,6 +69,7 @@
 | 模型报错 | `asteria doctor --root <ws> --json` |
 | 不知道进度 | Thread 顶部 Next action / `asteria status --json` |
 | 需要细节 | 右侧 Inspector（**不要**找 gate 主屏） |
+| 出现 **范围确认 / scope** 决策卡 | 选 **Review contract**（允许补测试文件），再点 **Continue** 继续 |
 
 仍无法继续 → 记录 **卡在哪一步 + 截图/报错原文**，交给维护者填 [`S14-beta-user-trial-template.md`](./reports/S14-beta-user-trial-template.md)。
 

@@ -107,6 +107,7 @@ asteria goal "续作：补充文档说明用法" --root my-asteria-workspace
 | --- | --- |
 | 模型不通 | `asteria doctor --root <ws> --json` |
 | 任务卡住 | Thread「Next action」或 `asteria status --json` |
+| 出现 **范围确认 / scope** | 选 **Review contract**，再点 **Continue** |
 | 需要证据 | Inspector（右侧），**不要**看 gate 主屏 |
 | 导出诊断 | `asteria evidence-bundle --root <ws> --json`（给维护者） |
 
@@ -123,4 +124,6 @@ asteria goal "续作：补充文档说明用法" --root my-asteria-workspace
 ```powershell
 pytest tests/integration/test_phase7_beta_user_path_gate.py -q
 node studio/scripts/beta-workflow-smoke.mjs
+node studio/scripts/b6-restricted-user-sim.mjs
+python scripts/s15_wheel_install_smoke.py --root .
 ```

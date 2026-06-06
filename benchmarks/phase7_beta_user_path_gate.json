@@ -28,12 +28,17 @@
   "b6_trial_checklist": "docs/zh/Beta试跑清单.md",
   "b6_maintainer_template": "docs/zh/reports/S14-beta-user-trial-template.md",
   "b6_pass_criteria": {
-    "tester_is_non_maintainer": true,
+    "validation_mode": "restricted_agent_sim",
     "task_id": "small_code_change",
     "max_minutes": 30,
     "must_complete": ["init", "studio", "goal", "review", "accept"],
     "optional_followup_task": "doc_update"
   },
+  "phase7_close_signoff": "docs/zh/reports/phase7-beta-close-signoff-20260606.md",
+  "next_slice": "S15",
+  "s15_signoff": "docs/zh/reports/S15-beta-hardening-signoff-20260606.md",
+  "s15_wheel_smoke": "scripts/s15_wheel_install_smoke.py",
+  "beta_invitation_doc": "docs/zh/Beta内测邀请.md",
   "signoff_report": "docs/zh/reports/S14-beta-user-path-signoff-20260606.md",
   "notes": "Beta does not require Phase 5 swarm. Studio ships from repo checkout; runtime may install via wheel."
 }

@@ -17,8 +17,8 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Phase 4 / Phase 7 Beta 轨道
-当前 ACTIVE_SLICE：S14（signed，B6 agent 受限模拟）
+当前 ACTIVE_PHASE：Phase 7（Beta 内测）
+当前 ACTIVE_SLICE：S15（Beta 硬化 + 开放邀请）
 事实快照：docs/zh/当前状态与路线.md
 设计索引：docs/zh/文档导航.md
 ```

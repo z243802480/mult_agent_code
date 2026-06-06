@@ -50,9 +50,13 @@ def test_beta_b6_restricted_sim_artifacts_exist() -> None:
     assert Path(GATE["b6_restricted_sim_report"]).exists()
     assert Path(GATE["b6_trial_checklist"]).exists()
     assert Path(GATE["b6_maintainer_template"]).exists()
+    assert Path(GATE["s15_signoff"]).exists()
+    assert Path(GATE["s15_wheel_smoke"]).exists()
+    assert Path(GATE["beta_invitation_doc"]).exists()
     criteria = GATE.get("b6_pass_criteria") or {}
     assert criteria.get("task_id") == "small_code_change"
-    assert criteria.get("tester_is_non_maintainer") is True
+    assert criteria.get("validation_mode") == "restricted_agent_sim"
+    assert Path(GATE["phase7_close_signoff"]).exists()
 
 
 def test_beta_trial_checklist_is_tester_facing() -> None:

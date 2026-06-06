@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S14",
-  "active_phase": "Phase 4",
+  "active_slice": "S15",
+  "active_phase": "Phase 7",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -176,6 +176,19 @@
         "node studio/scripts/beta-workflow-smoke.mjs"
       ],
       "reference_brief": "benchmarks/reference_briefs/S14-beta-user-path.md"
+    },
+    {
+      "id": "S15",
+      "name": "Beta hardening + open invite",
+      "phase": "7",
+      "depends_on": ["S14"],
+      "user_demo": "Studio 全路径 small_code_change；wheel 复验；可邀请内测",
+      "green_checks": [
+        "node studio/scripts/b6-restricted-user-sim.mjs",
+        "python scripts/s15_wheel_install_smoke.py --root .",
+        "pytest tests/integration/test_phase7_beta_user_path_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S15-beta-hardening.md"
     }
   ]
 }

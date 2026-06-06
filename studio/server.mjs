@@ -366,7 +366,7 @@ function runtimeActionByKind(kind) {
       label: "Continue",
       mode: "resume",
       goal: "Continue the current runtime goal.",
-      command: [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1"],
+      command: [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1"],
       requiresPermission: true,
       summary: "I will continue the current goal after confirmation.",
       permissionSummary: "\u7ee7\u7eed\u63a8\u8fdb\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
@@ -429,10 +429,10 @@ function progressEventForMode(mode, goal) {
 
 function runtimeCommand(mode, goal) {
   if (mode === "run") {
-    return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1", "--no-research", goal];
+    return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1", "--no-research", goal];
   }
   if (mode === "review") return [python, "-m", moduleName, "review", "--root", workspace];
-  if (mode === "resume") return [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "2", "--max-tasks-per-iteration", "1"];
+  if (mode === "resume") return [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1"];
   if (mode === "accept") return [python, "-m", moduleName, "accept", "--root", workspace];
   if (mode === "debug") return [python, "-m", moduleName, "debug", "--root", workspace];
   if (mode === "decide") return [python, "-m", moduleName, "decide", "--root", workspace, "--list-pending"];
