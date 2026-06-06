@@ -111,6 +111,7 @@ def persist_subagent_child_plan_for_execution(
         decision=decision,
         execution_result=execution_result,
         task=task,
+        policy=policy,
     )
     if isinstance(plan, dict):
         _record_subagent_child_plan_ref(

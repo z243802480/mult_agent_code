@@ -399,6 +399,7 @@ class ExecuteCommand:
             decision=parent_decision,
             execution_result=parent_execution,
             task=child_task,
+            policy=context.policy,
         )
         child_plan_refs = (
             [str(child_plan["subagent_child_plan_id"])] if isinstance(child_plan, dict) else []

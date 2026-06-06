@@ -16,6 +16,7 @@ def build_subagent_child_plan(
     execution_result: dict[str, Any],
     task: dict[str, Any] | None = None,
     sequence: int = 1,
+    policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_action = decision.get("next_action")
     next_action = next_action if isinstance(next_action, dict) else {}
@@ -63,7 +64,7 @@ def build_subagent_child_plan(
             expected.get("parallel_safety") or task.get("parallel_safety") or "serial"
         ),
         "child_tasks": [
-            enrich_child_task(child, parent_task=task, policy=None)
+            enrich_child_task(child, parent_task=task, policy=policy)
             for child in _child_tasks(
                 target_task_id=target_task_id,
                 worker_id=worker_id,
@@ -91,6 +92,7 @@ def persist_subagent_child_plan(
     decision: dict[str, Any],
     execution_result: dict[str, Any],
     task: dict[str, Any] | None = None,
+    policy: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if run_dir is None:
         return None
@@ -102,6 +104,7 @@ def persist_subagent_child_plan(
         execution_result=execution_result,
         task=task,
         sequence=len(existing) + 1,
+        policy=policy,
     )
     store.append(path, plan, "subagent_child_plan")
     return plan

@@ -44,12 +44,17 @@ Harness 层（S18–S25）  worker spawn → candidate → merge dry-run → mai
 
 ---
 
-## 4. 仍 defer（S30+）
+## 4. 仍 defer（S31+）
 
-- execute_command **一行** policy 透传（append-only，单独 DecisionPoint）
 - real provider 双 worker 编程 case（非 synthetic）
 - 生产 `real_disjoint_write_workers` 打开 + 自动 merge
 - Design Intelligence Phase 6
+
+## 4b. S30（execute policy 透传）✅
+
+- `execute_command` append-only：`policy=context.policy`
+- `subagent_planner` 透传 policy → spawn hints
+- 集成测试：`test_execute_swarm_policy_passthrough.py`
 
 ---
 

@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S29",
+  "active_slice": "S30",
   "active_phase": "Phase 5",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -348,6 +348,17 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S29-phase5-wave3-signoff.md"
+    },
+    {
+      "id": "S30",
+      "name": "Execute policy passthrough",
+      "phase": "5",
+      "depends_on": ["S29"],
+      "user_demo": "execute subagent 路径写入 swarm_execution_plans + policy 驱动 spawn hints",
+      "green_checks": [
+        "pytest tests/integration/test_execute_swarm_policy_passthrough.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S30-execute-policy-passthrough.md"
     }
   ]
 }
