@@ -4,6 +4,8 @@
 
 面向 **早期 Beta 用户**（能配置 API Key、会开终端）。目标：**30 分钟内** 用 Studio 完成第一个编程类任务。
 
+**试跑专用**：维护者发测时请同时给 [`Beta试跑清单.md`](./Beta试跑清单.md)（逐步打勾，无需 gate 词汇）。
+
 ## 1. 你需要什么
 
 | 项 | 要求 |
@@ -84,8 +86,10 @@ Beta 任务包：[`benchmarks/beta_user_tasks.json`](../../benchmarks/beta_user_
 
 | 步骤 | Studio | CLI（等价） |
 | --- | --- | --- |
-| 审查 | 点「审查结果」或 Composer `/review` | `asteria review --latest` |
-| 接受 | 点「接受结果」或 `/accept` | `asteria accept --latest` |
+| 审查 | 点「审查结果」或 Composer `/review` | `asteria review --root <工作区>` |
+| 接受 | 点「接受结果」或 `/accept` | `asteria accept --root <工作区>` |
+
+> **说明**：`goal` 跑完通常已内嵌 review；若 `asteria status` 显示 `ready_for_accept`，可直接 `accept`，无需再 `review`。CLI **没有** `--latest` 参数，默认对当前 session 的最新 run 操作。
 
 接受后产物写入工作区；North Star milestone 会自动链接 run（若已配置）。
 

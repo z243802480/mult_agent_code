@@ -9,8 +9,8 @@
     "asteria init --root <workspace>",
     "asteria studio --root <workspace>",
     "asteria goal \"<beta task>\" --root <workspace>",
-    "asteria review --latest --root <workspace>",
-    "asteria accept --latest --root <workspace>"
+    "asteria review --root <workspace>",
+    "asteria accept --root <workspace>"
   ],
   "contract_tests": [
     "tests/integration/test_phase7_beta_user_path_gate.py",
@@ -22,6 +22,15 @@
     "node studio/scripts/beta-workflow-smoke.mjs"
   ],
   "wheel_path_runbook": "docs/zh/验证试运行手册.md#31-安装包复验",
+  "b6_trial_checklist": "docs/zh/Beta试跑清单.md",
+  "b6_maintainer_template": "docs/zh/reports/S14-beta-user-trial-template.md",
+  "b6_pass_criteria": {
+    "tester_is_non_maintainer": true,
+    "task_id": "small_code_change",
+    "max_minutes": 30,
+    "must_complete": ["init", "studio", "goal", "review", "accept"],
+    "optional_followup_task": "doc_update"
+  },
   "signoff_report": "docs/zh/reports/S14-beta-user-path-signoff-20260606.md",
   "notes": "Beta does not require Phase 5 swarm. Studio ships from repo checkout; runtime may install via wheel."
 }

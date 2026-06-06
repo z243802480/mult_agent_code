@@ -27,4 +27,4 @@
 - `pytest tests/integration/test_phase7_beta_user_path_gate.py -q`
 - `pytest tests/unit/test_studio_command.py -q`
 - `node studio/scripts/beta-workflow-smoke.mjs`
-- 1 名真实用户完成 beta 任务包中 1 项（签字）
+- 1 名真实用户完成 beta 任务包中 1 项（[`Beta试跑清单.md`](../../docs/zh/Beta试跑清单.md) + [`S14-beta-user-trial-template.md`](../../docs/zh/reports/S14-beta-user-trial-template.md)）
