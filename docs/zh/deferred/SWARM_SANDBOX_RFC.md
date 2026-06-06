@@ -1,6 +1,6 @@
 # 蜂群 Sandbox 并行写 RFC（Phase 5）
 
-**状态**：defer — S17 session_agent 已签字；蜂群 **显式 harness 层** 待 Phase 5 启动  
+**状态**：S18–S21 ✅ Phase 5 蜂群入口已签字；真实 parallel_writes 仍 defer  
 **关联**：[RUNTIME_SESSION_AGENT_RFC.md](../plans/RUNTIME_SESSION_AGENT_RFC.md) · ADR candidate / merge gate
 
 ---
@@ -61,9 +61,9 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 ## 5. 启动条件（Phase 5 gate）
 
 1. ✅ S7 MVP、S17 session_agent Beta 路径稳定（B6 连续绿、doc_update dogfood）
-2. ⏳ sandbox 全链路：fake → 1 readonly 灰度 → 1 disjoint-write 灰度
-3. ⏳ `disjoint_write_gate` feature flag 与 rollback 演练
-4. ⏳ Studio：worker 进度 + merge 证据 Inspector（非主屏 gate 词汇）
+2. ✅ sandbox 契约链：fake → export → dry-run → Studio（S18–S21）
+3. ⏳ `real_disjoint_write_workers` feature flag 生产灰度 + rollback 演练
+4. ✅ Studio：worker 进度 + merge 证据 Inspector（S20）
 
 **仍关闭**：`parallel_writes` CLI 默认 `false`；12 Agent 新类；真实 sandbox 生产放量。
 
@@ -71,12 +71,14 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 
 ## 6. 实现里程碑（建议 Slice）
 
-| Slice | 交付 | green_checks |
+| Slice | 交付 | 状态 |
 | --- | --- | --- |
-| S18 | Worker spawn 契约 + harness profile 强制 | unit tests + fake worker path |
-| S19 | candidate export + merge gate dry-run | integration + schema |
-| S20 | Studio worker 进度条 + promotion UI | smoke mjs |
-| S21 | 1 disjoint-write 灰度（maintainer） | SWARM gate json |
+| S18 | Worker spawn 契约 + harness profile 强制 | ✅ |
+| S19 | candidate export + merge gate dry-run | ✅ |
+| S20 | Studio worker 进度条 + promotion UI | ✅ |
+| S21 | 1 disjoint-write 灰度（maintainer） | ✅ |
+
+**闸门**：`benchmarks/phase5_swarm_gate.json` · `scripts/swarm_maintainer_gray_check.py`
 
 ---
 
@@ -91,6 +93,7 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 ## 8. 参考
 
 - `src/asteria_runtime/core/execution_profile.py`
-- `src/asteria_runtime/core/multi_agent_strategy.py`
-- `benchmarks/reference_briefs/S17-runtime-session-agent.md`
+- `src/asteria_runtime/core/worker_spawn.py`
+- `src/asteria_runtime/core/swarm_pipeline.py`
+- `docs/zh/reports/phase5-swarm-entry-signoff-20260606.md`
 - 研发总计划 Phase 5 · §6 KEEP_PLACEHOLDER

@@ -17,8 +17,8 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Phase 4（稳态 Vibe 迭代）
-当前 ACTIVE_SLICE：S17（runtime session agent）
+当前 ACTIVE_PHASE：Phase 5（蜂群入口）
+当前 ACTIVE_SLICE：S21（Phase 5 蜂群入口已签字；维护者脉搏见 swarm_maintainer_gray_check）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 设计索引：docs/zh/文档导航.md

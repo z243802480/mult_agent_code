@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from threading import RLock
 
+from asteria_runtime.core.candidate_export import CandidateExporter
 from asteria_runtime.core.candidate_promotion_queue import (
     CandidatePromotionQueue,
     PromotionPendingManualApproval,
 )
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
+from asteria_runtime.core.merge_gate_dry_run import MergeGateDryRunner
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_board import TaskBoard, TaskStateError
 
@@ -39,6 +41,33 @@ class CandidateExecutionGateway:
             agent_dir_override=context.asteria_dir,
             run_dir_override=context.run_dir,
         )
+
+    def preview_promotion(
+        self,
+        context: RuntimeContext,
+        candidate: CandidateWorkspace,
+        task: dict,
+        changed_files: list[str],
+        verification_results: list,
+        *,
+        worker_invocation_id: str | None = None,
+    ) -> tuple[dict, dict]:
+        """Export candidate bundle and run merge gate dry-run without promoting."""
+        export = CandidateExporter(context.validator).export_and_persist(
+            context=context,
+            candidate=candidate,
+            task=task,
+            changed_files=changed_files,
+            worker_invocation_id=worker_invocation_id,
+        )
+        task_id = str(task.get("task_id") or export.get("task_id") or "unknown")
+        dry_run = MergeGateDryRunner(context.validator).evaluate_and_persist(
+            context,
+            [task],
+            [export],
+            {task_id: verification_results},
+        )
+        return export, dry_run
 
     def promote_changes(
         self,

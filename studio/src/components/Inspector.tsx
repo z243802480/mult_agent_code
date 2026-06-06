@@ -475,6 +475,62 @@ function EvidenceDetailPanel({ selection }: { selection: EvidenceSelection | nul
   );
 }
 
+function PromotionPreviewPanel({
+  runDetail,
+  selectedKey,
+  onSelectEvidence,
+}: {
+  runDetail: RunDetailPayload;
+  selectedKey: string;
+  onSelectEvidence: (selection: EvidenceSelection) => void;
+}) {
+  const preview = asRecord(runDetail.promotion_preview);
+  const items = asArray(preview.items) as AnyRecord[];
+  if (!items.length && !preview.export_count) return null;
+  const mergeStatus = String(preview.merge_preview_status ?? "none");
+  return (
+    <div className="evidenceBlock promotionPreviewPanel">
+      <small>Candidate merge preview</small>
+      <div className="evidenceStats">
+        <Metric label="Exports" value={String(preview.export_count ?? 0)} tone={Number(preview.export_count ?? 0) ? "good" : "warn"} />
+        <Metric label="Preview" value={mergeStatus === "ready" ? "ready" : mergeStatus === "needs_review" ? "review" : "—"} tone={mergeStatus === "ready" ? "good" : mergeStatus === "needs_review" ? "bad" : "warn"} />
+        <Metric label="Pending" value={String(preview.pending_promotions ?? 0)} tone={Number(preview.pending_promotions ?? 0) ? "warn" : "good"} />
+      </div>
+      {preview.merge_preview_summary && <p className="promotionPreviewSummary">{String(preview.merge_preview_summary)}</p>}
+      <div className="promotionPreviewList">
+        {items.slice(0, 8).map((item, index) => {
+          const kind = String(item.kind ?? "item");
+          const id = String(item.id ?? `item-${index + 1}`);
+          const key = `${kind}:${id}`;
+          const files = asArray(item.files).map(String).join(", ");
+          return (
+            <button
+              key={key}
+              className={`promotionPreviewItem ${selectedKey === key ? "active" : ""}`}
+              onClick={() => onSelectEvidence({
+                title: id,
+                kind,
+                summary: files || String(item.summary ?? item.status ?? kind),
+                item,
+              })}
+            >
+              <span className="promotionPreviewItemHead">
+                <span>{kind.replace(/_/g, " ")}</span>
+                <Status status={(item.ok === false || item.status === "blocked" ? "blocked" : item.status === "ready" ? "completed" : "running") as StudioEvent["status"]} />
+              </span>
+              <pre>{[
+                item.task_id ? `task=${String(item.task_id)}` : "",
+                files ? `files=${files}` : "",
+                item.execution_profile_id ? `profile=${String(item.execution_profile_id)}` : "",
+              ].filter(Boolean).join("\n")}</pre>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function WorkerTopologyPanel({
   runDetail,
   selectedKey,
@@ -499,8 +555,8 @@ function WorkerTopologyPanel({
         {workers.slice(0, 12).map((worker, index) => {
           const workerId = firstText(worker.worker_invocation_id, worker.worker_id, worker.agent_id, `worker-${index + 1}`);
           const status = String(worker.status ?? worker.outcome ?? "unknown");
-          const profile = firstText(worker.runtime_profile_id, worker.profile_id, worker.worker_kind, "profile unknown");
-          const safety = firstText(worker.parallel_safety, worker.sandbox_profile_id, "safety unknown");
+          const profile = firstText(worker.execution_profile_id, worker.runtime_profile_id, worker.profile_id, worker.worker_kind, "profile unknown");
+          const safety = firstText(worker.parallel_safety, worker.sandbox_profile_id, worker.spawn_kind, "safety unknown");
           const workspaceRef = firstText(worker.candidate_workspace, worker.workspace, worker.workspace_path, "");
           const key = `worker:${workerId}`;
           return (
@@ -751,6 +807,11 @@ function EvidenceExplorer({
           <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
           <ContextBreakdownPanel runDetail={runDetail} />
+          <PromotionPreviewPanel
+            runDetail={runDetail}
+            selectedKey={selectedKey}
+            onSelectEvidence={selectEvidence}
+          />
           <WorkerTopologyPanel
             runDetail={runDetail}
             selectedKey={selectedKey}

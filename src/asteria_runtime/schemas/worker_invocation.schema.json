@@ -51,6 +51,12 @@
     "parent_task_id": { "type": "string" },
     "worker_kind": { "type": "string" },
     "parallel_safety": { "type": "string" },
+    "execution_profile_id": {
+      "type": "string",
+      "enum": ["session_agent", "harness"]
+    },
+    "spawn_kind": { "type": "string" },
+    "fake_path": { "type": "boolean" },
     "child_plan_refs": { "type": "array", "items": { "type": "string" } }
   }
 }

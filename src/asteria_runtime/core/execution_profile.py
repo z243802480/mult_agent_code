@@ -77,6 +77,40 @@ def session_agent_recommended_command(command: str, *, is_session_agent: bool) -
     return str(command or "")
 
 
+def resolve_worker_execution_profile(task: dict) -> ExecutionProfileResolution:
+    """Map a worker task to session_agent (readonly) or harness (write path)."""
+    stored = task.get("execution_profile")
+    if isinstance(stored, dict) and stored.get("profile_id") in {SESSION_AGENT, HARNESS}:
+        profile_id = str(stored["profile_id"])
+        return ExecutionProfileResolution(
+            profile_id=profile_id,
+            loop_profile_id=str(stored.get("loop_profile_id") or profile_id),
+            collapse_to_single_task=profile_id == SESSION_AGENT,
+            use_replan_lineage=profile_id == HARNESS,
+            use_repair_limit_decisions=profile_id == HARNESS,
+            reason=str(stored.get("reason") or f"Worker task persisted {profile_id} profile."),
+            fast_path_task_kind=str(stored.get("fast_path_task_kind") or "worker"),
+        )
+    parallel_safety = str(task.get("parallel_safety") or "serial")
+    write_scope = [str(item) for item in task.get("write_scope") or [] if item]
+    write_allowed = task.get("write_allowed") is True or bool(write_scope)
+    if parallel_safety == "readonly" or not write_allowed:
+        return ExecutionProfileResolution(
+            profile_id=SESSION_AGENT,
+            loop_profile_id="session_agent",
+            collapse_to_single_task=True,
+            use_replan_lineage=False,
+            use_repair_limit_decisions=False,
+            reason="Readonly worker stays on session_agent profile.",
+            fast_path_task_kind="worker_readonly",
+        )
+    return resolve_execution_profile(
+        str(task.get("title") or task.get("description") or ""),
+        parallel_writes=parallel_safety == "disjoint_writes",
+        force_harness=True,
+    )
+
+
 def execution_profile_from_run_config(run_config: dict | None) -> ExecutionProfileResolution:
     if not run_config:
         return resolve_execution_profile("")

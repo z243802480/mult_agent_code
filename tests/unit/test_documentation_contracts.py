@@ -257,6 +257,7 @@ def test_master_plan_exists_and_is_execution_entry() -> None:
     assert Path("benchmarks/phase2_stability_gate.json").exists()
     assert Path("benchmarks/phase2_stability_window.json").exists()
     assert Path("benchmarks/phase4_steady_iteration_gate.json").exists()
+    assert Path("benchmarks/phase5_swarm_gate.json").exists()
     assert Path("docs/zh/稳态迭代节奏.md").exists()
     current_state = Path("docs/zh/当前状态与路线.md").read_text(encoding="utf-8")
     assert Path("schemas/north_star.schema.json").exists()

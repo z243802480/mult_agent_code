@@ -2195,6 +2195,10 @@ async function readRunDetail(runId) {
   payload.decisions = redact(currentDecisions);
   payload.decision_history = redact(decisions);
   payload.main_action = redact(mainActionForRun(payload, currentDecisions));
+  payload.candidate_exports = redact(await readJsonlTail(path.join(runDir, "candidate_exports.jsonl"), 80));
+  payload.merge_gate_dry_runs = redact(await readJsonlTail(path.join(runDir, "merge_gate_dry_runs.jsonl"), 40));
+  payload.candidate_promotions = redact(await readJsonlTail(path.join(runDir, "candidate_promotions.jsonl"), 80));
+  payload.promotion_preview = redact(buildPromotionPreview(payload));
   payload.worker_tree = redact(await buildWorkerTree(runDir, payload.agent_run_graph || {}));
   payload.runtime_progress = redact(enrichRuntimeProgress(payload.runtime_progress || {}, payload));
   const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
@@ -2269,7 +2273,11 @@ async function readRunUserProgress(runId) {
 function enrichRuntimeProgress(progress, payload) {
   const agentLoop = payload.agent_loop_run_summary || {};
   const runLoop = payload.run_loop_summary || {};
-  const workerSummary = workerSummaryForProgress(payload.worker_tree || {}, payload.worker_results || []);
+  const workerSummary = workerSummaryForProgress(
+    payload.worker_tree || {},
+    payload.worker_results || [],
+    payload.promotion_preview || {},
+  );
   const userProgress = payload.user_progress || [];
   const taskPlan = payload.task_plan || {};
   const taskSummary = Array.isArray(taskPlan.tasks) && taskPlan.tasks.length
@@ -2298,14 +2306,14 @@ function enrichRuntimeProgress(progress, payload) {
   };
 }
 
-function workerSummaryForProgress(workerTree, workerResults) {
+function workerSummaryForProgress(workerTree, workerResults, promotionPreview = {}) {
   const total = Number(workerTree.total_workers ?? 0) || (Array.isArray(workerResults) ? workerResults.length : 0);
   if (!total) return {};
   const failed = Array.isArray(workerResults)
-    ? workerResults.filter((item) => /fail|error|block/i.test(String(item.status ?? item.outcome ?? ""))).length
-    : 0;
+    ? workerResults.filter((item) => /fail|error|block|denied|timeout/i.test(String(item.status ?? item.outcome ?? ""))).length
+    : Number(workerTree.failed_workers ?? 0);
   const successful = Array.isArray(workerResults)
-    ? workerResults.filter((item) => /success|complete|pass/i.test(String(item.status ?? item.outcome ?? ""))).length
+    ? workerResults.filter((item) => /success|complete|pass|succeed/i.test(String(item.status ?? item.outcome ?? ""))).length
     : Number(workerTree.successful_workers ?? 0);
   const parallel = Number(workerTree.parallel_batches ?? 0);
   const status = failed ? "failed" : successful >= total ? "completed" : "running";
@@ -2313,17 +2321,115 @@ function workerSummaryForProgress(workerTree, workerResults) {
     Array.isArray(workerResults) ? workerResults.map((item) => item.worker_kind || item.agent_id).filter(Boolean).join(", ") : "",
     "worker"
   );
+  const workers = flattenWorkerNodes(workerTree);
+  const promotionHint = promotionPreviewHint(promotionPreview);
   return {
     status,
     total,
     successful,
     failed,
     parallel_batches: parallel,
+    progress_percent: total ? Math.round((successful / total) * 100) : 0,
     summary: failed
-      ? `${failed} worker${failed === 1 ? "" : "s"} need attention.`
-      : `${total} worker${total === 1 ? "" : "s"} completed or reported progress.`,
+      ? `${failed} background task${failed === 1 ? "" : "s"} need attention.`
+      : `${successful}/${total} background task${total === 1 ? "" : "s"} completed.`,
     worker_profile: profile,
+    promotion_hint: promotionHint,
+    workers,
     evidence_refs: ["workers.jsonl", "worker_results.jsonl", "agent_run_graph.json"],
+  };
+}
+
+function flattenWorkerNodes(workerTree) {
+  const result = [];
+  const visit = (node, depth = 0) => {
+    if (!node || typeof node !== "object") return;
+    result.push({
+      worker_invocation_id: node.worker_invocation_id,
+      task_id: node.task_id,
+      status: node.status,
+      result_status: node.result_status,
+      execution_profile_id: node.execution_profile_id,
+      spawn_kind: node.spawn_kind,
+      depth,
+    });
+    for (const child of Array.isArray(node.children) ? node.children : []) visit(child, depth + 1);
+  };
+  for (const root of Array.isArray(workerTree.roots) ? workerTree.roots : []) visit(root, 0);
+  return result;
+}
+
+function promotionPreviewHint(promotionPreview) {
+  if (!promotionPreview || typeof promotionPreview !== "object") return "";
+  const pending = Number(promotionPreview.pending_promotions ?? 0);
+  const exportCount = Number(promotionPreview.export_count ?? 0);
+  const mergeStatus = String(promotionPreview.merge_preview_status ?? "");
+  if (pending > 0) {
+    return `${pending} candidate change${pending === 1 ? "" : "s"} waiting for your review in Inspector.`;
+  }
+  if (mergeStatus === "needs_review") {
+    return String(promotionPreview.merge_preview_summary || "Some candidate changes need review before merge.");
+  }
+  if (exportCount > 0 && mergeStatus === "ready") {
+    return `${exportCount} candidate export${exportCount === 1 ? "" : "s"} passed merge preview.`;
+  }
+  return "";
+}
+
+function buildPromotionPreview(payload) {
+  const exports = Array.isArray(payload.candidate_exports) ? payload.candidate_exports : [];
+  const dryRuns = Array.isArray(payload.merge_gate_dry_runs) ? payload.merge_gate_dry_runs : [];
+  const promotions = Array.isArray(payload.candidate_promotions) ? payload.candidate_promotions : [];
+  const latestDryRun = dryRuns.length ? dryRuns[dryRuns.length - 1] : null;
+  const pendingStatuses = new Set(["queued", "pending_manual_approval", "auto_approved", "blocked"]);
+  const pending = promotions.filter((item) => pendingStatuses.has(String(item.status || "")));
+  const promoted = promotions.filter((item) => String(item.status || "") === "promoted");
+  const latestExport = exports.length ? exports[exports.length - 1] : null;
+  const mergePreviewStatus = latestDryRun
+    ? (latestDryRun.ok ? "ready" : "needs_review")
+    : (exports.length ? "pending" : "none");
+  const rawSummary = String(latestDryRun?.summary || "");
+  const mergePreviewSummary = rawSummary
+    .replace(/Merge gate/gi, "Merge preview")
+    .replace(/merge gate/gi, "merge preview");
+  return {
+    export_count: exports.length,
+    dry_run_count: dryRuns.length,
+    pending_promotions: pending.length,
+    promoted_count: promoted.length,
+    merge_preview_status: mergePreviewStatus,
+    merge_preview_summary: mergePreviewSummary || (exports.length ? "Candidate exports recorded; open Inspector for details." : ""),
+    latest_export: latestExport,
+    latest_dry_run: latestDryRun,
+    items: [
+      ...exports.slice(-6).map((item) => ({
+        kind: "candidate_export",
+        id: item.candidate_export_id,
+        task_id: item.task_id,
+        status: item.export_status,
+        files: item.changed_files,
+        execution_profile_id: item.execution_profile_id,
+      })),
+      ...dryRuns.slice(-3).map((item) => ({
+        kind: "merge_preview",
+        id: item.merge_gate_dry_run_id,
+        ok: item.ok,
+        summary: String(item.summary || "").replace(/Merge gate/gi, "Merge preview"),
+        batch_violations: item.batch_violations,
+      })),
+      ...pending.slice(-6).map((item) => ({
+        kind: "promotion_pending",
+        id: item.promotion_id,
+        task_id: item.task_id,
+        status: item.status,
+        files: item.promotable_files,
+      })),
+    ],
+    evidence_refs: [
+      ...(exports.length ? ["candidate_exports.jsonl"] : []),
+      ...(dryRuns.length ? ["merge_gate_dry_runs.jsonl"] : []),
+      ...(promotions.length ? ["candidate_promotions.jsonl"] : []),
+    ],
   };
 }
 
@@ -2378,6 +2484,9 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
       task_id: worker.task_id || result.task_id || "task",
       agent_id: worker.agent_id || "agent",
       runtime_profile_id: worker.runtime_profile_id || "unknown",
+      execution_profile_id: worker.execution_profile_id || null,
+      spawn_kind: worker.spawn_kind || null,
+      fake_path: worker.fake_path ?? null,
       status: worker.status || "unknown",
       result_status: result.status || null,
       artifact_refs: Array.isArray(result.artifact_refs) ? result.artifact_refs : [],

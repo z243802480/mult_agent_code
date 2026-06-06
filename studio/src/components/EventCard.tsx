@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import type { StudioEvent, AnyRecord } from "../types";
 import { Status } from "./Shared";
+import { WorkerProgressBar } from "./WorkerProgressBar";
+
+function asRecord(value: unknown): AnyRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
+}
 
 function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));
@@ -114,6 +119,9 @@ export function EventCard({
           )}
         </div>
         <p className="eventSummary">{event.summary}</p>
+        {asRecord(event.data).kind === "worker_summary" && (
+          <WorkerProgressBar data={asRecord(event.data)} />
+        )}
         <div className="eventFacts">
           {event.model_provider && (
             <span>

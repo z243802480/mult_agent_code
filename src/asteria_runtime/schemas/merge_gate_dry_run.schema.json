@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MergeGateDryRun",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "merge_gate_dry_run_id",
+    "run_id",
+    "dry_run",
+    "ok",
+    "task_results",
+    "disjoint_write_gate",
+    "batch_violations",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "merge_gate_dry_run_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "dry_run": { "type": "boolean" },
+    "ok": { "type": "boolean" },
+    "task_results": { "type": "array", "items": { "type": "object" } },
+    "disjoint_write_gate": { "type": "object" },
+    "batch_violations": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

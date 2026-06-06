@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 5 swarm entry: S18–S21 harness worker spawn, export, dry-run, Studio UI, maintainer gray path.",
+  "phase": "5",
+  "depends_on_signoff": "docs/zh/reports/S17-session-agent-signoff-20260606.md",
+  "rfc": "docs/zh/deferred/SWARM_SANDBOX_RFC.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S18-swarm-worker-spawn.md",
+    "benchmarks/reference_briefs/S19-candidate-export-merge-dry-run.md",
+    "benchmarks/reference_briefs/S20-studio-worker-promotion-ui.md",
+    "benchmarks/reference_briefs/S21-swarm-gray-gate.md"
+  ],
+  "maintainer_script": "scripts/swarm_maintainer_gray_check.py",
+  "contract_tests": [
+    "tests/unit/test_worker_spawn.py",
+    "tests/unit/test_candidate_export.py",
+    "tests/unit/test_merge_gate_dry_run.py",
+    "tests/unit/test_swarm_gate_audit.py",
+    "tests/integration/test_candidate_export_merge_dry_run.py",
+    "tests/integration/test_phase5_swarm_gate.py"
+  ],
+  "studio_smokes": [
+    "node studio/scripts/s20-worker-promotion-smoke.mjs",
+    "node studio/scripts/run-detail-smoke.mjs"
+  ],
+  "gray_path": {
+    "mode": "maintainer_disjoint_preview",
+    "real_disjoint_write_workers": false,
+    "parallel_writes_cli_default": false,
+    "required_evidence": [
+      "workers.jsonl",
+      "worker_results.jsonl",
+      "candidate_exports.jsonl",
+      "merge_gate_dry_runs.jsonl"
+    ]
+  },
+  "signoff_report": "docs/zh/reports/phase5-swarm-entry-signoff-20260606.md",
+  "s21_signoff": "docs/zh/reports/S21-swarm-gray-signoff-20260606.md",
+  "notes": "Beta default remains session_agent. Swarm gray path is maintainer-only; no production parallel_writes rollout."
+}

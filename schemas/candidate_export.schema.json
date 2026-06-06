@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CandidateExport",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "candidate_export_id",
+    "run_id",
+    "task_id",
+    "candidate_id",
+    "workspace",
+    "changed_files",
+    "write_scope",
+    "execution_profile_id",
+    "export_status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "candidate_export_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "task_id": { "type": "string" },
+    "candidate_id": { "type": "string" },
+    "workspace": { "type": "string" },
+    "worker_invocation_id": { "type": "string" },
+    "changed_files": { "type": "array", "items": { "type": "string" } },
+    "write_scope": { "type": "array", "items": { "type": "string" } },
+    "execution_profile_id": {
+      "type": "string",
+      "enum": ["session_agent", "harness"]
+    },
+    "export_status": {
+      "type": "string",
+      "enum": ["ready", "empty", "blocked"]
+    },
+    "spawn_kind": { "type": "string" },
+    "created_at": { "type": "string" }
+  }
+}

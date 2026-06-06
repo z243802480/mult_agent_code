@@ -6,6 +6,7 @@ from pathlib import Path
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
+from asteria_runtime.core.execution_profile import resolve_worker_execution_profile
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -68,6 +69,9 @@ class WorkerExecutionRecorder:
         store = JsonlStore(self.validator)
         delegation_brief = self.delegation_brief(task)
         brief_quality = self.brief_quality(delegation_brief)
+        worker_profile = resolve_worker_execution_profile(task)
+        hints = task.get("runtime_profile_hints")
+        hints = hints if isinstance(hints, dict) else {}
         invocation = WorkerInvocation(
             worker_invocation_id=worker_id,
             run_id=context.run_id or "",
@@ -84,6 +88,9 @@ class WorkerExecutionRecorder:
             parent_task_id=self._runtime_hint(task, "parent_task_id"),
             worker_kind=self._runtime_hint(task, "worker_kind") or "primary",
             parallel_safety=str(task.get("parallel_safety") or ""),
+            execution_profile_id=worker_profile.profile_id,
+            spawn_kind=str(hints.get("spawn_kind") or "") or None,
+            fake_path=bool(hints.get("fake_path")) if "fake_path" in hints else None,
         )
         result = WorkerResult(
             worker_result_id=result_id,

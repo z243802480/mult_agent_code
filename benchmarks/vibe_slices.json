@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S17",
-  "active_phase": "Phase 4",
+  "active_slice": "S21",
+  "active_phase": "Phase 5",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -214,6 +214,56 @@
         "python scripts/steady_iteration_check.py --root . --skip-b6"
       ],
       "reference_brief": "benchmarks/reference_briefs/S17-runtime-session-agent.md"
+    },
+    {
+      "id": "S18",
+      "name": "Swarm worker spawn",
+      "phase": "5",
+      "depends_on": ["S17"],
+      "user_demo": "写 worker 强制 harness；fake_serial 记录 spawn 契约",
+      "green_checks": [
+        "pytest tests/unit/test_worker_spawn.py -q",
+        "pytest tests/unit/test_worker_recorder.py -q",
+        "python scripts/steady_iteration_check.py --root . --skip-b6"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S18-swarm-worker-spawn.md"
+    },
+    {
+      "id": "S19",
+      "name": "Candidate export + merge dry-run",
+      "phase": "5",
+      "depends_on": ["S18"],
+      "user_demo": "worker 完成后 export + merge gate dry-run，不 promotion",
+      "green_checks": [
+        "pytest tests/unit/test_candidate_export.py tests/unit/test_merge_gate_dry_run.py -q",
+        "pytest tests/integration/test_candidate_export_merge_dry_run.py -q",
+        "python scripts/steady_iteration_check.py --root . --skip-b6"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S19-candidate-export-merge-dry-run.md"
+    },
+    {
+      "id": "S20",
+      "name": "Studio worker progress + promotion UI",
+      "phase": "5",
+      "depends_on": ["S19"],
+      "user_demo": "Thread 背景任务进度条；Inspector merge preview",
+      "green_checks": [
+        "node studio/scripts/s20-worker-promotion-smoke.mjs",
+        "node studio/scripts/run-detail-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S20-studio-worker-promotion-ui.md"
+    },
+    {
+      "id": "S21",
+      "name": "Swarm gray gate",
+      "phase": "5",
+      "depends_on": ["S20"],
+      "user_demo": "维护者 disjoint 灰度路径 + phase5_swarm_gate",
+      "green_checks": [
+        "python scripts/swarm_maintainer_gray_check.py --root .",
+        "pytest tests/integration/test_phase5_swarm_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S21-swarm-gray-gate.md"
     }
   ]
 }

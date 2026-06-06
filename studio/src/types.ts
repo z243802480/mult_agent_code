@@ -121,6 +121,10 @@ export type RunDetailPayload = {
   decisions?: AnyRecord[];
   decision_history?: AnyRecord[];
   worker_tree?: AnyRecord;
+  candidate_exports?: AnyRecord[];
+  merge_gate_dry_runs?: AnyRecord[];
+  candidate_promotions?: AnyRecord[];
+  promotion_preview?: AnyRecord;
   final_report_summary?: AnyRecord;
   model_route_timeline?: AnyRecord;
   goal_policy?: AnyRecord;

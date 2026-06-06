@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.runtime_profile import SCHEMA_VERSION
+from asteria_runtime.core.worker_spawn import enrich_child_task
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -61,20 +62,23 @@ def build_subagent_child_plan(
         "parallel_safety": str(
             expected.get("parallel_safety") or task.get("parallel_safety") or "serial"
         ),
-        "child_tasks": _child_tasks(
-            target_task_id=target_task_id,
-            worker_id=worker_id,
-            sequence=sequence,
-            task=task,
-            expected=expected,
-            next_action=next_action,
-            mode=mode,
-            max_child_workers=max_child_workers,
-            read_scope=read_scope,
-            write_scope=write_scope,
-            allowed_tools=allowed_tools,
-            acceptance=acceptance,
-        ),
+        "child_tasks": [
+            enrich_child_task(child, parent_task=task, policy=None)
+            for child in _child_tasks(
+                target_task_id=target_task_id,
+                worker_id=worker_id,
+                sequence=sequence,
+                task=task,
+                expected=expected,
+                next_action=next_action,
+                mode=mode,
+                max_child_workers=max_child_workers,
+                read_scope=read_scope,
+                write_scope=write_scope,
+                allowed_tools=allowed_tools,
+                acceptance=acceptance,
+            )
+        ],
         "evidence_refs": _string_list(next_action.get("evidence_refs")),
         "created_at": now_iso(),
     }

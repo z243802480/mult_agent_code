@@ -789,11 +789,135 @@ h2 {
 }
 
 .workerTopologyItem pre {
-  border-top: 1px solid #293139;
-  color: #9aa6af;
+  border-top: 1px solid #1f262c;
+  color: #91a0aa;
   font-size: 11px;
+  line-height: 1.35;
   margin: 0;
-  padding: 8px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+}
+
+.workerProgressBar {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.workerProgressTrack {
+  background: #1a2128;
+  border-radius: 999px;
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.workerProgressFill {
+  display: block;
+  height: 100%;
+  min-width: 0;
+}
+
+.workerProgressFill.success {
+  background: #3d8b63;
+}
+
+.workerProgressFill.failed {
+  background: #b85c5c;
+}
+
+.workerProgressFill.running {
+  background: #3c7ea8;
+}
+
+.workerProgressMeta {
+  color: #91a0aa;
+  display: flex;
+  font-size: 11px;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.workerProgressWarn {
+  color: #d4a15a;
+}
+
+.workerProgressList {
+  color: #91a0aa;
+  display: grid;
+  font-size: 11px;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.workerProgressList li {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1.2fr 1fr auto;
+}
+
+.workerPromotionHint {
+  color: #c7d2db;
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.promotionPreviewPanel {
+  margin-top: 8px;
+}
+
+.promotionPreviewSummary {
+  color: #c7d2db;
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+
+.promotionPreviewList {
+  display: grid;
+  gap: 5px;
+}
+
+.promotionPreviewItem {
+  background: #11161a;
+  border: 1px solid #293139;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.promotionPreviewItem.active,
+.promotionPreviewItem:hover {
+  background: #182128;
+  border-color: #3c7ea8;
+}
+
+.promotionPreviewItemHead {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 6px 8px;
+  text-transform: capitalize;
+}
+
+.promotionPreviewItem pre {
+  border-top: 1px solid #1f262c;
+  color: #91a0aa;
+  font-size: 11px;
+  line-height: 1.35;
+  margin: 0;
+  padding: 6px 8px;
   white-space: pre-wrap;
 }
 

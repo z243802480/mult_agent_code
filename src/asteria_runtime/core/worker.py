@@ -23,6 +23,9 @@ class WorkerInvocation:
     parent_task_id: str | None = None
     worker_kind: str | None = None
     parallel_safety: str | None = None
+    execution_profile_id: str | None = None
+    spawn_kind: str | None = None
+    fake_path: bool | None = None
     child_plan_refs: list[str] = field(default_factory=list)
     schema_version: str = SCHEMA_VERSION
 
@@ -51,6 +54,12 @@ class WorkerInvocation:
             data["worker_kind"] = self.worker_kind
         if self.parallel_safety is not None:
             data["parallel_safety"] = self.parallel_safety
+        if self.execution_profile_id is not None:
+            data["execution_profile_id"] = self.execution_profile_id
+        if self.spawn_kind is not None:
+            data["spawn_kind"] = self.spawn_kind
+        if self.fake_path is not None:
+            data["fake_path"] = self.fake_path
         if self.child_plan_refs:
             data["child_plan_refs"] = self.child_plan_refs
         return data
