@@ -74,6 +74,10 @@
       "type": "string",
       "enum": ["diagnostic", "implementation", "verification", "research", "decision", "report", "ui"]
     },
+    "research_type": {
+      "type": "string",
+      "enum": ["documentation", "creative", "research"]
+    },
     "expected_changed_files": { "type": "array", "items": { "type": "string" } },
     "verification_policy": {
       "type": "object",

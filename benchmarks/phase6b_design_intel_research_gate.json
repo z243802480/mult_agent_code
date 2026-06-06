@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 6 Design Intelligence research bridge (S36): align /research --type with plan research_type without replacing session_agent defaults.",
+  "phase": "6",
+  "wave": "2",
+  "depends_on_gate": "benchmarks/phase6_design_intel_gate.json",
+  "depends_on_signoff": "docs/zh/reports/S35-design-intel-signoff-20260606.md",
+  "plan": "docs/zh/plans/asteria-holistic-S36.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S36-design-intel-research-bridge.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase6b_design_intel_research_gate.py"
+  ],
+  "bridge_scope": {
+    "research_cli_types": [
+      "general",
+      "product_research",
+      "architecture_research",
+      "implementation_research",
+      "competitive_research",
+      "paper_research",
+      "open_source_research",
+      "risk_research",
+      "design_pattern_research"
+    ],
+    "plan_pilot_types": ["documentation", "creative", "research"],
+    "requires_user_progress": true,
+    "session_agent_default_unchanged": true
+  },
+  "notes": "Bridge only; full Design Intel Studio surface remains Phase 6+ after S36 gate."
+}

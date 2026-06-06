@@ -54,6 +54,10 @@
     "target_outputs": { "type": "array", "items": { "type": "string" } },
     "definition_of_done": { "type": "array", "items": { "type": "string" } },
     "verification_strategy": { "type": "array", "items": { "type": "string" } },
-    "budget": { "type": "object" }
+    "budget": { "type": "object" },
+    "research_type": {
+      "type": "string",
+      "enum": ["documentation", "creative", "research"]
+    }
   }
 }

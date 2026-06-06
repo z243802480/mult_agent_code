@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S35",
+  "active_slice": "S36",
   "active_phase": "Phase 6",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -419,6 +419,18 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S35-design-intelligence-pilot.md"
+    },
+    {
+      "id": "S36",
+      "name": "Design Intel research bridge",
+      "phase": "6",
+      "depends_on": ["S35"],
+      "user_demo": "/research --type 与 plan research_type 对齐；research_report 进 plan 上下文",
+      "green_checks": [
+        "pytest tests/integration/test_phase6b_design_intel_research_gate.py -q",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S36-design-intel-research-bridge.md"
     }
   ]
 }

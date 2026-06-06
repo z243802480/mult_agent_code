@@ -9,6 +9,10 @@ from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
+from asteria_runtime.core.design_intel_contract import (
+    apply_research_type_to_goal_spec,
+    apply_research_type_to_task_plan,
+)
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
@@ -379,6 +383,8 @@ class PlanCommand:
                 {"failure_report": str(report_path), "failure_type": failure_type},
             )
             raise RuntimeError(run["summary"]) from last_exc
+        goal_spec = apply_research_type_to_goal_spec(goal_spec)
+        design_intel_research_type = goal_spec.get("research_type")
         goal_spec_path = run_dir / "goal_spec.json"
         self.store.write(goal_spec_path, goal_spec, "goal_spec")
         event_logger.record(run["run_id"], "artifact_created", "GoalSpecAgent", "GoalSpec created")
@@ -427,13 +433,21 @@ class PlanCommand:
             display_level="inspector",
             call_chain=["PlanCommand", "RequirementPlanner"],
             execution_chain=["goal_spec", "task_plan"],
-            data={"goal_id": goal_spec["goal_id"]},
+            data={
+                "goal_id": goal_spec["goal_id"],
+                **(
+                    {"research_type": design_intel_research_type}
+                    if design_intel_research_type
+                    else {}
+                ),
+            },
         )
         task_plan = RequirementPlanner().build_task_plan(
             goal_spec,
             runtime_context=runtime_context,
             execution_profile=profile_resolution.profile_id,
         )
+        task_plan = apply_research_type_to_task_plan(goal_spec, task_plan)
         _apply_validation_probe_hints(task_plan, self.validation_probe_ids)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)
@@ -481,6 +495,11 @@ class PlanCommand:
             data={
                 "task_count": len(task_plan["tasks"]),
                 "agent_loop_dispatch": loop_dispatch,
+                **(
+                    {"research_type": design_intel_research_type}
+                    if design_intel_research_type
+                    else {}
+                ),
             },
         )
         progress_logger.record(
@@ -707,6 +726,11 @@ class PlanCommand:
                 "task_titles": task_titles[:5],
                 "quality_status": task_plan_eval["status"],
                 "quality_score": task_plan_eval["overall_score"],
+                **(
+                    {"research_type": design_intel_research_type}
+                    if design_intel_research_type
+                    else {}
+                ),
             },
         )
         progress_logger.record(

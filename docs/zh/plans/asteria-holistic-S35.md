@@ -1,6 +1,7 @@
 # Asteria 整体推进计划（S35 — Phase 6 入口）
 
 **日期**：2026-06-06  
+**状态**：✅ 已签字 — [`S35-design-intel-signoff-20260606.md`](../reports/S35-design-intel-signoff-20260606.md)  
 **前置**：S34 phase5f 已签字（[`S34-production-gray-signoff-20260606.md`](../reports/S34-production-gray-signoff-20260606.md)）
 
 ---
@@ -34,10 +35,10 @@
 
 ## 3. 成功标准
 
-- [ ] `phase6_design_intel_gate.json` 与 ACTIVE_SLICE = S35
-- [ ] plan/goal_spec 可持久化 `research_type`（schema 向后兼容）
-- [ ] 至少一条 fake-provider doc/creative 场景进 user_progress 主路径
-- [ ] doc contracts 三源同步
+- [x] `phase6_design_intel_gate.json` 与 ACTIVE_SLICE = S35
+- [x] plan/goal_spec 可持久化 `research_type`（schema 向后兼容）
+- [x] 至少一条 fake-provider doc/creative 场景进 user_progress 主路径
+- [x] doc contracts 三源同步
 
 ---
 
@@ -47,3 +48,9 @@
 pytest tests/integration/test_phase6_design_intel_gate.py -q
 python scripts/steady_iteration_check.py --root . --skip-b6
 ```
+
+---
+
+## 5. 下一波段
+
+**S36 ACTIVE** — [`asteria-holistic-S36.md`](./asteria-holistic-S36.md)

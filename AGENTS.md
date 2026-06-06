@@ -17,12 +17,12 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Phase 6（Design Intelligence 试点）
-当前 ACTIVE_SLICE：S35（research_type 进 plan · phase6 入口闸门）
+当前 ACTIVE_PHASE：Phase 6（Design Intelligence 产品化）
+当前 ACTIVE_SLICE：S36（/research --type 与 plan 契约对齐）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 设计索引：docs/zh/文档导航.md
-计划：docs/zh/plans/asteria-holistic-S35.md
+计划：docs/zh/plans/asteria-holistic-S36.md
 ```
 
 Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start North Star,

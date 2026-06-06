@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
+from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -140,7 +141,7 @@ class GoalSpecAgent:
         )
         budget = normalized.get("budget")
         normalized["budget"] = budget if isinstance(budget, dict) else {}
-        return normalized
+        return apply_research_type_to_goal_spec(normalized)
 
     def _requirements(self, value: object, fallback_description: str) -> list[dict]:
         items = value if isinstance(value, list) else []
