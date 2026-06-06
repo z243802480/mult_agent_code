@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S31",
+  "active_slice": "S33",
   "active_phase": "Phase 5",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -371,6 +371,29 @@
         "pytest tests/integration/test_phase5d_swarm_scenario_gate.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S31-swarm-scenario-gate.md"
+    },
+    {
+      "id": "S32",
+      "name": "Gray DecisionPoint rollback",
+      "phase": "5",
+      "depends_on": ["S31"],
+      "user_demo": "maintainer gray DecisionPoint + isolated probe + rollback drill",
+      "green_checks": [
+        "pytest tests/integration/test_phase5e_gray_decision_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S32-gray-decision-rollback.md"
+    },
+    {
+      "id": "S33",
+      "name": "Beta friction convergence",
+      "phase": "4",
+      "depends_on": ["S32"],
+      "user_demo": "Studio replan→continue + friction contract",
+      "green_checks": [
+        "pytest tests/unit/test_friction_contract.py -q",
+        "node studio/scripts/s33-friction-contract-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S33-friction-convergence.md"
     }
   ]
 }

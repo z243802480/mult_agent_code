@@ -17,8 +17,8 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Phase 5（蜂群 · 主链集成）
-当前 ACTIVE_SLICE：S31（统一场景闸门 + holistic 脉搏）
+当前 ACTIVE_PHASE：Phase 5（蜂群 · gray + friction）
+当前 ACTIVE_SLICE：S33（Beta friction 收敛 + gray rollback 闸门）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 设计索引：docs/zh/文档导航.md

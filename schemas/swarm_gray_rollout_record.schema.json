@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SwarmGrayRolloutRecord",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "record_id",
+    "run_id",
+    "decision_id",
+    "probe_ok",
+    "rollback_ok",
+    "created_at",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "record_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "probe_ok": { "type": "boolean" },
+    "rollback_ok": { "type": "boolean" },
+    "created_at": { "type": "string" },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": true
+}

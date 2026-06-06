@@ -12,6 +12,7 @@ from asteria_runtime.core.main_path import (
     canonical_next_command,
     main_path_text_lines,
 )
+from asteria_runtime.core.execution_profile import session_agent_recommended_command
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.core.phase2_stability_window import long_horizon_projection
@@ -867,7 +868,7 @@ class StatusResult:
         return lines
 
     def _command_for_observation_route(self, route: str) -> str | None:
-        return {
+        mapped = {
             "repair": "debug",
             "diagnose": "debug",
             "replan": "replan",
@@ -875,6 +876,11 @@ class StatusResult:
             "review": "review",
             "stop": "status --debug",
         }.get(route)
+        if mapped is None:
+            return None
+        profile = (self.current_context or {}).get("execution_profile") or {}
+        is_session_agent = profile.get("is_session_agent", True)
+        return session_agent_recommended_command(mapped, is_session_agent=is_session_agent)
 
 
 class StatusCommand:

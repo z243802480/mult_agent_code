@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Beta friction contract for decide/debug/resume on session_agent path (S33).",
+  "phase": "4",
+  "thresholds": {
+    "decide": 2,
+    "debug": 2,
+    "resume": 2
+  },
+  "studio_contract_smoke": "studio/scripts/s33-friction-contract-smoke.mjs",
+  "contract_tests": [
+    "tests/unit/test_friction_contract.py",
+    "tests/unit/test_execution_profile.py"
+  ],
+  "notes": "Full B6 sim remains optional maintainer sign-off; contract tests guard replan→resume mapping."
+}

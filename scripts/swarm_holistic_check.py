@@ -1,4 +1,4 @@
-"""Unified Phase 5 + steady maintainer pulse (S31 holistic check)."""
+"""Unified Phase 5 + steady maintainer pulse (S31–S33 holistic check)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,9 @@ def main() -> None:
     args = parser.parse_args()
 
     root = args.root.resolve()
-    gate = json.loads((root / "benchmarks" / "phase5d_swarm_scenario_gate.json").read_text(encoding="utf-8"))
+    gate = json.loads((root / "benchmarks" / "phase5e_gray_decision_gate.json").read_text(encoding="utf-8"))
+    phase5d = json.loads((root / "benchmarks" / "phase5d_swarm_scenario_gate.json").read_text(encoding="utf-8"))
+    friction = json.loads((root / "benchmarks" / "phase4_friction_gate.json").read_text(encoding="utf-8"))
     steps: list[dict[str, object]] = []
 
     steps.append(_run_python(root, "scripts/steady_iteration_check.py", ["--root", str(root), "--skip-b6"]))
@@ -29,15 +31,20 @@ def main() -> None:
     steps.append(
         _run_python(root, "scripts/swarm_flag_rollout_check.py", ["--root", str(root), "--skip-probe"])
     )
+    for rel in phase5d.get("contract_tests", []):
+        steps.append(_run_pytest(root, str(rel)))
     for rel in gate.get("contract_tests", []):
         steps.append(_run_pytest(root, str(rel)))
+    for rel in friction.get("contract_tests", []):
+        steps.append(_run_pytest(root, str(rel)))
+    steps.append(_run_shell(root, f"node {friction['studio_contract_smoke']}"))
 
     ok = all(step.get("ok") for step in steps)
     report = {
         "ok": ok,
         "purpose": gate.get("purpose"),
         "holistic_pulse": gate.get("holistic_pulse"),
-        "real_provider_signoff": gate.get("real_provider_signoff"),
+        "real_provider_signoff": phase5d.get("real_provider_signoff"),
         "steps": steps,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -54,7 +61,11 @@ def _run_python(root: Path, script: str, extra: list[str]) -> dict[str, object]:
     return _run(root, script, cmd)
 
 
-def _run(root: Path, label: str, cmd: list[str]) -> dict[str, object]:
+def _run_shell(root: Path, command: str) -> dict[str, object]:
+    return _run(root, command, command, shell=True)
+
+
+def _run(root: Path, label: str, cmd: list[str] | str, shell: bool = False) -> dict[str, object]:
     completed = subprocess.run(
         cmd,
         cwd=root,
@@ -62,6 +73,7 @@ def _run(root: Path, label: str, cmd: list[str]) -> dict[str, object]:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        shell=shell,
         check=False,
     )
     return {

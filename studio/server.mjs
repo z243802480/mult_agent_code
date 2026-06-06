@@ -342,6 +342,7 @@ function runtimeActionFor(value) {
     resume: "continue",
     continue: "continue",
     run: "continue",
+    replan: "continue",
     debug: "debug",
     repair: "debug",
     decide: "decide",

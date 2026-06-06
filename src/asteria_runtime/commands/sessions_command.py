@@ -373,6 +373,10 @@ class SessionsCommand:
             final_progress=user_progress_projections.get("final"),
         )
         return {
+            "execution_profile": {
+                "profile_id": profile.resolution.profile_id,
+                "is_session_agent": profile.is_session_agent,
+            },
             "goal_summary": (snapshot or {}).get("goal_summary") or self._goal_summary(run_dir),
             "run_status": run_status,
             "snapshot_path": snapshot_rel,

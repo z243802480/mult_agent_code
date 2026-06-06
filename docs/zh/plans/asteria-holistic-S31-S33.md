@@ -60,7 +60,9 @@ real provider 签字：**optional**，见 `phase5d_swarm_scenario_gate.json` →
 
 ## 5. 成功标准
 
-- [ ] `runtime_validation_matrix` 含 `swarm_disjoint_evidence`
-- [ ] execute 并行 + subagent 路径均过 `swarm_scenario_audit`
-- [ ] 三源 ACTIVE_SLICE 同步
-- [ ] Beta 默认 session_agent 不变
+- [x] `runtime_validation_matrix` 含 `swarm_disjoint_evidence`
+- [x] execute 并行 + subagent 路径均过 `swarm_scenario_audit`
+- [x] 三源 ACTIVE_SLICE 同步
+- [x] Beta 默认 session_agent 不变
+- [x] S32 gray DecisionPoint + rollback drill（`phase5e`）
+- [x] S33 friction 契约 + Studio replan→continue
