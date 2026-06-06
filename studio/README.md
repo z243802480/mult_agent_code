@@ -51,6 +51,18 @@ Every user message starts a **ConversationTurn**:
 
 This pattern supports indefinitely long working sessions: each goal produces one turn, turns stack vertically, older turns stay readable.
 
+### UI alignment (Claude Code / Codex, 2026-06)
+
+| Pattern | Source | Asteria Studio |
+| --- | --- | --- |
+| Per-turn file chips with +/- | Claude Code `/diff`, VS Code extension | Thread `FileChangeChips` → Inspector diff |
+| Primary project folder (cwd) | Claude Desktop project picker | Workspace switcher + top-bar chip |
+| Phase strip (Plan → Execute → Verify) | Codex/Cursor task workflows | `WorkflowPhaseStrip` under header |
+| Git working tree review | Claude `/diff` Current view | Inspector **Workspace changes** panel |
+| Accept/review after verify | Codex review workflow | Runtime snapshot + 审查/接受 buttons |
+
+Click any **file chip** in the live stream or collapsed turn to open git diff (falls back to file preview for untracked files).
+
 ### What Studio Does NOT Show By Default
 
 - Internal agent sub-steps (those are in the collapsed process archive)
@@ -81,8 +93,10 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | **Workspace switcher (open folder / recent)** | ✅ |
 | **Primary cwd chip + project profile (init/git/AGENTS.md)** | ✅ |
 | **Git workspace changes + diff preview** | ✅ |
+| **Thread file-change chips → diff** | ✅ |
+| **Workflow phase strip (Plan/Execute/Verify)** | ✅ |
 | Token / cost limits display | 🔲 planned |
-| File diff viewer (inline git-style) | 🔲 planned (partial: git diff in Inspector) |
+| File diff viewer (inline git-style) | ✅ Thread chips + Inspector preview |
 | Git integration (changed files, branch status) | ✅ read-only status + diff |
 | Terminal output panel | 🔲 planned |
 | Global settings UI | 🔲 planned |

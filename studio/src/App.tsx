@@ -16,6 +16,7 @@ import { Banner } from "./components/Shared";
 import { Sidebar } from "./components/Sidebar";
 import { Thread } from "./components/Thread";
 import { Inspector } from "./components/Inspector";
+import { WorkflowPhaseStrip } from "./components/WorkflowPhaseStrip";
 import { Composer, type PromptSignal } from "./components/Composer";
 
 function eventTimeValue(event: StudioEvent): number {
@@ -68,19 +69,27 @@ export function App() {
     }
   }
 
-  async function openGitDiff(pathValue: string) {
+  async function openFileChange(pathValue: string) {
     setGitSelectedPath(pathValue);
     try {
       const diff = await api.gitDiff(pathValue);
-      setPreview({
-        ok: diff.ok,
-        path: diff.path ?? pathValue,
-        content: diff.diff,
-        error: diff.error,
-      });
+      const diffText = String(diff.diff ?? "");
+      if (diff.ok && diffText && !diffText.includes("(no diff")) {
+        setPreview({
+          ok: true,
+          path: diff.path ?? pathValue,
+          content: diffText,
+        });
+        return;
+      }
+      setPreview(await api.previewFile(pathValue));
     } catch (err) {
       setPreview({ ok: false, error: String((err as Error).message || err) });
     }
+  }
+
+  async function openGitDiff(pathValue: string) {
+    await openFileChange(pathValue);
   }
 
   async function bootstrap() {
@@ -316,6 +325,7 @@ export function App() {
             </button>
           </div>
         </header>
+        <WorkflowPhaseStrip runDetail={runDetail} isRunning={isRunning} />
         {error && <Banner tone="bad" text={error} />}
         <Thread
           events={events}
@@ -329,6 +339,7 @@ export function App() {
           pendingTurn={pendingTurn}
           overview={overview}
           runDetail={runDetail}
+          onFileChangeClick={(pathValue) => void openFileChange(pathValue)}
         />
         <Composer
           onSend={sendGoal}

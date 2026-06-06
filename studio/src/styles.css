@@ -1523,15 +1523,81 @@ h2 {
   padding: 2px 7px;
 }
 
+.liveFileChip.interactive {
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.liveFileChip.interactive:hover,
+.liveFileChip.interactive:focus-visible {
+  background: #15242c;
+  border-color: #2f6b4d;
+  outline: none;
+}
+
+.liveFileName {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turnFileRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 6px 0 0 28px;
+}
+
+.workflowPhaseStrip {
+  border-bottom: 1px solid #1e262d;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 18px;
+}
+
+.workflowPhasePill {
+  border: 1px solid #2a3138;
+  border-radius: 999px;
+  color: #7d8b96;
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+.workflowPhasePill.done {
+  border-color: #2f6b4d;
+  color: #8fd19e;
+}
+
+.workflowPhasePill.active {
+  background: #1a2a22;
+  border-color: #3f8762;
+  color: #d7f2e0;
+}
+
+.workflowPhasePill.pending {
+  opacity: 0.55;
+}
+
 .liveFileChip.muted {
   border-color: #252d35;
   color: #5a7080;
 }
 
 .liveFileDelta {
-  color: #4aaa78;
+  display: inline-flex;
   font-size: 10px;
-  opacity: 0.8;
+  gap: 4px;
+  opacity: 0.9;
+}
+
+.deltaAdd {
+  color: #6ec8a0;
+}
+
+.deltaDel {
+  color: #ff9aa8;
 }
 
 /* Streaming LLM text — the actual words from the model as they arrive */

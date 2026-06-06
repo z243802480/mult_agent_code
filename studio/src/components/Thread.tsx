@@ -4,6 +4,8 @@ import type { AnyRecord, StudioEvent, NarrativeStep as NarrativeStepType, Overvi
 import { NarrativeStep } from "./NarrativeStep";
 import { PermissionCard } from "./PermissionCard";
 import { toNarrativeEvents, buildRunNarrative } from "../narrative";
+import { extractFileChangesFromSteps } from "../fileChanges";
+import { FileChangeChips } from "./FileChangeChips";
 
 const EXAMPLE_PROMPTS = [
   "Plan a 3-day Qingdao trip",
@@ -48,7 +50,7 @@ function middleSummary(steps: NarrativeStepType[]): string {
     (count, step) => count + step.events.filter((event) => Array.isArray(event.command) && event.command.length > 0).length,
     0
   );
-  const fileCount = extractFileChanges(steps).length;
+  const fileCount = extractFileChangesFromSteps(steps).length;
   const hasVerification = steps.some((step) =>
     step.kind === "verification" || step.events.some((event) => event.phase === "review")
   );
@@ -80,20 +82,6 @@ function isModelThinkingStep(step: NarrativeStepType, phase?: string): boolean {
     && step.events.some((event) =>
       event.type.startsWith("model_") && (!phase || event.phase === phase)
     );
-}
-
-function extractFileChanges(steps: NarrativeStepType[]): AnyRecord[] {
-  const seen = new Set<string>();
-  const result: AnyRecord[] = [];
-  for (const s of steps.filter((s) => s.kind === "result")) {
-    for (const ev of s.events) {
-      for (const fc of (ev.file_changes ?? []) as AnyRecord[]) {
-        const key = String(fc.path ?? fc.file ?? JSON.stringify(fc));
-        if (!seen.has(key)) { seen.add(key); result.push(fc); }
-      }
-    }
-  }
-  return result;
 }
 
 function asRecord(value: unknown): AnyRecord {
@@ -755,7 +743,11 @@ function PendingTurn({ message, mode, startedAt }: { message: string; mode: stri
   );
 }
 
-function LiveStream({ steps, onPermit }: { steps: NarrativeStepType[]; onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>; }) {
+function LiveStream({ steps, onPermit, onFileChangeClick }: {
+  steps: NarrativeStepType[];
+  onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
+  onFileChangeClick?: (path: string) => void;
+}) {
   const activeStep = steps.at(-1);
   const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "Processing";
   const isWaiting = activeStep?.status === "waiting_user";
@@ -773,7 +765,7 @@ function LiveStream({ steps, onPermit }: { steps: NarrativeStepType[]; onPermit:
     .filter(Boolean)
     .join("\n\n");
   const toolSteps = steps.filter((s) => s.kind === "tool" || s.kind === "repair");
-  const fileChanges = extractFileChanges(steps);
+  const fileChanges = extractFileChangesFromSteps(steps);
   const toolOutputs = toolSteps
     .flatMap((s) => s.events.map((e) => ({ id: s.id, text: e.content_delta, cmd: e.command })))
     .filter((o) => o.text);
@@ -811,23 +803,7 @@ function LiveStream({ steps, onPermit }: { steps: NarrativeStepType[]; onPermit:
         </div>
       )}
 
-      {fileChanges.length > 0 && (
-        <div className="liveFileRow">
-          {fileChanges.slice(0, 10).map((fc, i) => {
-            const name = String(fc.path ?? fc.file ?? "file").split(/[/\\]/).at(-1);
-            const adds = fc.additions != null ? `+${fc.additions}` : "";
-            const dels = fc.deletions != null ? `-${fc.deletions}` : "";
-            return (
-              <span key={i} className="liveFileChip">
-                <FileText size={10} />
-                {name}
-                {(adds || dels) && <span className="liveFileDelta">{[adds, dels].filter(Boolean).join(" ")}</span>}
-              </span>
-            );
-          })}
-          {fileChanges.length > 10 && <span className="liveFileChip muted">+{fileChanges.length - 10} more</span>}
-        </div>
-      )}
+      <FileChangeChips changes={fileChanges} onSelect={onFileChangeClick} />
 
       {modelText && <pre className="liveModelText">{modelText}</pre>}
       {permEvent && (
@@ -886,12 +862,13 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
 
 type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
 
-function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal }: {
+function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
   expandSignal: ProcessExpandSignal;
+  onFileChangeClick?: (path: string) => void;
 }) {
   const hasPendingPermission = steps.some((s) => s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"));
   const representative = middleRepresentativeEvent(steps);
@@ -902,6 +879,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal }: {
     setOpen(expandSignal.mode === "expand");
   }, [expandSignal?.id, expandSignal?.mode]);
   if (steps.length === 0) return null;
+  const fileChanges = extractFileChangesFromSteps(steps);
   return (
     <div className="turnMiddle">
       <button
@@ -915,6 +893,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal }: {
         <Wrench size={11} />
         <span>{middleSummary(steps)}</span>
       </button>
+      <FileChangeChips changes={fileChanges} className="turnFileRow" onSelect={onFileChangeClick} />
       {open && (
         <div className="turnMiddleSteps">
           {steps.map((step) => {
@@ -1060,7 +1039,7 @@ function renderFinalLine(line: string, index: number) {
   return <p key={index}>{line}</p>;
 }
 
-function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal }: {
+function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -1068,6 +1047,7 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
   isLast: boolean;
   isRunning: boolean;
   expandSignal: ProcessExpandSignal;
+  onFileChangeClick?: (path: string) => void;
 }) {
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
@@ -1103,17 +1083,26 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
         ) : middleSteps.length === 1 && isModelThinkingStep(middleSteps[0], "chat") ? (
           <ChatStreamPreview step={middleSteps[0]} />
         ) : (
-          <LiveStream steps={middleSteps} onPermit={onPermit} />
+          <LiveStream steps={middleSteps} onPermit={onPermit} onFileChangeClick={onFileChangeClick} />
         )
       ) : (
-        middleSteps.length > 0 && <TurnMiddle steps={middleSteps} selected={selected} onSelect={onSelect} onPermit={onPermit} expandSignal={expandSignal} />
+        middleSteps.length > 0 && (
+          <TurnMiddle
+            steps={middleSteps}
+            selected={selected}
+            onSelect={onSelect}
+            onPermit={onPermit}
+            expandSignal={expandSignal}
+            onFileChangeClick={onFileChangeClick}
+          />
+        )
       )}
       {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
     </div>
   );
 }
 
-export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, onRuntimeAction, onResolveDecision, pendingTurn, overview, runDetail }: {
+export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, onRuntimeAction, onResolveDecision, pendingTurn, overview, runDetail, onFileChangeClick }: {
   events: StudioEvent[];
   selected: StudioEvent | null;
   isRunning: boolean;
@@ -1125,6 +1114,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
   pendingTurn?: { message: string; mode: string; startedAt: number } | null;
   overview?: OverviewPayload | null;
   runDetail?: RunDetailPayload | null;
+  onFileChangeClick?: (path: string) => void;
 }) {
   const threadRef = useRef<HTMLElement>(null);
   const [expandSignal, setExpandSignal] = useState<ProcessExpandSignal>(null);
@@ -1177,6 +1167,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
           isLast={i === turns.length - 1}
           isRunning={isRunning}
           expandSignal={expandSignal}
+          onFileChangeClick={onFileChangeClick}
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
