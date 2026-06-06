@@ -140,6 +140,31 @@ def _prompt_envelope_path(run_dir: Path, mode: str) -> Path:
     return run_dir / f"prompt_envelope_{mode}.json"
 
 
+def persist_chat_prompt_envelope(
+    *,
+    root: Path,
+    run_dir: Path | None,
+    run_id: str,
+    policy: dict[str, Any],
+    validator: SchemaValidator,
+    tool_names: list[str] | None = None,
+) -> PromptEnvelopeRecord:
+    """Persist a chat/ask PromptEnvelope with CapabilityManifest for audit alignment."""
+
+    target_dir = run_dir or (root / ".asteria" / "context")
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return persist_prompt_envelope(
+        root=root,
+        run_dir=target_dir,
+        run_id=run_id or "workspace",
+        mode="chat",
+        policy=policy,
+        validator=validator,
+        tool_names=tool_names,
+        actor="ChatCommand",
+    )
+
+
 def _agent_loop_dispatch_summary(run_dir: Path) -> dict[str, Any]:
     path = run_dir / "agent_loop_dispatch.json"
     if not path.exists():

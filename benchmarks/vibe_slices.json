@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S7",
-  "active_phase": "Phase 2",
+  "active_slice": "S14",
+  "active_phase": "Phase 4",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -94,8 +94,88 @@
       "phase": "3",
       "depends_on": ["S7"],
       "user_demo": "同 session 第二条 goal 带上文",
-      "green_checks": ["manual demo"],
+      "green_checks": [
+        "pytest tests/integration/test_session_continuation.py -q",
+        "pytest tests/integration/test_user_command_smoke.py -q"
+      ],
       "reference_brief": "benchmarks/reference_briefs/S8-resume.md"
+    },
+    {
+      "id": "S9",
+      "name": "CapabilityManifest + Ask",
+      "phase": "3",
+      "depends_on": ["S8"],
+      "user_demo": "ask/chat 装载 manifest；CLI Start 组 Goal/Plan/Ask",
+      "green_checks": [
+        "pytest tests/unit/test_capability_manifest_catalog.py -q",
+        "pytest tests/integration/test_chat_capability_manifest.py -q",
+        "pytest tests/unit/test_cli.py -q -k ask"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S9-capability-manifest.md"
+    },
+    {
+      "id": "S10",
+      "name": "Phase 2 稳态",
+      "phase": "3",
+      "depends_on": ["S9"],
+      "user_demo": "scoped median model calls / repair formal gate + evidence-bundle",
+      "green_checks": [
+        "pytest tests/integration/test_phase2_stability_gate.py -q",
+        "pytest tests/unit/test_phase2_stability_audit.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S10-phase2-stability.md"
+    },
+    {
+      "id": "S11",
+      "name": "North Star RFC 观察窗",
+      "phase": "3",
+      "depends_on": ["S10"],
+      "user_demo": "status --json 显示 long_horizon；观察窗签字完成",
+      "green_checks": [
+        "pytest tests/unit/test_phase2_stability_window.py -q",
+        "pytest tests/integration/test_status_long_horizon.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S11-north-star-v1.md"
+    },
+    {
+      "id": "S12",
+      "name": "North Star v1",
+      "phase": "4",
+      "depends_on": ["S11"],
+      "user_demo": "init --north-star-title；accept 链接 milestone；handoff 含 north_star_ref",
+      "green_checks": [
+        "pytest tests/unit/test_north_star_storage.py -q",
+        "pytest tests/integration/test_status_long_horizon.py -q",
+        "pytest tests/unit/test_accept_command.py -q",
+        "node studio/scripts/north-star-inspector-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S11-north-star-v1.md"
+    },
+    {
+      "id": "S13",
+      "name": "Run Health + S7 clean re-run",
+      "phase": "4",
+      "depends_on": ["S12"],
+      "user_demo": "有界 recovery；run-health gate；real provider small_code_change 健康复跑",
+      "green_checks": [
+        "pytest tests/integration/test_phase4_run_health_gate.py -q",
+        "pytest tests/unit/test_run_health_audit.py -q",
+        "pytest tests/integration/test_run_command.py::test_run_command_pauses_when_recovery_cycle_limit_reached -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S13-run-health.md"
+    },
+    {
+      "id": "S14",
+      "name": "Beta user path (Phase 7 lite)",
+      "phase": "7",
+      "depends_on": ["S13"],
+      "user_demo": "asteria studio → Goal → Review/Accept 主路径按钮；Beta 入门文档",
+      "green_checks": [
+        "pytest tests/integration/test_phase7_beta_user_path_gate.py -q",
+        "pytest tests/unit/test_studio_command.py -q",
+        "node studio/scripts/beta-workflow-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S14-beta-user-path.md"
     }
   ]
 }

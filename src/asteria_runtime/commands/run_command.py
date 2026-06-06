@@ -1174,7 +1174,17 @@ class RunCommand:
         progress: UserProgressLogger | None = None,
     ) -> bool:
         progressed = False
+        inner_cycles = 0
+        max_inner_cycles = self._policy_max_inner_execute_cycles()
         while self._ready_count(run_id) > 0:
+            inner_cycles += 1
+            if inner_cycles > max_inner_cycles:
+                reason = (
+                    f"Recovery cycle limit reached ({max_inner_cycles}); "
+                    "debug/replan loop paused for operator review."
+                )
+                self._pause_for_recovery_limit(run_id, steps, progress, reason=reason)
+                return progressed
             execute = ExecuteCommand(
                 self.root,
                 run_id=run_id,
@@ -1798,6 +1808,51 @@ class RunCommand:
             return 2
         policy = self._policy()
         return int(policy["budgets"].get("max_replans_per_task", 2))
+
+    def _policy_max_inner_execute_cycles(self) -> int:
+        if not (self.root / ".asteria" / "policies.json").exists():
+            return 6
+        policy = self._policy()
+        budgets = policy.get("budgets") or {}
+        replans = int(budgets.get("max_replans_per_task") or 2)
+        repairs = int(budgets.get("max_repair_attempts_per_task") or 4)
+        iterations = int(budgets.get("max_iterations_per_goal") or 8)
+        return max(3, min(iterations, replans + repairs + 1))
+
+    def _pause_for_recovery_limit(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+        progress: UserProgressLogger | None,
+        *,
+        reason: str,
+    ) -> None:
+        self._write_goal_policy_marker(
+            run_id,
+            {
+                "category": "recovery_limit",
+                "recommended_command": "decide --list",
+                "reason": reason,
+            },
+        )
+        if progress:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="execute",
+                status="blocked",
+                title="Recovery limit reached",
+                summary=reason,
+                display_level="main",
+                transcript_kind="diagnostic",
+                ui_intent="needs_attention",
+                actions=[
+                    {"kind": "ask", "label": "Decide", "command": "decide --list"},
+                    {"kind": "replan", "label": "Replan", "command": "replan"},
+                ],
+            )
+        steps.append(RunStepSummary("recover", "paused", reason))
+        self._pause_run_for_budget(run_id, reason)
 
     def _policy(self) -> dict:
         return load_policy_config(self.root / ".asteria", self.validator)

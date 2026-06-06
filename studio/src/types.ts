@@ -93,6 +93,14 @@ export type OverviewPayload = {
   runs?: AnyRecord[];
   modelRoutes?: AnyRecord[];
   v0_2_rolling_validation?: AnyRecord;
+  long_horizon?: AnyRecord;
+  workflow?: {
+    can_review?: boolean;
+    can_accept?: boolean;
+    workflow_state?: string;
+    recommended_next_command?: string;
+    next_actions?: string[];
+  };
 };
 
 export type RunDetailPayload = {

@@ -639,6 +639,28 @@ h2 {
   border-color: #ffffff;
 }
 
+.runtimeWorkflowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.runtimeActionButton.primary {
+  background: #3d7ea6;
+  border-color: #3d7ea6;
+  color: #ffffff;
+  font-weight: 760;
+}
+
+.runtimeActionButton.primary.accept {
+  background: #3d9a72;
+  border-color: #3d9a72;
+}
+
+.runtimeActionButton.primary:hover {
+  filter: brightness(1.08);
+}
+
 .runtimeActionButton:disabled,
 .runtimeActionButton.done {
   background: #192025;

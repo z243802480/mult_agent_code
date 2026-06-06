@@ -359,6 +359,41 @@ function workerCountFromTree(workerTree: AnyRecord): number {
   return countNodes(roots);
 }
 
+function LongHorizonPanel({ overview }: { overview: OverviewPayload | null }) {
+  const longHorizon = asRecord(overview?.long_horizon);
+  if (!longHorizon || !Object.keys(longHorizon).length) return null;
+  const northStar = asRecord(longHorizon.north_star);
+  const status = firstText(String(longHorizon.status ?? ""), "unknown");
+  const summary = firstText(String(longHorizon.summary ?? ""), "No long-horizon summary recorded.");
+  const configured = longHorizon.north_star_configured === true;
+  const ready = longHorizon.ready_for_implementation === true;
+
+  return (
+    <div className="evidenceBlock longHorizonPanel">
+      <small>Long horizon (Inspector)</small>
+      <div className="evidenceStats">
+        <Metric label="Status" value={status} tone={configured ? "good" : ready ? "warn" : "warn"} />
+        <Metric
+          label="Milestones"
+          value={configured ? `${String(northStar.completed_milestones ?? 0)}/${String(northStar.milestone_count ?? 0)}` : "n/a"}
+          tone={configured ? "good" : "warn"}
+        />
+        <Metric label="Ready" value={ready ? "yes" : "no"} tone={ready ? "good" : "warn"} />
+      </div>
+      <div className="keyValueList">
+        <div><small>Summary</small><pre>{summary}</pre></div>
+        {configured && (
+          <>
+            <div><small>Title</small><pre>{String(northStar.title ?? "")}</pre></div>
+            <div><small>Active milestone</small><pre>{String(northStar.active_milestone ?? "none")}</pre></div>
+            <div><small>Statement</small><pre>{String(northStar.statement ?? "")}</pre></div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload | null; runDetail: RunDetailPayload | null }) {
   const rolling = rollingValidationFromOverview(overview);
   const coverage = asRecord(rolling.coverage);
@@ -800,6 +835,7 @@ export function Inspector({
         </p>
       </section>
       <AiDebugAgentCard runDetail={runDetail} selectedRunId={selectedRunId} />
+      <LongHorizonPanel overview={overview} />
       {showRunOverviewFirst && (
         <EvidenceExplorer
           runs={(overview?.runs ?? []) as AnyRecord[]}

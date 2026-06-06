@@ -6,6 +6,7 @@ from pathlib import Path
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.run_command import RunCommand, RunStepSummary
+from asteria_runtime.core.north_star import NorthStarStore
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
@@ -232,6 +233,9 @@ class AcceptCommand:
             blockers=blockers,
             next_actions=next_actions,
         )
+        north_star_link = None
+        if accepted:
+            north_star_link = NorthStarStore(self.root, self.validator).link_run(run_id)
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             "run_accepted" if accepted else "accept_blocked",
@@ -242,6 +246,7 @@ class AcceptCommand:
                 "promoted_files": promoted_files,
                 "blockers": blockers,
                 "final_report_summary_path": str(final_report_summary_path),
+                "north_star_link": north_star_link,
             },
         )
         progress.final_report_event(

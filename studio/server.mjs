@@ -1733,11 +1733,12 @@ async function overview() {
 }
 
 async function diagnostics() {
-  const [gateStatus, doctor, packageCheck, modelRoutes] = await Promise.all([
+  const [gateStatus, doctor, packageCheck, modelRoutes, statusPayload] = await Promise.all([
     commandJson(["gate-status", "--root", workspace, "--json"]),
     commandJson(["doctor", "--root", workspace, "--json"]),
     commandJson(["package-check", "--root", runtimeRoot, "--json"]),
-    modelRouteSummary()
+    modelRouteSummary(),
+    commandJson(["status", "--root", workspace, "--json"]).catch(() => ({})),
   ]);
   return {
     ok: true,
@@ -1750,7 +1751,15 @@ async function diagnostics() {
       : await latestV02RollingValidation(),
     doctor,
     packageCheck,
-    modelRoutes
+    modelRoutes,
+    long_horizon: statusPayload?.long_horizon ?? {},
+    workflow: {
+      can_review: Boolean(statusPayload?.can_review),
+      can_accept: Boolean(statusPayload?.can_accept),
+      workflow_state: String(statusPayload?.workflow_state ?? ""),
+      recommended_next_command: String(statusPayload?.recommended_next_command ?? ""),
+      next_actions: Array.isArray(statusPayload?.next_actions) ? statusPayload.next_actions : [],
+    },
   };
 }
 

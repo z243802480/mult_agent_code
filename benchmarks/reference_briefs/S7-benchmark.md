@@ -19,4 +19,4 @@
 ## 实现记录
 
 - date: 2026-06-05
-- notes: `benchmarks/fixtures/s7_golden_run/` + `test_s7_golden_benchmark.py`；run 级 `studio-benchmark --run-id` 为 S7 契约验收；real provider 见 `phase2_mvp_gate.json` 与 `docs/zh/reports/S7-mvp-signoff-pending.md`。
+- notes: `benchmarks/fixtures/s7_golden_run/` + `test_s7_golden_benchmark.py`；run 级 `studio-benchmark --run-id` 为 S7 契约验收；real provider 见 `phase2_mvp_gate.json` 与 `docs/zh/reports/S7-mvp-signoff-20260606.md`（signed 2026-06-06）。

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.commands.compact_command import CompactCommand
+from asteria_runtime.core.north_star import NorthStarStore
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
@@ -141,6 +142,7 @@ class HandoffCommand:
             "worker_summary": snapshot.get("worker_summary", {}),
             "acceptance_failures": snapshot.get("acceptance_failures", []),
             "report_summaries": snapshot.get("report_summaries", {}),
+            "north_star_ref": NorthStarStore(self.root, self.validator).summary_for_status() or {},
             "recommended_next_command": self._recommended_next_command(snapshot),
             "created_at": now_iso(),
         }

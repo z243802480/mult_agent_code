@@ -46,6 +46,7 @@ from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.studio_benchmark_command import StudioBenchmarkCommand
+from asteria_runtime.commands.studio_command import StudioCommand
 from asteria_runtime.commands.verification_command import VerificationStatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
@@ -202,6 +203,16 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Regenerate managed metadata; never overwrites user-authored AGENTS.md",
     )
+    init_parser.add_argument(
+        "--north-star-title",
+        default=None,
+        help="Optional long-horizon goal title; creates .asteria/north_star.json when set",
+    )
+    init_parser.add_argument(
+        "--north-star-statement",
+        default=None,
+        help="Optional North Star statement (defaults to --north-star-title)",
+    )
 
     model_parser = subcommands.add_parser(
         "model-check",
@@ -245,8 +256,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     chat_parser = subcommands.add_parser(
         "chat",
-        aliases=["/chat"],
-        help="Lightweight Q&A mode; no state-changing project work",
+        aliases=["/chat", "ask", "/ask"],
+        help="Lightweight Ask/Q&A mode; no state-changing project work",
     )
     chat_parser.add_argument("question", help="Question or short request")
     chat_parser.add_argument("--root", default=".", help="Workspace root path")
@@ -1300,6 +1311,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Evaluate only one runtime run id for user_progress contract checks",
     )
     studio_benchmark_parser.add_argument("--json", action="store_true", help="Print JSON")
+    studio_parser = subcommands.add_parser(
+        "studio",
+        aliases=["/studio"],
+        help="Launch Asteria Studio (API server and UI)",
+    )
+    studio_parser.add_argument("--root", default=".", help="Workspace root path")
+    studio_parser.add_argument(
+        "--runtime-root",
+        default=None,
+        help="Runtime install root; defaults to --root",
+    )
+    studio_parser.add_argument("--api-port", type=int, default=8787, help="Studio API port")
+    studio_parser.add_argument("--ui-port", type=int, default=5174, help="Studio UI port")
+    studio_parser.add_argument(
+        "--backend-only",
+        action="store_true",
+        help="Start API server only (no Vite UI)",
+    )
+    studio_parser.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="Skip npm install when node_modules is missing",
+    )
+    studio_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not open the browser automatically",
+    )
+    studio_parser.add_argument("--json", action="store_true", help="Print launch config JSON and exit")
     parser.set_command_groups(
         [
             (
@@ -1308,6 +1348,7 @@ def build_parser() -> argparse.ArgumentParser:
                 [
                     ("goal", "Long-task objective mode; keeps working within permissions."),
                     ("plan", "Read-only comprehensive plan; analyze without changing work."),
+                    ("ask", "Lightweight Ask/Q&A; mounts session context when needed."),
                     ("status", "Show user-level progress, blockers, and next actions."),
                     ("review", "Inspect result quality before accepting candidate outputs."),
                     ("accept", "Accept reviewed results and finalize the run."),
@@ -1319,8 +1360,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "Setup and recovery commands used when a workflow asks for them.",
                 [
                     ("init", "Initialize a local-first Asteria workspace."),
+                    ("studio", "Launch Asteria Studio (API server and UI)."),
                     ("resume", "Continue after approvals, pauses, or repair checkpoints."),
-                    ("chat", "Lightweight Q&A mode for everyday questions."),
                     ("sessions", "List, inspect, or select session contexts."),
                     ("doctor", "Diagnose local runtime setup and model route health."),
                 ],
@@ -1348,6 +1389,8 @@ def main() -> None:
             root=Path(args.root),
             profile=args.profile,
             force=args.force,
+            north_star_title=args.north_star_title,
+            north_star_statement=args.north_star_statement,
         ).run()
         print(init_result.to_text())
         return
@@ -1383,7 +1426,7 @@ def main() -> None:
         print('Next: run `asteria goal "<goal>"` when you want Asteria to execute.')
         return
 
-    if command == "chat":
+    if command in {"chat", "ask"}:
         chat_result = ChatCommand(
             root=Path(args.root),
             question=args.question,
@@ -1862,6 +1905,25 @@ def main() -> None:
             print(studio_benchmark_result.to_text())
         if not studio_benchmark_result.ok:
             raise SystemExit(1)
+        return
+
+    if command == "studio":
+        runtime_root = Path(args.runtime_root) if args.runtime_root else Path(args.root)
+        studio_command = StudioCommand(
+            root=Path(args.root),
+            runtime_root=runtime_root,
+            api_port=args.api_port,
+            ui_port=args.ui_port,
+            backend_only=args.backend_only,
+            skip_install=args.skip_install,
+            open_browser=not args.no_open,
+        )
+        if args.json:
+            preview = studio_command.preview()
+            print(json.dumps(preview.to_dict(), ensure_ascii=False, indent=2))
+            return
+        launch = studio_command.run()
+        print(launch.to_text())
         return
 
     parser.error(f"Unsupported command: {args.command}")

@@ -253,3 +253,10 @@ def test_master_plan_exists_and_is_execution_entry() -> None:
     assert Path("benchmarks/vibe_slices.json").exists()
     assert Path("benchmarks/reference_briefs/README.md").exists()
     assert Path("benchmarks/phase2_mvp_gate.json").exists()
+    assert Path("benchmarks/phase3_rolling_gate.json").exists()
+    assert Path("benchmarks/phase2_stability_gate.json").exists()
+    assert Path("benchmarks/phase2_stability_window.json").exists()
+    current_state = Path("docs/zh/当前状态与路线.md").read_text(encoding="utf-8")
+    assert Path("schemas/north_star.schema.json").exists()
+    assert Path("docs/zh/plans/NORTH_STAR_RFC.md").exists()
+    assert "综合下一步计划" in current_state

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { ClipboardList, Eye, MessageCircle, PlayCircle, RotateCw, Send, ShieldCheck } from "lucide-react";
 
-const MODES = ["auto", "chat", "plan", "run", "review", "resume"] as const;
+const MODES = ["auto", "chat", "plan", "run", "review", "resume", "accept"] as const;
 type Mode = typeof MODES[number];
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -11,6 +11,7 @@ const MODE_LABELS: Record<Mode, string> = {
   run: "Goal",
   review: "Review",
   resume: "Resume",
+  accept: "Accept",
 };
 
 const MODE_PLACEHOLDERS: Record<Mode, string> = {
@@ -20,6 +21,7 @@ const MODE_PLACEHOLDERS: Record<Mode, string> = {
   run: "Describe a longer goal. Asteria will ask before sensitive actions... (Enter to send, Shift+Enter for newline)",
   review: "Ask Asteria to check the current result... (Enter to send, Shift+Enter for newline)",
   resume: "Continue the current task or add updated constraints... (Enter to send, Shift+Enter for newline)",
+  accept: "Accept the reviewed result after confirmation... (Enter to send, Shift+Enter for newline)",
 };
 
 export type PromptSignal = { text: string; id: number };
@@ -28,6 +30,7 @@ const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string }[
   { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
   { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
   { key: "/review", label: "Review", mode: "review", prompt: "Review the current result." },
+  { key: "/accept", label: "Accept", mode: "accept", prompt: "Accept the reviewed result." },
   { key: "/debug", label: "Debug", mode: "resume", prompt: "Debug the current blocker." },
   { key: "/continue", label: "Continue", mode: "resume", prompt: "Continue the current task." },
 ];
@@ -59,6 +62,15 @@ function actionProfile(mode: Mode, permission: string) {
       detail: "Checks current evidence and result.",
       permission: "Read-only evidence",
       tone: "good",
+    };
+  }
+  if (effective === "accept") {
+    return {
+      icon: <ShieldCheck size={14} />,
+      label: "Accept",
+      detail: "Finalizes the reviewed result in the workspace.",
+      permission: "Writes accepted artifacts",
+      tone: "warn",
     };
   }
   if (effective === "resume") {

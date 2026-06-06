@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 3 rolling scoped real cases (fake CI contract + manual real provider sign-off).",
+  "phase": "3",
+  "depends_on_signoff": "docs/zh/reports/S7-mvp-signoff-20260606.md",
+  "required_cases": [
+    {
+      "id": "doc_update",
+      "matrix_ref": "p0/doc_update",
+      "goal_pattern": "documentation artifact with explicit expected file"
+    },
+    {
+      "id": "single_file_bugfix",
+      "matrix_ref": "p0/single_file_bugfix",
+      "goal_pattern": "single-file repair with verification"
+    },
+    {
+      "id": "context_maintenance",
+      "matrix_ref": "p0/context_maintenance",
+      "goal_pattern": "read local context files and write concise summary"
+    }
+  ],
+  "contract_test": "tests/integration/test_phase3_rolling_gate.py",
+  "signoff_report": "docs/zh/reports/phase3-rolling-signoff-20260606.md",
+  "real_provider_command": "python scripts/real_model_smoke.py --matrix p0 --matrix-case doc_update --matrix-case single_file_bugfix --matrix-case context_maintenance",
+  "notes": "CI: fake-provider scoped cases via contract_test. Real provider rolling sign-off completed 2026-06-06 (see signoff_report). Provider: OS user-level AGENT_MODEL_* env vars."
+}

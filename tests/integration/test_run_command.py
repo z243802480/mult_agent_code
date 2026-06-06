@@ -575,6 +575,49 @@ class FakeFailingDebugClient:
         )
 
 
+class FakeAlwaysWrongExecuteClient:
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task = json.loads(request.messages[-1].content)["task"]
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": task["task_id"],
+                    "summary": "Always produce the wrong answer.",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "complete_module.py",
+                                "content": "def answer():\n    return 41\n",
+                                "overwrite": True,
+                            },
+                            "reason": "wrong artifact",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c "
+                                    '"from complete_module import answer; assert answer() == 42"'
+                                )
+                            },
+                            "reason": "verify behavior",
+                        }
+                    ],
+                    "completion_notes": "still wrong",
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(15, 25, 40),
+            model_provider="fake",
+            model_name="fake-execute",
+            raw_response={},
+        )
+
+
 class FakeReplanExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         task = json.loads(request.messages[-1].content)["task"]
@@ -1284,6 +1327,52 @@ def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "done"]
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "replan: completed - 1 task(s), 0 decision(s)." in final_report
+
+
+def test_run_command_pauses_when_recovery_cycle_limit_reached(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    set_budget_policy(
+        tmp_path,
+        max_model_calls=40,
+        compaction_threshold=0.75,
+        hard_stop_threshold=0.95,
+    )
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["budgets"]["max_replans_per_task"] = 2
+    policy["budgets"]["max_repair_attempts_per_task"] = 2
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+    result = RunCommand(
+        tmp_path,
+        "create a complete module",
+        max_iterations=2,
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeAlwaysWrongExecuteClient(),
+        debug_model_client=FakeFailingDebugClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    replan_count = sum(
+        1
+        for task in task_plan["tasks"]
+        if isinstance(task.get("replan"), dict) and task["replan"].get("source_task_id")
+    )
+    progress_lines = [
+        line
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert replan_count <= 8
+    assert len(progress_lines) < 500
+    assert any(step.name == "recover" for step in result.steps) or result.status in {
+        "paused",
+        "blocked",
+        "completed",
+    }
 
 
 def test_run_command_compacts_once_when_near_budget(tmp_path: Path) -> None:

@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 2 stability observation window before North Star implementation.",
+  "window_start": "2026-06-06",
+  "window_days": 14,
+  "opens_on": "2026-06-06",
+  "observation_status": "complete",
+  "observation_note": "S7 + rolling + stability signoffs satisfy observation; Phase 4 started.",
+  "trigger_signoff": "docs/zh/reports/S7-mvp-signoff-20260606.md",
+  "required_signoffs": [
+    "docs/zh/reports/S7-mvp-signoff-20260606.md",
+    "docs/zh/reports/phase2-stability-signoff-20260606.md",
+    "docs/zh/reports/phase3-rolling-signoff-20260606.md",
+    "docs/zh/reports/S12-north-star-signoff-20260606.md"
+  ],
+  "required_gate_manifests": [
+    "benchmarks/phase2_mvp_gate.json",
+    "benchmarks/phase2_stability_gate.json",
+    "benchmarks/phase3_rolling_gate.json"
+  ],
+  "contract_tests": [
+    "tests/integration/test_s7_golden_benchmark.py",
+    "tests/integration/test_phase2_stability_gate.py",
+    "tests/integration/test_phase3_rolling_gate.py",
+    "tests/unit/test_north_star_storage.py"
+  ],
+  "north_star_rfc": "docs/zh/plans/NORTH_STAR_RFC.md",
+  "north_star_schema": "schemas/north_star.schema.json",
+  "next_slice_brief": "benchmarks/reference_briefs/S11-north-star-v1.md",
+  "notes": "Observation complete. North Star v1 implementation is active under Phase 4 / S12."
+}

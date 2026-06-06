@@ -153,3 +153,20 @@ def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> N
     assert any(
         event["data"]["decision"]["reason"] == "repair_limit" for event in decision_events
     )
+
+
+def test_replan_command_enforces_lineage_limit_on_chained_repairs(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    first = ReplanCommand(tmp_path, run_id=plan.run_id, max_replans_per_task=2).run()
+    assert first.created_tasks == 1
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    second = ReplanCommand(tmp_path, run_id=plan.run_id, max_replans_per_task=2).run()
+    assert second.created_tasks == 1
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    third = ReplanCommand(tmp_path, run_id=plan.run_id, max_replans_per_task=2).run()
+    assert third.created_tasks == 0
+    assert third.created_decisions == 1

@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from asteria_runtime.core.north_star import NorthStarStore
 from asteria_runtime.core.workspace_registry import WorkspaceRegistry
 from asteria_runtime.resources import schema_dir, template_path
 from asteria_runtime.storage.json_store import JsonStore
@@ -48,10 +49,14 @@ class InitCommand:
         profile: str = "auto",
         force: bool = False,
         global_config_dir: Path | None = None,
+        north_star_title: str | None = None,
+        north_star_statement: str | None = None,
     ) -> None:
         self.root = root.resolve()
         self.profile = profile
         self.force = force
+        self.north_star_title = north_star_title
+        self.north_star_statement = north_star_statement
         self.validator = SchemaValidator(schema_dir())
         self.store = JsonStore(self.validator)
         self.global_config_dir = global_config_dir
@@ -114,6 +119,14 @@ class InitCommand:
             warnings.append(
                 "No .git directory found; workspace isolation will use controlled writes for now."
             )
+
+        if self.north_star_title:
+            north_star_path = NorthStarStore(self.root, self.validator).create_default(
+                title=self.north_star_title,
+                statement=self.north_star_statement
+                or self.north_star_title,
+            )
+            created.append(self._rel(north_star_path))
 
         return InitResult(self.root, created, updated, preserved, warnings)
 

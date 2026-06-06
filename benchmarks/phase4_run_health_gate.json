@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 4 run health gate: bounded recovery loops and user_progress volume.",
+  "phase": "4",
+  "depends_on_signoff": "docs/zh/reports/S12-north-star-signoff-20260606.md",
+  "thresholds": {
+    "max_user_progress_bytes": 5000000,
+    "max_user_progress_events": 2000,
+    "max_replan_tasks": 8,
+    "max_repair_attempts": 6
+  },
+  "contract_test": "tests/integration/test_phase4_run_health_gate.py",
+  "unhealthy_fixture_run": ".asteria/s7-signoff-workspace/.asteria/runs/run-20260606-0001",
+  "healthy_fixture_run": ".asteria/s13-clean-run-workspace/.asteria/runs/run-20260606-0002",
+  "signoff_report": "docs/zh/reports/S13-run-health-signoff-20260606.md",
+  "notes": "Healthy real-provider S7 clean re-run must pass thresholds; legacy S7 signoff run is the negative fixture."
+}

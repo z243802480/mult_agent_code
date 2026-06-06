@@ -98,7 +98,8 @@ class ReplanCommand:
         )
         for evidence in candidates:
             task = task_board.get_task(evidence["task_id"])
-            if self._replan_count(task_board, task["task_id"]) >= self.max_replans_per_task:
+            lineage_root = self._replan_lineage_root(task_board, task["task_id"])
+            if self._replan_lineage_count(task_board, lineage_root) >= self.max_replans_per_task:
                 decision = self._create_decision(run_id, evidence, "repair_limit")
                 if decision:
                     created_decision_ids.append(decision["decision_id"])
@@ -288,14 +289,36 @@ class ReplanCommand:
                     handled.add(str(metadata["source_evidence_id"]))
         return handled
 
-    def _replan_count(self, task_board: TaskBoard, task_id: str) -> int:
+    def _replan_lineage_root(self, task_board: TaskBoard, task_id: str) -> str:
+        visited: set[str] = set()
+        current = task_id
+        while current and current not in visited:
+            visited.add(current)
+            try:
+                task = task_board.get_task(current)
+            except TaskStateError:
+                break
+            replan = task.get("replan")
+            if not isinstance(replan, dict):
+                break
+            source = replan.get("source_task_id")
+            if not source:
+                break
+            current = str(source)
+        return current or task_id
+
+    def _replan_lineage_count(self, task_board: TaskBoard, lineage_root: str) -> int:
         count = 0
         for task in task_board.list_tasks():
-            raw_metadata = task.get("replan")
-            metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
-            if metadata.get("source_task_id") == task_id:
+            replan = task.get("replan")
+            if not isinstance(replan, dict) or not replan.get("source_task_id"):
+                continue
+            if self._replan_lineage_root(task_board, task["task_id"]) == lineage_root:
                 count += 1
         return count
+
+    def _replan_count(self, task_board: TaskBoard, task_id: str) -> int:
+        return self._replan_lineage_count(task_board, self._replan_lineage_root(task_board, task_id))
 
     def _needs_decision(self, evidence: dict) -> bool:
         return evidence["failure_type"] in {

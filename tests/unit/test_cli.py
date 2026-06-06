@@ -28,14 +28,16 @@ def test_top_level_help_groups_command_surface() -> None:
     )
     assert "goal    Long-task objective mode" in help_text
     assert "plan    Read-only comprehensive plan" in help_text
+    assert "ask     Lightweight Ask/Q&A" in help_text
     assert "status  Show user-level progress" in help_text
     assert "review  Inspect result quality" in help_text
     assert "accept  Accept reviewed results" in help_text
     assert "debug   Repair failed execution evidence." in help_text
     assert "init      Initialize a local-first Asteria workspace." in help_text
     assert "resume    Continue after approvals" in help_text
-    assert "chat      Lightweight Q&A mode" in help_text
-    assert help_text.index("goal    Long-task") < help_text.index("status  Show user-level")
+    assert "chat      Lightweight" not in help_text
+    assert help_text.index("goal    Long-task") < help_text.index("ask     Lightweight")
+    assert help_text.index("ask     Lightweight") < help_text.index("status  Show user-level")
     assert help_text.index("debug   Repair") < help_text.index("Support")
     assert "run                    Compatibility alias for goal mode." not in help_text
     assert "gate                   Run staged validation checks" not in help_text
@@ -52,7 +54,7 @@ def test_top_level_help_groups_command_surface() -> None:
 
 
 def test_user_mode_help_explains_permission_and_model_strategy() -> None:
-    for command in ("goal", "run", "plan", "chat"):
+    for command in ("goal", "run", "plan", "chat", "ask"):
         help_text = _command_help(command)
         normalized_help = " ".join(help_text.split())
 
@@ -98,7 +100,7 @@ def test_maintainer_command_help_stays_outside_default_completion_path() -> None
 
 def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
     parser = build_parser()
-    start_commands = ("goal", "plan", "chat", "run")
+    start_commands = ("goal", "plan", "chat", "ask", "run")
 
     for command in start_commands:
         plain_args = [command]
@@ -106,7 +108,7 @@ def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
         if command in {"goal", "run", "plan"}:
             plain_args.append("build a small tool")
             slash_args.append("build a small tool")
-        if command == "chat":
+        if command in {"chat", "ask"}:
             plain_args.append("what is this project?")
             slash_args.append("what is this project?")
 

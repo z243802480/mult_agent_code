@@ -42,6 +42,7 @@
       "active_goal_memory_path",
       "active_goal_memory",
       "active_goal_state",
+      "long_horizon",
       "latest_real_provider_matrix",
       "plugin_control",
       "latest_failure",
@@ -229,5 +230,14 @@
   "active_goal_memory_path": null,
   "active_goal_memory": "",
   "active_goal_state": {},
+  "long_horizon": {
+    "status": "observing",
+    "summary": "Phase 2 stability observation in progress.",
+    "opens_on": "2026-06-20",
+    "days_remaining": 14,
+    "ready_for_implementation": false,
+    "north_star_configured": false,
+    "rfc_path": "docs/zh/plans/NORTH_STAR_RFC.md"
+  },
   "latest_real_provider_matrix": {}
 }

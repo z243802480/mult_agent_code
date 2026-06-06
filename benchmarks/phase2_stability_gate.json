@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 2 stability gate: reviewed_auto scoped model-call and repair budgets.",
+  "phase": "2",
+  "depends_on_signoff": "docs/zh/reports/S7-mvp-signoff-20260606.md",
+  "permission_mode": "reviewed_auto",
+  "thresholds": {
+    "median_model_calls_max": 5,
+    "max_repair_attempts_per_run": 1
+  },
+  "required_scoped_cases": [
+    {
+      "id": "doc_update",
+      "matrix_ref": "p0/doc_update"
+    },
+    {
+      "id": "single_file_bugfix",
+      "matrix_ref": "p0/single_file_bugfix"
+    }
+  ],
+  "contract_test": "tests/integration/test_phase2_stability_gate.py",
+  "real_provider_evidence": [
+    "docs/zh/reports/phase3-rolling-signoff-20260606.md",
+    ".asteria/verification/phase3-rolling-real-20260606/matrix_summary.json"
+  ],
+  "signoff_report": "docs/zh/reports/phase2-stability-signoff-20260606.md",
+  "optional_checks": [
+    "python -m asteria_runtime evidence-bundle --root .asteria/s7-signoff-workspace --json"
+  ],
+  "notes": "CI uses fake scoped runs via contract_test. Real provider rolling matrix (Phase 3) satisfies stability thresholds when cases show model_calls<=5 and repair_attempts<=1."
+}

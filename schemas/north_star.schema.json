@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NorthStar",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "north_star_id",
+    "title",
+    "statement",
+    "horizon",
+    "milestones",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "north_star_id": { "type": "string" },
+    "title": { "type": "string" },
+    "statement": { "type": "string" },
+    "horizon": {
+      "type": "string",
+      "enum": ["quarter", "year", "multi_year"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "paused", "archived"]
+    },
+    "milestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "milestone_id",
+          "title",
+          "status",
+          "acceptance"
+        ],
+        "properties": {
+          "milestone_id": { "type": "string" },
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed", "blocked"]
+          },
+          "linked_run_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "acceptance": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "updated_at": { "type": "string" }
+        }
+      }
+    },
+    "non_goals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "updated_by": { "type": "string" }
+  }
+}

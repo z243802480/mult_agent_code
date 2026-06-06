@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Closed beta task pack: programming-first, low risk, measurable completion.",
+  "minimum_ready_score": 0.8,
+  "onboarding_doc": "docs/zh/Beta用户入门.md",
+  "tasks": [
+    {
+      "id": "small_code_change",
+      "category": "coding",
+      "goal": "给一个小 CLI 增加 --version 参数，并补一个测试。",
+      "starter_hint": "工作区可含 greet_cli.py；也可让 Asteria 自行创建。",
+      "expected_completion": ["--version 可用", "至少 1 个 pytest 通过", "Studio 可见 verification + final"],
+      "benchmark_ref": "benchmarks/studio_user_tasks.json#small_code_change"
+    },
+    {
+      "id": "doc_update",
+      "category": "writing",
+      "goal": "更新 README 或 CHANGELOG，说明 Asteria Beta 的 Goal→Review→Accept 主路径。",
+      "starter_hint": "只改 .md/.txt；不要 push。",
+      "expected_completion": ["文件 diff 可见", "review 通过", "用户可 accept"],
+      "benchmark_ref": "benchmarks/phase3_rolling_gate.json scoped doc_update"
+    },
+    {
+      "id": "single_file_bugfix",
+      "category": "coding",
+      "goal": "修复一个小脚本中的明显 bug，并运行验证命令证明修复有效。",
+      "starter_hint": "单文件、单测即可；适合第二次 beta 任务。",
+      "expected_completion": ["verification passed", "run status 非 blocked"],
+      "benchmark_ref": "benchmarks/phase3_rolling_gate.json scoped single_file_bugfix"
+    }
+  ]
+}

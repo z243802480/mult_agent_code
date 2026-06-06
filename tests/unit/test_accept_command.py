@@ -5,6 +5,7 @@ from pathlib import Path
 
 from asteria_runtime.commands.accept_command import AcceptCommand
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
+from asteria_runtime.core.north_star import NorthStarStore
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -48,6 +49,20 @@ def test_accept_command_promotes_pending_candidate_and_finalizes_run(tmp_path: P
     assert any(event["title"] == "开始验收收尾" for event in user_progress)
     assert any(event["event_type"] == "final_report" for event in user_progress)
     assert any(event["title"] == "验收完成" for event in user_progress)
+
+
+def test_accept_command_links_run_to_north_star_milestone(tmp_path: Path) -> None:
+    root, run_dir, candidate = _workspace_ready_for_accept(tmp_path)
+    (candidate.root / "tool.py").write_text("VALUE = 2\n", encoding="utf-8")
+    NorthStarStore(root).create_default(title="Accept link", statement="Link accepted runs")
+
+    result = AcceptCommand(root, skip_review=True).run()
+
+    assert result.accepted is True
+    north_star = NorthStarStore(root).read()
+    assert north_star is not None
+    milestone = north_star["milestones"][0]
+    assert run_dir.name in milestone["linked_run_ids"]
 
 
 def test_accept_command_blocks_when_review_has_not_passed(tmp_path: Path) -> None:

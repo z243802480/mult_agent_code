@@ -434,9 +434,11 @@ function RuntimeSnapshot({
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
 }) {
-  void overview;
+  const workflow = asRecord(overview?.workflow);
+  const canReview = Boolean(workflow.can_review);
+  const canAccept = Boolean(workflow.can_accept);
   const progress = runtimeProgress(runDetail);
-  if (!Object.keys(progress).length && !runDetail?.ok) return null;
+  if (!Object.keys(progress).length && !runDetail?.ok && !canReview && !canAccept) return null;
   const activeEvent = latestActiveEvent(events);
   const loop = asRecord(progress.loop);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
@@ -447,10 +449,15 @@ function RuntimeSnapshot({
     ? activeEvent
     : null;
   const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
+  const workflowStep = canAccept
+    ? "Review passed — accept the result to finalize."
+    : canReview
+      ? "Task complete — review the result before accepting."
+      : "";
   const nextStep = decisions.length
     ? `${decisions.length} decision${decisions.length === 1 ? "" : "s"} need your input.`
-    : nextActionValue ? `Ready for ${nextLabel}.` : textOrFallback(loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "", "No action needed right now");
-  if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason) return null;
+    : workflowStep || (nextActionValue ? `Ready for ${nextLabel}.` : textOrFallback(loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "", "No action needed right now"));
+  if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason && !canReview && !canAccept) return null;
 
   return (
     <section className="runtimeSnapshot" aria-label="Next action">
@@ -459,10 +466,24 @@ function RuntimeSnapshot({
           <span className="eyebrow">Next action</span>
           <h2>{nextStep}</h2>
         </div>
-        <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : nextActionValue ? "running" : "completed"}`}>
-          {decisions.length || pendingPermission ? "needs input" : nextActionValue ? "ready" : "stopped"}
+        <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
+          {decisions.length || pendingPermission ? "needs input" : canAccept ? "ready to accept" : canReview ? "ready to review" : nextActionValue ? "ready" : "stopped"}
         </span>
       </div>
+      {(canReview || canAccept) && !decisions.length && !pendingPermission ? (
+        <div className="runtimeWorkflowActions">
+          {canReview ? (
+            <button className="runtimeActionButton primary" onClick={() => void onRuntimeAction("review")}>
+              审查结果
+            </button>
+          ) : null}
+          {canAccept ? (
+            <button className="runtimeActionButton primary accept" onClick={() => void onRuntimeAction("accept")}>
+              接受结果
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="runtimeNextAction">
         {nextActionValue || decisions.length ? <PlayCircle size={13} /> : <CheckCircle2 size={13} />}
         <span>{nextStep}</span>
@@ -474,7 +495,7 @@ function RuntimeSnapshot({
           <button className="runtimeActionButton" onClick={() => void onRuntimeAction(nextActionValue)}>
             {nextLabel}
           </button>
-        ) : (
+        ) : canReview || canAccept ? null : (
           <button className="runtimeActionButton done" disabled>
             Done
           </button>

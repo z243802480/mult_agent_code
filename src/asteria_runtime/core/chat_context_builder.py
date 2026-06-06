@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
+from asteria_runtime.core.agent_harness import AgentHarness
 from asteria_runtime.core.capability_invocation_policy import CapabilityInvocationPolicy
 from asteria_runtime.core.context_envelope import ContextEnvelope
 from asteria_runtime.core.context_loader import ContextLoader
@@ -15,6 +16,7 @@ from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.tools.defaults import create_default_tool_registry
 
 
 @dataclass(frozen=True)
@@ -94,9 +96,14 @@ class ChatContextBuilder:
             intent,
             permission_mode=permission_mode,
         )
+        capability_manifest = AgentHarness(
+            policy,
+            tool_names=create_default_tool_registry().names(),
+        ).capability_manifest(mode="plan")
         return {
             "chat_intent": intent,
             "capability_invocation_policy": capability_invocation_policy,
+            "capability_manifest": capability_manifest.to_dict(),
             "context_policy": {
                 "active_goal_memory_included": include_active_goal_memory,
                 "backend_fields_allowed": intent == "debug_question",
@@ -330,6 +337,7 @@ class ChatContextBuilder:
             "project",
             "policy",
             "capability_invocation_policy",
+            "capability_manifest",
             "workspace_envelope",
             "agent_loop_dispatch",
             "session_context",

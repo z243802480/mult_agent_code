@@ -8,9 +8,12 @@ from asteria_runtime.commands.control_surface_contract import control_surface_co
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.chat_context_builder import ChatContextBuilder
 from asteria_runtime.core.chat_intent_policy import ChatIntentPolicy
+from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.prompt_envelope import persist_chat_prompt_envelope
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.tools.defaults import create_default_tool_registry
 
 
 @dataclass(frozen=True)
@@ -148,7 +151,20 @@ class ChatCommand:
             intent=chat_intent,
         )
         context_envelope_payload = context_envelope.to_dict()
-        client = self.model_client or create_model_client(None, self.validator)
+        policy = load_policy_config(agent_dir, self.validator)
+        current_run = context.get("current_run") if isinstance(context.get("current_run"), dict) else {}
+        run_id = str(current_run.get("run_id") or "")
+        run_dir = (agent_dir / "runs" / run_id) if run_id else None
+        prompt_envelope = persist_chat_prompt_envelope(
+            root=self.root,
+            run_dir=run_dir,
+            run_id=run_id,
+            policy=policy,
+            validator=self.validator,
+            tool_names=create_default_tool_registry().names(),
+        )
+        prompt_ref = prompt_envelope.context_ref()
+        client = self.model_client or create_model_client(run_dir, self.validator)
         role_contract = role_contract_for(
             role="ChatAgent",
             purpose="chat",
@@ -169,6 +185,8 @@ class ChatCommand:
                                 "model_strategy": self.model_strategy,
                                 "context": context_envelope_payload,
                                 "context_envelope": context_envelope_payload,
+                                "capability_manifest": prompt_ref.get("capability_manifest"),
+                                "prompt_envelope": prompt_ref,
                             },
                             ensure_ascii=False,
                             indent=2,
@@ -180,12 +198,17 @@ class ChatCommand:
                 metadata={
                     "agent_id": "ChatAgent",
                     "agent_role_contract": role_contract.to_dict(),
+                    "run_id": run_id or None,
+                    "context_mode": "chat",
                     "context_envelope_id": context_envelope.envelope_id,
                     "context_envelope_hash": context_envelope.payload_hash,
                     "context_envelope_path": context_envelope_path.relative_to(
                         self.root
                     ).as_posix(),
                     "context_envelope_refs": context_envelope.refs,
+                    "prompt_envelope_hash": prompt_ref.get("content_hash"),
+                    "prompt_envelope_path": prompt_ref.get("path"),
+                    "capability_manifest_hash": prompt_ref.get("capability_manifest_hash"),
                 },
             )
         )

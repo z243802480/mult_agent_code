@@ -32,6 +32,7 @@
     "worker_summary": { "type": "object" },
     "acceptance_failures": { "type": "array", "items": { "type": "object" } },
     "report_summaries": { "type": "object" },
+    "north_star_ref": { "type": "object" },
     "recommended_next_command": { "type": "string" },
     "created_at": { "type": "string" }
   }

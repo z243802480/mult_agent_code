@@ -18,6 +18,8 @@ _ACTIVE_MODEL_PROGRESS_SINK: ContextVar["ModelProgressSink | None"] = ContextVar
 
 
 class ModelProgressSink:
+    _MAX_PERSISTED_DELTAS = 48
+
     def __init__(
         self,
         run_dir: Path | None,
@@ -33,6 +35,8 @@ class ModelProgressSink:
         )
         self._start_event_id: str | None = None
         self._started_at_monotonic: float | None = None
+        self._delta_persist_count = 0
+        self._truncated_delta_count = 0
 
     def model_start(self, *, provider: str, model: str | None, mode: str) -> None:
         self._started_at_monotonic = time.monotonic()
@@ -61,6 +65,10 @@ class ModelProgressSink:
 
     def model_delta(self, content: str, *, provider: str, model: str | None) -> None:
         if self.logger is None:
+            return
+        self._delta_persist_count += 1
+        if self._delta_persist_count > self._MAX_PERSISTED_DELTAS:
+            self._truncated_delta_count += 1
             return
         context = self._progress_context()
         self.logger.record(
@@ -94,6 +102,8 @@ class ModelProgressSink:
         if self.logger is None:
             return
         context = self._progress_context(telemetry or {})
+        if self._truncated_delta_count:
+            context["telemetry"]["truncated_delta_count"] = self._truncated_delta_count
         self.logger.record(
             run_id=self._run_id(),
             channel="model",

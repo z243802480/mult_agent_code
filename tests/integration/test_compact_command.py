@@ -111,6 +111,21 @@ def test_handoff_command_creates_package_from_snapshot(tmp_path: Path) -> None:
     assert any(event["title"] == "交接准备完成" for event in user_progress)
 
 
+def test_handoff_includes_north_star_ref_when_configured(tmp_path: Path) -> None:
+    InitCommand(
+        tmp_path,
+        north_star_title="Long horizon goal",
+        north_star_statement="Cross-run milestones",
+    ).run()
+    plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
+
+    handoff = HandoffCommand(tmp_path, to_role="ReviewerAgent").run()
+    package = json.loads(handoff.handoff_path.read_text(encoding="utf-8"))
+
+    assert package["north_star_ref"]["title"] == "Long horizon goal"
+    assert package["north_star_ref"]["active_milestone"] == "Harness 会话 MVP 稳定"
+
+
 def test_compact_and_handoff_capture_recovery_context(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()

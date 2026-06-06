@@ -18,5 +18,5 @@
 
 ## 实现记录
 
-- date: 2026-06-05
-- notes: `tests/integration/test_session_continuation.py` 同 workspace 续作 plan + status 投影。
+- date: 2026-06-06
+- notes: S8 契约已绿；Studio demo：`studio/scripts/s8-resume-continuation-smoke.mjs`

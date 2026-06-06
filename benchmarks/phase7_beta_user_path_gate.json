@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 7 beta user path: install, Studio, goal completion, review/accept visibility.",
+  "phase": "7",
+  "depends_on_signoff": "docs/zh/reports/S13-run-health-signoff-20260606.md",
+  "onboarding_doc": "docs/zh/Beta用户入门.md",
+  "beta_tasks_manifest": "benchmarks/beta_user_tasks.json",
+  "required_commands": [
+    "asteria init --root <workspace>",
+    "asteria studio --root <workspace>",
+    "asteria goal \"<beta task>\" --root <workspace>",
+    "asteria review --latest --root <workspace>",
+    "asteria accept --latest --root <workspace>"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase7_beta_user_path_gate.py",
+    "tests/unit/test_studio_command.py",
+    "tests/unit/test_documentation_contracts.py"
+  ],
+  "studio_smokes": [
+    "node studio/scripts/run-detail-smoke.mjs",
+    "node studio/scripts/beta-workflow-smoke.mjs"
+  ],
+  "wheel_path_runbook": "docs/zh/验证试运行手册.md#31-安装包复验",
+  "signoff_report": "docs/zh/reports/S14-beta-user-path-signoff-20260606.md",
+  "notes": "Beta does not require Phase 5 swarm. Studio ships from repo checkout; runtime may install via wheel."
+}
