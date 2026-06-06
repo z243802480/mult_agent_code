@@ -60,6 +60,8 @@ def runtime_validation_matrix_text_lines(matrix: dict[str, Any]) -> list[str]:
 def _load_catalog(root: Path) -> dict[str, Any]:
     path = root / MATRIX_CATALOG_PATH
     if not path.exists():
+        path = Path.cwd() / MATRIX_CATALOG_PATH
+    if not path.exists():
         return _default_catalog()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -192,6 +194,17 @@ def _evaluate_case(
                     break
         ok = passed > 0
         details = {"scanned_runs": scanned, "passed_runs": passed}
+        gap_type = "none" if ok else "evidence_missing"
+    elif evidence == "production_gray_band":
+        from asteria_runtime.core.swarm_production_gray import find_production_gray_evidence
+
+        payload = find_production_gray_evidence(root)
+        ok = isinstance(payload, dict) and bool(payload.get("ok"))
+        details = {
+            "case_id": (payload or {}).get("case_id"),
+            "run_id": (payload or {}).get("run_id"),
+            "execute_parallel_disjoint": (payload or {}).get("execute_parallel_disjoint"),
+        }
         gap_type = "none" if ok else "evidence_missing"
     else:
         details = {"unknown_evidence": evidence, "root": str(root)}

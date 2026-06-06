@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S33",
-  "active_phase": "Phase 5",
+  "active_slice": "S35",
+  "active_phase": "Phase 6",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -394,6 +394,31 @@
         "node studio/scripts/s33-friction-contract-smoke.mjs"
       ],
       "reference_brief": "benchmarks/reference_briefs/S33-friction-convergence.md"
+    },
+    {
+      "id": "S34",
+      "name": "Production gray + dual worker case",
+      "phase": "5",
+      "depends_on": ["S33"],
+      "user_demo": "phase5f 就绪评估 + dual_disjoint_files real case 契约；CLI parallel_writes 仍默认 off",
+      "green_checks": [
+        "pytest tests/unit/test_swarm_production_gray.py -q",
+        "pytest tests/integration/test_phase5f_production_gray_gate.py -q",
+        "python scripts/swarm_holistic_check.py --root . --skip-studio"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S34-production-gray-rollout.md"
+    },
+    {
+      "id": "S35",
+      "name": "Design Intelligence pilot",
+      "phase": "6",
+      "depends_on": ["S34"],
+      "user_demo": "research_type 进 plan 契约 + Phase 6 入口闸门（pilot）",
+      "green_checks": [
+        "pytest tests/integration/test_phase6_design_intel_gate.py -q",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S35-design-intelligence-pilot.md"
     }
   ]
 }

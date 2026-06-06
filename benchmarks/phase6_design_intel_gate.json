@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 6 Design Intelligence pilot gate (S35): research_type in plan contract without replacing session_agent defaults.",
+  "phase": "6",
+  "depends_on_gate": "benchmarks/phase5f_production_gray_gate.json",
+  "depends_on_signoff": "docs/zh/reports/S34-production-gray-signoff-20260606.md",
+  "plan": "docs/zh/plans/asteria-holistic-S35.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S35-design-intelligence-pilot.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase6_design_intel_gate.py"
+  ],
+  "pilot_scope": {
+    "research_types": ["documentation", "creative", "research"],
+    "requires_user_progress": true,
+    "session_agent_default_unchanged": true
+  },
+  "notes": "Pilot only; full /research --type productization remains Phase 6+ after S35 gate."
+}

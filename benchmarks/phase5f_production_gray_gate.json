@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 5 production gray readiness (S34): dual worker case + S32 rollback prerequisites; does not enable CLI parallel_writes by default.",
+  "phase": "5",
+  "wave": "6",
+  "depends_on_gates": [
+    "benchmarks/phase5d_swarm_scenario_gate.json",
+    "benchmarks/phase5e_gray_decision_gate.json",
+    "benchmarks/phase5b_swarm_rollout_gate.json"
+  ],
+  "plan": "docs/zh/plans/asteria-holistic-S34.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S34-production-gray-rollout.md"
+  ],
+  "dual_worker_case": "benchmarks/phase5_dual_worker_case.json",
+  "signoff_report": "docs/zh/reports/S34-production-gray-signoff-20260606.md",
+  "band_runner": "asteria_runtime.core.swarm_production_gray.run_production_gray_band",
+  "maintainer_script": "scripts/swarm_holistic_check.py",
+  "maintainer_script": "scripts/swarm_holistic_check.py",
+  "contract_tests": [
+    "tests/unit/test_swarm_production_gray.py",
+    "tests/integration/test_phase5f_production_gray_gate.py"
+  ],
+  "production_gray": {
+    "flag_name": "real_disjoint_write_workers",
+    "cli_parallel_writes_default": false,
+    "requires_gray_rollback_drill": true,
+    "requires_decision_point": true,
+    "beta_default_session_agent": true
+  },
+  "real_provider_signoff": {
+    "optional": true,
+    "case_ref": "benchmarks/phase5_dual_worker_case.json",
+    "requires": ["real_model_gate", "phase5e_gray_decision_gate"],
+    "notes": "Run dual_disjoint_files via validation-run / real_model_smoke after maintainer approval."
+  },
+  "holistic_pulse": {
+    "includes": [
+      "scripts/steady_iteration_check.py --skip-b6",
+      "scripts/swarm_integration_check.py --skip-studio",
+      "scripts/swarm_flag_rollout_check.py --skip-probe",
+      "phase5d + phase5e + phase4 friction + phase5f contract tests"
+    ]
+  },
+  "notes": "Production gray enables scoped harness runs only after readiness + DecisionPoint; Beta CLI defaults unchanged."
+}

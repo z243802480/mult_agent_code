@@ -19,6 +19,7 @@ def main() -> None:
 
     root = args.root.resolve()
     gate = json.loads((root / "benchmarks" / "phase5e_gray_decision_gate.json").read_text(encoding="utf-8"))
+    phase5f = json.loads((root / "benchmarks" / "phase5f_production_gray_gate.json").read_text(encoding="utf-8"))
     phase5d = json.loads((root / "benchmarks" / "phase5d_swarm_scenario_gate.json").read_text(encoding="utf-8"))
     friction = json.loads((root / "benchmarks" / "phase4_friction_gate.json").read_text(encoding="utf-8"))
     steps: list[dict[str, object]] = []
@@ -35,6 +36,8 @@ def main() -> None:
         steps.append(_run_pytest(root, str(rel)))
     for rel in gate.get("contract_tests", []):
         steps.append(_run_pytest(root, str(rel)))
+    for rel in phase5f.get("contract_tests", []):
+        steps.append(_run_pytest(root, str(rel)))
     for rel in friction.get("contract_tests", []):
         steps.append(_run_pytest(root, str(rel)))
     steps.append(_run_shell(root, f"node {friction['studio_contract_smoke']}"))
@@ -42,9 +45,9 @@ def main() -> None:
     ok = all(step.get("ok") for step in steps)
     report = {
         "ok": ok,
-        "purpose": gate.get("purpose"),
-        "holistic_pulse": gate.get("holistic_pulse"),
-        "real_provider_signoff": phase5d.get("real_provider_signoff"),
+        "purpose": phase5f.get("purpose"),
+        "holistic_pulse": phase5f.get("holistic_pulse") or gate.get("holistic_pulse"),
+        "real_provider_signoff": phase5f.get("real_provider_signoff") or phase5d.get("real_provider_signoff"),
         "steps": steps,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))

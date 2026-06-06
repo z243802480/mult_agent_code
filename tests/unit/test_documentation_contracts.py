@@ -262,6 +262,8 @@ def test_master_plan_exists_and_is_execution_entry() -> None:
     assert Path("benchmarks/phase5c_swarm_integration_gate.json").exists()
     assert Path("benchmarks/phase5d_swarm_scenario_gate.json").exists()
     assert Path("benchmarks/phase5e_gray_decision_gate.json").exists()
+    assert Path("benchmarks/phase5f_production_gray_gate.json").exists()
+    assert Path("benchmarks/phase6_design_intel_gate.json").exists()
     assert Path("benchmarks/phase4_friction_gate.json").exists()
     assert Path("docs/zh/稳态迭代节奏.md").exists()
     current_state = Path("docs/zh/当前状态与路线.md").read_text(encoding="utf-8")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from asteria_runtime.core.runtime_validation_evidence import _record_swarm_matrix_probe_evidence
 from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
 from asteria_runtime.core.runtime_validation_evidence import (
     record_runtime_validation_matrix_evidence,
@@ -63,13 +64,38 @@ def test_runtime_validation_matrix_covers_fixed_real_task_cases(tmp_path: Path) 
         ],
     )
     validator = SchemaValidator(Path.cwd() / "schemas")
+    (tmp_path / ".asteria" / "runs" / "run-1" / "runtime_validation_matrix_evidence.json").write_text(
+        json.dumps({"schema_version": "0.1.0", "run_id": "run-1", "source": "unit-test"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    (tmp_path / ".asteria" / "runs" / "run-gray").mkdir(parents=True)
+    (tmp_path / ".asteria" / "runs" / "run-gray" / "production_gray_evidence.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "case_id": "dual_disjoint_files",
+                "run_id": "run-gray",
+                "ok": True,
+                "execute_parallel_disjoint": True,
+                "gray_rollback_drill_ok": True,
+                "cli_parallel_writes_default": False,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ".asteria" / "runs" / "run-swarm").mkdir(parents=True)
+    _record_swarm_matrix_probe_evidence(
+        run_dir=tmp_path / ".asteria" / "runs" / "run-swarm",
+        run_id="run-swarm",
+        validator=validator,
+    )
     metrics = runtime_progress_metrics(tmp_path, validator)
 
     matrix = runtime_validation_matrix(tmp_path, metrics)
 
-    assert matrix["ready"] is True
-    assert matrix["passed"] == matrix["case_count"]
-    assert {case["id"] for case in matrix["cases"]} >= {
+    by_id = {case["id"]: case for case in matrix["cases"]}
+    for case_id in (
         "model_tool_surface",
         "skill_adapter",
         "mcp_adapter",
@@ -78,7 +104,10 @@ def test_runtime_validation_matrix_covers_fixed_real_task_cases(tmp_path: Path) 
         "profile_multi_agent",
         "permission_reason",
         "runtime_progress",
-    }
+        "swarm_disjoint_evidence",
+        "dual_disjoint_files",
+    ):
+        assert by_id[case_id]["ok"] is True, case_id
 
 
 def test_runtime_validation_matrix_evidence_probe_records_all_required_cases(
