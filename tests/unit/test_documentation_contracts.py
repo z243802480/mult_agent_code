@@ -260,3 +260,16 @@ def test_master_plan_exists_and_is_execution_entry() -> None:
     assert Path("schemas/north_star.schema.json").exists()
     assert Path("docs/zh/plans/NORTH_STAR_RFC.md").exists()
     assert "综合下一步计划" in current_state
+
+
+def test_active_slice_sources_agree() -> None:
+    agents = Path("AGENTS.md").read_text(encoding="utf-8")
+    slices = json.loads(Path("benchmarks/vibe_slices.json").read_text(encoding="utf-8"))
+    snapshot = Path("docs/zh/当前状态与路线.md").read_text(encoding="utf-8")
+    master = Path("docs/zh/研发总计划.md").read_text(encoding="utf-8")
+
+    active_slice = slices["active_slice"]
+    assert f"ACTIVE_SLICE：{active_slice}" in agents or f"ACTIVE_SLICE: {active_slice}" in agents
+    assert active_slice in snapshot
+    assert active_slice in master
+    assert slices["active_phase"] in snapshot

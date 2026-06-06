@@ -184,8 +184,9 @@ function readPendingDecisions(runId) {
 }
 
 function pickDecisionOption(decision) {
-  const requestTypes = decision?.metadata?.request_types || [];
-  if (requestTypes.includes("scope_expansion")) {
+  const metadata = decision?.metadata || {};
+  const requestTypes = metadata.request_types || [];
+  if (metadata.kind === "runtime_request" || requestTypes.length > 0) {
     return "review_contract";
   }
   return decision.recommended_option_id || decision.default_option_id || decision.options?.[0]?.option_id;

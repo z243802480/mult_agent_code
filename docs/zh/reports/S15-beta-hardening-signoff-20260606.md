@@ -9,7 +9,8 @@
 | --- | --- | --- | --- |
 | C1 | Studio 全路径 `small_code_change` | ✅ | `node studio/scripts/b6-restricted-user-sim.mjs`（161s，3 pytest passed） |
 | C2 | Wheel 安装复验 | ✅ | `python scripts/s15_wheel_install_smoke.py`（venv + wheel + init/doctor） |
-| C3 | 小范围内测邀请 | ✅ | [`Beta内测邀请.md`](../Beta内测邀请.md) |
+| C3 | 内测材料 | ✅ | [`Beta内测邀请.md`](../Beta内测邀请.md) |
+| Dogfood | 任务 2 `doc_update` | ✅ | [`S15-maintainer-dogfood-20260606.md`](./S15-maintainer-dogfood-20260606.md) |
 
 ## C1 说明
 

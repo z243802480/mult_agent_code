@@ -9,6 +9,11 @@ build/
 dist/
 studio/dist/
 studio/node_modules/
+studio/test-results/
+studio/playwright-report/
+studio/blob-report/
+Thumbs.db
+.DS_Store
 *.egg-info/
 .asteria/
 .agent/
