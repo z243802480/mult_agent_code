@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Run Phase 4 steady iteration pulse checks.")
     parser.add_argument("--root", type=Path, default=Path("."), help="Repository root")
     parser.add_argument("--skip-b6", action="store_true", help="Skip B6 Studio sim (needs models)")
@@ -59,6 +61,8 @@ def _run(root: Path, label: str, cmd: str | list[str], shell: bool = False) -> d
         cmd,
         cwd=root,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         shell=shell,
         check=False,

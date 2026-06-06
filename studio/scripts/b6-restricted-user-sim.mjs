@@ -81,7 +81,10 @@ if (status.current_phase !== "ACCEPTED") throw new Error(`accept failed: ${statu
 note("C2", "accept ok");
 
 const versionOut = await runPythonCapture([path.join(workspace, "greet_cli.py"), "--version"]);
-if (!/greet_cli/i.test(versionOut)) throw new Error(`--version failed: ${versionOut}`);
+const versionTrimmed = versionOut.trim();
+if (!versionTrimmed || !/(greet_cli|\d+\.\d+)/i.test(versionTrimmed)) {
+  throw new Error(`--version failed: ${versionOut}`);
+}
 const pytest = await runPythonCapture(["-m", "pytest", path.join(workspace, "test_greet_cli.py"), "-q"], workspace);
 if (!/passed/i.test(pytest)) throw new Error(`pytest: ${pytest}`);
 note("C3", pytest.trim());
