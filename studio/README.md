@@ -80,9 +80,10 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | Workspace file list | ✅ |
 | **Workspace switcher (open folder / recent)** | ✅ |
 | **Primary cwd chip + project profile (init/git/AGENTS.md)** | ✅ |
+| **Git workspace changes + diff preview** | ✅ |
 | Token / cost limits display | 🔲 planned |
-| File diff viewer (inline git-style) | 🔲 planned |
-| Git integration (changed files, branch status) | 🔲 planned |
+| File diff viewer (inline git-style) | 🔲 planned (partial: git diff in Inspector) |
+| Git integration (changed files, branch status) | ✅ read-only status + diff |
 | Terminal output panel | 🔲 planned |
 | Global settings UI | 🔲 planned |
 | Multi-workspace support | ✅ runtime switch + recent list |

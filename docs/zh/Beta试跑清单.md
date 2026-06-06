@@ -74,6 +74,13 @@
 
 仍无法继续 → 记录 **卡在哪一步 + 截图/报错原文**，交给维护者填 [`S14-beta-user-trial-template.md`](./reports/S14-beta-user-trial-template.md)。
 
+**维护者自动复验**（不替代真人试跑）：
+
+```powershell
+python scripts/beta_trial_smoke.py --root .
+python scripts/beta_trial_smoke.py --root . --with-b6
+```
+
 ---
 
 ## 完成后请告诉维护者

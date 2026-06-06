@@ -8,6 +8,7 @@ import type {
   RunDetailPayload,
   WorkspaceFile,
   FilePreview,
+  GitStatusPayload,
 } from "./types";
 import { api, subscribeToEvents } from "./api";
 import { isSessionLive } from "./narrative";
@@ -41,6 +42,9 @@ export function App() {
   const [promptSignal, setPromptSignal] = useState<PromptSignal>({ text: "", id: 0 });
   const [pendingTurn, setPendingTurn] = useState<{ message: string; mode: string; startedAt: number } | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [gitStatus, setGitStatus] = useState<GitStatusPayload | null>(null);
+  const [gitLoading, setGitLoading] = useState(false);
+  const [gitSelectedPath, setGitSelectedPath] = useState<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const refreshedRunEventRef = useRef<string>("");
 
@@ -51,6 +55,32 @@ export function App() {
       if (!fresh.length) return prev;
       return [...prev, ...fresh].sort((a, b) => eventTimeValue(a) - eventTimeValue(b));
     });
+  }
+
+  async function refreshGitStatus() {
+    setGitLoading(true);
+    try {
+      setGitStatus(await api.gitStatus());
+    } catch {
+      setGitStatus({ ok: false, available: false, reason: "Could not load git status." });
+    } finally {
+      setGitLoading(false);
+    }
+  }
+
+  async function openGitDiff(pathValue: string) {
+    setGitSelectedPath(pathValue);
+    try {
+      const diff = await api.gitDiff(pathValue);
+      setPreview({
+        ok: diff.ok,
+        path: diff.path ?? pathValue,
+        content: diff.diff,
+        error: diff.error,
+      });
+    } catch (err) {
+      setPreview({ ok: false, error: String((err as Error).message || err) });
+    }
   }
 
   async function bootstrap() {
@@ -74,6 +104,7 @@ export function App() {
       const fileData = await api.files().catch(() => ({ files: [] as WorkspaceFile[] }));
       setFiles(fileData.files ?? []);
       await openLatestRun(overviewData);
+      void refreshGitStatus();
       void api.diagnostics()
         .then((diagnostics) => {
           setOverview((current) => ({
@@ -111,6 +142,7 @@ export function App() {
   }
 
   async function openFile(path: string) {
+    setGitSelectedPath(null);
     setPreview(await api.previewFile(path));
   }
 
@@ -142,6 +174,7 @@ export function App() {
     if (!runId || !eventId || eventId === refreshedRunEventRef.current) return;
     refreshedRunEventRef.current = eventId;
     void openRun(runId);
+    void refreshGitStatus();
   }, [latestRunEvent?.event_id, latestRunEvent?.run_id]);
 
   async function newSession() {
@@ -310,6 +343,11 @@ export function App() {
         overview={overview}
         selectedRunId={selectedRunId}
         runDetail={runDetail}
+        gitStatus={gitStatus}
+        gitLoading={gitLoading}
+        gitSelectedPath={gitSelectedPath}
+        onRefreshGit={() => void refreshGitStatus()}
+        onSelectGitChange={(pathValue) => void openGitDiff(pathValue)}
         onOpenFile={openFile}
         onOpenRun={openRun}
         onSelectRunEvent={selectRunEvidenceEvent}

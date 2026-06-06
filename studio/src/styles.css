@@ -3041,6 +3041,82 @@ h2 {
   white-space: nowrap;
 }
 
+.gitChangesPanel {
+  background: #14181b;
+  border: 1px solid #2d343b;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.gitChangesHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.gitChangesHeader h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.gitBranchLine {
+  align-items: center;
+  color: #b8c4ce;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.gitChangeList {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.gitChangeRow {
+  align-items: center;
+  background: #101214;
+  border: 1px solid #2a3138;
+  border-radius: 6px;
+  color: #eef2f4;
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.gitChangeRow.active,
+.gitChangeRow:hover {
+  background: #283139;
+  border-color: #3f4d57;
+}
+
+.gitChangeBadge {
+  border-radius: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+
+.gitChangeBadge.status-modified { color: #f0c674; }
+.gitChangeBadge.status-added { color: #8fd19e; }
+.gitChangeBadge.status-deleted { color: #ff9aa8; }
+.gitChangeBadge.status-untracked { color: #9db4ff; }
+
+.gitChangePath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .primaryButton,
 .secondaryButton,
 .iconButton {

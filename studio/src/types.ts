@@ -131,6 +131,33 @@ export type BrowseWorkspacePayload = {
   error?: string;
 };
 
+export type GitChangeEntry = {
+  path: string;
+  status: string;
+  index?: string;
+  worktree?: string;
+};
+
+export type GitStatusPayload = {
+  ok: boolean;
+  available: boolean;
+  workspace?: string;
+  branch?: string;
+  clean?: boolean;
+  change_count?: number;
+  summary?: Record<string, number>;
+  changes?: GitChangeEntry[];
+  reason?: string;
+};
+
+export type GitDiffPayload = {
+  ok: boolean;
+  path?: string;
+  diff?: string;
+  truncated?: boolean;
+  error?: string;
+};
+
 export type OverviewPayload = {
   ok: boolean;
   workspace: string;

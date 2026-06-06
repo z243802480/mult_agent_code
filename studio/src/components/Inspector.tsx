@@ -1,8 +1,9 @@
 ﻿import React, { useMemo, useState, useEffect } from "react";
 import { ArrowUpRight, Bug, FileText, SendHorizontal } from "lucide-react";
-import type { StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord } from "../types";
+import type { StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord, GitStatusPayload } from "../types";
 import { Status, Metric, formatMs, percent } from "./Shared";
 import { firstText } from "../narrative";
+import { GitChangesPanel } from "./GitChangesPanel";
 
 type InspectorSection = {
   id: string;
@@ -906,6 +907,11 @@ export function Inspector({
   overview,
   selectedRunId,
   runDetail,
+  gitStatus,
+  gitLoading,
+  gitSelectedPath,
+  onRefreshGit,
+  onSelectGitChange,
   onOpenFile,
   onOpenRun,
   onSelectRunEvent,
@@ -917,6 +923,11 @@ export function Inspector({
   overview: OverviewPayload | null;
   selectedRunId: string | null;
   runDetail: RunDetailPayload | null;
+  gitStatus: GitStatusPayload | null;
+  gitLoading: boolean;
+  gitSelectedPath: string | null;
+  onRefreshGit: () => void;
+  onSelectGitChange: (path: string) => void;
   onOpenFile: (path: string) => Promise<void>;
   onOpenRun: (runId: string) => Promise<void>;
   onSelectRunEvent: (event: StudioEvent) => void;
@@ -928,6 +939,13 @@ export function Inspector({
 
   return (
     <aside className="inspector">
+      <GitChangesPanel
+        gitStatus={gitStatus}
+        loading={gitLoading}
+        selectedPath={gitSelectedPath}
+        onRefresh={onRefreshGit}
+        onSelectChange={onSelectGitChange}
+      />
       <section className="opsIntro">
         <p className="eyebrow">Debug / Ops Console</p>
         <h2>Backend observability</h2>
@@ -1001,7 +1019,7 @@ export function Inspector({
         {preview && (
           <div className="preview">
             <strong>{preview.path ?? "Preview"}</strong>
-            {preview.ok ? <pre>{(preview.content ?? "").slice(0, 5000)}</pre> : <p>{preview.error}</p>}
+            {preview.ok ? <pre>{(preview.content ?? "").slice(0, 12000)}</pre> : <p>{preview.error}</p>}
           </div>
         )}
       </section>

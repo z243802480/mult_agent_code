@@ -149,6 +149,14 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await describeWorkspaceProfile(url.searchParams.get("path") || workspace));
     return;
   }
+  if (request.method === "GET" && url.pathname === "/api/studio/git/status") {
+    sendJson(response, 200, await readWorkspaceGitStatus());
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/studio/git/diff") {
+    sendJson(response, 200, await readWorkspaceGitDiff(url.searchParams.get("path") || ""));
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/api/studio/settings") {
     sendJson(response, 200, {
       ok: true,
@@ -2951,6 +2959,110 @@ async function browseWorkspaceFolder() {
   const selected = String(zenity.stdout || "").trim();
   if (zenity.code !== 0 || !selected) return { ok: true, cancelled: true, path: null };
   return { ok: true, cancelled: false, path: path.resolve(selected) };
+}
+
+async function runGit(args) {
+  return runCommand(["git", ...args], workspace);
+}
+
+function gitChangeLabel(indexStatus, worktreeStatus) {
+  const code = `${indexStatus}${worktreeStatus}`;
+  if (code.includes("?")) return "untracked";
+  if (code.includes("A")) return "added";
+  if (code.includes("D")) return "deleted";
+  if (code.includes("R")) return "renamed";
+  if (code.includes("M")) return "modified";
+  return "changed";
+}
+
+function parseGitPorcelain(text) {
+  const changes = [];
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trimEnd();
+    if (!line) continue;
+    if (line.startsWith("??")) {
+      const filePath = line.slice(3).trim();
+      if (!isSafeWorkspacePath(filePath)) continue;
+      changes.push({ path: filePath, status: "untracked", index: "?", worktree: "?" });
+      continue;
+    }
+    const indexStatus = line[0] || " ";
+    const worktreeStatus = line[1] || " ";
+    let filePath = line.slice(3).trim();
+    if (filePath.includes(" -> ")) filePath = filePath.split(" -> ").pop()?.trim() || filePath;
+    if (!isSafeWorkspacePath(filePath)) continue;
+    changes.push({
+      path: filePath,
+      status: gitChangeLabel(indexStatus, worktreeStatus),
+      index: indexStatus,
+      worktree: worktreeStatus,
+    });
+  }
+  return changes;
+}
+
+async function readWorkspaceGitStatus() {
+  if (!existsSync(path.join(workspace, ".git"))) {
+    return { ok: true, available: false, workspace, reason: "not a git repository" };
+  }
+  const branchResult = await runGit(["branch", "--show-current"]);
+  if (branchResult.code !== 0) {
+    return {
+      ok: true,
+      available: false,
+      workspace,
+      reason: redactText(branchResult.stderr || "git unavailable"),
+    };
+  }
+  const statusResult = await runGit(["status", "--porcelain", "-u"]);
+  if (statusResult.code !== 0) {
+    return {
+      ok: true,
+      available: false,
+      workspace,
+      reason: redactText(statusResult.stderr || "git status failed"),
+    };
+  }
+  const changes = parseGitPorcelain(statusResult.stdout);
+  const summary = changes.reduce((acc, item) => {
+    acc[item.status] = (acc[item.status] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    ok: true,
+    available: true,
+    workspace,
+    branch: String(branchResult.stdout || "").trim() || "HEAD",
+    clean: changes.length === 0,
+    change_count: changes.length,
+    summary,
+    changes,
+  };
+}
+
+async function readWorkspaceGitDiff(relativePath) {
+  const normalized = String(relativePath || "").replace(/\\/g, "/").trim();
+  if (!normalized) return { ok: false, error: "path is required" };
+  if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
+  if (!existsSync(path.join(workspace, ".git"))) {
+    return { ok: false, error: "not a git repository" };
+  }
+  const unstaged = await runGit(["diff", "--no-color", "--", normalized]);
+  const staged = await runGit(["diff", "--cached", "--no-color", "--", normalized]);
+  const text = [
+    staged.stdout ? `--- staged ---\n${staged.stdout}` : "",
+    unstaged.stdout ? `--- unstaged ---\n${unstaged.stdout}` : "",
+  ].filter(Boolean).join("\n\n");
+  if (!text && unstaged.code !== 0 && staged.code !== 0) {
+    return { ok: false, error: redactText(unstaged.stderr || staged.stderr || "git diff failed") };
+  }
+  const clipped = redactText(text).slice(0, 120_000);
+  return {
+    ok: true,
+    path: normalized,
+    diff: clipped || "(no diff — file may be untracked or binary)",
+    truncated: text.length > 120_000,
+  };
 }
 
 function parseArgs(items) {
