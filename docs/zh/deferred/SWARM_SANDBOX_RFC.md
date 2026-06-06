@@ -62,7 +62,7 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 
 1. ✅ S7 MVP、S17 session_agent Beta 路径稳定（B6 连续绿、doc_update dogfood）
 2. ✅ sandbox 契约链：fake → export → dry-run → Studio（S18–S21）
-3. ⏳ `real_disjoint_write_workers` feature flag 生产灰度 + rollback 演练
+3. ⏳ `real_disjoint_write_workers` **生产**灰度 + rollback 演练（maintainer probe ✅ S23）
 4. ✅ Studio：worker 进度 + merge 证据 Inspector（S20）
 
 **仍关闭**：`parallel_writes` CLI 默认 `false`；12 Agent 新类；真实 sandbox 生产放量。
@@ -76,9 +76,13 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 | S18 | Worker spawn 契约 + harness profile 强制 | ✅ |
 | S19 | candidate export + merge gate dry-run | ✅ |
 | S20 | Studio worker 进度条 + promotion UI | ✅ |
-| S21 | 1 disjoint-write 灰度（maintainer） | ✅ |
+| S21 | 1 disjoint-write 灰度（maintainer fake_serial） | ✅ |
+| S22 | Flag rollout 就绪 + rollback 审计 | ✅ |
+| S23 | Real disjoint maintainer probe（parallel） | ✅ |
+| S24 | Orchestrator hook（child_plan → coordinator） | ✅ |
+| S25 | Wave2 闸门签字 | ✅ |
 
-**闸门**：`benchmarks/phase5_swarm_gate.json` · `scripts/swarm_maintainer_gray_check.py`
+**闸门**：`phase5_swarm_gate.json` · `phase5b_swarm_rollout_gate.json` · `swarm_flag_rollout_check.py`
 
 ---
 

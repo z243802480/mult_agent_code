@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S21",
+  "active_slice": "S25",
   "active_phase": "Phase 5",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -264,6 +264,51 @@
         "pytest tests/integration/test_phase5_swarm_gate.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S21-swarm-gray-gate.md"
+    },
+    {
+      "id": "S22",
+      "name": "Swarm flag rollout",
+      "phase": "5",
+      "depends_on": ["S21"],
+      "user_demo": "维护者评估 real_disjoint_write_workers 就绪与回滚",
+      "green_checks": [
+        "pytest tests/unit/test_swarm_flag_rollout.py -q",
+        "python scripts/swarm_flag_rollout_check.py --root . --skip-probe"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S22-swarm-flag-rollout.md"
+    },
+    {
+      "id": "S23",
+      "name": "Real disjoint probe",
+      "phase": "5",
+      "depends_on": ["S22"],
+      "user_demo": "maintainer 隔离环境 parallel disjoint probe",
+      "green_checks": [
+        "pytest tests/integration/test_phase5b_swarm_rollout_gate.py::test_real_disjoint_maintainer_probe_end_to_end -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S23-real-disjoint-probe.md"
+    },
+    {
+      "id": "S24",
+      "name": "Swarm orchestrator hook",
+      "phase": "5",
+      "depends_on": ["S23"],
+      "user_demo": "child_plan → spawn + ExecutionCoordinator 薄层",
+      "green_checks": ["pytest tests/unit/test_swarm_orchestrator.py -q"],
+      "reference_brief": "benchmarks/reference_briefs/S24-swarm-orchestrator-hook.md"
+    },
+    {
+      "id": "S25",
+      "name": "Phase 5 wave2 signoff",
+      "phase": "5",
+      "depends_on": ["S24"],
+      "user_demo": "phase5b 闸门 + wave2 签字",
+      "green_checks": [
+        "python scripts/swarm_flag_rollout_check.py --root .",
+        "pytest tests/integration/test_phase5b_swarm_rollout_gate.py -q",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S25-phase5-wave2-signoff.md"
     }
   ]
 }

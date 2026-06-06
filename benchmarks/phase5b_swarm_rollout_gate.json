@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 5 wave2: S22–S24 flag rollout, real disjoint maintainer probe, orchestrator hook.",
+  "phase": "5",
+  "wave": "2",
+  "depends_on_signoff": "docs/zh/reports/phase5-swarm-entry-signoff-20260606.md",
+  "depends_on_gate": "benchmarks/phase5_swarm_gate.json",
+  "rfc": "docs/zh/deferred/SWARM_SANDBOX_RFC.md",
+  "plan": "docs/zh/plans/phase5-wave2-S22-S25.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S22-swarm-flag-rollout.md",
+    "benchmarks/reference_briefs/S23-real-disjoint-probe.md",
+    "benchmarks/reference_briefs/S24-swarm-orchestrator-hook.md",
+    "benchmarks/reference_briefs/S25-phase5-wave2-signoff.md"
+  ],
+  "maintainer_script": "scripts/swarm_flag_rollout_check.py",
+  "contract_tests": [
+    "tests/unit/test_swarm_flag_rollout.py",
+    "tests/unit/test_swarm_orchestrator.py",
+    "tests/integration/test_phase5b_swarm_rollout_gate.py"
+  ],
+  "rollout": {
+    "flag_name": "real_disjoint_write_workers",
+    "cli_parallel_writes_default": false,
+    "maintainer_probe_required": true,
+    "rollback_always_safe": true
+  },
+  "real_disjoint_probe": {
+    "required_spawn": {
+      "scheduling_mode": "parallel",
+      "fake_path": false
+    },
+    "required_evidence": [
+      "workers.jsonl",
+      "worker_results.jsonl",
+      "candidate_exports.jsonl",
+      "merge_gate_dry_runs.jsonl"
+    ]
+  },
+  "notes": "Beta default remains session_agent. Wave2 enables maintainer isolated real parallel probe only."
+}
