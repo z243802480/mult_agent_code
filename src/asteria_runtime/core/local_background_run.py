@@ -239,7 +239,7 @@ def background_run_projection(root: Path, validator: SchemaValidator | None = No
     runs = [item for item in (data.get("runs") or []) if isinstance(item, dict)]
     running = [item for item in runs if item.get("status") in {"starting", "running"}]
     latest = runs[-1] if runs else None
-    return {
+    projection = {
         "enabled": True,
         "local_subprocess": True,
         "cloud_vm": False,
@@ -255,6 +255,9 @@ def background_run_projection(root: Path, validator: SchemaValidator | None = No
         "running": running[:5],
         "registry_path": str(registry.path.relative_to(root.resolve())).replace("\\", "/"),
     }
+    from asteria_runtime.core.remote_background_adapter import merge_backend_projection
+
+    return merge_backend_projection(projection)
 
 
 def _background_log_path(root: Path, background_run_id: str) -> Path:

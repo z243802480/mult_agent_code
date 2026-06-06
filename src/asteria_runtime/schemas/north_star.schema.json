@@ -62,7 +62,9 @@
         "requires_accepted_run": { "type": "boolean" },
         "requires_review_pass": { "type": "boolean" },
         "requires_all_tasks_done": { "type": "boolean" },
-        "min_review_score": { "type": "number" }
+        "min_review_score": { "type": "number" },
+        "enable_model_judge": { "type": "boolean" },
+        "model_judge_tier": { "type": "string" }
       }
     },
     "non_goals": {

@@ -5,7 +5,7 @@
   "wave": "5",
   "depends_on_gate": "benchmarks/phase6d_goal_queue_gate.json",
   "depends_on_signoff": "docs/zh/reports/S38-north-star-goal-queue-signoff-20260606.md",
-  "plan": "docs/zh/plans/asteria-holistic-S37-S40.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S37-S40.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S39-supervised-goal-loop.md"
   ],

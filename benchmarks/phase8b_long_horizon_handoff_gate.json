@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 8 long-horizon handoff compact (S42): workspace-level cross-session summary after accept.",
+  "phase": "8",
+  "wave": "2",
+  "depends_on_gate": "benchmarks/phase8a_slice_completion_judge_gate.json",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S41-S44.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S42-long-horizon-handoff-compact.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase8b_long_horizon_handoff_gate.py"
+  ],
+  "handoff_scope": {
+    "artifact": ".asteria/long_horizon_handoff.json",
+    "status_projection": "long_horizon.handoff_compact",
+    "trigger": "accept_with_north_star"
+  }
+}

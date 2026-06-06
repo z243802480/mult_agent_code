@@ -1,54 +1,45 @@
-# North Star 长目标 RFC（Phase 4）
+# North Star 长目标 RFC
 
-**状态**：RFC 已开启 — 实现 blocked 至观察窗 **2026-06-20**  
-**窗口契约**：[`benchmarks/phase2_stability_window.json`](../../benchmarks/phase2_stability_window.json)  
-**Slice brief**：[`benchmarks/reference_briefs/S11-north-star-v1.md`](../../benchmarks/reference_briefs/S11-north-star-v1.md)  
-**入口日期**：2026-06-06（S7 + rolling + 稳态签字完成后）
+> **状态：已实现**（S12 North Star v1 + Phase 6 S37–S40 Long Horizon）。  
+> **非阻塞**：观察窗与「禁止写 north_star.json」条款已废止。  
+> **现行框架**：[`LONG_TASK_GOAL_FRAMEWORK.md`](./LONG_TASK_GOAL_FRAMEWORK.md)
+
+---
 
 ## 1. 背景
 
-North Star 是 **跨 run 的远端目标**（OpenCode utw 思路），与当前 run 的 plan/tool/verify 叙事分离。Harness MVP 与 Phase 3 稳态已签字，RFC 合法入口已开；**代码实现**须等 2 周观察窗结束。
+North Star 是 **跨 run 的远端目标**（OpenCode utw 思路），与当前 run 的 plan/tool/verify 叙事分离。
 
-## 2. 启动条件
+## 2. 已实现能力
 
-| 条件 | 状态 |
-| --- | --- |
-| S7 `small_code_change` ≥ 0.8 | ✅ |
-| Phase 3 rolling 三门禁 real provider | ✅ |
-| Phase 2 scoped 稳态 | ✅ |
-| 连续稳定 2 周 | 🕐 2026-06-06 → **2026-06-20** |
+| 能力 | Slice | 证据 |
+| --- | --- | --- |
+| `north_star.json` 存储与 schema | S12 | `test_north_star_storage.py` |
+| status / handoff 投影 | S12 | `test_status_long_horizon.py` |
+| accept 链接 milestone | S12 | `test_accept_command.py` |
+| Studio Inspector | S12 | `north-star-inspector-smoke.mjs` |
+| slice 完成判定 | S37 | `slice_completion_eval.json` |
+| goal queue + Continue | S38 | `goal_queue.json` |
+| 监督多 slice 循环 | S39 | `--toward-north-star` |
+| 本地 background run | S40 | `background_run_registry.json` |
+| 可选 model judge | S41 | `slice_completion_judge.py` |
 
-`status --json` → `long_horizon` 投影进度。未满窗 **禁止** 写 `.asteria/north_star.json`。
+## 3. 仍 out of scope
 
-## 3. v1 范围
+- 蜂群 parallel 默认开启 → [`deferred/SWARM_SANDBOX_RFC.md`](../deferred/SWARM_SANDBOX_RFC.md)
+- silent auto execute
+- gate 主屏 North Star dashboard
+- SQLite 替代 JSON
 
-**In scope**：`north_star.json` 持久化；`status` / `handoff` 只读摘要；≥3 run milestone 链接；schema 校验。
-
-**Out of scope**：蜂群 parallel（[`deferred/SWARM_SANDBOX_RFC.md`](../deferred/SWARM_SANDBOX_RFC.md)）、自动 execute、gate 主屏、SQLite。
-
-## 4. 数据模型
-
-路径：`.asteria/north_star.json` · Schema：[`schemas/north_star.schema.json`](../../schemas/north_star.schema.json)
-
-## 5. 实现切片（2026-06-20+）
-
-| Slice | 内容 |
-| --- | --- |
-| S11a | 存储 + schema + unit tests |
-| S11b | status / handoff 只读投影 |
-| S11c | accept / handoff 链接 run |
-| S11d | Studio Inspector 只读（可选） |
-
-## 6. 验证
+## 4. 验证
 
 ```powershell
-pytest tests/unit/test_phase2_stability_window.py tests/integration/test_status_long_horizon.py -q
-python -m asteria_runtime status --json --root .
+python scripts/long_horizon_maintainer_smoke.py --root .
+pytest tests/integration/test_phase6c_long_horizon_completion_gate.py -q
+pytest tests/integration/test_status_long_horizon.py -q
 ```
 
-窗口打开后追加 north_star 存储与集成测试。
+## 5. 历史
 
-## 7. 参考
-
-- [`研发总计划.md`](../研发总计划.md) Phase 4、§1 North Star
-- [`当前状态与路线.md`](../当前状态与路线.md) §4 综合下一步计划
+- 2026-06-06：RFC 开启；观察窗至 2026-06-20（门槛已满足，S12 提前实现）
+- 2026-06-06：Phase 6 S37–S40 闭合；RFC 升格为已实现摘要

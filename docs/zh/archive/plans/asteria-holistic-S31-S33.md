@@ -1,3 +1,5 @@
+> **非当前依据（archive）** — 见 `archive/plans/README.md` 与现行 `plans/LONG_TASK_GOAL_FRAMEWORK.md`.
+
 # Asteria 整体推进计划（S31–S33）
 
 **日期**：2026-06-06  

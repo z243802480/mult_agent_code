@@ -4,7 +4,7 @@
   "phase": "5",
   "wave": "3",
   "depends_on_gate": "benchmarks/phase5b_swarm_rollout_gate.json",
-  "plan": "docs/zh/plans/asteria-holistic-S26-S29.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S26-S29.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S26-agent-loop-swarm-evidence.md",
     "benchmarks/reference_briefs/S27-studio-scheduling-semantics.md",

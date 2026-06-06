@@ -6,9 +6,18 @@ from pathlib import Path
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.run_command import RunCommand, RunStepSummary
+from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.policy_config import load_policy_config, merge_policy_defaults
+from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.goal_queue import GoalQueueStore
-from asteria_runtime.core.long_horizon_completion import evaluate_and_persist_slice_completion
+from asteria_runtime.core.long_horizon_completion import (
+    evaluate_and_persist_slice_completion,
+    resolve_slice_completion_policy,
+)
+from asteria_runtime.core.long_horizon_handoff import build_and_persist_long_horizon_handoff
 from asteria_runtime.core.north_star import NorthStarStore
+from asteria_runtime.models.base import ModelClient
+from asteria_runtime.models.factory import create_model_client
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
@@ -99,11 +108,13 @@ class AcceptCommand:
         *,
         skip_review: bool = False,
         promote_all: bool = True,
+        model_client: ModelClient | None = None,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
         self.skip_review = skip_review
         self.promote_all = promote_all
+        self.model_client = model_client
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
 
     def run(self) -> AcceptResult:
@@ -206,6 +217,10 @@ class AcceptCommand:
         north_star_store = NorthStarStore(self.root, self.validator)
         if accepted and north_star_store.exists():
             north_star_link = north_star_store.link_run(run_id)
+            policy = resolve_slice_completion_policy(north_star_store.read())
+            judge_client = None
+            if policy.get("enable_model_judge"):
+                judge_client = self._model_client(run_dir, run_id)
             slice_completion_eval = evaluate_and_persist_slice_completion(
                 self.root,
                 run_id,
@@ -213,6 +228,7 @@ class AcceptCommand:
                 accepted=accepted,
                 review_status=review_status,
                 north_star_link=north_star_link,
+                model_client=judge_client,
             )
             GoalQueueStore(self.root, self.validator).mark_done_for_run(run_id)
             goal_queue_continue = GoalQueueStore(self.root, self.validator).continue_hint()
@@ -260,6 +276,16 @@ class AcceptCommand:
             blockers=blockers,
             next_actions=next_actions,
         )
+        long_horizon_handoff = None
+        if accepted and north_star_store.exists():
+            long_horizon_handoff = build_and_persist_long_horizon_handoff(
+                self.root,
+                trigger_run_id=run_id,
+                validator=self.validator,
+                slice_completion_eval=slice_completion_eval,
+                goal_queue_continue=goal_queue_continue,
+                north_star_link=north_star_link,
+            )
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             "run_accepted" if accepted else "accept_blocked",
@@ -273,6 +299,7 @@ class AcceptCommand:
                 "north_star_link": north_star_link,
                 "slice_completion_eval": slice_completion_eval,
                 "goal_queue_continue": goal_queue_continue,
+                "long_horizon_handoff": long_horizon_handoff,
             },
         )
         if slice_completion_eval:
@@ -434,3 +461,25 @@ class AcceptCommand:
         if any("promotion" in blocker for blocker in blockers):
             return "promotions list"
         return "status"
+
+    def _model_client(self, run_dir: Path, run_id: str) -> ModelClient:
+        if self.model_client is not None:
+            return self.model_client
+        agent_dir = self.root / ".asteria"
+        try:
+            policy = effective_policy_for_run(
+                policy=load_policy_config(agent_dir, self.validator),
+                run_dir=run_dir,
+                validator=self.validator,
+            )
+        except (FileNotFoundError, OSError):
+            policy = merge_policy_defaults({})
+        cost_path = run_dir / "cost_report.json"
+        cost_report = {"run_id": run_id}
+        if cost_path.exists():
+            try:
+                cost_report = JsonStore(self.validator).read(cost_path, "cost_report")
+            except Exception:  # noqa: BLE001
+                pass
+        budget = BudgetController.from_report(policy, cost_report, run_id=run_id)
+        return create_model_client(run_dir, self.validator, budget)

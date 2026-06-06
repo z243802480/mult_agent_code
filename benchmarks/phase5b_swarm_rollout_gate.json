@@ -6,7 +6,7 @@
   "depends_on_signoff": "docs/zh/reports/phase5-swarm-entry-signoff-20260606.md",
   "depends_on_gate": "benchmarks/phase5_swarm_gate.json",
   "rfc": "docs/zh/deferred/SWARM_SANDBOX_RFC.md",
-  "plan": "docs/zh/plans/phase5-wave2-S22-S25.md",
+  "plan": "docs/zh/archive/plans/phase5-wave2-S22-S25.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S22-swarm-flag-rollout.md",
     "benchmarks/reference_briefs/S23-real-disjoint-probe.md",

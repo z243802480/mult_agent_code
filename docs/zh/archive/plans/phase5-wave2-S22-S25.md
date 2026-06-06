@@ -1,3 +1,5 @@
+> **非当前依据（archive）** — 见 `archive/plans/README.md` 与现行 `plans/LONG_TASK_GOAL_FRAMEWORK.md`.
+
 # Phase 5 第二波：真实并行写灰度（S22–S25）
 
 **日期**：2026-06-06  

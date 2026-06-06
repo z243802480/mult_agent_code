@@ -138,6 +138,9 @@ def long_horizon_projection(workspace_root: Path | None = None, *, today: date |
             "slice_complete": last_eval.get("slice_complete"),
             "summary": last_eval.get("summary"),
         }
+    from asteria_runtime.core.long_horizon_handoff import handoff_compact_projection
+
+    payload["handoff_compact"] = handoff_compact_projection(workspace)
     return payload
 
 

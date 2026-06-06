@@ -78,12 +78,13 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | Evidence Explorer | ✅ |
 | Model route viewer | ✅ |
 | Workspace file list | ✅ |
+| **Workspace switcher (open folder / recent)** | ✅ |
 | Token / cost limits display | 🔲 planned |
 | File diff viewer (inline git-style) | 🔲 planned |
 | Git integration (changed files, branch status) | 🔲 planned |
 | Terminal output panel | 🔲 planned |
 | Global settings UI | 🔲 planned |
-| Multi-workspace support | 🔲 planned |
+| Multi-workspace support | ✅ runtime switch + recent list |
 
 ---
 

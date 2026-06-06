@@ -1,11 +1,17 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, Settings, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Sparkles, Trash2 } from "lucide-react";
 import type { StudioSession, OverviewPayload, SettingsPayload } from "../types";
 import { SignalCard, gateStage, validationTone } from "./Shared";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 function cleanTitle(value: string): string {
   const text = value.replace(/\?{2,}/g, " ").replace(/\s+/g, " ").trim();
   return text || "Untitled session";
+}
+
+function workspaceLabel(settings: SettingsPayload | null): string {
+  if (!settings?.workspace) return "Workspace";
+  return settings.workspaceName || settings.workspace.split(/[\\/]/).pop() || "Workspace";
 }
 
 export function Sidebar({
@@ -16,6 +22,7 @@ export function Sidebar({
   onSelect,
   onNew,
   onDelete,
+  onWorkspaceChanged,
 }: {
   sessions: StudioSession[];
   active: StudioSession | null;
@@ -24,8 +31,10 @@ export function Sidebar({
   onSelect: (session: StudioSession) => void;
   onNew: () => void;
   onDelete: (session: StudioSession) => void;
+  onWorkspaceChanged: () => void;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const gate = (overview?.gateStatus ?? {}) as Record<string, unknown>;
   const diagnosticsLoaded = overview?.diagnostics_loaded !== false;
 
@@ -87,10 +96,16 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="settingsLink">
-        <Settings size={15} />
-        {settings?.workspace ? <span title={settings.workspace}>Workspace</span> : "Workspace"}
-      </div>
+      <button className="settingsLink workspaceButton" type="button" onClick={() => setWorkspaceOpen(true)}>
+        <FolderOpen size={15} />
+        <span title={settings?.workspace ?? ""}>{workspaceLabel(settings)}</span>
+      </button>
+      <WorkspaceSwitcher
+        open={workspaceOpen}
+        currentWorkspace={settings?.workspace ?? ""}
+        onClose={() => setWorkspaceOpen(false)}
+        onOpened={onWorkspaceChanged}
+      />
     </aside>
   );
 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LongHorizonHandoff",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "updated_at",
+    "trigger_run_id",
+    "narrative"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "trigger_run_id": { "type": "string" },
+    "north_star_ref": { "type": "object" },
+    "slice_completion": { "type": "object" },
+    "continue_hint": { "type": "object" },
+    "active_goal_summary": { "type": "object" },
+    "narrative": { "type": "string" },
+    "recommended_next_command": { "type": "string" }
+  }
+}

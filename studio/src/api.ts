@@ -1,4 +1,4 @@
-import type { StudioSession, StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord } from "./types";
+import type { StudioSession, StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord, WorkspacesPayload, OpenWorkspacePayload, BrowseWorkspacePayload } from "./types";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -42,6 +42,19 @@ export const api = {
       body: JSON.stringify({ path }),
     }),
   settings: () => requestJson<{ ok: boolean; settings: SettingsPayload }>("/api/studio/settings"),
+  workspaces: () => requestJson<WorkspacesPayload>("/api/studio/workspaces"),
+  openWorkspace: (pathValue: string) =>
+    requestJson<OpenWorkspacePayload>("/api/studio/workspace/open", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: pathValue }),
+    }),
+  browseWorkspace: () =>
+    requestJson<BrowseWorkspacePayload>("/api/studio/workspace/browse", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }),
   overview: () => requestJson<OverviewPayload>("/api/overview"),
   diagnostics: () => requestJson<OverviewPayload>("/api/diagnostics"),
   runDetail: (runId: string) => requestJson<RunDetailPayload>(`/api/runs/${encodeURIComponent(runId)}`),

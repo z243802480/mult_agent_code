@@ -24,7 +24,7 @@
           "background_run_id": { "type": "string" },
           "status": {
             "type": "string",
-            "enum": ["starting", "running", "completed", "failed", "stopped"]
+            "enum": ["starting", "running", "completed", "failed", "stopped", "deferred"]
           },
           "goal": { "type": "string" },
           "run_id": { "type": "string" },
@@ -41,7 +41,10 @@
           "completed_at": { "type": "string" },
           "summary": { "type": "string" },
           "log_path": { "type": "string" },
-          "log_tail": { "type": "string" }
+          "log_tail": { "type": "string" },
+          "remote_adapter": { "type": "string" },
+          "deployment_target": { "type": ["string", "null"] },
+          "deferred_reason": { "type": "string" }
         }
       }
     },

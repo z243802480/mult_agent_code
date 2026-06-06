@@ -48,6 +48,7 @@ from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.commands.studio_benchmark_command import StudioBenchmarkCommand
 from asteria_runtime.commands.studio_command import StudioCommand
+from asteria_runtime.commands.workspaces_command import WorkspacesCommand
 from asteria_runtime.commands.verification_command import VerificationStatusCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
@@ -687,6 +688,11 @@ def build_parser() -> argparse.ArgumentParser:
     background_sub = background_parser.add_subparsers(dest="background_action", required=True)
     background_start = background_sub.add_parser("start", help="Start a goal in the background")
     background_start.add_argument("goal", help="Natural-language goal")
+    background_start.add_argument(
+        "--remote",
+        action="store_true",
+        help="Record remote/cloud background intent (stub; true VM deferred)",
+    )
     background_start.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     background_status = background_sub.add_parser("status", help="Show background run badge status")
     background_status.add_argument("--json", action="store_true", help="Print machine-readable JSON")
@@ -1371,6 +1377,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not open the browser automatically",
     )
     studio_parser.add_argument("--json", action="store_true", help="Print launch config JSON and exit")
+    workspaces_parser = subcommands.add_parser(
+        "workspaces",
+        help="List or register workspace roots for Studio project switcher",
+    )
+    workspaces_sub = workspaces_parser.add_subparsers(dest="workspaces_action", required=True)
+    workspaces_list = workspaces_sub.add_parser("list", help="List recent and current workspaces")
+    workspaces_list.add_argument("--json", action="store_true", help="Print JSON")
+    workspaces_register = workspaces_sub.add_parser(
+        "register",
+        help="Register a workspace root and optionally initialize it",
+    )
+    workspaces_register.add_argument("--root", required=True, help="Workspace directory path")
+    workspaces_register.add_argument(
+        "--no-init",
+        action="store_true",
+        help="Do not run init when .asteria/project.json is missing",
+    )
+    workspaces_register.add_argument("--json", action="store_true", help="Print JSON")
     parser.set_command_groups(
         [
             (
@@ -1391,6 +1415,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "Setup and recovery commands used when a workflow asks for them.",
                 [
                     ("init", "Initialize a local-first Asteria workspace."),
+                    ("workspaces", "List or register workspace roots for Studio."),
                     ("studio", "Launch Asteria Studio (API server and UI)."),
                     ("resume", "Continue after approvals, pauses, or repair checkpoints."),
                     ("sessions", "List, inspect, or select session contexts."),
@@ -1713,6 +1738,7 @@ def main() -> None:
             root=Path(args.root),
             action=args.background_action,
             goal=getattr(args, "goal", None),
+            remote=bool(getattr(args, "remote", False)),
         ).run()
         if getattr(args, "json", False):
             print(json.dumps(bg_result.to_dict(), ensure_ascii=False, indent=2))
@@ -1993,6 +2019,27 @@ def main() -> None:
             return
         launch = studio_command.run()
         print(launch.to_text())
+        return
+
+    if command == "workspaces":
+        workspaces_command = WorkspacesCommand()
+        action = args.workspaces_action
+        if action == "list":
+            result = workspaces_command.list_registry()
+        elif action == "register":
+            result = workspaces_command.register(
+                Path(args.root),
+                init_if_needed=not args.no_init,
+            )
+        else:
+            parser.error(f"Unsupported workspaces action: {action}")
+            return
+        if args.json:
+            print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(result.to_text())
+        if not result.ok:
+            raise SystemExit(1)
         return
 
     parser.error(f"Unsupported command: {args.command}")

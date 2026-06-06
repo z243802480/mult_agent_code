@@ -5,11 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.commands.init_command import InitCommand
-from asteria_runtime.core.local_background_run import (
-    BackgroundRunRegistry,
-    background_run_projection,
-    start_local_background_run,
-)
+from asteria_runtime.core.local_background_run import BackgroundRunRegistry, background_run_projection
+from asteria_runtime.core.remote_background_adapter import start_background_run
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -65,11 +62,13 @@ class BackgroundRunCommand:
         *,
         action: str = "status",
         goal: str | None = None,
+        remote: bool = False,
         validator: SchemaValidator | None = None,
     ) -> None:
         self.root = root.resolve()
         self.action = action.strip().lower()
         self.goal = goal.strip() if goal else None
+        self.remote = remote
         self.validator = validator or SchemaValidator(schema_dir())
 
     def run(self) -> BackgroundRunResult:
@@ -79,8 +78,23 @@ class BackgroundRunCommand:
         if self.action == "start":
             if not self.goal:
                 raise ValueError("goal is required for `asteria background start`.")
-            entry = start_local_background_run(self.root, self.goal, self.validator)
+            entry = start_background_run(
+                self.root,
+                self.goal,
+                self.validator,
+                remote=self.remote,
+            )
             registry = BackgroundRunRegistry(self.root, self.validator)
+            if self.remote:
+                return BackgroundRunResult(
+                    action="start",
+                    ok=False,
+                    summary=str(entry.get("summary") or entry.get("deferred_reason") or "Remote background deferred."),
+                    background_run_id=str(entry["background_run_id"]),
+                    status=str(entry.get("status") or "deferred"),
+                    goal=str(entry.get("goal") or ""),
+                    registry_path=registry.path,
+                )
             return BackgroundRunResult(
                 action="start",
                 ok=True,

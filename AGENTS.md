@@ -17,12 +17,14 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Phase 6（Long Horizon 已闭合）
-当前 ACTIVE_SLICE：S40（Local Background Run · 已签字）
+当前 ACTIVE_PHASE：Phase 8（Long Task Intelligence · 已闭合）
+当前 ACTIVE_SLICE：S44（Phase 8 band signoff）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 设计索引：docs/zh/文档导航.md
-计划：docs/zh/plans/asteria-holistic-S37-S40.md
+计划：docs/zh/archive/plans/asteria-holistic-S41-S44.md
+框架：docs/zh/plans/LONG_TASK_GOAL_FRAMEWORK.md
+签字：docs/zh/reports/S41-S44-long-task-intelligence-signoff-20260606.md
 ```
 
 Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start North Star,

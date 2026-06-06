@@ -79,7 +79,41 @@ export type SettingsPayload = {
   shell: string;
   streamMode: string;
   workspace: string;
+  workspaceName?: string;
   runtimeRoot: string;
+};
+
+export type WorkspaceEntry = {
+  workspace_id?: string;
+  name?: string;
+  workspace_root: string;
+  output_root?: string;
+  artifact_root?: string;
+  last_opened_at?: string;
+};
+
+export type WorkspacesPayload = {
+  ok: boolean;
+  workspace: string;
+  runtimeRoot: string;
+  current_workspace_root?: string;
+  recent_workspaces: WorkspaceEntry[];
+};
+
+export type OpenWorkspacePayload = {
+  ok: boolean;
+  workspace?: string;
+  runtimeRoot?: string;
+  workspace_name?: string;
+  initialized?: boolean;
+  error?: string;
+};
+
+export type BrowseWorkspacePayload = {
+  ok: boolean;
+  cancelled?: boolean;
+  path?: string | null;
+  error?: string;
 };
 
 export type OverviewPayload = {

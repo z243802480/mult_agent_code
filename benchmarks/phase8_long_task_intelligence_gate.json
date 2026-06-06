@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 8 Long Task Intelligence band maintainer smoke (S41–S44).",
+  "phase": "8",
+  "depends_on_gate": "benchmarks/phase8c_remote_background_adapter_gate.json",
+  "depends_on_signoff": "docs/zh/reports/S41-S44-long-task-intelligence-signoff-20260606.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S41-S44.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S41-slice-completion-judge.md",
+    "benchmarks/reference_briefs/S42-long-horizon-handoff-compact.md",
+    "benchmarks/reference_briefs/S43-remote-background-adapter.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase8a_slice_completion_judge_gate.py",
+    "tests/integration/test_phase8b_long_horizon_handoff_gate.py",
+    "tests/integration/test_phase8c_remote_background_adapter_gate.py"
+  ],
+  "maintainer_script": "scripts/phase8_maintainer_smoke.py"
+}

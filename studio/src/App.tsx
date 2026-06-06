@@ -256,6 +256,7 @@ export function App() {
         onSelect={selectSession}
         onNew={() => void newSession()}
         onDelete={(session) => void deleteSession(session)}
+        onWorkspaceChanged={() => void bootstrap()}
       />
       <main className="missionPane">
         <header className="topBar">

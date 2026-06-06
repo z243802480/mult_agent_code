@@ -5,7 +5,7 @@
   "wave": "6",
   "depends_on_gate": "benchmarks/phase6e_supervised_goal_loop_gate.json",
   "depends_on_signoff": "docs/zh/reports/S39-supervised-goal-loop-signoff-20260606.md",
-  "plan": "docs/zh/plans/asteria-holistic-S37-S40.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S37-S40.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S40-local-background-run.md"
   ],

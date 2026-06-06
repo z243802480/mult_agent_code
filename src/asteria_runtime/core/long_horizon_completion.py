@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.north_star import NorthStarStore
+from asteria_runtime.core.slice_completion_judge import apply_model_judge, run_slice_completion_judge
+from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -17,6 +19,8 @@ DEFAULT_SLICE_COMPLETION_POLICY: dict[str, Any] = {
     "requires_review_pass": True,
     "requires_all_tasks_done": False,
     "min_review_score": None,
+    "enable_model_judge": False,
+    "model_judge_tier": "medium",
 }
 
 
@@ -36,6 +40,12 @@ def resolve_slice_completion_policy(north_star: dict[str, Any] | None) -> dict[s
             policy["min_review_score"] = None
         elif isinstance(value, (int, float)):
             policy["min_review_score"] = float(value)
+    if "enable_model_judge" in raw and isinstance(raw["enable_model_judge"], bool):
+        policy["enable_model_judge"] = raw["enable_model_judge"]
+    if "model_judge_tier" in raw and isinstance(raw["model_judge_tier"], str):
+        tier = raw["model_judge_tier"].strip().lower()
+        if tier:
+            policy["model_judge_tier"] = tier
     return policy
 
 
@@ -84,6 +94,7 @@ def evaluate_slice_completion(
     accepted: bool,
     review_status: str,
     north_star_link: dict[str, Any] | None = None,
+    model_client: ModelClient | None = None,
 ) -> dict[str, Any]:
     run_dir = root / ".asteria" / "runs" / run_id
     north_star = NorthStarStore(root, validator).read()
@@ -131,7 +142,7 @@ def evaluate_slice_completion(
     else:
         summary = "本 slice 未达成完成契约。"
 
-    return {
+    evaluation = {
         "schema_version": "0.1.0",
         "run_id": run_id,
         "evaluated_at": now_iso(),
@@ -143,6 +154,15 @@ def evaluate_slice_completion(
             north_star_link.get("milestone_id") if north_star_link else None
         ),
     }
+    judge_result = run_slice_completion_judge(
+        run_dir,
+        evaluation,
+        validator=validator,
+        model_client=model_client,
+        model_tier=str(policy.get("model_judge_tier") or "medium"),
+        north_star_link=north_star_link,
+    )
+    return apply_model_judge(evaluation, judge_result)
 
 
 def persist_slice_completion_eval(
@@ -163,6 +183,7 @@ def evaluate_and_persist_slice_completion(
     accepted: bool,
     review_status: str,
     north_star_link: dict[str, Any] | None = None,
+    model_client: ModelClient | None = None,
 ) -> dict[str, Any]:
     run_dir = root / ".asteria" / "runs" / run_id
     evaluation = evaluate_slice_completion(
@@ -172,6 +193,7 @@ def evaluate_and_persist_slice_completion(
         accepted=accepted,
         review_status=review_status,
         north_star_link=north_star_link,
+        model_client=model_client,
     )
     persist_slice_completion_eval(run_dir, evaluation, validator)
     return evaluation

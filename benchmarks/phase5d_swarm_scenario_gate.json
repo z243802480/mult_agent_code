@@ -9,7 +9,7 @@
     "benchmarks/phase5c_swarm_integration_gate.json"
   ],
   "scenario": "benchmarks/phase5_swarm_scenario.json",
-  "plan": "docs/zh/plans/asteria-holistic-S31-S33.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S31-S33.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S31-swarm-scenario-gate.md"
   ],

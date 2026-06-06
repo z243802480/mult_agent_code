@@ -393,6 +393,7 @@ function LongHorizonPanel({ overview }: { overview: OverviewPayload | null }) {
   const longHorizon = asRecord(overview?.long_horizon);
   if (!longHorizon || !Object.keys(longHorizon).length) return null;
   const northStar = asRecord(longHorizon.north_star);
+  const handoffCompact = asRecord(longHorizon.handoff_compact);
   const status = firstText(String(longHorizon.status ?? ""), "unknown");
   const summary = firstText(String(longHorizon.summary ?? ""), "No long-horizon summary recorded.");
   const configured = longHorizon.north_star_configured === true;
@@ -417,6 +418,14 @@ function LongHorizonPanel({ overview }: { overview: OverviewPayload | null }) {
             <div><small>Title</small><pre>{String(northStar.title ?? "")}</pre></div>
             <div><small>Active milestone</small><pre>{String(northStar.active_milestone ?? "none")}</pre></div>
             <div><small>Statement</small><pre>{String(northStar.statement ?? "")}</pre></div>
+          </>
+        )}
+        {handoffCompact.available === true && (
+          <>
+            <div><small>Handoff compact</small><pre>{String(handoffCompact.narrative ?? "")}</pre></div>
+            {handoffCompact.recommended_next_command ? (
+              <div><small>Continue</small><pre>{String(handoffCompact.recommended_next_command)}</pre></div>
+            ) : null}
           </>
         )}
       </div>

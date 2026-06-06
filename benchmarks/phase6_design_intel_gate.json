@@ -4,7 +4,7 @@
   "phase": "6",
   "depends_on_gate": "benchmarks/phase5f_production_gray_gate.json",
   "depends_on_signoff": "docs/zh/reports/S34-production-gray-signoff-20260606.md",
-  "plan": "docs/zh/plans/asteria-holistic-S35.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S35.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S35-design-intelligence-pilot.md"
   ],

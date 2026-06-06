@@ -4,7 +4,7 @@
   "phase": "6",
   "depends_on_gate": "benchmarks/phase6f_local_background_run_gate.json",
   "depends_on_signoff": "docs/zh/reports/S40-local-background-run-signoff-20260606.md",
-  "plan": "docs/zh/plans/asteria-holistic-S37-S40.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S37-S40.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S37-long-horizon-completion-contract.md",
     "benchmarks/reference_briefs/S38-north-star-goal-queue.md",

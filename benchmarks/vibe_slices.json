@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S40",
-  "active_phase": "Phase 6",
+  "active_slice": "S44",
+  "active_phase": "Phase 8",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -477,6 +477,51 @@
         "pytest tests/integration/test_phase6f_local_background_run_gate.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S40-local-background-run.md"
+    },
+    {
+      "id": "S41",
+      "name": "ML slice completion judge",
+      "phase": "8",
+      "depends_on": ["S40"],
+      "user_demo": "North Star policy enable_model_judge；accept 后 model veto 写入 slice_completion_eval",
+      "green_checks": [
+        "pytest tests/integration/test_phase8a_slice_completion_judge_gate.py -q",
+        "pytest tests/unit/test_slice_completion_judge.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S41-slice-completion-judge.md"
+    },
+    {
+      "id": "S42",
+      "name": "Long horizon handoff compact",
+      "phase": "8",
+      "depends_on": ["S41"],
+      "user_demo": "accept 后 long_horizon_handoff.json；status handoff_compact 投影",
+      "green_checks": [
+        "pytest tests/integration/test_phase8b_long_horizon_handoff_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S42-long-horizon-handoff-compact.md"
+    },
+    {
+      "id": "S43",
+      "name": "Remote background adapter",
+      "phase": "8",
+      "depends_on": ["S42"],
+      "user_demo": "background start --remote 登记 deferred stub",
+      "green_checks": [
+        "pytest tests/integration/test_phase8c_remote_background_adapter_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S43-remote-background-adapter.md"
+    },
+    {
+      "id": "S44",
+      "name": "Phase 8 band signoff",
+      "phase": "8",
+      "depends_on": ["S43"],
+      "user_demo": "phase8_maintainer_smoke 全波段绿",
+      "green_checks": [
+        "python scripts/phase8_maintainer_smoke.py --root ."
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S43-remote-background-adapter.md"
     }
   ]
 }

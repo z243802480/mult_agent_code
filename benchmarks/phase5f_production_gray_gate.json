@@ -8,7 +8,7 @@
     "benchmarks/phase5e_gray_decision_gate.json",
     "benchmarks/phase5b_swarm_rollout_gate.json"
   ],
-  "plan": "docs/zh/plans/asteria-holistic-S34.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S34.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S34-production-gray-rollout.md"
   ],

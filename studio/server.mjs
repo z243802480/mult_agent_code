@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { existsSync, statSync, readFileSync, promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { outcomeAnswerContract } from "./prompt-contract.mjs";
@@ -9,8 +10,8 @@ import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, rou
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const args = parseArgs(process.argv.slice(2));
-const workspace = path.resolve(args.workspace || repoRoot);
-const runtimeRoot = path.resolve(args.runtimeRoot || repoRoot);
+let workspace = path.resolve(args.workspace || repoRoot);
+let runtimeRoot = path.resolve(args.runtimeRoot || repoRoot);
 const port = Number(args.port || process.env.ASTERIA_STUDIO_PORT || 8787);
 const python = args.python || process.env.ASTERIA_PYTHON || "python";
 const chatBackend = String(args.chatBackend || process.env.ASTERIA_STUDIO_CHAT_BACKEND || "model").toLowerCase();
@@ -132,6 +133,18 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await previewWorkspaceFile(await readRequestJson(request)));
     return;
   }
+  if (request.method === "GET" && url.pathname === "/api/studio/workspaces") {
+    sendJson(response, 200, await listWorkspaceRegistry());
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/workspace/open") {
+    sendJson(response, 200, await openWorkspace(await readRequestJson(request)));
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/workspace/browse") {
+    sendJson(response, 200, await browseWorkspaceFolder());
+    return;
+  }
   if (request.method === "GET" && url.pathname === "/api/studio/settings") {
     sendJson(response, 200, {
       ok: true,
@@ -141,6 +154,7 @@ async function handleApi(request, response, url) {
         shell: "PowerShell",
         streamMode: "runtime-model-events",
         workspace,
+        workspaceName: workspaceBasename(workspace),
         runtimeRoot
       }
     });
@@ -2680,9 +2694,17 @@ async function modelRouteSummary() {
 }
 
 async function listWorkspaceFiles() {
-  const roots = [".asteria/studio/sessions", ".asteria/verification", "docs/zh", "studio/src"];
+  const candidateRoots = [
+    "src",
+    "tests",
+    "docs",
+    "docs/zh",
+    ".asteria/studio/sessions",
+    ".asteria/verification",
+    "studio/src",
+  ];
   const files = [];
-  for (const relativeRoot of roots) {
+  for (const relativeRoot of candidateRoots) {
     const absoluteRoot = path.join(workspace, relativeRoot);
     if (existsSync(absoluteRoot)) await collectFiles(absoluteRoot, files, 0);
   }
@@ -2800,6 +2822,97 @@ function readRequestJson(request) {
 function sendJson(response, status, payload) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function workspaceBasename(value) {
+  const normalized = String(value || "").replace(/[\\/]+$/, "");
+  return path.basename(normalized) || normalized || "workspace";
+}
+
+function isAbsoluteWorkspacePath(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  return path.isAbsolute(text);
+}
+
+async function listWorkspaceRegistry() {
+  const listed = await commandJson(["workspaces", "list", "--json"]);
+  const registry = listed.registry && typeof listed.registry === "object" ? listed.registry : listed;
+  const recent = Array.isArray(registry.recent_workspaces) ? registry.recent_workspaces : [];
+  return {
+    ok: true,
+    workspace,
+    runtimeRoot,
+    current_workspace_root: registry.current_workspace_root || workspace,
+    recent_workspaces: redact(recent),
+    registry: redact(registry),
+  };
+}
+
+async function openWorkspace(body) {
+  const requested = String(body?.path || body?.workspace || "").trim();
+  if (!requested) return { ok: false, error: "path is required" };
+  if (!isAbsoluteWorkspacePath(requested)) {
+    return { ok: false, error: "workspace path must be absolute" };
+  }
+  const resolved = path.resolve(requested);
+  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
+    return { ok: false, error: `not a directory: ${resolved}` };
+  }
+  if (liveJobs.size > 0) {
+    return { ok: false, error: "cannot switch workspace while a turn is still running" };
+  }
+
+  const registered = await commandJson(["workspaces", "register", "--root", resolved, "--json"]);
+  if (registered.ok === false) {
+    let message = registered.error || registered.stderr || "workspace registration failed";
+    try {
+      const parsed = JSON.parse(String(registered.stdout || "{}"));
+      if (parsed.error) message = String(parsed.error);
+    } catch {}
+    return { ok: false, error: message };
+  }
+
+  workspace = path.resolve(String(registered.workspace || resolved));
+  runtimeRoot = path.resolve(String(body?.runtime_root || workspace));
+  return {
+    ok: true,
+    workspace,
+    runtimeRoot,
+    initialized: Boolean(registered.initialized),
+    workspace_name: workspaceBasename(workspace),
+    registry: redact(registered.registry || {}),
+  };
+}
+
+async function browseWorkspaceFolder() {
+  if (process.platform === "win32") {
+    const script = [
+      "[void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms')",
+      "$dialog = New-Object System.Windows.Forms.FolderBrowserDialog",
+      "$dialog.Description = 'Select Asteria workspace folder'",
+      "$dialog.ShowNewFolderButton = $true",
+      "if ($dialog.ShowDialog() -eq 'OK') { Write-Output $dialog.SelectedPath }",
+    ].join("; ");
+    const completed = await runCommand(["powershell", "-NoProfile", "-STA", "-Command", script], process.cwd());
+    const selected = String(completed.stdout || "").trim();
+    if (!selected) return { ok: true, cancelled: true, path: null };
+    return { ok: true, cancelled: false, path: path.resolve(selected) };
+  }
+  if (process.platform === "darwin") {
+    const completed = await runCommand([
+      "osascript",
+      "-e",
+      'POSIX path of (choose folder with prompt "Select Asteria workspace folder")',
+    ], process.cwd());
+    const selected = String(completed.stdout || "").trim();
+    if (!selected) return { ok: true, cancelled: true, path: null };
+    return { ok: true, cancelled: false, path: path.resolve(selected) };
+  }
+  const zenity = await runCommand(["zenity", "--file-selection", "--directory", "--title=Select Asteria workspace folder"], process.cwd());
+  const selected = String(zenity.stdout || "").trim();
+  if (zenity.code !== 0 || !selected) return { ok: true, cancelled: true, path: null };
+  return { ok: true, cancelled: false, path: path.resolve(selected) };
 }
 
 function parseArgs(items) {

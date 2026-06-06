@@ -4,7 +4,7 @@
   "phase": "5",
   "wave": "5",
   "depends_on_gate": "benchmarks/phase5d_swarm_scenario_gate.json",
-  "plan": "docs/zh/plans/asteria-holistic-S31-S33.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S31-S33.md",
   "reference_briefs": [
     "benchmarks/reference_briefs/S32-gray-decision-rollback.md",
     "benchmarks/reference_briefs/S33-friction-convergence.md"

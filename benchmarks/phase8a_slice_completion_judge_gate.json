@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 8 ML-assisted slice completion judge (S41): optional model veto layered on S37 rules.",
+  "phase": "8",
+  "wave": "1",
+  "depends_on_gate": "benchmarks/phase6_long_horizon_maintainer_gate.json",
+  "depends_on_signoff": "docs/zh/reports/S40-local-background-run-signoff-20260606.md",
+  "plan": "docs/zh/archive/plans/asteria-holistic-S41-S44.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S41-slice-completion-judge.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase8a_slice_completion_judge_gate.py"
+  ],
+  "judge_scope": {
+    "purpose": "slice_completion_judge",
+    "rules_first": true,
+    "model_can_veto_only": true,
+    "default_enabled": false
+  }
+}

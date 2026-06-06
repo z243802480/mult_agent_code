@@ -103,6 +103,8 @@ class FakeModelClient:
             return self._execution_action(request)
         if request.purpose == "run_review":
             return self._eval_report(request)
+        if request.purpose == "slice_completion_judge":
+            return self._slice_completion_judge(request)
         if request.purpose == "research":
             return self._research_report(request)
         if request.purpose == "brainstorming":
@@ -205,6 +207,31 @@ class FakeModelClient:
                     else "Offline fake model run still has incomplete work."
                 ),
             },
+        }
+
+    def _slice_completion_judge(self, request: ChatRequest) -> dict:
+        prompt = request.messages[-1].content
+        try:
+            context = json.loads(prompt)
+        except json.JSONDecodeError:
+            context = {}
+        open_tasks = context.get("open_tasks") if isinstance(context.get("open_tasks"), list) else []
+        if open_tasks:
+            return {
+                "slice_complete": False,
+                "confidence": 0.88,
+                "reason": f"Open tasks remain: {', '.join(str(item) for item in open_tasks[:3])}.",
+            }
+        if not context.get("rule_slice_complete"):
+            return {
+                "slice_complete": False,
+                "confidence": 0.9,
+                "reason": "Rule-based completion signals are not satisfied.",
+            }
+        return {
+            "slice_complete": True,
+            "confidence": 0.86,
+            "reason": "North Star slice acceptance criteria appear satisfied.",
         }
 
     def _research_report(self, request: ChatRequest) -> dict:

@@ -2882,3 +2882,150 @@ h2 {
     right: 0;
   }
 }
+
+.workspaceButton {
+  background: transparent;
+  border: 0;
+  color: #eef2f4;
+  margin-top: auto;
+  width: 100%;
+}
+
+.workspaceButton span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceOverlay {
+  align-items: center;
+  background: rgba(8, 10, 12, 0.72);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 40;
+}
+
+.workspaceModal {
+  background: #181c1f;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  display: grid;
+  gap: 16px;
+  max-height: min(80vh, 720px);
+  max-width: 560px;
+  overflow: auto;
+  padding: 18px;
+  width: 100%;
+}
+
+.workspaceModalHeader,
+.workspaceModalFooter {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.workspaceModalFooter {
+  justify-content: flex-end;
+}
+
+.workspaceModal h2 {
+  font-size: 20px;
+  margin: 4px 0;
+}
+
+.workspaceCurrent {
+  background: #111518;
+  border: 1px solid #2d343b;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.workspaceCurrent strong {
+  font-size: 15px;
+}
+
+.workspaceField {
+  display: grid;
+  gap: 8px;
+}
+
+.workspacePathRow {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.workspacePathRow input {
+  background: #101214;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #eceff1;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.workspaceRecentList {
+  display: grid;
+  gap: 6px;
+}
+
+.workspaceRecentItem {
+  background: #111518;
+  border: 1px solid #2d343b;
+  border-radius: 8px;
+  color: #eef2f4;
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+  width: 100%;
+}
+
+.workspaceRecentItem.active,
+.workspaceRecentItem:hover:not(:disabled) {
+  background: #283139;
+  border-color: #3f4d57;
+}
+
+.workspaceRecentItem small {
+  color: #8f9ba5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspaceError {
+  color: #ff9aa8;
+  margin: 0;
+}
+
+.primaryButton,
+.secondaryButton,
+.iconButton {
+  align-items: center;
+  background: #283139;
+  border: 1px solid #3f4d57;
+  border-radius: 8px;
+  color: #eef2f4;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.primaryButton {
+  background: #2f6b4d;
+  border-color: #3f8762;
+}
+
+.iconButton {
+  min-height: 32px;
+  padding: 6px;
+}

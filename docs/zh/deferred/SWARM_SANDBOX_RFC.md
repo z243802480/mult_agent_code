@@ -62,7 +62,7 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 
 1. ✅ S7 MVP、S17 session_agent Beta 路径稳定（B6 连续绿、doc_update dogfood）
 2. ✅ sandbox 契约链：fake → export → dry-run → Studio（S18–S21）
-3. ⏳ `real_disjoint_write_workers` **生产**灰度 + rollback 演练（S34 ACTIVE；maintainer probe ✅ S23；gray drill ✅ S32）
+3. ✅ `real_disjoint_write_workers` **生产**灰度 + rollback 演练（S34 已签字；maintainer probe ✅ S23；gray drill ✅ S32）
 4. ✅ Studio：worker 进度 + merge 证据 Inspector（S20）
 
 **仍关闭**：`parallel_writes` CLI 默认 `false`；12 Agent 新类；真实 sandbox 生产放量。
