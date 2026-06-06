@@ -300,7 +300,11 @@ async function handleDecisionResolve(sessionId, body) {
   await appendEvent(session.session_id, progressEventForMode("decide", String(decision.question || decisionId)));
   const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--select-option-id", optionId];
   const metadata = decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
-  const followUpMode = metadata.kind === "runtime_request" && optionId === "review_contract" ? "resume" : null;
+  const followUpMode =
+    (metadata.kind === "runtime_request" && optionId === "review_contract")
+    || (metadata.kind === "replan_decision" && optionId === "create_repair_task")
+      ? "resume"
+      : null;
   startRuntimeJob(session.session_id, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
   return { ok: true, session, started: true, decision_id: decisionId, option_id: optionId, follow_up_mode: followUpMode };
 }

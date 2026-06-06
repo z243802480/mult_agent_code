@@ -122,6 +122,7 @@ async function waitForReadyOrAssist(base, sessionId) {
   let stagnant = 0;
   let actionCooldown = 0;
   let awaitJobs = false;
+  let inProgressIdlePolls = 0;
 
   await waitFor(async () => {
     if (awaitJobs) {
@@ -144,16 +145,20 @@ async function waitForReadyOrAssist(base, sessionId) {
       const advanced = await resolvePendingDecisions(base, sessionId, status);
       if (advanced) {
         friction.decide += 1;
-        actionCooldown = 8;
+        actionCooldown = 12;
         awaitJobs = true;
         stagnant = 0;
         lastSig = "";
+        inProgressIdlePolls = 0;
         return false;
+      }
+      if (Number(status.pending_decision_count) > 0 && rec.startsWith("decide") && stagnant >= 8) {
+        throw new Error(`pending decisions unresolved: ${sig}`);
       }
     }
 
-    if (/^(resume|replan|debug|review)/.test(rec)) {
-      const action = rec.split(/\s+/)[0];
+    const action = resolveRuntimeAction(rec);
+    if (action) {
       if (action === "debug") {
         friction.debug += 1;
         if (friction.debug > 4) {
@@ -167,6 +172,7 @@ async function waitForReadyOrAssist(base, sessionId) {
       awaitJobs = true;
       stagnant = 0;
       lastSig = "";
+      inProgressIdlePolls = 0;
       return false;
     }
 
@@ -174,11 +180,26 @@ async function waitForReadyOrAssist(base, sessionId) {
       `${status.workflow_state || ""} ${status.current_phase || ""}`,
     );
     if (!rec && stillRunning) {
+      const runningJobs = await sessionJobsRunning(base, sessionId);
+      if (!runningJobs) {
+        inProgressIdlePolls += 1;
+        if (inProgressIdlePolls >= 15) {
+          friction.resume += 1;
+          await triggerRuntimeAction(base, sessionId, "resume");
+          note("B1x", "nudge resume (in_progress idle, no studio jobs)");
+          actionCooldown = 6;
+          awaitJobs = true;
+          inProgressIdlePolls = 0;
+        }
+      } else {
+        inProgressIdlePolls = 0;
+      }
       stagnant = 0;
       lastSig = sig;
       return false;
     }
 
+    inProgressIdlePolls = 0;
     if (sig === lastSig) stagnant += 1;
     else {
       stagnant = 0;
@@ -193,13 +214,28 @@ async function waitForReadyOrAssist(base, sessionId) {
 
 async function waitForSessionJobsIdle(base, sessionId) {
   await waitFor(async () => {
-    const payload = await getJson(`${base}/api/studio/sessions/${sessionId}/jobs`);
-    return Number(payload.running || 0) === 0;
+    return !(await sessionJobsRunning(base, sessionId));
   }, 300000, "Studio jobs did not finish");
+}
+
+async function sessionJobsRunning(base, sessionId) {
+  const payload = await getJson(`${base}/api/studio/sessions/${sessionId}/jobs`);
+  return Number(payload.running || 0) > 0;
 }
 
 function normalizeCommand(raw) {
   return String(raw || "").replace(/^asteria\s+/, "").trim();
+}
+
+function resolveRuntimeAction(rec) {
+  const normalized = normalizeCommand(rec).toLowerCase();
+  if (!normalized || normalized.startsWith("accept")) return null;
+  if (normalized.startsWith("decide")) return null;
+  if (normalized.includes("debug")) return "debug";
+  if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "resume";
+  if (normalized.startsWith("replan")) return "replan";
+  if (normalized.startsWith("review")) return "review";
+  return null;
 }
 
 async function resolvePendingDecisions(base, sessionId, status) {
@@ -237,10 +273,21 @@ function readPendingDecisions(runId) {
 function pickDecisionOption(decision) {
   const metadata = decision?.metadata || {};
   const requestTypes = metadata.request_types || [];
-  if (metadata.kind === "runtime_request" || requestTypes.length > 0) {
+  const kind = String(metadata.kind || "");
+  if (kind === "runtime_request" || requestTypes.length > 0) {
     return "review_contract";
   }
-  return decision.recommended_option_id || decision.default_option_id || decision.options?.[0]?.option_id;
+  if (kind === "replan_decision" || metadata.reason === "repair_limit") {
+    const options = Array.isArray(decision.options) ? decision.options : [];
+    if (options.some((option) => option.option_id === "create_repair_task")) {
+      return "create_repair_task";
+    }
+  }
+  const options = Array.isArray(decision.options) ? decision.options : [];
+  if (options.some((option) => option.option_id === "review_contract")) {
+    return "review_contract";
+  }
+  return decision.recommended_option_id || decision.default_option_id || options[0]?.option_id;
 }
 
 async function triggerRuntimeAction(base, sessionId, action) {
