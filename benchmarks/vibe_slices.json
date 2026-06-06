@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S15",
-  "active_phase": "Phase 7",
+  "active_slice": "S16",
+  "active_phase": "Phase 4",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -189,6 +189,18 @@
         "pytest tests/integration/test_phase7_beta_user_path_gate.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S15-beta-hardening.md"
+    },
+    {
+      "id": "S16",
+      "name": "Steady vibe iteration",
+      "phase": "4",
+      "depends_on": ["S15"],
+      "user_demo": "一条命令跑周脉搏；brief→小 diff→用户路径 demo",
+      "green_checks": [
+        "python scripts/steady_iteration_check.py --root . --skip-b6",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S16-steady-vibe-iteration.md"
     }
   ]
 }

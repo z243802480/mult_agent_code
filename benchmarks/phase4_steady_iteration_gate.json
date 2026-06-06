@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 4 steady vibe iteration: repeatable maintainer pulse after Slice signoff.",
+  "phase": "4",
+  "rhythm_doc": "docs/zh/稳态迭代节奏.md",
+  "reference_brief": "benchmarks/reference_briefs/S16-steady-vibe-iteration.md",
+  "pulse_script": "scripts/steady_iteration_check.py",
+  "prune_script": "scripts/prune_local_artifacts.py",
+  "user_path_smokes": [
+    "node studio/scripts/b6-restricted-user-sim.mjs"
+  ],
+  "contract_tests": [
+    "tests/unit/test_documentation_contracts.py",
+    "tests/integration/test_phase7_beta_user_path_gate.py",
+    "tests/integration/test_phase4_steady_iteration_gate.py"
+  ],
+  "full_suite": "pytest -q",
+  "beta_tasks": "benchmarks/beta_user_tasks.json",
+  "notes": "Positive rhythm: brief, small diff, green_checks, user-path demo, signoff. No new Slice without brief."
+}
