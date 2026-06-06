@@ -59,6 +59,13 @@
 
 试跑结束后维护者填写 [`S14-beta-user-trial-template.md`](./reports/S14-beta-user-trial-template.md)，归档到 `docs/zh/reports/`。
 
+维护者汇总多条试跑反馈：
+
+```powershell
+python scripts/beta_friction_aggregate.py --root . --markdown
+python scripts/beta_friction_aggregate.py --root . --write-md docs/zh/reports/beta-friction-aggregate-latest.md
+```
+
 **过门**：至少 1 名非维护者独立完成 A/B/C，或维护者确认 Agent 受限模拟已签字（Phase 7 已关闭）。
 
 ## 6. 相关签字

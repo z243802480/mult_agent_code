@@ -9,9 +9,12 @@ import type {
   WorkspaceFile,
   FilePreview,
   GitStatusPayload,
+  GitDiffPayload,
 } from "./types";
 import { api, subscribeToEvents } from "./api";
 import { isSessionLive } from "./narrative";
+import { buildTurnDiffScopes } from "./turnDiff";
+import type { DiffLayout, DiffStage } from "./components/DiffPreview";
 import { Banner } from "./components/Shared";
 import { Sidebar } from "./components/Sidebar";
 import { Thread } from "./components/Thread";
@@ -46,6 +49,13 @@ export function App() {
   const [gitStatus, setGitStatus] = useState<GitStatusPayload | null>(null);
   const [gitLoading, setGitLoading] = useState(false);
   const [gitSelectedPath, setGitSelectedPath] = useState<string | null>(null);
+  const [gitDiffPayload, setGitDiffPayload] = useState<GitDiffPayload | null>(null);
+  const [diffScopeId, setDiffScopeId] = useState("current");
+  const [diffStage, setDiffStage] = useState<DiffStage>("all");
+  const [diffLayout, setDiffLayout] = useState<DiffLayout>("unified");
+  const [gitActionLoading, setGitActionLoading] = useState(false);
+  const [compactLoading, setCompactLoading] = useState(false);
+  const [contextSectionId, setContextSectionId] = useState<string | null>(null);
   const unsubRef = useRef<(() => void) | null>(null);
   const refreshedRunEventRef = useRef<string>("");
 
@@ -69,10 +79,11 @@ export function App() {
     }
   }
 
-  async function openFileChange(pathValue: string) {
+  async function openFileChange(pathValue: string, stage: DiffStage = diffStage) {
     setGitSelectedPath(pathValue);
     try {
-      const diff = await api.gitDiff(pathValue);
+      const diff = await api.gitDiff(pathValue, stage);
+      setGitDiffPayload(diff);
       const diffText = String(diff.diff ?? "");
       if (diff.ok && diffText && !diffText.includes("(no diff")) {
         setPreview({
@@ -84,6 +95,7 @@ export function App() {
       }
       setPreview(await api.previewFile(pathValue));
     } catch (err) {
+      setGitDiffPayload(null);
       setPreview({ ok: false, error: String((err as Error).message || err) });
     }
   }
@@ -91,6 +103,96 @@ export function App() {
   async function openGitDiff(pathValue: string) {
     await openFileChange(pathValue);
   }
+
+  function selectTurnDiff(turnIndex: number) {
+    const scope = turnDiffScopes.find((item) => item.turnIndex === turnIndex);
+    if (scope) {
+      setDiffScope(scope.id);
+    } else {
+      setDiffScope(`turn-chrono-${turnIndex}`);
+    }
+    const firstPath = scope?.files[0]?.path;
+    if (firstPath) {
+      void openFileChange(firstPath);
+    }
+  }
+
+  const turnDiffScopes = useMemo(() => buildTurnDiffScopes(events), [events]);
+
+  async function persistSessionUiState(nextScopeId = diffScopeId, nextStage = diffStage, nextLayout = diffLayout) {
+    if (!activeSession) return;
+    await api.updateSession(activeSession.session_id, {
+      ui_state: {
+        diffScopeId: nextScopeId,
+        diffStage: nextStage,
+        diffLayout: nextLayout,
+      },
+    }).catch(() => {});
+  }
+
+  function setDiffScope(scopeId: string) {
+    setDiffScopeId(scopeId);
+    void persistSessionUiState(scopeId);
+  }
+
+  function setDiffStageAndReload(stage: DiffStage) {
+    setDiffStage(stage);
+    void persistSessionUiState(diffScopeId, stage);
+    if (gitSelectedPath) void openFileChange(gitSelectedPath, stage);
+  }
+
+  function setDiffLayoutMode(layout: DiffLayout) {
+    setDiffLayout(layout);
+    void persistSessionUiState(diffScopeId, diffStage, layout);
+  }
+
+  async function stageSelectedFile() {
+    if (!gitSelectedPath) return;
+    setGitActionLoading(true);
+    try {
+      await api.gitStage(gitSelectedPath);
+      await refreshGitStatus();
+      await openFileChange(gitSelectedPath, diffStage);
+    } finally {
+      setGitActionLoading(false);
+    }
+  }
+
+  async function discardSelectedFile() {
+    if (!gitSelectedPath) return;
+    const ok = window.confirm(`Discard uncommitted changes in ${gitSelectedPath}?`);
+    if (!ok) return;
+    setGitActionLoading(true);
+    try {
+      await api.gitDiscard(gitSelectedPath);
+      await refreshGitStatus();
+      await openFileChange(gitSelectedPath, diffStage);
+    } finally {
+      setGitActionLoading(false);
+    }
+  }
+
+  async function compactContext() {
+    if (!activeSession) return;
+    const ok = window.confirm("Compact session context? Older turns may be summarized.");
+    if (!ok) return;
+    setCompactLoading(true);
+    try {
+      await api.runtimeAction(activeSession.session_id, "compact", "ask");
+      if (selectedRunId) {
+        setRunDetail(await api.runDetail(selectedRunId));
+      }
+    } finally {
+      setCompactLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (diffScopeId === "current") return;
+    if (!turnDiffScopes.some((scope) => scope.id === diffScopeId)) {
+      setDiffScopeId("current");
+    }
+  }, [diffScopeId, turnDiffScopes]);
 
   async function bootstrap() {
     setError(null);
@@ -270,7 +372,26 @@ export function App() {
   function selectSession(session: StudioSession) {
     setActiveSession(session);
     setSelectedEvent(null);
+    const ui = session.ui_state ?? {};
+    setDiffScopeId(String(ui.diffScopeId || "current"));
+    setDiffStage((String(ui.diffStage || "all") as DiffStage));
+    setDiffLayout((String(ui.diffLayout || "unified") as DiffLayout));
   }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!event.ctrlKey || sessions.length < 2) return;
+      if (event.key !== "Tab") return;
+      event.preventDefault();
+      const index = sessions.findIndex((session) => session.session_id === activeSession?.session_id);
+      if (index < 0) return;
+      const delta = event.shiftKey ? -1 : 1;
+      const next = sessions[(index + delta + sessions.length) % sessions.length];
+      selectSession(next);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sessions, activeSession?.session_id]);
 
   const isRunning = useMemo(() => isSessionLive(events), [events]);
 
@@ -296,9 +417,15 @@ export function App() {
         active={activeSession}
         overview={overview}
         settings={settings}
+        isRunning={isRunning}
         onSelect={selectSession}
         onNew={() => void newSession()}
         onDelete={(session) => void deleteSession(session)}
+        onRename={async (session, title) => {
+          const result = await api.updateSession(session.session_id, { title });
+          setSessions((prev) => prev.map((item) => (item.session_id === session.session_id ? result.session : item)));
+          if (activeSession?.session_id === session.session_id) setActiveSession(result.session);
+        }}
         onWorkspaceChanged={() => void bootstrap()}
         workspaceOpen={workspaceOpen}
         onWorkspaceOpenChange={setWorkspaceOpen}
@@ -340,6 +467,13 @@ export function App() {
           overview={overview}
           runDetail={runDetail}
           onFileChangeClick={(pathValue) => void openFileChange(pathValue)}
+          onTurnDiffSelect={selectTurnDiff}
+          turnDiffLabel={(turnIndex) =>
+            turnDiffScopes.find((scope) => scope.turnIndex === turnIndex)?.label ?? `T${turnIndex}`
+          }
+          onAggregateDiffClick={(turnIndex) => selectTurnDiff(turnIndex)}
+          onCompactContext={() => void compactContext()}
+          compactLoading={compactLoading}
         />
         <Composer
           onSend={sendGoal}
@@ -357,6 +491,22 @@ export function App() {
         gitStatus={gitStatus}
         gitLoading={gitLoading}
         gitSelectedPath={gitSelectedPath}
+        diffScopes={turnDiffScopes}
+        diffScopeId={diffScopeId}
+        onSelectDiffScope={setDiffScope}
+        diffStage={diffStage}
+        onSelectDiffStage={setDiffStageAndReload}
+        diffLayout={diffLayout}
+        onSelectDiffLayout={setDiffLayoutMode}
+        gitDiffPayload={gitDiffPayload}
+        gitActionLoading={gitActionLoading}
+        onStageFile={() => void stageSelectedFile()}
+        onDiscardFile={() => void discardSelectedFile()}
+        contextSectionId={contextSectionId}
+        onSelectContextSection={setContextSectionId}
+        onCompactContext={() => void compactContext()}
+        compactLoading={compactLoading}
+        isRunning={isRunning}
         onRefreshGit={() => void refreshGitStatus()}
         onSelectGitChange={(pathValue) => void openGitDiff(pathValue)}
         onOpenFile={openFile}

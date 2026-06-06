@@ -40,6 +40,14 @@ try {
   if (!diff.ok || !String(diff.diff ?? "").includes("v2")) {
     throw new Error(`git diff missing expected content: ${JSON.stringify(diff)}`);
   }
+  const staged = await fetchJson(`http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}&stage=staged`);
+  const unstaged = await fetchJson(`http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}&stage=unstaged`);
+  if (!unstaged.ok || !String(unstaged.diff ?? unstaged.unstaged ?? "").includes("v2")) {
+    throw new Error(`unstaged diff missing expected content: ${JSON.stringify(unstaged)}`);
+  }
+  if (typeof staged.has_staged !== "boolean" || typeof unstaged.has_unstaged !== "boolean") {
+    throw new Error("diff payload missing staged/unstaged flags");
+  }
 
   console.log(JSON.stringify({
     ok: true,

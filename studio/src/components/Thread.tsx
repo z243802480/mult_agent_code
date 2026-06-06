@@ -4,8 +4,12 @@ import type { AnyRecord, StudioEvent, NarrativeStep as NarrativeStepType, Overvi
 import { NarrativeStep } from "./NarrativeStep";
 import { PermissionCard } from "./PermissionCard";
 import { toNarrativeEvents, buildRunNarrative } from "../narrative";
-import { extractFileChangesFromSteps } from "../fileChanges";
+import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../fileChanges";
+import { splitIntoTurns } from "../turnDiff";
 import { FileChangeChips } from "./FileChangeChips";
+import { AggregateDiffChip } from "./AggregateDiffChip";
+import { ContextPanel } from "./ContextPanel";
+import { MarkdownBody } from "./MarkdownBody";
 
 const EXAMPLE_PROMPTS = [
   "Plan a 3-day Qingdao trip",
@@ -28,21 +32,6 @@ function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleTimeString();
-}
-
-function splitIntoTurns(steps: NarrativeStepType[]): NarrativeStepType[][] {
-  const turns: NarrativeStepType[][] = [];
-  let current: NarrativeStepType[] | null = null;
-  for (const step of steps) {
-    if (step.kind === "goal") {
-      if (current) turns.push(current);
-      current = [step];
-    } else if (current) {
-      current.push(step);
-    }
-  }
-  if (current) turns.push(current);
-  return turns;
 }
 
 function middleSummary(steps: NarrativeStepType[]): string {
@@ -862,13 +851,17 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
 
 type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
 
-function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick }: {
+function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
   expandSignal: ProcessExpandSignal;
   onFileChangeClick?: (path: string) => void;
+  turnIndex?: number;
+  turnDiffLabel?: string;
+  onTurnDiffSelect?: (turnIndex: number) => void;
+  onAggregateDiffClick?: (turnIndex: number) => void;
 }) {
   const hasPendingPermission = steps.some((s) => s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"));
   const representative = middleRepresentativeEvent(steps);
@@ -880,6 +873,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   }, [expandSignal?.id, expandSignal?.mode]);
   if (steps.length === 0) return null;
   const fileChanges = extractFileChangesFromSteps(steps);
+  const fileStats = aggregateFileChangeStats(fileChanges);
   return (
     <div className="turnMiddle">
       <button
@@ -893,7 +887,20 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
         <Wrench size={11} />
         <span>{middleSummary(steps)}</span>
       </button>
-      <FileChangeChips changes={fileChanges} className="turnFileRow" onSelect={onFileChangeClick} />
+      <div className="turnFileRowWrap">
+        <AggregateDiffChip
+          files={fileStats.files}
+          additions={fileStats.additions}
+          deletions={fileStats.deletions}
+          onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
+        />
+        <FileChangeChips changes={fileChanges} className="turnFileRow" onSelect={onFileChangeClick} />
+        {turnIndex && fileChanges.length > 0 && onTurnDiffSelect && (
+          <button type="button" className="turnDiffButton" onClick={() => onTurnDiffSelect(turnIndex)}>
+            {turnDiffLabel ?? `T${turnIndex}`} diff · {fileChanges.length}
+          </button>
+        )}
+      </div>
       {open && (
         <div className="turnMiddleSteps">
           {steps.map((step) => {
@@ -925,26 +932,47 @@ function middleRepresentativeEvent(steps: NarrativeStepType[]): StudioEvent | nu
     ?? null;
 }
 
+function turnModelMetadata(middleSteps: NarrativeStepType[], responseStep: NarrativeStepType | null): string {
+  const events = [...middleSteps.flatMap((step) => step.events), ...(responseStep?.events ?? [])];
+  const modelEvent = [...events].reverse().find((item) => item.model_provider || item.model_name);
+  if (!modelEvent) return "";
+  const provider = String(modelEvent.model_provider ?? "").trim();
+  const model = String(modelEvent.model_name ?? "").trim();
+  const telemetry = (modelEvent.telemetry ?? {}) as AnyRecord;
+  const inputTokens = Number(telemetry.input_tokens ?? 0);
+  const outputTokens = Number(telemetry.output_tokens ?? 0);
+  const parts = [provider && model ? `${provider}/${model}` : provider || model];
+  if (inputTokens || outputTokens) parts.push(`${formatUsage(inputTokens + outputTokens)} tokens`);
+  return parts.filter(Boolean).join(" · ");
+}
+
 function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
   const event = step.events[0];
   const text = event?.content_delta || step.summary || step.title || "No content";
   const isError = step.kind === "error" || step.status === "failed";
   const visibleText = stripContextNoise(text);
   const sections = finalSections(visibleText, isError, middleSteps);
+  const modelMeta = turnModelMetadata(middleSteps, step);
+  const useMarkdown = visibleText.includes("## ") || visibleText.includes("```") || visibleText.includes("\n- ");
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
       <div className="turnFinalHeader">
         <span className="turnFinalAvatar">A</span>
         <span className="turnFinalLabel">Asteria</span>
+        {modelMeta && <span className="turnFinalMeta">{modelMeta}</span>}
       </div>
       <div className="turnFinalText">
-        {sections.map((section, index) => (
-          <section key={`${section.title}-${index}`} className={index === 0 ? "primaryFinalSection" : ""}>
-            {section.title && <h3>{section.title}</h3>}
-            {section.lines.map((line, lineIndex) => renderFinalLine(line, lineIndex))}
-          </section>
-        ))}
+        {useMarkdown ? (
+          <MarkdownBody text={visibleText} />
+        ) : (
+          sections.map((section, index) => (
+            <section key={`${section.title}-${index}`} className={index === 0 ? "primaryFinalSection" : ""}>
+              {section.title && <h3>{section.title}</h3>}
+              {section.lines.map((line, lineIndex) => renderFinalLine(line, lineIndex))}
+            </section>
+          ))
+        )}
       </div>
     </div>
   );
@@ -1039,7 +1067,7 @@ function renderFinalLine(line: string, index: number) {
   return <p key={index}>{line}</p>;
 }
 
-function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick }: {
+function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -1048,6 +1076,10 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
   isRunning: boolean;
   expandSignal: ProcessExpandSignal;
   onFileChangeClick?: (path: string) => void;
+  turnIndex?: number;
+  turnDiffLabel?: string;
+  onTurnDiffSelect?: (turnIndex: number) => void;
+  onAggregateDiffClick?: (turnIndex: number) => void;
 }) {
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
@@ -1094,6 +1126,10 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
             onPermit={onPermit}
             expandSignal={expandSignal}
             onFileChangeClick={onFileChangeClick}
+            turnIndex={turnIndex}
+            turnDiffLabel={turnDiffLabel}
+            onTurnDiffSelect={onTurnDiffSelect}
+            onAggregateDiffClick={onAggregateDiffClick}
           />
         )
       )}
@@ -1102,7 +1138,7 @@ function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunni
   );
 }
 
-export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, onRuntimeAction, onResolveDecision, pendingTurn, overview, runDetail, onFileChangeClick }: {
+export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPermit, onRuntimeAction, onResolveDecision, pendingTurn, overview, runDetail, onFileChangeClick, onTurnDiffSelect, turnDiffLabel, onAggregateDiffClick, onCompactContext, compactLoading }: {
   events: StudioEvent[];
   selected: StudioEvent | null;
   isRunning: boolean;
@@ -1115,6 +1151,11 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
   overview?: OverviewPayload | null;
   runDetail?: RunDetailPayload | null;
   onFileChangeClick?: (path: string) => void;
+  onTurnDiffSelect?: (turnIndex: number) => void;
+  turnDiffLabel?: (turnIndex: number) => string;
+  onAggregateDiffClick?: (turnIndex: number) => void;
+  onCompactContext?: () => void;
+  compactLoading?: boolean;
 }) {
   const threadRef = useRef<HTMLElement>(null);
   const [expandSignal, setExpandSignal] = useState<ProcessExpandSignal>(null);
@@ -1143,7 +1184,7 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
       <section className="thread" ref={threadRef}>
         <RuntimeSnapshot overview={overview ?? null} runDetail={runDetail ?? null} events={events} onRuntimeAction={onRuntimeAction} onResolveDecision={onResolveDecision} onPermit={onPermit} />
         <EmptyState onPrompt={onPrompt} />
-        <ContextWindowPopover runDetail={runDetail ?? null} />
+        <ContextPanel runDetail={runDetail ?? null} isRunning={isRunning} onCompact={onCompactContext} compacting={compactLoading} />
       </section>
     );
   }
@@ -1168,10 +1209,14 @@ export function Thread({ events, selected, isRunning, onSelect, onPrompt, onPerm
           isRunning={isRunning}
           expandSignal={expandSignal}
           onFileChangeClick={onFileChangeClick}
+          turnIndex={i + 1}
+          turnDiffLabel={turnDiffLabel?.(i + 1)}
+          onTurnDiffSelect={onTurnDiffSelect}
+          onAggregateDiffClick={onAggregateDiffClick}
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
-      <ContextWindowPopover runDetail={runDetail ?? null} />
+      <ContextPanel runDetail={runDetail ?? null} isRunning={isRunning} onCompact={onCompactContext} compacting={compactLoading} />
     </section>
   );
 }

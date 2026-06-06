@@ -29,6 +29,10 @@ def main() -> None:
     steps.append(_run_pytest(root, "tests/unit/test_workspaces_command.py"))
     steps.append(_run_node(root, "studio/scripts/workspace-switcher-smoke.mjs"))
     steps.append(_run_node(root, "studio/scripts/git-changes-smoke.mjs"))
+    steps.append(_run_node(root, "studio/scripts/turn-diff-scope-smoke.mjs"))
+    steps.append(_run_node(root, "studio/scripts/s45-parity-smoke.mjs"))
+    steps.append(_run_python(root, "scripts/beta_friction_aggregate.py", ["--root", str(root)]))
+    steps.append(_run_pytest(root, "tests/unit/test_beta_friction_aggregate.py"))
     steps.append(_run_python(root, "scripts/phase8_maintainer_smoke.py", ["--root", str(root)]))
 
     if args.with_b6:
@@ -37,7 +41,7 @@ def main() -> None:
     ok = all(step.get("ok") for step in steps)
     report = {
         "ok": ok,
-        "purpose": "Beta trial maintainer smoke (workspace switcher + git changes + Phase 8 pulse).",
+        "purpose": "Beta trial maintainer smoke (workspace switcher + git/turn diff + friction aggregate + Phase 8 pulse).",
         "checklist_doc": str(checklist.relative_to(root)).replace("\\", "/"),
         "manual_sections": ["A install", "B execute", "C review/accept"],
         "automated_sections": ["A4 workspace API", "A5 studio launch path", "git status/diff", "doc contracts"],

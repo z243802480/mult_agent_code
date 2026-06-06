@@ -1,4 +1,4 @@
-import type { StudioSession, StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord, WorkspacesPayload, OpenWorkspacePayload, BrowseWorkspacePayload, WorkspaceProfile, GitStatusPayload, GitDiffPayload } from "./types";
+import type { StudioSession, StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord, WorkspacesPayload, OpenWorkspacePayload, BrowseWorkspacePayload, WorkspaceProfile, GitStatusPayload, GitDiffPayload, GitFileActionPayload } from "./types";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -10,6 +10,12 @@ export const api = {
   sessions: () => requestJson<{ ok: boolean; sessions: StudioSession[] }>("/api/studio/sessions"),
   createSession: () => requestJson<{ ok: boolean; session: StudioSession }>("/api/studio/sessions", { method: "POST" }),
   deleteSession: (id: string) => requestJson<{ ok: boolean; deleted: string }>(`/api/studio/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  updateSession: (id: string, body: { title?: string; goal_preview?: string; ui_state?: Record<string, unknown> }) =>
+    requestJson<{ ok: boolean; session: StudioSession }>(`/api/studio/sessions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   events: (id: string) => requestJson<{ ok: boolean; events: StudioEvent[] }>(`/api/studio/sessions/${encodeURIComponent(id)}/events`),
   send: (id: string, message: string, mode: string, permission: string) =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/messages`, {
@@ -58,8 +64,20 @@ export const api = {
   workspaceProfile: (pathValue: string) =>
     requestJson<WorkspaceProfile>(`/api/studio/workspace/profile?path=${encodeURIComponent(pathValue)}`),
   gitStatus: () => requestJson<GitStatusPayload>("/api/studio/git/status"),
-  gitDiff: (pathValue: string) =>
-    requestJson<GitDiffPayload>(`/api/studio/git/diff?path=${encodeURIComponent(pathValue)}`),
+  gitDiff: (pathValue: string, stage = "all") =>
+    requestJson<GitDiffPayload>(`/api/studio/git/diff?path=${encodeURIComponent(pathValue)}&stage=${encodeURIComponent(stage)}`),
+  gitStage: (pathValue: string) =>
+    requestJson<GitFileActionPayload>("/api/studio/git/stage", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: pathValue }),
+    }),
+  gitDiscard: (pathValue: string) =>
+    requestJson<GitFileActionPayload>("/api/studio/git/discard", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: pathValue }),
+    }),
   overview: () => requestJson<OverviewPayload>("/api/overview"),
   diagnostics: () => requestJson<OverviewPayload>("/api/diagnostics"),
   runDetail: (runId: string) => requestJson<RunDetailPayload>(`/api/runs/${encodeURIComponent(runId)}`),

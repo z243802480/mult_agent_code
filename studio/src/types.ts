@@ -6,6 +6,12 @@ export type StudioSession = {
   workspace: string;
   created_at: string;
   updated_at: string;
+  goal_preview?: string;
+  ui_state?: {
+    diffScopeId?: string;
+    diffStage?: string;
+    diffLayout?: string;
+  };
 };
 
 export type StudioEvent = {
@@ -153,8 +159,20 @@ export type GitStatusPayload = {
 export type GitDiffPayload = {
   ok: boolean;
   path?: string;
+  stage?: string;
   diff?: string;
+  staged?: string;
+  unstaged?: string;
+  has_staged?: boolean;
+  has_unstaged?: boolean;
   truncated?: boolean;
+  error?: string;
+};
+
+export type GitFileActionPayload = {
+  ok: boolean;
+  path?: string;
+  action?: string;
   error?: string;
 };
 

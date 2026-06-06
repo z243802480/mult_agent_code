@@ -56,6 +56,8 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | Pattern | Source | Asteria Studio |
 | --- | --- | --- |
 | Per-turn file chips with +/- | Claude Code `/diff`, VS Code extension | Thread `FileChangeChips` → Inspector diff |
+| Turn-scoped diff tabs (T1/T2/Current) | Claude `/diff` turn views | Inspector **Diff review** + Thread **Tn diff**（**T1=最新一轮**） |
+| Unified diff line numbers + coloring | CLI diff TUI | **`DiffPreview`** in Inspector |
 | Primary project folder (cwd) | Claude Desktop project picker | Workspace switcher + top-bar chip |
 | Phase strip (Plan → Execute → Verify) | Codex/Cursor task workflows | `WorkflowPhaseStrip` under header |
 | Git working tree review | Claude `/diff` Current view | Inspector **Workspace changes** panel |
@@ -94,13 +96,21 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | **Primary cwd chip + project profile (init/git/AGENTS.md)** | ✅ |
 | **Git workspace changes + diff preview** | ✅ |
 | **Thread file-change chips → diff** | ✅ |
+| **Turn diff tabs (Current / T1 / T2…)** | ✅ |
 | **Workflow phase strip (Plan/Execute/Verify)** | ✅ |
 | Token / cost limits display | 🔲 planned |
 | File diff viewer (inline git-style) | ✅ Thread chips + Inspector preview |
 | Git integration (changed files, branch status) | ✅ read-only status + diff |
 | Terminal output panel | 🔲 planned |
 | Global settings UI | 🔲 planned |
-| Multi-workspace support | ✅ runtime switch + recent list |
+| Side-by-side diff toggle | Desktop diff pane | ✅ Unified / Split |
+| Session Ctrl+Tab switch | Desktop parallel sessions | ✅ |
+| Session rename + goal preview | Desktop session list | ✅ |
+| Context category breakdown (`/context`) | CLI `/context` | ✅ Thread + Inspector |
+| Staged / Unstaged diff tabs | git diff vs cached | ✅ |
+| Accept/reject single file | CLI y/n/e | ✅ Stage / Discard (git) |
+
+**对标计划**：[`docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md`](../docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md)
 
 ---
 

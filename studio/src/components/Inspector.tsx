@@ -3,7 +3,11 @@ import { ArrowUpRight, Bug, FileText, SendHorizontal } from "lucide-react";
 import type { StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord, GitStatusPayload } from "../types";
 import { Status, Metric, formatMs, percent } from "./Shared";
 import { firstText } from "../narrative";
-import { GitChangesPanel } from "./GitChangesPanel";
+import { DiffScopePanel } from "./DiffScopePanel";
+import { DiffPreview, type DiffLayout, type DiffStage } from "./DiffPreview";
+import type { TurnDiffScope } from "../turnDiff";
+import type { GitDiffPayload } from "../types";
+import { ContextPanel } from "./ContextPanel";
 
 type InspectorSection = {
   id: string;
@@ -910,6 +914,22 @@ export function Inspector({
   gitStatus,
   gitLoading,
   gitSelectedPath,
+  diffScopes,
+  diffScopeId,
+  onSelectDiffScope,
+  diffStage,
+  onSelectDiffStage,
+  diffLayout,
+  onSelectDiffLayout,
+  gitDiffPayload,
+  gitActionLoading,
+  onStageFile,
+  onDiscardFile,
+  contextSectionId,
+  onSelectContextSection,
+  onCompactContext,
+  compactLoading,
+  isRunning,
   onRefreshGit,
   onSelectGitChange,
   onOpenFile,
@@ -926,6 +946,22 @@ export function Inspector({
   gitStatus: GitStatusPayload | null;
   gitLoading: boolean;
   gitSelectedPath: string | null;
+  diffScopes: TurnDiffScope[];
+  diffScopeId: string;
+  onSelectDiffScope: (scopeId: string) => void;
+  diffStage: DiffStage;
+  onSelectDiffStage: (stage: DiffStage) => void;
+  diffLayout: DiffLayout;
+  onSelectDiffLayout: (layout: DiffLayout) => void;
+  gitDiffPayload: GitDiffPayload | null;
+  gitActionLoading: boolean;
+  onStageFile: () => void;
+  onDiscardFile: () => void;
+  contextSectionId: string | null;
+  onSelectContextSection: (sectionId: string) => void;
+  onCompactContext: () => void;
+  compactLoading: boolean;
+  isRunning: boolean;
   onRefreshGit: () => void;
   onSelectGitChange: (path: string) => void;
   onOpenFile: (path: string) => Promise<void>;
@@ -939,12 +975,23 @@ export function Inspector({
 
   return (
     <aside className="inspector">
-      <GitChangesPanel
+      <DiffScopePanel
         gitStatus={gitStatus}
         loading={gitLoading}
         selectedPath={gitSelectedPath}
+        scopes={diffScopes}
+        activeScopeId={diffScopeId}
+        onSelectScope={onSelectDiffScope}
         onRefresh={onRefreshGit}
         onSelectChange={onSelectGitChange}
+      />
+      <ContextPanel
+        runDetail={runDetail}
+        isRunning={isRunning}
+        selectedSectionId={contextSectionId}
+        onSelectSection={onSelectContextSection}
+        onCompact={onCompactContext}
+        compacting={compactLoading}
       />
       <section className="opsIntro">
         <p className="eyebrow">Debug / Ops Console</p>
@@ -1018,8 +1065,56 @@ export function Inspector({
         </div>
         {preview && (
           <div className="preview">
-            <strong>{preview.path ?? "Preview"}</strong>
-            {preview.ok ? <pre>{(preview.content ?? "").slice(0, 12000)}</pre> : <p>{preview.error}</p>}
+            {!(preview.path && (preview.content ?? "").includes("@@")) && (
+              <strong>{preview.path ?? "Preview"}</strong>
+            )}
+            {preview.ok ? (
+              preview.path && (preview.content ?? "").includes("@@") ? (
+                <>
+                  <div className="diffViewControls">
+                    <div className="diffStageTabs" role="tablist" aria-label="Diff stage">
+                      {(["all", "staged", "unstaged"] as DiffStage[]).map((stage) => (
+                        <button
+                          key={stage}
+                          type="button"
+                          role="tab"
+                          className={diffStage === stage ? "diffStageTab active" : "diffStageTab"}
+                          aria-selected={diffStage === stage}
+                          onClick={() => onSelectDiffStage(stage)}
+                        >
+                          {stage === "all" ? "All" : stage === "staged" ? "Staged" : "Unstaged"}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="diffLayoutTabs">
+                      <button type="button" className={diffLayout === "unified" ? "active" : ""} onClick={() => onSelectDiffLayout("unified")}>Unified</button>
+                      <button type="button" className={diffLayout === "split" ? "active" : ""} onClick={() => onSelectDiffLayout("split")}>Split</button>
+                    </div>
+                  </div>
+                  <DiffPreview
+                    path={preview.path}
+                    diff={preview.content}
+                    staged={gitDiffPayload?.staged}
+                    unstaged={gitDiffPayload?.unstaged}
+                    stage={diffStage}
+                    layout={diffLayout}
+                    onStageFile={gitSelectedPath ? onStageFile : undefined}
+                    onDiscardFile={gitSelectedPath ? onDiscardFile : undefined}
+                    staging={gitActionLoading}
+                  />
+                </>
+              ) : (
+                <pre>{(preview.content ?? "").slice(0, 12000)}</pre>
+              )
+            ) : (
+              <p>{preview.error}</p>
+            )}
+          </div>
+        )}
+        {contextSectionId && runDetail && (
+          <div className="contextSectionDetail">
+            <strong>Context section: {contextSectionId}</strong>
+            <p className="muted">Open Evidence Explorer below for raw refs tied to this run.</p>
           </div>
         )}
       </section>

@@ -79,7 +79,10 @@
 ```powershell
 python scripts/beta_trial_smoke.py --root .
 python scripts/beta_trial_smoke.py --root . --with-b6
+python scripts/beta_friction_aggregate.py --root . --markdown
 ```
+
+Studio 审查提示：Thread 内点 **T1 diff / T2 diff** 或在 Inspector **Diff review** 切换 **Current / Tn**，按 turn 查看 agent 改了哪些文件；点文件名看 diff。
 
 ---
 

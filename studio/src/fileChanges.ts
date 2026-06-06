@@ -11,11 +11,6 @@ export function fileChangePath(record: AnyRecord): string {
   return String(record.path ?? record.file ?? record.relative_path ?? "").replace(/\\/g, "/").trim();
 }
 
-export function fileChangeBasename(pathValue: string): string {
-  const parts = pathValue.split("/");
-  return parts[parts.length - 1] || pathValue || "file";
-}
-
 export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileChangeRecord[] {
   const seen = new Set<string>();
   const result: FileChangeRecord[] = [];
@@ -49,4 +44,23 @@ export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileCha
 function numberOrUndefined(value: unknown): number | undefined {
   const num = Number(value);
   return Number.isFinite(num) ? num : undefined;
+}
+
+export function fileChangeBasename(pathValue: string): string {
+  const parts = pathValue.split("/");
+  return parts[parts.length - 1] || pathValue || "file";
+}
+
+export function aggregateFileChangeStats(changes: FileChangeRecord[]): {
+  files: number;
+  additions: number;
+  deletions: number;
+} {
+  let additions = 0;
+  let deletions = 0;
+  for (const change of changes) {
+    additions += change.additions ?? 0;
+    deletions += change.deletions ?? 0;
+  }
+  return { files: changes.length, additions, deletions };
 }

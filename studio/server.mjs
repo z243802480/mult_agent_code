@@ -59,6 +59,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, { ok: true, session: await createSession() });
     return;
   }
+  if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").pop() || "");
+    sendJson(response, 200, await updateSession(sessionId, await readRequestJson(request)));
+    return;
+  }
   if (request.method === "DELETE" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").pop() || "");
     sendJson(response, 200, await deleteSession(sessionId));
@@ -154,7 +159,18 @@ async function handleApi(request, response, url) {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/git/diff") {
-    sendJson(response, 200, await readWorkspaceGitDiff(url.searchParams.get("path") || ""));
+    sendJson(response, 200, await readWorkspaceGitDiff(
+      url.searchParams.get("path") || "",
+      url.searchParams.get("stage") || "all",
+    ));
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/git/stage") {
+    sendJson(response, 200, await stageWorkspaceGitFile(await readRequestJson(request)));
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/git/discard") {
+    sendJson(response, 200, await discardWorkspaceGitFile(await readRequestJson(request)));
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/settings") {
@@ -373,6 +389,7 @@ function runtimeActionFor(value) {
     debug: "debug",
     repair: "debug",
     decide: "decide",
+    compact: "compact",
   }[first];
   if (!kind) return null;
   return runtimeActionByKind(kind);
@@ -429,6 +446,16 @@ function runtimeActionByKind(kind) {
       requiresPermission: false,
       summary: "I will list the decisions that need your input.",
       permissionSummary: "",
+    },
+    compact: {
+      kind: "compact",
+      label: "Compact",
+      mode: "compact",
+      goal: "Compact session context to free space.",
+      command: [python, "-m", moduleName, "compact", "--root", workspace],
+      requiresPermission: true,
+      summary: "I will compact the current session context after confirmation.",
+      permissionSummary: "Compacting context may summarize older turns. Confirm to continue.",
     },
   };
   return actions[kind] ?? null;
@@ -1903,6 +1930,26 @@ async function deleteSession(sessionId) {
   return { ok: true, deleted: sessionId };
 }
 
+async function updateSession(sessionId, body) {
+  if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
+  const file = sessionPath(sessionId, "session.json");
+  if (!existsSync(file)) return { ok: false, error: "session not found" };
+  let session = {};
+  try {
+    session = JSON.parse(await fs.readFile(file, "utf8"));
+  } catch {
+    return { ok: false, error: "session unreadable" };
+  }
+  if (body?.title) session.title = String(body.title).slice(0, 120);
+  if (body?.goal_preview) session.goal_preview = String(body.goal_preview).slice(0, 160);
+  if (body?.ui_state && typeof body.ui_state === "object") {
+    session.ui_state = { ...(session.ui_state || {}), ...body.ui_state };
+  }
+  session.updated_at = new Date().toISOString();
+  await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
+  return { ok: true, session };
+}
+
 async function listSessions() {
   const root = path.join(workspace, ".asteria", "studio", "sessions");
   if (!existsSync(root)) return [];
@@ -1939,7 +1986,10 @@ async function appendEvent(sessionId, event) {
       session = {};
     }
     session.updated_at = full.created_at;
-    if (full.type === "user_message") session.title = String(full.summary || session.title || "New task").slice(0, 64);
+    if (full.type === "user_message") {
+      session.title = String(full.summary || session.title || "New task").slice(0, 64);
+      session.goal_preview = String(full.content_delta || full.summary || session.goal_preview || "").slice(0, 160);
+    }
     await fs.writeFile(sessionFile, JSON.stringify(session, null, 2), "utf8");
   }
   notifySSE(sessionId, full);
@@ -3040,29 +3090,61 @@ async function readWorkspaceGitStatus() {
   };
 }
 
-async function readWorkspaceGitDiff(relativePath) {
+async function readWorkspaceGitDiff(relativePath, stage = "all") {
   const normalized = String(relativePath || "").replace(/\\/g, "/").trim();
   if (!normalized) return { ok: false, error: "path is required" };
   if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
   if (!existsSync(path.join(workspace, ".git"))) {
     return { ok: false, error: "not a git repository" };
   }
-  const unstaged = await runGit(["diff", "--no-color", "--", normalized]);
-  const staged = await runGit(["diff", "--cached", "--no-color", "--", normalized]);
-  const text = [
-    staged.stdout ? `--- staged ---\n${staged.stdout}` : "",
-    unstaged.stdout ? `--- unstaged ---\n${unstaged.stdout}` : "",
-  ].filter(Boolean).join("\n\n");
-  if (!text && unstaged.code !== 0 && staged.code !== 0) {
-    return { ok: false, error: redactText(unstaged.stderr || staged.stderr || "git diff failed") };
+  const stagedResult = await runGit(["diff", "--cached", "--no-color", "--", normalized]);
+  const unstagedResult = await runGit(["diff", "--no-color", "--", normalized]);
+  const staged = redactText(String(stagedResult.stdout || ""));
+  const unstaged = redactText(String(unstagedResult.stdout || ""));
+  let diff = "";
+  if (stage === "staged") diff = staged;
+  else if (stage === "unstaged") diff = unstaged;
+  else {
+    diff = [
+      staged ? `--- staged ---\n${staged}` : "",
+      unstaged ? `--- unstaged ---\n${unstaged}` : "",
+    ].filter(Boolean).join("\n\n");
   }
-  const clipped = redactText(text).slice(0, 120_000);
+  if (!diff && stagedResult.code !== 0 && unstagedResult.code !== 0) {
+    return { ok: false, error: redactText(unstagedResult.stderr || stagedResult.stderr || "git diff failed") };
+  }
+  const clipped = diff.slice(0, 120_000);
   return {
     ok: true,
     path: normalized,
+    stage,
     diff: clipped || "(no diff — file may be untracked or binary)",
-    truncated: text.length > 120_000,
+    staged,
+    unstaged,
+    has_staged: Boolean(staged.trim()),
+    has_unstaged: Boolean(unstaged.trim()),
+    truncated: diff.length > 120_000,
   };
+}
+
+async function stageWorkspaceGitFile(body) {
+  const normalized = String(body?.path || "").replace(/\\/g, "/").trim();
+  if (!normalized) return { ok: false, error: "path is required" };
+  if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
+  if (!existsSync(path.join(workspace, ".git"))) return { ok: false, error: "not a git repository" };
+  const result = await runGit(["add", "--", normalized]);
+  if (result.code !== 0) return { ok: false, error: redactText(result.stderr || "git add failed") };
+  return { ok: true, path: normalized, action: "staged" };
+}
+
+async function discardWorkspaceGitFile(body) {
+  const normalized = String(body?.path || "").replace(/\\/g, "/").trim();
+  if (!normalized) return { ok: false, error: "path is required" };
+  if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
+  if (!existsSync(path.join(workspace, ".git"))) return { ok: false, error: "not a git repository" };
+  const result = await runGit(["checkout", "--", normalized]);
+  if (result.code !== 0) return { ok: false, error: redactText(result.stderr || "git checkout failed") };
+  return { ok: true, path: normalized, action: "discarded" };
 }
 
 function parseArgs(items) {
