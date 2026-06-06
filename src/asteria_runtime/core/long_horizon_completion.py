@@ -12,24 +12,47 @@ from asteria_runtime.utils.time import now_iso
 
 SLICE_COMPLETION_EVAL_FILENAME = "slice_completion_eval.json"
 
-DEFAULT_SLICE_COMPLETION_POLICY: dict[str, bool] = {
+DEFAULT_SLICE_COMPLETION_POLICY: dict[str, Any] = {
     "requires_accepted_run": True,
     "requires_review_pass": True,
     "requires_all_tasks_done": False,
+    "min_review_score": None,
 }
 
 
-def resolve_slice_completion_policy(north_star: dict[str, Any] | None) -> dict[str, bool]:
+def resolve_slice_completion_policy(north_star: dict[str, Any] | None) -> dict[str, Any]:
     policy = dict(DEFAULT_SLICE_COMPLETION_POLICY)
     if not north_star:
         return policy
     raw = north_star.get("slice_completion_policy")
     if not isinstance(raw, dict):
         return policy
-    for key in policy:
+    for key in ("requires_accepted_run", "requires_review_pass", "requires_all_tasks_done"):
         if key in raw and isinstance(raw[key], bool):
             policy[key] = raw[key]
+    if "min_review_score" in raw:
+        value = raw["min_review_score"]
+        if value is None:
+            policy["min_review_score"] = None
+        elif isinstance(value, (int, float)):
+            policy["min_review_score"] = float(value)
     return policy
+
+
+def _load_eval_report(run_dir: Path, validator: SchemaValidator) -> dict[str, Any] | None:
+    path = run_dir / "eval_report.json"
+    if not path.exists():
+        return None
+    payload = JsonStore(validator).read(path, "eval_report")
+    return payload if isinstance(payload, dict) else None
+
+
+def _review_score_passes(review_score: Any, min_score: Any) -> bool:
+    if min_score is None:
+        return True
+    if not isinstance(review_score, (int, float)):
+        return False
+    return float(review_score) >= float(min_score)
 
 
 def _load_task_plan(run_dir: Path, validator: SchemaValidator) -> dict[str, Any] | None:
@@ -66,12 +89,19 @@ def evaluate_slice_completion(
     north_star = NorthStarStore(root, validator).read()
     policy = resolve_slice_completion_policy(north_star)
     task_plan = _load_task_plan(run_dir, validator)
+    eval_report = _load_eval_report(run_dir, validator)
+    overall = eval_report.get("overall") if eval_report else {}
+    review_score = overall.get("score") if isinstance(overall, dict) else None
     review_pass = review_status == "pass"
     tasks_done = _tasks_all_done(task_plan)
+    min_review_score = policy.get("min_review_score")
+    review_score_pass = _review_score_passes(review_score, min_review_score)
 
     signals = {
         "accepted_run": accepted,
         "review_pass": review_pass,
+        "review_score": review_score,
+        "review_score_pass": review_score_pass,
         "tasks_done": tasks_done,
         "north_star_linked": north_star_link is not None,
     }
@@ -82,6 +112,8 @@ def evaluate_slice_completion(
         checks.append(signals["review_pass"])
     if policy["requires_all_tasks_done"]:
         checks.append(signals["tasks_done"])
+    if min_review_score is not None:
+        checks.append(signals["review_score_pass"])
 
     slice_complete = all(checks) if checks else accepted and review_pass
     if slice_complete:
@@ -90,6 +122,10 @@ def evaluate_slice_completion(
         summary = "本 slice 未达成：验收未通过。"
     elif not review_pass:
         summary = f"本 slice 未达成：评审状态为 {review_status}。"
+    elif min_review_score is not None and not review_score_pass:
+        summary = (
+            f"本 slice 未达成：评审分数 {review_score} 低于阈值 {min_review_score}。"
+        )
     elif policy["requires_all_tasks_done"] and not tasks_done:
         summary = "本 slice 未达成：仍有未完成任务。"
     else:
@@ -145,7 +181,8 @@ def latest_slice_completion_eval(root: Path) -> dict[str, Any] | None:
     runs_root = root / ".asteria" / "runs"
     if not runs_root.is_dir():
         return None
-    for run_dir in sorted(runs_root.iterdir(), reverse=True):
+    candidates: list[tuple[str, dict[str, Any]]] = []
+    for run_dir in runs_root.iterdir():
         if not run_dir.is_dir():
             continue
         path = run_dir / SLICE_COMPLETION_EVAL_FILENAME
@@ -156,5 +193,8 @@ def latest_slice_completion_eval(root: Path) -> dict[str, Any] | None:
         except (OSError, ValueError):
             continue
         if isinstance(payload, dict):
-            return payload
-    return None
+            candidates.append((str(payload.get("evaluated_at") or ""), payload))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[0][1]

@@ -162,14 +162,15 @@ def run_supervised_goal_loop(
 
         queue.mark_in_progress(goal_id)
         slices_attempted += 1
+
+        outcome = slice_runner(goal_text, next_item)
         if progress_writer:
             progress_writer(
                 slice_index + 1,
                 "slice_started",
-                {"goal_id": goal_id, "goal_text": goal_text},
+                {"goal_id": goal_id, "goal_text": goal_text, "run_id": outcome.run_id},
             )
-
-        outcome = slice_runner(goal_text, next_item)
+        queue.link_run_to_goal(goal_id, outcome.run_id)
         slice_run_ids.append(outcome.run_id)
         run_dir = root / ".asteria" / "runs" / outcome.run_id
         write_slice_evidence(
@@ -184,10 +185,12 @@ def run_supervised_goal_loop(
         hard_stop, budget_status = budget_hard_stop_reached(root, outcome.run_id, validator)
         if hard_stop:
             stop_reason = f"budget_{budget_status}"
+            queue.release_in_progress(goal_id)
             break
 
         if outcome.status in {"blocked", "paused"}:
             stop_reason = f"run_{outcome.status}"
+            queue.release_in_progress(goal_id)
             break
 
         if not outcome.ready_for_accept:
@@ -196,6 +199,7 @@ def run_supervised_goal_loop(
 
         if not accept_runner(outcome.run_id):
             stop_reason = "accept_blocked"
+            queue.release_in_progress(goal_id)
             break
 
         slices_completed += 1

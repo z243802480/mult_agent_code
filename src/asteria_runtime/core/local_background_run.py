@@ -14,6 +14,7 @@ from asteria_runtime.utils.time import now_iso
 
 
 REGISTRY_REL = Path(".asteria") / "background_run_registry.json"
+BACKGROUND_LOG_DIR_REL = Path(".asteria") / "background_logs"
 BACKGROUND_RUN_EVIDENCE_FILE = "background_run.json"
 SpawnProcess = Callable[..., Any]
 
@@ -118,6 +119,7 @@ class BackgroundRunRegistry:
                     item["exit_code"] = 1
                     item["completed_at"] = now_iso()
                     item["summary"] = "Local background subprocess failed to start."
+                    _attach_log_tail(self.root, item)
                     changed = True
                 continue
             if alive(pid):
@@ -141,6 +143,7 @@ class BackgroundRunRegistry:
                 if item["exit_code"] == 0
                 else f"Local background run failed (exit {item['exit_code']})."
             )
+            _attach_log_tail(self.root, item)
             changed = True
         if changed:
             self.write(data)
@@ -254,6 +257,34 @@ def background_run_projection(root: Path, validator: SchemaValidator | None = No
     }
 
 
+def _background_log_path(root: Path, background_run_id: str) -> Path:
+    return root.resolve() / BACKGROUND_LOG_DIR_REL / f"{background_run_id}.log"
+
+
+def _read_log_tail(log_path: Path, max_lines: int = 12) -> str:
+    if not log_path.is_file():
+        return ""
+    try:
+        lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    if not lines:
+        return ""
+    return "\n".join(lines[-max_lines:])
+
+
+def _attach_log_tail(root: Path, item: dict[str, Any]) -> None:
+    rel = item.get("log_path")
+    if not isinstance(rel, str) or not rel.strip():
+        return
+    tail = _read_log_tail(root / rel)
+    if not tail:
+        return
+    item["log_tail"] = tail
+    base = str(item.get("summary") or "").rstrip()
+    item["summary"] = f"{base}\n--- log tail ---\n{tail}"
+
+
 def start_local_background_run(
     root: Path,
     goal: str,
@@ -266,6 +297,8 @@ def start_local_background_run(
     background_run_id = f"bg-{now_iso().replace(':', '').replace('+', '')[:15]}"
     command = build_background_goal_argv(root, goal)
     started_at = now_iso()
+    log_path = _background_log_path(root, background_run_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     entry: dict[str, Any] = {
         "background_run_id": background_run_id,
         "status": "starting",
@@ -274,21 +307,33 @@ def start_local_background_run(
         "local_subprocess": True,
         "cloud_vm": False,
         "command": command,
+        "log_path": str(log_path.relative_to(root)).replace("\\", "/"),
         "started_at": started_at,
         "updated_at": started_at,
         "summary": "Local background subprocess started.",
     }
     spawner = spawn or subprocess.Popen
-    process = spawner(
-        command,
-        cwd=str(root),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=os.name != "nt",
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
-    )
+    log_handle = open(log_path, "a", encoding="utf-8")  # noqa: SIM115
+    try:
+        process = spawner(
+            command,
+            cwd=str(root),
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=os.name != "nt",
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+        )
+    except OSError as exc:
+        log_handle.write(f"spawn failed: {exc}\n")
+        log_handle.close()
+        entry["status"] = "failed"
+        entry["exit_code"] = 1
+        entry["summary"] = f"Local background subprocess failed to start: {exc}"
+        registry.append_run(entry)
+        return entry
     entry["pid"] = int(process.pid)
     registry.append_run(entry)
+    log_handle.close()
     return entry
 
 

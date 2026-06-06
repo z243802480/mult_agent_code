@@ -210,8 +210,7 @@ def test_run_status_review_accept_user_loop(tmp_path: Path) -> None:
     accept = AcceptCommand(tmp_path).run()
     assert accept.accepted is True
     assert accept.blockers == []
-    assert accept.next_actions[0] == "Use the final report as the durable handoff artifact."
-    assert any("slice" in action.lower() or "达成" in action for action in accept.next_actions[1:])
+    assert accept.next_actions == ["Use the final report as the durable handoff artifact."]
     active_goal = tmp_path / ".asteria" / "memory" / "active_goal.md"
     assert active_goal.exists()
     active_goal_text = active_goal.read_text(encoding="utf-8")

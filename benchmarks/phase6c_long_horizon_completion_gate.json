@@ -16,6 +16,7 @@
     "requires_user_progress": true,
     "evaluator_artifact": "slice_completion_eval.json",
     "north_star_policy_field": "slice_completion_policy",
+    "optional_min_review_score": true,
     "silent_auto_execute": false
   }
 }

@@ -93,7 +93,12 @@ class SupervisedGoalLoopCommand:
 
         def progress_writer(slice_index: int, phase: str, data: dict[str, Any]) -> None:
             progress_events.append(
-                {"slice_index": slice_index, "phase": phase, "data": dict(data)}
+                {
+                    "slice_index": slice_index,
+                    "phase": phase,
+                    "data": dict(data),
+                    "run_id": data.get("run_id"),
+                }
             )
 
         band = run_supervised_goal_loop(
@@ -146,20 +151,23 @@ class SupervisedGoalLoopCommand:
         slice_run_ids: list[str],
         progress_events: list[dict[str, Any]],
     ) -> None:
-        if not slice_run_ids:
+        if not progress_events:
             return
-        last_run_id = slice_run_ids[-1]
-        run_dir = self.root / ".asteria" / "runs" / last_run_id
-        if not run_dir.exists():
-            return
-        progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+        fallback_run_id = slice_run_ids[-1] if slice_run_ids else None
         for event in progress_events:
             phase = str(event.get("phase") or "")
             slice_index = int(event.get("slice_index") or 0)
             data = event.get("data") or {}
+            run_id = str(event.get("run_id") or data.get("run_id") or fallback_run_id or "")
+            if not run_id:
+                continue
+            run_dir = self.root / ".asteria" / "runs" / run_id
+            if not run_dir.exists():
+                continue
+            progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
             if phase == "slice_started":
                 progress.record(
-                    run_id=last_run_id,
+                    run_id=run_id,
                     channel="progress",
                     phase="execute",
                     status="running",
@@ -171,7 +179,7 @@ class SupervisedGoalLoopCommand:
                 )
             elif phase == "slice_completed":
                 progress.record(
-                    run_id=last_run_id,
+                    run_id=run_id,
                     channel="conclusion",
                     phase="result",
                     status="completed",

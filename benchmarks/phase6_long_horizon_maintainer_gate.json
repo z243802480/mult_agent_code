@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 6 long-horizon band maintainer smoke (S37–S40): contract tests + in-process band runners.",
+  "phase": "6",
+  "depends_on_gate": "benchmarks/phase6f_local_background_run_gate.json",
+  "depends_on_signoff": "docs/zh/reports/S40-local-background-run-signoff-20260606.md",
+  "plan": "docs/zh/plans/asteria-holistic-S37-S40.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S37-long-horizon-completion-contract.md",
+    "benchmarks/reference_briefs/S38-north-star-goal-queue.md",
+    "benchmarks/reference_briefs/S39-supervised-goal-loop.md",
+    "benchmarks/reference_briefs/S40-local-background-run.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase6c_long_horizon_completion_gate.py",
+    "tests/integration/test_phase6d_goal_queue_gate.py",
+    "tests/integration/test_phase6e_supervised_goal_loop_gate.py",
+    "tests/integration/test_phase6f_local_background_run_gate.py"
+  ],
+  "maintainer_script": "scripts/long_horizon_maintainer_smoke.py"
+}

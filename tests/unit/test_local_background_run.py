@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-
 from unittest.mock import patch
 
 from asteria_runtime.commands.background_run_command import BackgroundRunCommand
@@ -11,7 +10,9 @@ from asteria_runtime.core.local_background_run import (
     background_run_projection,
     build_background_goal_argv,
     registry_path,
+    start_local_background_run,
 )
+from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 def test_build_background_goal_argv_includes_root_and_no_research(tmp_path: Path) -> None:
@@ -44,6 +45,32 @@ def test_registry_append_and_projection(tmp_path: Path) -> None:
     assert projection["cloud_vm"] is False
 
 
+def test_start_local_background_run_writes_log_path(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+
+    class _FakeProcess:
+        pid = 616161
+        returncode: int | None = None
+
+    def fake_spawn(command: list[str], **kwargs: object) -> _FakeProcess:
+        stdout = kwargs.get("stdout")
+        if stdout is not None and hasattr(stdout, "write"):
+            stdout.write("spawn ok\n")
+        return _FakeProcess()
+
+    entry = start_local_background_run(
+        tmp_path,
+        "log me",
+        validator,
+        spawn=fake_spawn,
+    )
+    assert entry.get("log_path")
+    log_file = tmp_path / str(entry["log_path"])
+    assert log_file.exists()
+    assert "spawn ok" in log_file.read_text(encoding="utf-8")
+
+
 def test_background_command_start_requires_goal(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     try:
@@ -52,3 +79,32 @@ def test_background_command_start_requires_goal(tmp_path: Path) -> None:
     except ValueError:
         raised = True
     assert raised is True
+
+
+def test_refresh_attaches_log_tail_on_completion(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    log_dir = tmp_path / ".asteria" / "background_logs"
+    log_dir.mkdir(parents=True)
+    log_path = log_dir / "bg-test.log"
+    log_path.write_text("line1\nline2\nfinal line\n", encoding="utf-8")
+    registry = BackgroundRunRegistry(tmp_path)
+    registry.append_run(
+        {
+            "background_run_id": "bg-test",
+            "status": "running",
+            "goal": "demo",
+            "pid": 9999,
+            "local_subprocess": True,
+            "cloud_vm": False,
+            "log_path": ".asteria/background_logs/bg-test.log",
+            "started_at": "2026-06-06T12:00:00+08:00",
+            "updated_at": "2026-06-06T12:00:00+08:00",
+        }
+    )
+    with patch("asteria_runtime.core.local_background_run._pid_is_alive", return_value=False):
+        with patch("asteria_runtime.core.local_background_run._poll_exit_code", return_value=0):
+            data = registry.refresh_statuses()
+    run = data["runs"][0]
+    assert run["status"] == "completed"
+    assert "final line" in str(run.get("log_tail"))
+    assert "final line" in run["summary"]

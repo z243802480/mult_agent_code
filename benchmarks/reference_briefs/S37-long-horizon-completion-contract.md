@@ -10,7 +10,7 @@
 
 | 交付 | 全局挂钩 |
 | --- | --- |
-| `north_star.slice_completion_policy` | 可选策略：requires_accepted_run / review_pass / tasks_done |
+| `north_star.slice_completion_policy` | 可选策略：requires_accepted_run / review_pass / tasks_done / **min_review_score** |
 | `long_horizon_completion.py` | `evaluate_slice_completion` · `slice_completion_eval.json` |
 | accept 收尾 | evaluator + user_progress「本 slice 完成判定」 |
 | `status --json long_horizon` | `last_slice_completion` 投影 |

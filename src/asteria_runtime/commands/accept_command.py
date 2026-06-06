@@ -203,8 +203,9 @@ class AcceptCommand:
         north_star_link = None
         slice_completion_eval = None
         goal_queue_continue = None
-        if accepted:
-            north_star_link = NorthStarStore(self.root, self.validator).link_run(run_id)
+        north_star_store = NorthStarStore(self.root, self.validator)
+        if accepted and north_star_store.exists():
+            north_star_link = north_star_store.link_run(run_id)
             slice_completion_eval = evaluate_and_persist_slice_completion(
                 self.root,
                 run_id,

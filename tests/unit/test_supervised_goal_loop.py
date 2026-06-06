@@ -41,6 +41,35 @@ def test_prepare_accept_ready_run_creates_run(tmp_path: Path) -> None:
     assert (run_dir / "eval_report.json").exists()
 
 
+def test_supervised_loop_releases_queue_item_when_accept_blocked(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    InitCommand(tmp_path).run()
+    NorthStarStore(tmp_path, validator).create_default(
+        title="Release on failure",
+        statement="Queue should not stay stuck",
+        milestone_titles=["Blocked slice"],
+    )
+
+    def slice_runner(goal_text: str, _item: dict) -> SupervisedSliceOutcome:
+        run_id = prepare_accept_ready_run(tmp_path, validator, goal_text)
+        return SupervisedSliceOutcome(run_id=run_id, status="completed")
+
+    def accept_runner(_run_id: str) -> bool:
+        return False
+
+    band = run_supervised_goal_loop(
+        tmp_path,
+        validator,
+        max_slices=1,
+        slice_runner=slice_runner,
+        accept_runner=accept_runner,
+    )
+    assert band.stop_reason == "accept_blocked"
+    queue = GoalQueueStore(tmp_path, validator).read()
+    assert queue is not None
+    assert queue["items"][0]["status"] == "pending"
+
+
 def test_supervised_loop_requires_north_star(tmp_path: Path) -> None:
     validator = SchemaValidator(Path.cwd() / "schemas")
     InitCommand(tmp_path).run()

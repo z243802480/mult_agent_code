@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -108,23 +109,43 @@ class GoalQueueStore:
                 return item
         return None
 
+    def link_run_to_goal(self, goal_id: str, run_id: str) -> dict[str, Any] | None:
+        data = self.ensure_seeded_from_north_star()
+        if not data:
+            return None
+        for item in data.get("items") or []:
+            if not isinstance(item, dict) or item.get("goal_id") != goal_id:
+                continue
+            linked = [str(value) for value in (item.get("linked_run_ids") or []) if value]
+            if run_id not in linked:
+                linked.append(run_id)
+            item["linked_run_ids"] = linked
+            item["updated_at"] = now_iso()
+            self.write(data)
+            return item
+        return None
+
+    def release_in_progress(self, goal_id: str) -> dict[str, Any] | None:
+        data = self.read()
+        if not data:
+            return None
+        for item in data.get("items") or []:
+            if not isinstance(item, dict) or item.get("goal_id") != goal_id:
+                continue
+            if item.get("status") != "in_progress":
+                return item
+            item["status"] = "pending"
+            item["updated_at"] = now_iso()
+            self.write(data)
+            return item
+        return None
+
     def mark_done_for_run(self, run_id: str) -> dict[str, Any] | None:
         data = self.ensure_seeded_from_north_star()
         if not data:
             return None
         items = data.get("items") or []
-        target = None
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if item.get("status") == "in_progress":
-                target = item
-                break
-        if target is None:
-            for item in items:
-                if isinstance(item, dict) and item.get("status") == "pending":
-                    target = item
-                    break
+        target = self._find_queue_item_for_run(items, run_id)
         if target is None:
             return None
         linked = [str(value) for value in (target.get("linked_run_ids") or []) if value]
@@ -136,6 +157,25 @@ class GoalQueueStore:
         self.write(data)
         return target
 
+    def _find_queue_item_for_run(
+        self,
+        items: list[Any],
+        run_id: str,
+    ) -> dict[str, Any] | None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            linked = [str(value) for value in (item.get("linked_run_ids") or []) if value]
+            if run_id in linked:
+                return item
+        for item in items:
+            if isinstance(item, dict) and item.get("status") == "in_progress":
+                return item
+        for item in items:
+            if isinstance(item, dict) and item.get("status") == "pending":
+                return item
+        return None
+
     def continue_hint(self) -> dict[str, Any] | None:
         next_item = self.next_pending()
         if not next_item:
@@ -146,6 +186,6 @@ class GoalQueueStore:
         return {
             "goal_id": next_item.get("goal_id"),
             "goal_text": goal_text,
-            "command": f'goal "{goal_text}"',
+            "command": f"goal {shlex.quote(goal_text)}",
             "label": "Continue North Star slice",
         }

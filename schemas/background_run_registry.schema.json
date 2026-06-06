@@ -39,7 +39,9 @@
           "started_at": { "type": "string" },
           "updated_at": { "type": "string" },
           "completed_at": { "type": "string" },
-          "summary": { "type": "string" }
+          "summary": { "type": "string" },
+          "log_path": { "type": "string" },
+          "log_tail": { "type": "string" }
         }
       }
     },

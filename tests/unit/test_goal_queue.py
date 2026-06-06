@@ -31,3 +31,35 @@ def test_mark_done_for_run_links_run_and_exposes_continue_hint(tmp_path: Path) -
     assert hint is not None
     assert hint["goal_text"] == "Second slice"
     assert "Second slice" in hint["command"]
+
+
+def test_mark_done_prefers_linked_run_item(tmp_path: Path) -> None:
+    store = GoalQueueStore(tmp_path)
+    store.seed_goals(["First", "Second"], source="test")
+    store.mark_in_progress("gq-0001")
+    store.link_run_to_goal("gq-0001", "run-linked")
+    marked = store.mark_done_for_run("run-linked")
+    assert marked is not None
+    assert marked["goal_id"] == "gq-0001"
+    assert marked["status"] == "done"
+    queue = store.read()
+    assert queue is not None
+    assert queue["items"][1]["status"] == "pending"
+
+
+def test_release_in_progress_restores_pending(tmp_path: Path) -> None:
+    store = GoalQueueStore(tmp_path)
+    store.seed_goals(["Only slice"], source="test")
+    store.mark_in_progress("gq-0001")
+    released = store.release_in_progress("gq-0001")
+    assert released is not None
+    assert released["status"] == "pending"
+
+
+def test_continue_hint_shell_quotes_goal_text(tmp_path: Path) -> None:
+    store = GoalQueueStore(tmp_path)
+    store.seed_goals(['Add "quotes" safely'], source="test")
+    hint = store.continue_hint()
+    assert hint is not None
+    assert hint["command"].startswith("goal ")
+    assert "quotes" in hint["command"]

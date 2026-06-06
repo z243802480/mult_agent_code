@@ -61,7 +61,8 @@
       "properties": {
         "requires_accepted_run": { "type": "boolean" },
         "requires_review_pass": { "type": "boolean" },
-        "requires_all_tasks_done": { "type": "boolean" }
+        "requires_all_tasks_done": { "type": "boolean" },
+        "min_review_score": { "type": "number" }
       }
     },
     "non_goals": {
