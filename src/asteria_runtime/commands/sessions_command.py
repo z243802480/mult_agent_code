@@ -12,7 +12,12 @@ from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution
 from asteria_runtime.core.agent_loop_observation import latest_agent_loop_observation
 from asteria_runtime.core.agent_loop_run_summary import latest_agent_loop_run_summary
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
+from asteria_runtime.core.execution_profile import (
+    execution_profile_from_run_config,
+    session_agent_recommended_command,
+)
 from asteria_runtime.core.main_path import build_main_path, canonical_next_command
+from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.core.todo_view import build_todo_view
 from asteria_runtime.core.user_progress_view import (
@@ -304,6 +309,12 @@ class SessionsCommand:
             recommended_next_command = (handoff or {}).get(
                 "recommended_next_command"
             ) or self._first_next_action(snapshot)
+        profile = execution_profile_from_run_config(load_run_config(run_dir, self.validator))
+        if recommended_next_command:
+            recommended_next_command = session_agent_recommended_command(
+                recommended_next_command,
+                is_session_agent=profile.is_session_agent,
+            )
         validation_conclusion = (
             (final_report_summary.get("validation_conclusion") or {})
             if final_report_summary

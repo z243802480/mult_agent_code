@@ -23,10 +23,10 @@ S16/S17 退出：B6 **连续 2 次绿**；`friction.debug` ≤2；session_agent 
 ## 状态
 
 - **B6 连续 2 绿**：✅（#4 + #5）
+- **doc_update dogfood**：✅（121s；decide 1 / debug 0 / resume 1）
 - **friction.debug 中位数**：1（目标 ≤2）✅
-- 仍常见 1 次 debug（模型方差）；无 decide / repair_limit 链
 
 ## 下一步
 
-- 可选：status 层 session_agent 不再推荐 `replan`（减少 B6 误触）
-- `python scripts/s16_doc_update_dogfood.py --repo . --fresh`
+- S17 signoff 报告
+- 可选：doc_update `context_request` 低风险自动放行（减 decide 1 次）

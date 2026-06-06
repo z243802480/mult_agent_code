@@ -3,7 +3,7 @@
   "purpose": "Phase 4 steady vibe iteration: repeatable maintainer pulse after Slice signoff.",
   "phase": "4",
   "rhythm_doc": "docs/zh/稳态迭代节奏.md",
-  "reference_brief": "benchmarks/reference_briefs/S16-steady-vibe-iteration.md",
+  "reference_brief": "benchmarks/reference_briefs/S17-runtime-session-agent.md",
   "pulse_script": "scripts/steady_iteration_check.py",
   "prune_script": "scripts/prune_local_artifacts.py",
   "user_path_smokes": [
