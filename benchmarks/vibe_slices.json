@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S30",
+  "active_slice": "S31",
   "active_phase": "Phase 5",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -359,6 +359,18 @@
         "pytest tests/integration/test_execute_swarm_policy_passthrough.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S30-execute-policy-passthrough.md"
+    },
+    {
+      "id": "S31",
+      "name": "Swarm scenario gate",
+      "phase": "5",
+      "depends_on": ["S30"],
+      "user_demo": "统一场景审计 + swarm_holistic_check 脉搏",
+      "green_checks": [
+        "python scripts/swarm_holistic_check.py --root . --skip-studio",
+        "pytest tests/integration/test_phase5d_swarm_scenario_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S31-swarm-scenario-gate.md"
     }
   ]
 }

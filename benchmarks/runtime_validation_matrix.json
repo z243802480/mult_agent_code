@@ -50,6 +50,12 @@
       "priority": "P1",
       "evidence": "runtime_native_progress",
       "goal": "Keep user_progress.jsonl as the default CLI/Studio progress timeline for every validation run."
+    },
+    {
+      "id": "swarm_disjoint_evidence",
+      "priority": "P1",
+      "evidence": "swarm_scenario_audit",
+      "goal": "Phase 5 execute parallel_disjoint or subagent swarm planning leaves auditable harness evidence in the run_dir."
     }
   ]
 }

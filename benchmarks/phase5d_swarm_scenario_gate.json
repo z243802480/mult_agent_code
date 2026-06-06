@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 5 unified scenario gate: execute parallel_disjoint + subagent swarm planning under one audit.",
+  "phase": "5",
+  "wave": "4",
+  "depends_on_gates": [
+    "benchmarks/phase5_swarm_gate.json",
+    "benchmarks/phase5b_swarm_rollout_gate.json",
+    "benchmarks/phase5c_swarm_integration_gate.json"
+  ],
+  "scenario": "benchmarks/phase5_swarm_scenario.json",
+  "plan": "docs/zh/plans/asteria-holistic-S31-S33.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S31-swarm-scenario-gate.md"
+  ],
+  "maintainer_script": "scripts/swarm_holistic_check.py",
+  "holistic_pulse": {
+    "includes": [
+      "scripts/steady_iteration_check.py --skip-b6",
+      "scripts/swarm_integration_check.py --skip-studio",
+      "scripts/swarm_flag_rollout_check.py --skip-probe",
+      "phase5d contract tests"
+    ]
+  },
+  "contract_tests": [
+    "tests/unit/test_swarm_scenario_audit.py",
+    "tests/integration/test_phase5d_swarm_scenario_gate.py"
+  ],
+  "validation_matrix_case": "swarm_disjoint_evidence",
+  "real_provider_signoff": {
+    "optional": true,
+    "requires": ["real_model_gate"],
+    "notes": "After real_model_gate, run validation-run with disjoint_write probe or parallel_writes execute scenario; record in .asteria/validation_runs/."
+  },
+  "notes": "Unifies Phase 5 proof paths; does not enable CLI parallel_writes by default."
+}
