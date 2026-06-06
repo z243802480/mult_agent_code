@@ -1,7 +1,8 @@
 # Asteria 整体推进计划（S36 — Phase 6 Research Bridge）
 
 **日期**：2026-06-06  
-**前置**：S35 已签字（[`S35-design-intel-signoff-20260606.md`](../reports/S35-design-intel-signoff-20260606.md)）
+**状态**：✅ 已签字 — [`S36-design-intel-research-bridge-signoff-20260606.md`](../reports/S36-design-intel-research-bridge-signoff-20260606.md)  
+**下一波段**：[`asteria-holistic-S37-S40.md`](./asteria-holistic-S37-S40.md)
 
 ---
 
@@ -34,10 +35,10 @@
 
 ## 3. 成功标准
 
-- [ ] `phase6b_design_intel_research_gate.json` 与 ACTIVE_SLICE = S36
-- [ ] `/research --type` 输出可映射到 plan 契约（与 S35 pilot 类型并存或扩展）
-- [ ] 至少一条 fake-provider research → plan 场景进 user_progress
-- [ ] doc contracts 三源同步
+- [x] `phase6b_design_intel_research_gate.json` 与 ACTIVE_SLICE = S36
+- [x] `/research --type` 输出可映射到 plan 契约（与 S35 pilot 类型并存或扩展）
+- [x] 至少一条 fake-provider research → plan 场景进 user_progress
+- [x] doc contracts 三源同步
 
 ---
 

@@ -1749,11 +1749,34 @@ function trimForUser(text) {
   return clean.length > 8000 ? clean.slice(-8000) : clean;
 }
 
+async function readBackgroundRuns() {
+  const registryPath = path.join(workspace, ".asteria", "background_run_registry.json");
+  const registry = await readJson(registryPath);
+  const runs = Array.isArray(registry?.runs) ? registry.runs : [];
+  const running = runs.filter((item) => item?.status === "starting" || item?.status === "running");
+  const latest = runs.length ? runs[runs.length - 1] : null;
+  return {
+    enabled: true,
+    local_subprocess: true,
+    cloud_vm: false,
+    running_count: running.length,
+    total_count: runs.length,
+    badge_status: running.length ? "running" : (latest?.status || "idle"),
+    badge_summary: running.length
+      ? `${running.length} local background run(s) active.`
+      : "No local background runs active.",
+    latest,
+    running: running.slice(0, 5),
+    registry_path: ".asteria/background_run_registry.json",
+  };
+}
+
 async function overview() {
-  const [runs, modelRoutes, v0_2_rolling_validation] = await Promise.all([
+  const [runs, modelRoutes, v0_2_rolling_validation, background_runs] = await Promise.all([
     readRuns(),
     modelRouteSummary(),
-    latestV02RollingValidation()
+    latestV02RollingValidation(),
+    readBackgroundRuns(),
   ]);
   return {
     ok: true,
@@ -1765,7 +1788,8 @@ async function overview() {
     doctor: {},
     packageCheck: {},
     runs: runs.slice(0, 10),
-    modelRoutes
+    modelRoutes,
+    background_runs,
   };
 }
 
@@ -1790,6 +1814,7 @@ async function diagnostics() {
     packageCheck,
     modelRoutes,
     long_horizon: statusPayload?.long_horizon ?? {},
+    background_runs: statusPayload?.background_runs ?? await readBackgroundRuns(),
     workflow: {
       can_review: Boolean(statusPayload?.can_review),
       can_accept: Boolean(statusPayload?.can_accept),

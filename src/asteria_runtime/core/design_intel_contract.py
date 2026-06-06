@@ -6,6 +6,45 @@ from typing import Any
 
 PILOT_RESEARCH_TYPES: frozenset[str] = frozenset({"documentation", "creative", "research"})
 _PHASE6_GATE_PATH = Path("benchmarks/phase6_design_intel_gate.json")
+_PHASE6B_GATE_PATH = Path("benchmarks/phase6b_design_intel_research_gate.json")
+
+# Default mapping: all `/research --type` values bridge to pilot `research` unless overridden.
+_DEFAULT_CLI_TO_PLAN: dict[str, str] = {
+    "general": "research",
+    "product_research": "research",
+    "architecture_research": "research",
+    "implementation_research": "research",
+    "competitive_research": "research",
+    "paper_research": "research",
+    "open_source_research": "research",
+    "risk_research": "research",
+    "design_pattern_research": "research",
+}
+
+
+def research_cli_types() -> tuple[str, ...]:
+    """Load `/research --type` values from the Phase 6b gate manifest."""
+    if not _PHASE6B_GATE_PATH.exists():
+        return tuple(_DEFAULT_CLI_TO_PLAN.keys())
+    gate = json.loads(_PHASE6B_GATE_PATH.read_text(encoding="utf-8"))
+    bridge = gate.get("bridge_scope") or {}
+    values = bridge.get("research_cli_types")
+    if isinstance(values, list) and values:
+        return tuple(str(item) for item in values)
+    return tuple(_DEFAULT_CLI_TO_PLAN.keys())
+
+
+def map_research_cli_type_to_plan_type(cli_type: object) -> str | None:
+    if not isinstance(cli_type, str):
+        return None
+    normalized = cli_type.strip().lower()
+    if not normalized:
+        return None
+    if normalized in PILOT_RESEARCH_TYPES:
+        return normalized
+    if normalized in research_cli_types():
+        return _DEFAULT_CLI_TO_PLAN.get(normalized, "research")
+    return None
 
 
 def pilot_research_types() -> tuple[str, ...]:
@@ -46,6 +85,10 @@ def infer_research_type(goal_spec: dict[str, Any]) -> str | None:
     explicit = normalize_research_type(goal_spec.get("research_type"))
     if explicit:
         return explicit
+
+    cli_mapped = map_research_cli_type_to_plan_type(goal_spec.get("research_cli_type"))
+    if cli_mapped:
+        return cli_mapped
 
     goal_type = str(goal_spec.get("goal_type") or "").strip().lower()
     if goal_type in {"report", "knowledge_base"}:
@@ -115,12 +158,16 @@ def apply_research_type_to_task_plan(
         return task_plan
     result = dict(task_plan)
     tasks: list[Any] = []
-    for task in result.get("tasks") or []:
+    promote_research_task = bool(goal_spec.get("research_cli_type"))
+    for index, task in enumerate(result.get("tasks") or []):
         if not isinstance(task, dict):
             tasks.append(task)
             continue
         updated = dict(task)
         updated["research_type"] = research_type
+        if promote_research_task and index == 0:
+            updated["task_kind"] = "research"
+            updated.pop("execution_profile", None)
         tasks.append(updated)
     result["tasks"] = tasks
     return result

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "purpose": "Phase 6 local background run (S40): durable subprocess; cloud VM deferred.",
+  "phase": "6",
+  "wave": "6",
+  "depends_on_gate": "benchmarks/phase6e_supervised_goal_loop_gate.json",
+  "plan": "docs/zh/plans/asteria-holistic-S37-S40.md",
+  "reference_briefs": [
+    "benchmarks/reference_briefs/S40-local-background-run.md"
+  ],
+  "contract_tests": [
+    "tests/integration/test_phase6f_local_background_run_gate.py"
+  ],
+  "background_scope": {
+    "local_subprocess": true,
+    "cloud_vm": false,
+    "implementation_status": "active"
+  }
+}

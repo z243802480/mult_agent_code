@@ -14,6 +14,11 @@ from asteria_runtime.core.design_intel_contract import (
     apply_research_type_to_task_plan,
 )
 from asteria_runtime.core.context_loader import ContextLoader
+from asteria_runtime.core.design_intel_research_bridge import (
+    apply_research_report_bridge,
+    build_research_runtime_context,
+    load_research_report,
+)
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.execution_profile import resolve_execution_profile
@@ -90,6 +95,7 @@ class PlanCommand:
         worktree_policy: str = "controlled_patch",
         validation_probe_ids: list[str] | None = None,
         force_harness: bool = False,
+        run_id: str | None = None,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
@@ -106,6 +112,7 @@ class PlanCommand:
         self.worktree_policy = worktree_policy
         self.validation_probe_ids = list(validation_probe_ids or [])
         self.force_harness = force_harness
+        self.run_id = run_id
 
     def run(self) -> PlanResult:
         agent_dir = self.root / ".asteria"
@@ -115,8 +122,12 @@ class PlanCommand:
         policy = load_policy_config(agent_dir, self.validator)
         project_config = self.store.read(agent_dir / "project.json", "project_config")
         run_store = RunStore(agent_dir, self.validator)
-        run = run_store.create_run(f'asteria plan "{self.goal}"')
-        run_dir = run_store.run_dir(run["run_id"])
+        if self.run_id:
+            run = run_store.load_run(self.run_id)
+            run_dir = run_store.run_dir(run["run_id"])
+        else:
+            run = run_store.create_run(f'asteria plan "{self.goal}"')
+            run_dir = run_store.run_dir(run["run_id"])
         workspace_envelope = build_workspace_envelope(
             workspace_root=self.root,
             permission_level=self.permission_level,
@@ -191,7 +202,14 @@ class PlanCommand:
             "INIT -> SPEC",
             {"from": "INIT", "to": "SPEC"},
         )
-        runtime_context = ContextLoader(self.root, self.validator).load()
+        runtime_context = ContextLoader(self.root, self.validator).load(run_id=run["run_id"])
+        research_report = load_research_report(run_dir, self.validator)
+        research_report_path = run_dir / "research_report.json"
+        if research_report:
+            runtime_context["design_intel_research"] = build_research_runtime_context(
+                research_report,
+                research_report_path,
+            )
         prompt_envelope = persist_prompt_envelope(
             root=self.root,
             run_dir=run_dir,
@@ -383,6 +401,30 @@ class PlanCommand:
                 {"failure_report": str(report_path), "failure_type": failure_type},
             )
             raise RuntimeError(run["summary"]) from last_exc
+        if research_report:
+            goal_spec = apply_research_report_bridge(
+                goal_spec,
+                research_report,
+                report_path=str(research_report_path),
+            )
+            progress_logger.record(
+                run_id=run["run_id"],
+                channel="evidence",
+                event_type="evidence",
+                phase="plan",
+                status="completed",
+                title="Research report linked to plan",
+                summary=(
+                    f"Mapped research type {research_report.get('research_type')} "
+                    "into the planning contract."
+                ),
+                display_level="inspector",
+                artifact_refs=[str(research_report_path)],
+                evidence_refs=[str(research_report_path)],
+                call_chain=["PlanCommand", "DesignIntelResearchBridge"],
+                execution_chain=["research", "goal_spec"],
+                data=runtime_context.get("design_intel_research") or {},
+            )
         goal_spec = apply_research_type_to_goal_spec(goal_spec)
         design_intel_research_type = goal_spec.get("research_type")
         goal_spec_path = run_dir / "goal_spec.json"

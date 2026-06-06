@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BackgroundRunRegistry",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "runs",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "background_run_id",
+          "status",
+          "goal",
+          "started_at",
+          "updated_at"
+        ],
+        "properties": {
+          "background_run_id": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["starting", "running", "completed", "failed", "stopped"]
+          },
+          "goal": { "type": "string" },
+          "run_id": { "type": "string" },
+          "pid": { "type": "integer" },
+          "exit_code": { "type": "integer" },
+          "local_subprocess": { "type": "boolean" },
+          "cloud_vm": { "type": "boolean" },
+          "command": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "started_at": { "type": "string" },
+          "updated_at": { "type": "string" },
+          "completed_at": { "type": "string" },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "updated_at": { "type": "string" }
+  }
+}

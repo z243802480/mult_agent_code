@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime import __version__
-from asteria_runtime.commands.accept_command import AcceptCommand
+from asteria_runtime.commands.background_run_command import BackgroundRunCommand
 from asteria_runtime.commands.acceptance_command import AcceptanceCommand
 from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand
@@ -21,6 +21,7 @@ from asteria_runtime.commands.daily_command import (
     DailyRunCommand,
 )
 from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.supervised_goal_loop_command import SupervisedGoalLoopCommand
 from asteria_runtime.commands.model_check_command import ModelCheckCommand
 from asteria_runtime.commands.new_command import NewCommand
 from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
@@ -660,7 +661,37 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help=MODEL_STRATEGY_HELP,
     )
+    run_parser.add_argument(
+        "--background",
+        action="store_true",
+        help="Start the goal in a local background subprocess (durable registry; cloud defer)",
+    )
+    run_parser.add_argument(
+        "--toward-north-star",
+        action="store_true",
+        help="Run a bounded supervised multi-slice loop toward the configured North Star",
+    )
+    run_parser.add_argument(
+        "--max-slices",
+        type=int,
+        default=3,
+        help="Maximum North Star slices per supervised loop invocation (default: 3)",
+    )
     run_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    background_parser = subcommands.add_parser(
+        "background",
+        help="Local background subprocess runs (durable registry; cloud VM defer)",
+    )
+    background_parser.add_argument("--root", default=".", help="Workspace root path")
+    background_sub = background_parser.add_subparsers(dest="background_action", required=True)
+    background_start = background_sub.add_parser("start", help="Start a goal in the background")
+    background_start.add_argument("goal", help="Natural-language goal")
+    background_start.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    background_status = background_sub.add_parser("status", help="Show background run badge status")
+    background_status.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    background_list = background_sub.add_parser("list", help="List background runs from registry")
+    background_list.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     accept_parser = subcommands.add_parser(
         "accept",
@@ -1586,6 +1617,32 @@ def main() -> None:
         return
 
     if command in {"run", "goal"}:
+        if args.background:
+            if not args.goal:
+                raise SystemExit("goal is required when using --background")
+            bg_result = BackgroundRunCommand(
+                root=Path(args.root),
+                action="start",
+                goal=args.goal,
+            ).run()
+            if args.json:
+                print(json.dumps(bg_result.to_dict(), ensure_ascii=False, indent=2))
+            else:
+                print(bg_result.to_text())
+            return
+        if args.toward_north_star:
+            loop_result = SupervisedGoalLoopCommand(
+                root=Path(args.root),
+                max_slices=args.max_slices,
+                enable_research=not args.no_research,
+                permission_level=args.permission_level,
+                model_strategy=args.model_strategy,
+            ).run()
+            if args.json:
+                print(json.dumps(loop_result.to_dict(), ensure_ascii=False, indent=2))
+            else:
+                print(loop_result.to_text())
+            return
         run_result = RunCommand(
             root=Path(args.root),
             goal=args.goal,
@@ -1649,6 +1706,18 @@ def main() -> None:
             parallel_writes=args.parallel_disjoint_writes,
         ).run()
         print(execute_result.to_text())
+        return
+
+    if command == "background":
+        bg_result = BackgroundRunCommand(
+            root=Path(args.root),
+            action=args.background_action,
+            goal=getattr(args, "goal", None),
+        ).run()
+        if getattr(args, "json", False):
+            print(json.dumps(bg_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(bg_result.to_text())
         return
 
     if command == "promotions":

@@ -129,6 +129,15 @@ def long_horizon_projection(workspace_root: Path | None = None, *, today: date |
     }
     if summary_payload:
         payload["north_star"] = summary_payload
+    from asteria_runtime.core.long_horizon_completion import latest_slice_completion_eval
+
+    last_eval = latest_slice_completion_eval(workspace)
+    if last_eval:
+        payload["last_slice_completion"] = {
+            "run_id": last_eval.get("run_id"),
+            "slice_complete": last_eval.get("slice_complete"),
+            "summary": last_eval.get("summary"),
+        }
     return payload
 
 

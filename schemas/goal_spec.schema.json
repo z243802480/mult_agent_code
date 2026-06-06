@@ -58,6 +58,8 @@
     "research_type": {
       "type": "string",
       "enum": ["documentation", "creative", "research"]
-    }
+    },
+    "research_cli_type": { "type": "string" },
+    "research_report_ref": { "type": "string" }
   }
 }

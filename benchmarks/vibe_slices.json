@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S36",
+  "active_slice": "S40",
   "active_phase": "Phase 6",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -431,6 +431,52 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S36-design-intel-research-bridge.md"
+    },
+    {
+      "id": "S37",
+      "name": "Long horizon completion contract",
+      "phase": "6",
+      "depends_on": ["S36"],
+      "user_demo": "accept 后 slice 完成判定 + status long_horizon 投影",
+      "green_checks": [
+        "pytest tests/integration/test_phase6c_long_horizon_completion_gate.py -q",
+        "pytest tests/unit/test_long_horizon_completion.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S37-long-horizon-completion-contract.md"
+    },
+    {
+      "id": "S38",
+      "name": "North Star goal queue",
+      "phase": "6",
+      "depends_on": ["S37"],
+      "user_demo": "goal_queue 从 milestones seed；accept 后 Continue 提示",
+      "green_checks": [
+        "pytest tests/integration/test_phase6d_goal_queue_gate.py -q",
+        "pytest tests/unit/test_goal_queue.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S38-north-star-goal-queue.md"
+    },
+    {
+      "id": "S39",
+      "name": "Supervised goal loop",
+      "phase": "6",
+      "depends_on": ["S38"],
+      "user_demo": "--toward-north-star --max-slices N + kill file",
+      "green_checks": [
+        "pytest tests/integration/test_phase6e_supervised_goal_loop_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S39-supervised-goal-loop.md"
+    },
+    {
+      "id": "S40",
+      "name": "Local background run",
+      "phase": "6",
+      "depends_on": ["S39"],
+      "user_demo": "本地 subprocess durable run + Studio 徽章",
+      "green_checks": [
+        "pytest tests/integration/test_phase6f_local_background_run_gate.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S40-local-background-run.md"
     }
   ]
 }

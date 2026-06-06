@@ -9,8 +9,10 @@ from asteria_runtime.core.design_intel_contract import (
     apply_research_type_to_goal_spec,
     apply_research_type_to_task_plan,
     infer_research_type,
+    map_research_cli_type_to_plan_type,
     normalize_research_type,
     pilot_research_types,
+    research_cli_types,
 )
 
 
@@ -41,6 +43,22 @@ def test_normalize_research_type_invalid() -> None:
 def test_infer_from_explicit_field() -> None:
     goal_spec = {"goal_type": "software_tool", "research_type": "creative"}
     assert infer_research_type(goal_spec) == "creative"
+
+
+def test_infer_from_research_cli_type_product_research() -> None:
+    goal_spec = {
+        "goal_type": "software_tool",
+        "research_cli_type": "product_research",
+    }
+    assert infer_research_type(goal_spec) == "research"
+    assert map_research_cli_type_to_plan_type("product_research") == "research"
+
+
+def test_research_cli_types_match_phase6b_gate() -> None:
+    gate = json.loads(
+        Path("benchmarks/phase6b_design_intel_research_gate.json").read_text(encoding="utf-8")
+    )
+    assert set(research_cli_types()) == set(gate["bridge_scope"]["research_cli_types"])
 
 
 def test_infer_from_goal_type_report() -> None:

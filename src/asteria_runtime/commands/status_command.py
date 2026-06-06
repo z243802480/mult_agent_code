@@ -16,6 +16,7 @@ from asteria_runtime.core.execution_profile import session_agent_recommended_com
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.core.phase2_stability_window import long_horizon_projection
+from asteria_runtime.core.local_background_run import background_run_projection
 from asteria_runtime.core.todo_view import todo_view_text_lines
 from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
@@ -224,6 +225,7 @@ class StatusResult:
             "active_goal_memory": self.active_goal_memory,
             "active_goal_state": self.active_goal_state,
             "long_horizon": long_horizon_projection(self.root),
+            "background_runs": background_run_projection(self.root),
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
             "plugin_control": self.plugin_control,
             "latest_failure": latest_failure,

@@ -359,6 +359,36 @@ function workerCountFromTree(workerTree: AnyRecord): number {
   return countNodes(roots);
 }
 
+function BackgroundRunPanel({ overview }: { overview: OverviewPayload | null }) {
+  const background = asRecord(overview?.background_runs);
+  if (!background || background.enabled === false) return null;
+  const runningCount = Number(background.running_count ?? 0);
+  const totalCount = Number(background.total_count ?? 0);
+  const badgeStatus = firstText(String(background.badge_status ?? ""), "idle");
+  const summary = firstText(String(background.badge_summary ?? ""), "No background run status recorded.");
+  const latest = asRecord(background.latest);
+
+  return (
+    <div className="evidenceBlock backgroundRunPanel">
+      <small>Local background runs</small>
+      <div className="workerSchedulingBadge" data-fake-path="false">
+        {runningCount > 0 ? `local subprocess · ${runningCount} running` : "local subprocess · idle"}
+      </div>
+      <div className="evidenceStats">
+        <Metric label="Badge" value={badgeStatus} tone={runningCount ? "warn" : "good"} />
+        <Metric label="Running" value={`${runningCount}/${totalCount}`} tone={runningCount ? "warn" : "good"} />
+        <Metric label="Cloud VM" value="defer" tone="good" />
+      </div>
+      <div className="keyValueList">
+        <div><small>Summary</small><pre>{summary}</pre></div>
+        {latest && Object.keys(latest).length > 0 && (
+          <div><small>Latest</small><pre>{`${String(latest.background_run_id ?? "n/a")} · ${String(latest.status ?? "unknown")}\n${String(latest.goal ?? "")}`}</pre></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function LongHorizonPanel({ overview }: { overview: OverviewPayload | null }) {
   const longHorizon = asRecord(overview?.long_horizon);
   if (!longHorizon || !Object.keys(longHorizon).length) return null;
@@ -896,6 +926,7 @@ export function Inspector({
         </p>
       </section>
       <AiDebugAgentCard runDetail={runDetail} selectedRunId={selectedRunId} />
+      <BackgroundRunPanel overview={overview} />
       <LongHorizonPanel overview={overview} />
       {showRunOverviewFirst && (
         <EvidenceExplorer

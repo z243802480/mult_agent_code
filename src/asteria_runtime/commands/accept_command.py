@@ -6,6 +6,8 @@ from pathlib import Path
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.run_command import RunCommand, RunStepSummary
+from asteria_runtime.core.goal_queue import GoalQueueStore
+from asteria_runtime.core.long_horizon_completion import evaluate_and_persist_slice_completion
 from asteria_runtime.core.north_star import NorthStarStore
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.storage.event_logger import EventLogger
@@ -198,9 +200,33 @@ class AcceptCommand:
             run["current_phase"] = "ACCEPT"
             run["summary"] = "Acceptance blocked; review or candidate promotion issues remain."
         run_store.update_run(run)
+        north_star_link = None
+        slice_completion_eval = None
+        goal_queue_continue = None
+        if accepted:
+            north_star_link = NorthStarStore(self.root, self.validator).link_run(run_id)
+            slice_completion_eval = evaluate_and_persist_slice_completion(
+                self.root,
+                run_id,
+                validator=self.validator,
+                accepted=accepted,
+                review_status=review_status,
+                north_star_link=north_star_link,
+            )
+            GoalQueueStore(self.root, self.validator).mark_done_for_run(run_id)
+            goal_queue_continue = GoalQueueStore(self.root, self.validator).continue_hint()
         final_report_path = self._write_final_report(run_id, review_status)
-        next_actions = self._next_actions(accepted, blockers)
-        recommended_next_command = self._recommended_next_command(accepted, blockers)
+        next_actions = self._next_actions(
+            accepted,
+            blockers,
+            slice_completion_eval=slice_completion_eval,
+            goal_queue_continue=goal_queue_continue,
+        )
+        recommended_next_command = self._recommended_next_command(
+            accepted,
+            blockers,
+            goal_queue_continue=goal_queue_continue,
+        )
         final_report_summary_path = self._write_final_report_summary(
             run_id=run_id,
             status=run["status"],
@@ -233,9 +259,6 @@ class AcceptCommand:
             blockers=blockers,
             next_actions=next_actions,
         )
-        north_star_link = None
-        if accepted:
-            north_star_link = NorthStarStore(self.root, self.validator).link_run(run_id)
         EventLogger(run_dir / "events.jsonl", self.validator).record(
             run_id,
             "run_accepted" if accepted else "accept_blocked",
@@ -247,8 +270,44 @@ class AcceptCommand:
                 "blockers": blockers,
                 "final_report_summary_path": str(final_report_summary_path),
                 "north_star_link": north_star_link,
+                "slice_completion_eval": slice_completion_eval,
+                "goal_queue_continue": goal_queue_continue,
             },
         )
+        if slice_completion_eval:
+            progress.record(
+                run_id=run_id,
+                channel="conclusion",
+                event_type="message",
+                phase="result",
+                status="completed" if slice_completion_eval.get("slice_complete") else "blocked",
+                title="本 slice 完成判定",
+                summary=str(slice_completion_eval.get("summary") or ""),
+                data={
+                    "slice_complete": slice_completion_eval.get("slice_complete"),
+                    "signals": slice_completion_eval.get("signals") or {},
+                    "north_star_milestone_id": slice_completion_eval.get("north_star_milestone_id"),
+                },
+                display_level="main",
+                transcript_kind="final",
+            )
+        if goal_queue_continue:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                event_type="message",
+                phase="next",
+                status="waiting_user",
+                title="North Star 下一条 slice",
+                summary=(
+                    f"建议继续：{goal_queue_continue.get('goal_text')} "
+                    f"（运行 `asteria {goal_queue_continue.get('command')}`）"
+                ),
+                data=goal_queue_continue,
+                display_level="main",
+                transcript_kind="ask",
+                ui_intent="needs_input",
+            )
         progress.final_report_event(
             run_id=run_id,
             title="验收报告已写入",
@@ -331,9 +390,24 @@ class AcceptCommand:
             },
         )
 
-    def _next_actions(self, accepted: bool, blockers: list[str]) -> list[str]:
+    def _next_actions(
+        self,
+        accepted: bool,
+        blockers: list[str],
+        *,
+        slice_completion_eval: dict | None = None,
+        goal_queue_continue: dict | None = None,
+    ) -> list[str]:
         if accepted:
-            return ["Use the final report as the durable handoff artifact."]
+            actions = ["Use the final report as the durable handoff artifact."]
+            if slice_completion_eval:
+                actions.append(str(slice_completion_eval.get("summary") or "Slice completion evaluated."))
+            if goal_queue_continue:
+                actions.append(
+                    "Continue North Star: "
+                    f"`asteria {goal_queue_continue.get('command')}`"
+                )
+            return actions
         actions = ["Inspect blockers above before release or handoff."]
         if any("review status" in blocker for blocker in blockers):
             actions.append("Run `asteria debug` or `asteria replan`, then `asteria review`.")
@@ -343,8 +417,16 @@ class AcceptCommand:
             )
         return actions
 
-    def _recommended_next_command(self, accepted: bool, blockers: list[str]) -> str | None:
+    def _recommended_next_command(
+        self,
+        accepted: bool,
+        blockers: list[str],
+        *,
+        goal_queue_continue: dict | None = None,
+    ) -> str | None:
         if accepted:
+            if goal_queue_continue and goal_queue_continue.get("command"):
+                return str(goal_queue_continue["command"])
             return None
         if any("review status" in blocker for blocker in blockers):
             return "debug"

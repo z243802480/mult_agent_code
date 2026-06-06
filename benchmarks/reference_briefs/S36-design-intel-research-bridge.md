@@ -32,3 +32,18 @@ pytest tests/unit/test_documentation_contracts.py -q
 - 不替换 session_agent Beta 默认路径
 - 不引入 12 Agent 新类
 - 先 brief → 小 diff → demo → 三源同步
+
+---
+
+## 实现记录（2026-06-06）
+
+| 交付 | 路径 |
+| --- | --- |
+| research bridge 模块 | `src/asteria_runtime/core/design_intel_research_bridge.py` |
+| CLI→plan 映射 | `design_intel_contract.map_research_cli_type_to_plan_type` |
+| plan 桥接 | `plan_command`：`run_id` 复用 + `research_report_ref` + user_progress |
+| task_kind=research | 有 `research_cli_type` 时首 task 设 research 并 pop execution_profile |
+| matrix 证据 | `profile:research` 接受 `design_intel_research_band` |
+| 闸门 | `phase6b_design_intel_research_gate.json` |
+
+签字：`docs/zh/reports/S36-design-intel-research-bridge-signoff-20260606.md`

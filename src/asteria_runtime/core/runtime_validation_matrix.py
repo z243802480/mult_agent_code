@@ -145,6 +145,28 @@ def _evaluate_case(
         raw_counts = profile.get("profile_counts") if isinstance(profile, dict) else {}
         counts = raw_counts if isinstance(raw_counts, dict) else {}
         ok = int(counts.get(profile_id) or 0) > 0
+        if profile_id == "research" and not ok:
+            from asteria_runtime.core.design_intel_research_bridge import (
+                find_design_intel_research_evidence,
+            )
+
+            band = find_design_intel_research_evidence(root)
+            ok = isinstance(band, dict) and bool(band.get("ok"))
+            if ok:
+                details = {
+                    "profile_id": profile_id,
+                    "count": int(counts.get(profile_id) or 0),
+                    "design_intel_research_band": band.get("run_id"),
+                }
+                gap_type = "none"
+                return {
+                    "id": str(case.get("id") or evidence or "unknown"),
+                    "priority": str(case.get("priority") or "P1"),
+                    "evidence": evidence,
+                    "ok": ok,
+                    "gap_type": gap_type,
+                    "details": details,
+                }
         details = {"profile_id": profile_id, "count": int(counts.get(profile_id) or 0)}
         gap_type = "none" if ok else "evidence_missing"
     elif evidence == "permission_reason":
