@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from asteria_runtime.commands.init_command import InitCommand
@@ -89,6 +90,28 @@ def test_router_selects_dynamic_for_manifest_goal(tmp_path: Path) -> None:
     assert routed.studio_mode == "orchestration"
 
 
+def test_router_selects_cold_for_readonly_artifact_goal(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMA_DIR)
+    _enable_dynamic_gray(tmp_path, validator)
+    routed = resolve_orchestration_route(
+        tmp_path,
+        "在仓库内只读探索 orchestration 与 studio 两个目录，写一份汇总 markdown 到 docs/zh/notes/overview.md；单 session 完成，不要 L3 manifest",
+        validator=validator,
+        model_client=FakeDynamicIngressRouter("cold_goal_execute"),
+        router_mode="model",
+    )
+    assert routed.capability_id == "cold_goal_execute"
+
+
+def test_dynamic_ingress_gate_boundary_case_message() -> None:
+    gate_path = Path.cwd() / "benchmarks" / "orchestration_dynamic_ingress_gate.json"
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    case = next(item for item in gate["cases"] if item["id"] == "di_not_parallel_dispatch")
+    assert "markdown" in case["message"]
+    assert "manifest" in case["message"].lower()
+
+
 def test_router_rejects_unavailable_dynamic_capability(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     validator = SchemaValidator(SCHEMA_DIR)
@@ -115,4 +138,4 @@ def test_router_rejects_unavailable_dynamic_capability(tmp_path: Path) -> None:
         router_mode="model",
     )
     assert routed.capability_id != "run_dynamic_orchestration"
-    assert routed.source == "conservative_fallback"
+    assert routed.source in {"conservative_fallback", "rules"}

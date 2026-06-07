@@ -103,8 +103,9 @@ def resolve_orchestration_route(
         try:
             return _model_route(message, catalog, client, validator)
         except OrchestrationRouterError:
-            pass
-    return _conservative_fallback(catalog)
+            return _rules_route(message, catalog)
+
+    return _rules_route(message, catalog)
 
 
 def _explicit_mode_route(
@@ -153,8 +154,13 @@ def _model_route(
         "session_continue for follow-ups in an accepted session; cold_goal_execute for new work. "
         "Do not choose spawn_parallel_workers unless it is available and the goal truly requires "
         "multi-worker dispatch—small edits stay on session_agent via cold or continue paths. "
+        "When user mentions orchestration_runner_state.jsonl, checkpoint resume, disjoint write fanout continuation, "
+        "or resuming an L3 dynamic workflow, choose run_dynamic_orchestration if available—not read_only_plan. "
         "Do not choose run_dynamic_orchestration unless available and the goal requires multi-phase "
         "manifest orchestration (fanout, verifier, merge checkpoint, resume)—not for single scoped edits. "
+        "When the user wants readonly exploration with a deliverable artifact in the workspace, prefer "
+        "cold_goal_execute over chat_answer; parallel readonly work inside a run is an AgentLoop subagent "
+        "decision, not L3 manifest orchestration. "
         "Subagent/worker splits inside a run are AgentLoop decisions, not ingress splits. "
         "Return only JSON matching OrchestrationChoice. "
         "Do not include code, shell commands, or implementation details."
@@ -281,11 +287,7 @@ def _rule_pick(text: str, catalog: RuntimeOrchestrationCatalog) -> Orchestration
     elif _looks_like_read_only_plan(text):
         preferred = "read_only_plan"
     elif _looks_like_workspace_edit(text):
-        preferred = (
-            "session_continue_execute"
-            if _available(catalog, "session_continue_execute")
-            else "cold_goal_execute"
-        )
+        preferred = "cold_goal_execute"
     else:
         preferred = "chat_answer"
 

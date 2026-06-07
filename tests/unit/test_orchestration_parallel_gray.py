@@ -786,3 +786,72 @@ def test_wave7_live_probe_enables_execution_gray(tmp_path: Path) -> None:
     assert agent_loop.get("parallel_writes") is not True
     assert result.validation_run_path is not None
     assert result.validation_run_path.exists()
+
+
+def test_wave8_beta_opt_in_enables_parallel_writes(tmp_path: Path) -> None:
+    from asteria_runtime.commands.init_command import InitCommand
+    from asteria_runtime.core.orchestration_parallel_gray import (
+        LIVE_EXECUTION_GRAY_POLICY_KEY,
+        PARALLEL_WRITES_BETA_OPT_IN_KEY,
+        PRODUCTION_PATH_POLICY_KEY,
+        dynamic_ingress_eval_passed,
+        evaluate_wave8_parallel_writes_beta_readiness,
+        run_wave8_beta_opt_in_band,
+        set_isolated_parallel_write_production_path,
+        set_orchestration_dynamic_live_execution_gray,
+        set_orchestration_dynamic_workflows_gray,
+        set_parallel_writes_beta_opt_in,
+    )
+    from asteria_runtime.core.policy_config import load_policy_config
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    agent_dir = tmp_path / ".asteria"
+    verification = agent_dir / "verification"
+    verification.mkdir(parents=True)
+    (verification / "orchestration_dynamic_ingress_real_20260607.json").write_text(
+        json.dumps({"ok": True, "summary": {"hit_rate": 1.0}}),
+        encoding="utf-8",
+    )
+    (verification / "orchestration_wave7_live_probe.json").write_text(
+        json.dumps({"ok": True}),
+        encoding="utf-8",
+    )
+    decisions_dir = agent_dir / "decisions"
+    decisions_dir.mkdir(parents=True)
+    (decisions_dir / "decision-orchestration-parallel-0006.json").write_text(
+        json.dumps(
+            {
+                "decision_id": "decision-orchestration-parallel-0006",
+                "status": "resolved",
+                "selected_option_id": "wave7_live_execution_gray",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    set_isolated_parallel_write_production_path(agent_dir=agent_dir, validator=validator, enabled=True)
+    set_orchestration_dynamic_workflows_gray(agent_dir=agent_dir, validator=validator, enabled=True)
+    set_orchestration_dynamic_live_execution_gray(agent_dir=agent_dir, validator=validator, enabled=True)
+
+    ingress_ok, _ = dynamic_ingress_eval_passed(tmp_path)
+    assert ingress_ok is True
+
+    readiness = evaluate_wave8_parallel_writes_beta_readiness(
+        root=tmp_path,
+        policy=load_policy_config(agent_dir, validator),
+    )
+    assert readiness.wave7_probe_ok is True
+    assert readiness.ingress_eval_ok is True
+
+    set_parallel_writes_beta_opt_in(agent_dir=agent_dir, validator=validator, enabled=True)
+    band = run_wave8_beta_opt_in_band(repo_root=tmp_path, validator=validator)
+    assert band["ok"] is True
+
+    policy = load_policy_config(agent_dir, validator)
+    agent_loop = policy.get("agent_loop") or {}
+    assert agent_loop.get("parallel_writes") is True
+    assert agent_loop.get(PARALLEL_WRITES_BETA_OPT_IN_KEY) is True
+    assert agent_loop.get(LIVE_EXECUTION_GRAY_POLICY_KEY) is True
+    assert agent_loop.get(PRODUCTION_PATH_POLICY_KEY) is True

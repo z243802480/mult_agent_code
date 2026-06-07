@@ -80,6 +80,8 @@ def catalog_selection_guidance() -> list[str]:
         "Prefer session_continue_execute for follow-up edits in an accepted session.",
         "Prefer cold_goal_execute for a new implementation goal when no warm session applies.",
         "Prefer resume_run / review_run / accept_run only for clear lifecycle intent.",
+        "When the user requests readonly exploration that produces a workspace artifact (report, summary file, code change), prefer cold_goal_execute over chat_answer—even if exploration is readonly.",
+        "chat_answer is for discussion and explanations without creating or mutating workspace files.",
         "Subagent and parallel exploration inside a run are AgentLoop subagent actions—not Studio ingress splits.",
         "Do not select spawn_parallel_workers unless available and strong judgment says coordinated multi-worker dispatch with merge evidence is required.",
         "Do not select run_dynamic_orchestration unless available and the goal requires multi-phase manifest orchestration with checkpoints—not for single small edits.",

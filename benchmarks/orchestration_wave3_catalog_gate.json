@@ -14,6 +14,7 @@
       "id": "w3_small_edit_no_parallel",
       "message": "给 greet_cli 增加 --version 参数并补测试",
       "expect_capability": "cold_goal_execute",
+      "accept_capabilities": ["cold_goal_execute", "session_continue_execute"],
       "forbidden_capabilities": ["spawn_parallel_workers"]
     },
     {

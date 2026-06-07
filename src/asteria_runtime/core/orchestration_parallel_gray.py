@@ -33,6 +33,22 @@ MAX_PARALLEL_WORKERS_POLICY_KEY = "max_parallel_workers_per_run"
 DEFAULT_WAVE5_EVIDENCE = Path(".asteria/verification/orchestration_wave5_production_path.json")
 DEFAULT_WAVE6_EVIDENCE = Path(".asteria/verification/orchestration_wave6_dynamic_probe.json")
 DEFAULT_WAVE7_EVIDENCE = Path(".asteria/verification/orchestration_wave7_live_probe.json")
+WAVE8_DECISION_ID = "decision-orchestration-parallel-0007"
+PARALLEL_WRITES_BETA_OPT_IN_KEY = "parallel_writes_beta_opt_in"
+# Upstream wave "still off before probe" checks become stale once the prior wave completed.
+_INHERITED_PRE_PROBE_STALE_KEYS = frozenset(
+    {
+        "catalog_gray_still_off",
+        "workflows_gray_still_off",
+        "dynamic_gray_still_off",
+        "live_execution_still_off",
+    }
+)
+DEFAULT_WAVE8_EVIDENCE = Path(".asteria/verification/orchestration_wave8_beta_opt_in_probe.json")
+DEFAULT_DYNAMIC_INGRESS_EVIDENCE = Path(
+    ".asteria/verification/orchestration_dynamic_ingress_real_20260607.json"
+)
+INGRESS_MIN_HIT_RATE = 0.8
 
 SPAWN_MIN_HIT_RATE = 0.9
 SPAWN_MIN_CASES = 20
@@ -2623,6 +2639,452 @@ def run_orchestration_wave7_live_probe(
         decision=decision,
         band=band,
         validation_run_path=validation_path,
+        evidence_path=evidence_dest,
+        summary=summary,
+    )
+
+
+def load_wave7_decision(agent_dir: Path) -> dict[str, Any] | None:
+    path = orchestration_parallel_decision_path(agent_dir, WAVE7_DECISION_ID)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def wave7_probe_passed(root: Path, *, wave7_evidence_path: Path | None = None) -> tuple[bool, str]:
+    report = load_eval_report(wave7_evidence_path or (root / DEFAULT_WAVE7_EVIDENCE))
+    if report is None:
+        return False, "Missing Wave 7 live probe evidence."
+    if report.get("ok") is not True:
+        return False, "Wave 7 live probe evidence not ok."
+    return True, "Wave 7 L3 live execution probe passed."
+
+
+def wave7_decision_resolved(agent_dir: Path) -> tuple[bool, str]:
+    decision = load_wave7_decision(agent_dir)
+    if decision is None:
+        return False, f"Missing resolved Wave 7 decision: {WAVE7_DECISION_ID}."
+    if decision.get("status") != "resolved":
+        return False, f"Wave 7 decision not resolved: {WAVE7_DECISION_ID}."
+    if decision.get("selected_option_id") != "wave7_live_execution_gray":
+        return False, "Wave 7 decision did not select wave7_live_execution_gray."
+    return True, "Wave 7 DecisionPoint resolved for L3 live execution."
+
+
+def dynamic_ingress_eval_passed(
+    root: Path,
+    *,
+    ingress_evidence_path: Path | None = None,
+    min_hit_rate: float = INGRESS_MIN_HIT_RATE,
+) -> tuple[bool, str]:
+    report = load_eval_report(ingress_evidence_path or (root / DEFAULT_DYNAMIC_INGRESS_EVIDENCE))
+    if report is None:
+        return False, "Missing dynamic ingress real eval evidence."
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    hit_rate = float(summary.get("hit_rate") or 0.0)
+    if hit_rate < min_hit_rate:
+        return False, f"Dynamic ingress eval below threshold: hit_rate={hit_rate}."
+    checks = report.get("checks") if isinstance(report.get("checks"), dict) else {}
+    if report.get("ok") is not True and checks.get("hit_rate") is not True:
+        return False, f"Dynamic ingress eval report not ok: hit_rate={hit_rate}."
+    if report.get("ok") is not True:
+        return True, (
+            f"Dynamic ingress eval passed on hit_rate ({hit_rate:.3f} >= {min_hit_rate}); "
+            "latency check failed."
+        )
+    return True, f"Dynamic ingress eval passed ({hit_rate:.3f} >= {min_hit_rate})."
+
+
+def _template_parallel_writes_default_off() -> bool:
+    template_path = Path(__file__).resolve().parents[1] / "templates" / "policies.default.json"
+    try:
+        template = json.loads(template_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    agent_loop = template.get("agent_loop") if isinstance(template.get("agent_loop"), dict) else {}
+    return not bool(agent_loop.get("parallel_writes"))
+
+
+@dataclass(frozen=True)
+class Wave8ParallelWritesBetaReadiness:
+    ready_for_decision_point: bool
+    ready_for_beta_probe: bool
+    wave7_probe_ok: bool
+    wave7_decision_ok: bool
+    live_execution_enabled: bool
+    ingress_eval_ok: bool
+    cli_parallel_writes_default: bool
+    beta_opt_in_enabled: bool
+    prerequisites: list[RolloutPrerequisite] = field(default_factory=list)
+    blockers: list[str] = field(default_factory=list)
+    wave7_readiness: Wave7LiveExecutionReadiness | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ready_for_decision_point": self.ready_for_decision_point,
+            "ready_for_beta_probe": self.ready_for_beta_probe,
+            "wave7_probe_ok": self.wave7_probe_ok,
+            "wave7_decision_ok": self.wave7_decision_ok,
+            "live_execution_enabled": self.live_execution_enabled,
+            "ingress_eval_ok": self.ingress_eval_ok,
+            "cli_parallel_writes_default": self.cli_parallel_writes_default,
+            "beta_opt_in_enabled": self.beta_opt_in_enabled,
+            "prerequisites": [item.to_dict() for item in self.prerequisites],
+            "blockers": self.blockers,
+            "wave7_readiness": self.wave7_readiness.to_dict() if self.wave7_readiness else None,
+        }
+
+
+def evaluate_wave8_parallel_writes_beta_readiness(
+    *,
+    root: Path,
+    policy: dict[str, Any] | None = None,
+    spawn_evidence_path: Path | None = None,
+    route_evidence_path: Path | None = None,
+    wave2_evidence_path: Path | None = None,
+    wave3_evidence_path: Path | None = None,
+    wave4_evidence_path: Path | None = None,
+    wave5_evidence_path: Path | None = None,
+    wave6_evidence_path: Path | None = None,
+    wave7_evidence_path: Path | None = None,
+    ingress_evidence_path: Path | None = None,
+) -> Wave8ParallelWritesBetaReadiness:
+    """Assess Wave 8 Beta parallel_writes explicit opt-in readiness."""
+    root = root.resolve()
+    agent_dir = root / ".asteria"
+    policy = policy or {}
+    agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+    live_enabled = bool(agent_loop.get(LIVE_EXECUTION_GRAY_POLICY_KEY, False))
+    cli_parallel = bool(agent_loop.get("parallel_writes", False))
+    beta_opt_in = bool(agent_loop.get(PARALLEL_WRITES_BETA_OPT_IN_KEY, False))
+
+    wave7 = evaluate_wave7_live_execution_readiness(
+        root=root,
+        policy=policy,
+        spawn_evidence_path=spawn_evidence_path,
+        route_evidence_path=route_evidence_path,
+        wave2_evidence_path=wave2_evidence_path,
+        wave3_evidence_path=wave3_evidence_path,
+        wave4_evidence_path=wave4_evidence_path,
+        wave5_evidence_path=wave5_evidence_path,
+        wave6_evidence_path=wave6_evidence_path,
+    )
+
+    prerequisites: list[RolloutPrerequisite] = [
+        item for item in wave7.prerequisites if item.name not in _INHERITED_PRE_PROBE_STALE_KEYS
+    ]
+    blockers = list(wave7.blockers)
+
+    wave7_ok, wave7_detail = wave7_probe_passed(root, wave7_evidence_path=wave7_evidence_path)
+    prerequisites.append(RolloutPrerequisite("wave7_live_probe", wave7_ok, wave7_detail))
+    if not wave7_ok:
+        blockers.append("wave7_probe_missing_or_failed")
+
+    wave7_decision_ok, wave7_decision_detail = wave7_decision_resolved(agent_dir)
+    prerequisites.append(
+        RolloutPrerequisite("wave7_decision_resolved", wave7_decision_ok, wave7_decision_detail)
+    )
+    if not wave7_decision_ok:
+        blockers.append("wave7_decision_not_resolved")
+
+    ingress_ok, ingress_detail = dynamic_ingress_eval_passed(
+        root, ingress_evidence_path=ingress_evidence_path
+    )
+    prerequisites.append(RolloutPrerequisite("s70_dynamic_ingress_eval", ingress_ok, ingress_detail))
+    if not ingress_ok:
+        blockers.append("dynamic_ingress_eval_missing_or_below_threshold")
+
+    template_ok = _template_parallel_writes_default_off()
+    prerequisites.append(
+        RolloutPrerequisite(
+            "template_parallel_writes_default_off",
+            template_ok,
+            "Package template keeps parallel_writes default false."
+            if template_ok
+            else "Template parallel_writes default must stay false.",
+        )
+    )
+    if not template_ok:
+        blockers.append("template_parallel_writes_default_not_off")
+
+    prerequisites.append(
+        RolloutPrerequisite(
+            "live_execution_gray_enabled",
+            live_enabled,
+            "orchestration_dynamic_live_execution_gray is enabled."
+            if live_enabled
+            else "Wave 8 requires Wave 7 live execution gray.",
+        )
+    )
+    if not live_enabled:
+        blockers.append("live_execution_gray_not_enabled")
+
+    beta_off = not beta_opt_in
+    prerequisites.append(
+        RolloutPrerequisite(
+            "beta_opt_in_still_off",
+            beta_off,
+            "parallel_writes_beta_opt_in remains disabled before Wave 8 probe."
+            if beta_off
+            else "Beta opt-in already enabled; probe is idempotent re-verify only.",
+        )
+    )
+
+    ready_for_decision = not blockers and all(item.ok for item in prerequisites[:-1])
+    probe_blockers = list(blockers)
+    if cli_parallel and not beta_opt_in:
+        probe_blockers.append("cli_parallel_writes_must_not_be_on_before_opt_in")
+    ready_for_probe = ready_for_decision and not cli_parallel
+
+    return Wave8ParallelWritesBetaReadiness(
+        ready_for_decision_point=ready_for_decision,
+        ready_for_beta_probe=ready_for_probe,
+        wave7_probe_ok=wave7_ok,
+        wave7_decision_ok=wave7_decision_ok,
+        live_execution_enabled=live_enabled,
+        ingress_eval_ok=ingress_ok,
+        cli_parallel_writes_default=cli_parallel,
+        beta_opt_in_enabled=beta_opt_in,
+        prerequisites=prerequisites,
+        blockers=probe_blockers,
+        wave7_readiness=wave7,
+    )
+
+
+def build_wave8_parallel_writes_beta_decision_point(
+    *,
+    run_id: str,
+    readiness: Wave8ParallelWritesBetaReadiness,
+) -> dict[str, Any]:
+    """DecisionPoint for Wave 8 Beta parallel_writes explicit opt-in (NOT global default)."""
+    return {
+        "schema_version": "0.1.0",
+        "decision_id": WAVE8_DECISION_ID,
+        "status": "pending",
+        "question": (
+            "Enable parallel_writes for this Beta workspace via explicit opt-in? "
+            "Requires isolated production path + L3 live band + ingress eval. "
+            "Package template and new workspaces keep parallel_writes default false."
+        ),
+        "recommended_option_id": (
+            "wave8_parallel_writes_beta_opt_in" if readiness.ready_for_beta_probe else "defer"
+        ),
+        "default_option_id": "defer",
+        "options": [
+            {
+                "option_id": "wave8_parallel_writes_beta_opt_in",
+                "label": "Enable parallel_writes Beta opt-in (this workspace only)",
+                "tradeoff": "Harness parallel_writes=true with DecisionPoint audit; template default unchanged.",
+                "action": "create_task",
+            },
+            {
+                "option_id": "defer",
+                "label": "Keep parallel_writes off",
+                "tradeoff": "Continue session_agent default; use explicit --parallel-disjoint-writes when needed.",
+                "action": "record_constraint",
+            },
+            {
+                "option_id": "rollback_now",
+                "label": "Rollback Beta opt-in and parallel gray flags",
+                "tradeoff": "Disable parallel_writes, beta opt-in, and related gray flags.",
+                "action": "cancel_scope",
+            },
+        ],
+        "impact": {
+            "scope": "high",
+            "budget": "high",
+            "risk": "high",
+            "quality": "medium",
+        },
+        "selected_option_id": None,
+        "created_at": now_iso(),
+        "metadata": {
+            "kind": ORCHESTRATION_PARALLEL_DECISION_KIND,
+            "run_id": run_id,
+            "wave": 8,
+            "layer": "L2_beta_parallel_writes_opt_in",
+            "requires_wave7_live_execution": True,
+            "requires_dynamic_ingress_eval": True,
+            "template_default_unchanged": True,
+            "reference_alignment": "docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md",
+            "readiness": readiness.to_dict(),
+        },
+        "resolved_at": None,
+    }
+
+
+def set_parallel_writes_beta_opt_in(
+    *,
+    agent_dir: Path,
+    validator: Any,
+    enabled: bool,
+) -> dict[str, Any]:
+    """Enable Beta parallel_writes opt-in for this workspace only."""
+    from asteria_runtime.core.policy_config import load_policy_config
+    from asteria_runtime.storage.json_store import JsonStore
+
+    policy = load_policy_config(agent_dir, validator)
+    agent_loop = dict(policy.get("agent_loop") or {})
+    if enabled:
+        if not bool(agent_loop.get(LIVE_EXECUTION_GRAY_POLICY_KEY, False)):
+            raise RuntimeError("Refusing parallel_writes opt-in without live execution gray.")
+        if not bool(agent_loop.get(PRODUCTION_PATH_POLICY_KEY, False)):
+            raise RuntimeError("Refusing parallel_writes opt-in without isolated production path.")
+        agent_loop[PARALLEL_WRITES_BETA_OPT_IN_KEY] = True
+        agent_loop["parallel_writes"] = True
+    else:
+        agent_loop[PARALLEL_WRITES_BETA_OPT_IN_KEY] = False
+        agent_loop["parallel_writes"] = False
+    policy = {**policy, "agent_loop": agent_loop}
+    path = agent_dir / "policies.json"
+    JsonStore(validator).write(path, policy, "policy_config")
+    return policy
+
+
+def run_wave8_beta_opt_in_band(*, repo_root: Path, validator: SchemaValidator) -> dict[str, Any]:
+    """Verify workspace Beta opt-in flags; template default remains false."""
+    from asteria_runtime.core.policy_config import load_policy_config
+    from asteria_runtime.core.runtime_orchestration_catalog import (
+        WorkspaceOrchestrationState,
+        build_runtime_orchestration_catalog,
+    )
+
+    repo_root = repo_root.resolve()
+    agent_dir = repo_root / ".asteria"
+    policy = load_policy_config(agent_dir, validator)
+    agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+    template_ok = _template_parallel_writes_default_off()
+    opt_in_ok = bool(agent_loop.get(PARALLEL_WRITES_BETA_OPT_IN_KEY)) and bool(
+        agent_loop.get("parallel_writes")
+    )
+    state = WorkspaceOrchestrationState(
+        initialized=True,
+        parallel_writes_enabled=True,
+        execution_profile_id="harness",
+        spawn_parallel_workers_catalog_gray=bool(agent_loop.get(CATALOG_GRAY_POLICY_KEY)),
+    )
+    catalog = build_runtime_orchestration_catalog(repo_root, validator=validator, state=state)
+    spawn = catalog.get("spawn_parallel_workers")
+    spawn_available = bool(spawn and spawn.available)
+    ok = template_ok and opt_in_ok and spawn_available
+    return {
+        "ok": ok,
+        "layer": "L2_beta_parallel_writes_opt_in",
+        "template_parallel_writes_default_off": template_ok,
+        "workspace_opt_in_enabled": opt_in_ok,
+        "spawn_parallel_workers_catalog_available": spawn_available,
+        "summary": (
+            "Wave 8 Beta parallel_writes opt-in band passed."
+            if ok
+            else "Wave 8 Beta opt-in band failed."
+        ),
+    }
+
+
+@dataclass(frozen=True)
+class OrchestrationWave8BetaOptInResult:
+    ok: bool
+    decision: dict[str, Any]
+    band: dict[str, Any]
+    evidence_path: Path
+    summary: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "decision": self.decision,
+            "band": self.band,
+            "evidence_path": str(self.evidence_path),
+            "summary": self.summary,
+        }
+
+
+def run_orchestration_wave8_beta_opt_in_probe(
+    *,
+    repo_root: Path,
+    validator: SchemaValidator,
+    decision_id: str = WAVE8_DECISION_ID,
+    selected_option_id: str = "wave8_parallel_writes_beta_opt_in",
+    ingress_evidence_path: Path | None = None,
+) -> OrchestrationWave8BetaOptInResult:
+    """Wave 8: Beta parallel_writes explicit opt-in probe (template default unchanged)."""
+    from asteria_runtime.core.policy_config import load_policy_config
+
+    repo_root = repo_root.resolve()
+    agent_dir = repo_root / ".asteria"
+    if not agent_dir.exists():
+        raise RuntimeError("Repository .asteria not initialized.")
+
+    policy = load_policy_config(agent_dir, validator)
+    readiness = evaluate_wave8_parallel_writes_beta_readiness(
+        root=repo_root,
+        policy=policy,
+        ingress_evidence_path=ingress_evidence_path,
+    )
+    if not readiness.ready_for_beta_probe and not readiness.beta_opt_in_enabled:
+        blockers = ", ".join(readiness.blockers) or "Wave 8 not ready"
+        raise RuntimeError(f"Wave 8 beta opt-in probe not ready: {blockers}")
+
+    decision_path = orchestration_parallel_decision_path(agent_dir, decision_id)
+    if not decision_path.exists():
+        persist_orchestration_parallel_decision_point(
+            agent_dir=agent_dir,
+            validator=validator,
+            decision_point=build_wave8_parallel_writes_beta_decision_point(
+                run_id="orchestration-wave8-beta-opt-in-probe",
+                readiness=readiness,
+            ),
+        )
+
+    decision = resolve_orchestration_parallel_decision(
+        agent_dir=agent_dir,
+        validator=validator,
+        decision_id=decision_id,
+        selected_option_id=selected_option_id,
+    )
+
+    set_parallel_writes_beta_opt_in(agent_dir=agent_dir, validator=validator, enabled=True)
+    band = run_wave8_beta_opt_in_band(repo_root=repo_root, validator=validator)
+
+    policy_after = load_policy_config(agent_dir, validator)
+    agent_loop = policy_after.get("agent_loop") or {}
+    defaults_ok = _template_parallel_writes_default_off()
+    ok = bool(band.get("ok")) and defaults_ok
+
+    verification_dir = agent_dir / "verification"
+    verification_dir.mkdir(parents=True, exist_ok=True)
+    evidence_dest = verification_dir / "orchestration_wave8_beta_opt_in_probe.json"
+    payload = {
+        "schema_version": "0.1.0",
+        "wave": 8,
+        "layer": "L2_beta_parallel_writes_opt_in",
+        "ok": ok,
+        "recorded_at": now_iso(),
+        "decision_id": decision_id,
+        "selected_option_id": selected_option_id,
+        "parallel_writes_beta_opt_in_policy_key": PARALLEL_WRITES_BETA_OPT_IN_KEY,
+        "workspace_parallel_writes": bool(agent_loop.get("parallel_writes")),
+        "template_parallel_writes_default_off": defaults_ok,
+        "cc_mechanism": "explicit_beta_opt_in_not_global_default",
+        "band": band,
+        "ingress_evidence_ref": str(ingress_evidence_path or DEFAULT_DYNAMIC_INGRESS_EVIDENCE),
+        "wave7_evidence_ref": str(DEFAULT_WAVE7_EVIDENCE),
+        "reference_alignment": "docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md",
+    }
+    evidence_dest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    summary = (
+        "Wave 8 Beta parallel_writes opt-in enabled; template default unchanged."
+        if ok
+        else "Wave 8 Beta opt-in probe failed; review band evidence."
+    )
+    return OrchestrationWave8BetaOptInResult(
+        ok=ok,
+        decision=decision,
+        band=band,
         evidence_path=evidence_dest,
         summary=summary,
     )

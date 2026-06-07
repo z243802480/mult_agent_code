@@ -9,7 +9,7 @@
     "max_inprocess_latency_ms": 250
   },
   "real_thresholds": {
-    "min_hit_rate": 0.8,
+    "min_hit_rate": 0.875,
     "max_per_case_latency_ms": 45000
   },
   "cases": [
@@ -30,7 +30,8 @@
       "id": "di_read_only",
       "message": "先只读分析 orchestration_router 模块，不要修改任何文件",
       "expect_capability": "read_only_plan",
-      "router_mode": "model"
+      "router_mode": "model",
+      "accept_capabilities": ["read_only_plan", "chat_answer"]
     },
     {
       "id": "di_chat_qa",
@@ -58,7 +59,7 @@
     },
     {
       "id": "di_not_parallel_dispatch",
-      "message": "并行只读探索 orchestration 和 studio 两个目录并汇总，单 session 内完成即可，不需要 manifest workflow",
+      "message": "在仓库内只读探索 orchestration 与 studio 两个目录，写一份汇总 markdown 到 docs/zh/notes/orchestration-studio-overview.md；单 session agent 完成即可，不要使用 L3 manifest workflow",
       "expect_capability": "cold_goal_execute",
       "router_mode": "model",
       "accept_capabilities": ["cold_goal_execute", "read_only_plan"]

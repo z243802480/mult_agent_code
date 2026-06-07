@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Wave 8 Beta parallel_writes explicit opt-in (S73)",
+  "brief": "benchmarks/reference_briefs/S73-parallel-writes-beta-opt-in.md",
+  "depends_on": [
+    "benchmarks/orchestration_wave7_live_gate.json",
+    "benchmarks/orchestration_dynamic_ingress_gate.json"
+  ],
+  "decision_id": "decision-orchestration-parallel-0007",
+  "default_option_id": "wave8_parallel_writes_beta_opt_in",
+  "ingress_min_hit_rate": 0.8,
+  "template_parallel_writes_must_stay_false": true
+}
