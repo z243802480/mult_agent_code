@@ -209,15 +209,22 @@ async function waitForReadyOrAssist(base, sessionId) {
       throw new Error(`stagnant workflow at ${sig}`);
     }
     return false;
-  }, 600000, "Studio run did not reach ready_for_accept");
+  }, 900000, "Studio run did not reach ready_for_accept");
 }
 
 async function waitForSessionJobsIdle(base, sessionId) {
   await waitFor(async () => {
     const status = await getStatusJson();
     if (isReady(status)) return true;
-    return !(await sessionJobsRunning(base, sessionId));
-  }, 300000, "Studio jobs did not finish");
+    const jobsRunning = await sessionJobsRunning(base, sessionId);
+    if (!jobsRunning) return true;
+    // Long goal runs legitimately keep a job "running" — don't block the assist loop forever.
+    const stillActive = /in_progress|running|execute/i.test(
+      `${status.workflow_state || ""} ${status.current_phase || ""}`,
+    );
+    if (stillActive) return false;
+    return true;
+  }, 540000, "Studio jobs did not finish");
 }
 
 async function sessionJobsRunning(base, sessionId) {
