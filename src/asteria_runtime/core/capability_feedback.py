@@ -42,7 +42,7 @@ class CapabilityFeedbackAdvisor:
         evaluation = self._provider_route_strategy_evaluation(agent_dir)
         decision = str(evaluation.get("decision") or "unknown")
         fast_path = classify_fast_path(goal)
-        low_risk = fast_path.task_kind in {"doc_update", "simple_file", "single_file_bugfix"}
+        low_risk = fast_path.risk_tier in {"default", "readonly"}
         selected_tier = fast_path.goal_spec_tier
         plan: dict[str, Any] = {
             "purpose": "goal_spec",

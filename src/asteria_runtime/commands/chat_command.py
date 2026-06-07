@@ -325,6 +325,7 @@ Chat mode is lightweight Q&A. Answer clearly and concisely.
 Do not claim to have modified files or run state-changing commands.
 If the user asks for implementation, suggest plan mode for read-only analysis or goal mode for execution.
 Use context_envelope.payload to summarize current session state, blockers, latest evidence, and model route rationale when relevant.
+When capability_manifest.orchestration_paths is present, use it to explain which runtime paths exist (chat, read-only plan, continue session, cold run, resume, review, accept) and recommend the lightest path that fits the user's intent.
 When asked why a model route was used, answer from session_context.model_route_timeline before using general reasoning.
 context_envelope.intent tells you why context was mounted.
 active_goal_memory is mounted only for progress, status, plan, and next-step questions. Prefer it when it is available.

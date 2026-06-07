@@ -12,6 +12,7 @@ from asteria_runtime.core.context_envelope import ContextEnvelope
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.permission_policy import permission_policy_profile
 from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.runtime_orchestration_catalog import build_runtime_orchestration_catalog
 from asteria_runtime.core.runtime_progress import build_runtime_progress
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.run_store import RunStore
@@ -100,10 +101,17 @@ class ChatContextBuilder:
             policy,
             tool_names=create_default_tool_registry().names(),
         ).capability_manifest(mode="plan")
+        orchestration_catalog = build_runtime_orchestration_catalog(
+            self.root,
+            validator=self.validator,
+        )
+        manifest_payload = capability_manifest.to_dict()
+        manifest_payload["orchestration_paths"] = orchestration_catalog.to_dict()
         return {
             "chat_intent": intent,
             "capability_invocation_policy": capability_invocation_policy,
-            "capability_manifest": capability_manifest.to_dict(),
+            "capability_manifest": manifest_payload,
+            "orchestration_catalog": orchestration_catalog.to_dict(),
             "context_policy": {
                 "active_goal_memory_included": include_active_goal_memory,
                 "backend_fields_allowed": intent == "debug_question",

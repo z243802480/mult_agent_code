@@ -163,8 +163,11 @@ class OpenAICompatibleClient:
             payload["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             payload["max_completion_tokens"] = request.max_output_tokens
-        if request.response_format == "json":
+        if request.response_format == "json" and request.worker_transport != "tool_use":
             payload["response_format"] = {"type": "json_object"}
+        if request.tools:
+            payload["tools"] = request.tools
+            payload["tool_choice"] = "auto"
         if self.settings.streaming_enabled:
             payload["stream_options"] = {"include_usage": True}
         return payload

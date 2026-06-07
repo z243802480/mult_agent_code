@@ -25,7 +25,6 @@ class ExecutionActionPreparer:
         prepared = self._ensure_planned_verification(prepared, task)
         prepared = self._replace_unsafe_verification(prepared, task, policy)
         prepared = self._stabilize_text_artifact_verification(prepared, task)
-        prepared = self._prepend_python_compile_verification(prepared, task)
         prepared = self._drop_parent_list_for_text_artifact_write(prepared, task)
         prepared = self._drop_redundant_root_list_for_standalone_artifact(prepared, task)
         self.require_non_empty(prepared)
@@ -161,9 +160,12 @@ class ExecutionActionPreparer:
             replaced = True
         if not replaced:
             return action
-        replacement = self._planned_verification_calls(task) or self._default_verification_calls(
-            task, action
-        )
+        replacement = self._planned_verification_calls(task)
+        if not replacement:
+            normalized = dict(action)
+            normalized["verification"] = safe_verification
+            normalized["verification"] = self._dedupe_tool_calls(normalized["verification"])
+            return normalized
         normalized = dict(action)
         normalized["verification"] = [
             *safe_verification,
@@ -224,61 +226,6 @@ class ExecutionActionPreparer:
             if command.startswith(("python ", "pytest ", "ruff ", "mypy ")):
                 return command
         return None
-
-    def _default_verification_calls(self, task: dict, action: dict) -> list[dict]:
-        calls = []
-        artifacts = [
-            *[
-                str(call.get("args", {}).get("path"))
-                for call in action.get("tool_calls", [])
-                if call.get("tool_name") == "write_file" and call.get("args", {}).get("path")
-            ],
-            *[
-                str(artifact)
-                for artifact in task.get("expected_artifacts", [])
-                if isinstance(artifact, str)
-            ],
-            *[
-                str(path)
-                for path in task.get("expected_changed_files", [])
-                if isinstance(path, str)
-            ],
-        ]
-        for artifact in dict.fromkeys(artifacts):
-            if not isinstance(artifact, str):
-                continue
-            if artifact.endswith(".py"):
-                calls.append(
-                    {
-                        "tool_name": "run_command",
-                        "args": {
-                            "command": f"python -m py_compile {artifact}",
-                            "expected_returncodes": [0],
-                        },
-                        "reason": "safe fallback verification for Python artifact",
-                    }
-                )
-            elif artifact.lower().endswith((".html", ".css", ".htm")):
-                calls.append(
-                    {
-                        "tool_name": "run_command",
-                        "args": {
-                            "command": self._text_artifact_verification_command([artifact]),
-                            "expected_returncodes": [0],
-                        },
-                        "reason": "safe fallback verification for web artifact",
-                    }
-                )
-        return calls or [
-            {
-                "tool_name": "run_command",
-                "args": {
-                    "command": "python -c \"print('verification placeholder')\"",
-                    "expected_returncodes": [0],
-                },
-                "reason": "safe fallback verification",
-            }
-        ]
 
     def _stabilize_text_artifact_verification(self, action: dict, task: dict) -> dict:
         artifacts = self._text_only_artifacts(task)
@@ -352,33 +299,6 @@ class ExecutionActionPreparer:
             "raise SystemExit(('missing or empty: '+', '.join(missing)) if missing else 0)"
         )
         return f'python -c "{code}"'
-
-    def _prepend_python_compile_verification(self, action: dict, task: dict) -> dict:
-        if not action.get("verification"):
-            return action
-        artifacts = [
-            str(path)
-            for path in [
-                *task.get("expected_changed_files", []),
-                *task.get("expected_artifacts", []),
-            ]
-            if str(path).endswith(".py")
-        ]
-        if not artifacts or "run_command" not in set(task.get("allowed_tools", [])):
-            return action
-        compile_calls = [
-            {
-                "tool_name": "run_command",
-                "args": {"command": f"python -m py_compile {artifact}"},
-                "reason": "fail fast on Python syntax errors before behavior checks",
-            }
-            for artifact in sorted(set(artifacts))
-        ]
-        normalized = dict(action)
-        normalized["verification"] = self._dedupe_tool_calls(
-            [*compile_calls, *list(action.get("verification") or [])]
-        )
-        return normalized
 
     def _drop_redundant_root_list_for_standalone_artifact(self, action: dict, task: dict) -> dict:
         """Avoid broad root listings after a standalone artifact is already produced.

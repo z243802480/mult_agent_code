@@ -8,7 +8,11 @@ Asteria 的核心方向是：
 
 ```text
 模型主导 agent loop，Runtime 提供能力环境、权限边界、预算、证据和恢复护栏。
+编排路径由模型根据 ContextEnvelope + CapabilityManifest 选择，不由固定 if/else 流水线写死。
 ```
+
+**哲学真源（三层调度 + 模型掌舵）**：[`plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](./plans/RUNTIME_MULTI_DISPATCH_MODEL.md) §8。  
+**动态调度反模式（禁止 domain 硬分支）**：[`大模型循环与动态上下文设计.md`](./大模型循环与动态上下文设计.md) §3.1。
 
 状态机仍然重要，但它不替模型写死完整流程。Runtime 的职责是：
 

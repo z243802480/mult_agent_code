@@ -100,5 +100,17 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 - `src/asteria_runtime/core/execution_profile.py`
 - `src/asteria_runtime/core/worker_spawn.py`
 - `src/asteria_runtime/core/swarm_pipeline.py`
+- [`plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](../plans/RUNTIME_MULTI_DISPATCH_MODEL.md)（S61 多对多调度哲学）
+- [`plans/RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md`](../plans/RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md)（R0–R5）
 - `docs/zh/reports/phase5-swarm-entry-signoff-20260606.md`
 - 研发总计划 Phase 5 · §6 KEEP_PLACEHOLDER
+
+## 9. S61 对齐说明（2026-06-07）
+
+```text
+编排面   → GoalSpec/Plan · orchestration_discipline · risk_tier
+协调面   → ExecutionCoordinator · 多对多 dispatch
+执行面   → Worker invocation · session_agent | harness
+```
+
+S60 `web_artifact` 定向优化 **不进入** 蜂群/RFC 路径；见 S61 R1 回滚。

@@ -147,10 +147,12 @@ class RunCommand:
         worktree_policy: str = "controlled_patch",
         validation_probe_ids: list[str] | None = None,
         force_harness: bool = False,
+        continue_session: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.goal = goal
         self.run_id = run_id
+        self.continue_session = continue_session
         self.max_iterations = max_iterations
         self.max_tasks_per_iteration = max_tasks_per_iteration
         self.model_client = model_client
@@ -177,8 +179,43 @@ class RunCommand:
     def run(self) -> RunResult:
         if not (self.root / ".asteria").exists():
             InitCommand(self.root).run()
-        if self.goal and self.run_id:
+        if self.goal and self.run_id and not self.continue_session:
             raise ValueError("Pass either a new goal or an existing session id, not both.")
+        if self.continue_session and self.goal:
+            from asteria_runtime.core.session_continuation import (
+                SessionContinuationError,
+                assess_session_continuation,
+                prepare_session_follow_up,
+            )
+
+            eligibility = assess_session_continuation(self.root, validator=self.validator)
+            if eligibility is None:
+                raise SessionContinuationError(
+                    "No accepted session run is available; use `asteria run` for a new goal."
+                )
+            prepare_session_follow_up(
+                self.root,
+                eligibility.run_id,
+                self.goal,
+                validator=self.validator,
+            )
+            steps = [
+                RunStepSummary("continuation", "completed", eligibility.reason),
+            ]
+            run_dir = self.root / ".asteria" / "runs" / eligibility.run_id
+            progress = UserProgressLogger(run_dir / "user_progress.jsonl", self.validator)
+            progress.record(
+                run_id=eligibility.run_id,
+                channel="progress",
+                phase="execute",
+                status="running",
+                title="续作执行",
+                summary="已复用当前 session，跳过 GoalSpec/Plan，直接进入执行。",
+                display_level="main",
+                transcript_kind="progress",
+                ui_intent="work_progress",
+            )
+            return self.continue_run(eligibility.run_id, steps, _progress=progress)
         if not self.goal:
             run_store = RunStore(self.root / ".asteria", self.validator)
             run_id = self.run_id or run_store.current_session_id()

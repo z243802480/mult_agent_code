@@ -26,6 +26,8 @@ class ChatRequest:
     temperature: float | None = None
     max_output_tokens: int | None = None
     timeout_seconds: int | None = None
+    worker_transport: str = "json"
+    tools: list[dict] | None = None
     metadata: dict = field(default_factory=dict)
 
 

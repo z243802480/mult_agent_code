@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
+from asteria_runtime.core.fast_path_policy import classify_risk_tier
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.task_contract import (
     completion_contract,
@@ -948,6 +949,10 @@ class RequirementPlanner:
         task["validation_commands"] = validation_commands(task)
         task["failure_policy"] = failure_policy(task)
         task["parallel_safety"] = parallel_safety(task)
+        task["risk_tier"] = classify_risk_tier(
+            str(task.get("title") or task.get("description") or ""),
+            task=task,
+        ).risk_tier
         task["merge_strategy"] = "none"
         self._harden_broad_write_scope(task)
         self._mark_disjoint_write_scope(task)

@@ -93,8 +93,54 @@ note("C2", "accept ok");
 
 await verifyTaskCompletion(taskId);
 
+let warm = null;
+if (process.env.B6_WARM_CONTINUATION === "1" && taskId === "small_code_change") {
+  warm = await runWarmContinuationGoal();
+}
+
 const totalMin = Math.round((Date.now() - startedAt) / 60000);
-console.log(JSON.stringify({ ok: true, task_id: taskId, workspace, total_min: totalMin, log, friction }, null, 2));
+console.log(JSON.stringify({ ok: true, task_id: taskId, workspace, total_min: totalMin, log, friction, warm }, null, 2));
+
+async function runWarmContinuationGoal() {
+  const warmGoal = process.env.B6_WARM_GOAL_TEXT
+    || "再给 greet_cli 增加 --uppercase 参数，输出时将名字转为大写，并补一个 pytest。";
+  const warmPort = port + 1;
+  const warmStarted = Date.now();
+  const warmServer = spawn(process.execPath, [
+    "server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(warmPort), "--python", python,
+  ], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+  let warmBoot = "";
+  warmServer.stdout.on("data", (c) => { warmBoot += c; });
+  warmServer.stderr.on("data", (c) => { warmBoot += c; });
+  try {
+    await waitFor(() => warmBoot.includes("Asteria Studio listening"), 20000, "warm studio API failed");
+    const base = `http://127.0.0.1:${warmPort}`;
+    const { session } = await postJson(`${base}/api/studio/sessions`, {});
+    const submit = await postJson(`${base}/api/studio/sessions/${session.session_id}/messages`, {
+      message: warmGoal,
+      mode: "run",
+      permission: "allow",
+    });
+    if (!submit.started) throw new Error("warm continuation should start immediately with allow");
+    if (submit.execution_route !== "warm_session") {
+      throw new Error(`expected warm_session route, got ${submit.execution_route || "none"}`);
+    }
+    note("W1", "warm continuation job started (--continue-session expected)");
+    await waitForReadyOrAssist(base, session.session_id);
+    const { events } = await getJson(`${base}/api/studio/sessions/${session.session_id}/events`);
+    const toolStart = events.find((event) => event.type === "tool_start" && Array.isArray(event.command));
+    const command = toolStart?.command || [];
+    if (!command.includes("--continue-session")) {
+      throw new Error(`warm route missing --continue-session: ${JSON.stringify(command)}`);
+    }
+    const elapsed_s = Math.round((Date.now() - warmStarted) / 1000);
+    note("W2", `warm continuation finished in ~${elapsed_s}s`);
+    return { ok: true, elapsed_s, route: submit.execution_route, goal: warmGoal };
+  } finally {
+    warmServer.kill("SIGTERM");
+    await sleep(500);
+  }
+}
 
 async function verifyTaskCompletion(activeTaskId) {
   if (activeTaskId === "static_landing_page") {

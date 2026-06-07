@@ -278,6 +278,48 @@ def build_parser() -> argparse.ArgumentParser:
     )
     chat_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
+    route_parser = subcommands.add_parser(
+        "route",
+        aliases=["/route"],
+        help="Model-steered orchestration routing for Studio and CLI",
+    )
+    route_parser.add_argument("message", help="User message to route")
+    route_parser.add_argument("--root", default=".", help="Workspace root path")
+    route_parser.add_argument(
+        "--mode",
+        default="auto",
+        help="Requested Studio/CLI mode override (auto, chat, plan, run, resume, review, accept)",
+    )
+    route_parser.add_argument(
+        "--permission-level",
+        choices=["ask", "balanced", "auto", "ask_everything", "reviewed_auto"],
+        default="balanced",
+        help=PERMISSION_LEVEL_HELP,
+    )
+    route_parser.add_argument(
+        "--rules-only",
+        action="store_true",
+        help="Skip model routing and use deterministic fallback rules",
+    )
+    route_parser.add_argument(
+        "--router-mode",
+        choices=["model", "rules"],
+        default=None,
+        help="Override policy studio.orchestration_router (model=strong semantic route)",
+    )
+    route_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+    route_parser.add_argument(
+        "--slim",
+        action="store_true",
+        help="Omit orchestration catalog from JSON output",
+    )
+
+    subcommands.add_parser(
+        "route-worker",
+        aliases=["/route-worker"],
+        help="Long-lived JSONL route worker for Studio (stdin/stdout)",
+    )
+
     new_parser = subcommands.add_parser(
         "new",
         aliases=["/new"],
@@ -645,6 +687,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-research",
         action="store_true",
         help="Skip the pre-planning research pass for clear or cost-sensitive goals",
+    )
+    run_parser.add_argument(
+        "--continue-session",
+        action="store_true",
+        help="Reuse the current accepted session run: append follow-up work and execute without replanning",
     )
     run_parser.add_argument(
         "--parallel-disjoint-writes",
@@ -1502,6 +1549,35 @@ def main() -> None:
             print(chat_result.to_text())
         return
 
+    if command == "route-worker":
+        from asteria_runtime.route_worker import run_route_worker
+
+        run_route_worker()
+        return
+
+    if command == "route":
+        from asteria_runtime.commands.route_command import RouteCommand
+
+        route_result = RouteCommand(
+            root=Path(args.root),
+            message=args.message,
+            requested_mode=args.mode,
+            permission_level=args.permission_level,
+            use_model=not args.rules_only,
+            router_mode_override=args.router_mode,
+        ).run()
+        if args.json:
+            print(
+                json.dumps(
+                    route_result.to_dict(include_catalog=not args.slim),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+        else:
+            print(route_result.to_text())
+        return
+
     if command == "new":
         new_result = NewCommand(root=Path(args.root), goal=args.goal).run()
         print(new_result.to_text())
@@ -1690,6 +1766,7 @@ def main() -> None:
             output_root=Path(args.output_root) if args.output_root else None,
             artifact_root=Path(args.artifact_root) if args.artifact_root else None,
             worktree_policy=args.worktree_policy,
+            continue_session=getattr(args, "continue_session", False),
         ).run()
         if args.json:
             print(json.dumps(run_result.to_dict(), ensure_ascii=False, indent=2))

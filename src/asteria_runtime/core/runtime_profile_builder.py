@@ -19,6 +19,7 @@ from asteria_runtime.core.runtime_profile import (
     ToolPermissionProfile,
 )
 from asteria_runtime.core.sandbox_backend import SandboxBackendSelector
+from asteria_runtime.core.worker_transport import resolve_worker_transport
 from asteria_runtime.core.task_contract import (
     context_requirements,
     failure_policy,
@@ -78,6 +79,8 @@ class RuntimeProfileBuilder:
             purpose=model_purpose,
             policy=context.policy,
         )
+        role_contract_dict = role_contract.to_dict()
+        role_contract_dict["worker_transport"] = resolve_worker_transport(policy=context.policy)
         model_selection = self._model_selection(task, context, model_purpose)
         model_tier = model_selection["selected_tier"]
         resolved_route = resolve_model_route(model_tier)
@@ -88,10 +91,10 @@ class RuntimeProfileBuilder:
             model_name=resolved_route.model_name or f"{model_tier}-route",
             model_tier=model_tier,
             limits={
-                "role": role_contract.role,
-                "deadline_profile": role_contract.deadline_profile,
-                "provider_call_seconds": role_contract.provider_call_seconds,
-                "stream_idle_timeout_seconds": role_contract.stream_idle_timeout_seconds,
+                "role": role_contract_dict["role"],
+                "deadline_profile": role_contract_dict["deadline_profile"],
+                "provider_call_seconds": role_contract_dict["provider_call_seconds"],
+                "stream_idle_timeout_seconds": role_contract_dict["stream_idle_timeout_seconds"],
             },
         )
         tool_profile = ToolPermissionProfile(
@@ -148,7 +151,7 @@ class RuntimeProfileBuilder:
         scoped["account_profile_id"] = account_profile.account_profile_id
         scoped["model_selection"] = model_selection
         scoped["model_route_resolution"] = resolved_route.to_dict()
-        scoped["agent_role_contract"] = role_contract.to_dict()
+        scoped["agent_role_contract"] = role_contract_dict
         scoped["worker_topology"] = self._worker_topology(task, runtime_profile)
         if context.policy.get("model_strategy_profile"):
             scoped["model_strategy_profile"] = context.policy["model_strategy_profile"]
@@ -215,11 +218,14 @@ class RuntimeProfileBuilder:
         )
         scoped["capability_registry"] = loop_registry.registrations()
         scoped["route_guidance"] = self._route_guidance_for_task(context, purpose)
-        scoped["agent_role_contract"] = role_contract_for(
-            role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
-            purpose=purpose,
-            policy=context.policy,
-        ).to_dict()
+        scoped["agent_role_contract"] = {
+            **role_contract_for(
+                role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
+                purpose=purpose,
+                policy=context.policy,
+            ).to_dict(),
+            "worker_transport": resolve_worker_transport(policy=context.policy),
+        }
         return scoped
 
     def _record_profiles(

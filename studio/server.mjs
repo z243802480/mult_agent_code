@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { outcomeAnswerContract } from "./prompt-contract.mjs";
 import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, routeUserIntent } from "./intent-router.mjs";
+import { buildRouteMessageWithChatContext, shouldAugmentRouteWithChatContext } from "./lib/chat-route-context.mjs";
+import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -16,6 +18,7 @@ const port = Number(args.port || process.env.ASTERIA_STUDIO_PORT || 8787);
 const python = args.python || process.env.ASTERIA_PYTHON || "python";
 const chatBackend = String(args.chatBackend || process.env.ASTERIA_STUDIO_CHAT_BACKEND || "model").toLowerCase();
 const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
+const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
 const pendingJobs = new Map(); // jobId -> { sessionId, mode, goal, command }
@@ -228,7 +231,27 @@ async function submitUserGoal(sessionId, body) {
 
   const route = routeUserIntent(goal, requestedMode, permission);
   const audit = intentAuditFor(goal, requestedMode, permission, route);
-  const mode = route.mode;
+  let mode = route.mode;
+  let executionRoute = null;
+
+  const sessionEvents = await readSessionEvents(activeSessionId);
+  const routeMessage = buildRouteMessageWithChatContext(sessionEvents, goal);
+  const chatHandoff = routeMessage !== goal;
+  const orchestrated = await resolveStudioOrchestrationRoute(routeMessage, requestedMode);
+  if (orchestrated) {
+    mode = orchestrated.mode;
+    executionRoute = orchestrated;
+    route.mode = mode;
+    route.reason = orchestrated.reason || route.reason;
+    route.source = orchestrated.source || route.source;
+    route.capability_id = orchestrated.capability_id || null;
+    if (chatHandoff) {
+      route.chat_execute_handoff = true;
+      route.reason = orchestrated.reason
+        ? `${orchestrated.reason} (re-routed with recent chat context)`
+        : "Strong route re-evaluated after recent chat context.";
+    }
+  }
 
   if (route.reason) {
     await appendEvent(activeSessionId, {
@@ -269,7 +292,7 @@ async function submitUserGoal(sessionId, body) {
   await appendEvent(activeSessionId, progressEventForMode(mode, goal));
 
   if (mode !== "plan" && permission !== "allow") {
-    const command = runtimeCommand(mode, goal);
+    const command = executionRoute?.command || runtimeCommand(mode, goal);
     const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command });
     await appendEvent(activeSessionId, {
@@ -284,8 +307,8 @@ async function submitUserGoal(sessionId, body) {
     return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId };
   }
 
-  startRuntimeJob(activeSessionId, mode, goal);
-  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true };
+  startRuntimeJob(activeSessionId, mode, goal, executionRoute?.command || null);
+  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, execution_route: executionRoute?.route || "direct" };
 }
 
 async function handleRuntimeAction(sessionId, body) {
@@ -483,6 +506,7 @@ function runtimeActionByKind(kind) {
 function acknowledgementFor(mode, goal) {
   if (mode === "plan") return `\u6211\u4f1a\u5148\u7ed9\u4f60\u6574\u7406\u4e00\u4efd\u53ea\u8bfb\u8ba1\u5212\uff1a${goal}`;
   if (mode === "run") return `\u6211\u4f1a\u6309\u53d7\u63a7\u6d41\u7a0b\u5904\u7406\u8fd9\u4e2a\u76ee\u6807\uff1a${goal}`;
+  if (mode === "continue") return `\u6211\u4f1a\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u63a8\u8fdb\uff08\u8df3\u8fc7\u91cd\u65b0 plan\uff09\uff1a${goal}`;
   if (mode === "review") return `\u6211\u4f1a\u68c0\u67e5\u5f53\u524d\u7ed3\u679c\uff0c\u5e76\u7528\u4f60\u80fd\u76f4\u63a5\u5224\u65ad\u7684\u65b9\u5f0f\u603b\u7ed3\uff1a${goal}`;
   if (mode === "resume") return `\u6211\u4f1a\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\uff1a${goal}`;
   return `\u6211\u5df2\u6536\u5230\u4f60\u7684\u8bf7\u6c42\uff1a${goal}`;
@@ -492,6 +516,7 @@ function progressEventForMode(mode, goal) {
   const labels = {
     plan: ["Planning", "\u6b63\u5728\u6574\u7406\u53ea\u8bfb\u8ba1\u5212\uff0c\u4e0d\u4f1a\u4fee\u6539\u4f60\u7684\u6587\u4ef6\u3002"],
     run: ["Starting", "\u6b63\u5728\u5f00\u59cb\u53d7\u63a7\u5904\u7406\u3002"],
+    continue: ["Continuing", "\u6b63\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u6267\u884c\u3002"],
     review: ["Reviewing", "\u6b63\u5728\u68c0\u67e5\u7ed3\u679c\u5e76\u51c6\u5907\u603b\u7ed3\u3002"],
     resume: ["Resuming", "\u6b63\u5728\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\u3002"],
     accept: ["Accepting", "\u6b63\u5728\u63a5\u53d7\u5df2\u9a8c\u8bc1\u7684\u7ed3\u679c\u3002"],
@@ -510,7 +535,10 @@ function progressEventForMode(mode, goal) {
   };
 }
 
-function runtimeCommand(mode, goal) {
+function runtimeCommand(mode, goal, options = {}) {
+  if (mode === "continue") {
+    return runtimeContinuationCommand(goal);
+  }
   if (mode === "run") {
     return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1", "--no-research", goal];
   }
@@ -522,8 +550,96 @@ function runtimeCommand(mode, goal) {
   return [python, "-m", moduleName, "plan", "--root", workspace, goal];
 }
 
+function runtimeContinuationCommand(goal) {
+  return [
+    python, "-m", moduleName, "run", "--continue-session", "--root", workspace,
+    "--max-iterations", "8", "--max-tasks-per-iteration", "1", "--no-research", goal,
+  ];
+}
+
+async function resolveStudioOrchestrationRoute(goal, requestedMode) {
+  const explicitModes = new Set(["chat", "plan", "run", "review", "resume", "accept"]);
+  const modeArg = explicitModes.has(String(requestedMode || "").toLowerCase())
+    ? String(requestedMode).toLowerCase()
+    : "auto";
+  const routed = await routeClient.route({
+    root: workspace,
+    message: String(goal || ""),
+    requestedMode: modeArg,
+  }).catch(() => null);
+  if (!routed || routed.ok === false || !routed.studio_mode) {
+    return resolveStudioExecutionRouteFallback(goal, requestedMode);
+  }
+  const studioMode = String(routed.studio_mode || "run");
+  const command = orchestrationCommandFor(studioMode, goal);
+  return {
+    mode: studioMode,
+    studio_mode: studioMode,
+    route: routed.route_kind || "orchestration",
+    reason: routed.reason || "",
+    source: routed.source || "orchestration",
+    capability_id: routed.capability_id || null,
+    route_transport: routed.transport || "worker",
+    command,
+  };
+}
+
+function orchestrationCommandFor(studioMode, goal) {
+  if (studioMode === "continue") return runtimeContinuationCommand(goal);
+  if (studioMode === "chat") return null;
+  return runtimeCommand(studioMode, goal);
+}
+
+async function resolveStudioExecutionRouteFallback(goal, requestedMode) {
+  if (requestedMode === "plan") {
+    return { mode: "run", route: "cold", reason: null, command: null, source: "rules_fallback" };
+  }
+  const status = await commandJson(["status", "--root", workspace, "--json"]).catch(() => ({}));
+  const phase = String(status?.current_phase || "").toUpperCase();
+  const runStatus = String(
+    status?.current_context?.run_status?.status || status?.run_status?.status || status?.status || "",
+  ).toLowerCase();
+  const currentRunId = String(status?.current_session_id || "").trim();
+  if (!currentRunId) {
+    return { mode: "run", route: "cold", reason: null, command: null, source: "rules_fallback" };
+  }
+
+  const inProgress = !CONTINUABLE_STUDIO_PHASES.has(phase)
+    && ["running", "blocked", "paused", "in_progress"].includes(runStatus);
+  if (inProgress) {
+    return {
+      mode: "resume",
+      route: "resume_in_progress",
+      reason: "当前 session 仍在推进中，后续消息将直接 resume，跳过重新 plan。",
+      command: null,
+      source: "rules_fallback",
+    };
+  }
+
+  if (CONTINUABLE_STUDIO_PHASES.has(phase) || runStatus === "completed") {
+    if (phase === "ACCEPTED") {
+      return {
+        mode: "continue",
+        route: "warm_session",
+        reason: "同 workspace 已有 accepted/completed run，后续改动走 continue-session 短链（跳过 GoalSpec/Plan）。",
+        command: runtimeContinuationCommand(goal),
+        source: "rules_fallback",
+      };
+    }
+  }
+
+  return { mode: "run", route: "cold", reason: null, command: null, source: "rules_fallback" };
+}
+
+async function resolveStudioExecutionRoute(sessionId, goal, requestedMode) {
+  return resolveStudioOrchestrationRoute(goal, requestedMode);
+}
+
+const CONTINUABLE_STUDIO_PHASES = new Set(["ACCEPTED", "DONE", "REVIEW"]);
+
 function phaseForMode(mode) {
   if (mode === "run") return "execute";
+  if (mode === "continue") return "execute";
   if (mode === "review") return "review";
   if (mode === "resume") return "resume";
   if (mode === "accept") return "result";
@@ -1538,7 +1654,7 @@ async function finalTextFor(mode, code, stdout, stderr) {
   }
   const runId = extractRunId(stdout) || extractRunId(stderr);
   if (mode === "plan" && runId) return await planFinalTextForRun(runId, stdout);
-  if ((mode === "run" || mode === "resume") && runId) return withProcessDigest(runId, await runFinalTextForRun(runId, stdout));
+  if ((mode === "run" || mode === "continue" || mode === "resume") && runId) return withProcessDigest(runId, await runFinalTextForRun(runId, stdout));
   if (mode === "review" && runId) return withProcessDigest(runId, await reviewFinalTextForRun(runId, stdout));
   const text = cleanUserFacingRuntimeText(stdout);
   const result = text || "The task finished, but there was no clear user-facing result to show.";
@@ -3018,6 +3134,8 @@ async function openWorkspace(body) {
 
   workspace = path.resolve(String(registered.workspace || resolved));
   runtimeRoot = path.resolve(String(body?.runtime_root || workspace));
+  routeClient.reconfigure({ runtimeRoot });
+  routeClient.invalidateWorkspace(workspace);
   const profile = registered.profile && typeof registered.profile === "object"
     ? registered.profile
     : await describeWorkspaceProfile(workspace);

@@ -55,6 +55,10 @@
     "definition_of_done": { "type": "array", "items": { "type": "string" } },
     "verification_strategy": { "type": "array", "items": { "type": "string" } },
     "budget": { "type": "object" },
+    "risk_tier": {
+      "type": "string",
+      "enum": ["high", "default", "readonly"]
+    },
     "research_type": {
       "type": "string",
       "enum": ["documentation", "creative", "research"]

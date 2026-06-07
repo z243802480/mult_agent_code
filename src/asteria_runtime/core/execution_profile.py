@@ -3,7 +3,11 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from asteria_runtime.core.fast_path_policy import FastPathPolicy, classify_fast_path
+from asteria_runtime.core.fast_path_policy import (
+    FastPathPolicy,
+    classify_fast_path,
+    classify_risk_tier,
+)
 
 
 SESSION_AGENT = "session_agent"
@@ -39,7 +43,8 @@ def resolve_execution_profile(
 ) -> ExecutionProfileResolution:
     """Choose Runtime default path: CC-like session agent vs full harness."""
     fp = fast_path or classify_fast_path(goal)
-    if force_harness or parallel_writes or fp.task_kind == "high_risk":
+    risk = classify_risk_tier(goal, parallel_writes=parallel_writes)
+    if force_harness or parallel_writes or risk.risk_tier == "high" or fp.task_kind == "high_risk":
         trigger = (
             "explicit_harness"
             if force_harness

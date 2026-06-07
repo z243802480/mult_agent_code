@@ -11,6 +11,12 @@ from asteria_runtime.core.agent_loop_decision import (
 )
 from asteria_runtime.core.context_prompt_view import context_prompt_view
 from asteria_runtime.core.context_slimming import slim_execution_context
+from asteria_runtime.core.worker_transport import (
+    execution_action_from_tool_calls,
+    extract_tool_calls,
+    resolve_worker_transport,
+    tool_definitions_for,
+)
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -40,6 +46,7 @@ class CoderAgent:
             task=task,
             goal_spec=goal_spec,
         )
+        transport = resolve_worker_transport(runtime_context=base_runtime_context)
         messages = [
             ChatMessage(role="system", content=self._system_prompt()),
             ChatMessage(
@@ -59,14 +66,17 @@ class CoderAgent:
                 purpose="task_execution",
                 model_tier="medium",
                 messages=messages,
-                response_format="json",
+                response_format="json" if transport == "json" else None,
                 temperature=0.2,
                 max_output_tokens=5000,
+                worker_transport=transport,
+                tools=tool_definitions_for(available_tools) if transport == "tool_use" else None,
                 metadata={
                     "run_id": run_id,
                     "agent_id": "CoderAgent",
                     "task_id": task["task_id"],
                     "attempt": attempt + 1,
+                    "worker_transport": transport,
                     "runtime_profile_id": base_runtime_context.get("runtime_profile_id"),
                     "model_profile_id": base_runtime_context.get("model_profile_id"),
                     "agent_role_contract": base_runtime_context.get("agent_role_contract"),
@@ -75,12 +85,21 @@ class CoderAgent:
             )
             response = self.model_client.chat(request)
             try:
-                action = self._validated_action(
-                    response.content,
-                    task,
-                    run_id,
-                    sequence=self._loop_sequence(runtime_context or {}),
-                )
+                if transport == "tool_use":
+                    tool_calls = extract_tool_calls(response.raw_response)
+                    action = self._validated_action_from_tool_calls(
+                        tool_calls,
+                        task,
+                        run_id,
+                        sequence=self._loop_sequence(runtime_context or {}),
+                    )
+                else:
+                    action = self._validated_action(
+                        response.content,
+                        task,
+                        run_id,
+                        sequence=self._loop_sequence(runtime_context or {}),
+                    )
             except CoderAgentError as exc:
                 last_error = exc
                 messages.extend(
@@ -100,6 +119,40 @@ class CoderAgent:
         raise CoderAgentError(
             str(last_error) if last_error else "ExecutionAction generation failed"
         )
+
+    def _validated_action_from_tool_calls(
+        self,
+        tool_calls: list[dict],
+        task: dict,
+        run_id: str,
+        *,
+        sequence: int = 1,
+    ) -> dict:
+        if not tool_calls:
+            raise CoderAgentError("tool_use transport returned no tool calls")
+        action = execution_action_from_tool_calls(
+            task=task,
+            run_id=run_id,
+            sequence=sequence,
+            tool_calls=tool_calls,
+        )
+        action = normalize_execution_action(action, task)
+        try:
+            loop_decision = normalize_agent_loop_decision(
+                action,
+                task=task,
+                run_id=run_id,
+                sequence=sequence,
+            )
+            validate_decision_matches_execution_action(loop_decision, action)
+        except AgentLoopDecisionError as exc:
+            raise CoderAgentError(f"AgentLoopDecision failed validation: {exc}") from exc
+        action["agent_loop_decision"] = loop_decision
+        try:
+            self.validator.validate("execution_action", action)
+        except SchemaValidationError as exc:
+            raise CoderAgentError(f"ExecutionAction failed schema validation: {exc}") from exc
+        return action
 
     def _envelope_metadata(self, runtime_context: dict) -> dict:
         metadata: dict = {}
@@ -218,6 +271,16 @@ You must:
         payload = {
             "task": task,
             "goal_spec": goal_spec,
+            "task_contract": runtime_context.get("task_contract")
+            or {
+                "read_scope": task.get("read_scope", []),
+                "write_scope": task.get("write_scope", []),
+                "expected_artifacts": task.get("expected_artifacts", []),
+                "validation_commands": task.get("validation_commands", []),
+                "failure_policy": task.get("failure_policy"),
+                "parallel_safety": task.get("parallel_safety"),
+                "risk_tier": task.get("risk_tier"),
+            },
             "project": project_config,
             "runtime_context": context_prompt_view(runtime_context),
             "available_tools": available_tools,

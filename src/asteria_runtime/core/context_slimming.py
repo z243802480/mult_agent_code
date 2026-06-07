@@ -27,6 +27,7 @@ def review_context_policy(review_context: dict[str, Any]) -> dict[str, Any]:
     fast_path = classify_fast_path(
         str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or ""),
         target_files=_review_target_files(goal_spec, task_plan),
+        goal_spec=goal_spec,
     )
     return {
         "mode": fast_path.context_mode,
@@ -78,6 +79,8 @@ def execution_context_policy(
     fast_path = classify_fast_path(
         str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or ""),
         target_files=_execution_target_files(task, goal_spec),
+        goal_spec=goal_spec,
+        task=task,
     )
     return {
         "mode": fast_path.context_mode,

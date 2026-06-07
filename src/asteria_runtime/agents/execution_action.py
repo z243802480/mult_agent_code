@@ -108,15 +108,19 @@ def _task_mentions_json(task: dict) -> bool:
 
 
 def _infer_path(task: dict) -> str | None:
-    text = _task_text(task)
-    match = re.search(r"([A-Za-z0-9_.\-/\\]+\.txt)", text)
-    if match:
-        return match.group(1).strip("'\"")
     artifacts = task.get("expected_artifacts")
     if isinstance(artifacts, list):
         for artifact in artifacts:
             if isinstance(artifact, str) and "." in artifact and artifact != "implementation artifact":
                 return artifact
+    text = _task_text(task)
+    for ext in (".html", ".htm", ".css", ".txt", ".md"):
+        match = re.search(rf"([A-Za-z0-9_.\-/\\]+{re.escape(ext)})", text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip("'\"")
+    match = re.search(r"([A-Za-z0-9_.\-/\\]+\.txt)", text)
+    if match:
+        return match.group(1).strip("'\"")
     return None
 
 

@@ -104,6 +104,7 @@ def test_slim_execution_context_ignores_read_scope_for_bugfix_classification() -
         {"context_package": {"read_scope_files": []}},
         task={
             "task_id": "task-1",
+            "task_kind": "diagnostic",
             "expected_artifacts": ["calc.py"],
             "expected_changed_files": ["calc.py"],
             "write_scope": ["calc.py"],

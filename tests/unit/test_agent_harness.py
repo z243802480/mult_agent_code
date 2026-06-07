@@ -72,6 +72,9 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
     assert data["mcp_tools"][0]["permission_state"] == "ask"
     assert data["skills"][0]["name"] == "skill"
     assert data["subagents"][0]["name"] == "subagent"
+    assert data["subagents"][0].get("when_to_use")
+    assert data["subagents"][0].get("when_not_to_use")
+    assert data["boundaries"].get("spawn_decision_policy", {}).get("principles")
     assert {item["name"] for item in data["verification"]} >= {"run_tests", "merge_gate"}
     assert "Available modes" in manifest.prompt_summary()
     assert "Direct tools" in manifest.prompt_summary()
@@ -102,6 +105,8 @@ def test_agent_harness_builds_prompt_envelope_without_full_prompt_body() -> None
         "identity",
         "operating_contract",
         "project_guidance",
+        "orchestration_discipline",
+        "execution_discipline",
         "capability_manifest",
         "role_route_policy",
         "tool_policy",

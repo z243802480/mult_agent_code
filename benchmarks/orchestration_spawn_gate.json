@@ -1,0 +1,223 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Spawn decision gate — fake for CI; strong model for S63 §5 rollout",
+  "brief": "benchmarks/reference_briefs/S63-cc-loop-convergence.md",
+  "report": "docs/zh/reports/S63-spawn-decision-research-20260607.md",
+  "thresholds": {
+    "min_hit_rate": 1.0,
+    "max_inprocess_latency_ms": 500
+  },
+  "real_thresholds": {
+    "min_hit_rate": 0.9,
+    "max_per_case_latency_ms": 60000
+  },
+  "cases": [
+    {
+      "id": "single_file_edit",
+      "task_summary": "Add --version flag to greet_cli and update its unit test",
+      "write_scope": ["src/greet_cli.py", "tests/test_greet_cli.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Small scoped edit; direct tools in one loop."
+    },
+    {
+      "id": "doc_touch_up",
+      "task_summary": "Fix typo in README installation section",
+      "write_scope": ["README.md"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Single-file documentation edit."
+    },
+    {
+      "id": "rename_function",
+      "task_summary": "Rename helper parse_args to parse_cli_args in greet_cli",
+      "write_scope": ["src/greet_cli.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Single-file refactor."
+    },
+    {
+      "id": "add_logging_line",
+      "task_summary": "Add one debug log line when greet_cli starts",
+      "write_scope": ["src/greet_cli.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Tiny instrumentation change."
+    },
+    {
+      "id": "fix_test_assertion",
+      "task_summary": "Fix failing assertion in test_greet_cli for Windows path separator",
+      "write_scope": ["tests/test_greet_cli.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Single test file fix."
+    },
+    {
+      "id": "update_error_message",
+      "task_summary": "Improve greet_cli missing-argument error message",
+      "write_scope": ["src/greet_cli.py", "tests/test_greet_cli.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Small UX fix with matching test."
+    },
+    {
+      "id": "schema_comment",
+      "task_summary": "Add schema_version comment to orchestration_choice.schema.json",
+      "write_scope": ["schemas/orchestration_choice.schema.json"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Documentation-only schema touch."
+    },
+    {
+      "id": "cli_help_text",
+      "task_summary": "Update greet_cli --help text for --quiet flag",
+      "write_scope": ["src/greet_cli.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Help string only."
+    },
+    {
+      "id": "two_file_config",
+      "task_summary": "Add default timeout to policies.default.json and reference it in docs",
+      "write_scope": ["templates/policies.default.json", "docs/zh/运行命令.md"],
+      "exploration_breadth": "multi_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Bounded two-file doc/config change."
+    },
+    {
+      "id": "unit_test_only",
+      "task_summary": "Add one unit test covering conservative_fallback route path",
+      "write_scope": ["tests/unit/test_orchestration_router.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Test-only addition."
+    },
+    {
+      "id": "type_hint_fix",
+      "task_summary": "Add missing return type hints in orchestration_spawn_policy.py",
+      "write_scope": ["src/asteria_runtime/core/orchestration_spawn_policy.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Typing-only change."
+    },
+    {
+      "id": "changelog_entry",
+      "task_summary": "Add S63 spawn eval note to orchestration brief",
+      "write_scope": ["benchmarks/reference_briefs/S63-cc-loop-convergence.md"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Brief documentation update."
+    },
+    {
+      "id": "small_bugfix_chain",
+      "task_summary": "Fix off-by-one in route_worker request id counter and add regression test",
+      "write_scope": ["src/asteria_runtime/route_worker.py", "tests/unit/test_route_worker.py"],
+      "exploration_breadth": "multi_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Small bugfix with test."
+    },
+    {
+      "id": "format_only",
+      "task_summary": "Run ruff format on orchestration_spawn_eval.py only",
+      "write_scope": ["src/asteria_runtime/core/orchestration_spawn_eval.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Formatting-only."
+    },
+    {
+      "id": "remove_dead_import",
+      "task_summary": "Remove unused import in orchestration_route_recorder.py",
+      "write_scope": ["src/asteria_runtime/core/orchestration_route_recorder.py"],
+      "exploration_breadth": "single_file",
+      "expect_action": "tool",
+      "fake_action": "tool",
+      "fake_reason": "Trivial cleanup."
+    },
+    {
+      "id": "repo_architecture_explore",
+      "task_summary": "Map runtime orchestration modules and summarize dispatch boundaries before refactor",
+      "write_scope": [],
+      "exploration_breadth": "whole_repo",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Broad readonly exploration should stay isolated from executor context."
+    },
+    {
+      "id": "adversarial_review",
+      "task_summary": "Independently verify security-sensitive shell policy changes in execute_command",
+      "write_scope": ["src/asteria_runtime/commands/execute_command.py"],
+      "exploration_breadth": "verification_only",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Independent verification should be isolated from the executor."
+    },
+    {
+      "id": "security_audit_readonly",
+      "task_summary": "Read-only audit of all shell denial paths across tool gateway and execute_command",
+      "write_scope": [],
+      "exploration_breadth": "whole_repo",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Cross-cutting readonly security review."
+    },
+    {
+      "id": "parallel_module_survey",
+      "task_summary": "Survey all files importing orchestration_router and produce dependency summary",
+      "write_scope": [],
+      "exploration_breadth": "whole_repo",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Wide fanout exploration."
+    },
+    {
+      "id": "benchmark_inventory",
+      "task_summary": "Inventory all benchmarks/*.json gate files and summarize purpose without editing",
+      "write_scope": [],
+      "exploration_breadth": "whole_repo",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Readonly inventory across many files."
+    },
+    {
+      "id": "test_failure_triage",
+      "task_summary": "Investigate unrelated failing integration tests and return isolated repro notes only",
+      "write_scope": [],
+      "exploration_breadth": "verification_only",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Independent triage isolated from main executor."
+    },
+    {
+      "id": "doc_consistency_review",
+      "task_summary": "Adversarially review ORCHESTRATION_DECISION_POLICY against code for drift",
+      "write_scope": ["docs/zh/plans/ORCHESTRATION_DECISION_POLICY.md"],
+      "exploration_breadth": "verification_only",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Independent doc/code consistency review."
+    },
+    {
+      "id": "api_surface_explore",
+      "task_summary": "Explore Studio server.mjs routing paths and summarize chat vs execute boundaries",
+      "write_scope": [],
+      "exploration_breadth": "whole_repo",
+      "expect_action": "subagent",
+      "fake_action": "subagent",
+      "fake_reason": "Large readonly codebase exploration."
+    }
+  ]
+}

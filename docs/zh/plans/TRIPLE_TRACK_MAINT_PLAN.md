@@ -1,20 +1,21 @@
 # 三线并行维护计划（Maint-F2+Triple）
 
-更新时间：2026-06-06  
+更新时间：2026-06-07  
 状态：**active**  
 全局入口：[`当前状态与路线.md`](../当前状态与路线.md) §4 · [`研发总计划.md`](../研发总计划.md) §16
 
 ---
 
-## 1. 为什么三线并行
+## 1. 为什么三线并行 + S61
 
-F1 Studio 对标已签字；**不能**只等内测反馈空转。三条轨道 **同时推进、独立验收**，Studio 新 feature 仍受 F2 friction 规则约束。
+F1 Studio 对标已签字；F2 与 **S61 Runtime 编排（R0–R5）** 并行：前者 friction 驱动 Studio，后者收敛 **Runtime/Harness + Coordinator 多对多**、吸收 CC 机制、回滚定向优化。
 
 ```text
-轨道 F2  内测反馈（其他 session 归档 trial）     → friction top 桶 → 有条件 Studio slice
-轨道 H   Harness 可靠性（ACTIVE_SLICE S55）      → decide/debug/repair ↓
-轨道 P   Beta 任务包 + 分发（S56）               → doc_update / wheel 可重复
-轨道 A   稳态 gate（ongoing）                    → steady_iteration · pytest · 三源
+轨道 S61  Runtime 编排 R0–R5（Orchestrator/Coordinator/Worker · 非定向优化）
+轨道 F2  内测反馈                                       → friction top 桶 → Studio slice
+轨道 H   Harness 可靠性（S57 ✅）                        → 维护回归
+轨道 P   Beta 任务包（S56 ✅）                             → wheel / 任务包
+轨道 A   稳态 gate（ongoing）                              → steady_iteration · pytest
 ```
 
 **一条命令看三线脉搏**：
@@ -29,9 +30,10 @@ python scripts/triple_track_pulse.py --root . --skip-b6
 
 | 轨道 | Slice | 负责人 | 产出 | 不等谁 |
 | --- | --- | --- | --- | --- |
+| **S61** | R0–R5 | Agent 研发 | 多对多调度文档 · R1 rollback · envelope · tool_use ADR | F2 |
 | **F2** | S54 ongoing | 产品/维护者 + VM | `S14-beta-user-trial-*.md` · friction 汇总 | — |
-| **H** | **S57** | Agent 研发 | accept 回归 · B6 复验 | F2 |
-| **P** | **S56** | Agent 研发 | `beta_task_pack_check.py` · 任务 2 材料齐 | F2 |
+| **H** | **S57** ✅ | Agent 研发 | accept 回归 · B6 复验 | F2 |
+| **P** | **S56** ✅ | Agent 研发 | `beta_task_pack_check.py` · 任务 2 材料齐 | F2 |
 | **A** | — | 每会话 | doc contracts · wheel smoke | — |
 
 ---
@@ -83,12 +85,13 @@ python scripts/beta_friction_aggregate.py --root . --markdown
 | 脉搏脚本 | triple_track · harness_repeatability · pack check | H/P/A |
 | Beta 任务 2/3 | doc_update dogfood（`--with-doc-dogfood`） | P |
 
-**仍冻结**：North Star silent execute · 蜂群默认开 · worktree · Terminal/Settings 全面板
+**仍冻结**：North Star silent execute · 蜂群默认开 · worktree · Terminal/Settings 全面板 · **domain 关键词 runtime 分支（S61）**
 
 ---
 
 ## 7. 相关文档
 
+- **S61 Runtime 编排**：[`RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md`](./RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md) · [`RUNTIME_MULTI_DISPATCH_MODEL.md`](./RUNTIME_MULTI_DISPATCH_MODEL.md)
 - F2 收尾：[`STUDIO_PARITY_CLOSURE_PLAN.md`](./STUDIO_PARITY_CLOSURE_PLAN.md)
 - 稳态节奏：[`稳态迭代节奏.md`](../稳态迭代节奏.md)
 - S54 基线：[`S54-f2-friction-baseline-20260606.md`](../reports/S54-f2-friction-baseline-20260606.md)

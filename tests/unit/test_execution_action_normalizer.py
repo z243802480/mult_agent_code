@@ -52,6 +52,28 @@ def test_normalize_execution_action_repairs_obvious_write_file_args() -> None:
     }
 
 
+def test_normalize_execution_action_repairs_missing_html_path_from_expected_artifacts() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"content": "<!DOCTYPE html><html><body>hi</body></html>"},
+            }
+        ],
+    }
+    task = {
+        "task_id": "task-web-1",
+        "title": "Create static landing page",
+        "description": "Build index.html for the landing page",
+        "expected_artifacts": ["index.html"],
+    }
+
+    normalized = normalize_execution_action(action, task)
+
+    assert normalized["tool_calls"][0]["args"]["path"] == "index.html"
+    assert normalized["tool_calls"][0]["args"]["overwrite"] is True
+
+
 def test_normalize_execution_action_adapts_model_tool_primitives() -> None:
     action = {
         "tool_calls": [

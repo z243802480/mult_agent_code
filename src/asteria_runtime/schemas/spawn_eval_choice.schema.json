@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpawnEvalChoice",
+  "type": "object",
+  "required": ["schema_version", "action", "reason"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "action": { "type": "string", "enum": ["tool", "subagent"] },
+    "reason": { "type": "string" },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+  }
+}

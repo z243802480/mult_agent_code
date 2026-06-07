@@ -7,11 +7,19 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.agent_role_policy import role_contracts_for_prompt
+from asteria_runtime.core.orchestration_spawn_policy import (
+    SPAWN_DECISION_POLICY,
+    subagent_capability_description,
+    subagent_manifest_extras,
+)
 from asteria_runtime.core.agent_tool_surface import model_tool_surface, tool_surface_contract
 from asteria_runtime.core.capability_invocation_policy import CapabilityInvocationPolicy
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
+
+
+DISCIPLINE_VERSION = "1.0.0"
 
 
 @dataclass(frozen=True)
@@ -25,9 +33,11 @@ class CapabilityTool:
     write_scope: list[str] = field(default_factory=list)
     cost_tier: str = "low"
     observation_schema: str = "tool_observation"
+    when_to_use: list[str] = field(default_factory=list)
+    when_not_to_use: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "name": self.name,
             "kind": self.kind,
             "permission": self.permission,
@@ -39,6 +49,11 @@ class CapabilityTool:
             "cost_tier": self.cost_tier,
             "observation_schema": self.observation_schema,
         }
+        if self.when_to_use:
+            payload["when_to_use"] = list(self.when_to_use)
+        if self.when_not_to_use:
+            payload["when_not_to_use"] = list(self.when_not_to_use)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -591,13 +606,16 @@ class AgentHarness:
                 cost_tier="low",
             )
         ]
+        subagent_extra = subagent_manifest_extras()
         subagents = [
             CapabilityTool(
                 "subagent",
                 "delegate",
                 "ask",
-                "Delegate bounded work with a goal, scope, permissions, and verification brief.",
-                cost_tier="medium",
+                subagent_capability_description(),
+                cost_tier="strong",
+                when_to_use=subagent_extra["when_to_use"],
+                when_not_to_use=subagent_extra["when_not_to_use"],
             )
         ]
         verification = [
@@ -646,6 +664,7 @@ class AgentHarness:
                     runtime_tool_names,
                     allow_shell=bool(permissions.get("allow_shell")),
                 ),
+                "spawn_decision_policy": SPAWN_DECISION_POLICY.to_dict(),
                 "model_tool_surface": {
                     "schema_version": "0.1.0",
                     "adapter": "runtime_registry_to_model_primitives",
@@ -715,6 +734,38 @@ class AgentHarness:
                 ["workspace_guidance_changed"],
             ),
             PromptEnvelopeSection(
+                "orchestration_discipline",
+                "AgentHarness",
+                "system",
+                "static",
+                (
+                    f"Discipline version {DISCIPLINE_VERSION}. Orchestration plane (CC-aligned): "
+                    "decompose goals into GoalSpec and task plans with explicit risk_tier, "
+                    "parallel_safety, write_scope, expected_artifacts, and validation_commands. "
+                    "Collapse small goals to a single session_agent task—do not spawn workers mechanically. "
+                    "Choose subagent in AgentLoopDecision only when strong model judgment says context "
+                    "isolation, parallel readonly exploration, or independent verification is needed; "
+                    "never spawn from keyword lists, file counts, or task counts. "
+                    "Coordinator multi-worker dispatch requires merge evidence before promotion. "
+                    "Do not infer task semantics from domain keyword tables—write contracts on the plan."
+                ),
+                cache_break_reasons=["discipline_version_changed"],
+            ),
+            PromptEnvelopeSection(
+                "execution_discipline",
+                "AgentHarness",
+                "system",
+                "static",
+                (
+                    f"Discipline version {DISCIPLINE_VERSION}. Execution plane: honor task_contract "
+                    "(read_scope, write_scope, validation_commands, failure_policy). Prefer structured "
+                    "tools over shell; keep AgentLoopDecision aligned with tool_calls. Use verification "
+                    "commands from the task contract only—do not invent domain-specific checks. "
+                    "Return valid JSON for ExecutionAction unless worker_transport policy selects tool_use."
+                ),
+                cache_break_reasons=["discipline_version_changed"],
+            ),
+            PromptEnvelopeSection(
                 "capability_manifest",
                 "AgentHarness",
                 "system",
@@ -745,8 +796,9 @@ class AgentHarness:
                 (
                     "Prefer read/search/file tools for local context, shell for bounded "
                     "verification or commands not expressible as structured tools, and "
-                    "subagents only for broad exploration, independent implementation, "
-                    "adversarial review, or context isolation."
+                    "subagents only when strong model judgment requires context isolation, parallel "
+                    "readonly exploration, independent verification, or adversarial review—not for "
+                    "small single-scope edits expressible with direct tools."
                 ),
                 cache_break_reasons=["tool_registry_changed", "permissions_changed"],
             ),

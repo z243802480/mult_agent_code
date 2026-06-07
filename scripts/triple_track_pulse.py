@@ -33,14 +33,24 @@ def main() -> None:
         "scripts/harness_repeatability_pulse.py",
         ["--root", str(root)],
     )
+    tracks["S62_orchestration_route"] = _run_python(
+        root,
+        "scripts/orchestration_route_pulse.py",
+        ["--root", str(root)],
+    )
+    tracks["S63_spawn_decision"] = _run_python(
+        root,
+        "scripts/orchestration_spawn_pulse.py",
+        ["--root", str(root)],
+    )
 
     steps = list(tracks.values())
     ok = all(isinstance(step, dict) and step.get("ok") for step in steps)
     report = {
         "ok": ok,
-        "purpose": "Triple-track pulse (A steady + F2 friction + P pack + H contract)",
+        "purpose": "Triple-track pulse (A steady + F2 friction + P pack + H contract + S62 route + S63 spawn)",
         "plan": "docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md",
-        "active_slice": "F2-S54",
+        "active_slice": "S63",
         "tracks": tracks,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))

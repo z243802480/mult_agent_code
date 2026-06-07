@@ -41,8 +41,7 @@ def test_preparer_moves_inline_run_command_to_verification() -> None:
     prepared = _preparer().prepare(action, _task(), {})
 
     assert [call["tool_name"] for call in prepared["tool_calls"]] == ["write_file"]
-    assert prepared["verification"][0]["args"]["command"] == "python -m py_compile tool.py"
-    assert prepared["verification"][1]["args"]["command"] == "python tool.py --help"
+    assert prepared["verification"][0]["args"]["command"] == "python tool.py --help"
 
 
 def test_preparer_uses_planned_verification_when_required_action_omits_it() -> None:
@@ -56,7 +55,6 @@ def test_preparer_uses_planned_verification_when_required_action_omits_it() -> N
     prepared = _preparer().prepare(action, _task(), {})
 
     assert [call["args"]["command"] for call in prepared["verification"]] == [
-        "python -m py_compile tool.py",
         "python tool.py --help",
     ]
 
@@ -74,7 +72,6 @@ def test_preparer_replaces_safe_unsafe_verification_with_planned_command() -> No
     prepared = _preparer().prepare(action, _task(), {})
 
     assert [call["args"]["command"] for call in prepared["verification"]] == [
-        "python -m py_compile tool.py",
         "python tool.py --help",
     ]
 

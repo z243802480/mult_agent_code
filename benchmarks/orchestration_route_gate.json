@@ -1,0 +1,101 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Orchestration route gate — rules for CI; model cases for S62-4 real eval",
+  "brief": "benchmarks/reference_briefs/S62-semantic-orchestration-routing-v2.md",
+  "thresholds": {
+    "min_hit_rate": 1.0,
+    "max_inprocess_latency_ms": 250
+  },
+  "real_thresholds": {
+    "min_hit_rate": 0.85,
+    "max_per_case_latency_ms": 45000
+  },
+  "cases": [
+    {
+      "id": "simple_qa",
+      "message": "Python 里 list 和 tuple 有什么区别？",
+      "expect_capability": "chat_answer",
+      "router_mode": "rules"
+    },
+    {
+      "id": "status_q",
+      "message": "当前项目下一步是什么？",
+      "expect_capability": "chat_answer",
+      "router_mode": "rules"
+    },
+    {
+      "id": "cold_edit",
+      "message": "给 greet_cli 增加 --version 参数并补测试",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "rules"
+    },
+    {
+      "id": "read_only",
+      "message": "先分析 greet_cli 架构，不要改文件",
+      "expect_capability": "read_only_plan",
+      "router_mode": "rules"
+    },
+    {
+      "id": "rm_simple_qa",
+      "message": "解释一下 Python 里 async/await 和线程的区别",
+      "expect_capability": "chat_answer",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_concept_qa",
+      "message": "什么是 local-first agent harness？用三句话说明",
+      "expect_capability": "chat_answer",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_status_discussion",
+      "message": "这个项目现在的 MVP 验收标准是什么？先讨论不要改代码",
+      "expect_capability": "chat_answer",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_read_only_plan",
+      "message": "先只读分析 orchestration_router 模块的职责和边界，不要修改任何文件",
+      "expect_capability": "read_only_plan",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_plan_before_edit",
+      "message": "帮我制定一个只读计划：如何给 greet_cli 增加子命令 support，先不要执行",
+      "expect_capability": "read_only_plan",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_cold_implement",
+      "message": "给 greet_cli 增加 --quiet 参数并补单元测试",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_cold_fix",
+      "message": "修复 greet_cli 在缺少参数时的报错信息，并更新测试",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_cold_doc",
+      "message": "在 README 里补充 asteria route 命令的使用说明",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model"
+    },
+    {
+      "id": "rm_ambiguous_think",
+      "message": "思考一下 greet_cli 怎么支持子命令，先给我方案",
+      "expect_capability": "read_only_plan",
+      "router_mode": "model",
+      "accept_capabilities": ["read_only_plan", "chat_answer"]
+    },
+    {
+      "id": "rm_chat_handoff",
+      "message": "Recent Studio chat (for strong orchestration routing only):\nUser: greet_cli 是做什么的？\nAssistant: greet_cli 是一个简单 CLI。\n\nCurrent user message:\n那就改吧，加上 --version 参数",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model",
+      "accept_capabilities": ["cold_goal_execute", "session_continue_execute"]
+    }
+  ]
+}
