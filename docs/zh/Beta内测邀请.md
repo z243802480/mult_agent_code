@@ -2,27 +2,30 @@
 
 更新时间：2026-06-06
 
-面向 **3–5 名** 早期测试者。维护者复制下方消息发送，并附上私有材料链接（不要公开 API Key）。
+面向 **3–5 名** 早期测试者。维护者复制下方消息发送，并附上 **GitHub Release 下载链接**（`asteria-beta-*.zip`）。
 
 ## 1. 邀请消息模板
 
 ```text
 你好，
 
-邀请你试用 Asteria Beta（本地编程 agent + Studio UI）。
+邀请你试用 Asteria Beta（本地 agent + Studio UI）。
 
 你需要：
 - Windows / macOS / Linux，Python 3.11+，Node.js 18+
-- 自备 strong + medium 模型 API Key（配置说明见附件）
-- 约 30 分钟完成第一个小任务
+- 自备 strong + medium 模型 API Key
+- 约 30 分钟完成第一个任务（推荐：做一个静态网页）
 
-请按附件《Beta试跑清单》逐步操作，不要等我口头带命令。
-完成后把清单底部 4 项反馈发给我即可。
+请从 Release 下载 asteria-beta-<版本>.zip，按包内 README-BETA-INSTALL.md 安装。
+然后按附件《Beta试跑清单》逐步操作，不要等我口头带命令。
+完成后把清单底部反馈发给我即可。
 
-材料：
+材料（Release 包内已含 docs/）：
 - Beta用户入门.md
 - Beta试跑清单.md
-- 仓库 clone：<你的私有/公开地址>
+- install.ps1 / install.sh
+
+Release：<你的 GitHub Releases URL>
 
 谢谢！
 ```
@@ -31,19 +34,19 @@
 
 | # | 材料 | 路径 |
 | --- | --- | --- |
-| 1 | 入门 | [`Beta用户入门.md`](./Beta用户入门.md) |
-| 2 | 试跑清单 | [`Beta试跑清单.md`](./Beta试跑清单.md) |
-| 3 | 记录模板 | [`reports/S14-beta-user-trial-template.md`](./reports/S14-beta-user-trial-template.md) |
-| 4 | Starter 文件 | `benchmarks/fixtures/s13_clean_run/greet_cli.py` |
-| 5 | 模型模板 | `templates/model.routes.validation.example.ps1` |
+| 1 | **Release 包** | GitHub Releases → `asteria-beta-<ver>.zip` |
+| 2 | 安装说明 | 包内 `README-BETA-INSTALL.md` · [`Beta-GitHub-Release安装.md`](./Beta-GitHub-Release安装.md) |
+| 3 | 试跑清单 | 包内 `docs/Beta试跑清单.md` |
+| 4 | 记录模板 | [`reports/S14-beta-user-trial-template.md`](./reports/S14-beta-user-trial-template.md) |
+| 5 | 模型模板 | 包内 `templates/model.routes.validation.example.ps1` |
 
 ## 3. 内测范围
 
 | 允许 | 暂不开放 |
 | --- | --- |
-| 任务 1 `small_code_change` | 生产部署 |
-| 可选任务 2 `doc_update` | 远程 push |
-| `pip install -e .` 或 wheel 安装 | gate / acceptance 维护命令 |
+| 任务 1 `static_landing_page`（静态站） | 生产部署 |
+| 可选 `doc_update` / `small_code_change` | 远程 push |
+| **GitHub Release 安装包** | gate / acceptance 维护命令 |
 | Studio Goal → Review → Accept | 蜂群并行 |
 
 ## 4. 常见卡点（提前告知）

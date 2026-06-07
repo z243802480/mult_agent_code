@@ -1,10 +1,11 @@
 # Beta 试跑清单（给测试者）
 
-更新时间：2026-06-06
+更新时间：2026-06-07
 
 **目标**：在 **30 分钟内** 独立完成第一个任务，**不要** 问维护者「下一步该敲什么命令」。
 
-维护者只应给你：**本清单** + [`Beta用户入门.md`](./Beta用户入门.md) + 仓库 clone 地址 + 模型 Key 配置方式。
+维护者应给你：**本清单** + [`Beta用户入门.md`](./Beta用户入门.md) + **GitHub Release 安装包**（`asteria-beta-*.zip`）+ 模型 Key 配置说明。  
+**不需要** clone 源码。安装步骤：[`Beta-GitHub-Release安装.md`](./Beta-GitHub-Release安装.md)
 
 ---
 
@@ -14,7 +15,7 @@
 | --- | --- |
 | Python 3.11+ | ☐ `python --version` |
 | Node.js 18+ | ☐ `node --version` |
-| 已 clone 仓库 | ☐ 有 `studio/` 目录 |
+| 已安装 Release 包 | ☐ `asteria version` 有输出 |
 | strong + medium 模型可用 | ☐ 见入门 §2.2 |
 
 ---
@@ -24,12 +25,12 @@
 **Goal 文案（复制到 Studio Composer → Goal 模式）：**
 
 ```text
-给一个小 CLI 增加 --version 参数，并补一个测试。
+做一个单页静态网站（HTML + CSS），介绍一个产品想法；本地用浏览器能打开预览。
 ```
 
-可选：在工作区放 starter 文件 `greet_cli.py`（维护者可提供 `benchmarks/fixtures/s13_clean_run/greet_cli.py` 副本）。
+可从空白工作区开始；完成后工作区应有 `index.html`（可选 `styles.css`），浏览器能打开。
 
-**任务 2 / 3（可选 · 第二次试跑）**：见 [`benchmarks/beta_user_tasks.json`](../../benchmarks/beta_user_tasks.json) 的 `doc_update`、`single_file_bugfix`；维护者可跑 `python scripts/s16_doc_update_dogfood.py --repo .`。
+**其他任务（可选 · 第二次试跑）**：见 Release 包内 `docs/` 或 [`benchmarks/beta_user_tasks.json`](../../benchmarks/beta_user_tasks.json) — `doc_update`、`small_code_change` 等。
 
 ---
 
@@ -39,11 +40,11 @@
 
 | # | 动作 | 完成 |
 | --- | --- | --- |
-| A1 | `pip install -e .`（在仓库根目录） | ☐ |
-| A2 | `asteria version` 有输出 | ☐ |
+| A1 | 解压 `asteria-beta-*.zip`，运行 `install.ps1` / `install.sh` | ☐ |
+| A2 | PATH 含 venv；`asteria version` 有输出 | ☐ |
 | A3 | `model-check` strong + medium 均为 `call_ok: true` | ☐ |
 | A4 | `asteria init --root <你的工作区>` | ☐ |
-| A5 | `asteria studio --root <你的工作区>`，浏览器打开 UI | ☐ |
+| A5 | `asteria studio --root <工作区>`，浏览器打开 **http://127.0.0.1:8787** | ☐ |
 
 ### B. 执行任务（约 15 分钟）
 
@@ -60,19 +61,17 @@
 | --- | --- | --- |
 | C1 | 点 **审查结果**（或 Composer `/review`；若 goal 已 review 可跳过） | ☐ |
 | C2 | 点 **接受结果**（或 `asteria accept --root <工作区>`） | ☐ |
-| C3 | 工作区里能看到产物（如改过的 `.py` 或测试文件） | ☐ |
+| C3 | 工作区里能看到产物（如 `index.html`），浏览器能预览 | ☐ |
 
 ### D. Studio 对标 spot-check（可选 · 约 5 分钟）
 
-F1 已交付的 Studio 能力；**不阻塞** B6 签字，但请顺手试并记录摩擦（见 trial 模板 §5.1）。
-
 | # | 动作 | 完成 | 摩擦桶 |
 | --- | --- | --- | --- |
-| D1 | Inspector **Diff review**：左文件列表 + 右 diff；切换 **Current / T1 / T2** | ☐ | diff |
-| D2 | Thread 顶部 **Context** 压力条 → 点开 breakdown；必要时试 **Compact** | ☐ | context |
-| D3 | 左侧 **Session** 列表：All/Recent 分组；**Ctrl+Tab** 切换；可 rename 一条 | ☐ | session |
-| D4 | **Ctrl+;** 打开 Side chat；Composer 选 **Quick ask** 或输入 `/ask` 提一个侧问 | ☐ | side_ask |
-| D5 | （Verbose 模式）非末轮卡片上的 **Rewind**；长 tool 输出 **Copy** + 展开 | ☐ | diff / thread |
+| D1 | Inspector **Diff review**：左文件列表 + 右 diff | ☐ | diff |
+| D2 | Thread 顶部 **Context** 压力条 → breakdown | ☐ | context |
+| D3 | 左侧 **Session** 列表；**Ctrl+Tab** 切换 | ☐ | session |
+| D4 | **Ctrl+;** Side chat 或 Composer **Quick ask** | ☐ | side_ask |
+| D5 | 长 tool 输出 **Copy** + 展开 | ☐ | diff / thread |
 
 ---
 
@@ -81,22 +80,11 @@ F1 已交付的 Studio 能力；**不阻塞** B6 签字，但请顺手试并记�
 | 现象 | 你先做 |
 | --- | --- |
 | 模型报错 | `asteria doctor --root <ws> --json` |
-| 不知道进度 | Thread 顶部 Next action / `asteria status --json` |
-| 需要细节 | 右侧 Inspector（**不要**找 gate 主屏） |
-| 出现 **范围确认 / scope** 决策卡 | 选 **Review contract**（允许补测试文件），再点 **Continue** 继续 |
-| 出现 **上下文 / context** 决策卡 | 同上：**Review contract** → **Continue** |
+| 不知道进度 | Thread Next action / `asteria status --json` |
+| 出现 **scope** 决策卡 | **Review contract** → **Continue** |
+| Studio 打不开 | 确认 `node --version`；Release 包无需 npm install |
 
-仍无法继续 → 记录 **卡在哪一步 + 截图/报错原文**，交给维护者填 [`S14-beta-user-trial-template.md`](./reports/S14-beta-user-trial-template.md)。
-
-**维护者自动复验**（不替代真人试跑）：
-
-```powershell
-python scripts/beta_trial_smoke.py --root .
-python scripts/beta_trial_smoke.py --root . --with-b6
-python scripts/beta_friction_aggregate.py --root . --markdown
-```
-
-Studio 审查提示：Thread 内点 **T1 diff / T2 diff** 或在 Inspector **Diff review** 切换 **Current / Tn**，按 turn 查看 agent 改了哪些文件；点文件名看 diff。
+仍无法继续 → 记录卡在哪一步 + 截图，交给维护者填 trial 模板。
 
 ---
 
@@ -104,8 +92,8 @@ Studio 审查提示：Thread 内点 **T1 diff / T2 diff** 或在 Inspector **Dif
 
 1. 总耗时（分钟）
 2. A/B/C 哪些步骤未完成
-3. 最难的一步是什么（一句话）
-4. D1–D5 若有卡点，标注 **diff / context / session / side_ask**（见 trial 模板 §5.1）
-5. 是否愿意再试第二个 beta 任务（doc_update）
+3. 最难的一步（一句话）
+4. D1–D5 若有卡点，标注 **diff / context / session / side_ask**
+5. 是否愿意再试第二个任务
 
-**不要** push 代码、不要改仓库配置、不要运行 maintainer 专用命令（gate、acceptance 等）。
+**不要** push 代码、不要运行 maintainer 专用命令。

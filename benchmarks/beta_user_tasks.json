@@ -1,9 +1,18 @@
 {
   "schema_version": "1.0.0",
-  "purpose": "Closed beta task pack: programming-first, low risk, measurable completion.",
+  "purpose": "Closed beta task pack: user-facing web/doc/coding tasks with measurable completion.",
   "minimum_ready_score": 0.8,
   "onboarding_doc": "docs/zh/Beta用户入门.md",
+  "install_doc": "docs/zh/Beta-GitHub-Release安装.md",
   "tasks": [
+    {
+      "id": "static_landing_page",
+      "category": "web",
+      "goal": "做一个单页静态网站（HTML + CSS），介绍一个产品或想法；本地用浏览器能打开预览。",
+      "starter_hint": "可从空白工作区开始；产物为 index.html（可选 styles.css）。",
+      "expected_completion": ["index.html 存在", "浏览器可打开", "review 通过后可 accept"],
+      "benchmark_ref": "beta:static_landing_page"
+    },
     {
       "id": "small_code_change",
       "category": "coding",

@@ -28,12 +28,17 @@ def main() -> None:
     tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
     task_ids = [task["id"] for task in tasks.get("tasks") or []]
     checks.append(_check("beta_user_tasks.json", tasks_path.is_file() and len(task_ids) >= 3, task_ids))
+    checks.append(_check("static_landing_page task", "static_landing_page" in task_ids, None))
+    checks.append(_check("install_doc", (root / "docs/zh/Beta-GitHub-Release安装.md").is_file(), None))
+    checks.append(_check("build_beta_release.py", (root / "scripts/build_beta_release.py").is_file(), None))
+    checks.append(_check("beta_install.ps1", (root / "scripts/beta_install.ps1").is_file(), None))
 
     onboarding = (root / "docs" / "zh" / "Beta用户入门.md").read_text(encoding="utf-8")
     checklist = (root / "docs" / "zh" / "Beta试跑清单.md").read_text(encoding="utf-8")
-    checks.append(_check("onboarding mentions Goal", "Goal" in onboarding and "Review" in onboarding, None))
+    checks.append(_check("onboarding mentions studio path", "asteria studio" in onboarding.lower() and "accept" in onboarding.lower(), None))
     checks.append(_check("checklist section D spot-check", "D1" in checklist and "Side chat" in checklist, None))
-    checks.append(_check("checklist mentions doc_update", "doc_update" in checklist or "任务 2" in checklist, None))
+    checks.append(_check("checklist mentions doc_update", "doc_update" in checklist or "任务 2" in checklist or "第二次试跑" in checklist, None))
+    checks.append(_check("checklist release install", "install.ps1" in checklist or "asteria-beta" in checklist, None))
 
     for rel in (
         "scripts/s16_doc_update_dogfood.py",

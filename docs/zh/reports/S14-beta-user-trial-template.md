@@ -45,7 +45,7 @@
 
 | 项 | 填写 |
 | --- | --- |
-| Beta 任务 ID | `small_code_change` |
+| Beta 任务 ID | `static_landing_page`（或实际试跑 ID） |
 | Goal 是否独立完成 | ☐ 是 ☐ 否 |
 | Review 是否完成 | ☐ 是 ☐ 否 |
 | Accept 是否完成 | ☐ 是 ☐ 否 |

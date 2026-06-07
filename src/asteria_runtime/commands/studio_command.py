@@ -10,6 +10,8 @@ import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 
+from asteria_runtime import __version__
+
 
 @dataclass(frozen=True)
 class StudioLaunchResult:
@@ -72,30 +74,34 @@ class StudioCommand:
 
     def preview(self) -> StudioLaunchResult:
         self._validate()
+        bundled_ui = self._uses_bundled_ui()
+        api_url = f"http://127.0.0.1:{self.api_port}"
+        ui_url = api_url if bundled_ui or self.backend_only else f"http://127.0.0.1:{self.ui_port}"
         return StudioLaunchResult(
             root=self.root,
             runtime_root=self.runtime_root,
             studio_dir=self.studio_dir,
-            api_url=f"http://127.0.0.1:{self.api_port}",
-            ui_url=f"http://127.0.0.1:{self.ui_port}",
+            api_url=api_url,
+            ui_url=ui_url,
             api_port=self.api_port,
             ui_port=self.ui_port,
-            backend_only=self.backend_only,
+            backend_only=self.backend_only or bundled_ui,
         )
 
     def run(self) -> StudioLaunchResult:
         self._validate()
-        if not self.skip_install:
+        bundled_ui = self._uses_bundled_ui()
+        if not self.skip_install and not bundled_ui:
             self._ensure_node_modules()
         result = self.preview()
         processes: list[subprocess.Popen[bytes]] = []
         try:
             processes.append(self._start_api_server())
-            if not self.backend_only:
+            if not bundled_ui and not self.backend_only:
                 processes.append(self._start_ui_server())
-            if self.open_browser and not self.backend_only:
+            if self.open_browser:
                 time.sleep(1.0)
-                webbrowser.open(ui_url)
+                webbrowser.open(result.ui_url)
             self._wait_until_stopped(processes)
         finally:
             self._terminate_processes(processes)
@@ -105,11 +111,14 @@ class StudioCommand:
         if not self.studio_dir.is_dir():
             raise FileNotFoundError(
                 f"Studio directory not found: {self.studio_dir}. "
-                "Set ASTERIA_STUDIO_DIR or run from a repo checkout."
+                "Install the Beta release pack or set ASTERIA_STUDIO_DIR."
             )
         server_script = self.studio_dir / "server.mjs"
         if not server_script.is_file():
             raise FileNotFoundError(f"Missing Studio server entrypoint: {server_script}")
+
+    def _uses_bundled_ui(self) -> bool:
+        return (self.studio_dir / "dist" / "index.html").is_file()
 
     def _ensure_node_modules(self) -> None:
         node_modules = self.studio_dir / "node_modules"
@@ -117,7 +126,10 @@ class StudioCommand:
             return
         npm = shutil.which("npm")
         if not npm:
-            raise RuntimeError("npm is required to install Studio dependencies.")
+            raise RuntimeError(
+                "npm is required to install Studio dependencies. "
+                "Use the GitHub Release Beta pack (prebuilt UI) or clone the repo."
+            )
         subprocess.run(
             [npm, "install"],
             cwd=self.studio_dir,
@@ -150,7 +162,7 @@ class StudioCommand:
     def _start_ui_server(self) -> subprocess.Popen[bytes]:
         npm = shutil.which("npm")
         if not npm:
-            raise RuntimeError("npm is required to launch the Studio UI.")
+            raise RuntimeError("npm is required to launch the Studio UI dev server.")
         env = os.environ.copy()
         return subprocess.Popen(
             [
@@ -202,6 +214,29 @@ class StudioCommand:
 def resolve_studio_dir() -> Path:
     env_dir = os.environ.get("ASTERIA_STUDIO_DIR", "").strip()
     if env_dir:
-        return Path(env_dir)
+        return Path(env_dir).resolve()
+
+    installed = _installed_studio_dir()
+    if installed is not None:
+        return installed
+
     repo_root = Path(__file__).resolve().parents[3]
-    return repo_root / "studio"
+    checkout = repo_root / "studio"
+    if checkout.is_dir() and (checkout / "server.mjs").is_file():
+        return checkout
+    return checkout
+
+
+def _installed_studio_dir() -> Path | None:
+    studio_home = Path.home() / ".asteria" / "studio"
+    pointer = studio_home / "current"
+    if pointer.is_file():
+        target = Path(pointer.read_text(encoding="utf-8").strip())
+        if (target / "server.mjs").is_file():
+            return target.resolve()
+    if pointer.is_dir() and (pointer / "server.mjs").is_file():
+        return pointer.resolve()
+    versioned = studio_home / __version__
+    if (versioned / "server.mjs").is_file():
+        return versioned.resolve()
+    return None
