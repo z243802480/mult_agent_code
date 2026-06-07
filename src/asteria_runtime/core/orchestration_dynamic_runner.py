@@ -20,7 +20,9 @@ from asteria_runtime.utils.time import now_iso
 if TYPE_CHECKING:
     from asteria_runtime.storage.schema_validator import SchemaValidator
 
-LIVE_FANOUT_KINDS = frozenset({"readonly_fanout", "disjoint_write_fanout"})
+from asteria_runtime.core.orchestration_dynamic_live import VERIFIER_KINDS
+
+LIVE_FANOUT_KINDS = frozenset({"readonly_fanout", "disjoint_write_fanout", *VERIFIER_KINDS})
 
 DEFAULT_MAX_PARALLEL_WORKERS = 16
 RUNNER_STATE_FILENAME = "orchestration_runner_state.jsonl"
@@ -193,7 +195,7 @@ def _plan_step_swarm(
     parent_task_id: str,
 ) -> dict[str, Any] | None:
     kind = step.kind
-    if kind in {"merge_checkpoint", "sequential_task"}:
+    if kind in {"merge_checkpoint", "sequential_task"} or kind in VERIFIER_KINDS:
         return None
     tasks = _fanout_tasks(step)
     if not tasks:
@@ -309,15 +311,45 @@ def run_dynamic_orchestration(
                     )
                     if step.kind == "merge_checkpoint" and live_ok:
                         last_checkpoint = step.step_id
-                elif step.kind == "merge_checkpoint":
-                    last_checkpoint = step.step_id
+                elif dry_run and step.kind in VERIFIER_KINDS:
+                    from asteria_runtime.core.orchestration_dynamic_live import execute_verifier_fanout_dry
+
+                    dry_result = execute_verifier_fanout_dry(tasks=_fanout_tasks(step))
+                    dry_ok = dry_result.get("ok") is True
+                    variables = dry_result.get("variables") if isinstance(dry_result.get("variables"), dict) else {}
+                    if isinstance(variables, dict):
+                        prior_variables.append(variables)
                     record = RunnerStepRecord(
                         step_id=step.step_id,
                         phase_id=phase.phase_id,
                         kind=step.kind,
-                        status="completed",
-                        swarm_plan={"checkpoint": step.step_id, "dry_run": dry_run},
+                        status="completed" if dry_ok else "failed",
+                        swarm_plan={**dry_result, "dry_run": True},
+                        variables=variables if isinstance(variables, dict) else None,
+                        error=None if dry_ok else "Adversarial verifier gate failed.",
                     )
+                elif step.kind == "merge_checkpoint":
+                    from asteria_runtime.core.orchestration_dynamic_live import execute_merge_checkpoint_live
+
+                    merge_result = execute_merge_checkpoint_live(
+                        run_dir=run_dir,
+                        prior_variables=prior_variables,
+                    )
+                    merge_ok = merge_result.get("ok") is True
+                    variables = merge_result.get("variables") if isinstance(merge_result.get("variables"), dict) else {}
+                    if isinstance(variables, dict):
+                        prior_variables.append(variables)
+                    record = RunnerStepRecord(
+                        step_id=step.step_id,
+                        phase_id=phase.phase_id,
+                        kind=step.kind,
+                        status="completed" if merge_ok else "failed",
+                        swarm_plan={**merge_result, "dry_run": dry_run},
+                        variables=variables if isinstance(variables, dict) else None,
+                        error=None if merge_ok else "Merge checkpoint failed.",
+                    )
+                    if merge_ok:
+                        last_checkpoint = step.step_id
                 elif swarm_plan is None and step.kind == "sequential_task":
                     record = RunnerStepRecord(
                         step_id=step.step_id,

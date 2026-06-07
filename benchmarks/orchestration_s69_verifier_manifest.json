@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1.0",
+  "workflow_id": "s69-verifier-probe",
+  "description": "S69 adversarial verifier before merge",
+  "max_concurrent_steps": 2,
+  "phases": [
+    {
+      "phase_id": "verify",
+      "steps": [
+        {
+          "step_id": "adversarial-review",
+          "kind": "adversarial_review",
+          "tasks": [
+            { "task_id": "v1", "verdict": "pass" },
+            { "task_id": "v2", "verdict": "pass" }
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "merge",
+      "steps": [{ "step_id": "merge-checkpoint", "kind": "merge_checkpoint" }]
+    }
+  ]
+}

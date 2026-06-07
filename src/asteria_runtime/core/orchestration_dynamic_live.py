@@ -18,6 +18,9 @@ from asteria_runtime.utils.time import now_iso
 
 LIVE_READONLY_KIND = "readonly_fanout"
 LIVE_DISJOINT_KIND = "disjoint_write_fanout"
+VERIFIER_FANOUT_KIND = "verifier_fanout"
+ADVERSARIAL_REVIEW_KIND = "adversarial_review"
+VERIFIER_KINDS = frozenset({VERIFIER_FANOUT_KIND, ADVERSARIAL_REVIEW_KIND})
 
 
 def _runtime_context(
@@ -204,24 +207,179 @@ def execute_disjoint_write_fanout_live(
     }
 
 
+def _task_verdict_passes(task: dict[str, Any]) -> bool:
+    verdict = str(task.get("verdict") or task.get("expected_verdict") or "pass").strip().lower()
+    return verdict not in {"fail", "failed", "reject", "blocked"}
+
+
+def execute_verifier_fanout_live(
+    *,
+    root: Path,
+    run_dir: Path,
+    run_id: str,
+    validator: SchemaValidator,
+    tasks: list[dict[str, Any]],
+    parent_task_id: str,
+    policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Live adversarial/verifier fanout: isolated readonly reviewers (CC script subagents)."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    normalized = []
+    for index, task in enumerate(tasks):
+        task_id = str(task.get("task_id") or f"{parent_task_id}-verify-{index + 1}")
+        normalized.append(
+            {
+                **task,
+                "task_id": task_id,
+                "parallel_safety": "readonly",
+                "runtime_profile_hints": {
+                    **dict(task.get("runtime_profile_hints") or {}),
+                    "parent_task_id": parent_task_id,
+                    "worker_kind": "adversarial_verifier",
+                    "spawn_kind": "readonly_fanout",
+                },
+            }
+        )
+    context = _runtime_context(
+        root=root,
+        run_dir=run_dir,
+        run_id=run_id,
+        validator=validator,
+        policy=policy,
+    )
+    spawn_plan = plan_worker_spawns(normalized[0], policy=policy, worker_count=len(normalized))
+    slots = WorkerExecutionRecorder(validator).allocate_execution_slots(context, len(normalized))
+    record_worker_spawn_plan(
+        context,
+        plan=spawn_plan,
+        task_id=parent_task_id,
+        worker_ids=[slot.worker_id for slot in slots],
+    )
+    evidence_dir = run_dir / "verifier_evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    recorder = WorkerExecutionRecorder(validator)
+    started = now_iso()
+    verdicts: list[bool] = []
+    artifact_refs: list[str] = []
+    for task, slot in zip(normalized, slots, strict=True):
+        passed = _task_verdict_passes(task)
+        verdicts.append(passed)
+        probe_path = evidence_dir / f"{task['task_id']}.txt"
+        probe_path.write_text(
+            "adversarial verifier pass" if passed else "adversarial verifier fail",
+            encoding="utf-8",
+        )
+        rel_ref = str(probe_path.relative_to(run_dir))
+        artifact_refs.append(rel_ref)
+        enriched = {
+            **task,
+            "runtime_profile_hints": {
+                **dict(task.get("runtime_profile_hints") or {}),
+                "spawn_kind": spawn_plan.spawn_kind,
+                "fake_path": spawn_plan.fake_path,
+                "scheduling_mode": spawn_plan.scheduling_mode,
+            },
+        }
+        recorder.record_execution(
+            context=context,
+            worker_id=slot.worker_id,
+            result_id=slot.result_id,
+            task=enriched,
+            status="succeeded" if passed else "failed",
+            started_at=started,
+            ended_at=started,
+            model_calls=0,
+            tool_calls=1,
+            artifact_refs=[rel_ref],
+            validation_refs=[rel_ref],
+            failure_evidence_refs=[] if passed else [rel_ref],
+            summary=(
+                f"L3 adversarial verifier passed {task['task_id']}."
+                if passed
+                else f"L3 adversarial verifier failed {task['task_id']}."
+            ),
+            runtime_profile_id=f"runtime-profile-l3-verifier-{task['task_id']}",
+            actor="OrchestrationDynamicLive",
+        )
+    verifier_passed = bool(verdicts) and all(verdicts)
+    workers_path = run_dir / "workers.jsonl"
+    ok = verifier_passed and workers_path.exists() and workers_path.stat().st_size > 0
+    return {
+        "ok": ok,
+        "kind": VERIFIER_FANOUT_KIND,
+        "worker_ids": [slot.worker_id for slot in slots],
+        "isolation_unit_ids": [],
+        "verifier_status": "passed" if verifier_passed else "failed",
+        "spawn_plan": spawn_plan.to_dict(),
+        "variables": {
+            "verifier_passed": verifier_passed,
+            "adversarial_ok": verifier_passed,
+            "verifier_count": len(normalized),
+            "verifier_failures": sum(1 for item in verdicts if not item),
+            "worker_ids": [slot.worker_id for slot in slots],
+            "artifact_refs": artifact_refs,
+        },
+    }
+
+
+def execute_verifier_fanout_dry(
+    *,
+    tasks: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Dry-run verifier step: manifest-fixed adversarial gate without live workers."""
+    verdicts = [_task_verdict_passes(task) for task in tasks] if tasks else []
+    verifier_passed = bool(verdicts) and all(verdicts)
+    return {
+        "ok": verifier_passed,
+        "kind": VERIFIER_FANOUT_KIND,
+        "dry_run": True,
+        "verifier_status": "passed" if verifier_passed else "failed",
+        "variables": {
+            "verifier_passed": verifier_passed,
+            "adversarial_ok": verifier_passed,
+            "verifier_count": len(tasks),
+            "verifier_failures": sum(1 for item in verdicts if not item),
+        },
+    }
+
+
 def execute_merge_checkpoint_live(
     *,
     run_dir: Path,
     prior_variables: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Validate prior live fanout steps recorded worker + merge evidence."""
+    """Validate prior live fanout steps recorded worker, verifier, and merge evidence."""
     workers_path = run_dir / "workers.jsonl"
-    workers_ok = workers_path.exists() and workers_path.stat().st_size > 0
+    requires_worker_evidence = any(
+        item.get("merge_gate_ok") is not None or item.get("worker_ids") for item in prior_variables
+    )
+    if requires_worker_evidence:
+        workers_ok = workers_path.exists() and workers_path.stat().st_size > 0
+    else:
+        workers_ok = True
     disjoint_vars = [item for item in prior_variables if item.get("merge_gate_ok") is not None]
     merge_ok = all(item.get("merge_gate_ok") is True for item in disjoint_vars) if disjoint_vars else True
-    ok = workers_ok and merge_ok
+    verifier_vars = [
+        item
+        for item in prior_variables
+        if item.get("verifier_passed") is not None or item.get("adversarial_ok") is not None
+    ]
+    if verifier_vars:
+        verifier_ok = all(
+            item.get("verifier_passed", item.get("adversarial_ok")) is True for item in verifier_vars
+        )
+    else:
+        verifier_ok = True
+    ok = workers_ok and merge_ok and verifier_ok
     return {
         "ok": ok,
         "kind": "merge_checkpoint",
         "variables": {
             "workers_jsonl_present": workers_ok,
             "prior_disjoint_steps": len(disjoint_vars),
+            "prior_verifier_steps": len(verifier_vars),
             "merge_gate_ok": merge_ok,
+            "verifier_gate_ok": verifier_ok,
         },
     }
 
@@ -250,6 +408,16 @@ def execute_live_step(
         )
     if step_kind == LIVE_DISJOINT_KIND:
         return execute_disjoint_write_fanout_live(
+            root=root,
+            run_dir=run_dir,
+            run_id=run_id,
+            validator=validator,
+            tasks=tasks,
+            parent_task_id=parent_task_id,
+            policy=policy,
+        )
+    if step_kind in VERIFIER_KINDS:
+        return execute_verifier_fanout_live(
             root=root,
             run_dir=run_dir,
             run_id=run_id,

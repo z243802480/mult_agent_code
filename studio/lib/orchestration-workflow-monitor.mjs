@@ -20,6 +20,18 @@ function mergeStatusFromRecord(record) {
   return null;
 }
 
+function verifierStatusFromRecord(record) {
+  const variables = asRecord(record.variables);
+  const swarm = asRecord(record.swarm_plan);
+  if (variables.verifier_passed === true || variables.adversarial_ok === true) return "passed";
+  if (variables.verifier_passed === false || variables.adversarial_ok === false) return "failed";
+  if (swarm.verifier_status) return String(swarm.verifier_status);
+  if (record.kind === "verifier_fanout" || record.kind === "adversarial_review") {
+    return record.status === "completed" ? "passed" : "failed";
+  }
+  return null;
+}
+
 function isolationUnitIds(record) {
   const variables = asRecord(record.variables);
   const swarm = asRecord(record.swarm_plan);
@@ -45,6 +57,7 @@ export function projectWorkflowStep(record) {
     status: String(row.status || ""),
     isolation_unit_ids: isolationUnitIds(row),
     merge_status: mergeStatusFromRecord(row),
+    verifier_status: verifierStatusFromRecord(row),
     live_execution: swarm.live_execution === true,
     worker_ids: Array.isArray(swarm.worker_ids) ? swarm.worker_ids.map(String) : [],
     recorded_at: String(row.recorded_at || ""),
@@ -66,7 +79,9 @@ export function buildOrchestrationWorkflowMonitor(rows, workflowId = null) {
   const completed = steps.filter((step) => step.status === "completed").length;
   const failed = steps.filter((step) => step.status === "failed").length;
   const mergeSteps = steps.filter((step) => step.kind === "merge_checkpoint");
+  const verifierSteps = steps.filter((step) => step.kind === "verifier_fanout" || step.kind === "adversarial_review");
   const lastMerge = mergeSteps.length ? mergeSteps[mergeSteps.length - 1] : null;
+  const lastVerifier = verifierSteps.length ? verifierSteps[verifierSteps.length - 1] : null;
 
   let inferredWorkflowId = workflowId;
   if (!inferredWorkflowId) {
@@ -89,6 +104,7 @@ export function buildOrchestrationWorkflowMonitor(rows, workflowId = null) {
     failed_steps: failed,
     resume_checkpoint: lastMerge?.step_id || null,
     merge_status: lastMerge?.merge_status || null,
+    verifier_status: lastVerifier?.verifier_status || null,
     steps,
   };
 }

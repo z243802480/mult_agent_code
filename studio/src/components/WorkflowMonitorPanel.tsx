@@ -26,6 +26,7 @@ export function WorkflowMonitorPanel({
 
   const workflowId = firstText(String(workflow.workflow_id ?? ""), "workflow");
   const mergeStatus = String(workflow.merge_status ?? "n/a");
+  const verifierStatus = String(workflow.verifier_status ?? "n/a");
 
   return (
     <div className="evidenceBlock workflowMonitorPanel" aria-label="L3 workflow monitor">
@@ -37,6 +38,7 @@ export function WorkflowMonitorPanel({
           tone={Number(workflow.failed_steps ?? 0) ? "bad" : "good"}
         />
         <Metric label="Merge" value={mergeStatus} tone={mergeStatus === "passed" ? "good" : mergeStatus === "failed" ? "bad" : "warn"} />
+        <Metric label="Verifier" value={verifierStatus} tone={verifierStatus === "passed" ? "good" : verifierStatus === "failed" ? "bad" : "warn"} />
         <Metric
           label="Checkpoint"
           value={String(workflow.resume_checkpoint ?? "none")}
@@ -75,6 +77,7 @@ export function WorkflowMonitorPanel({
                   step.live_execution ? "live=true" : "",
                   isolation.length ? `isolation=${isolation.join(", ")}` : "",
                   stepMerge ? `merge=${stepMerge}` : "",
+                  step.verifier_status ? `verifier=${String(step.verifier_status)}` : "",
                   asArray(step.worker_ids).length ? `workers=${asArray(step.worker_ids).join(", ")}` : "",
                 ]
                   .filter(Boolean)

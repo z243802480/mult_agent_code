@@ -59,6 +59,20 @@ def _isolation_unit_ids(record: dict[str, Any]) -> list[str]:
     return ids
 
 
+def _verifier_status_from_record(record: dict[str, Any]) -> str | None:
+    variables = record.get("variables") if isinstance(record.get("variables"), dict) else {}
+    swarm = record.get("swarm_plan") if isinstance(record.get("swarm_plan"), dict) else {}
+    if variables.get("verifier_passed") is True or variables.get("adversarial_ok") is True:
+        return "passed"
+    if variables.get("verifier_passed") is False or variables.get("adversarial_ok") is False:
+        return "failed"
+    if swarm.get("verifier_status"):
+        return str(swarm.get("verifier_status"))
+    if record.get("kind") in {"verifier_fanout", "adversarial_review"}:
+        return "passed" if record.get("status") == "completed" else "failed"
+    return None
+
+
 def project_workflow_step(record: dict[str, Any]) -> dict[str, Any]:
     """Single step row for Studio workflow monitor."""
     variables = record.get("variables") if isinstance(record.get("variables"), dict) else {}
@@ -69,6 +83,7 @@ def project_workflow_step(record: dict[str, Any]) -> dict[str, Any]:
         "status": str(record.get("status") or ""),
         "isolation_unit_ids": _isolation_unit_ids(record),
         "merge_status": _merge_status_from_record(record),
+        "verifier_status": _verifier_status_from_record(record),
         "live_execution": bool((record.get("swarm_plan") or {}).get("live_execution")),
         "worker_ids": [
             str(item)
@@ -97,7 +112,9 @@ def build_workflow_monitor_projection(
     completed = sum(1 for step in steps if step.get("status") == "completed")
     failed = sum(1 for step in steps if step.get("status") == "failed")
     merge_steps = [step for step in steps if step.get("kind") == "merge_checkpoint"]
+    verifier_steps = [step for step in steps if step.get("kind") in {"verifier_fanout", "adversarial_review"}]
     last_merge = merge_steps[-1] if merge_steps else None
+    last_verifier = verifier_steps[-1] if verifier_steps else None
 
     inferred_workflow_id = workflow_id
     if not inferred_workflow_id:
@@ -118,6 +135,7 @@ def build_workflow_monitor_projection(
         "failed_steps": failed,
         "resume_checkpoint": last_merge.get("step_id") if last_merge else None,
         "merge_status": last_merge.get("merge_status") if last_merge else None,
+        "verifier_status": last_verifier.get("verifier_status") if last_verifier else None,
         "steps": steps,
     }
 
@@ -139,6 +157,9 @@ def record_workflow_step_progress(
         summary_parts.append(f"isolation={','.join(isolation[:3])}")
     if merge_status:
         summary_parts.append(f"merge={merge_status}")
+    verifier_status = step.get("verifier_status")
+    if verifier_status:
+        summary_parts.append(f"verifier={verifier_status}")
 
     logger = UserProgressLogger(progress_path, validator, session_id=run_id)
     progress_status = "completed" if record.status == "completed" else "failed"
