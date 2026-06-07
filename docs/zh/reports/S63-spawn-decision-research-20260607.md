@@ -62,9 +62,9 @@ Asteria 映射：
 - [x] CI golden（fake）：小改 **不** spawn / 大探索 **可** subagent  
 - [x] real-model golden：95.7% 命中率，23 样本（`orchestration_spawn_pulse.py --real`）  
 - [x] S62-4 real-model route eval：90% / 10 样本  
-- [ ] DecisionPoint 记录（`spawn_parallel_workers` 仍 gray off）  
-- [ ] 无新增 domain keyword dispatch（doc contract 测试）  
-- [ ] maintainer signoff + DecisionPoint 记录  
+- [x] DecisionPoint 模板 — S64 `decision-orchestration-parallel-0001`（本地 `.asteria/decisions/`，待 resolve）  
+- [ ] maintainer resolve → Wave 2 隔离 probe 执行  
+- [ ] 无新增 domain keyword dispatch（doc contract 测试 — 持续 CI）  
 
 ---
 
