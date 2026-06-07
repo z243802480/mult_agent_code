@@ -1,0 +1,23 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Wave 5 L2 isolated parallel write production path — repo-local evidence, explicit trigger only",
+  "brief": "benchmarks/reference_briefs/S65-isolated-parallel-write-production-path.md",
+  "reference_alignment": "docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md",
+  "depends_on": [
+    "benchmarks/orchestration_wave4_workflows_gate.json",
+    "benchmarks/phase5_dual_worker_case.json",
+    "benchmarks/phase5b_swarm_rollout_gate.json"
+  ],
+  "defaults_unchanged": {
+    "cli_parallel_writes": false,
+    "real_disjoint_write_workers": false
+  },
+  "production_path_policy_key": "isolated_parallel_write_production_path",
+  "required_evidence": [
+    "real_disjoint_probe",
+    "dual_disjoint_execute",
+    "candidate_exports",
+    "merge_gate_dry_run"
+  ],
+  "dual_worker_case_id": "dual_disjoint_files"
+}

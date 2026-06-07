@@ -20,13 +20,19 @@
 | --- | --- | --- |
 | 0 | session_agent 单写者 | ✅ Beta 默认 |
 | 1 | strong route + spawn policy + eval | ✅ S62/S63 |
-| 2 | maintainer `parallel_writes` 隔离 probe | 🔄 S64 gate |
-| 3 | `spawn_parallel_workers` catalog | defer |
-| 4 | CC workflows 级 | defer |
+| 2 | maintainer `parallel_writes` 隔离 probe | ✅ Wave 2 |
+| 3 | `spawn_parallel_workers` catalog | ✅ Wave 3 |
+| 4 | CC **L2** real_disjoint 资格门（非 L3 Workflows 引擎） | ✅ Wave 4 |
+| 5 | **L2 隔离并行写生产路径**（显式触发，默认仍 off） | ✅ Wave 5 |
+| 6+ | **L3** 可复跑编排脚本（≈ CC Dynamic Workflows 机制） | defer |
 
 ## green_checks
 
 ```powershell
-pytest tests/unit/test_orchestration_parallel_gray.py -q
-python scripts/orchestration_parallel_gray_pulse.py --root .
+pytest tests/unit/test_orchestration_parallel_gray.py tests/unit/test_orchestration_router.py -q
+python scripts/orchestration_parallel_gray_pulse.py --root . --gray-drill-ok
+python scripts/orchestration_wave2_probe.py --root .
+python scripts/orchestration_wave3_catalog_probe.py --root .
+python scripts/orchestration_wave4_workflows_probe.py --root .
+python scripts/orchestration_wave5_production_probe.py --root .
 ```

@@ -152,7 +152,12 @@
       "repeated_identical_tool_window": 8,
       "repeated_failed_verification_window": 3,
       "hard_block_only_for_permission_or_destructive_risk": true
-    }
+    },
+    "spawn_parallel_workers_catalog_gray": false,
+    "orchestration_workflows_gray": false,
+    "isolated_parallel_write_production_path": false,
+    "orchestration_dynamic_workflows_gray": false,
+    "max_parallel_workers_per_run": 16
   },
   "model_routing": {
     "goal_spec": "strong",

@@ -13,7 +13,8 @@
     "wave1": "strong route + spawn policy (S62/S63)",
     "wave2": "maintainer isolated parallel_writes probe (S32 drill + DecisionPoint)",
     "wave3": "spawn_parallel_workers catalog when policy gray + strong route",
-    "wave4": "CC Dynamic Workflows scale (defer)"
+    "wave4": "L2 real_disjoint qualification (S64-W4)",
+    "wave5": "L2 isolated production path on repo (S65)"
   },
   "thresholds": {
     "spawn_min_hit_rate": 0.9,
@@ -21,5 +22,17 @@
     "route_min_hit_rate": 0.85,
     "route_min_cases": 8
   },
-  "maintainer_command": "python scripts/orchestration_parallel_gray_pulse.py --root . --gray-drill-ok --write-decision"
+  "maintainer_command": "python scripts/orchestration_parallel_gray_pulse.py --root . --gray-drill-ok --write-decision",
+  "wave2_probe_command": "python scripts/orchestration_wave2_probe.py --root .",
+  "wave2_signoff": "docs/zh/reports/S64-wave2-probe-signoff-20260607.md",
+  "wave3_catalog_probe_command": "python scripts/orchestration_wave3_catalog_probe.py --root .",
+  "wave3_gate": "benchmarks/orchestration_wave3_catalog_gate.json",
+  "wave3_signoff": "docs/zh/reports/S64-wave3-catalog-signoff-20260607.md",
+  "wave4_workflows_probe_command": "python scripts/orchestration_wave4_workflows_probe.py --root .",
+  "wave4_gate": "benchmarks/orchestration_wave4_workflows_gate.json",
+  "wave4_signoff": "docs/zh/reports/S64-wave4-workflows-signoff-20260607.md",
+  "wave5_production_probe_command": "python scripts/orchestration_wave5_production_probe.py --root .",
+  "wave5_gate": "benchmarks/orchestration_wave5_production_gate.json",
+  "wave5_brief": "benchmarks/reference_briefs/S65-isolated-parallel-write-production-path.md",
+  "wave5_signoff": "docs/zh/reports/S65-wave5-production-path-signoff-20260607.md"
 }

@@ -31,6 +31,7 @@ class WorkspaceOrchestrationState:
     pending_decision_count: int = 0
     execution_profile_id: str = "session_agent"
     parallel_writes_enabled: bool = False
+    spawn_parallel_workers_catalog_gray: bool = False
     session_continue_eligible: bool = False
     active_goal_memory_present: bool = False
     can_review: bool = False
@@ -47,6 +48,7 @@ class WorkspaceOrchestrationState:
             "pending_decision_count": self.pending_decision_count,
             "execution_profile_id": self.execution_profile_id,
             "parallel_writes_enabled": self.parallel_writes_enabled,
+            "spawn_parallel_workers_catalog_gray": self.spawn_parallel_workers_catalog_gray,
             "session_continue_eligible": self.session_continue_eligible,
             "active_goal_memory_present": self.active_goal_memory_present,
             "can_review": self.can_review,
@@ -115,12 +117,15 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
     agent_dir = root / ".asteria"
     if not agent_dir.exists():
         return WorkspaceOrchestrationState(initialized=False)
+    parallel_writes, catalog_gray = _load_orchestration_policy_flags(agent_dir, validator)
     run_store = RunStore(agent_dir, validator)
     run_id = run_store.current_session_id()
     if not run_id:
         memory = ActiveGoalMemory(root).read().strip()
         return WorkspaceOrchestrationState(
             initialized=True,
+            parallel_writes_enabled=parallel_writes,
+            spawn_parallel_workers_catalog_gray=catalog_gray,
             active_goal_memory_present=bool(memory),
         )
     run = run_store.load_run(run_id)
@@ -128,8 +133,6 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
     phase = str(run.get("current_phase") or "").strip().upper()
     status = str(run.get("status") or "").strip().lower()
     profile = execution_profile_from_run_config(load_run_config(run_dir, validator))
-    policy = load_policy_config(agent_dir, validator)
-    parallel_writes = bool((policy.get("agent_loop") or {}).get("parallel_writes"))
     loop_summary = _read_optional_json(run_dir / "run_loop_summary.json")
     final_summary = _read_optional_json(run_dir / "final_report_summary.json")
     workflow_source = final_summary or loop_summary or {}
@@ -160,6 +163,7 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
         pending_decision_count=pending,
         execution_profile_id=profile.profile_id,
         parallel_writes_enabled=parallel_writes,
+        spawn_parallel_workers_catalog_gray=catalog_gray,
         session_continue_eligible=continuation is not None,
         active_goal_memory_present=bool(memory),
         can_review=can_review,
@@ -349,20 +353,39 @@ def _base_capabilities(state: WorkspaceOrchestrationState) -> list[Orchestration
                 "Strong model judgment after reading workspace state; not keyword triggers or file counts.",
             ],
             prerequisites=[
-                "harness profile or parallel_writes policy enabled (gray)",
+                "Wave 2 probe passed or maintainer catalog_gray policy enabled",
+                "Strong route judgment required to select this capability",
                 "High-risk acceptance and merge gate",
             ],
             cost_tier="high",
             risk_tier="high",
             studio_mode="run",
             route_kind="parallel_dispatch",
-            available=state.parallel_writes_enabled and state.execution_profile_id == "harness",
+            available=_spawn_parallel_workers_available(state),
             unavailable_reason=_blocked_reason(
-                state.parallel_writes_enabled and state.execution_profile_id == "harness",
+                _spawn_parallel_workers_available(state),
                 "Parallel dispatch is maintainer-only; beta default stays session_agent serial.",
             ),
         ),
     ]
+
+
+def _spawn_parallel_workers_available(state: WorkspaceOrchestrationState) -> bool:
+    """Catalog gray exposes ingress routing without enabling CLI parallel_writes default."""
+    if state.spawn_parallel_workers_catalog_gray:
+        return True
+    return state.parallel_writes_enabled and state.execution_profile_id == "harness"
+
+
+def _load_orchestration_policy_flags(
+    agent_dir: Path,
+    validator: SchemaValidator,
+) -> tuple[bool, bool]:
+    policy = load_policy_config(agent_dir, validator)
+    agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+    parallel_writes = bool(agent_loop.get("parallel_writes"))
+    catalog_gray = bool(agent_loop.get("spawn_parallel_workers_catalog_gray"))
+    return parallel_writes, catalog_gray
 
 
 def _cap(**kwargs: Any) -> OrchestrationCapability:

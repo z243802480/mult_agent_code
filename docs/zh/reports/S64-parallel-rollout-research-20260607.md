@@ -70,9 +70,11 @@
 ```text
 Wave 0  session_agent 默认                    ✅
 Wave 1  strong route + spawn policy + eval    ✅ S62/S63
-Wave 2  maintainer parallel_writes 隔离 probe  ← S64 当前
-Wave 3  spawn_parallel_workers catalog gray   defer
-Wave 4  workflows 级编排                        defer
+Wave 2  maintainer parallel_writes 隔离 probe  ← S64 ✅
+Wave 3  spawn_parallel_workers catalog gray   ← S64 ✅
+Wave 4  workflows 级 maintainer gray          ← S64 ✅
+Wave 5  L2 隔离并行写生产路径（显式触发）  ← S65 ✅
+Wave 6+ L3 可复跑编排脚本                  defer
 ```
 
 ### Wave 2 准入（代码：`orchestration_parallel_gray.py`）
@@ -81,12 +83,12 @@ Wave 4  workflows 级编排                        defer
 - [x] S62 route real eval ≥85%，n≥8  
 - [x] `ORCHESTRATION_DECISION_POLICY.md` 存在  
 - [x] `parallel_writes` CLI 默认 false  
-- [ ] S32 gray rollback drill（maintainer `--gray-drill-ok` 或新 drill 证据）  
-- [ ] DecisionPoint 写入 `.asteria/decisions/`（`--write-decision`）
+- [x] S32 gray rollback drill（Wave 2 probe 证据）  
+- [x] DecisionPoint resolve → `wave2_maintainer_probe`
 
 ---
 
-## 5. 已落实（S64-1）
+## 5. 已落实（S64-1 + Wave 2）
 
 | 项 | 位置 |
 | --- | --- |
@@ -94,20 +96,36 @@ Wave 4  workflows 级编排                        defer
 | Wave 计划 | 本文 §4 · brief S64 |
 | 就绪评估 + DecisionPoint | `orchestration_parallel_gray.py` |
 | maintainer pulse | `scripts/orchestration_parallel_gray_pulse.py` |
+| Wave 2 probe | `scripts/orchestration_wave2_probe.py` |
+| Wave 3 catalog probe | `scripts/orchestration_wave3_catalog_probe.py` |
 | gate | `benchmarks/orchestration_parallel_gray_gate.json` |
+| Wave 2 签字 | [`S64-wave2-probe-signoff-20260607.md`](./S64-wave2-probe-signoff-20260607.md) |
+| Wave 3 签字 | [`S64-wave3-catalog-signoff-20260607.md`](./S64-wave3-catalog-signoff-20260607.md) |
 
 ---
 
-## 6. 下一步（Wave 2 执行，非默认开启）
+## 6. 下一步（Wave 5 冻结 — 先读参考对齐）
 
-1. maintainer 跑 `orchestration_parallel_gray_pulse.py --gray-drill-ok --write-decision`  
-2. 人工 resolve DecisionPoint → `wave2_maintainer_probe`  
-3. 复用 S34 `dual_disjoint_files` / S32 drill 于 **隔离 run_dir**  
-4. Wave 2 签字后，再评估 Wave 3 catalog 可用性（仍须 strong route 选中）
+**必读**：[`S64-W4-W5-reference-alignment-20260607.md`](./S64-W4-W5-reference-alignment-20260607.md)
+
+Wave 5 目标修正为 **L2 隔离并行写生产路径**（显式触发 + candidate/worktree + merge），**不是** CLI 默认 `parallel_writes=true`。
+
+Wave 6+：L3 可复跑编排脚本（≈ CC Dynamic Workflows **机制**）。
 
 ---
 
-## 7. 风险
+## 7. Wave 4 已落实
+
+| 项 | 位置 |
+| --- | --- |
+| brief | `benchmarks/reference_briefs/S64-orchestration-wave4-workflows-probe.md` |
+| gate | `benchmarks/orchestration_wave4_workflows_gate.json` |
+| probe | `scripts/orchestration_wave4_workflows_probe.py` |
+| 签字 | [`S64-wave4-workflows-signoff-20260607.md`](./S64-wave4-workflows-signoff-20260607.md) |
+
+---
+
+## 8. 风险
 
 | 风险 | 缓解 |
 | --- | --- |

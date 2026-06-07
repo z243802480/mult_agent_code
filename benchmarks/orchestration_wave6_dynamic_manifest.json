@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1.0",
+  "workflow_id": "wave6-l3-probe-fanout",
+  "description": "CC-aligned L3 probe: plan in manifest, intermediate state in runner JSONL (not AgentLoop context).",
+  "max_concurrent_steps": 2,
+  "phases": [
+    {
+      "phase_id": "explore",
+      "steps": [
+        {
+          "step_id": "readonly-a",
+          "kind": "readonly_fanout",
+          "tasks": [
+            {"task_id": "probe-read-1", "parallel_safety": "readonly", "read_scope": ["src/"]},
+            {"task_id": "probe-read-2", "parallel_safety": "readonly", "read_scope": ["tests/"]}
+          ]
+        },
+        {
+          "step_id": "readonly-b",
+          "kind": "readonly_fanout",
+          "tasks": [
+            {"task_id": "probe-read-3", "parallel_safety": "readonly", "read_scope": ["docs/"]}
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "merge",
+      "steps": [
+        {
+          "step_id": "merge-checkpoint",
+          "kind": "merge_checkpoint"
+        }
+      ]
+    }
+  ]
+}

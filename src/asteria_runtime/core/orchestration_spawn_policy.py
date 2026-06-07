@@ -58,7 +58,7 @@ SPAWN_DECISION_POLICY = SpawnDecisionPolicy(
         "Subagent splits happen inside AgentLoop (subagent action), not at Studio ingress.",
     ],
     parallel_dispatch_when_to_use=[
-        "Gray policy enables parallel_writes or harness profile AND strong route selects spawn_parallel_workers.",
+        "Gray policy enables parallel_writes, catalog_gray, or harness profile AND strong route selects spawn_parallel_workers.",
         "Goal needs coordinated multi-worker dispatch with disjoint scopes and merge evidence.",
         "Research gate passed—see docs/zh/reports/S63-spawn-decision-research-20260607.md.",
     ],

@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "Wave 3 catalog gray — rules-mode route regression when spawn_parallel_workers is available",
+  "brief": "benchmarks/reference_briefs/S64-orchestration-parallel-gray-rollout.md",
+  "depends_on": [
+    "benchmarks/orchestration_parallel_gray_gate.json",
+    "benchmarks/orchestration_route_gate.json"
+  ],
+  "thresholds": {
+    "route_regression_min_hit_rate": 1.0
+  },
+  "route_regression_cases": [
+    {
+      "id": "w3_small_edit_no_parallel",
+      "message": "给 greet_cli 增加 --version 参数并补测试",
+      "expect_capability": "cold_goal_execute",
+      "forbidden_capabilities": ["spawn_parallel_workers"]
+    },
+    {
+      "id": "w3_read_only_no_parallel",
+      "message": "先只读分析 orchestration_router 模块，不要改文件",
+      "expect_capability": "read_only_plan",
+      "forbidden_capabilities": ["spawn_parallel_workers"]
+    },
+    {
+      "id": "w3_qa_no_parallel",
+      "message": "Python 里 list 和 tuple 有什么区别？",
+      "expect_capability": "chat_answer",
+      "forbidden_capabilities": ["spawn_parallel_workers"]
+    }
+  ]
+}
