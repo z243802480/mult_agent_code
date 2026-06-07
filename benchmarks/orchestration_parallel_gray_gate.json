@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "S64 orchestration parallel gray — Wave 2 maintainer probe prerequisites",
+  "brief": "benchmarks/reference_briefs/S64-orchestration-parallel-gray-rollout.md",
+  "report": "docs/zh/reports/S64-parallel-rollout-research-20260607.md",
+  "depends_on": [
+    "benchmarks/orchestration_spawn_gate.json",
+    "benchmarks/orchestration_route_gate.json",
+    "benchmarks/phase5e_gray_decision_gate.json"
+  ],
+  "wave_plan": {
+    "wave0": "session_agent default + loop subagent (current Beta)",
+    "wave1": "strong route + spawn policy (S62/S63)",
+    "wave2": "maintainer isolated parallel_writes probe (S32 drill + DecisionPoint)",
+    "wave3": "spawn_parallel_workers catalog when policy gray + strong route",
+    "wave4": "CC Dynamic Workflows scale (defer)"
+  },
+  "thresholds": {
+    "spawn_min_hit_rate": 0.9,
+    "spawn_min_cases": 20,
+    "route_min_hit_rate": 0.85,
+    "route_min_cases": 8
+  },
+  "maintainer_command": "python scripts/orchestration_parallel_gray_pulse.py --root . --gray-drill-ok --write-decision"
+}
