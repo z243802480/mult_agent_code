@@ -1,0 +1,67 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "L3 dynamic orchestration ingress gate — strong model selects run_dynamic_orchestration vs session paths",
+  "brief": "benchmarks/reference_briefs/S70-dynamic-orchestration-ingress-eval.md",
+  "plan": "docs/zh/plans/S70-S71-orchestration-ingress-band-plan.md",
+  "requires_dynamic_workflows_gray": true,
+  "thresholds": {
+    "min_hit_rate": 1.0,
+    "max_inprocess_latency_ms": 250
+  },
+  "real_thresholds": {
+    "min_hit_rate": 0.8,
+    "max_per_case_latency_ms": 45000
+  },
+  "cases": [
+    {
+      "id": "di_small_edit",
+      "message": "给 greet_cli 增加 --quiet 参数并补单元测试",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model"
+    },
+    {
+      "id": "di_warm_followup",
+      "message": "Recent Studio chat (for strong orchestration routing only):\nUser: greet_cli 是做什么的？\nAssistant: greet_cli 是一个简单 CLI。\n\nCurrent user message:\n那就改吧，加上 --version 参数",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model",
+      "accept_capabilities": ["cold_goal_execute", "session_continue_execute"]
+    },
+    {
+      "id": "di_read_only",
+      "message": "先只读分析 orchestration_router 模块，不要修改任何文件",
+      "expect_capability": "read_only_plan",
+      "router_mode": "model"
+    },
+    {
+      "id": "di_chat_qa",
+      "message": "解释一下 local-first agent harness 是什么",
+      "expect_capability": "chat_answer",
+      "router_mode": "model"
+    },
+    {
+      "id": "di_manifest_orchestration",
+      "message": "用 L3 dynamic workflow manifest 跑多 phase 编排：先 readonly fanout 探索两个模块，再做 adversarial verifier，最后 merge checkpoint，需要可 resume",
+      "expect_capability": "run_dynamic_orchestration",
+      "router_mode": "model"
+    },
+    {
+      "id": "di_batch_phases",
+      "message": "按 orchestration manifest 执行三阶段：explore 只读 fanout、verify 对抗审查、merge 检查点；状态写入 runner JSONL 可复跑",
+      "expect_capability": "run_dynamic_orchestration",
+      "router_mode": "model"
+    },
+    {
+      "id": "di_resume_workflow",
+      "message": "从 orchestration_runner_state.jsonl checkpoint resume 上次未完成的 L3 workflow，继续 disjoint write fanout 和 merge gate",
+      "expect_capability": "run_dynamic_orchestration",
+      "router_mode": "model"
+    },
+    {
+      "id": "di_not_parallel_dispatch",
+      "message": "并行只读探索 orchestration 和 studio 两个目录并汇总，单 session 内完成即可，不需要 manifest workflow",
+      "expect_capability": "cold_goal_execute",
+      "router_mode": "model",
+      "accept_capabilities": ["cold_goal_execute", "read_only_plan"]
+    }
+  ]
+}

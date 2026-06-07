@@ -153,6 +153,8 @@ def _model_route(
         "session_continue for follow-ups in an accepted session; cold_goal_execute for new work. "
         "Do not choose spawn_parallel_workers unless it is available and the goal truly requires "
         "multi-worker dispatch—small edits stay on session_agent via cold or continue paths. "
+        "Do not choose run_dynamic_orchestration unless available and the goal requires multi-phase "
+        "manifest orchestration (fanout, verifier, merge checkpoint, resume)—not for single scoped edits. "
         "Subagent/worker splits inside a run are AgentLoop decisions, not ingress splits. "
         "Return only JSON matching OrchestrationChoice. "
         "Do not include code, shell commands, or implementation details."

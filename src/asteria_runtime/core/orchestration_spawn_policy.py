@@ -82,6 +82,7 @@ def catalog_selection_guidance() -> list[str]:
         "Prefer resume_run / review_run / accept_run only for clear lifecycle intent.",
         "Subagent and parallel exploration inside a run are AgentLoop subagent actions—not Studio ingress splits.",
         "Do not select spawn_parallel_workers unless available and strong judgment says coordinated multi-worker dispatch with merge evidence is required.",
+        "Do not select run_dynamic_orchestration unless available and the goal requires multi-phase manifest orchestration with checkpoints—not for single small edits.",
         "Never split workers by keyword, file count, or task count.",
         "Do not select unavailable capabilities.",
     ]

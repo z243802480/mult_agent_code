@@ -7,6 +7,7 @@ import { RuntimeSnapshot } from "./RuntimeSnapshot";
 import { runtimeSessionEvents } from "./runtimeNarrative";
 import { EmptyState } from "./EmptyState";
 import { ConversationTurn, PendingTurn, type ProcessExpandSignal } from "./ConversationTurn";
+import { WorkflowMonitorCompact } from "../../components/WorkflowMonitorCompact";
 
 export function Thread({
   events,
@@ -80,6 +81,7 @@ export function Thread({
           onResolveDecision={onResolveDecision}
           onPermit={onPermit}
         />
+        <WorkflowMonitorCompact runDetail={runDetail ?? null} />
         <EmptyState onPrompt={onPrompt} />
       </section>
     );
@@ -95,6 +97,7 @@ export function Thread({
         onResolveDecision={onResolveDecision}
         onPermit={onPermit}
       />
+      <WorkflowMonitorCompact runDetail={runDetail ?? null} />
       {showProcessControls && (
         <div className="threadProcessControls" aria-label="Process display controls">
           <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>Expand process</button>

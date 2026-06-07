@@ -32,6 +32,7 @@ class WorkspaceOrchestrationState:
     execution_profile_id: str = "session_agent"
     parallel_writes_enabled: bool = False
     spawn_parallel_workers_catalog_gray: bool = False
+    dynamic_workflows_gray: bool = False
     session_continue_eligible: bool = False
     active_goal_memory_present: bool = False
     can_review: bool = False
@@ -49,6 +50,7 @@ class WorkspaceOrchestrationState:
             "execution_profile_id": self.execution_profile_id,
             "parallel_writes_enabled": self.parallel_writes_enabled,
             "spawn_parallel_workers_catalog_gray": self.spawn_parallel_workers_catalog_gray,
+            "dynamic_workflows_gray": self.dynamic_workflows_gray,
             "session_continue_eligible": self.session_continue_eligible,
             "active_goal_memory_present": self.active_goal_memory_present,
             "can_review": self.can_review,
@@ -117,7 +119,7 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
     agent_dir = root / ".asteria"
     if not agent_dir.exists():
         return WorkspaceOrchestrationState(initialized=False)
-    parallel_writes, catalog_gray = _load_orchestration_policy_flags(agent_dir, validator)
+    parallel_writes, catalog_gray, dynamic_gray = _load_orchestration_policy_flags(agent_dir, validator)
     run_store = RunStore(agent_dir, validator)
     run_id = run_store.current_session_id()
     if not run_id:
@@ -126,6 +128,7 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
             initialized=True,
             parallel_writes_enabled=parallel_writes,
             spawn_parallel_workers_catalog_gray=catalog_gray,
+            dynamic_workflows_gray=dynamic_gray,
             active_goal_memory_present=bool(memory),
         )
     run = run_store.load_run(run_id)
@@ -164,6 +167,7 @@ def load_workspace_orchestration_state(root: Path, *, validator: SchemaValidator
         execution_profile_id=profile.profile_id,
         parallel_writes_enabled=parallel_writes,
         spawn_parallel_workers_catalog_gray=catalog_gray,
+        dynamic_workflows_gray=dynamic_gray,
         session_continue_eligible=continuation is not None,
         active_goal_memory_present=bool(memory),
         can_review=can_review,
@@ -339,6 +343,34 @@ def _base_capabilities(state: WorkspaceOrchestrationState) -> list[Orchestration
             unavailable_reason=_blocked_reason(state.can_accept, "Current run is not ready for accept."),
         ),
         _cap(
+            capability_id="run_dynamic_orchestration",
+            layer="L3_orchestrator",
+            title="L3 dynamic workflow orchestration (gray)",
+            description=(
+                "Run a manifest-driven multi-phase workflow (fanout, verifier, merge checkpoint) "
+                "via the L3 runner. State stays in orchestration_runner_state.jsonl—not main AgentLoop context."
+            ),
+            when_to_use=[
+                "Goal explicitly requires multi-phase orchestration with checkpoints, resume, "
+                "parallel readonly fanout, adversarial verifier, or disjoint write merge gates.",
+                "User references workflow manifest, orchestration script, or resumable L3 band.",
+                "Strong judgment: coordinated phases with merge evidence—not a single scoped edit.",
+            ],
+            prerequisites=[
+                "orchestration_dynamic_workflows_gray maintainer policy enabled",
+                "Wave 6+ L3 runner probe passed",
+            ],
+            cost_tier="high",
+            risk_tier="high",
+            studio_mode="orchestration",
+            route_kind="dynamic_orchestration",
+            available=_run_dynamic_orchestration_available(state),
+            unavailable_reason=_blocked_reason(
+                _run_dynamic_orchestration_available(state),
+                "L3 dynamic orchestration is maintainer-only until product signoff.",
+            ),
+        ),
+        _cap(
             capability_id="spawn_parallel_workers",
             layer="coordinator",
             title="Parallel worker dispatch (gray)",
@@ -377,15 +409,21 @@ def _spawn_parallel_workers_available(state: WorkspaceOrchestrationState) -> boo
     return state.parallel_writes_enabled and state.execution_profile_id == "harness"
 
 
+def _run_dynamic_orchestration_available(state: WorkspaceOrchestrationState) -> bool:
+    """L3 ingress catalog entry; requires maintainer dynamic workflows gray."""
+    return state.initialized and state.dynamic_workflows_gray
+
+
 def _load_orchestration_policy_flags(
     agent_dir: Path,
     validator: SchemaValidator,
-) -> tuple[bool, bool]:
+) -> tuple[bool, bool, bool]:
     policy = load_policy_config(agent_dir, validator)
     agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
     parallel_writes = bool(agent_loop.get("parallel_writes"))
     catalog_gray = bool(agent_loop.get("spawn_parallel_workers_catalog_gray"))
-    return parallel_writes, catalog_gray
+    dynamic_gray = bool(agent_loop.get("orchestration_dynamic_workflows_gray"))
+    return parallel_writes, catalog_gray, dynamic_gray
 
 
 def _cap(**kwargs: Any) -> OrchestrationCapability:
