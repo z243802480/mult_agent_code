@@ -346,6 +346,17 @@ def run_dynamic_orchestration(
 
                 append_runner_state(state_path, record)
                 existing[step.step_id] = record
+                if not dry_run and validator is not None:
+                    from asteria_runtime.core.orchestration_workflow_monitor import (
+                        record_workflow_step_progress,
+                    )
+
+                    record_workflow_step_progress(
+                        run_dir=run_dir,
+                        validator=validator,
+                        run_id=effective_run_id,
+                        record=record,
+                    )
                 if record.status == "completed":
                     completed += 1
                 else:

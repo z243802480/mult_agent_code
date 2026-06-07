@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { FileText } from "lucide-react";
 import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { Metric, formatMs, percent, Status } from "../../components/Shared";
+import { WorkflowMonitorPanel } from "../../components/WorkflowMonitorPanel";
 import { firstText } from "../../narrative";
 import { asArray, asRecord, contextSectionLabel, formatUsage, latestRoute, metricTone, rollingValidationFromOverview, runtimeProgressFromDetail, workerCountFromTree } from "./inspectorUtils";
 
@@ -514,6 +515,11 @@ export function EvidenceExplorer({
             onSelectEvidence={selectEvidence}
           />
           <WorkerTopologyPanel
+            runDetail={runDetail}
+            selectedKey={selectedKey}
+            onSelectEvidence={selectEvidence}
+          />
+          <WorkflowMonitorPanel
             runDetail={runDetail}
             selectedKey={selectedKey}
             onSelectEvidence={selectEvidence}

@@ -216,6 +216,7 @@ export type RunDetailPayload = {
   decisions?: AnyRecord[];
   decision_history?: AnyRecord[];
   worker_tree?: AnyRecord;
+  orchestration_workflow?: AnyRecord | null;
   candidate_exports?: AnyRecord[];
   merge_gate_dry_runs?: AnyRecord[];
   candidate_promotions?: AnyRecord[];

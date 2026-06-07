@@ -128,6 +128,7 @@ def execute_readonly_fanout_live(
         "variables": {
             "readonly_probe_count": len(normalized),
             "evidence_dir": str(evidence_dir.relative_to(run_dir)),
+            "worker_ids": [slot.worker_id for slot in slots],
         },
     }
 
@@ -197,6 +198,8 @@ def execute_disjoint_write_fanout_live(
             "export_count": len(result.exports),
             "merge_gate_ok": merge_ok,
             "audit_ok": bool(result.audit.ok),
+            "isolation_unit_ids": isolation_ids,
+            "worker_ids": list(result.worker_ids),
         },
     }
 

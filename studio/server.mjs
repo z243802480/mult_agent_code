@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { outcomeAnswerContract } from "./prompt-contract.mjs";
 import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, routeUserIntent } from "./intent-router.mjs";
 import { buildRouteMessageWithChatContext, shouldAugmentRouteWithChatContext } from "./lib/chat-route-context.mjs";
+import { buildOrchestrationWorkflowMonitor } from "./lib/orchestration-workflow-monitor.mjs";
 import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -2470,6 +2471,8 @@ async function readRunDetail(runId) {
   payload.candidate_promotions = redact(await readJsonlTail(path.join(runDir, "candidate_promotions.jsonl"), 80));
   payload.promotion_preview = redact(buildPromotionPreview(payload));
   payload.worker_tree = redact(await buildWorkerTree(runDir, payload.agent_run_graph || {}));
+  const workflowStateRows = await readJsonlTail(path.join(runDir, "orchestration_runner_state.jsonl"), 120);
+  payload.orchestration_workflow = redact(buildOrchestrationWorkflowMonitor(workflowStateRows));
   payload.runtime_progress = redact(enrichRuntimeProgress(payload.runtime_progress || {}, payload));
   const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
   const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);

@@ -304,6 +304,62 @@
   white-space: pre-wrap;
 }
 
+.workflowMonitorStats {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.workflowMonitorList {
+  display: grid;
+  gap: 5px;
+}
+
+.workflowMonitorItem {
+  background: #11161a;
+  border: 1px solid #293139;
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+}
+
+.workflowMonitorItem.active,
+.workflowMonitorItem:hover {
+  background: #182128;
+  border-color: #3c7ea8;
+}
+
+.workflowMonitorSummary {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 7px 8px;
+}
+
+.workflowMonitorSummary span:first-child {
+  color: #dbe4e9;
+  font-size: 12px;
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.workflowMonitorItem pre {
+  border-top: 1px solid #1f262c;
+  color: #91a0aa;
+  font-size: 11px;
+  line-height: 1.35;
+  margin: 0;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+}
+
 .workerProgressBar {
   display: grid;
   gap: 6px;
