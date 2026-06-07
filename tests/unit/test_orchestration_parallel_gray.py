@@ -605,3 +605,184 @@ def test_wave6_dynamic_probe_enables_l3_gray(tmp_path: Path) -> None:
     assert agent_loop.get(PRODUCTION_PATH_POLICY_KEY) is True
     assert agent_loop.get("parallel_writes") is not True
     assert agent_loop.get("max_parallel_workers_per_run") == 16
+
+
+def test_wave7_live_probe_enables_execution_gray(tmp_path: Path) -> None:
+    from asteria_runtime.commands.init_command import InitCommand
+    from asteria_runtime.core.orchestration_parallel_gray import (
+        DYNAMIC_WORKFLOWS_GRAY_POLICY_KEY,
+        LIVE_EXECUTION_GRAY_POLICY_KEY,
+        PRODUCTION_PATH_POLICY_KEY,
+        build_orchestration_parallel_decision_point,
+        build_wave3_catalog_decision_point,
+        build_wave4_workflows_decision_point,
+        build_wave5_production_path_decision_point,
+        build_wave6_dynamic_decision_point,
+        evaluate_orchestration_parallel_readiness,
+        evaluate_wave3_catalog_readiness,
+        evaluate_wave4_workflows_readiness,
+        evaluate_wave5_production_path_readiness,
+        evaluate_wave6_dynamic_readiness,
+        evaluate_wave7_live_execution_readiness,
+        run_orchestration_wave7_live_probe,
+        set_isolated_parallel_write_production_path,
+        set_orchestration_dynamic_workflows_gray,
+        set_orchestration_workflows_gray,
+        set_spawn_parallel_workers_catalog_gray,
+    )
+    from asteria_runtime.core.policy_config import load_policy_config
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    InitCommand(tmp_path).run()
+    policy_doc = tmp_path / "docs/zh/plans/ORCHESTRATION_DECISION_POLICY.md"
+    policy_doc.parent.mkdir(parents=True, exist_ok=True)
+    policy_doc.write_text("# policy", encoding="utf-8")
+
+    verification = tmp_path / ".asteria" / "verification"
+    verification.mkdir(parents=True)
+    spawn = verification / "orchestration_spawn_real_20260607.json"
+    route = verification / "orchestration_route_real_20260607.json"
+    _write_spawn_evidence(spawn, hit_rate=0.95, case_count=23)
+    _write_route_evidence(route, hit_rate=0.9, case_count=10)
+    _write_wave2_evidence(verification / "orchestration_wave2_probe.json")
+
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    readiness_w2 = evaluate_orchestration_parallel_readiness(
+        root=tmp_path,
+        policy={"agent_loop": {"parallel_writes": False}},
+        spawn_evidence_path=spawn,
+        route_evidence_path=route,
+        gray_drill_ok=True,
+    )
+    decisions_dir = tmp_path / ".asteria" / "decisions"
+    decisions_dir.mkdir(parents=True)
+
+    w2 = build_orchestration_parallel_decision_point(run_id="run-test", readiness=readiness_w2)
+    w2["status"] = "resolved"
+    w2["selected_option_id"] = "wave2_maintainer_probe"
+    w2["resolved_at"] = "2026-06-07T00:00:00+08:00"
+    (decisions_dir / "decision-orchestration-parallel-0001.json").write_text(
+        json.dumps(w2), encoding="utf-8"
+    )
+
+    w3_readiness = evaluate_wave3_catalog_readiness(
+        root=tmp_path,
+        policy={"agent_loop": {"parallel_writes": False}},
+        spawn_evidence_path=spawn,
+        route_evidence_path=route,
+        wave2_evidence_path=verification / "orchestration_wave2_probe.json",
+    )
+    w3 = build_wave3_catalog_decision_point(run_id="run-test", readiness=w3_readiness)
+    w3["status"] = "resolved"
+    w3["selected_option_id"] = "wave3_catalog_gray"
+    w3["resolved_at"] = "2026-06-07T00:00:00+08:00"
+    (decisions_dir / "decision-orchestration-parallel-0002.json").write_text(
+        json.dumps(w3), encoding="utf-8"
+    )
+    (verification / "orchestration_wave3_catalog_probe.json").write_text(
+        json.dumps({"ok": True}), encoding="utf-8"
+    )
+    set_spawn_parallel_workers_catalog_gray(
+        agent_dir=tmp_path / ".asteria", validator=validator, enabled=True
+    )
+
+    policy = load_policy_config(tmp_path / ".asteria", validator)
+    w4_readiness = evaluate_wave4_workflows_readiness(
+        root=tmp_path,
+        policy=policy,
+        spawn_evidence_path=spawn,
+        route_evidence_path=route,
+        wave2_evidence_path=verification / "orchestration_wave2_probe.json",
+        wave3_evidence_path=verification / "orchestration_wave3_catalog_probe.json",
+    )
+    w4 = build_wave4_workflows_decision_point(run_id="run-test", readiness=w4_readiness)
+    w4["status"] = "resolved"
+    w4["selected_option_id"] = "wave4_workflows_gray"
+    w4["resolved_at"] = "2026-06-07T00:00:00+08:00"
+    (decisions_dir / "decision-orchestration-parallel-0003.json").write_text(
+        json.dumps(w4), encoding="utf-8"
+    )
+    (verification / "orchestration_wave4_workflows_probe.json").write_text(
+        json.dumps({"ok": True}), encoding="utf-8"
+    )
+    set_orchestration_workflows_gray(agent_dir=tmp_path / ".asteria", validator=validator, enabled=True)
+
+    w5_readiness = evaluate_wave5_production_path_readiness(
+        root=tmp_path,
+        policy=load_policy_config(tmp_path / ".asteria", validator),
+        spawn_evidence_path=spawn,
+        route_evidence_path=route,
+        wave2_evidence_path=verification / "orchestration_wave2_probe.json",
+        wave3_evidence_path=verification / "orchestration_wave3_catalog_probe.json",
+        wave4_evidence_path=verification / "orchestration_wave4_workflows_probe.json",
+    )
+    w5 = build_wave5_production_path_decision_point(run_id="run-test", readiness=w5_readiness)
+    w5["status"] = "resolved"
+    w5["selected_option_id"] = "wave5_isolated_production_path"
+    w5["resolved_at"] = "2026-06-07T00:00:00+08:00"
+    (decisions_dir / "decision-orchestration-parallel-0004.json").write_text(
+        json.dumps(w5), encoding="utf-8"
+    )
+    (verification / "orchestration_wave5_production_path.json").write_text(
+        json.dumps({"ok": True}), encoding="utf-8"
+    )
+    set_isolated_parallel_write_production_path(
+        agent_dir=tmp_path / ".asteria", validator=validator, enabled=True
+    )
+
+    w6_readiness = evaluate_wave6_dynamic_readiness(
+        root=tmp_path,
+        policy=load_policy_config(tmp_path / ".asteria", validator),
+        spawn_evidence_path=spawn,
+        route_evidence_path=route,
+        wave2_evidence_path=verification / "orchestration_wave2_probe.json",
+        wave3_evidence_path=verification / "orchestration_wave3_catalog_probe.json",
+        wave4_evidence_path=verification / "orchestration_wave4_workflows_probe.json",
+        wave5_evidence_path=verification / "orchestration_wave5_production_path.json",
+    )
+    w6 = build_wave6_dynamic_decision_point(run_id="run-test", readiness=w6_readiness)
+    w6["status"] = "resolved"
+    w6["selected_option_id"] = "wave6_dynamic_workflows_gray"
+    w6["resolved_at"] = "2026-06-07T00:00:00+08:00"
+    (decisions_dir / "decision-orchestration-parallel-0005.json").write_text(
+        json.dumps(w6), encoding="utf-8"
+    )
+    (verification / "orchestration_wave6_dynamic_probe.json").write_text(
+        json.dumps({"ok": True}), encoding="utf-8"
+    )
+    set_orchestration_dynamic_workflows_gray(
+        agent_dir=tmp_path / ".asteria", validator=validator, enabled=True
+    )
+
+    bench = tmp_path / "benchmarks"
+    bench.mkdir(parents=True)
+    for name in (
+        "orchestration_wave7_live_gate.json",
+        "orchestration_wave7_live_manifest.json",
+    ):
+        src = Path.cwd() / "benchmarks" / name
+        bench.joinpath(name).write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    w7_readiness = evaluate_wave7_live_execution_readiness(
+        root=tmp_path,
+        policy=load_policy_config(tmp_path / ".asteria", validator),
+        spawn_evidence_path=spawn,
+        route_evidence_path=route,
+        wave2_evidence_path=verification / "orchestration_wave2_probe.json",
+        wave3_evidence_path=verification / "orchestration_wave3_catalog_probe.json",
+        wave4_evidence_path=verification / "orchestration_wave4_workflows_probe.json",
+        wave5_evidence_path=verification / "orchestration_wave5_production_path.json",
+        wave6_evidence_path=verification / "orchestration_wave6_dynamic_probe.json",
+    )
+    assert w7_readiness.ready_for_live_probe is True
+
+    result = run_orchestration_wave7_live_probe(repo_root=tmp_path, validator=validator)
+    assert result.ok is True
+    policy = load_policy_config(tmp_path / ".asteria", validator)
+    agent_loop = policy.get("agent_loop") or {}
+    assert agent_loop.get(LIVE_EXECUTION_GRAY_POLICY_KEY) is True
+    assert agent_loop.get(DYNAMIC_WORKFLOWS_GRAY_POLICY_KEY) is True
+    assert agent_loop.get(PRODUCTION_PATH_POLICY_KEY) is True
+    assert agent_loop.get("parallel_writes") is not True
+    assert result.validation_run_path is not None
+    assert result.validation_run_path.exists()

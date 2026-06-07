@@ -25,11 +25,14 @@ DEFAULT_WAVE3_EVIDENCE = Path(".asteria/verification/orchestration_wave3_catalog
 DEFAULT_WAVE4_EVIDENCE = Path(".asteria/verification/orchestration_wave4_workflows_probe.json")
 WAVE5_DECISION_ID = "decision-orchestration-parallel-0004"
 WAVE6_DECISION_ID = "decision-orchestration-parallel-0005"
+WAVE7_DECISION_ID = "decision-orchestration-parallel-0006"
 PRODUCTION_PATH_POLICY_KEY = "isolated_parallel_write_production_path"
 DYNAMIC_WORKFLOWS_GRAY_POLICY_KEY = "orchestration_dynamic_workflows_gray"
+LIVE_EXECUTION_GRAY_POLICY_KEY = "orchestration_dynamic_live_execution_gray"
 MAX_PARALLEL_WORKERS_POLICY_KEY = "max_parallel_workers_per_run"
 DEFAULT_WAVE5_EVIDENCE = Path(".asteria/verification/orchestration_wave5_production_path.json")
 DEFAULT_WAVE6_EVIDENCE = Path(".asteria/verification/orchestration_wave6_dynamic_probe.json")
+DEFAULT_WAVE7_EVIDENCE = Path(".asteria/verification/orchestration_wave7_live_probe.json")
 
 SPAWN_MIN_HIT_RATE = 0.9
 SPAWN_MIN_CASES = 20
@@ -2160,6 +2163,466 @@ def run_orchestration_wave6_dynamic_probe(
         ok=ok,
         decision=decision,
         band=band,
+        evidence_path=evidence_dest,
+        summary=summary,
+    )
+
+
+def _resolve_wave7_gate_path(root: Path) -> Path:
+    local = root / "benchmarks" / "orchestration_wave7_live_gate.json"
+    if local.exists():
+        return local
+    repo_gate = Path.cwd() / "benchmarks" / "orchestration_wave7_live_gate.json"
+    if repo_gate.exists():
+        return repo_gate
+    return local
+
+
+def load_wave6_decision(agent_dir: Path) -> dict[str, Any] | None:
+    path = orchestration_parallel_decision_path(agent_dir, WAVE6_DECISION_ID)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
+def wave6_probe_passed(root: Path, *, wave6_evidence_path: Path | None = None) -> tuple[bool, str]:
+    report = load_eval_report(wave6_evidence_path or (root / DEFAULT_WAVE6_EVIDENCE))
+    if report is None:
+        return False, "Missing Wave 6 dynamic probe evidence."
+    if report.get("ok") is not True:
+        return False, "Wave 6 dynamic probe evidence not ok."
+    return True, "Wave 6 L3 dynamic runner probe passed."
+
+
+def wave6_decision_resolved(agent_dir: Path) -> tuple[bool, str]:
+    decision = load_wave6_decision(agent_dir)
+    if decision is None:
+        return False, f"Missing resolved Wave 6 decision: {WAVE6_DECISION_ID}."
+    if decision.get("status") != "resolved":
+        return False, f"Wave 6 decision not resolved: {WAVE6_DECISION_ID}."
+    if decision.get("selected_option_id") != "wave6_dynamic_workflows_gray":
+        return False, "Wave 6 decision did not select wave6_dynamic_workflows_gray."
+    return True, "Wave 6 DecisionPoint resolved for L3 dynamic runner."
+
+
+@dataclass(frozen=True)
+class Wave7LiveExecutionReadiness:
+    ready_for_decision_point: bool
+    ready_for_live_probe: bool
+    wave6_probe_ok: bool
+    wave6_decision_ok: bool
+    dynamic_gray_enabled: bool
+    live_execution_enabled: bool
+    cli_parallel_writes_default: bool
+    prerequisites: list[RolloutPrerequisite] = field(default_factory=list)
+    blockers: list[str] = field(default_factory=list)
+    wave6_readiness: Wave6DynamicReadiness | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ready_for_decision_point": self.ready_for_decision_point,
+            "ready_for_live_probe": self.ready_for_live_probe,
+            "wave6_probe_ok": self.wave6_probe_ok,
+            "wave6_decision_ok": self.wave6_decision_ok,
+            "dynamic_gray_enabled": self.dynamic_gray_enabled,
+            "live_execution_enabled": self.live_execution_enabled,
+            "cli_parallel_writes_default": self.cli_parallel_writes_default,
+            "prerequisites": [item.to_dict() for item in self.prerequisites],
+            "blockers": self.blockers,
+            "wave6_readiness": self.wave6_readiness.to_dict() if self.wave6_readiness else None,
+        }
+
+
+def evaluate_wave7_live_execution_readiness(
+    *,
+    root: Path,
+    policy: dict[str, Any] | None = None,
+    spawn_evidence_path: Path | None = None,
+    route_evidence_path: Path | None = None,
+    wave2_evidence_path: Path | None = None,
+    wave3_evidence_path: Path | None = None,
+    wave4_evidence_path: Path | None = None,
+    wave5_evidence_path: Path | None = None,
+    wave6_evidence_path: Path | None = None,
+) -> Wave7LiveExecutionReadiness:
+    """Assess Wave 7 L3 live execution readiness (does not enable live gray)."""
+    root = root.resolve()
+    agent_dir = root / ".asteria"
+    policy = policy or {}
+    agent_loop = policy.get("agent_loop") if isinstance(policy.get("agent_loop"), dict) else {}
+    dynamic_gray = bool(agent_loop.get(DYNAMIC_WORKFLOWS_GRAY_POLICY_KEY, False))
+    live_enabled = bool(agent_loop.get(LIVE_EXECUTION_GRAY_POLICY_KEY, False))
+    cli_parallel = bool(agent_loop.get("parallel_writes", False))
+
+    wave6 = evaluate_wave6_dynamic_readiness(
+        root=root,
+        policy=policy,
+        spawn_evidence_path=spawn_evidence_path,
+        route_evidence_path=route_evidence_path,
+        wave2_evidence_path=wave2_evidence_path,
+        wave3_evidence_path=wave3_evidence_path,
+        wave4_evidence_path=wave4_evidence_path,
+        wave5_evidence_path=wave5_evidence_path,
+    )
+
+    base = evaluate_orchestration_parallel_readiness(
+        root=root,
+        policy=policy,
+        spawn_evidence_path=spawn_evidence_path,
+        route_evidence_path=route_evidence_path,
+        gray_drill_ok=True,
+    )
+    prerequisites: list[RolloutPrerequisite] = list(base.prerequisites)
+    blockers = list(wave6.blockers)
+
+    wave6_ok, wave6_detail = wave6_probe_passed(root, wave6_evidence_path=wave6_evidence_path)
+    prerequisites.append(RolloutPrerequisite("wave6_dynamic_probe", wave6_ok, wave6_detail))
+    if not wave6_ok:
+        blockers.append("wave6_probe_missing_or_failed")
+
+    wave6_decision_ok, wave6_decision_detail = wave6_decision_resolved(agent_dir)
+    prerequisites.append(
+        RolloutPrerequisite("wave6_decision_resolved", wave6_decision_ok, wave6_decision_detail)
+    )
+    if not wave6_decision_ok:
+        blockers.append("wave6_decision_not_resolved")
+
+    prerequisites.append(
+        RolloutPrerequisite(
+            "dynamic_workflows_gray_enabled",
+            dynamic_gray,
+            "orchestration_dynamic_workflows_gray is enabled."
+            if dynamic_gray
+            else "Wave 7 requires Wave 6 dynamic workflows gray.",
+        )
+    )
+    if not dynamic_gray:
+        blockers.append("dynamic_workflows_gray_not_enabled")
+
+    live_off = not live_enabled
+    prerequisites.append(
+        RolloutPrerequisite(
+            "live_execution_still_off",
+            live_off,
+            "orchestration_dynamic_live_execution_gray remains disabled before Wave 7 probe."
+            if live_off
+            else "Live execution gray already enabled; probe is idempotent re-verify only.",
+        )
+    )
+
+    ready_for_decision = not blockers and all(item.ok for item in prerequisites[:-1])
+    probe_blockers = list(blockers)
+    if cli_parallel:
+        probe_blockers.append("cli_parallel_writes_must_stay_off")
+    ready_for_probe = ready_for_decision and not cli_parallel
+
+    return Wave7LiveExecutionReadiness(
+        ready_for_decision_point=ready_for_decision,
+        ready_for_live_probe=ready_for_probe,
+        wave6_probe_ok=wave6_ok,
+        wave6_decision_ok=wave6_decision_ok,
+        dynamic_gray_enabled=dynamic_gray,
+        live_execution_enabled=live_enabled,
+        cli_parallel_writes_default=cli_parallel,
+        prerequisites=prerequisites,
+        blockers=probe_blockers,
+        wave6_readiness=wave6,
+    )
+
+
+def build_wave7_live_execution_decision_point(
+    *,
+    run_id: str,
+    readiness: Wave7LiveExecutionReadiness,
+) -> dict[str, Any]:
+    """DecisionPoint for Wave 7 L3 live execution (CC workflow runtime; defaults unchanged)."""
+    return {
+        "schema_version": "0.1.0",
+        "decision_id": WAVE7_DECISION_ID,
+        "status": "pending",
+        "question": (
+            "Enable L3 dynamic orchestration live execution gray? "
+            "Runner spawns readonly/disjoint workers; state stays in JSONL. "
+            "CLI parallel_writes default stays false."
+        ),
+        "recommended_option_id": (
+            "wave7_live_execution_gray" if readiness.ready_for_live_probe else "defer"
+        ),
+        "default_option_id": "defer",
+        "options": [
+            {
+                "option_id": "wave7_live_execution_gray",
+                "label": "Enable L3 live execution maintainer gray",
+                "tradeoff": "Real worker evidence under run_dir; L2 disjoint uses candidate + merge gate.",
+                "action": "create_task",
+            },
+            {
+                "option_id": "defer",
+                "label": "Keep live execution off (dry-run only)",
+                "tradeoff": "Stop at Wave 6 L3 dry-run runner.",
+                "action": "record_constraint",
+            },
+            {
+                "option_id": "rollback_now",
+                "label": "Rollback L3 live/dynamic gray flags",
+                "tradeoff": "Disable live execution and dynamic workflow flags.",
+                "action": "cancel_scope",
+            },
+        ],
+        "impact": {
+            "scope": "high",
+            "budget": "high",
+            "risk": "high",
+            "quality": "medium",
+        },
+        "selected_option_id": None,
+        "created_at": now_iso(),
+        "metadata": {
+            "kind": ORCHESTRATION_PARALLEL_DECISION_KIND,
+            "run_id": run_id,
+            "wave": 7,
+            "layer": "L3_dynamic_live_execution",
+            "requires_wave6_dynamic_gray": True,
+            "cc_mechanism": "workflow_runtime_executes_agents_state_in_runner",
+            "cli_parallel_writes_unchanged": True,
+            "reference_alignment": "docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md",
+            "readiness": readiness.to_dict(),
+        },
+        "resolved_at": None,
+    }
+
+
+def set_orchestration_dynamic_live_execution_gray(
+    *,
+    agent_dir: Path,
+    validator: Any,
+    enabled: bool,
+) -> dict[str, Any]:
+    """Toggle L3 live execution gray without changing CLI parallel_writes default."""
+    from asteria_runtime.core.policy_config import load_policy_config
+    from asteria_runtime.storage.json_store import JsonStore
+
+    policy = load_policy_config(agent_dir, validator)
+    agent_loop = dict(policy.get("agent_loop") or {})
+    if bool(agent_loop.get("parallel_writes", False)):
+        raise RuntimeError("Refusing live execution gray while agent_loop.parallel_writes is enabled.")
+    if enabled and not bool(agent_loop.get(DYNAMIC_WORKFLOWS_GRAY_POLICY_KEY, False)):
+        raise RuntimeError("Refusing live execution gray without orchestration_dynamic_workflows_gray.")
+    agent_loop[LIVE_EXECUTION_GRAY_POLICY_KEY] = enabled
+    policy = {**policy, "agent_loop": agent_loop}
+    path = agent_dir / "policies.json"
+    JsonStore(validator).write(path, policy, "policy_config")
+    return policy
+
+
+def run_wave7_live_manifest_band(
+    *,
+    repo_root: Path,
+    validator: SchemaValidator,
+    manifest_path: Path | None = None,
+) -> dict[str, Any]:
+    """Run L3 manifest with live worker execution (readonly + disjoint + merge checkpoint)."""
+    from asteria_runtime.core.orchestration_dynamic_runner import run_dynamic_orchestration
+    from asteria_runtime.core.policy_config import load_policy_config
+    from asteria_runtime.core.swarm_flag_rollout import with_maintainer_probe_policy
+
+    repo_root = repo_root.resolve()
+    agent_dir = repo_root / ".asteria"
+    gate_path = _resolve_wave7_gate_path(repo_root)
+    if not gate_path.exists():
+        return {"ok": False, "error": f"Missing Wave 7 gate: {gate_path}"}
+
+    gate = json.loads(gate_path.read_text(encoding="utf-8"))
+    manifest_rel = gate.get("probe_manifest") or "benchmarks/orchestration_wave7_live_manifest.json"
+    manifest = manifest_path or (repo_root / manifest_rel)
+    if not manifest.exists():
+        return {"ok": False, "error": f"Missing probe manifest: {manifest}"}
+
+    policy = load_policy_config(agent_dir, validator)
+    exec_policy = with_maintainer_probe_policy(policy)
+    run_id = f"run-wave7-live-{now_iso().replace(':', '').replace('+', '')[:15]}"
+    run_dir = agent_dir / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    result = run_dynamic_orchestration(
+        manifest_path=manifest,
+        run_dir=run_dir,
+        policy=exec_policy,
+        dry_run=False,
+        resume=False,
+        root=repo_root,
+        validator=validator,
+        run_id=run_id,
+    )
+
+    workers_path = run_dir / "workers.jsonl"
+    workers_ok = workers_path.exists() and workers_path.stat().st_size > 0
+    state_path = run_dir / "orchestration_runner_state.jsonl"
+    state_ok = state_path.exists() and state_path.stat().st_size > 0
+    ok = result.ok and workers_ok and state_ok
+
+    validation_path = persist_wave7_validation_run(agent_dir=agent_dir, band={
+        "ok": ok,
+        "live_run": result.to_dict(),
+        "run_dir": str(run_dir),
+        "workers_jsonl_present": workers_ok,
+        "runner_state_present": state_ok,
+    })
+
+    return {
+        "ok": ok,
+        "layer": "L3_dynamic_live_execution",
+        "mechanism": "live_readonly_fanout + live_disjoint_write_fanout + merge_checkpoint",
+        "dry_run": False,
+        "live_run": result.to_dict(),
+        "run_dir": str(run_dir),
+        "validation_run_path": str(validation_path),
+        "manifest_path": str(manifest),
+        "summary": (
+            "Wave 7 L3 live execution band passed."
+            if ok
+            else "Wave 7 live execution band failed."
+        ),
+    }
+
+
+def persist_wave7_validation_run(
+    *,
+    agent_dir: Path,
+    band: dict[str, Any],
+) -> Path:
+    run_id = f"validation-wave7-l3-live-{now_iso().replace(':', '').replace('+', '')[:15]}"
+    run_dir = agent_dir / "validation_runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = run_dir / "summary.json"
+    payload = {
+        "schema_version": "0.1.0",
+        "validation_run_id": run_id,
+        "purpose": "Wave 7 L3 dynamic orchestration live execution",
+        "status": "completed" if band.get("ok") else "failed",
+        "recorded_at": now_iso(),
+        "wave": 7,
+        "layer": "L3_live",
+        "defaults_unchanged": {
+            "cli_parallel_writes": False,
+            "real_disjoint_write_workers": False,
+        },
+        "band": band,
+    }
+    summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return summary_path
+
+
+@dataclass(frozen=True)
+class OrchestrationWave7LiveResult:
+    ok: bool
+    decision: dict[str, Any]
+    band: dict[str, Any]
+    validation_run_path: Path | None
+    evidence_path: Path | None
+    summary: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "decision_id": self.decision.get("decision_id"),
+            "selected_option_id": self.decision.get("selected_option_id"),
+            "band_ok": self.band.get("ok"),
+            "validation_run_path": str(self.validation_run_path) if self.validation_run_path else None,
+            "evidence_path": str(self.evidence_path) if self.evidence_path else None,
+            "summary": self.summary,
+        }
+
+
+def run_orchestration_wave7_live_probe(
+    *,
+    repo_root: Path,
+    validator: SchemaValidator,
+    decision_id: str = WAVE7_DECISION_ID,
+    selected_option_id: str = "wave7_live_execution_gray",
+) -> OrchestrationWave7LiveResult:
+    """Resolve Wave 7 DecisionPoint and validate L3 live execution band."""
+    from asteria_runtime.core.policy_config import load_policy_config
+
+    repo_root = repo_root.resolve()
+    agent_dir = repo_root / ".asteria"
+    if not agent_dir.exists():
+        raise RuntimeError("Repository .asteria not initialized.")
+
+    policy = load_policy_config(agent_dir, validator)
+    readiness = evaluate_wave7_live_execution_readiness(root=repo_root, policy=policy)
+    if not readiness.ready_for_live_probe and not readiness.live_execution_enabled:
+        blockers = ", ".join(readiness.blockers) or "Wave 7 not ready"
+        raise RuntimeError(f"Wave 7 live probe not ready: {blockers}")
+
+    decision_path = orchestration_parallel_decision_path(agent_dir, decision_id)
+    if not decision_path.exists():
+        persist_orchestration_parallel_decision_point(
+            agent_dir=agent_dir,
+            validator=validator,
+            decision_point=build_wave7_live_execution_decision_point(
+                run_id="orchestration-wave7-live-probe",
+                readiness=readiness,
+            ),
+        )
+
+    decision = resolve_orchestration_parallel_decision(
+        agent_dir=agent_dir,
+        validator=validator,
+        decision_id=decision_id,
+        selected_option_id=selected_option_id,
+    )
+
+    band = run_wave7_live_manifest_band(repo_root=repo_root, validator=validator)
+    validation_path = Path(band["validation_run_path"]) if band.get("validation_run_path") else None
+
+    set_orchestration_dynamic_live_execution_gray(
+        agent_dir=agent_dir, validator=validator, enabled=True
+    )
+
+    policy_after = load_policy_config(agent_dir, validator)
+    agent_loop = policy_after.get("agent_loop") or {}
+    defaults_ok = (
+        not bool(agent_loop.get("parallel_writes"))
+        and _real_disjoint_feature_default_off(policy_after)
+    )
+    ok = bool(band.get("ok")) and defaults_ok
+
+    verification_dir = agent_dir / "verification"
+    verification_dir.mkdir(parents=True, exist_ok=True)
+    evidence_dest = verification_dir / "orchestration_wave7_live_probe.json"
+    payload = {
+        "schema_version": "0.1.0",
+        "wave": 7,
+        "layer": "L3_dynamic_live_execution",
+        "ok": ok,
+        "recorded_at": now_iso(),
+        "decision_id": decision_id,
+        "selected_option_id": selected_option_id,
+        "live_execution_gray_policy_key": LIVE_EXECUTION_GRAY_POLICY_KEY,
+        "cli_parallel_writes_unchanged": not bool(agent_loop.get("parallel_writes")),
+        "real_disjoint_default_unchanged": _real_disjoint_feature_default_off(policy_after),
+        "cc_mechanism": "workflow_runtime_executes_workers_state_in_runner_jsonl",
+        "band": band,
+        "validation_run_path": str(validation_path) if validation_path else None,
+        "wave6_evidence_ref": str(DEFAULT_WAVE6_EVIDENCE),
+        "reference_alignment": "docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md",
+    }
+    evidence_dest.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    summary = (
+        "Wave 7 L3 live execution gray enabled; defaults unchanged."
+        if ok
+        else "Wave 7 live probe failed; review validation_run evidence."
+    )
+    return OrchestrationWave7LiveResult(
+        ok=ok,
+        decision=decision,
+        band=band,
+        validation_run_path=validation_path,
         evidence_path=evidence_dest,
         summary=summary,
     )

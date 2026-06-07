@@ -115,7 +115,8 @@ maintainer 级「真实 disjoint worker 管线」资格门
 | --- | --- | --- |
 | 可复跑编排脚本 | Dynamic Workflows `.js` | maintainer `orchestration_manifest.json` + runner（**S66 brief** ✅） |
 | 并发上限 | 16 / 1000 | policy `max_parallel_workers_per_run` |
-| checkpoint/resume | workflow runtime | harness run checkpoint（runner JSONL ✅） |
+| checkpoint/resume | workflow runtime | runner JSONL ✅ |
+| live worker 执行 | workflow runtime spawn | Wave 7 live band ✅ |
 | 对抗验证 | adversarial subagents in script | loop subagent + merge，defer 专用 runner |
 
 **禁止**用 `agent_loop.parallel_writes=true` 一次开关假装完成 L3。

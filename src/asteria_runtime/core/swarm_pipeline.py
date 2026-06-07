@@ -57,6 +57,7 @@ def run_maintainer_disjoint_gray_path(
     run_id: str,
     validator: SchemaValidator,
     policy: dict | None = None,
+    tasks: list[dict[str, Any]] | None = None,
 ) -> SwarmGrayPathResult:
     """Maintainer-only gray path: S18 spawn → export → dry-run without real parallel writes."""
     return _run_disjoint_maintainer_path(
@@ -66,6 +67,7 @@ def run_maintainer_disjoint_gray_path(
         validator=validator,
         policy=policy,
         real_parallel=False,
+        tasks=tasks,
     )
 
 
@@ -96,6 +98,41 @@ def run_maintainer_real_disjoint_probe(
         validator=validator,
         policy=probe_policy,
         real_parallel=True,
+        tasks=None,
+    )
+
+
+def run_maintainer_disjoint_tasks_path(
+    *,
+    root: Path,
+    run_dir: Path,
+    run_id: str,
+    validator: SchemaValidator,
+    tasks: list[dict[str, Any]],
+    policy: dict | None = None,
+    real_parallel: bool = True,
+) -> SwarmGrayPathResult:
+    """Maintainer disjoint path for caller-supplied tasks (L3 live orchestration band)."""
+    base_policy = policy or {}
+    if real_parallel:
+        readiness = evaluate_rollout_readiness(
+            base_policy,
+            target_enabled=True,
+            environment=maintainer_probe_environment(),
+            phase5_entry_signed=True,
+        )
+        if not readiness.ready:
+            blockers = ", ".join(readiness.blockers) or "unknown"
+            raise ValueError(f"Real disjoint tasks path blocked: {blockers}")
+        base_policy = with_maintainer_probe_policy(base_policy)
+    return _run_disjoint_maintainer_path(
+        root=root,
+        run_dir=run_dir,
+        run_id=run_id,
+        validator=validator,
+        policy=base_policy,
+        real_parallel=real_parallel,
+        tasks=tasks,
     )
 
 
@@ -107,6 +144,7 @@ def _run_disjoint_maintainer_path(
     validator: SchemaValidator,
     policy: dict | None,
     real_parallel: bool,
+    tasks: list[dict[str, Any]] | None = None,
 ) -> SwarmGrayPathResult:
     run_dir.mkdir(parents=True, exist_ok=True)
     root = root.resolve()
@@ -119,7 +157,7 @@ def _run_disjoint_maintainer_path(
         event_logger=EventLogger(run_dir / "events.jsonl", validator),
         run_dir_override=run_dir,
     )
-    tasks = _gray_disjoint_tasks()
+    tasks = tasks if tasks is not None else _gray_disjoint_tasks()
     spawn_plan = plan_worker_spawns(tasks[0], policy=policy, worker_count=len(tasks))
     _assert_spawn_plan(spawn_plan, real_parallel=real_parallel)
     slots = WorkerExecutionRecorder(validator).allocate_execution_slots(context, len(tasks))

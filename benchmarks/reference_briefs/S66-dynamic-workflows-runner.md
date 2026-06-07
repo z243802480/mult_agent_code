@@ -1,7 +1,7 @@
 # Slice S66 — L3 Dynamic Orchestration Runner（CC Workflows 机制）
 
 更新时间：2026-06-07  
-状态：**Wave 6 实现中**  
+状态：**Wave 6 ✅ · Wave 7 live defer → S67**  
 依赖：S65 Wave 5 L2 生产路径 ✅  
 
 **参考对齐**：[`docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md`](../../docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md)  
@@ -50,6 +50,5 @@ python scripts/orchestration_wave6_dynamic_probe.py --root .
 
 ## defer
 
-- Live worker 执行（非 dry_run）与 adversarial subagents in script
-- Studio `/workflows` 监控 UI（≈ CC workflows 面板）
-- CLI 默认 `parallel_writes` true
+- Live worker 执行（非 dry_run）→ **S67 Wave 7 ✅**
+- Studio `/workflows` 监控 UI（≈ CC workflows 面板）→ S68

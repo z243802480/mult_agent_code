@@ -24,7 +24,7 @@
 | 3 | `spawn_parallel_workers` catalog | ✅ Wave 3 |
 | 4 | CC **L2** real_disjoint 资格门（非 L3 Workflows 引擎） | ✅ Wave 4 |
 | 5 | **L2 隔离并行写生产路径**（显式触发，默认仍 off） | ✅ Wave 5 |
-| 6+ | **L3** 可复跑编排脚本（≈ CC Dynamic Workflows 机制） | defer |
+| 6+ | **L3** 可复跑编排脚本（≈ CC Dynamic Workflows 机制） | ✅ Wave 6 dry-run · ✅ Wave 7 live |
 
 ## green_checks
 

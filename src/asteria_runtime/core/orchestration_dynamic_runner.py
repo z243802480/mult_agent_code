@@ -12,10 +12,15 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from asteria_runtime.core.swarm_orchestrator import plan_swarm_from_tasks
 from asteria_runtime.utils.time import now_iso
+
+if TYPE_CHECKING:
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+LIVE_FANOUT_KINDS = frozenset({"readonly_fanout", "disjoint_write_fanout"})
 
 DEFAULT_MAX_PARALLEL_WORKERS = 16
 RUNNER_STATE_FILENAME = "orchestration_runner_state.jsonl"
@@ -121,6 +126,7 @@ class RunnerStepRecord:
     kind: str
     status: str
     swarm_plan: dict[str, Any] | None = None
+    variables: dict[str, Any] | None = None
     error: str | None = None
     recorded_at: str = field(default_factory=now_iso)
 
@@ -131,6 +137,7 @@ class RunnerStepRecord:
             "kind": self.kind,
             "status": self.status,
             "swarm_plan": self.swarm_plan,
+            "variables": self.variables,
             "error": self.error,
             "recorded_at": self.recorded_at,
         }
@@ -143,6 +150,7 @@ class RunnerStepRecord:
             kind=str(payload.get("kind") or ""),
             status=str(payload.get("status") or ""),
             swarm_plan=payload.get("swarm_plan") if isinstance(payload.get("swarm_plan"), dict) else None,
+            variables=payload.get("variables") if isinstance(payload.get("variables"), dict) else None,
             error=str(payload.get("error")) if payload.get("error") else None,
             recorded_at=str(payload.get("recorded_at") or now_iso()),
         )
@@ -233,8 +241,14 @@ def run_dynamic_orchestration(
     policy: dict[str, Any] | None = None,
     dry_run: bool = True,
     resume: bool = True,
+    root: Path | None = None,
+    validator: SchemaValidator | None = None,
+    run_id: str | None = None,
 ) -> DynamicOrchestrationRunResult:
     """Execute manifest phases; state persisted under run_dir, not AgentLoop context."""
+    if not dry_run and (root is None or validator is None):
+        raise ValueError("Live orchestration requires root and validator.")
+
     manifest = load_orchestration_manifest(manifest_path)
     state_path = run_dir / RUNNER_STATE_FILENAME
     existing = load_runner_state(state_path) if resume else {}
@@ -244,6 +258,10 @@ def run_dynamic_orchestration(
     total = manifest.total_steps()
     last_checkpoint: str | None = None
     failed = False
+    prior_variables: list[dict[str, Any]] = [
+        record.variables for record in existing.values() if isinstance(record.variables, dict)
+    ]
+    effective_run_id = run_id or f"run-l3-{manifest.workflow_id}"
 
     for phase in manifest.phases:
         pending_steps = [
@@ -262,7 +280,36 @@ def run_dynamic_orchestration(
                 parent_id = f"{manifest.workflow_id}:{phase.phase_id}:{step.step_id}"
                 swarm_plan = _plan_step_swarm(step, policy=policy, parent_task_id=parent_id)
 
-                if step.kind == "merge_checkpoint":
+                if not dry_run and step.kind in LIVE_FANOUT_KINDS.union({"merge_checkpoint"}):
+                    from asteria_runtime.core.orchestration_dynamic_live import execute_live_step
+
+                    live_result = execute_live_step(
+                        step_kind=step.kind,
+                        root=root,  # type: ignore[arg-type]
+                        run_dir=run_dir,
+                        run_id=effective_run_id,
+                        validator=validator,  # type: ignore[arg-type]
+                        tasks=_fanout_tasks(step),
+                        parent_task_id=parent_id,
+                        policy=policy,
+                        prior_variables=prior_variables,
+                    )
+                    live_ok = live_result.get("ok") is True
+                    variables = live_result.get("variables") if isinstance(live_result.get("variables"), dict) else live_result
+                    if isinstance(variables, dict):
+                        prior_variables.append(variables)
+                    record = RunnerStepRecord(
+                        step_id=step.step_id,
+                        phase_id=phase.phase_id,
+                        kind=step.kind,
+                        status="completed" if live_ok else "failed",
+                        swarm_plan={**live_result, "dry_run": False, "live_execution": True},
+                        variables=variables if isinstance(variables, dict) else {"live": live_result},
+                        error=None if live_ok else str(live_result.get("error") or "Live step failed."),
+                    )
+                    if step.kind == "merge_checkpoint" and live_ok:
+                        last_checkpoint = step.step_id
+                elif step.kind == "merge_checkpoint":
                     last_checkpoint = step.step_id
                     record = RunnerStepRecord(
                         step_id=step.step_id,

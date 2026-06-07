@@ -87,3 +87,52 @@ def test_dry_run_and_resume(tmp_path: Path) -> None:
     footprint = first.manifest_footprint
     assert footprint["step_count"] == 2
     assert footprint["context_budget_bytes"] == 512
+
+
+def test_live_orchestration_manifest(tmp_path: Path) -> None:
+    from asteria_runtime.commands.init_command import InitCommand
+    from asteria_runtime.core.swarm_flag_rollout import with_maintainer_probe_policy
+    from asteria_runtime.storage.schema_validator import SchemaValidator
+
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "0.1.0",
+                "workflow_id": "live-test",
+                "description": "live",
+                "max_concurrent_steps": 2,
+                "phases": [
+                    {
+                        "phase_id": "p1",
+                        "steps": [
+                            {
+                                "step_id": "read-live",
+                                "kind": "readonly_fanout",
+                                "tasks": [{"task_id": "lr1", "parallel_safety": "readonly"}],
+                            },
+                            {"step_id": "merge-1", "kind": "merge_checkpoint"},
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / ".asteria" / "runs" / "run-l3-live"
+    result = run_dynamic_orchestration(
+        manifest_path=manifest_path,
+        run_dir=run_dir,
+        policy=with_maintainer_probe_policy({}),
+        dry_run=False,
+        resume=False,
+        root=tmp_path,
+        validator=validator,
+        run_id="run-l3-live",
+    )
+    assert result.ok is True
+    assert result.dry_run is False
+    assert (run_dir / "workers.jsonl").exists()
+    assert (run_dir / "orchestration_runner_state.jsonl").exists()
