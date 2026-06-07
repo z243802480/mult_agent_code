@@ -238,20 +238,37 @@ class ExecutionActionPreparer:
                 for artifact in task.get("expected_artifacts", [])
                 if isinstance(artifact, str)
             ],
+            *[
+                str(path)
+                for path in task.get("expected_changed_files", [])
+                if isinstance(path, str)
+            ],
         ]
         for artifact in dict.fromkeys(artifacts):
-            if not isinstance(artifact, str) or not artifact.endswith(".py"):
+            if not isinstance(artifact, str):
                 continue
-            calls.append(
-                {
-                    "tool_name": "run_command",
-                    "args": {
-                        "command": f"python -m py_compile {artifact}",
-                        "expected_returncodes": [0],
-                    },
-                    "reason": "safe fallback verification for Python artifact",
-                }
-            )
+            if artifact.endswith(".py"):
+                calls.append(
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": f"python -m py_compile {artifact}",
+                            "expected_returncodes": [0],
+                        },
+                        "reason": "safe fallback verification for Python artifact",
+                    }
+                )
+            elif artifact.lower().endswith((".html", ".css", ".htm")):
+                calls.append(
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": self._text_artifact_verification_command([artifact]),
+                            "expected_returncodes": [0],
+                        },
+                        "reason": "safe fallback verification for web artifact",
+                    }
+                )
         return calls or [
             {
                 "tool_name": "run_command",
@@ -319,7 +336,7 @@ class ExecutionActionPreparer:
         artifacts = list(dict.fromkeys(artifacts))
         if not artifacts:
             return []
-        text_suffixes = {".md", ".txt", ".rst"}
+        text_suffixes = {".md", ".txt", ".rst", ".html", ".css", ".htm"}
         if not all(
             any(path.lower().endswith(suffix) for suffix in text_suffixes) for path in artifacts
         ):

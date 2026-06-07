@@ -51,6 +51,8 @@ class ShellGuard:
         "uv pip install --system",
     }
     CONTROL_OPERATORS = {"&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>"}
+    OUTPUT_REDIRECT_OPERATORS = {">", ">>"}
+    UNSAFE_CONTROL_OPERATORS = CONTROL_OPERATORS - OUTPUT_REDIRECT_OPERATORS
 
     def __init__(self, permissions: dict) -> None:
         self.permissions = permissions
@@ -64,7 +66,8 @@ class ShellGuard:
         token_words = self._command_words(tokens)
 
         if not self.permissions.get("allow_shell_operators", False):
-            for operator in self.CONTROL_OPERATORS:
+            self._validate_output_redirects(command)
+            for operator in self.UNSAFE_CONTROL_OPERATORS:
                 if operator in tokens:
                     raise ShellPolicyError(f"Shell control operator denied: {operator}")
 
@@ -90,6 +93,22 @@ class ShellGuard:
             for pattern in self.GLOBAL_INSTALL_PATTERNS:
                 if pattern in normalized:
                     raise ShellPolicyError(f"Global/system package install denied: {pattern}")
+
+    def _validate_output_redirects(self, command: str) -> None:
+        for match in re.finditer(r'(?:^|\s)(>>|>)\s+("?)([^"\s;|&<>]+)\2', command):
+            target = match.group(3)
+            if not self._safe_redirect_target(target):
+                raise ShellPolicyError(f"Shell output redirect denied: {target}")
+
+    def _safe_redirect_target(self, target: str) -> bool:
+        cleaned = target.strip().strip('"').strip("'")
+        if not cleaned or ".." in cleaned:
+            return False
+        if cleaned.startswith(("/", "\\", "$", "%", "~")):
+            return False
+        if any(char in cleaned for char in "|;&<>()"):
+            return False
+        return True
 
     def _tokens(self, command: str) -> list[str]:
         try:

@@ -62,7 +62,7 @@ def test_shell_guard_allows_safe_command() -> None:
         "python ok.py && del important.txt",
         "python ok.py; Remove-Item important.txt",
         "python ok.py | powershell Remove-Item important.txt",
-        "python ok.py > important.txt",
+        "python ok.py > ..\\outside.txt",
         "git push origin main",
         "git remote add origin https://example.test/repo.git",
         "scp file host:/tmp/file",
@@ -117,3 +117,35 @@ def test_shell_guard_allows_quoted_python_statement_separator() -> None:
     )
 
     guard.validate('python -c "from math import sqrt; assert sqrt(4) == 2"')
+
+
+def test_shell_guard_allows_safe_output_redirect_without_operators_flag() -> None:
+    guard = ShellGuard(
+        {
+            "allow_shell": True,
+            "allow_destructive_shell": False,
+            "allow_global_package_install": False,
+            "allow_remote_push": False,
+            "allow_deploy": False,
+            "allow_shell_operators": False,
+        }
+    )
+
+    guard.validate('python -c "print(1)" > index.html')
+    guard.validate("echo test >> styles.css")
+
+
+def test_shell_guard_blocks_unsafe_output_redirect() -> None:
+    guard = ShellGuard(
+        {
+            "allow_shell": True,
+            "allow_destructive_shell": False,
+            "allow_global_package_install": False,
+            "allow_remote_push": False,
+            "allow_deploy": False,
+            "allow_shell_operators": False,
+        }
+    )
+
+    with pytest.raises(ShellPolicyError):
+        guard.validate("echo x > ../../outside.txt")

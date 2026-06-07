@@ -184,6 +184,20 @@ async function waitForReadyOrAssist(base, sessionId) {
 
     const action = resolveRuntimeAction(rec);
     if (action) {
+      if (action === "model-check") {
+        const tierMatch = rec.match(/--tier\s+(\w+)/i);
+        const tier = tierMatch?.[1] || "medium";
+        const check = JSON.parse(
+          await runPythonCapture(["-m", "asteria_runtime", "model-check", "--root", workspace, "--tier", tier, "--json"]),
+        );
+        if (!check.call_ok) throw new Error(`model-check ${tier} failed during assist loop`);
+        note("B1m", `model-check ${tier} ok`);
+        actionCooldown = 4;
+        stagnant = 0;
+        lastSig = "";
+        inProgressIdlePolls = 0;
+        return false;
+      }
       if (action === "debug") {
         friction.debug += 1;
         if (friction.debug > 4) {
@@ -265,6 +279,7 @@ function resolveRuntimeAction(rec) {
   const normalized = normalizeCommand(rec).toLowerCase();
   if (!normalized || normalized.startsWith("accept")) return null;
   if (normalized.startsWith("decide")) return null;
+  if (normalized.startsWith("model-check")) return "model-check";
   if (normalized.includes("debug")) return "debug";
   if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "resume";
   if (normalized.startsWith("replan")) return "resume";

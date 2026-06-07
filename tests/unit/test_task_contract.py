@@ -130,3 +130,14 @@ def test_path_in_read_scope_accepts_src_directory_for_implementation_artifact() 
     scope = ["AGENTS.md", "implementation artifact"]
     assert path_in_read_scope("src", scope, kind="implementation") is True
     assert path_in_read_scope("secrets/key.txt", scope, kind="implementation") is False
+
+
+def test_path_in_write_scope_accepts_root_html_for_implementation_artifact() -> None:
+    scope = ["implementation artifact"]
+    assert path_in_write_scope("index.html", scope, kind="ui") is True
+    assert path_in_write_scope("styles.css", scope, kind="ui") is True
+
+
+def test_path_in_read_scope_accepts_workspace_root_listing() -> None:
+    scope = ["index.html", "styles.css"]
+    assert path_in_read_scope(".", scope, kind="ui") is True

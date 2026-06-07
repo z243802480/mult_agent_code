@@ -152,7 +152,9 @@ def _implementation_artifact_path_allowed(path: str, kind: str) -> bool:
         return False
     if parts[0] in {"src", "tests", "docs", "generated", "studio"}:
         return True
-    if len(parts) == 1 and parts[0].endswith((".py", ".md", ".txt", ".json", ".tsx", ".ts", ".jsx", ".js")):
+    if len(parts) == 1 and parts[0].endswith(
+        (".py", ".md", ".txt", ".json", ".tsx", ".ts", ".jsx", ".js", ".html", ".css", ".htm")
+    ):
         return True
     return False
 
@@ -171,6 +173,8 @@ def path_in_read_scope(path: str, scope: list[str], *, kind: str | None = None) 
     normalized_path = _normalize_path(path)
     if not normalized_path or ".." in normalized_path:
         return False
+    if normalized_path == "." and scope:
+        return True
     resolved_kind = kind or "implementation"
     if path_in_write_scope(path, scope, kind=kind):
         return True
@@ -195,7 +199,9 @@ def _implementation_artifact_read_allowed(path: str, kind: str) -> bool:
         return False
     if parts[0] in {"src", "tests", "docs", "generated", "studio"}:
         return True
-    if path in {"AGENTS.md"} or path.endswith((".py", ".md", ".txt", ".json", ".tsx", ".ts", ".jsx", ".js")):
+    if path in {"AGENTS.md"} or path.endswith(
+        (".py", ".md", ".txt", ".json", ".tsx", ".ts", ".jsx", ".js", ".html", ".css", ".htm")
+    ):
         return True
     return False
 

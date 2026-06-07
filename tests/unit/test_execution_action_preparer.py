@@ -338,6 +338,70 @@ def test_preparer_keeps_scoped_list_that_is_not_text_artifact_parent() -> None:
     assert [call["tool_name"] for call in prepared["tool_calls"]] == ["write_file", "list_files"]
 
 
+def test_preparer_stabilizes_html_artifact_verification() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "index.html", "content": "<html><body>Hi</body></html>"},
+            }
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {"command": "echo ok > index.html"},
+            }
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            expected_artifacts=["index.html"],
+            expected_changed_files=["index.html"],
+            allowed_tools=["write_file", "run_command"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    command = prepared["verification"][0]["args"]["command"]
+    assert "index.html" in command
+    assert ">" not in command
+
+
+def test_preparer_replaces_unsafe_redirect_with_web_verification() -> None:
+    action = {
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {"path": "styles.css", "content": "body { color: black; }"},
+            }
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {"command": "type nul > styles.css"},
+            }
+        ],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            expected_artifacts=["styles.css"],
+            expected_changed_files=["styles.css"],
+            allowed_tools=["write_file", "run_command"],
+            verification_policy={"required": True, "commands": []},
+        ),
+        {},
+    )
+
+    commands = [call["args"]["command"] for call in prepared["verification"]]
+    assert any("styles.css" in command for command in commands)
+    assert all(">" not in command for command in commands)
+
+
 def test_preparer_rejects_empty_action() -> None:
     with pytest.raises(RuntimeError, match="contained no tool calls"):
         _preparer().prepare(

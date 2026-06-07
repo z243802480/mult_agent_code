@@ -289,11 +289,12 @@ async function submitUserGoal(sessionId, body) {
 
 async function handleRuntimeAction(sessionId, body) {
   const session = await ensureSession(sessionId);
+  const activeSessionId = String(session.session_id || sessionId);
   const permission = String(body?.permission || "ask");
   const action = runtimeActionFor(body?.next_action ?? body?.next_command ?? body?.action);
   if (!action) return { ok: false, error: "unsupported runtime action" };
 
-  await appendEvent(session.session_id, {
+  await appendEvent(activeSessionId, {
     type: "assistant_delta",
     status: "completed",
     title: "Next step selected",
@@ -302,17 +303,17 @@ async function handleRuntimeAction(sessionId, body) {
     display_level: "main",
     content_delta: action.summary,
   });
-  await appendEvent(session.session_id, progressEventForMode(action.mode, action.goal));
+  await appendEvent(activeSessionId, progressEventForMode(action.mode, action.goal));
 
   if (action.requiresPermission && permission !== "allow") {
     const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     pendingJobs.set(pendingJobId, {
-      sessionId: session.session_id,
+      sessionId: activeSessionId,
       mode: action.mode,
       goal: action.goal,
       command: action.command,
     });
-    await appendEvent(session.session_id, {
+    await appendEvent(activeSessionId, {
       type: "permission_request",
       status: "waiting_user",
       title: "\u9700\u8981\u4f60\u786e\u8ba4",
@@ -321,11 +322,11 @@ async function handleRuntimeAction(sessionId, body) {
       job_id: pendingJobId,
       content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002",
     });
-    return { ok: true, session, started: false, needs_permission: true, job_id: pendingJobId, action: action.kind };
+    return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId, action: action.kind };
   }
 
-  startRuntimeJob(session.session_id, action.mode, action.goal, action.command);
-  return { ok: true, session, started: true, action: action.kind };
+  startRuntimeJob(activeSessionId, action.mode, action.goal, action.command);
+  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, action: action.kind };
 }
 
 async function handleDecisionResolve(sessionId, body) {
@@ -1942,7 +1943,12 @@ async function createSession() {
 async function ensureSession(sessionId) {
   if (!isSafeId(sessionId)) return createSession();
   const loaded = await readSession(sessionId);
-  if (loaded.ok) return loaded.session;
+  if (loaded.ok) {
+    const session = loaded.session;
+    if (!session.session_id) session.session_id = sessionId;
+    if (!session.workspace) session.workspace = workspace;
+    return session;
+  }
   return createSession();
 }
 
@@ -2022,6 +2028,8 @@ async function appendEvent(sessionId, event) {
     } catch {
       session = {};
     }
+    session.session_id = sessionId;
+    session.workspace = session.workspace || workspace;
     session.updated_at = full.created_at;
     if (full.type === "user_message") {
       session.title = String(full.summary || session.title || "New task").slice(0, 64);
