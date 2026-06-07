@@ -11,7 +11,11 @@ const repoRoot = path.resolve(studioDir, "..");
 const workspace = process.env.B6_SIM_WORKSPACE || "h:/beta_user_sim/workspace";
 const port = Number(process.env.B6_SIM_PORT || (8700 + Math.floor(Math.random() * 200)));
 const python = process.env.ASTERIA_PYTHON || "python";
-const goalText = "给一个小 CLI 增加 --version 参数，并补一个测试。";
+const taskPack = JSON.parse(readFileSync(path.join(repoRoot, "benchmarks/beta_user_tasks.json"), "utf8"));
+const taskId = process.env.B6_TASK_ID || "small_code_change";
+const task = taskPack.tasks.find((item) => item.id === taskId);
+if (!task) throw new Error(`unknown B6_TASK_ID: ${taskId}`);
+const goalText = process.env.B6_GOAL_TEXT || task.goal;
 const startedAt = Date.now();
 const log = [];
 const friction = { decide: 0, debug: 0, resume: 0 };
@@ -29,11 +33,15 @@ if (existsSync(workspace)) {
 await runPython(["-m", "asteria_runtime", "init", "--root", workspace, "--north-star-title", "Beta sim"]);
 note("A4", "init fresh workspace");
 
-copyFileSync(
-  path.join(repoRoot, "benchmarks/fixtures/s13_clean_run/greet_cli.py"),
-  path.join(workspace, "greet_cli.py"),
-);
-note("A4b", "starter greet_cli.py (maintainer-provided)");
+if (taskId === "small_code_change") {
+  copyFileSync(
+    path.join(repoRoot, "benchmarks/fixtures/s13_clean_run/greet_cli.py"),
+    path.join(workspace, "greet_cli.py"),
+  );
+  note("A4b", "starter greet_cli.py (maintainer-provided)");
+} else {
+  note("A4b", `blank workspace for ${taskId}`);
+}
 
 for (const tier of ["strong", "medium"]) {
   const check = JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "model-check", "--root", workspace, "--tier", tier, "--json"]));
@@ -83,19 +91,34 @@ const status = JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "stat
 if (status.current_phase !== "ACCEPTED") throw new Error(`accept failed: ${status.current_phase}`);
 note("C2", "accept ok");
 
-const versionOut = await runPythonCapture([path.join(workspace, "greet_cli.py"), "--version"]);
-const versionTrimmed = versionOut.trim();
-if (!versionTrimmed || !/(greet_cli|\d+\.\d+)/i.test(versionTrimmed)) {
-  throw new Error(`--version failed: ${versionOut}`);
-}
-const testPath = resolveGreetTestPath(workspace);
-if (!testPath) throw new Error("greet_cli test file not found");
-const pytest = await runPythonCapture(["-m", "pytest", testPath, "-q"], workspace);
-if (!/passed/i.test(pytest)) throw new Error(`pytest: ${pytest}`);
-note("C3", pytest.trim());
+await verifyTaskCompletion(taskId);
 
 const totalMin = Math.round((Date.now() - startedAt) / 60000);
-console.log(JSON.stringify({ ok: true, workspace, total_min: totalMin, log, friction }, null, 2));
+console.log(JSON.stringify({ ok: true, task_id: taskId, workspace, total_min: totalMin, log, friction }, null, 2));
+
+async function verifyTaskCompletion(activeTaskId) {
+  if (activeTaskId === "static_landing_page") {
+    const indexPath = path.join(workspace, "index.html");
+    if (!existsSync(indexPath)) throw new Error("index.html not found");
+    const html = readFileSync(indexPath, "utf8");
+    if (!/<html/i.test(html) || html.trim().length < 80) {
+      throw new Error(`index.html invalid (${html.trim().length} bytes)`);
+    }
+    note("C3", `index.html ok (${html.trim().length} bytes)`);
+    return;
+  }
+
+  const versionOut = await runPythonCapture([path.join(workspace, "greet_cli.py"), "--version"]);
+  const versionTrimmed = versionOut.trim();
+  if (!versionTrimmed || !/(greet_cli|\d+\.\d+)/i.test(versionTrimmed)) {
+    throw new Error(`--version failed: ${versionOut}`);
+  }
+  const testPath = resolveGreetTestPath(workspace);
+  if (!testPath) throw new Error("greet_cli test file not found");
+  const pytest = await runPythonCapture(["-m", "pytest", testPath, "-q"], workspace);
+  if (!/passed/i.test(pytest)) throw new Error(`pytest: ${pytest}`);
+  note("C3", pytest.trim());
+}
 
 function resolveGreetTestPath(root) {
   for (const rel of [

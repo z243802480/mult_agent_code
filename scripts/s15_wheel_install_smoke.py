@@ -35,10 +35,8 @@ def main() -> None:
         subprocess.run([sys.executable, "-m", "venv", str(venv_dir)], check=True)
         venv_python = _venv_python(venv_dir)
         pip = [str(venv_python), "-m", "pip", "install", "--quiet"]
-        subprocess.run(
-            [*pip, "--no-index", "--find-links", str(dist_dir), "asteria-runtime"],
-            check=True,
-        )
+        # Install the wheel directly (same as beta_install.ps1); deps e.g. tzdata come from PyPI.
+        subprocess.run([*pip, str(wheel)], check=True)
         subprocess.run([*pip, "pytest"], check=True)
 
         steps = [
