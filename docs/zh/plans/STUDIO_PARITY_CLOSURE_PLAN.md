@@ -3,7 +3,7 @@
 更新时间：2026-06-06  
 状态：**active**  
 前置：**S45–S50 已交付**（见 [`STUDIO_CLAUDE_CODE_PARITY.md`](./STUDIO_CLAUDE_CODE_PARITY.md)）  
-**ACTIVE_SLICE**：**S51**（Turn Rewind 入口）
+**ACTIVE_SLICE**：**S53**（Studio 对标对标签字）
 
 ---
 
@@ -52,8 +52,8 @@ F1 收尾 polish（S51–S53）→ F2 内测闭环 → F3 harness 深集成（�
 | 折叠 process + Markdown final | ✅ | S45g、S46c |
 | model 元数据 | ✅ | S45h |
 | side question | ✅ | S49、S50 |
-| tool 输出限高 + copy | 📋 **S52** | S45i |
-| `/rewind` | 📋 **S51** | S45k |
+| tool 输出限高 + copy | ✅ | S52 |
+| `/rewind` | ✅ | S51 |
 
 ### 2.3 Session（P1）
 
@@ -99,9 +99,9 @@ flowchart LR
 
 | Slice | 交付 | Brief | green_checks |
 | --- | --- | --- | --- |
-| **S51** | Turn **Rewind** 入口 → resume/replan（带确认） | [`S51-turn-rewind-entry.md`](../../benchmarks/reference_briefs/S51-turn-rewind-entry.md) | build · rewind smoke · manual |
-| **S52** | Tool 输出 **ClampedOutput**（限高 + copy + Verbose 全量） | [`S52-tool-output-clamp.md`](../../benchmarks/reference_briefs/S52-tool-output-clamp.md) | build · thread smoke |
-| **S53** | **对标签字**：parity 四块表、README、签字报告 | [`S53-studio-parity-signoff.md`](../../benchmarks/reference_briefs/S53-studio-parity-signoff.md) | doc_contracts · 全 Studio smoke |
+| **S51** | Turn **Rewind** 入口 → resume/replan（带确认） | [`S51-turn-rewind-entry.md`](../../benchmarks/reference_briefs/S51-turn-rewind-entry.md) | ✅ |
+| **S52** | Tool 输出 **ClampedOutput**（限高 + copy + Verbose 全量） | [`S52-tool-output-clamp.md`](../../benchmarks/reference_briefs/S52-tool-output-clamp.md) | ✅ |
+| **S53** | **对标签字**：parity 四块表、README、签字报告 | [`S53-studio-parity-signoff.md`](../../benchmarks/reference_briefs/S53-studio-parity-signoff.md) | 🔄 |
 
 **F1 过门**：`docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md` 签字 + A″ 轨道标记 ✅。
 
