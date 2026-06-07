@@ -1,7 +1,7 @@
 # Slice S51 — Turn Rewind 入口
 
 更新时间：2026-06-06  
-状态：**待执行**  
+状态：**已完成**  
 依赖：S45k 规划、runtime resume/replan 已存在  
 计划：[`docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md`](../../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md)
 
@@ -37,7 +37,7 @@ studio/scripts/turn-rewind-smoke.mjs
 
 ## 4. 验收
 
-- [ ] 至少一个 turn 展示 Rewind（非最后一轮或按产品规则）
-- [ ] 确认后调用 runtime action；events 刷新
-- [ ] Focus 模式不增加主线程噪音（默认折叠或 Verbose only）
-- [ ] `npm run build` + turn-rewind-smoke + homepage-copy-smoke
+- [x] 至少一个 turn 展示 Rewind（非最后一轮 · Normal/Verbose）
+- [x] 确认后调用 runtime action；events 刷新
+- [x] Focus 模式不增加主线程噪音
+- [x] `npm run build` + turn-rewind-smoke + homepage-copy-smoke

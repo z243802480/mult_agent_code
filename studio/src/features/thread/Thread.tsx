@@ -25,6 +25,7 @@ export function Thread({
   turnDiffLabel,
   onAggregateDiffClick,
   viewMode,
+  onTurnRewind,
 }: {
   events: StudioEvent[];
   selected: StudioEvent | null;
@@ -42,6 +43,7 @@ export function Thread({
   turnDiffLabel?: (turnIndex: number) => string;
   onAggregateDiffClick?: (turnIndex: number) => void;
   viewMode: StudioViewMode;
+  onTurnRewind?: (turnIndex: number, action: string) => Promise<void>;
 }) {
   const threadRef = useRef<HTMLElement>(null);
   const [expandSignal, setExpandSignal] = useState<ProcessExpandSignal>(null);
@@ -115,6 +117,9 @@ export function Thread({
           onTurnDiffSelect={onTurnDiffSelect}
           onAggregateDiffClick={onAggregateDiffClick}
           compactDiff={compactDiff}
+          runDetail={runDetail}
+          viewMode={viewMode}
+          onTurnRewind={onTurnRewind}
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}

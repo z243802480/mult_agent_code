@@ -18,7 +18,7 @@ CLI and Studio surface (not command-only UX).
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
 当前 ACTIVE_PHASE：Maint（Studio 对标收尾 · Phase F1）
-当前 ACTIVE_SLICE：S51（Turn Rewind 入口）
+当前 ACTIVE_SLICE：S52（Tool 输出 ClampedOutput）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 Studio 收尾：docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md

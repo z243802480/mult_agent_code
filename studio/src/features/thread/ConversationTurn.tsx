@@ -9,6 +9,7 @@ import { FileChangeChips } from "../../components/FileChangeChips";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
 import { LiveStream } from "./LiveStream";
 import { TurnFinal } from "./TurnFinal";
+import { TurnRewindButton } from "./TurnRewindButton";
 import { middleRepresentativeEvent, middleSummary, hasFinalAnswerForPhase, isModelThinkingStep } from "./turnHelpers";
 import { formatEventTime } from "./threadUtils";
 
@@ -196,7 +197,7 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff }: {
+export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -210,6 +211,9 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   onTurnDiffSelect?: (turnIndex: number) => void;
   onAggregateDiffClick?: (turnIndex: number) => void;
   compactDiff?: boolean;
+  runDetail?: import("../../types").RunDetailPayload | null;
+  viewMode?: import("../../hooks/useViewMode").StudioViewMode;
+  onTurnRewind?: (turnIndex: number, action: string) => Promise<void>;
 }) {
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
@@ -273,6 +277,16 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
         )
       )}
       {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
+      {turnIndex && onTurnRewind && viewMode && (
+        <TurnRewindButton
+          turnIndex={turnIndex}
+          isLast={isLast}
+          isRunning={isRunning}
+          runDetail={runDetail}
+          viewMode={viewMode}
+          onRewind={onTurnRewind}
+        />
+      )}
     </div>
   );
 }

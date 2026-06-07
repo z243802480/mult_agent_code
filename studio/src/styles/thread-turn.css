@@ -545,6 +545,71 @@
   outline: none;
 }
 
+.turnRewindWrap {
+  margin: 8px 0 0 28px;
+}
+
+.turnRewindButton {
+  align-items: center;
+  background: transparent;
+  border: 1px solid #364149;
+  border-radius: 999px;
+  color: #9aa6af;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 6px;
+  padding: 4px 10px;
+}
+
+.turnRewindButton:hover:not(:disabled),
+.turnRewindButton:focus-visible:not(:disabled) {
+  background: #1a2228;
+  color: #d8e2e7;
+  outline: none;
+}
+
+.turnRewindButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.turnRewindConfirm {
+  background: #171b1f;
+  border: 1px solid #364149;
+  border-radius: 8px;
+  max-width: 420px;
+  padding: 10px 12px;
+}
+
+.turnRewindConfirm p {
+  color: #b8c4cc;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 10px;
+}
+
+.turnRewindConfirmActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.turnRewindConfirmActions button {
+  background: #22282d;
+  border: 1px solid #364149;
+  border-radius: 6px;
+  color: #d8e2e7;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.turnRewindConfirmActions button.primary {
+  background: #1e3a48;
+  border-color: #3d6a7a;
+}
+
 .workflowPhaseStrip {
   border-bottom: 1px solid #1e262d;
   display: flex;

@@ -119,6 +119,10 @@ export function App() {
     optionId: string,
   ) => sessionEvents.resolveDecision(runId, decisionId, optionId, runEvidence.setRunDetail), [sessionEvents, runEvidence.setRunDetail]);
 
+  const onTurnRewind = useCallback(async (_turnIndex: number, action: string) => {
+    await sessionEvents.runRuntimeAction(action);
+  }, [sessionEvents]);
+
   return (
     <div
       className={shellClassName}
@@ -208,6 +212,7 @@ export function App() {
           }
           onAggregateDiffClick={review.selectTurnDiff}
           viewMode={viewMode}
+          onTurnRewind={onTurnRewind}
         />
         <Composer
           onSend={sessionEvents.sendGoal}
