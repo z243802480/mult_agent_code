@@ -207,6 +207,7 @@ async function handleApi(request, response, url) {
 
 async function submitUserGoal(sessionId, body) {
   const session = await ensureSession(sessionId);
+  const activeSessionId = resolvedSessionId(session, sessionId);
   const goal = redactText(String(body?.message || "")).trim();
   const channel = String(body?.channel || "").toLowerCase();
   const requestedMode = String(body?.mode || "auto");
@@ -222,7 +223,7 @@ async function submitUserGoal(sessionId, body) {
       intent_kind: "side_ask",
       reason: "Side chat keeps questions off the main thread.",
     };
-    return handleChatMode(session.session_id, goal, route, null, "side");
+    return handleChatMode(activeSessionId, goal, route, null, "side");
   }
 
   const route = routeUserIntent(goal, requestedMode, permission);
@@ -230,7 +231,7 @@ async function submitUserGoal(sessionId, body) {
   const mode = route.mode;
 
   if (route.reason) {
-    await appendEvent(session.session_id, {
+    await appendEvent(activeSessionId, {
       type: "intent_route",
       status: "completed",
       title: "Intent routing",
@@ -245,17 +246,17 @@ async function submitUserGoal(sessionId, body) {
 
   // Chat mode stays conversational by default, but auto-routing may hand off task-like input to plan/run.
   if (mode === "chat") {
-    return handleChatMode(session.session_id, goal, route, audit);
+    return handleChatMode(activeSessionId, goal, route, audit);
   }
 
-  await appendEvent(session.session_id, {
+  await appendEvent(activeSessionId, {
     type: "user_message",
     status: "completed",
     title: "User",
     summary: goal,
     content_delta: goal
   });
-  await appendEvent(session.session_id, {
+  await appendEvent(activeSessionId, {
     type: "assistant_delta",
     status: "completed",
     title: "Understanding goal",
@@ -265,13 +266,13 @@ async function submitUserGoal(sessionId, body) {
     display_level: "main",
     intent_audit: audit,
   });
-  await appendEvent(session.session_id, progressEventForMode(mode, goal));
+  await appendEvent(activeSessionId, progressEventForMode(mode, goal));
 
   if (mode !== "plan" && permission !== "allow") {
     const command = runtimeCommand(mode, goal);
     const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
-    pendingJobs.set(pendingJobId, { sessionId: session.session_id, mode, goal, command });
-    await appendEvent(session.session_id, {
+    pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command });
+    await appendEvent(activeSessionId, {
       type: "permission_request",
       status: "waiting_user",
       title: "\u9700\u8981\u4f60\u786e\u8ba4",
@@ -280,16 +281,16 @@ async function submitUserGoal(sessionId, body) {
       job_id: pendingJobId,
       content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002"
     });
-    return { ok: true, session, started: false, needs_permission: true, job_id: pendingJobId };
+    return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId };
   }
 
-  startRuntimeJob(session.session_id, mode, goal);
-  return { ok: true, session, started: true };
+  startRuntimeJob(activeSessionId, mode, goal);
+  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true };
 }
 
 async function handleRuntimeAction(sessionId, body) {
   const session = await ensureSession(sessionId);
-  const activeSessionId = String(session.session_id || sessionId);
+  const activeSessionId = resolvedSessionId(session, sessionId);
   const permission = String(body?.permission || "ask");
   const action = runtimeActionFor(body?.next_action ?? body?.next_command ?? body?.action);
   if (!action) return { ok: false, error: "unsupported runtime action" };
@@ -331,6 +332,7 @@ async function handleRuntimeAction(sessionId, body) {
 
 async function handleDecisionResolve(sessionId, body) {
   const session = await ensureSession(sessionId);
+  const activeSessionId = resolvedSessionId(session, sessionId);
   const runId = String(body?.run_id || "").trim();
   const decisionId = String(body?.decision_id || "").trim();
   const optionId = String(body?.option_id || "").trim();
@@ -346,7 +348,7 @@ async function handleDecisionResolve(sessionId, body) {
     return { ok: false, error: "option not found" };
   }
   const option = options.find((item) => String(item.option_id || "") === optionId) || {};
-  await appendEvent(session.session_id, {
+  await appendEvent(activeSessionId, {
     type: "user_message",
     status: "completed",
     title: "Decision",
@@ -355,7 +357,7 @@ async function handleDecisionResolve(sessionId, body) {
     phase: "decision",
     display_level: "main",
   });
-  await appendEvent(session.session_id, progressEventForMode("decide", String(decision.question || decisionId)));
+  await appendEvent(activeSessionId, progressEventForMode("decide", String(decision.question || decisionId)));
   const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--select-option-id", optionId];
   const metadata = decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
   const followUpMode =
@@ -363,8 +365,8 @@ async function handleDecisionResolve(sessionId, body) {
     || (metadata.kind === "replan_decision" && optionId === "create_repair_task")
       ? "resume"
       : null;
-  startRuntimeJob(session.session_id, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
-  return { ok: true, session, started: true, decision_id: decisionId, option_id: optionId, follow_up_mode: followUpMode };
+  startRuntimeJob(activeSessionId, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
+  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, decision_id: decisionId, option_id: optionId, follow_up_mode: followUpMode };
 }
 
 function isSafeDecisionOptionId(value) {
@@ -1950,6 +1952,10 @@ async function ensureSession(sessionId) {
     return session;
   }
   return createSession();
+}
+
+function resolvedSessionId(session, sessionId) {
+  return String(session?.session_id || sessionId || "").trim();
 }
 
 async function readSession(sessionId) {

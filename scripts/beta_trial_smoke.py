@@ -31,6 +31,7 @@ def main() -> None:
     steps.append(_run_node(root, "studio/scripts/git-changes-smoke.mjs"))
     steps.append(_run_node(root, "studio/scripts/turn-diff-scope-smoke.mjs"))
     steps.append(_run_node(root, "studio/scripts/s45-parity-smoke.mjs"))
+    steps.append(_run_node(root, "studio/scripts/session-id-smoke.mjs"))
     steps.append(_run_node(root, "studio/scripts/decision-guidance-smoke.mjs"))
     steps.append(_run_python(root, "scripts/beta_friction_aggregate.py", ["--root", str(root)]))
     steps.append(_run_python(root, "scripts/beta_task_pack_check.py", ["--root", str(root)]))

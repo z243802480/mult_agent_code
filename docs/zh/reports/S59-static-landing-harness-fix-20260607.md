@@ -1,7 +1,7 @@
 # S59 — static_landing_page Harness 修复（维护者）
 
-日期：2026-06-07  
-状态：**部分通过** — Harness/Studio 路径已修；真实模型产出仍受 provider 波动影响
+更新时间：2026-06-07  
+状态：**v0.1.1 已打包** — Harness/Studio 路径已修；真实模型产出仍受 provider 波动影响
 
 ## 修复项
 
@@ -26,7 +26,15 @@ B6 复跑（`static_landing_page`）：
 - ✅ 验证命令改为 `python -c` 检查 `index.html`（见 task_failures 证据）
 - ⚠️ 本轮模型未产出 `index.html`（invalid JSON / stream timeout）→ 仍 blocked
 
-## 下一刀（可选）
+## v0.1.1 打包（2026-06-07）
 
-- 真实模型稳定后复跑 B6；或先用 `small_code_change` 作内测 fallback
-- 若仍频繁 timeout：调大 streaming deadline / goal_spec tier 路由
+```powershell
+python scripts/build_beta_release.py --root .
+# dist/asteria-beta-0.1.1.zip
+```
+
+- ✅ triple_track_pulse / beta_trial_smoke / s15 wheel smoke
+- ✅ Release 安装 E2E + Studio 8787/19987 HTTP 200
+- ✅ `session-id-smoke.mjs` 回归
+
+发布：手动上传 `dist/*0.1.1*` 或 `git tag v0.1.1 && git push origin v0.1.1`

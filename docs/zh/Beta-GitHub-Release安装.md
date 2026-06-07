@@ -22,8 +22,8 @@
 ### Windows
 
 ```powershell
-# 从 Releases 下载 asteria-beta-0.1.0.zip 后：
-Expand-Archive .\asteria-beta-0.1.0.zip -DestinationPath .\asteria-beta
+# 从 Releases 下载 `asteria-beta-<版本>.zip` 后（当前 **0.1.1**）：
+Expand-Archive .\asteria-beta-0.1.1.zip -DestinationPath .\asteria-beta
 cd .\asteria-beta
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
@@ -31,7 +31,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 ### macOS / Linux
 
 ```bash
-unzip asteria-beta-0.1.0.zip -d asteria-beta
+unzip asteria-beta-0.1.1.zip -d asteria-beta
 cd asteria-beta
 bash install.sh
 ```
