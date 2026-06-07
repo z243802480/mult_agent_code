@@ -508,6 +508,7 @@ function acknowledgementFor(mode, goal) {
   if (mode === "plan") return `\u6211\u4f1a\u5148\u7ed9\u4f60\u6574\u7406\u4e00\u4efd\u53ea\u8bfb\u8ba1\u5212\uff1a${goal}`;
   if (mode === "run") return `\u6211\u4f1a\u6309\u53d7\u63a7\u6d41\u7a0b\u5904\u7406\u8fd9\u4e2a\u76ee\u6807\uff1a${goal}`;
   if (mode === "continue") return `\u6211\u4f1a\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u63a8\u8fdb\uff08\u8df3\u8fc7\u91cd\u65b0 plan\uff09\uff1a${goal}`;
+  if (mode === "orchestration") return `\u6211\u4f1a\u6309 L3 workflow manifest \u6267\u884c\u591a\u9636\u6bb5\u7f16\u6392\uff08\u72b6\u6001\u843d\u5728 runner JSONL\uff09\uff1a${goal}`;
   if (mode === "review") return `\u6211\u4f1a\u68c0\u67e5\u5f53\u524d\u7ed3\u679c\uff0c\u5e76\u7528\u4f60\u80fd\u76f4\u63a5\u5224\u65ad\u7684\u65b9\u5f0f\u603b\u7ed3\uff1a${goal}`;
   if (mode === "resume") return `\u6211\u4f1a\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\uff1a${goal}`;
   return `\u6211\u5df2\u6536\u5230\u4f60\u7684\u8bf7\u6c42\uff1a${goal}`;
@@ -518,6 +519,7 @@ function progressEventForMode(mode, goal) {
     plan: ["Planning", "\u6b63\u5728\u6574\u7406\u53ea\u8bfb\u8ba1\u5212\uff0c\u4e0d\u4f1a\u4fee\u6539\u4f60\u7684\u6587\u4ef6\u3002"],
     run: ["Starting", "\u6b63\u5728\u5f00\u59cb\u53d7\u63a7\u5904\u7406\u3002"],
     continue: ["Continuing", "\u6b63\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u6267\u884c\u3002"],
+    orchestration: ["Orchestrating", "\u6b63\u5728\u6267\u884c L3 workflow manifest\uff08runner JSONL \u53ef\u89c2\u5bdf\uff09\u3002"],
     review: ["Reviewing", "\u6b63\u5728\u68c0\u67e5\u7ed3\u679c\u5e76\u51c6\u5907\u603b\u7ed3\u3002"],
     resume: ["Resuming", "\u6b63\u5728\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\u3002"],
     accept: ["Accepting", "\u6b63\u5728\u63a5\u53d7\u5df2\u9a8c\u8bc1\u7684\u7ed3\u679c\u3002"],
@@ -539,6 +541,22 @@ function progressEventForMode(mode, goal) {
 function runtimeCommand(mode, goal, options = {}) {
   if (mode === "continue") {
     return runtimeContinuationCommand(goal);
+  }
+  if (mode === "orchestration") {
+    const manifest = String(options.manifest || "benchmarks/orchestration_s72_ingress_manifest.json");
+    const liveFlag = options.live ? "--live" : "";
+    return [
+      python,
+      "-m",
+      moduleName,
+      "orchestration",
+      "run",
+      "--root",
+      workspace,
+      "--manifest",
+      manifest,
+      ...(liveFlag ? [liveFlag] : []),
+    ];
   }
   if (mode === "run") {
     return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1", "--no-research", goal];
@@ -572,7 +590,10 @@ async function resolveStudioOrchestrationRoute(goal, requestedMode) {
     return resolveStudioExecutionRouteFallback(goal, requestedMode);
   }
   const studioMode = String(routed.studio_mode || "run");
-  const command = orchestrationCommandFor(studioMode, goal);
+  const command = orchestrationCommandFor(studioMode, goal, {
+    manifest: routed.manifest_path || null,
+    live: routed.live_execution === true,
+  });
   return {
     mode: studioMode,
     studio_mode: studioMode,
@@ -585,8 +606,14 @@ async function resolveStudioOrchestrationRoute(goal, requestedMode) {
   };
 }
 
-function orchestrationCommandFor(studioMode, goal) {
+function orchestrationCommandFor(studioMode, goal, options = {}) {
   if (studioMode === "continue") return runtimeContinuationCommand(goal);
+  if (studioMode === "orchestration") {
+    return runtimeCommand("orchestration", goal, {
+      manifest: options.manifest,
+      live: options.live,
+    });
+  }
   if (studioMode === "chat") return null;
   return runtimeCommand(studioMode, goal);
 }

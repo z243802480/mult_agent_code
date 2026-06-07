@@ -25,7 +25,7 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.supervised_goal_loop_command import SupervisedGoalLoopCommand
 from asteria_runtime.commands.model_check_command import ModelCheckCommand
 from asteria_runtime.commands.new_command import NewCommand
-from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
+from asteria_runtime.commands.orchestration_run_command import OrchestrationRunCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.decide_command import DecideCommand
@@ -746,6 +746,31 @@ def build_parser() -> argparse.ArgumentParser:
     background_status.add_argument("--json", action="store_true", help="Print machine-readable JSON")
     background_list = background_sub.add_parser("list", help="List background runs from registry")
     background_list.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+
+    orchestration_parser = subcommands.add_parser(
+        "orchestration",
+        help="L3 dynamic orchestration manifest runner (maintainer band)",
+    )
+    orchestration_parser.add_argument("--root", default=".", help="Workspace root path")
+    orchestration_sub = orchestration_parser.add_subparsers(dest="orchestration_action", required=True)
+    orchestration_run = orchestration_sub.add_parser("run", help="Execute an orchestration manifest")
+    orchestration_run.add_argument(
+        "--manifest",
+        required=True,
+        help="Path to orchestration_manifest.json",
+    )
+    orchestration_run.add_argument(
+        "--live",
+        action="store_true",
+        help="Live execution (requires dynamic workflows + live execution gray flags)",
+    )
+    orchestration_run.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Ignore prior orchestration_runner_state.jsonl checkpoint",
+    )
+    orchestration_run.add_argument("--run-id", default=None, help="Optional run id under .asteria/runs/")
+    orchestration_run.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
     accept_parser = subcommands.add_parser(
         "accept",
@@ -1722,6 +1747,26 @@ def main() -> None:
             apply=args.apply,
         ).run()
         print(brainstorm_result.to_text())
+        return
+
+    if command == "orchestration":
+        action = args.orchestration_action
+        if action == "run":
+            orch_result = OrchestrationRunCommand(
+                root=Path(args.root),
+                manifest_path=Path(args.manifest),
+                dry_run=not args.live,
+                resume=not args.no_resume,
+                run_id=args.run_id,
+            ).run()
+            if args.json:
+                print(json.dumps(orch_result.to_dict(), ensure_ascii=False, indent=2))
+            else:
+                print(orch_result.to_text())
+            if not orch_result.ok:
+                raise SystemExit(1)
+            return
+        parser.error(f"Unsupported orchestration action: {action}")
         return
 
     if command in {"run", "goal"}:

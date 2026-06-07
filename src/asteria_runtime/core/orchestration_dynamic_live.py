@@ -8,6 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.orchestration_dynamic_live_provider import record_live_provider_touch
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.swarm_pipeline import run_maintainer_disjoint_tasks_path
 from asteria_runtime.core.worker_recorder import WorkerExecutionRecorder
@@ -88,11 +89,20 @@ def execute_readonly_fanout_live(
     recorder = WorkerExecutionRecorder(validator)
     started = now_iso()
     artifact_refs_by_worker: list[str] = []
+    provider_model_calls = 0
     for task, slot in zip(normalized, slots, strict=True):
         probe_path = evidence_dir / f"{task['task_id']}.txt"
         probe_path.write_text("readonly fanout live ok", encoding="utf-8")
         rel_ref = str(probe_path.relative_to(run_dir))
         artifact_refs_by_worker.append(rel_ref)
+        provider_touch = record_live_provider_touch(
+            run_dir=run_dir,
+            validator=validator,
+            task_id=str(task["task_id"]),
+            purpose="orchestration_l3_readonly_worker",
+            policy=policy,
+        )
+        provider_model_calls += int(provider_touch.get("model_calls") or 0)
         enriched = {
             **task,
             "runtime_profile_hints": {
@@ -110,7 +120,7 @@ def execute_readonly_fanout_live(
             status="succeeded",
             started_at=started,
             ended_at=started,
-            model_calls=0,
+            model_calls=int(provider_touch.get("model_calls") or 0),
             tool_calls=1,
             artifact_refs=[rel_ref],
             validation_refs=[],
@@ -132,6 +142,7 @@ def execute_readonly_fanout_live(
             "readonly_probe_count": len(normalized),
             "evidence_dir": str(evidence_dir.relative_to(run_dir)),
             "worker_ids": [slot.worker_id for slot in slots],
+            "provider_model_calls": provider_model_calls,
         },
     }
 
@@ -261,6 +272,7 @@ def execute_verifier_fanout_live(
     started = now_iso()
     verdicts: list[bool] = []
     artifact_refs: list[str] = []
+    provider_model_calls = 0
     for task, slot in zip(normalized, slots, strict=True):
         passed = _task_verdict_passes(task)
         verdicts.append(passed)
@@ -271,6 +283,14 @@ def execute_verifier_fanout_live(
         )
         rel_ref = str(probe_path.relative_to(run_dir))
         artifact_refs.append(rel_ref)
+        provider_touch = record_live_provider_touch(
+            run_dir=run_dir,
+            validator=validator,
+            task_id=str(task["task_id"]),
+            purpose="orchestration_l3_verifier_worker",
+            policy=policy,
+        )
+        provider_model_calls += int(provider_touch.get("model_calls") or 0)
         enriched = {
             **task,
             "runtime_profile_hints": {
@@ -288,7 +308,7 @@ def execute_verifier_fanout_live(
             status="succeeded" if passed else "failed",
             started_at=started,
             ended_at=started,
-            model_calls=0,
+            model_calls=int(provider_touch.get("model_calls") or 0),
             tool_calls=1,
             artifact_refs=[rel_ref],
             validation_refs=[rel_ref],
@@ -318,6 +338,7 @@ def execute_verifier_fanout_live(
             "verifier_failures": sum(1 for item in verdicts if not item),
             "worker_ids": [slot.worker_id for slot in slots],
             "artifact_refs": artifact_refs,
+            "provider_model_calls": provider_model_calls,
         },
     }
 
