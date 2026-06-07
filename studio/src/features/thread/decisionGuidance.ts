@@ -97,7 +97,9 @@ export function runtimeNextStepSummary(params: {
     || normalized.includes("repair")
     || exitReason.includes("repair")
   ) {
-    return "A step failed — tap Debug to let Asteria retry automatically.";
+    const rounds = Number(loop.rounds ?? loop.rounds_completed ?? 0);
+    const roundHint = rounds > 0 ? ` (attempt ${rounds})` : "";
+    return `A step failed${roundHint} — tap Debug to let Asteria retry automatically.`;
   }
   if (normalized.includes("decide")) {
     return "Resolve the decision card below to continue.";

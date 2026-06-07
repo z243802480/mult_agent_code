@@ -72,9 +72,18 @@ python scripts/beta_friction_aggregate.py --root . --markdown
 
 ---
 
-## 6. 刻意不做（冻结）
+## 6. 渐进放开（2026-06-07）
 
-North Star silent execute · 蜂群默认开 · worktree · Terminal/Settings 面板 · 无 brief 新抽象
+在 **F2 friction 仍管 Studio 新面板** 前提下，以下 harness 向改进 **不再等待内测**：
+
+| 类别 | 示例 | 轨道 |
+| --- | --- | --- |
+| 决策链 UX | decisionGuidance · status blocker 文案 | H |
+| scope 自动放行 | benign `tests/test_*.py` | H |
+| 脉搏脚本 | triple_track · harness_repeatability · pack check | H/P/A |
+| Beta 任务 2/3 | doc_update dogfood（`--with-doc-dogfood`） | P |
+
+**仍冻结**：North Star silent execute · 蜂群默认开 · worktree · Terminal/Settings 全面板
 
 ---
 

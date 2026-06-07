@@ -214,6 +214,8 @@ async function waitForReadyOrAssist(base, sessionId) {
 
 async function waitForSessionJobsIdle(base, sessionId) {
   await waitFor(async () => {
+    const status = await getStatusJson();
+    if (isReady(status)) return true;
     return !(await sessionJobsRunning(base, sessionId));
   }, 300000, "Studio jobs did not finish");
 }

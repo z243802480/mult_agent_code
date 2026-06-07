@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,6 +14,11 @@ def main() -> None:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="Check Beta task pack wiring.")
     parser.add_argument("--root", type=Path, default=Path("."), help="Repository root")
+    parser.add_argument(
+        "--with-doc-dogfood",
+        action="store_true",
+        help="Run s16 doc_update dogfood (requires real model routes)",
+    )
     args = parser.parse_args()
 
     root = args.root.resolve()
@@ -38,6 +44,24 @@ def main() -> None:
         checks.append(_check(rel, path.is_file(), str(path)))
 
     ok = all(bool(item["ok"]) for item in checks)
+    if args.with_doc_dogfood:
+        dogfood = subprocess.run(
+            [sys.executable, "scripts/s16_doc_update_dogfood.py", "--repo", str(root), "--fresh"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        checks.append(
+            {
+                "label": "s16_doc_update_dogfood",
+                "ok": dogfood.returncode == 0,
+                "detail": dogfood.stdout[-800:] if dogfood.stdout else dogfood.stderr[-400:],
+            }
+        )
+        ok = ok and dogfood.returncode == 0
+
     report = {
         "ok": ok,
         "purpose": "Beta task pack pulse (Track P)",

@@ -303,7 +303,11 @@ class StatusResult:
             return blockers[0]
         pending = int(self.current_context.get("pending_decision_count", 0) or 0)
         if pending:
-            return f"{pending} pending decision(s); run the recommended decide command."
+            suffix = "s" if pending != 1 else ""
+            return (
+                f"{pending} decision{suffix} waiting — resolve the decision card in Studio "
+                f"(or run `asteria decide --list-pending`)."
+            )
         latest_failure = (self.current_context.get("latest_task_failure") or {}).get("summary")
         if latest_failure and not completed:
             return str(latest_failure)
