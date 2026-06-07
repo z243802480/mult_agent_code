@@ -1,8 +1,8 @@
 # Studio × Claude Code 体验对标计划
 
 更新时间：2026-06-06  
-状态：**维护态收尾（Phase F1）**  
-**执行计划**：[`STUDIO_PARITY_CLOSURE_PLAN.md`](./STUDIO_PARITY_CLOSURE_PLAN.md) · **ACTIVE_SLICE：S51**  
+状态：**维护态 · F1 已签字**  
+**ACTIVE_SLICE**：**S54**（F2 内测）  
 原始 brief：[`benchmarks/reference_briefs/S45-studio-claude-code-parity.md`](../../benchmarks/reference_briefs/S45-studio-claude-code-parity.md)
 
 ---
@@ -73,8 +73,8 @@ Beta 内测反馈集中在三条：**改完代码看不清 diff**、**长会话�
 | E1 S46 | ✅ | Focus/Verbose、Inspector 分层、Diff Focus、模块化 |
 | E2 S47 | ✅ | Session 侧栏分组 |
 | E3 S48 | ✅ | Diff 左文件右内容 |
-| **F1 S51–S53** | 🔄 | S51–S52 ✅ · **S53 对标签字** |
-| **F2 内测闭环** | 📋 | dogfood · B6 · friction 分桶 |
+| **F1 S51–S53** | ✅ | **已签字** · [`S45-S50-studio-parity-signoff-20260606.md`](../reports/S45-S50-studio-parity-signoff-20260606.md) |
+| **F2 内测闭环** | 🔄 | S54 friction 基线 |
 | defer | 📋 | worktree、policy accept、pane drag-drop、Terminal、Settings |
 
 ---
@@ -84,9 +84,9 @@ Beta 内测反馈集中在三条：**改完代码看不清 diff**、**长会话�
 详见 [`STUDIO_PARITY_CLOSURE_PLAN.md`](./STUDIO_PARITY_CLOSURE_PLAN.md)。
 
 ```text
-F1（当前）S51 Rewind → S52 Tool clamp → S53 对标签字 + signoff
-F2          Beta dogfood + friction 驱动下一刀
-F3（按需）  worktree RFC · policy accept · 长任务 UI 投影
+F1 ✅ 已签字（S45–S53）
+F2 🔄 Beta dogfood + friction 驱动下一刀（S54）
+F3 📋 worktree RFC · policy accept（按需）
 ```
 
 ---
@@ -100,16 +100,19 @@ node studio/scripts/git-changes-smoke.mjs
 node studio/scripts/turn-diff-scope-smoke.mjs
 node studio/scripts/side-chat-smoke.mjs
 node studio/scripts/composer-side-ask-smoke.mjs
+node studio/scripts/turn-rewind-smoke.mjs
+node studio/scripts/tool-output-clamp-smoke.mjs
+node studio/scripts/s45-parity-smoke.mjs
+node studio/scripts/homepage-copy-smoke.mjs
 pytest tests/unit/test_documentation_contracts.py -q
 ```
-
-F1 完成后追加：`node studio/scripts/turn-rewind-smoke.mjs`（S51）
 
 ---
 
 ## 相关文档
 
 - **收尾计划**：[`STUDIO_PARITY_CLOSURE_PLAN.md`](./STUDIO_PARITY_CLOSURE_PLAN.md)
+- **F1 签字**：[`S45-S50-studio-parity-signoff-20260606.md`](../reports/S45-S50-studio-parity-signoff-20260606.md)
 - Studio 功能表：[`studio/README.md`](../../studio/README.md)
 - Beta 试跑：[`Beta试跑清单.md`](../Beta试跑清单.md)
 - 稳态节奏：[`稳态迭代节奏.md`](../稳态迭代节奏.md)

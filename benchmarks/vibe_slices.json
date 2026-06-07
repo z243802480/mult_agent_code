@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S53",
-  "active_phase": "Maint-F1",
+  "active_slice": "S54",
+  "active_phase": "Maint-F2",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -558,6 +558,18 @@
         "node studio/scripts/s45-parity-smoke.mjs"
       ],
       "reference_brief": "benchmarks/reference_briefs/S53-studio-parity-signoff.md"
+    },
+    {
+      "id": "S54",
+      "name": "F2 Beta friction 基线",
+      "phase": "Maint-F2",
+      "depends_on": ["S53"],
+      "user_demo": "friction 分桶 + 试跑清单含 S48–S52",
+      "green_checks": [
+        "python scripts/beta_friction_aggregate.py --root .",
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S54-studio-f2-beta-baseline.md"
     }
   ]
 }

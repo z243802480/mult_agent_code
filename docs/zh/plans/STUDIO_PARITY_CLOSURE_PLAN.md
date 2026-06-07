@@ -1,9 +1,9 @@
 # Studio 对标收尾与内测闭环计划（Phase F）
 
 更新时间：2026-06-06  
-状态：**active**  
-前置：**S45–S50 已交付**（见 [`STUDIO_CLAUDE_CODE_PARITY.md`](./STUDIO_CLAUDE_CODE_PARITY.md)）  
-**ACTIVE_SLICE**：**S53**（Studio 对标对标签字）
+状态：**active · F1 已签字**  
+前置：**S45–S53 已交付**  
+**ACTIVE_SLICE**：**S54**（F2 内测）
 
 ---
 
@@ -95,26 +95,32 @@ flowchart LR
   F3 --> Maint[维护态]
 ```
 
-### Phase F1 — 对标收尾（1–2 周 · **当前**）
+### Phase F1 — 对标收尾 — **✅ 已签字**
 
-| Slice | 交付 | Brief | green_checks |
+| Slice | 交付 | Brief | 状态 |
 | --- | --- | --- | --- |
-| **S51** | Turn **Rewind** 入口 → resume/replan（带确认） | [`S51-turn-rewind-entry.md`](../../benchmarks/reference_briefs/S51-turn-rewind-entry.md) | ✅ |
-| **S52** | Tool 输出 **ClampedOutput**（限高 + copy + Verbose 全量） | [`S52-tool-output-clamp.md`](../../benchmarks/reference_briefs/S52-tool-output-clamp.md) | ✅ |
-| **S53** | **对标签字**：parity 四块表、README、签字报告 | [`S53-studio-parity-signoff.md`](../../benchmarks/reference_briefs/S53-studio-parity-signoff.md) | 🔄 |
+| **S51** | Turn Rewind | [`S51-turn-rewind-entry.md`](../../benchmarks/reference_briefs/S51-turn-rewind-entry.md) | ✅ |
+| **S52** | ClampedOutput | [`S52-tool-output-clamp.md`](../../benchmarks/reference_briefs/S52-tool-output-clamp.md) | ✅ |
+| **S53** | 对标签字 + signoff | [`S53-studio-parity-signoff.md`](../../benchmarks/reference_briefs/S53-studio-parity-signoff.md) | ✅ |
 
-**F1 过门**：`docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md` 签字 + A″ 轨道标记 ✅。
+**F1 过门**：[`S45-S50-studio-parity-signoff-20260606.md`](../reports/S45-S50-studio-parity-signoff-20260606.md) ✅
 
-### Phase F2 — 内测闭环（2–4 周 · F1 后）
+### Phase F2 — 内测闭环（**当前 · S54**）
 
 | # | 工作 | 成功标准 |
 | --- | --- | --- |
 | F2-1 | Beta dogfood（5–10 人） | Goal→Review→Accept 全路径可走 |
 | F2-2 | B6 + Studio 开着 diff/context | `small_code_change` ≥0.8；friction 可控 |
 | F2-3 | 摩擦分桶 | `beta_friction_aggregate.py` 按 diff/context/session/side_ask |
-| F2-4 | 试跑清单更新 | [`Beta试跑清单.md`](../Beta试跑清单.md) 含 S48–S50 步骤 |
+| F2-4 | 试跑清单更新 | [`Beta试跑清单.md`](../Beta试跑清单.md) 含 S48–S52 步骤 |
+
+**Brief**：[`S54-studio-f2-beta-baseline.md`](../../benchmarks/reference_briefs/S54-studio-f2-beta-baseline.md)
 
 **F2 规则**：新 Studio feature **必须**对应 friction 桶 top 项；否则进 defer。
+
+### 文档维护约定
+
+代码或 Studio slice 合并后，**同一 PR/会话内**同步更新：`studio/README.md` · `STUDIO_CLAUDE_CODE_PARITY.md` · `当前状态与路线.md` §4；F1 签字后以 **friction 报告**驱动文档「下一刀」列，避免计划与实现漂移。
 
 ### Phase F3 — Harness 深集成（按需 · 非默认）
 

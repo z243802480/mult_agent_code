@@ -17,11 +17,12 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Maint（Studio 对标收尾 · Phase F1）
-当前 ACTIVE_SLICE：S53（Studio 对标对标签字）
+当前 ACTIVE_PHASE：Maint-F2（Studio 内测 friction 驱动）
+当前 ACTIVE_SLICE：S54（Beta friction 基线）
 稳态节奏：docs/zh/稳态迭代节奏.md
 事实快照：docs/zh/当前状态与路线.md
 Studio 收尾：docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md
+F1 签字：docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md
 设计索引：docs/zh/文档导航.md
 ```
 

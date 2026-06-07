@@ -60,7 +60,9 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | Unified diff line numbers + coloring | CLI diff TUI | **`DiffPreview`** in Inspector |
 | Primary project folder (cwd) | Claude Desktop project picker | Workspace switcher + top-bar chip |
 | Phase strip (Plan → Execute → Verify) | Codex/Cursor task workflows | `WorkflowPhaseStrip` under header |
-| Git working tree review | Claude `/diff` Current view | Inspector **Workspace changes** panel |
+| Git working tree review | Claude `/diff` Current view | **Diff review** 双栏（S48） |
+| Side question | Desktop side chat | **Quick ask**（S49–S50） |
+| Focus layout | Desktop pane density | **Focus/Normal/Verbose**（S46） |
 | Accept/review after verify | Codex review workflow | Runtime snapshot + 审查/接受 buttons |
 
 Click any **file chip** in the live stream or collapsed turn to open git diff (falls back to file preview for untracked files).
@@ -96,21 +98,26 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | **Primary cwd chip + project profile (init/git/AGENTS.md)** | ✅ |
 | **Git workspace changes + diff preview** | ✅ |
 | **Thread file-change chips → diff** | ✅ |
-| **Turn diff tabs (Current / T1 / T2…)** | ✅ |
+| **Turn diff tabs (Current / T1…)** | ✅ |
+| **Diff review 双栏（左文件右内容）** | ✅ S48 |
+| **Focus / Normal / Verbose 视图** | ✅ S46 |
+| **Session 侧栏 All/Recent + 日期分组** | ✅ S47 |
+| **Side chat（Ctrl+;）+ Composer Quick ask** | ✅ S49–S50 |
+| **Turn Rewind → runtime continue** | ✅ S51 |
+| **Tool 输出 clamp + copy** | ✅ S52 |
 | **Workflow phase strip (Plan/Execute/Verify)** | ✅ |
-| Token / cost limits display | 🔲 planned |
-| File diff viewer (inline git-style) | ✅ Thread chips + Inspector preview |
-| Git integration (changed files, branch status) | ✅ read-only status + diff |
-| Terminal output panel | 🔲 planned |
-| Global settings UI | 🔲 planned |
-| Side-by-side diff toggle | Desktop diff pane | ✅ Unified / Split |
-| Session Ctrl+Tab switch | Desktop parallel sessions | ✅ |
-| Session rename + goal preview | Desktop session list | ✅ |
-| Context category breakdown (`/context`) | CLI `/context` | ✅ Thread + Inspector |
-| Staged / Unstaged diff tabs | git diff vs cached | ✅ |
-| Accept/reject single file | CLI y/n/e | ✅ Stage / Discard (git) |
+| Side-by-side diff (Unified / Split) | ✅ |
+| Session Ctrl+Tab switch | ✅ |
+| Session rename + goal preview | ✅ |
+| Context category breakdown | ✅ Thread + SidePanel |
+| Staged / Unstaged diff tabs | ✅ |
+| Stage / Discard single file (git) | ✅ |
+| Token / cost limits display | 🔲 defer |
+| Terminal output panel | 🔲 defer |
+| Global settings UI | 🔲 defer |
+| Git worktree 并行 session | 🔲 defer RFC |
 
-**对标计划**：[`docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md`](../docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md) · **视觉校准**：[`benchmarks/reference_briefs/S46-studio-visual-calibration.md`](../benchmarks/reference_briefs/S46-studio-visual-calibration.md)
+**对标与收尾**：[`STUDIO_CLAUDE_CODE_PARITY.md`](../docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md) · [`STUDIO_PARITY_CLOSURE_PLAN.md`](../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md) · **签字**：[`S45-S50-studio-parity-signoff-20260606.md`](../docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md)
 
 ---
 
