@@ -107,13 +107,27 @@ def is_benign_workspace_scope(paths: list[str]) -> bool:
             return False
         normalized = raw_norm.lstrip("./")
         parts = [part for part in normalized.split("/") if part]
-        if len(parts) != 1:
-            return False
-        if parts[0].startswith(".env") or parts[0] in {".git", "secrets"}:
-            return False
-        if not parts[0].endswith((".py", ".md", ".txt")):
+        if not (_is_root_benign_py_file(parts) or _is_benign_tests_py_file(parts)):
             return False
     return True
+
+
+def _is_root_benign_py_file(parts: list[str]) -> bool:
+    if len(parts) != 1:
+        return False
+    if parts[0].startswith(".env") or parts[0] in {".git", "secrets"}:
+        return False
+    return parts[0].endswith((".py", ".md", ".txt"))
+
+
+def _is_benign_tests_py_file(parts: list[str]) -> bool:
+    """Beta coding tasks often add tests/test_*.py — safe under reviewed_auto."""
+    if len(parts) != 2 or parts[0] != "tests":
+        return False
+    name = parts[1]
+    if not name.endswith(".py"):
+        return False
+    return name.startswith("test_") or name.endswith("_test.py")
 
 
 def is_benign_context_paths(paths: list[str]) -> bool:

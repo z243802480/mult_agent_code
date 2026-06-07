@@ -29,6 +29,8 @@
 
 可选：在工作区放 starter 文件 `greet_cli.py`（维护者可提供 `benchmarks/fixtures/s13_clean_run/greet_cli.py` 副本）。
 
+**任务 2 / 3（可选 · 第二次试跑）**：见 [`benchmarks/beta_user_tasks.json`](../../benchmarks/beta_user_tasks.json) 的 `doc_update`、`single_file_bugfix`；维护者可跑 `python scripts/s16_doc_update_dogfood.py --repo .`。
+
 ---
 
 ## 步骤（按顺序打勾）
@@ -59,6 +61,18 @@
 | C1 | 点 **审查结果**（或 Composer `/review`；若 goal 已 review 可跳过） | ☐ |
 | C2 | 点 **接受结果**（或 `asteria accept --root <工作区>`） | ☐ |
 | C3 | 工作区里能看到产物（如改过的 `.py` 或测试文件） | ☐ |
+
+### D. Studio 对标 spot-check（可选 · 约 5 分钟）
+
+F1 已交付的 Studio 能力；**不阻塞** B6 签字，但请顺手试并记录摩擦（见 trial 模板 §5.1）。
+
+| # | 动作 | 完成 | 摩擦桶 |
+| --- | --- | --- | --- |
+| D1 | Inspector **Diff review**：左文件列表 + 右 diff；切换 **Current / T1 / T2** | ☐ | diff |
+| D2 | Thread 顶部 **Context** 压力条 → 点开 breakdown；必要时试 **Compact** | ☐ | context |
+| D3 | 左侧 **Session** 列表：All/Recent 分组；**Ctrl+Tab** 切换；可 rename 一条 | ☐ | session |
+| D4 | **Ctrl+;** 打开 Side chat；Composer 选 **Quick ask** 或输入 `/ask` 提一个侧问 | ☐ | side_ask |
+| D5 | （Verbose 模式）非末轮卡片上的 **Rewind**；长 tool 输出 **Copy** + 展开 | ☐ | diff / thread |
 
 ---
 
@@ -91,6 +105,7 @@ Studio 审查提示：Thread 内点 **T1 diff / T2 diff** 或在 Inspector **Dif
 1. 总耗时（分钟）
 2. A/B/C 哪些步骤未完成
 3. 最难的一步是什么（一句话）
-4. 是否愿意再试第二个 beta 任务（doc_update）
+4. D1–D5 若有卡点，标注 **diff / context / session / side_ask**（见 trial 模板 §5.1）
+5. 是否愿意再试第二个 beta 任务（doc_update）
 
 **不要** push 代码、不要改仓库配置、不要运行 maintainer 专用命令（gate、acceptance 等）。

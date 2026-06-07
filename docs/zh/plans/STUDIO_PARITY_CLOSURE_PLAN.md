@@ -3,7 +3,8 @@
 更新时间：2026-06-06  
 状态：**active · F1 已签字**  
 前置：**S45–S53 已交付**  
-**ACTIVE_SLICE**：**S54**（F2 内测）
+**ACTIVE_SLICE**：**S55**（三线并行 · 轨道 H）  
+**并行**：F2/S54 内测 · S56 任务包 — 见 [`TRIPLE_TRACK_MAINT_PLAN.md`](./TRIPLE_TRACK_MAINT_PLAN.md)
 
 ---
 
@@ -114,7 +115,8 @@ flowchart LR
 | F2-3 | 摩擦分桶 | `beta_friction_aggregate.py` 按 diff/context/session/side_ask |
 | F2-4 | 试跑清单更新 | [`Beta试跑清单.md`](../Beta试跑清单.md) 含 S48–S52 步骤 |
 
-**Brief**：[`S54-studio-f2-beta-baseline.md`](../../benchmarks/reference_briefs/S54-studio-f2-beta-baseline.md)
+**Brief**：[`S54-studio-f2-beta-baseline.md`](../../benchmarks/reference_briefs/S54-studio-f2-beta-baseline.md)  
+**基线报告**：[`S54-f2-friction-baseline-20260606.md`](../reports/S54-f2-friction-baseline-20260606.md)（桶空 → **defer** 下一刀）
 
 **F2 规则**：新 Studio feature **必须**对应 friction 桶 top 项；否则进 defer。
 

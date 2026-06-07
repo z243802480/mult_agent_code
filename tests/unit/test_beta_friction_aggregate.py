@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.beta_friction_aggregate import aggregate_reports, parse_trial_report
+from scripts.beta_friction_aggregate import (
+    aggregate_reports,
+    aggregate_studio_buckets,
+    classify_blocker_bucket,
+    parse_trial_report,
+)
 
 
 def test_parse_trial_report_extracts_maintainer_smoke_fields() -> None:
@@ -21,3 +26,20 @@ def test_aggregate_reports_skips_template() -> None:
     assert all("template" not in source for source in sources)
     assert summary["report_count"] >= 1
     assert summary["ok"] is True
+    studio = summary["studio_friction"]
+    assert "buckets" in studio
+    assert set(studio["buckets"]) >= {"diff", "context", "session", "side_ask", "other"}
+
+
+def test_classify_blocker_bucket_maps_studio_pain_points() -> None:
+    assert classify_blocker_bucket("Diff review 找不到 T2 diff") == "diff"
+    assert classify_blocker_bucket("context 压力条看不懂") == "context"
+    assert classify_blocker_bucket("切换 session 后 goal 丢了") == "session"
+    assert classify_blocker_bucket("Side chat Ctrl+; 没反应") == "side_ask"
+    assert classify_blocker_bucket("repair 偏多") == "other"
+
+
+def test_aggregate_studio_buckets_empty_when_no_beta_reports() -> None:
+    studio = aggregate_studio_buckets([])
+    assert studio["top_bucket"] is None
+    assert studio["next_slice_rule"] == "defer — no Studio friction top bucket yet"

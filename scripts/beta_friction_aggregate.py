@@ -9,6 +9,58 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+STUDIO_FRICTION_BUCKETS = ("diff", "context", "session", "side_ask", "other")
+
+_BUCKET_KEYWORD_PATTERNS: dict[str, list[str]] = {
+    "diff": [
+        r"diff",
+        r"改动",
+        r"对比",
+        r"审查",
+        r"git",
+        r"split",
+        r"stage",
+        r"discard",
+        r"看不清",
+        r"diffreview",
+        r"文件.*改",
+        r"t\d\s*diff",
+    ],
+    "context": [
+        r"context",
+        r"上下文",
+        r"compact",
+        r"压力",
+        r"token",
+        r"budget",
+        r"压缩",
+        r"scope",
+        r"范围",
+        r"决策卡",
+        r"decision",
+    ],
+    "session": [
+        r"session",
+        r"会话",
+        r"切换",
+        r"workspace",
+        r"侧栏",
+        r"rename",
+        r"ctrl\+tab",
+        r"多任务",
+        r"worktree",
+        r"recent",
+    ],
+    "side_ask": [
+        r"side",
+        r"侧聊",
+        r"quick\s*ask",
+        r"/ask",
+        r"ctrl\+;",
+        r"composer.*ask",
+    ],
+}
+
 
 @dataclass
 class TrialRecord:
@@ -23,6 +75,7 @@ class TrialRecord:
     accept_completed: bool | None = None
     blockers: list[str] = field(default_factory=list)
     friction: dict[str, int] = field(default_factory=dict)
+    studio_friction: dict[str, int] = field(default_factory=dict)
 
 
 def _bool_from_cell(value: str) -> bool | None:
@@ -81,6 +134,103 @@ def _parse_blockers(text: str) -> list[str]:
     return [line for line in lines if line]
 
 
+def _empty_studio_buckets() -> dict[str, dict[str, object]]:
+    return {bucket: {"score": 0, "items": []} for bucket in STUDIO_FRICTION_BUCKETS}
+
+
+def classify_blocker_bucket(text: str) -> str:
+    lowered = text.lower()
+    for bucket in STUDIO_FRICTION_BUCKETS[:-1]:
+        for pattern in _BUCKET_KEYWORD_PATTERNS[bucket]:
+            if re.search(pattern, lowered, flags=re.IGNORECASE):
+                return bucket
+    return "other"
+
+
+def _parse_studio_friction(text: str) -> dict[str, int]:
+    explicit = re.search(
+        r"studio\s*friction[^0-9]*"
+        r"(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s*/\s*(\d+)",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if explicit:
+        keys = ("diff", "context", "session", "side_ask")
+        return {key: int(explicit.group(index)) for index, key in enumerate(keys, start=1)}
+
+    table_match = re.search(
+        r"\|\s*Studio friction\s*\|\s*"
+        r"(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s*\|",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if table_match:
+        keys = ("diff", "context", "session", "side_ask")
+        return {key: int(table_match.group(index)) for index, key in enumerate(keys, start=1)}
+
+    per_bucket: dict[str, int] = {}
+    for bucket in ("diff", "context", "session", "side_ask"):
+        cell = re.search(
+            rf"\|\s*{bucket}\s*\|\s*(\d+)\s*\|",
+            text,
+            flags=re.IGNORECASE,
+        )
+        if cell:
+            per_bucket[bucket] = int(cell.group(1))
+    return per_bucket
+
+
+def aggregate_studio_buckets(records: list[TrialRecord]) -> dict[str, object]:
+    buckets = _empty_studio_buckets()
+    for record in records:
+        for bucket, score in record.studio_friction.items():
+            if bucket not in buckets:
+                continue
+            bucket_data = buckets[bucket]
+            assert isinstance(bucket_data, dict)
+            bucket_data["score"] = int(bucket_data["score"]) + score
+            if score > 0:
+                items = bucket_data["items"]
+                assert isinstance(items, list)
+                items.append(
+                    {
+                        "tester": record.tester or "unknown",
+                        "score": score,
+                        "source": record.source,
+                    }
+                )
+
+        for blocker in record.blockers:
+            bucket = classify_blocker_bucket(blocker)
+            bucket_data = buckets[bucket]
+            assert isinstance(bucket_data, dict)
+            bucket_data["score"] = int(bucket_data["score"]) + 1
+            items = bucket_data["items"]
+            assert isinstance(items, list)
+            items.append(
+                {
+                    "tester": record.tester or "unknown",
+                    "text": blocker,
+                    "source": record.source,
+                }
+            )
+
+    ranked = sorted(
+        ((bucket, int(data["score"])) for bucket, data in buckets.items() if bucket != "other"),
+        key=lambda item: (-item[1], item[0]),
+    )
+    top_bucket = ranked[0][0] if ranked and ranked[0][1] > 0 else None
+    return {
+        "buckets": buckets,
+        "top_bucket": top_bucket,
+        "next_slice_rule": (
+            f"open slice for `{top_bucket}` friction"
+            if top_bucket
+            else "defer — no Studio friction top bucket yet"
+        ),
+    }
+
+
 def parse_trial_report(path: Path) -> TrialRecord:
     text = path.read_text(encoding="utf-8")
     maintainer_raw = _extract_field(text, "是否维护者")
@@ -115,6 +265,7 @@ def parse_trial_report(path: Path) -> TrialRecord:
             "debug": int(friction_match.group(2)),
             "resume": int(friction_match.group(3)),
         }
+    record.studio_friction = _parse_studio_friction(text)
     return record
 
 
@@ -142,12 +293,14 @@ def aggregate_reports(report_dir: Path) -> dict[str, object]:
         for blocker in record.blockers:
             blocker_counts[blocker] = blocker_counts.get(blocker, 0) + 1
 
+    studio = aggregate_studio_buckets(records)
     return {
         "ok": True,
         "report_count": len(records),
         "non_maintainer_count": len(non_maintainer),
         "completed_abc_count": len(completed_abc),
         "top_blockers": sorted(blocker_counts.items(), key=lambda item: (-item[1], item[0]))[:8],
+        "studio_friction": studio,
         "records": [asdict(record) for record in records],
     }
 
@@ -169,6 +322,21 @@ def render_markdown(summary: dict[str, object]) -> str:
     else:
         for text, count in blockers:
             lines.append(f"- ({count}×) {text}")
+    lines.append("")
+    studio = summary.get("studio_friction") or {}
+    lines.extend(["## Studio friction buckets", ""])
+    buckets = studio.get("buckets") or {}
+    if not isinstance(buckets, dict):
+        buckets = {}
+    for bucket in STUDIO_FRICTION_BUCKETS:
+        data = buckets.get(bucket) or {"score": 0, "items": []}
+        score = data.get("score", 0) if isinstance(data, dict) else 0
+        lines.append(f"- **{bucket}**: {score}")
+    top_bucket = studio.get("top_bucket")
+    next_rule = studio.get("next_slice_rule") or "defer"
+    lines.append("")
+    lines.append(f"- Top bucket: **{top_bucket or '(none)'}**")
+    lines.append(f"- Next slice: **{next_rule}**")
     lines.append("")
     lines.append("## Records")
     lines.append("")

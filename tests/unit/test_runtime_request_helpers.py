@@ -12,10 +12,17 @@ def test_is_benign_workspace_scope_accepts_root_level_py_files() -> None:
     assert is_benign_workspace_scope(["greet_cli.py", "test_greet_cli.py"])
 
 
+def test_is_benign_workspace_scope_accepts_tests_py_layout() -> None:
+    assert is_benign_workspace_scope(["tests/test_greet_cli.py"])
+    assert is_benign_workspace_scope(["tests/greet_cli_test.py"])
+
+
 def test_is_benign_workspace_scope_rejects_nested_or_unsafe_paths() -> None:
     assert not is_benign_workspace_scope(["blocked/output.txt"])
     assert not is_benign_workspace_scope(["../secrets.py"])
     assert not is_benign_workspace_scope([".env"])
+    assert not is_benign_workspace_scope(["tests/nested/test_x.py"])
+    assert not is_benign_workspace_scope(["tests/helper.py"])
 
 
 def test_effective_runtime_request_risk_downgrades_benign_scope_for_reviewed_auto() -> None:
@@ -26,6 +33,15 @@ def test_effective_runtime_request_risk_downgrades_benign_scope_for_reviewed_aut
     }
     assert effective_runtime_request_risk(request, auto_allow_low_risk=True) == "low"
     assert effective_runtime_request_risk(request, auto_allow_low_risk=False) == "medium"
+
+
+def test_effective_runtime_request_risk_downgrades_tests_folder_scope() -> None:
+    request = {
+        "request_type": "scope_expansion",
+        "risk": "medium",
+        "details": {"write_scope": ["tests/test_greet_cli.py"]},
+    }
+    assert effective_runtime_request_risk(request, auto_allow_low_risk=True) == "low"
 
 
 def test_effective_runtime_request_risk_downgrades_benign_context_request() -> None:

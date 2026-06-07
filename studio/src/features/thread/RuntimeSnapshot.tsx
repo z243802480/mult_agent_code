@@ -4,6 +4,7 @@ import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "
 import { PermissionCard } from "../../components/PermissionCard";
 import { asArray, asRecord, firstText, stripBackendWording, textOrFallback } from "./threadUtils";
 import { actionLabel, latestActiveEvent, runtimeProgress } from "./runtimeNarrative";
+import { decisionHint, pendingDecisionSummary, preferredDecisionOptionId, runtimeNextStepSummary } from "./decisionGuidance";
 
 function DecisionCard({
   runId,
@@ -16,9 +17,10 @@ function DecisionCard({
 }) {
   const [busyOption, setBusyOption] = useState<string | null>(null);
   const decisionId = String(decision.decision_id ?? "");
-  const recommended = String(decision.recommended_option_id ?? "");
+  const recommended = preferredDecisionOptionId(decision) || String(decision.recommended_option_id ?? "");
   const options = asArray(decision.options) as AnyRecord[];
   const impact = asRecord(decision.impact);
+  const hint = decisionHint(decision);
 
   async function choose(optionId: string) {
     setBusyOption(optionId);
@@ -37,7 +39,8 @@ function DecisionCard({
         <strong>{textOrFallback(decision.question, "Decision needed")}</strong>
       </div>
       <div className="decisionMeta">
-        {recommended && <span>Recommended: {recommended}</span>}
+        {hint && <span className="decisionHint">{hint}</span>}
+        {recommended && <span>Suggested: {recommended.replace(/_/g, " ")}</span>}
         {Object.keys(impact).length > 0 && (
           <span>
             Risk {textOrFallback(impact.risk, "medium")} / Budget {textOrFallback(impact.budget, "medium")}
@@ -95,18 +98,23 @@ export function RuntimeSnapshot({
   const mainAction = asRecord(runDetail?.main_action);
   const runId = String(runDetail?.run_id ?? "");
   const nextActionValue = firstText(String(mainAction.next_command ?? ""), String(progress.next_command ?? ""));
+  const mainActionKind = String(mainAction.kind ?? "");
   const pendingPermission = activeEvent?.type === "permission_request" && activeEvent.status === "waiting_user" && activeEvent.job_id
     ? activeEvent
     : null;
   const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
-  const workflowStep = canAccept
-    ? "Review passed — accept the result to finalize."
-    : canReview
-      ? "Task complete — review the result before accepting."
-      : "";
-  const nextStep = decisions.length
-    ? `${decisions.length} decision${decisions.length === 1 ? "" : "s"} need your input.`
-    : workflowStep || (nextActionValue ? `Ready for ${nextLabel}.` : textOrFallback(loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "", "No action needed right now"));
+  const nextStep = runtimeNextStepSummary({
+    decisions,
+    nextActionValue,
+    nextLabel,
+    loop,
+    canReview,
+    canAccept,
+    mainActionKind,
+  }) || textOrFallback(
+    loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
+    "No action needed right now",
+  );
   if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason && !canReview && !canAccept) return null;
 
   return (
@@ -164,6 +172,7 @@ export function userFacingStateLabel(value: string): string {
   if (normalized.includes("provider") || normalized.includes("model-check")) return "model connection issue";
   if (normalized.includes("tool_failed")) return "tool step failed";
   if (normalized.includes("max_rounds")) return "needs a decision";
+  if (normalized.includes("repair_limit") || normalized.includes("repair")) return "repair step needed — use Debug or resolve the decision card";
   if (normalized.includes("budget_hard_stop")) return "budget limit reached";
   return stripBackendWording(value.replace(/_/g, " "));
 }

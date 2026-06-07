@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S54",
-  "active_phase": "Maint-F2",
+  "active_slice": "S55",
+  "active_phase": "Maint-F2+Triple",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -570,6 +570,32 @@
         "pytest tests/unit/test_documentation_contracts.py -q"
       ],
       "reference_brief": "benchmarks/reference_briefs/S54-studio-f2-beta-baseline.md"
+    },
+    {
+      "id": "S55",
+      "name": "Harness friction II",
+      "phase": "Maint-F2+Triple",
+      "depends_on": ["S54"],
+      "user_demo": "决策卡引导 + triple_track_pulse",
+      "green_checks": [
+        "python scripts/triple_track_pulse.py --root . --skip-b6",
+        "python scripts/harness_repeatability_pulse.py --root .",
+        "node studio/scripts/decision-guidance-smoke.mjs",
+        "pytest tests/unit/test_friction_contract.py tests/unit/test_runtime_request_helpers.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S55-harness-friction-ii.md"
+    },
+    {
+      "id": "S56",
+      "name": "Beta 任务包脉搏",
+      "phase": "Maint-F2+Triple",
+      "depends_on": ["S54"],
+      "user_demo": "beta_task_pack_check + 任务 2/3 材料",
+      "green_checks": [
+        "python scripts/beta_task_pack_check.py --root .",
+        "python scripts/triple_track_pulse.py --root . --skip-b6"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S56-beta-task-pack-pulse.md"
     }
   ]
 }

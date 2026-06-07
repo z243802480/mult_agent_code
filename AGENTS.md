@@ -17,13 +17,10 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Maint-F2（Studio 内测 friction 驱动）
-当前 ACTIVE_SLICE：S54（Beta friction 基线）
-稳态节奏：docs/zh/稳态迭代节奏.md
-事实快照：docs/zh/当前状态与路线.md
-Studio 收尾：docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md
-F1 签字：docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md
-设计索引：docs/zh/文档导航.md
+当前 ACTIVE_PHASE：Maint-F2+Triple（F2 内测 ∥ H Harness ∥ P 任务包 ∥ A 稳态）
+当前 ACTIVE_SLICE：S55（Harness friction II）
+三线计划：docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md
+F2 基线：S54 · docs/zh/reports/S54-f2-friction-baseline-20260606.md
 ```
 
 Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start North Star,

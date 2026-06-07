@@ -60,6 +60,19 @@
 （最难的一步、报错、UX 问题）
 ```
 
+### 5.1 Studio friction 分桶（F2 · 可选）
+
+按 [`Beta试跑清单.md`](../Beta试跑清单.md) D1–D5，填写 **0–3**（0=无摩擦，3=严重阻塞）：
+
+| 桶 | 分数 (0–3) | 一句话 |
+| --- | --- | --- |
+| diff | | |
+| context | | |
+| session | | |
+| side_ask | | |
+
+汇总行（维护者脚本读取）：`Studio friction (diff/context/session/side_ask): 0 / 0 / 0 / 0`
+
 ---
 
 ## 6. 维护者过门（B6 签字前）

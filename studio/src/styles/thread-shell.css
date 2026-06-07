@@ -198,6 +198,12 @@
   gap: 7px;
 }
 
+.decisionMeta .decisionHint {
+  color: #c8d4dc;
+  flex: 1 1 100%;
+  line-height: 1.45;
+}
+
 .decisionOptions {
   display: grid;
   gap: 7px;
