@@ -25,7 +25,7 @@ export function ContextPanel({
   compacting?: boolean;
 }) {
   const summary = contextWindowSummary(runDetail);
-  const [open, setOpen] = React.useState(true);
+  const [open, setOpen] = React.useState(false);
 
   if (!summary) return null;
   const health = contextHealth(summary.ratio);

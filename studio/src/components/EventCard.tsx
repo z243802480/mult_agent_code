@@ -15,6 +15,7 @@ import {
 import type { StudioEvent, AnyRecord } from "../types";
 import { Status } from "./Shared";
 import { WorkerProgressBar } from "./WorkerProgressBar";
+import { ClampedOutput } from "./ClampedOutput";
 
 function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
@@ -140,9 +141,16 @@ export function EventCard({
         </div>
         {showBody &&
           (open || event.type !== "reasoning_delta") &&
-          bodyText && (
+          bodyText &&
+          (compact ? (
+            <ClampedOutput
+              text={bodyText}
+              className={isUser ? "messageText" : "deltaText"}
+              maxLines={4}
+            />
+          ) : (
             <pre className={isUser ? "messageText" : "deltaText"}>{bodyText}</pre>
-          )}
+          ))}
         {showCommandInline && event.command && (
           <code className="commandLine">{event.command.join(" ")}</code>
         )}

@@ -1,0 +1,256 @@
+.inspector {
+  background: var(--surface-1);
+  border-left: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow: auto;
+  padding: var(--space-2) var(--space-2) var(--space-3);
+}
+
+.inspectorPrimary {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.inspectorDiffPreview {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.inspectorDiffPreview .filePreviewBody {
+  font-size: 12px;
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.inspectorEventPeek {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.eventPeekSummary {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  margin: 6px 0 0;
+}
+
+.inspectorAdvanced {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+}
+
+.inspectorAdvanced > summary {
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  list-style: none;
+  user-select: none;
+}
+
+.inspectorAdvanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.inspectorAdvancedBody {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.viewModeButton {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+}
+
+.viewModeButton.view-focus {
+  border-color: #2d5e47;
+  color: #a8e7c0;
+}
+
+.viewModeButton.view-verbose {
+  border-color: #806a34;
+  color: #f0cf8a;
+}
+
+.view-focus .gitChangesPanel,
+.view-focus .inspectorDiffPreview {
+  border-color: var(--border-subtle);
+}
+
+.diffFocusButton {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  height: 30px;
+  padding: 0 10px;
+}
+
+.diffFocusButton.active {
+  background: rgba(45, 94, 71, 0.2);
+  border-color: #2d5e47;
+  color: #a8e7c0;
+}
+
+.appShell.diffFocus.panelOpen .missionPane {
+  flex: 0 1 520px;
+  max-width: 560px;
+}
+
+.appShell.diffFocus.panelOpen .inspector {
+  flex: 1 1 auto;
+  min-width: 320px;
+}
+
+.appShell.diffFocus .thread,
+.appShell.diffFocus .composer {
+  opacity: 0.92;
+}
+
+.inspector section {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: var(--space-2);
+  padding: 10px;
+}
+
+.opsIntro {
+  background: linear-gradient(180deg, #17202a, #15191d) !important;
+  border-color: #31506b !important;
+}
+
+.opsIntro h2,
+.debugAgentHeader h2 {
+  margin: 0;
+}
+
+.opsIntro p:not(.eyebrow),
+.debugAgentHeader p,
+.debugAgentNote {
+  color: #9aa6af;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.debugAgentAnswer {
+  background: #101418;
+  border: 1px solid #303a42;
+  border-radius: 7px;
+  color: #cdd6dd;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+}
+
+.debugAgentCard {
+  border-color: #3d4d5c !important;
+}
+
+.debugAgentHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 10px;
+}
+
+.debugAgentIcon {
+  align-items: center;
+  background: #17314a;
+  border: 1px solid #2e7bb8;
+  border-radius: 7px;
+  color: #d9efff;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.debugAgentHints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.debugAgentHints button {
+  background: #111820;
+  border: 1px solid #303a42;
+  border-radius: 999px;
+  color: #c8d0d6;
+  font-size: 11px;
+  padding: 5px 8px;
+}
+
+.debugAgentHints button:hover {
+  border-color: #2e7bb8;
+  color: #eef8ff;
+}
+
+.debugAgentComposer {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: minmax(0, 1fr) 34px;
+}
+
+.debugAgentComposer textarea {
+  background: #101417;
+  border: 1px solid #303a42;
+  border-radius: 7px;
+  color: #eef2f4;
+  min-height: 56px;
+  padding: 9px 10px;
+  resize: vertical;
+}
+
+.debugAgentComposer button {
+  align-items: center;
+  align-self: stretch;
+  background: #1e252b;
+  border: 1px solid #313b44;
+  border-radius: 7px;
+  color: #9aa6af;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.debugAgentComposer button:hover {
+  background: #244d68;
+  color: #f2f7fb;
+}
+
+.detail,
+.refList,
+.routeList,
+.evidenceExplorer,
+.evidenceBlock {
+  display: grid;
+  gap: 8px;
+}

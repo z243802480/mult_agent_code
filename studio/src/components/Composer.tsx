@@ -15,18 +15,19 @@ const MODE_LABELS: Record<Mode, string> = {
 };
 
 const MODE_PLACEHOLDERS: Record<Mode, string> = {
-  auto: "Tell Asteria what you want. It will answer, plan, or ask before taking action... (Enter to send, Shift+Enter for newline)",
-  chat: "Ask a normal question... (Enter to send, Shift+Enter for newline)",
-  plan: "Describe what you want planned. Asteria will not change files... (Enter to send, Shift+Enter for newline)",
-  run: "Describe a longer goal. Asteria will ask before sensitive actions... (Enter to send, Shift+Enter for newline)",
-  review: "Ask Asteria to check the current result... (Enter to send, Shift+Enter for newline)",
-  resume: "Continue the current task or add updated constraints... (Enter to send, Shift+Enter for newline)",
-  accept: "Accept the reviewed result after confirmation... (Enter to send, Shift+Enter for newline)",
+  auto: "Message Asteria… (Enter send, Shift+Enter newline)",
+  chat: "Ask a question…",
+  plan: "Describe what to plan…",
+  run: "Describe a goal…",
+  review: "Ask to review the result…",
+  resume: "Continue or add constraints…",
+  accept: "Accept the reviewed result…",
 };
 
 export type PromptSignal = { text: string; id: number };
 
-const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string }[] = [
+const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string; sideAsk?: boolean }[] = [
+  { key: "/ask", label: "Quick ask", mode: "auto", prompt: "", sideAsk: true },
   { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
   { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
   { key: "/review", label: "Review", mode: "review", prompt: "Review the current result." },
@@ -38,74 +39,55 @@ const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string }[
 function actionProfile(mode: Mode, permission: string) {
   const effective = mode === "auto" ? "auto" : mode;
   if (effective === "chat") {
-    return {
-      icon: <MessageCircle size={14} />,
-      label: "Chat",
-      detail: "Answers directly. No workspace changes.",
-      permission: "Read-only",
-      tone: "good",
-    };
+    return { icon: <MessageCircle size={13} />, label: "Chat", permission: "Read-only", tone: "good" as const };
   }
   if (effective === "plan") {
-    return {
-      icon: <ClipboardList size={14} />,
-      label: "Plan",
-      detail: "Builds a development plan before edits.",
-      permission: "Read-only",
-      tone: "good",
-    };
+    return { icon: <ClipboardList size={13} />, label: "Plan", permission: "Read-only", tone: "good" as const };
   }
   if (effective === "review") {
-    return {
-      icon: <Eye size={14} />,
-      label: "Review",
-      detail: "Checks current evidence and result.",
-      permission: "Read-only evidence",
-      tone: "good",
-    };
+    return { icon: <Eye size={13} />, label: "Review", permission: "Read-only", tone: "good" as const };
   }
   if (effective === "accept") {
-    return {
-      icon: <ShieldCheck size={14} />,
-      label: "Accept",
-      detail: "Finalizes the reviewed result in the workspace.",
-      permission: "Writes accepted artifacts",
-      tone: "warn",
-    };
+    return { icon: <ShieldCheck size={13} />, label: "Accept", permission: "Writes", tone: "warn" as const };
   }
   if (effective === "resume") {
     return {
-      icon: <RotateCw size={14} />,
+      icon: <RotateCw size={13} />,
       label: "Resume",
-      detail: permission === "allow" ? "Continues with approved safe actions." : "Asks before local changes.",
-      permission: permission === "allow" ? "Safe actions allowed" : "Approval required",
-      tone: permission === "allow" ? "warn" : "neutral",
+      permission: permission === "allow" ? "Safe actions" : "Ask first",
+      tone: (permission === "allow" ? "warn" : "neutral") as "warn" | "neutral",
     };
   }
   if (effective === "run") {
     return {
-      icon: <PlayCircle size={14} />,
+      icon: <PlayCircle size={13} />,
       label: "Goal",
-      detail: permission === "allow" ? "Starts the controlled runtime." : "Prepares work and asks before changes.",
-      permission: permission === "allow" ? "Safe actions allowed" : "Approval required",
-      tone: permission === "allow" ? "warn" : "neutral",
+      permission: permission === "allow" ? "Safe actions" : "Ask first",
+      tone: (permission === "allow" ? "warn" : "neutral") as "warn" | "neutral",
     };
   }
   return {
-    icon: <ShieldCheck size={14} />,
+    icon: <ShieldCheck size={13} />,
     label: "Auto",
-    detail: "Chooses chat, plan, or goal from your request.",
-    permission: permission === "allow" ? "Safe actions allowed" : "Approval required for changes",
-    tone: permission === "allow" ? "warn" : "neutral",
+    permission: permission === "allow" ? "Safe actions" : "Ask first",
+    tone: (permission === "allow" ? "warn" : "neutral") as "warn" | "neutral",
   };
 }
 
 export function Composer({
   onSend,
+  onSideAsk,
+  sideAsk = false,
+  onSideAskToggle,
   promptSignal,
+  viewMode = "focus",
 }: {
   onSend: (message: string, mode: string, permission: string) => Promise<void>;
+  onSideAsk?: (message: string) => Promise<void>;
+  sideAsk?: boolean;
+  onSideAskToggle?: () => void;
   promptSignal?: PromptSignal;
+  viewMode?: import("../hooks/useViewMode").StudioViewMode;
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
@@ -126,7 +108,11 @@ export function Composer({
     setMessage("");
     setSending(true);
     try {
-      await onSend(text, mode, permission);
+      if (sideAsk && onSideAsk) {
+        await onSideAsk(text);
+      } else {
+        await onSend(text, mode, permission);
+      }
     } finally {
       setSending(false);
     }
@@ -139,10 +125,15 @@ export function Composer({
     void submit(e as unknown as React.FormEvent);
   }
 
-  const isAuto = mode === "auto";
-  const isChat = mode === "chat";
-  const showPermission = mode === "auto" || mode === "run" || mode === "resume";
-  const profile = actionProfile(mode, permission);
+  const isAuto = mode === "auto" && !sideAsk;
+  const isChat = mode === "chat" || sideAsk;
+  const showPermission = !sideAsk && (mode === "auto" || mode === "run" || mode === "resume");
+  const profile = sideAsk
+    ? { icon: <MessageCircle size={13} />, label: "Quick ask", permission: "Off-thread", tone: "good" as const }
+    : actionProfile(mode, permission);
+  const placeholder = sideAsk
+    ? "Quick ask — off-thread, with session context (Enter send)…"
+    : MODE_PLACEHOLDERS[mode];
   const slashOpen = message.trim() === "/" || /^\/[a-z]*$/i.test(message.trim());
   const slashQuery = message.trim().toLowerCase();
   const slashActions = slashOpen
@@ -150,14 +141,18 @@ export function Composer({
     : [];
 
   return (
-    <form className={`composer ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}`} onSubmit={(event) => void submit(event)}>
+    <form className={`composer compact ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}${sideAsk ? " sideAskMode" : ""}`} onSubmit={(event) => void submit(event)}>
       <div className="composerInputWrap">
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={MODE_PLACEHOLDERS[mode]}
+          placeholder={placeholder}
+          rows={1}
         />
+        {sideAsk && (
+          <p className="composerSideAskHint muted">Answers appear in Quick ask — main goal stays on the thread.</p>
+        )}
         {slashActions.length > 0 && (
           <div className="slashMenu">
             {slashActions.map((action) => (
@@ -167,6 +162,7 @@ export function Composer({
                 onClick={() => {
                   setMode(action.mode);
                   setMessage(action.prompt);
+                  if (action.sideAsk && !sideAsk) onSideAskToggle?.();
                 }}
               >
                 <strong>{action.label}</strong>
@@ -176,42 +172,51 @@ export function Composer({
           </div>
         )}
       </div>
-      <div className={`composerActionBar ${profile.tone}`} aria-label="Current action and permission">
-        <div className="composerActionMain">
-          {profile.icon}
-          <strong>{profile.label}</strong>
-          <span>{profile.detail}</span>
-        </div>
-        <div className="composerPermissionPill">
-          <ShieldCheck size={12} />
-          <span>{profile.permission}</span>
-        </div>
-      </div>
-      <div className="composerBar">
-        <div className="modeControls" aria-label="Mode override controls">
-          <span className="modeHint">Auto</span>
-          <details className="advancedModeDetails"><summary>Advanced</summary><div className="segmented advancedModes" title="Mode override">
-            {MODES.map((item) => (
+      <div className="composerFooter">
+        <div className="composerModeGroup">
+          {onSideAskToggle && (
             <button
               type="button"
-              className={mode === item ? "active" : ""}
-              key={item}
-              onClick={() => setMode(item)}
-              title={MODE_LABELS[item]}
+              className={sideAsk ? "composerSideAskToggle active" : "composerSideAskToggle"}
+              title="Quick ask — off-thread with session context"
+              aria-pressed={sideAsk}
+              onClick={onSideAskToggle}
             >
-              {item}
+              <MessageCircle size={13} />
+              <span>Quick ask</span>
             </button>
-            ))}
-          </div></details>
+          )}
+          {!sideAsk && (
+          <details className="composerModeDetails">
+            <summary className={`composerModeSummary tone-${profile.tone}`}>
+              {profile.icon}
+              <span>{profile.label}</span>
+            </summary>
+            <div className="composerModeMenu">
+              {MODES.map((item) => (
+                <button
+                  type="button"
+                  className={mode === item ? "active" : ""}
+                  key={item}
+                  onClick={() => setMode(item)}
+                >
+                  {MODE_LABELS[item]}
+                </button>
+              ))}
+            </div>
+          </details>
+          )}
+          {showPermission && (
+            <select value={permission} onChange={(event) => setPermission(event.target.value)} aria-label="Permission mode">
+              <option value="ask">Ask first</option>
+              <option value="allow">Allow safe</option>
+            </select>
+          )}
+          <span className="composerPermissionHint">{viewMode !== "focus" ? profile.permission : ""}</span>
         </div>
-        {showPermission && (
-          <select value={permission} onChange={(event) => setPermission(event.target.value)} aria-label="Permission mode">
-            <option value="ask">Ask first</option>
-            <option value="allow">Allow safe actions</option>
-          </select>
-        )}
-        <button disabled={sending}>
-          <Send size={16} /> {isAuto ? "Send" : isChat ? "Ask" : "Send"}
+        <button className="composerSend" disabled={sending} type="submit">
+          <Send size={15} />
+          <span>{isChat ? "Ask" : "Send"}</span>
         </button>
       </div>
     </form>

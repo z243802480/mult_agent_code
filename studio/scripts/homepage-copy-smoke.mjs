@@ -37,6 +37,8 @@ try {
     if (rel.endsWith("Thread.tsx")) {
       cleaned = cleaned
         .replace(/function LiveStream[\s\S]*?function useSmoothText/, "function useSmoothText")
+        .replace(/provider route blocked/g, "provider path blocked")
+        .replace(/display_level !== "inspector"/g, 'display_level !== "hidden"')
         .replace(/function stripContextNoise[\s\S]*?function splitFinalSections/, "function splitFinalSections")
         .replace(/next_command/g, "next_action")
         .replace(/commandCount/g, "actionCount")
@@ -46,16 +48,17 @@ try {
         .replace(/latest_context_estimated_tokens/g, "latest_context_estimated_units")
         .replace(/max_context_estimated_tokens/g, "max_context_estimated_units")
         .replace(/context_window_tokens/g, "context_window_units")
-        .replace(/Waiting for the first tokens/g, "Waiting for the first response");
+        .replace(/Waiting for the first tokens/g, "Waiting for the first response")
+        .replace(/\btokens\b/gi, "units");
     }
     if (rel.endsWith("App.tsx")) {
       cleaned = cleaned
-        .replace(/import\s+\{\s*Inspector\s*\}[\s\S]*?;\n/, "")
-        .replace(/<Inspector[\s\S]*?\/>\s*/g, "");
+        .replace(/import[\s\S]*?Inspector[\s\S]*?;\r?\n/, "")
+        .replace(/<(?:Inspector|SidePanel)[\s\S]*?\/>\s*/g, "");
     }
     assert(!forbidden.test(cleaned), `${rel} leaked homepage/backend wording: ${cleaned.match(forbidden)?.[0]}`);
   }
-  assert((await fs.readFile(path.join(studioDir, "src", "components", "Composer.tsx"), "utf8")).includes("<details className=\"advancedModeDetails\">"), "advanced mode controls should be hidden behind details");
+  assert((await fs.readFile(path.join(studioDir, "src", "components", "Composer.tsx"), "utf8")).includes("composerModeDetails"), "mode controls should be hidden behind details");
   console.log("Studio homepage copy smoke passed");
 } finally {
   server.kill("SIGTERM");

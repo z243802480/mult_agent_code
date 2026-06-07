@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S44",
-  "active_phase": "Phase 8",
+  "active_slice": "S51",
+  "active_phase": "Maint-F1",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -522,6 +522,42 @@
         "python scripts/phase8_maintainer_smoke.py --root ."
       ],
       "reference_brief": "benchmarks/reference_briefs/S43-remote-background-adapter.md"
+    },
+    {
+      "id": "S51",
+      "name": "Turn Rewind 入口",
+      "phase": "Maint-F1",
+      "depends_on": ["S44"],
+      "user_demo": "Thread turn Rewind → 确认 → runtime resume/replan",
+      "green_checks": [
+        "cd studio && npm run build",
+        "node studio/scripts/turn-rewind-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S51-turn-rewind-entry.md"
+    },
+    {
+      "id": "S52",
+      "name": "Tool 输出 ClampedOutput",
+      "phase": "Maint-F1",
+      "depends_on": ["S51"],
+      "user_demo": "tool stdout 限高 + copy + Verbose 展开",
+      "green_checks": [
+        "cd studio && npm run build",
+        "node studio/scripts/homepage-copy-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S52-tool-output-clamp.md"
+    },
+    {
+      "id": "S53",
+      "name": "Studio 对标对标签字",
+      "phase": "Maint-F1",
+      "depends_on": ["S52"],
+      "user_demo": "parity signoff + 三源文档一致",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q",
+        "node studio/scripts/s45-parity-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S53-studio-parity-signoff.md"
     }
   ]
 }

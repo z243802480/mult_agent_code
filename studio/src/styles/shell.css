@@ -1,0 +1,50 @@
+.appShell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 4px minmax(0, 1fr);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.appShell.panelOpen {
+  grid-template-columns: var(--sidebar-width) 4px minmax(0, 1fr) 4px var(--panel-width);
+}
+
+.appShell.panelCollapsed {
+  grid-template-columns: var(--sidebar-width) 4px minmax(0, 1fr);
+}
+
+.paneSplitter {
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  z-index: 4;
+}
+
+.paneSplitter::after {
+  background: #30363d;
+  bottom: 0;
+  content: "";
+  left: 50%;
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  transition: background 0.15s, width 0.15s;
+  width: 1px;
+}
+
+.paneSplitter:hover::after,
+body.paneDragging .paneSplitter::after {
+  background: #4a8fd4;
+  width: 3px;
+}
+
+body.paneDragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+body.paneDragging * {
+  cursor: col-resize !important;
+}

@@ -1,0 +1,71 @@
+.diffReviewPane {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.diffReviewBody {
+  display: grid;
+  gap: 0;
+  grid-template-columns: minmax(108px, 36%) minmax(0, 1fr);
+  min-height: 240px;
+  overflow: hidden;
+}
+
+.diffReviewFiles {
+  border-right: 1px solid var(--border-subtle);
+  min-height: 0;
+  overflow: auto;
+  padding-right: var(--space-1);
+}
+
+.diffReviewFiles .gitChangeList {
+  max-height: none;
+}
+
+.diffReviewPreview {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding-left: var(--space-1);
+}
+
+.diffReviewPreview .inspectorDiffPreview {
+  border: 0;
+  padding: 0;
+}
+
+.diffReviewPreviewEmpty {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 160px;
+  padding: var(--space-3);
+  text-align: center;
+}
+
+.appShell.diffFocus .diffReviewBody {
+  min-height: 320px;
+}
+
+.view-focus .diffReviewBody {
+  grid-template-columns: minmax(96px, 34%) minmax(0, 1fr);
+}
+
+@media (max-width: 720px) {
+  .diffReviewBody {
+    grid-template-columns: 1fr;
+  }
+
+  .diffReviewFiles {
+    border-bottom: 1px solid var(--border-subtle);
+    border-right: 0;
+    max-height: 160px;
+    padding-bottom: var(--space-1);
+    padding-right: 0;
+  }
+
+  .diffReviewPreview {
+    padding-left: 0;
+    padding-top: var(--space-1);
+  }
+}

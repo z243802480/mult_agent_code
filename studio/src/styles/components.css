@@ -1,0 +1,253 @@
+/* Sidebar system status */
+.statusToggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #8f9ba5;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.statusToggle .sideTitle {
+  margin: 0;
+}
+
+.statusCards {
+  display: grid;
+  gap: 7px;
+}
+
+.statusCards .signalCard {
+  padding: 8px 10px;
+  min-height: unset;
+  gap: 3px;
+}
+
+.statusCards .signalCard span {
+  font-size: 9px;
+}
+
+.statusCards .signalCard strong {
+  font-size: 13px;
+}
+
+.statusCards .signalCard small {
+  font-size: 10px;
+  -webkit-line-clamp: 1;
+}
+
+.statusSummary {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 1fr 1fr;
+}
+
+/* Thread running indicator */
+.runningIndicator {
+  align-items: center;
+  color: #f0cf8a;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.runningDot {
+  animation: pulse 1.5s ease-in-out infinite;
+  background: #f0cf8a;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  height: 8px;
+  width: 8px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Empty state example prompts */
+.examplePrompts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.examplePrompts button {
+  background: #1e252b;
+  border: 1px solid #303a42;
+  border-radius: 7px;
+  color: #c0c8ce;
+  font-size: 13px;
+  padding: 9px 12px;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.examplePrompts button:hover {
+  background: #273139;
+  border-color: #3d5060;
+  color: #eef2f4;
+}
+
+/* Permission card */
+.permissionCard {
+  background: #1e1a2e;
+  border: 1px solid #5a3ea0;
+  border-radius: 9px;
+  display: grid;
+  gap: 10px;
+  max-width: 920px;
+  padding: 14px 16px;
+}
+
+.permissionCard.resolved {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  opacity: 0.7;
+  padding: 10px 14px;
+}
+
+.permissionCard.resolved.allow {
+  border-color: #2f6b4d;
+  color: #a8e7c0;
+}
+
+.permissionCard.resolved.deny {
+  border-color: #8b403a;
+  color: #ffb9b1;
+}
+
+.permissionHeader {
+  align-items: center;
+  color: #d7c7ff;
+  display: flex;
+  gap: 9px;
+}
+
+.permissionHeader strong {
+  font-size: 14px;
+}
+
+.permissionSummary {
+  color: #c0c8ce;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.permissionDetail {
+  color: #9aa6af;
+  font-size: 12px;
+  margin: 0;
+}
+
+.permissionCommand {
+  background: #0e1012;
+  border-radius: 6px;
+  color: #a8e7c0;
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  padding: 8px 10px;
+}
+
+.permissionActions {
+  display: flex;
+  gap: 10px;
+}
+
+.permissionAllow,
+.permissionDeny {
+  align-items: center;
+  border: 0;
+  border-radius: 7px;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 720;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 14px;
+}
+
+.permissionAllow {
+  background: #2e7bb8;
+  color: #f2f7fb;
+}
+
+.permissionAllow:hover:not(:disabled) {
+  background: #3a8fce;
+}
+
+.permissionDeny {
+  background: #3d2020;
+  color: #ffb9b1;
+}
+
+.permissionDeny:hover:not(:disabled) {
+  background: #502828;
+}
+
+.permissionAllow:disabled,
+.permissionDeny:disabled {
+  opacity: 0.5;
+}
+
+.signalCard {
+  background: #171b1f;
+  border: 1px solid #303a42;
+  border-radius: 7px;
+  display: grid;
+  gap: 4px;
+  min-height: unset;
+  padding: 8px 10px;
+}
+
+.signalCard.good {
+  border-color: #2f6b4d;
+}
+
+.signalCard.warn {
+  border-color: #806a34;
+}
+
+.signalCard.bad {
+  border-color: #8b403a;
+}
+
+.signalHead {
+  align-items: center;
+  color: #99a6af;
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+  text-transform: uppercase;
+}
+
+.signalCard strong {
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signalCard small {
+  color: #9aa6af;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

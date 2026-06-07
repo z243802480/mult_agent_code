@@ -37,15 +37,35 @@ function activePhaseId(progress: AnyRecord, isRunning: boolean): string {
 export function WorkflowPhaseStrip({
   runDetail,
   isRunning,
+  compact = false,
+  hidden = false,
 }: {
   runDetail: RunDetailPayload | null;
   isRunning: boolean;
+  compact?: boolean;
+  hidden?: boolean;
 }) {
   const progress = useMemo(() => runtimeProgress(runDetail), [runDetail]);
   const active = activePhaseId(progress, isRunning);
   const activeIndex = PHASES.findIndex((phase) => phase.id === active);
 
+  if (hidden) return null;
   if (!runDetail?.ok && !isRunning) return null;
+
+  if (compact) {
+    return (
+      <div className="workflowPhaseInline" aria-label="Task phase">
+        {PHASES.map((phase, index) => {
+          const state = index < activeIndex ? "done" : index === activeIndex ? "active" : "pending";
+          return (
+            <span key={phase.id} className={`workflowPhaseDot ${state}`} title={phase.label}>
+              {phase.label}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="workflowPhaseStrip" aria-label="Task phase">

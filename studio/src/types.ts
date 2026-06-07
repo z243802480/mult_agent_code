@@ -62,7 +62,7 @@ export type StudioEvent = {
   run_id?: string;
   job_id?: string;
   phase?: "understand" | "plan" | "execute" | "review" | "resume" | "result" | "next" | string;
-  display_level?: "main" | "inspector";
+  display_level?: "main" | "inspector" | "side" | "hidden";
   created_at: string;
 };
 

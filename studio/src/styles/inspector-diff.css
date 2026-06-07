@@ -1,0 +1,509 @@
+.gitChangesPanel {
+  background: #14181b;
+  border: 1px solid #2d343b;
+  border-radius: 10px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.gitChangesHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.gitChangesHeader h2 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.gitBranchLine {
+  align-items: center;
+  color: #b8c4ce;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.gitChangeList {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.gitChangeRow {
+  align-items: center;
+  background: #101214;
+  border: 1px solid #2a3138;
+  border-radius: 6px;
+  color: #eef2f4;
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.gitChangeRow.active,
+.gitChangeRow:hover {
+  background: #283139;
+  border-color: #3f4d57;
+}
+
+.gitChangeBadge {
+  border-radius: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+
+.gitChangeBadge.status-modified { color: #f0c674; }
+.gitChangeBadge.status-added { color: #8fd19e; }
+.gitChangeBadge.status-deleted { color: #ff9aa8; }
+.gitChangeBadge.status-untracked { color: #9db4ff; }
+
+.gitChangePath {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diffScopeTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.diffScopeTab {
+  align-items: center;
+  background: #1b2228;
+  border: 1px solid #2d343b;
+  border-radius: 999px;
+  color: #9aa8b3;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  padding: 4px 10px;
+}
+
+.diffScopeTab.active {
+  background: #1a2a22;
+  border-color: #3f8762;
+  color: #d7f2e0;
+}
+
+.diffScopeCount {
+  color: #7d8b96;
+  font-size: 10px;
+}
+
+.diffScopeHint {
+  color: #8a98a3;
+  font-size: 11px;
+  margin: 0;
+}
+
+.gitChangeDelta {
+  display: inline-flex;
+  font-size: 10px;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.diffPreview {
+  border: 1px solid #243038;
+  border-radius: 8px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.diffPreviewPath {
+  background: #1a2228;
+  border-bottom: 1px solid #243038;
+  color: #9aa8b3;
+  font-size: 11px;
+  padding: 6px 10px;
+}
+
+.diffPreviewTable {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.diffPreviewRow {
+  display: grid;
+  grid-template-columns: 42px 42px 1fr;
+  line-height: 1.45;
+}
+
+.diffGutter {
+  color: #5f6d78;
+  padding: 0 6px;
+  text-align: right;
+  user-select: none;
+}
+
+.diffGutter.old {
+  border-right: 1px solid #1e262d;
+}
+
+.diffGutter.new {
+  border-right: 1px solid #1e262d;
+}
+
+.diffLineText {
+  display: block;
+  overflow-x: auto;
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.diffPreviewRow.kind-add {
+  background: rgba(46, 160, 67, 0.12);
+}
+
+.diffPreviewRow.kind-add .diffLineText {
+  color: #8fd19e;
+}
+
+.diffPreviewRow.kind-del {
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.diffPreviewRow.kind-del .diffLineText {
+  color: #ff9aa8;
+}
+
+.diffPreviewRow.kind-hunk {
+  background: #1a2430;
+  color: #7eb8ff;
+}
+
+.diffPreviewRow.kind-hunk .diffGutter,
+.diffPreviewRow.kind-meta .diffGutter {
+  visibility: hidden;
+}
+
+.diffPreviewRow.kind-meta .diffLineText {
+  color: #7d8b96;
+}
+
+.diffPreviewTruncated,
+.diffPreviewError {
+  color: #9aa8b3;
+  font-size: 11px;
+  margin: 8px 10px;
+}
+
+.primaryButton,
+.secondaryButton,
+.iconButton {
+  align-items: center;
+  background: #283139;
+  border: 1px solid #3f4d57;
+  border-radius: 8px;
+  color: #eef2f4;
+  display: inline-flex;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.primaryButton {
+  background: #2f6b4d;
+  border-color: #3f8762;
+}
+
+.iconButton {
+  min-height: 32px;
+  padding: 6px;
+}
+
+.aggregateDiffChip {
+  align-items: center;
+  background: #15242c;
+  border: 1px solid #2f6b4d;
+  border-radius: 999px;
+  color: #b8e6c8;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 6px;
+  padding: 3px 10px;
+}
+
+.aggregateDiffChip:not(button) {
+  cursor: default;
+}
+
+button.aggregateDiffChip {
+  cursor: pointer;
+}
+
+.contextPanel {
+  border-top: 1px solid #1e262d;
+  margin-top: 8px;
+  padding: 8px 12px 12px;
+}
+
+.contextPressureBar {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  font-size: 11px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+}
+
+.contextPressureBar.health-warn {
+  background: #2a2418;
+  border: 1px solid #7a6230;
+  color: #f0d48a;
+}
+
+.contextPressureBar.health-bad {
+  background: #2a1818;
+  border: 1px solid #7a3030;
+  color: #ffb0b0;
+}
+
+.contextCompactButton,
+.diffActionButton,
+.diffStageTab,
+.diffLayoutTabs button {
+  background: #1b2228;
+  border: 1px solid #2d343b;
+  border-radius: 6px;
+  color: #d7e0e7;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.diffActionButton.danger {
+  border-color: #7a3030;
+  color: #ffb0b0;
+}
+
+.contextPanelToggle {
+  align-items: center;
+  background: transparent;
+  border: none;
+  color: #b8c4ce;
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 0;
+  width: 100%;
+}
+
+.contextPanelBody {
+  margin-top: 8px;
+}
+
+.contextUsageBar.large {
+  height: 8px;
+  margin-bottom: 10px;
+}
+
+.contextUsageBar.large span.health-warn {
+  background: #d4a017;
+}
+
+.contextUsageBar.large span.health-bad {
+  background: #e5534b;
+}
+
+.contextBreakdown.full {
+  display: grid;
+  gap: 6px;
+}
+
+.contextBreakdownRow {
+  align-items: center;
+  background: #14181b;
+  border: 1px solid #243038;
+  border-radius: 8px;
+  color: #c7d2db;
+  cursor: pointer;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto auto;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.contextBreakdownRow.active {
+  border-color: #3f8762;
+}
+
+.contextBreakdownRow:disabled {
+  cursor: default;
+}
+
+.diffPreviewToolbar {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 8px 10px 0;
+}
+
+.diffViewControls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  margin: 8px 0;
+}
+
+.diffStageTabs,
+.diffLayoutTabs {
+  display: flex;
+  gap: 6px;
+}
+
+.diffStageTab.active,
+.diffLayoutTabs button.active {
+  background: #1a2a22;
+  border-color: #3f8762;
+  color: #d7f2e0;
+}
+
+.diffSplitTable {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.diffSplitHeader,
+.diffSplitRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.diffSplitHeader {
+  background: #1a2228;
+  color: #8a98a3;
+  font-size: 10px;
+  padding: 4px 8px;
+}
+
+.diffSplitCell {
+  border-right: 1px solid #1e262d;
+  display: grid;
+  grid-template-columns: 42px 1fr;
+}
+
+.diffSplitCell code {
+  display: block;
+  overflow-x: auto;
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.diffSplitRow.kind-add .diffSplitCell:last-child {
+  background: rgba(46, 160, 67, 0.12);
+}
+
+.diffSplitRow.kind-del .diffSplitCell:first-child {
+  background: rgba(248, 81, 73, 0.12);
+}
+
+.turnFinalDetails {
+  border-top: 1px solid #252d35;
+  color: #8a9aa6;
+  font-size: 12px;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+
+.turnFinalDetails summary {
+  cursor: pointer;
+  font-size: 11px;
+  list-style: none;
+  user-select: none;
+}
+
+.turnFinalDetails summary::-webkit-details-marker {
+  display: none;
+}
+
+.turnFinalDetails section {
+  margin-top: 8px;
+}
+
+.turnFinalDetails h3 {
+  font-size: 11px;
+  margin: 0 0 4px;
+}
+
+.turnFinalMeta {
+  color: #8a98a3;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.markdownBody h3,
+.markdownBody h4 {
+  margin: 10px 0 6px;
+}
+
+.markdownCode {
+  background: #10161b;
+  border: 1px solid #243038;
+  border-radius: 8px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.sessionTitleRow {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.sessionTitleText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionLiveDot {
+  background: #6ec8a0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(110, 200, 160, 0.25);
+  flex-shrink: 0;
+  height: 7px;
+  width: 7px;
+}
+
+.sessionLiveBadge {
+  background: #1a2a22;
+  border: 1px solid #3f8762;
+  border-radius: 999px;
+  color: #8fd19e;
+  font-size: 10px;
+  font-style: normal;
+  padding: 1px 6px;
+}
+
+.contextSectionDetail {
+  margin-top: 10px;
+}

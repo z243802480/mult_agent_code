@@ -208,9 +208,23 @@ async function handleApi(request, response, url) {
 async function submitUserGoal(sessionId, body) {
   const session = await ensureSession(sessionId);
   const goal = redactText(String(body?.message || "")).trim();
+  const channel = String(body?.channel || "").toLowerCase();
   const requestedMode = String(body?.mode || "auto");
   const permission = String(body?.permission || "ask");
   if (!goal) return { ok: false, error: "message is required" };
+
+  if (channel === "side") {
+    const route = {
+      mode: "chat",
+      source: "side",
+      permission: "read_only",
+      confidence: "explicit",
+      intent_kind: "side_ask",
+      reason: "Side chat keeps questions off the main thread.",
+    };
+    return handleChatMode(session.session_id, goal, route, null, "side");
+  }
+
   const route = routeUserIntent(goal, requestedMode, permission);
   const audit = intentAuditFor(goal, requestedMode, permission, route);
   const mode = route.mode;
@@ -515,21 +529,22 @@ function phaseForMode(mode) {
   return "plan";
 }
 
-async function handleChatMode(sessionId, goal, route = null, audit = null) {
+async function handleChatMode(sessionId, goal, route = null, audit = null, displayLevel = "main") {
   await appendEvent(sessionId, {
     type: "user_message",
     status: "completed",
     title: "User",
     summary: goal.slice(0, 80),
     content_delta: goal,
-    phase: "understand",
-    display_level: "main",
+    phase: displayLevel === "side" ? "chat" : "understand",
+    display_level: displayLevel,
+    ui_intent: displayLevel === "side" ? "side_chat" : undefined,
   });
-  startChatJob(sessionId, goal, route, audit);
-  return { ok: true, chat: true, started: true };
+  startChatJob(sessionId, goal, route, audit, displayLevel);
+  return { ok: true, chat: true, started: true, channel: displayLevel === "side" ? "side" : "main" };
 }
 
-function startChatJob(sessionId, goal, route = null, audit = null) {
+function startChatJob(sessionId, goal, route = null, audit = null, displayLevel = "main") {
   const jobId = `chat-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
   const job = {
     job_id: jobId,
@@ -546,7 +561,12 @@ function startChatJob(sessionId, goal, route = null, audit = null) {
 
   void (async () => {
     try {
-      const answer = await buildChatAnswer(goal, sessionId, route, markLifecycleStarted);
+      let answerInput = goal;
+      if (displayLevel === "side") {
+        const ctx = await readChatContext(sessionId).catch(() => ({}));
+        answerInput = `${sideAskContextHint(ctx)}\n\nUser question:\n${goal}`;
+      }
+      const answer = await buildChatAnswer(answerInput, sessionId, route, markLifecycleStarted);
       if (answer.usedModel) await hideManualChatModelStart(sessionId);
       else if (!lifecycleStarted) await appendChatFallbackLifecycle(sessionId, answer);
       await appendEvent(sessionId, {
@@ -555,7 +575,8 @@ function startChatJob(sessionId, goal, route = null, audit = null) {
         title: "Asteria",
         summary: "Answer prepared.",
         phase: "chat",
-        display_level: "main",
+        display_level: displayLevel,
+        ui_intent: displayLevel === "side" ? "side_chat" : undefined,
         content_delta: answer.content,
         model_provider: answer.route?.provider,
         model_name: answer.route?.model,
@@ -574,7 +595,8 @@ function startChatJob(sessionId, goal, route = null, audit = null) {
         title: friendly ? "???????" : "Chat failed",
         summary: friendlyErrorSummary(rawError) || String(error?.message || error),
         phase: "chat",
-        display_level: "main",
+        display_level: displayLevel,
+        ui_intent: displayLevel === "side" ? "side_chat" : undefined,
         content_delta: friendly || redactText(rawError),
       });
     } finally {
@@ -1089,6 +1111,21 @@ async function chatModelRouteAnswer(sessionId) {
     "",
     "\u5982\u679c\u4f60\u60f3\u7701\u94b1\uff0c\u53ef\u4ee5\u76f4\u63a5\u8bf4\u201c\u7528\u7701\u94b1\u6a21\u5f0f\u201d\u6216\u201c\u5148\u7ed9\u7b80\u7248\u201d\u3002"
   ].join("\n");
+}
+
+function sideAskContextHint(context) {
+  const goal = firstRuntimeText(context.goalSpec?.goal, context.run?.goal, "");
+  const phase = firstRuntimeText(context.run?.current_phase, context.run?.status, "unknown");
+  const ratio = context.runtimeProgress?.cost?.context_window_ratio;
+  const lines = [
+    "Side ask: answer briefly without starting a new runtime turn.",
+    goal ? `Active goal: ${goal.slice(0, 240)}` : null,
+    `Run phase: ${phase}`,
+    ratio != null && Number.isFinite(Number(ratio))
+      ? `Context pressure: ${Math.round(Number(ratio) * 100)}%`
+      : null,
+  ].filter(Boolean);
+  return lines.join("\n");
 }
 
 async function readChatContext(sessionId) {

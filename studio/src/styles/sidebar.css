@@ -1,0 +1,167 @@
+.sidebar {
+  background: #181c1f;
+  border-right: 1px solid #30363d;
+  color: #f0f3f5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  overflow: hidden;
+}
+
+.brandBlock {
+  padding: 8px 10px 3px;
+}
+
+.brand {
+  font-size: 16px;
+  font-weight: 780;
+}
+
+.brandBlock small,
+.sideTitle,
+.session small,
+.settingsLink,
+.muted {
+  color: #8f9ba5;
+  font-size: 12px;
+}
+
+.newButton,
+.session {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  color: #eef2f4;
+  display: flex;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.sessionFlat {
+  min-height: 28px;
+  padding: 5px 8px;
+}
+
+.newButton,
+.sessionRow.active,
+.sessionRow:hover {
+  background: #283139;
+}
+
+.sessionRow {
+  align-items: center;
+  border-radius: 7px;
+  display: flex;
+  gap: 4px;
+}
+
+.sessionRow .session {
+  flex: 1;
+  min-width: 0;
+}
+
+.sessionRow .session span,
+.sessionRow .session small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionDelete,
+.sessionRename {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #8f9ba5;
+  display: inline-flex;
+  height: 30px;
+  justify-content: center;
+  margin-right: 4px;
+  opacity: 0;
+  width: 30px;
+}
+
+.sessionRow:hover .sessionDelete,
+.sessionRow:hover .sessionRename,
+.sessionRow.active .sessionDelete,
+.sessionRow.active .sessionRename,
+.sessionDelete:focus-visible,
+.sessionRename:focus-visible {
+  opacity: 1;
+}
+
+.sessionDelete:hover {
+  background: #3a2528;
+  color: #ff9aa8;
+}
+
+.sideSection,
+.sessionList {
+  display: grid;
+  gap: 4px;
+}
+
+.statusToggle {
+  min-height: 24px;
+  padding: 0 8px;
+}
+
+.sideTitle {
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  margin: 2px 8px 0;
+  text-transform: uppercase;
+}
+
+.metric {
+  border: 1px solid #303b43;
+  border-radius: 7px;
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+}
+
+.metric strong {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric.good {
+  border-color: #2f6b4d;
+}
+
+.metric.warn {
+  border-color: #8a7135;
+}
+
+.metric.bad {
+  border-color: #8b403a;
+}
+
+.session {
+  display: grid;
+  gap: 3px;
+}
+
+.session span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settingsLink {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  margin-top: auto;
+  padding: 8px 10px;
+}

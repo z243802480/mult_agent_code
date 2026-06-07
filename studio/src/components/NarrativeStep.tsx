@@ -16,6 +16,7 @@ import {
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../types";
 import { Status } from "./Shared";
 import { EventCard } from "./EventCard";
+import { ClampedOutput } from "./ClampedOutput";
 
 function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));
@@ -46,7 +47,7 @@ export function NarrativeStep({
   selected: StudioEvent | null;
   onSelect: (event: StudioEvent) => void;
 }) {
-  const [open, setOpen] = useState(step.defaultOpen);
+  const [open, setOpen] = useState(step.defaultOpen && step.kind !== "tool" && step.kind !== "repair");
   const primary = step.events[0];
   const time = primary ? formatEventTime(primary.created_at) : "";
 
@@ -74,9 +75,6 @@ export function NarrativeStep({
           <small>{step.title}</small>
         </span>
         <span className="stepInlineFacts">
-          {primary?.model_provider && (
-            <span>{primary.model_provider}</span>
-          )}
           <span>{step.events.length} update{step.events.length === 1 ? "" : "s"}</span>
           <span>{time}</span>
         </span>

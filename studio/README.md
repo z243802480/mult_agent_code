@@ -110,7 +110,7 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | Staged / Unstaged diff tabs | git diff vs cached | ✅ |
 | Accept/reject single file | CLI y/n/e | ✅ Stage / Discard (git) |
 
-**对标计划**：[`docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md`](../docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md)
+**对标计划**：[`docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md`](../docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md) · **视觉校准**：[`benchmarks/reference_briefs/S46-studio-visual-calibration.md`](../benchmarks/reference_briefs/S46-studio-visual-calibration.md)
 
 ---
 

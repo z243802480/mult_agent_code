@@ -1,7 +1,7 @@
 # Slice S45 — Studio × Claude Code 体验对标
 
 更新时间：2026-06-06  
-状态：**已交付 · 2026-06-06**  
+状态：**已交付 · 2026-06-06**（收尾见 [`docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md`](../../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md)）  
 依赖：S14–S15 Beta 路径、Workspace switcher、Diff review 初版（2026-06）
 
 ## 1. 对标原则

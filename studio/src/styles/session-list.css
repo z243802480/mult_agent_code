@@ -1,0 +1,80 @@
+.sessionListHeader {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.sessionListHeader .sideTitle {
+  margin: 0;
+}
+
+.sessionFilterTabs {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.sessionFilterTab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+}
+
+.sessionFilterTab:hover {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+.sessionFilterTab.active {
+  background: var(--surface-2);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.sessionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--space-2);
+}
+
+.sessionGroupLabel {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  margin: var(--space-1) 0 4px;
+  text-transform: uppercase;
+}
+
+.sessionListEmpty {
+  font-size: 12px;
+  margin: var(--space-2) 0;
+  padding: 0 var(--space-1);
+}
+
+.sessionPreview {
+  color: var(--text-muted);
+  display: block;
+  font-size: 11px;
+  line-height: 1.35;
+  margin-top: 2px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.view-focus .sessionGroupLabel {
+  display: none;
+}
+
+.view-focus .sessionFilterTab {
+  padding: 3px 6px;
+}

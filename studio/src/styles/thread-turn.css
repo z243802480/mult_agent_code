@@ -1,0 +1,785 @@
+/* ── Conversation Turn layout ──────────────────────────────────────────── */
+
+.conversationTurn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-width: var(--thread-max);
+  width: 100%;
+}
+
+.threadProcessControls {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  max-width: var(--thread-max);
+  width: 100%;
+}
+
+.threadProcessControls button {
+  background: transparent;
+  border: 1px solid #27313a;
+  border-radius: 6px;
+  color: #748491;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+.threadProcessControls button:hover {
+  background: #141c24;
+  color: #b8c6cf;
+}
+
+/* User bubble (right-aligned) */
+.turnUser {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.turnUserBubble {
+  background: #1b3a50;
+  border: 1px solid #2a5572;
+  border-radius: 14px 14px 3px 14px;
+  max-width: 76%;
+  padding: 9px 13px 6px;
+}
+
+.turnUserBubble.optimistic {
+  opacity: 0.82;
+}
+
+.turnUserBubble p {
+  color: #d4eaf5;
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.turnUserTime {
+  color: #4d7a94;
+  display: block;
+  font-size: 10px;
+  margin-top: 4px;
+  text-align: right;
+}
+
+/* Middle steps: collapsed badge + expandable steps */
+.turnMiddle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 2px;
+}
+
+.turnMiddle.compact {
+  gap: 6px;
+  padding-left: 0;
+}
+
+.turnMiddle.compact .turnFileRowWrap {
+  margin: 0;
+}
+
+.turnMiddleBadge {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #4a6070;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  padding: 3px 8px;
+  transition: color 0.15s, background 0.15s;
+  width: fit-content;
+}
+
+.turnMiddleBadge:hover,
+.turnMiddleBadge.open {
+  background: #141c24;
+  color: #7a9aaa;
+}
+
+.turnMiddleBadge.selected {
+  background: #172630;
+  color: #b9d6e5;
+}
+
+.turnMiddleSteps {
+  border-left: 2px solid #253039;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 6px 0 4px 10px;
+}
+
+.contextWindowDock {
+  bottom: 84px;
+  position: fixed;
+  right: 356px;
+  z-index: 12;
+}
+
+.contextWindowTrigger {
+  align-items: center;
+  background: #191f23;
+  border: 1px solid #2c343a;
+  border-radius: 7px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  color: #9aa6af;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.contextWindowTrigger:hover,
+.contextWindowDock.open .contextWindowTrigger {
+  background: #20272c;
+  color: #cbd5dc;
+}
+
+.contextWindowTrigger strong {
+  color: #d8e2e7;
+  font-size: 12px;
+}
+
+.contextWindowPanel {
+  background: #191f23;
+  border: 1px solid #2c343a;
+  border-radius: 8px;
+  bottom: 42px;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+  display: grid;
+  gap: 10px;
+  min-width: 280px;
+  padding: 12px;
+  position: absolute;
+  right: 0;
+}
+
+.contextWindowHeader {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contextWindowHeader strong {
+  color: #d8e2e7;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.contextHealth {
+  border-radius: 999px;
+  color: #9aa6af;
+  font-size: 11px;
+  font-weight: 760;
+  padding: 3px 7px;
+  text-transform: lowercase;
+}
+
+.contextHealth.good {
+  background: #123020;
+  color: #9fe0b6;
+}
+
+.contextHealth.warn {
+  background: #312914;
+  color: #f1ce83;
+}
+
+.contextHealth.bad {
+  background: #351a18;
+  color: #ffb8af;
+}
+
+.contextUsageBar {
+  background: #0f1418;
+  border-radius: 999px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.contextUsageBar span {
+  background: linear-gradient(90deg, #57a8d2, #f35f7a);
+  display: block;
+  height: 100%;
+  max-width: 100%;
+}
+
+.contextBreakdown {
+  display: grid;
+  gap: 7px;
+}
+
+.contextBreakdownRow {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr auto auto;
+}
+
+.contextBreakdownRow span {
+  color: #a9b4bc;
+  font-size: 12px;
+}
+
+.contextBreakdownRow strong,
+.contextBreakdownRow em {
+  color: #d8e2e7;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.contextBreakdownRow em {
+  color: #87939c;
+}
+
+.contextBreakdownRow.free span,
+.contextBreakdownRow.free strong {
+  color: #7f8a92;
+}
+
+/* Running indicator (before first event) */
+.turnRunning {
+  align-items: center;
+  color: #7a8e9a;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.turnWaiting {
+  align-items: center;
+  background: #0d1419;
+  border: 1px solid #1a3348;
+  border-radius: 4px 12px 12px 12px;
+  color: #9fb4c4;
+  display: inline-flex;
+  gap: 8px;
+  max-width: fit-content;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+
+.turnWaiting strong {
+  color: #d5e8f2;
+  font-size: 13px;
+}
+
+.turnWaiting small {
+  color: #6f8491;
+  font-size: 12px;
+  min-width: 24px;
+}
+
+.waitingDots {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.waitingDots i {
+  animation: pulse 1.2s ease-in-out infinite;
+  background: #3a9ec8;
+  border-radius: 50%;
+  display: block;
+  height: 4px;
+  width: 4px;
+}
+
+.waitingDots i:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.waitingDots i:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+/* ── LiveStream: real-time output while turn is running ─────────────────── */
+
+.liveStream {
+  background: #0d1419;
+  border: 1px solid #1a3348;
+  border-radius: 4px 12px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 92%;
+  padding: 12px 14px;
+}
+
+.livePhaseRow {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.liveSpinner {
+  color: #3a9ec8;
+  flex-shrink: 0;
+}
+
+.livePhaseDot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 9px;
+  width: 9px;
+}
+
+.livePhaseDot.waiting {
+  animation: pulse 1.5s ease-in-out infinite;
+  background: #a78bfa;
+}
+
+.livePhaseLabel {
+  color: #4a9ec8;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.livePhaseTitle {
+  color: #6a8a9a;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tool call chips — inline record of tools invoked */
+.liveToolRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.liveToolChip {
+  align-items: center;
+  border-radius: 4px;
+  border: 1px solid #1e3a52;
+  color: #7ab8d8;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  padding: 2px 7px;
+  background: #111d28;
+}
+
+.liveToolChip.completed {
+  background: #0e1e16;
+  border-color: #1e4a2e;
+  color: #6ec882;
+}
+
+.liveToolChip.failed {
+  background: #1a0e0e;
+  border-color: #5a2020;
+  color: #f87878;
+}
+
+.liveToolChip.waiting_user {
+  background: #160f28;
+  border-color: #4a3a70;
+  color: #c4a8ff;
+}
+
+.liveToolChip.running {
+  animation: pulse 2s ease-in-out infinite;
+  border-color: #2a5070;
+  color: #7ab8d8;
+}
+
+/* Tool stdout output block */
+.liveToolOutputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.liveToolOutput.clampedOutput pre,
+.liveToolOutput.clampedOutput:not(.expanded) pre {
+  background: #080d10;
+  border-left: 2px solid #1a4060;
+  color: #8abcca;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 5px 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.liveModelText.clampedOutput pre {
+  border-top: 1px solid #1a2a38;
+  color: #c0cdd6;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+  padding-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.clampedOutput pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.clampedOutput.clamped:not(.expanded) pre {
+  max-height: calc(var(--clamp-lines, 5) * 1.45em);
+  overflow: hidden;
+  position: relative;
+}
+
+.clampedOutput.clamped:not(.expanded) pre::after {
+  background: linear-gradient(180deg, transparent, #101214 88%);
+  bottom: 0;
+  content: "";
+  height: 1.6em;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+
+.clampedOutputToggle {
+  background: transparent;
+  border: 0;
+  color: #6a8fa8;
+  cursor: pointer;
+  font-size: 11px;
+  margin-top: 4px;
+  padding: 2px 0;
+}
+
+.clampedOutputToggle:hover {
+  color: #9ec4dc;
+}
+
+.chatStreamPreview .clampedOutput pre {
+  color: #c8d6df;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+/* File change chips */
+.liveFileRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.liveFileChip {
+  align-items: center;
+  background: #0e1a22;
+  border: 1px solid #1e3a30;
+  border-radius: 4px;
+  color: #6ec8a0;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  padding: 2px 7px;
+}
+
+.liveFileChip.interactive {
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.liveFileChip.interactive:hover,
+.liveFileChip.interactive:focus-visible {
+  background: #15242c;
+  border-color: #2f6b4d;
+  outline: none;
+}
+
+.liveFileName {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turnFileRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+
+.turnFileRowWrap {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 0 28px;
+}
+
+.turnDiffButton {
+  background: #15242c;
+  border: 1px solid #2f6b4d;
+  border-radius: 999px;
+  color: #b8e6c8;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+.turnDiffButton:hover,
+.turnDiffButton:focus-visible {
+  background: #1a2f28;
+  outline: none;
+}
+
+.workflowPhaseStrip {
+  border-bottom: 1px solid #1e262d;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 18px;
+}
+
+.workflowPhaseInline {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.workflowPhaseDot {
+  border-radius: 999px;
+  color: transparent;
+  font-size: 0;
+  height: 6px;
+  overflow: hidden;
+  position: relative;
+  width: 6px;
+}
+
+.workflowPhaseDot::after {
+  content: attr(title);
+  display: none;
+}
+
+.workflowPhaseDot.done {
+  background: #3f8762;
+}
+
+.workflowPhaseDot.active {
+  background: #6ec8a0;
+  box-shadow: 0 0 0 2px rgba(110, 200, 160, 0.25);
+  height: 7px;
+  width: 7px;
+}
+
+.workflowPhaseDot.pending {
+  background: #3a4249;
+}
+
+.workflowPhasePill {
+  border: 1px solid #2a3138;
+  border-radius: 999px;
+  color: #7d8b96;
+  font-size: 11px;
+  padding: 3px 10px;
+}
+
+.workflowPhasePill.done {
+  border-color: #2f6b4d;
+  color: #8fd19e;
+}
+
+.workflowPhasePill.active {
+  background: #1a2a22;
+  border-color: #3f8762;
+  color: #d7f2e0;
+}
+
+.workflowPhasePill.pending {
+  opacity: 0.55;
+}
+
+.liveFileChip.muted {
+  border-color: #252d35;
+  color: #5a7080;
+}
+
+.liveFileDelta {
+  display: inline-flex;
+  font-size: 10px;
+  gap: 4px;
+  opacity: 0.9;
+}
+
+.deltaAdd {
+  color: #6ec8a0;
+}
+
+.deltaDel {
+  color: #ff9aa8;
+}
+
+/* Streaming LLM text — the actual words from the model as they arrive */
+.liveModelText {
+  border-top: 1px solid #1a2a38;
+  color: #c0cdd6;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+  padding-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chatStreamPreview {
+  background: #10171d;
+  border: 1px solid #1d3a52;
+  border-radius: 4px 14px 14px 14px;
+  display: grid;
+  gap: 8px;
+  max-width: min(92%, 860px);
+  padding: 11px 13px;
+}
+
+.chatStreamHeader {
+  align-items: center;
+  color: #8bc8e8;
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.chatStreamHeader strong {
+  color: #d8eef6;
+}
+
+.chatStreamHeader span {
+  color: #6e8391;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.chatStreamPreview pre,
+.chatStreamPreview p {
+  color: #c8d6df;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Asteria response card */
+.turnFinal {
+  background: #141a20;
+  border: 1px solid #2a3a46;
+  border-radius: 4px 14px 14px 14px;
+  max-width: min(92%, 860px);
+  padding: 12px 14px;
+}
+
+.turnFinal.failed {
+  background: #160e0e;
+  border-color: #6b2f2c;
+}
+
+.turnFinalHeader {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.turnFinalAvatar {
+  align-items: center;
+  background: linear-gradient(135deg, #0d7a8a, #4a58c8);
+  border-radius: 50%;
+  color: #fff;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  height: 20px;
+  justify-content: center;
+  width: 20px;
+}
+
+.turnFinalLabel {
+  color: #6a9ab0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.turnFinalText {
+  color: #d4dde3;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 0;
+  word-break: break-word;
+}
+
+.turnFinalText section {
+  border-top: 1px solid #22313c;
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+}
+
+.turnFinalText section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.turnFinalText h3 {
+  color: #eef6f8;
+  font-size: 14px;
+  margin: 0 0 2px;
+}
+
+.turnFinalText p {
+  margin: 0;
+}
+
+.primaryFinalSection {
+  color: #eef6f8;
+  font-size: 15px;
+}
+
+.finalBullet {
+  padding-left: 18px;
+  position: relative;
+}
+
+.finalBullet::before {
+  color: #5fc6d4;
+  content: "•";
+  left: 4px;
+  position: absolute;
+}
+
+.finalDetail {
+  color: #aebbc4;
+  font-size: 13px;
+  padding-left: 18px;
+}
