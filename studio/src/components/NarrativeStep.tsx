@@ -16,7 +16,6 @@ import {
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../types";
 import { Status } from "./Shared";
 import { EventCard } from "./EventCard";
-import { ClampedOutput } from "./ClampedOutput";
 
 function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));

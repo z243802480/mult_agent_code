@@ -58,7 +58,7 @@ function observationText(event: StudioEvent): string {
   const summary = String(observation?.model_summary ?? observation?.summary ?? "").trim();
   const stdout = String(observation?.stdout_excerpt ?? "").trim();
   const stderr = String(observation?.stderr_excerpt ?? "").trim();
-  return [summary, stdout && `stdout: ${stdout}`, stderr && `stderr: ${stderr}`]
+  return [summary, stdout && `output: ${stdout}`, stderr && `errors: ${stderr}`]
     .filter(Boolean)
     .join("\n");
 }
@@ -91,6 +91,11 @@ export function EventCard({
   const showCommandInline = event.type === "permission_request";
   const fileChanges = (event.file_changes ?? []) as AnyRecord[];
   const bodyText = event.content_delta || (event.type === "tool_observation" ? observationText(event) : "");
+  const clampBody =
+    compact
+    || event.type === "tool_observation"
+    || event.type === "tool_end"
+    || event.type === "tool_delta";
 
   return (
     <article
@@ -142,11 +147,11 @@ export function EventCard({
         {showBody &&
           (open || event.type !== "reasoning_delta") &&
           bodyText &&
-          (compact ? (
+          (clampBody ? (
             <ClampedOutput
               text={bodyText}
               className={isUser ? "messageText" : "deltaText"}
-              maxLines={4}
+              maxLines={8}
             />
           ) : (
             <pre className={isUser ? "messageText" : "deltaText"}>{bodyText}</pre>

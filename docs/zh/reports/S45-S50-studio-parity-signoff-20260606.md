@@ -41,8 +41,8 @@ node studio/scripts/git-changes-smoke.mjs
 
 ## F1 待办（签字前）
 
-- [ ] S51 Turn Rewind
-- [ ] S52 Tool ClampedOutput
+- [x] S51 Turn Rewind
+- [x] S52 Tool ClampedOutput
 - [ ] S53 文档三源一致 + 本报告正式签字
 
 ---

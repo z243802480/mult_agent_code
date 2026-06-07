@@ -257,6 +257,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
             compactDiff={compactDiff}
             turnIndex={turnIndex}
             onAggregateDiffClick={onAggregateDiffClick}
+            viewMode={viewMode}
           />
         )
       ) : (

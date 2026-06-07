@@ -6,6 +6,7 @@ import { AggregateDiffChip } from "../../components/AggregateDiffChip";
 import { FileChangeChips } from "../../components/FileChangeChips";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
+import type { StudioViewMode } from "../../hooks/useViewMode";
 
 const PHASE_LABELS: Record<string, string> = {
   thinking: "Thinking",
@@ -26,6 +27,7 @@ export type LiveStreamProps = {
   compactDiff?: boolean;
   turnIndex?: number;
   onAggregateDiffClick?: (turnIndex: number) => void;
+  viewMode?: StudioViewMode;
 };
 
 export function LiveStream({
@@ -36,7 +38,9 @@ export function LiveStream({
   compactDiff = false,
   turnIndex,
   onAggregateDiffClick,
+  viewMode = "focus",
 }: LiveStreamProps) {
+  const expandOutput = viewMode === "verbose";
   const activeStep = steps.at(-1);
   const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "Processing";
   const isWaiting = activeStep?.status === "waiting_user";
@@ -94,7 +98,13 @@ export function LiveStream({
       {showToolStreams && toolOutputs.length > 0 && (
         <div className="liveToolOutputs">
           {toolOutputs.map((output, index) => (
-            <ClampedOutput key={index} text={String(output.text ?? "")} className="liveToolOutput" maxLines={4} />
+            <ClampedOutput
+              key={index}
+              text={String(output.text ?? "")}
+              className="liveToolOutput"
+              maxLines={8}
+              defaultExpanded={expandOutput}
+            />
           ))}
         </div>
       )}
@@ -111,7 +121,7 @@ export function LiveStream({
       )}
 
       {showToolStreams && modelText && (
-        <ClampedOutput text={modelText} className="liveModelText" maxLines={6} />
+        <ClampedOutput text={modelText} className="liveModelText" maxLines={8} defaultExpanded={expandOutput} />
       )}
 
       {permEvent && (

@@ -461,10 +461,30 @@
   color: #6a8fa8;
   cursor: pointer;
   font-size: 11px;
-  margin-top: 4px;
   padding: 2px 0;
 }
 
+.clampedOutputActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.clampedOutputCopy {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #6a8fa8;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.clampedOutputCopy:hover,
 .clampedOutputToggle:hover {
   color: #9ec4dc;
 }

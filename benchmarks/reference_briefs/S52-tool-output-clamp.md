@@ -1,7 +1,7 @@
 # Slice S52 — Tool 输出 ClampedOutput
 
 更新时间：2026-06-06  
-状态：**待执行**  
+状态：**已完成**  
 依赖：S45i、S46 LiveStream 降噪  
 计划：[`docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md`](../../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md)
 
@@ -21,7 +21,7 @@
 
 ## 3. 验收
 
-- [ ] tool 输出默认 clamp（建议 max-height ~160px）
-- [ ] copy 可用；展开后显示全量
-- [ ] Focus 模式保持降噪（不默认全展开）
-- [ ] build + thread 相关 smoke
+- [x] tool 输出默认 clamp（建议 max-height ~160px）
+- [x] copy 可用；展开后显示全量
+- [x] Focus 模式保持降噪（不默认全展开）
+- [x] build + thread 相关 smoke

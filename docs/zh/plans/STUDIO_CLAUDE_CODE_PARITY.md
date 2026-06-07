@@ -73,7 +73,7 @@ Beta 内测反馈集中在三条：**改完代码看不清 diff**、**长会话�
 | E1 S46 | ✅ | Focus/Verbose、Inspector 分层、Diff Focus、模块化 |
 | E2 S47 | ✅ | Session 侧栏分组 |
 | E3 S48 | ✅ | Diff 左文件右内容 |
-| **F1 S51–S53** | 🔄 | Rewind · Tool clamp · 对标签字 |
+| **F1 S51–S53** | 🔄 | S51–S52 ✅ · **S53 对标签字** |
 | **F2 内测闭环** | 📋 | dogfood · B6 · friction 分桶 |
 | defer | 📋 | worktree、policy accept、pane drag-drop、Terminal、Settings |
 
