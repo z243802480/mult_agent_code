@@ -2,7 +2,7 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S56",
+  "active_slice": "F2-S54",
   "active_phase": "Maint-F2+Triple",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
@@ -596,6 +596,19 @@
         "python scripts/triple_track_pulse.py --root . --skip-b6"
       ],
       "reference_brief": "benchmarks/reference_briefs/S56-beta-task-pack-pulse.md"
+    },
+    {
+      "id": "S57",
+      "name": "Harness accept 回归 + B6 复验",
+      "phase": "Maint-F2+Triple",
+      "depends_on": ["S55", "S56"],
+      "user_demo": "asteria accept 主路径 + B6 friction 绿",
+      "green_checks": [
+        "pytest tests/unit/test_accept_command.py -q",
+        "python scripts/harness_repeatability_pulse.py --root . --with-b6",
+        "python scripts/triple_track_pulse.py --root . --skip-b6"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S57-harness-accept-b6-regression.md"
     }
   ]
 }

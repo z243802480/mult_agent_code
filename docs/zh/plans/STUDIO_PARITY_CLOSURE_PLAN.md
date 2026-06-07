@@ -3,8 +3,8 @@
 更新时间：2026-06-06  
 状态：**active · F1 已签字**  
 前置：**S45–S53 已交付**  
-**ACTIVE_SLICE**：**S56**（轨道 P）  
-**并行**：F2/S54 · S55 ✅ — 见 [`TRIPLE_TRACK_MAINT_PLAN.md`](./TRIPLE_TRACK_MAINT_PLAN.md)
+**ACTIVE_SLICE**：**F2-S54**（内测 ongoing · S56/S57 ✅）  
+**并行**：F2/S54 · Harness/P 已签字 — 见 [`TRIPLE_TRACK_MAINT_PLAN.md`](./TRIPLE_TRACK_MAINT_PLAN.md)
 
 ---
 

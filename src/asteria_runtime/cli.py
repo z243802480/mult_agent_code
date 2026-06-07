@@ -8,6 +8,7 @@ from typing import Any
 
 from asteria_runtime import __version__
 from asteria_runtime.commands.background_run_command import BackgroundRunCommand
+from asteria_runtime.commands.accept_command import AcceptCommand
 from asteria_runtime.commands.acceptance_command import AcceptanceCommand
 from asteria_runtime.commands.acceptance_gate_command import AcceptanceGateCommand
 from asteria_runtime.commands.acceptance_history_command import AcceptanceHistoryCommand

@@ -697,6 +697,22 @@ class RequirementPlanner:
         description = str(requirement.get("description", "")).lower()
         if any(
             marker in text
+            for marker in {
+                "add ",
+                "create ",
+                "implement",
+                "update ",
+                "modify ",
+                "write ",
+                "补",
+                "增加",
+                "写一个",
+                "编写",
+            }
+        ):
+            return "implementation"
+        if any(
+            marker in text
             for marker in {"diagnose", "identify failing", "failing tests", "run pytest"}
         ):
             return "diagnostic"

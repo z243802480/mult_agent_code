@@ -15,7 +15,7 @@ from asteria_runtime.core.friction_contract import evaluate_friction
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    parser = argparse.ArgumentParser(description="Harness repeatability pulse for S55.")
+    parser = argparse.ArgumentParser(description="Harness repeatability pulse for S55/S57.")
     parser.add_argument("--root", type=Path, default=Path("."), help="Repository root")
     parser.add_argument(
         "--with-b6",

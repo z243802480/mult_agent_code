@@ -30,7 +30,7 @@ python scripts/triple_track_pulse.py --root . --skip-b6
 | 轨道 | Slice | 负责人 | 产出 | 不等谁 |
 | --- | --- | --- | --- | --- |
 | **F2** | S54 ongoing | 产品/维护者 + VM | `S14-beta-user-trial-*.md` · friction 汇总 | — |
-| **H** | **S55** | Agent 研发 | 决策链 UX · repair 可观测 · B6 friction | F2 |
+| **H** | **S57** | Agent 研发 | accept 回归 · B6 复验 | F2 |
 | **P** | **S56** | Agent 研发 | `beta_task_pack_check.py` · 任务 2 材料齐 | F2 |
 | **A** | — | 每会话 | doc contracts · wheel smoke | — |
 

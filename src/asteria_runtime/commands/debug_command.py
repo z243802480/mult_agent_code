@@ -355,8 +355,7 @@ class DebugCommand:
                 return RepairSummary(task_id, "blocked", skip_reason, 0, 0, evidence_path)
             if context.budget:
                 context.budget.record_repair_attempt()
-            task_board.update_status(task_id, "ready")
-            task_board.update_status(task_id, "in_progress")
+            self._ensure_task_in_progress_for_repair(task_board, task_id)
             self._record_progress(
                 context,
                 task,
@@ -1127,12 +1126,50 @@ class DebugCommand:
         )
         return any(signal in text for signal in ["SyntaxError", "IndentationError"])
 
+    def _ensure_task_in_progress_for_repair(self, task_board: TaskBoard, task_id: str) -> None:
+        status = task_board.get_task(task_id)["status"]
+        if status == "in_progress":
+            return
+        if status == "blocked":
+            task_board.update_status(task_id, "ready")
+            task_board.update_status(task_id, "in_progress")
+            return
+        if status == "ready":
+            task_board.update_status(task_id, "in_progress")
+            return
+        if status == "testing":
+            task_board.update_status(task_id, "in_progress")
+            return
+        if status == "reviewing":
+            task_board.update_status(task_id, "in_progress")
+            return
+        raise TaskStateError(f"Cannot repair task from status: {status}")
+
     def _blocked_tasks(self, task_board: TaskBoard) -> list[dict]:
         tasks = task_board.list_tasks()
         if self.task_id:
             task = task_board.get_task(self.task_id)
-            return [task] if task["status"] == "blocked" else []
-        return [task for task in tasks if task["status"] == "blocked"]
+            return [task] if self._task_needs_debug_repair(task) else []
+        return [task for task in tasks if self._task_needs_debug_repair(task)]
+
+    def _task_needs_debug_repair(self, task: dict) -> bool:
+        status = str(task.get("status") or "")
+        if status == "blocked":
+            return True
+        if status != "in_progress":
+            return False
+        notes = str(task.get("notes") or "").lower()
+        return any(
+            marker in notes
+            for marker in (
+                "contract violated",
+                "tool failed",
+                "tool is not allowed",
+                "permission denied",
+                "repair",
+                "verification did not pass",
+            )
+        )
 
     def _block_task(
         self, task_board: TaskBoard, task_id: str, reason: str, context: RuntimeContext

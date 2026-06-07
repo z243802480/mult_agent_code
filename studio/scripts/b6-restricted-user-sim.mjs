@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(studioDir, "..");
 const workspace = process.env.B6_SIM_WORKSPACE || "h:/beta_user_sim/workspace";
-const port = Number(process.env.B6_SIM_PORT || 8794);
+const port = Number(process.env.B6_SIM_PORT || (8700 + Math.floor(Math.random() * 200)));
 const python = process.env.ASTERIA_PYTHON || "python";
 const goalText = "给一个小 CLI 增加 --version 参数，并补一个测试。";
 const startedAt = Date.now();
@@ -51,30 +51,32 @@ const server = spawn(process.execPath, [
 let boot = "";
 server.stdout.on("data", (c) => { boot += c; });
 server.stderr.on("data", (c) => { boot += c; });
-await waitFor(() => boot.includes("Asteria Studio listening"), 20000, "studio API failed");
+try {
+  await waitFor(() => boot.includes("Asteria Studio listening"), 20000, "studio API failed");
 
-const base = `http://127.0.0.1:${port}`;
-const { session } = await postJson(`${base}/api/studio/sessions`, {});
-const submit = await postJson(`${base}/api/studio/sessions/${session.session_id}/messages`, {
-  message: goalText, mode: "run", permission: "ask",
-});
-if (!submit.needs_permission) throw new Error("expected Studio permission card (B3)");
-await patchJson(`${base}/api/studio/sessions/${session.session_id}/jobs/${submit.job_id}/permission`, { action: "allow" });
-note("B3", "Studio permission_request → Allow");
-note("B1", "Studio run job started (wait for ready_for_accept)");
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await postJson(`${base}/api/studio/sessions`, {});
+  const submit = await postJson(`${base}/api/studio/sessions/${session.session_id}/messages`, {
+    message: goalText, mode: "run", permission: "ask",
+  });
+  if (!submit.needs_permission) throw new Error("expected Studio permission card (B3)");
+  await patchJson(`${base}/api/studio/sessions/${session.session_id}/jobs/${submit.job_id}/permission`, { action: "allow" });
+  note("B3", "Studio permission_request → Allow");
+  note("B1", "Studio run job started (wait for ready_for_accept)");
 
-await waitForReadyOrAssist(base, session.session_id);
+  await waitForReadyOrAssist(base, session.session_id);
 
-const { events } = await getJson(`${base}/api/studio/sessions/${session.session_id}/events`);
-const types = new Set(events.map((e) => e.type));
-if (!types.has("permission_request")) throw new Error("missing permission_request");
-note("B2", `session events: ${[...types].slice(0, 12).join(", ")}`);
+  const { events } = await getJson(`${base}/api/studio/sessions/${session.session_id}/events`);
+  const types = new Set(events.map((e) => e.type));
+  if (!types.has("permission_request")) throw new Error("missing permission_request");
+  note("B2", `session events: ${[...types].slice(0, 12).join(", ")}`);
 
-const diagnostics = await getJson(`${base}/api/diagnostics`);
-note("B4", `workflow=${JSON.stringify(diagnostics.workflow)} friction=${JSON.stringify(friction)}`);
-
-server.kill("SIGTERM");
-await sleep(500);
+  const diagnostics = await getJson(`${base}/api/diagnostics`);
+  note("B4", `workflow=${JSON.stringify(diagnostics.workflow)} friction=${JSON.stringify(friction)}`);
+} finally {
+  server.kill("SIGTERM");
+  await sleep(500);
+}
 
 await runPython(["-m", "asteria_runtime", "accept", "--root", workspace]);
 const status = JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "status", "--root", workspace, "--json"]));

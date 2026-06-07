@@ -554,3 +554,31 @@ def test_debug_command_blocks_repair_when_delegation_gate_fails(tmp_path: Path) 
     assert "delegation brief" in repair.summary.lower() or "quality gate" in repair.summary.lower()
     events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "repair_delegation_gate_blocked" in events
+
+
+def test_debug_command_repairs_in_progress_task_with_failure_notes(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    (tmp_path / "repairable.py").write_text("VALUE = 0\n", encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    task_plan["tasks"][0]["status"] = "in_progress"
+    task_plan["tasks"][0]["notes"] = "Task completion contract violated: verification did not pass"
+    (run_dir / "task_plan.json").write_text(json.dumps(task_plan), encoding="utf-8")
+
+    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakePatchDebugClient()).run()
+
+    assert result.repaired == 1
+    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+
+
+def test_task_needs_debug_repair_for_in_progress_contract_failure() -> None:
+    command = DebugCommand(Path("."))
+    assert command._task_needs_debug_repair(
+        {
+            "status": "in_progress",
+            "notes": "Task completion contract violated: verification did not pass",
+        }
+    )
+    assert not command._task_needs_debug_repair({"status": "in_progress", "notes": ""})
+    assert command._task_needs_debug_repair({"status": "blocked", "notes": ""})

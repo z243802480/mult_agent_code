@@ -18,7 +18,9 @@ CLI and Studio surface (not command-only UX).
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
 当前 ACTIVE_PHASE：Maint-F2+Triple（F2 内测 ∥ H Harness ∥ P 任务包 ∥ A 稳态）
-当前 ACTIVE_SLICE：S56（Beta 任务包脉搏）
+当前 ACTIVE_SLICE：F2-S54（S56/S57 已签字 · 内测试跑）
+S57 签字：docs/zh/reports/S57-harness-accept-b6-regression-signoff-20260607.md
+S56 签字：docs/zh/reports/S56-beta-task-pack-pulse-signoff-20260607.md
 S55 签字：docs/zh/reports/S55-harness-friction-ii-signoff-20260606.md
 三线计划：docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md
 F2 基线：S54 · docs/zh/reports/S54-f2-friction-baseline-20260606.md

@@ -40,7 +40,7 @@ def main() -> None:
         "ok": ok,
         "purpose": "Triple-track pulse (A steady + F2 friction + P pack + H contract)",
         "plan": "docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md",
-        "active_slice": "S56",
+        "active_slice": "F2-S54",
         "tracks": tracks,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))

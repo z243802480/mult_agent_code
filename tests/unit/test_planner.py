@@ -920,5 +920,23 @@ def test_session_agent_unified_task_collapses_beta_coding_goal() -> None:
 
     tasks = RequirementPlanner().build_task_plan(goal_spec, execution_profile=SESSION_AGENT)["tasks"]
     assert tasks[0]["execution_profile"] == "session_agent"
+    assert tasks[0]["task_kind"] == "implementation"
+    assert "apply_patch" in tasks[0]["allowed_tools"]
     assert "--version prints version" in tasks[0]["acceptance"]
     assert "pytest passes" in tasks[0]["acceptance"]
+
+
+def test_task_kind_stays_implementation_when_description_mentions_verify() -> None:
+    requirement = {
+        "description": (
+            "Add a --version flag to greet_cli.py\n"
+            "- Verify existing greet behavior still works after changes"
+        ),
+        "acceptance": ["pytest test_greet_cli.py passes"],
+    }
+    kind = RequirementPlanner()._task_kind(
+        requirement,
+        ["greet_cli.py", "test_greet_cli.py"],
+        {},
+    )
+    assert kind == "implementation"
