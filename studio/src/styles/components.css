@@ -156,14 +156,36 @@
   margin: 0;
 }
 
-.permissionCommand {
-  background: #0e1012;
-  border-radius: 6px;
-  color: #a8e7c0;
-  display: block;
+.permissionPreview {
+  border-top: 1px solid rgba(215, 199, 255, 0.16);
+  display: grid;
+  gap: 7px;
+  padding-top: 10px;
+}
+
+.permissionFact {
+  align-items: start;
+  display: grid;
+  gap: 4px 8px;
+  grid-template-columns: 14px 66px minmax(0, 1fr);
+}
+
+.permissionFact > span {
+  color: #bca8ef;
+  line-height: 1;
+  padding-top: 2px;
+}
+
+.permissionFact small {
+  color: #8f9aa3;
+  font-size: 11px;
+}
+
+.permissionFact strong {
+  color: #d6dde2;
   font-size: 12px;
-  overflow-wrap: anywhere;
-  padding: 8px 10px;
+  font-weight: 560;
+  line-height: 1.35;
 }
 
 .permissionActions {

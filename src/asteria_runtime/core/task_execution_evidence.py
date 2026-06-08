@@ -131,13 +131,16 @@ class TaskExecutionEvidenceRecorder:
         evidence = []
         for result in results:
             data = getattr(result, "data", {})
+            result_data = data if isinstance(data, dict) else {}
             evidence.append(
                 {
                     "ok": bool(getattr(result, "ok", False)),
                     "summary": str(getattr(result, "summary", "")),
                     "error": getattr(result, "error", None),
                     "warnings": list(getattr(result, "warnings", []) or []),
-                    "data": data if isinstance(data, dict) else {},
+                    "data": result_data,
+                    "requested_command": result_data.get("requested_command"),
+                    "executed_command": result_data.get("command"),
                 }
             )
         return evidence

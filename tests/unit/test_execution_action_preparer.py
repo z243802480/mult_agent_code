@@ -76,6 +76,28 @@ def test_preparer_replaces_safe_unsafe_verification_with_planned_command() -> No
     ]
 
 
+def test_preparer_replaces_out_of_scope_redirect_with_planned_command() -> None:
+    def shell_denial(_policy: dict, command: str) -> str | None:
+        if "../../" in command:
+            return "Shell output redirect denied: ../../outside.txt"
+        return None
+
+    action = {
+        "tool_calls": [
+            {"tool_name": "write_file", "args": {"path": "tool.py", "content": "print('ok')"}},
+        ],
+        "verification": [
+            {"tool_name": "run_command", "args": {"command": "echo unsafe > ../../outside.txt"}},
+        ],
+    }
+
+    prepared = ExecutionActionPreparer(shell_denial).prepare(action, _task(), {})
+
+    assert [call["args"]["command"] for call in prepared["verification"]] == [
+        "python tool.py --help",
+    ]
+
+
 def test_preparer_replaces_doc_only_verification_with_stable_file_check() -> None:
     action = {
         "tool_calls": [

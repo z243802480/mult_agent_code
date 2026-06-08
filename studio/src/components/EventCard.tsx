@@ -88,7 +88,6 @@ export function EventCard({
     event.type === "final_answer" ||
     event.type === "error" ||
     event.type === "permission_request";
-  const showCommandInline = event.type === "permission_request";
   const fileChanges = (event.file_changes ?? []) as AnyRecord[];
   const bodyText = event.content_delta || (event.type === "tool_observation" ? observationText(event) : "");
   const clampBody =
@@ -156,9 +155,6 @@ export function EventCard({
           ) : (
             <pre className={isUser ? "messageText" : "deltaText"}>{bodyText}</pre>
           ))}
-        {showCommandInline && event.command && (
-          <code className="commandLine">{event.command.join(" ")}</code>
-        )}
       </div>
     </article>
   );

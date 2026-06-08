@@ -18,6 +18,27 @@ SLIM_LIMITS = {
     "runtime_requests": 5,
 }
 
+SLIM_EXECUTION_KEYS = {
+    "agent_loop_round",
+    "agent_role_contract",
+    "context_mount",
+    "context_package",
+    "context_policy",
+    "harness_observations",
+    "latest_agent_loop_observation",
+    "model_profile_id",
+    "observation_next_action_plan",
+    "prompt_envelope",
+    "raw_context_refs",
+    "runtime_profile_id",
+    "subagent_child_plan",
+    "subagent_worker",
+    "task_contract",
+    "task_failures",
+    "tool_observation_actions",
+    "tool_observations",
+}
+
 
 def review_context_policy(review_context: dict[str, Any]) -> dict[str, Any]:
     goal_spec = review_context.get("goal_spec")
@@ -108,6 +129,12 @@ def slim_execution_context(
     package = slimmed.get("context_package")
     if isinstance(package, dict):
         raw_refs["context_package"] = _slim_context_package(package)
+    _slim_prompt_envelope(slimmed)
+    omitted_keys = sorted(set(slimmed) - SLIM_EXECUTION_KEYS)
+    for key in omitted_keys:
+        slimmed.pop(key, None)
+    if omitted_keys:
+        raw_refs["omitted_top_level_keys"] = omitted_keys
     if raw_refs:
         slimmed["raw_context_refs"] = raw_refs
     return slimmed
@@ -182,6 +209,34 @@ def _slim_context_item(item: Any) -> Any:
         slimmed["content_truncated"] = True
         slimmed["content_original_chars"] = len(content)
     return slimmed
+
+
+def _slim_prompt_envelope(context: dict[str, Any]) -> None:
+    envelope = context.get("prompt_envelope")
+    if not isinstance(envelope, dict):
+        return
+    manifest = envelope.get("capability_manifest")
+    if not isinstance(manifest, dict):
+        return
+    envelope["capability_manifest"] = {
+        key: _capability_names(value)
+        for key, value in manifest.items()
+        if key in {"direct_tools", "verification", "skills", "mcp", "subagents"}
+    }
+
+
+def _capability_names(value: Any) -> Any:
+    if not isinstance(value, list):
+        return value
+    compact: list[Any] = []
+    for item in value:
+        if isinstance(item, dict):
+            name = item.get("name") or item.get("id")
+            if name:
+                compact.append({"name": str(name)})
+        elif isinstance(item, str):
+            compact.append(item)
+    return compact
 
 
 def _policy_reason(fast_path: FastPathPolicy) -> str:

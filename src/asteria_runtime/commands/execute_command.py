@@ -435,6 +435,8 @@ class ExecuteCommand:
             status="running",
             title="Subagent worker started",
             summary=f"Started child worker {worker_id} for {task_id}.",
+            transcript_kind="subagent_summary",
+            ui_intent="work_progress",
             data={
                 "task_id": task_id,
                 "worker_invocation_id": worker_id,
@@ -680,6 +682,8 @@ class ExecuteCommand:
             status="running",
             title="Readonly fanout started",
             summary=f"Started {len(children)} readonly child worker(s) for {task_id}.",
+            transcript_kind="subagent_summary",
+            ui_intent="work_progress",
             data={
                 "task_id": task_id,
                 "subagent_child_plan_id": child_plan.get("subagent_child_plan_id"),
@@ -1102,6 +1106,8 @@ class ExecuteCommand:
             title="Subagent worker completed",
             summary=summary,
             evidence_refs=failure_evidence_refs,
+            transcript_kind="subagent_summary",
+            ui_intent="work_progress" if status == "succeeded" else "needs_attention",
             data={
                 "task_id": task_id,
                 "parent_agent_loop_execution": parent_execution,
@@ -1292,12 +1298,14 @@ class ExecuteCommand:
                 task,
                 channel="execution_chain",
                 event_type="message",
-                phase="execute",
+                phase="result",
                 status="completed"
                 if latest_summary and latest_summary.status == "done"
                 else "blocked",
                 title="Agent loop stopped",
                 summary="Model selected stop after reviewing the latest observation.",
+                transcript_kind="stop",
+                ui_intent="result",
                 data={
                     "task_id": task_id,
                     "agent_loop_execution_result": execution_result or {},
@@ -1365,6 +1373,8 @@ class ExecuteCommand:
                 status="blocked",
                 title="Subagent dispatch recorded",
                 summary=summary,
+                transcript_kind="subagent_summary",
+                ui_intent="needs_attention",
                 data={
                     "task_id": task_id,
                     "agent_loop_execution_result": execution_result or {},
@@ -1415,6 +1425,8 @@ class ExecuteCommand:
             status="blocked",
             title=f"Agent loop requested {action_kind}",
             summary=summary,
+            transcript_kind="repair" if action_kind == "repair" else "todo_update",
+            ui_intent="needs_attention",
             data={
                 "task_id": task_id,
                 "agent_loop_execution_result": execution_result or {},
@@ -1698,9 +1710,11 @@ class ExecuteCommand:
             event_type="evidence",
             phase="blocked",
             status="blocked",
-            title="Delegation brief quality gate blocked worker",
+            title="Worker brief needs attention",
             summary=str(gate["reason"]),
             evidence_refs=self._refs(blocked.evidence_path),
+            transcript_kind="ask",
+            ui_intent="needs_input",
             data={
                 "task_id": task["task_id"],
                 "failure_type": "delegation_brief_quality_gate",
@@ -2251,6 +2265,7 @@ class ExecuteCommand:
                         f"tool call(s), {len(verification)} verification step(s), "
                         f"and {len(runtime_requests)} runtime request(s)."
                     ),
+                    display_level="inspector",
                     data={
                         "task_id": task_id,
                         "agent_loop_round": round_index,
@@ -2413,6 +2428,8 @@ class ExecuteCommand:
                         title="Tool permission decision required",
                         summary=blocked.summary,
                         evidence_refs=self._refs(blocked.evidence_path),
+                        transcript_kind="ask",
+                        ui_intent="needs_input",
                         data={
                             "task_id": task_id,
                             "decision_id": decision.get("decision_id"),
@@ -2574,6 +2591,8 @@ class ExecuteCommand:
                 title="Task action blocked before tools",
                 summary=str(exc),
                 evidence_refs=self._refs(blocked.evidence_path),
+                transcript_kind="ask",
+                ui_intent="needs_input",
                 data={
                     "task_id": task_id,
                     "failure_type": "tool_permission_denied",
@@ -2600,6 +2619,8 @@ class ExecuteCommand:
                 title="Task action failed before tools",
                 summary=str(exc),
                 evidence_refs=self._refs(blocked.evidence_path),
+                transcript_kind="repair",
+                ui_intent="needs_attention",
                 data={
                     "task_id": task_id,
                     "failure_type": failure_type,
@@ -2659,9 +2680,12 @@ class ExecuteCommand:
             title="Runtime request created",
             summary=result.summary,
             evidence_refs=self._refs(result.evidence_path),
+            transcript_kind="ask",
+            ui_intent="needs_input",
             data={
                 "task_id": result.task_id,
                 "status": result.status,
+                "permission_preview": result.permission_preview,
             },
         )
 
@@ -2678,6 +2702,9 @@ class ExecuteCommand:
         summary: str,
         evidence_refs: list[str] | None = None,
         data: dict | None = None,
+        display_level: str = "main",
+        transcript_kind: str | None = None,
+        ui_intent: str | None = None,
     ) -> None:
         if context.run_id is None:
             return
@@ -2691,7 +2718,10 @@ class ExecuteCommand:
             status=status,
             title=title,
             summary=summary,
+            display_level=display_level,
             evidence_refs=evidence_refs or [],
+            transcript_kind=transcript_kind,
+            ui_intent=ui_intent,
             data={
                 "task_id": task.get("task_id"),
                 "task_title": task.get("title"),

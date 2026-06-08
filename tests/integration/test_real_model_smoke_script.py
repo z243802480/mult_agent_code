@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from asteria_runtime import real_model_smoke as smoke_runtime
 
 from scripts.real_model_smoke import (
     CommandRecord,
@@ -23,6 +24,15 @@ from asteria_runtime.real_model_gate import (
     model_check_ok,
     reconcile_model_checks_from_smoke,
 )
+
+
+def test_real_model_smoke_detects_current_source_checkout() -> None:
+    source_root = smoke_runtime.source_checkout_root()
+
+    assert source_root == Path.cwd() / "src"
+    assert smoke_runtime.merge_pythonpath(str(source_root), "existing") == (
+        f"{source_root}{os.pathsep}existing"
+    )
 
 pytestmark = [pytest.mark.real_provider, pytest.mark.real_provider_smoke]
 

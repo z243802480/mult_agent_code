@@ -16,6 +16,7 @@
     "smoke:chat-fallback": "node scripts/chat-fallback-smoke.mjs",
     "smoke:chat-lifecycle": "node scripts/chat-lifecycle-smoke.mjs",
     "smoke:user-thread-copy": "node scripts/user-thread-copy-smoke.mjs",
+    "test:session-main-path": "node scripts/session-main-path-contract.mjs",
     "smoke:homepage-copy": "node scripts/homepage-copy-smoke.mjs",
     "smoke:interactive-main-path": "npm run build && npx -y playwright test scripts/interactive-main-path.spec.mjs",
     "smoke:live-main-action": "npm run build && npx -y playwright test scripts/live-workspace-main-action.spec.mjs",

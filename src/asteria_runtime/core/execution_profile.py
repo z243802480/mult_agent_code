@@ -107,7 +107,7 @@ def resolve_worker_execution_profile(task: dict) -> ExecutionProfileResolution:
             use_replan_lineage=False,
             use_repair_limit_decisions=False,
             reason="Readonly worker stays on session_agent profile.",
-            fast_path_task_kind="worker_readonly",
+            fast_path_task_kind="complex_change",
         )
     return resolve_execution_profile(
         str(task.get("title") or task.get("description") or ""),

@@ -109,7 +109,9 @@ class CoderAgent:
                             role="user",
                             content=(
                                 "Your previous response could not be used: "
-                                f"{exc}. Return only one valid JSON object matching the schema."
+                                f"{exc}. Return only one valid JSON object matching the schema. "
+                                "For work-bearing tasks, use a tool action to produce or verify "
+                                "the expected result, or use ask/replan when progress is blocked."
                             ),
                         ),
                     ]
@@ -206,6 +208,11 @@ class CoderAgent:
             )
         next_action = loop_decision.get("next_action") or {}
         next_action_kind = str(next_action.get("action") or "")
+        self._validate_stop_is_grounded(
+            next_action_kind=next_action_kind,
+            task=task,
+            sequence=sequence,
+        )
         if (
             next_action_kind == "tool"
             and not action.get("tool_calls")
@@ -220,6 +227,27 @@ class CoderAgent:
         except SchemaValidationError as exc:
             raise CoderAgentError(f"ExecutionAction failed schema validation: {exc}") from exc
         return action
+
+    def _validate_stop_is_grounded(
+        self,
+        *,
+        next_action_kind: str,
+        task: dict,
+        sequence: int,
+    ) -> None:
+        if next_action_kind != "stop" or sequence > 1:
+            return
+        work_scope = [
+            str(item)
+            for key in ("write_scope", "expected_artifacts", "validation_commands")
+            for item in task.get(key) or []
+            if item
+        ]
+        if work_scope:
+            raise CoderAgentError(
+                "stop is not grounded: the first round has expected work or verification "
+                "but no execution observation yet"
+            )
 
     def _loop_sequence(self, runtime_context: dict) -> int:
         raw = runtime_context.get("agent_loop_round")
@@ -255,6 +283,7 @@ You must:
 - If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
 - Avoid destructive commands, global installs, deployment, or network calls unless explicitly allowed.
 - Keep the implementation practical and production-oriented; do not create placeholder-only files.
+- Use stop only after an execution or verification observation proves the task is complete, unsafe, or unable to continue. Do not stop on the first round of a task that still has expected work.
 - If the task contract is too narrow, request a runtime change with runtime_requests instead of attempting an out-of-scope tool call.
 - For a new documentation or text-only artifact with an explicit expected_artifacts/write_scope path, write the file directly. Do not request more context merely to create a standalone checklist, note, README, markdown, or text file.
 - For documentation/text-only verification, prefer a simple Python existence-and-nonempty check for the expected file. Do not generate complex Python one-liners that inspect unrelated files.
@@ -268,9 +297,10 @@ You must:
         available_tools: list[str],
         runtime_context: dict,
     ) -> str:
+        slim = ((runtime_context.get("context_policy") or {}).get("mode")) == "slim"
         payload = {
-            "task": task,
-            "goal_spec": goal_spec,
+            "task": self._prompt_task(task) if slim else task,
+            "goal_spec": self._prompt_goal_spec(goal_spec) if slim else goal_spec,
             "task_contract": runtime_context.get("task_contract")
             or {
                 "read_scope": task.get("read_scope", []),
@@ -281,11 +311,13 @@ You must:
                 "parallel_safety": task.get("parallel_safety"),
                 "risk_tier": task.get("risk_tier"),
             },
-            "project": project_config,
+            "project": self._prompt_project(project_config) if slim else project_config,
             "runtime_context": context_prompt_view(runtime_context),
             "available_tools": available_tools,
             "allowed_tools": task["allowed_tools"],
-            "model_tool_surface": runtime_context.get("model_tool_surface", {}),
+            "model_tool_surface": (
+                {} if slim else runtime_context.get("model_tool_surface", {})
+            ),
             "output_schema": {
                 "schema_version": "0.1.0",
                 "task_id": task["task_id"],
@@ -333,3 +365,34 @@ You must:
             },
         }
         return json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def _prompt_task(self, task: dict) -> dict:
+        keys = (
+            "task_id",
+            "title",
+            "description",
+            "acceptance",
+            "read_scope",
+            "write_scope",
+            "expected_artifacts",
+            "validation_commands",
+            "allowed_tools",
+            "risk_tier",
+            "parallel_safety",
+        )
+        return {key: task[key] for key in keys if key in task}
+
+    def _prompt_goal_spec(self, goal_spec: dict) -> dict:
+        keys = (
+            "goal_id",
+            "original_goal",
+            "normalized_goal",
+            "definition_of_done",
+            "constraints",
+            "target_outputs",
+        )
+        return {key: goal_spec[key] for key in keys if key in goal_spec}
+
+    def _prompt_project(self, project_config: dict) -> dict:
+        keys = ("name", "language", "framework", "test_command", "lint_command")
+        return {key: project_config[key] for key in keys if key in project_config}

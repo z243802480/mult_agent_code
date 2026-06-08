@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import sys
 from datetime import date
@@ -12,9 +14,14 @@ from pathlib import Path
 
 
 def _run(cmd: list[str], *, cwd: Path) -> dict:
+    temp_root = cwd / ".asteria" / "tmp" / "s73-pulse"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.update({"TEMP": str(temp_root), "TMP": str(temp_root), "TMPDIR": str(temp_root)})
     completed = subprocess.run(
         cmd,
         cwd=cwd,
+        env=env,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -44,14 +51,14 @@ def main() -> int:
 
     pytest = _run(
         [
-            sys.executable,
-            "-m",
-            "pytest",
+            _pytest_executable(),
             "tests/unit/test_orchestration_dynamic_ingress.py",
             "tests/unit/test_orchestration_parallel_gray.py",
             "-k",
             "wave8 or dynamic_ingress",
             "-q",
+            "--basetemp",
+            str(root / ".asteria" / "tmp" / "s73-pytest"),
         ],
         cwd=root,
     )
@@ -128,6 +135,10 @@ def main() -> int:
     report["signoff_path"] = str(out_path)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0 if report["ok"] else 1
+
+
+def _pytest_executable() -> str:
+    return shutil.which("pytest") or str(Path(sys.executable).with_name("pytest.exe"))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { CheckCircle2, ShieldAlert, XCircle } from "lucide-react";
-import type { StudioEvent } from "../types";
+import { CheckCircle2, FilePenLine, FolderLock, Globe2, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import type { PermissionPreview, StudioEvent } from "../types";
 
 export function PermissionCard({
   event,
@@ -41,6 +41,8 @@ export function PermissionCard({
     );
   }
 
+  const preview = permissionPreview(event);
+
   return (
     <div className="permissionCard">
       <div className="permissionHeader">
@@ -48,7 +50,22 @@ export function PermissionCard({
         <strong>{event.title || "\u9700\u8981\u4f60\u786e\u8ba4"}</strong>
       </div>
       <p className="permissionSummary">{event.summary}</p>
-      {event.content_delta && <p className="permissionDetail">{event.content_delta}</p>}
+      {event.content_delta && !preview && <p className="permissionDetail">{event.content_delta}</p>}
+      {preview && (
+        <div className="permissionPreview" aria-label="Permission impact">
+          {preview.action && <PermissionFact label="Action" value={preview.action} icon={<ShieldAlert size={13} />} />}
+          {preview.impact && <PermissionFact label="Impact" value={preview.impact} icon={<FilePenLine size={13} />} />}
+          {preview.scope && <PermissionFact label="Scope" value={preview.scope} icon={<FolderLock size={13} />} />}
+          {preview.network && <PermissionFact label="Network" value={preview.network} icon={<Globe2 size={13} />} />}
+          {(preview.risk || preview.reversible) && (
+            <PermissionFact
+              label={`Risk${preview.risk ? ` · ${preview.risk}` : ""}`}
+              value={preview.reversible || "Review the impact before continuing."}
+              icon={<RotateCcw size={13} />}
+            />
+          )}
+        </div>
+      )}
       <div className="permissionActions">
         <button className="permissionAllow" disabled={busy} onClick={() => void handle("allow")}>
           <CheckCircle2 size={14} /> {"\u786e\u8ba4\u7ee7\u7eed"}
@@ -57,6 +74,21 @@ export function PermissionCard({
           <XCircle size={14} /> {"\u53d6\u6d88"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function permissionPreview(event: StudioEvent): PermissionPreview | null {
+  const value = event.data?.permission_preview;
+  return value && typeof value === "object" ? value as PermissionPreview : null;
+}
+
+function PermissionFact({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="permissionFact">
+      <span>{icon}</span>
+      <small>{label}</small>
+      <strong>{value}</strong>
     </div>
   );
 }

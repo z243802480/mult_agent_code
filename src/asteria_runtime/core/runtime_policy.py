@@ -8,6 +8,7 @@ from typing import Callable
 
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.permission_policy import permission_policy_profile
+from asteria_runtime.core.permission_preview import permission_preview_for_runtime_requests
 from asteria_runtime.core.runtime_request import (
     RuntimeRequest,
     apply_runtime_request_to_task,
@@ -45,6 +46,7 @@ class RuntimeRequestPolicyResult:
     status: str
     summary: str
     evidence_path: Path | None
+    permission_preview: dict
 
 
 @dataclass(frozen=True)
@@ -417,6 +419,7 @@ class RuntimeRequestPolicy:
             status="blocked",
             summary=reason,
             evidence_path=evidence_path,
+            permission_preview=permission_preview_for_runtime_requests(final_requests),
         )
 
     def _auto_apply_runtime_requests(
@@ -565,6 +568,7 @@ class RuntimeRequestPolicy:
                 "task_id": task["task_id"],
                 "runtime_request_ids": request_ids,
                 "request_types": sorted({request["request_type"] for request in requests}),
+                "permission_preview": permission_preview_for_runtime_requests(requests),
             },
             "resolved_at": None,
         }

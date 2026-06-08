@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "F2-S54",
-  "active_phase": "Maint-F2+Triple",
+  "active_slice": "S74",
+  "active_phase": "Post-S73 Beta convergence",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
@@ -609,6 +609,88 @@
         "python scripts/triple_track_pulse.py --root . --skip-b6"
       ],
       "reference_brief": "benchmarks/reference_briefs/S57-harness-accept-b6-regression.md"
+    },
+    {
+      "id": "S61",
+      "name": "Runtime orchestration alignment R0-R5",
+      "phase": "Orchestration",
+      "depends_on": ["S57"],
+      "user_demo": "risk tier, prompt discipline, dual transport, and validation contract aligned",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S61-runtime-orchestration-alignment.md"
+    },
+    {
+      "id": "S62-S63",
+      "name": "Strong route and spawn decision convergence",
+      "phase": "Orchestration",
+      "depends_on": ["S61"],
+      "user_demo": "real-model route and spawn evaluation signed off",
+      "green_checks": [
+        "python scripts/orchestration_s63_signoff_pulse.py --root ."
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S63-cc-loop-convergence.md"
+    },
+    {
+      "id": "S64-S69",
+      "name": "Parallel gray and L3 orchestration band",
+      "phase": "Orchestration",
+      "depends_on": ["S62-S63"],
+      "user_demo": "isolated parallel gray, dynamic runner, live execution, monitor, and verifier",
+      "green_checks": [
+        "pytest tests/unit/test_orchestration_parallel_gray.py tests/unit/test_orchestration_dynamic_runner.py -q"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S64-orchestration-parallel-gray-rollout.md"
+    },
+    {
+      "id": "S70-S71",
+      "name": "L3 ingress and Thread workflow visibility",
+      "phase": "Orchestration",
+      "depends_on": ["S64-S69"],
+      "user_demo": "strong ingress and compact Thread workflow projection",
+      "green_checks": [
+        "pytest tests/unit/test_orchestration_dynamic_ingress.py -q",
+        "node studio/scripts/s71-thread-workflow-smoke.mjs"
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S71-thread-workflow-compact-card.md"
+    },
+    {
+      "id": "S72",
+      "name": "L3 execution and live provider",
+      "phase": "Orchestration",
+      "depends_on": ["S70-S71"],
+      "user_demo": "orchestration run command and optional live provider touch",
+      "green_checks": [
+        "python scripts/orchestration_s72_signoff_pulse.py --root ."
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S72-l3-execution-live-provider.md"
+    },
+    {
+      "id": "S73",
+      "name": "Beta parallel writes opt-in and ingress 100%",
+      "phase": "Orchestration",
+      "depends_on": ["S72"],
+      "user_demo": "workspace-scoped explicit opt-in with template default unchanged",
+      "green_checks": [
+        "python scripts/orchestration_s73_signoff_pulse.py --root ."
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S73-parallel-writes-beta-opt-in.md"
+    },
+    {
+      "id": "S74",
+      "name": "Post-S73 Beta convergence",
+      "phase": "Post-S73 Beta convergence",
+      "depends_on": ["S73"],
+      "user_demo": "latest main path is green and 3-5 real Beta tasks produce reproducible product evidence",
+      "green_checks": [
+        "pytest tests/unit/test_documentation_contracts.py -q",
+        "pytest tests/integration/test_execute_command.py -q",
+        "python scripts/orchestration_s73_signoff_pulse.py --root .",
+        "python scripts/beta_task_pack_check.py --root .",
+        "python scripts/beta_friction_aggregate.py --root ."
+      ],
+      "reference_brief": "benchmarks/reference_briefs/S74-post-s73-beta-convergence.md"
     }
   ]
 }

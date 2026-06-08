@@ -640,6 +640,9 @@ def run_scenario(
     if args.allow_fake:
         command.append("--allow-fake")
     env = os.environ.copy()
+    source_root = _source_checkout_root()
+    if source_root is not None:
+        env["PYTHONPATH"] = _merge_pythonpath(str(source_root), env.get("PYTHONPATH"))
     env["AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES"] = str(args.model_max_retries)
     env["AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS"] = str(timeout_budget.smoke_command_seconds)
     env["AGENT_MODEL_SMOKE_REVIEW_TIMEOUT_SECONDS"] = str(timeout_budget.review_seconds)
@@ -755,8 +758,22 @@ def run_scenario(
         "route_evidence": route_evidence,
         "stdout": completed.stdout,
             "stderr": completed.stderr,
-            "timeout_budget": timeout_budget.as_dict(),
-        }
+        "timeout_budget": timeout_budget.as_dict(),
+    }
+
+
+def _source_checkout_root() -> Path | None:
+    candidate = Path(__file__).resolve().parents[2] / "src"
+    return candidate if (candidate / "asteria_runtime").is_dir() else None
+
+
+def _merge_pythonpath(src_path: str, current: str | None) -> str:
+    if not current:
+        return src_path
+    paths = current.split(os.pathsep)
+    if src_path in paths:
+        return current
+    return os.pathsep.join([src_path, current])
 
 
 def classify_acceptance_subprocess_failure(

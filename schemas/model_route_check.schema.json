@@ -27,6 +27,7 @@
     "model_name": { "type": ["string", "null"] },
     "base_url": { "type": ["string", "null"] },
     "status": { "type": "string", "enum": ["success", "failure"] },
+    "call_health": { "type": "string", "enum": ["healthy", "degraded", "failed", "skipped"] },
     "summary": { "type": "string" },
     "failure_type": { "type": ["string", "null"] },
     "deadline_ms": { "type": ["integer", "null"] },

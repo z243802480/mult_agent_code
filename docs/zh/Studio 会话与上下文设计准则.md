@@ -213,9 +213,16 @@ Asteria 主会话应采用相同节奏：
 - 主会话优先：新增状态展示前先判断是否应成为 session message。
 - Inspector 次之：只有 raw / debug / evidence / telemetry / file detail 进入 Inspector。
 - 不新增固定 runtime 面板承载过程叙事。
+- 会话存在用户可执行下一步时，动作入口必须跟在对应过程与结果之后；不得固定在会话顶部抢占叙事。
+- L3 workflow、worker topology、route、gate 等内部运行结构只进入 Inspector；主会话只展示它们产生的用户任务进展。
 - 不在主屏默认展示 run id、JSONL 文件、route/gate/capability 内部名。
 - context 信息必须以“健康摘要 + 可展开 breakdown”的方式展示。
 - action button 只在有用户可执行下一步时出现；没有下一步时不要显示假按钮。
+- 文件 chip、整轮 diff 与 `Review changes` 必须打开同一个 Inspector diff review，并定位对应 scope/file；不能只更新隐藏状态。
+- `Accept` 前必须始终存在只读查证入口；打开查证区不应触发写操作或 runtime 状态迁移。
+- 权限请求必须使用稳定的用户语义预览：Action、Impact、Scope、Network、Risk / Reversibility。原始 command 和 policy evidence 只进入 Inspector。
+- Runtime request 的 `permission_preview.scope_detail` 是精确范围真源；Studio 只展示限长摘要，并保留完整 runtime request 供 Inspector 查证。不得让前端通过关键词推断文件范围。
+- 只允许为有限产品动作定义 permission profile；不得让 Studio 通过关键词或事件类型穷举任意模型行为，也不得展示 Runtime 尚未实现的持久授权选项。
 - Playwright smoke 必须验证主窗口 conversation turn，而不是只验证 Inspector 或固定卡片。
 - 文案 smoke 必须继续拦截 backend wording 泄漏，但不能误伤数据结构字段。
 

@@ -1083,6 +1083,9 @@ def run_command(
     timeout_seconds: int | None = None,
 ) -> CommandRecord:
     env = os.environ.copy()
+    source_root = source_checkout_root()
+    if source_root is not None:
+        env["PYTHONPATH"] = merge_pythonpath(str(source_root), env.get("PYTHONPATH"))
     env.setdefault("AGENT_MODEL_MAX_RETRIES", str(args_model_max_retries()))
     timeout = timeout_seconds or int(os.getenv("AGENT_MODEL_SMOKE_COMMAND_TIMEOUT_SECONDS", "900"))
     try:
@@ -1214,6 +1217,11 @@ def merge_pythonpath(src_path: str, current: str | None) -> str:
     if src_path in paths:
         return current
     return os.pathsep.join([src_path, current])
+
+
+def source_checkout_root() -> Path | None:
+    candidate = Path(__file__).resolve().parents[2] / "src"
+    return candidate if (candidate / "asteria_runtime").is_dir() else None
 
 
 def current_run_id(workspace: Path) -> str | None:

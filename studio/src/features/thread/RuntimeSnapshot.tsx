@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { CircleDot, Loader2 } from "lucide-react";
-import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
-import { PermissionCard } from "../../components/PermissionCard";
+import type { AnyRecord, OverviewPayload, PermissionPreview, RunDetailPayload, StudioEvent } from "../../types";
 import { asArray, asRecord, firstText, stripBackendWording, textOrFallback } from "./threadUtils";
 import { actionLabel, latestActiveEvent, runtimeProgress } from "./runtimeNarrative";
 import { decisionHint, pendingDecisionSummary, preferredDecisionOptionId, runtimeNextStepSummary } from "./decisionGuidance";
@@ -20,6 +19,8 @@ function DecisionCard({
   const recommended = preferredDecisionOptionId(decision) || String(decision.recommended_option_id ?? "");
   const options = asArray(decision.options) as AnyRecord[];
   const impact = asRecord(decision.impact);
+  const metadata = asRecord(decision.metadata);
+  const permissionPreview = asRecord(metadata.permission_preview) as PermissionPreview;
   const hint = decisionHint(decision);
 
   async function choose(optionId: string) {
@@ -40,6 +41,9 @@ function DecisionCard({
       </div>
       <div className="decisionMeta">
         {hint && <span className="decisionHint">{hint}</span>}
+        {permissionPreview.action && <span>{permissionPreview.action}</span>}
+        {permissionPreview.scope && <span>{permissionPreview.scope}</span>}
+        {permissionPreview.network && <span>{permissionPreview.network}</span>}
         {recommended && <span>Suggested: {recommended.replace(/_/g, " ")}</span>}
         {Object.keys(impact).length > 0 && (
           <span>
@@ -75,17 +79,19 @@ function DecisionCard({
 export function RuntimeSnapshot({
   overview,
   runDetail,
+  workspaceChangeCount = 0,
   events,
   onRuntimeAction,
+  onOpenReview,
   onResolveDecision,
-  onPermit,
 }: {
   overview: OverviewPayload | null;
   runDetail: RunDetailPayload | null;
+  workspaceChangeCount?: number;
   events: StudioEvent[];
   onRuntimeAction: (nextAction: string) => Promise<void>;
+  onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
-  onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
 }) {
   const workflow = asRecord(overview?.workflow);
   const canReview = Boolean(workflow.can_review);
@@ -103,6 +109,7 @@ export function RuntimeSnapshot({
     ? activeEvent
     : null;
   const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
+  const acceptReady = canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue);
   const nextStep = runtimeNextStepSummary({
     decisions,
     nextActionValue,
@@ -120,21 +127,26 @@ export function RuntimeSnapshot({
   return (
     <section className="runtimeSnapshot compact" aria-label="Next action">
       <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
-        {decisions.length || pendingPermission ? "needs input" : canAccept ? "accept" : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
+        {decisions.length || pendingPermission ? "needs input" : acceptReady ? "accept" : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
       </span>
       <span className="runtimeSnapshotText">{nextStep}</span>
       <div className="runtimeSnapshotActions">
-        {(canReview || canAccept) && !decisions.length && !pendingPermission ? (
+        {(canReview || acceptReady) && !decisions.length && !pendingPermission ? (
           <>
             {canReview ? (
               <button className="runtimeActionButton primary" type="button" onClick={() => void onRuntimeAction("review")}>
                 Review
               </button>
             ) : null}
-            {canAccept ? (
-              <button className="runtimeActionButton primary accept" type="button" onClick={() => void onRuntimeAction("accept")}>
-                Accept
-              </button>
+            {acceptReady ? (
+              <>
+                <button className="runtimeActionButton reviewChanges" type="button" onClick={() => void onOpenReview()}>
+                  {workspaceChangeCount > 0 ? `Review ${workspaceChangeCount} changes` : "Review changes"}
+                </button>
+                <button className="runtimeActionButton primary accept" type="button" onClick={() => void onRuntimeAction(nextActionValue || "accept")}>
+                  Accept
+                </button>
+              </>
             ) : null}
           </>
         ) : decisions.length ? (
@@ -155,13 +167,6 @@ export function RuntimeSnapshot({
           onResolveDecision={onResolveDecision}
         />
       ))}
-      {pendingPermission && (
-        <PermissionCard
-          event={pendingPermission}
-          onAllow={() => onPermit(pendingPermission.job_id!, "allow")}
-          onDeny={() => onPermit(pendingPermission.job_id!, "deny")}
-        />
-      )}
     </section>
   );
 }

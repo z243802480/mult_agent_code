@@ -175,6 +175,8 @@ class ExecutionActionPreparer:
         return normalized
 
     def _can_replace_verification_denial(self, denial: str) -> bool:
+        if denial.startswith("Shell output redirect denied:"):
+            return True
         return any(
             denial.endswith(f": {operator}")
             for operator in {"|", ">", ">>", "<", "2>", "2>>", "&&"}

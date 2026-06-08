@@ -386,7 +386,11 @@ class ReviewCommand:
         )
         if fast_path.risk_tier == "high":
             return None
-        blockers = self._tiered_review_blockers(checks, review_tier=fast_path.review_tier)
+        blockers = self._tiered_review_blockers(
+            checks,
+            review_tier=fast_path.review_tier,
+            fast_path_task_kind=fast_path.task_kind,
+        )
         if blockers:
             return None
         report = {
@@ -434,13 +438,23 @@ class ReviewCommand:
                     files.append(item)
         return list(dict.fromkeys(files))
 
-    def _tiered_review_blockers(self, checks: dict, *, review_tier: str) -> list[str]:
+    def _tiered_review_blockers(
+        self,
+        checks: dict,
+        *,
+        review_tier: str = "deterministic",
+        fast_path_task_kind: str | None = None,
+    ) -> list[str]:
         blockers: list[str] = []
         if float(checks.get("task_completion_rate") or 0) < 1.0:
             blockers.append("task_completion_incomplete")
         if int(checks.get("blocked_task_count") or 0) > 0:
             blockers.append("blocked_tasks_present")
-        if review_tier in {"deterministic", "deterministic_then_medium"}:
+        requires_command_verification = fast_path_task_kind in {
+            "bug_fix",
+            "single_file_bugfix",
+        }
+        if review_tier in {"deterministic", "deterministic_then_medium"} and not requires_command_verification:
             if int(checks.get("verification_call_count") or 0) <= 0:
                 blockers.append("missing_verification_call")
             if float(checks.get("verification_pass_rate") or 0) < 1.0:

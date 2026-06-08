@@ -17,17 +17,17 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Maint-F2+Triple（F2 内测 ∥ H Harness ∥ P 任务包 ∥ A 稳态）
-当前 ACTIVE_SLICE：F2-S54（S56/S57 已签字 · 内测试跑）
-S57 签字：docs/zh/reports/S57-harness-accept-b6-regression-signoff-20260607.md
-S56 签字：docs/zh/reports/S56-beta-task-pack-pulse-signoff-20260607.md
-S55 签字：docs/zh/reports/S55-harness-friction-ii-signoff-20260606.md
-三线计划：docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md
-F2 基线：S54 · docs/zh/reports/S54-f2-friction-baseline-20260606.md
+当前 ACTIVE_PHASE：Post-S73 Beta convergence
+当前 ACTIVE_SLICE：S74
+当前 Brief：benchmarks/reference_briefs/S74-post-s73-beta-convergence.md
+前置签字：docs/zh/reports/S73-beta-opt-in-ingress-signoff-20260607.md
+执行顺序：文档真源归一 → 主路径基线恢复 → 3–5 个真实 Beta 任务 → 放量 DecisionPoint
+冻结：新编排 Wave、parallel_writes 全局默认开启、无真实 friction 证据的 Studio 新功能
 ```
 
-Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start North Star,
-swarm parallel write, or new maintainer commands unless the master plan todo explicitly allows it.
+Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start a new
+orchestration wave, enable global parallel writes, or add maintainer commands unless the master
+plan todo explicitly allows it.
 
 Reference-first: before each Vibe Slice, read `benchmarks/reference_briefs/Sn.md` (create if missing).
 No brief → no coding. Learn from OpenCode / Claude Code / Codex-rs mechanisms; do not reinvent wheels.

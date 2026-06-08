@@ -7,7 +7,6 @@ import { RuntimeSnapshot } from "./RuntimeSnapshot";
 import { runtimeSessionEvents } from "./runtimeNarrative";
 import { EmptyState } from "./EmptyState";
 import { ConversationTurn, PendingTurn, type ProcessExpandSignal } from "./ConversationTurn";
-import { WorkflowMonitorCompact } from "../../components/WorkflowMonitorCompact";
 
 export function Thread({
   events,
@@ -17,10 +16,12 @@ export function Thread({
   onPrompt,
   onPermit,
   onRuntimeAction,
+  onOpenReview,
   onResolveDecision,
   pendingTurn,
   overview,
   runDetail,
+  workspaceChangeCount,
   onFileChangeClick,
   onTurnDiffSelect,
   turnDiffLabel,
@@ -35,10 +36,12 @@ export function Thread({
   onPrompt: (text: string) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
   onRuntimeAction: (nextAction: string) => Promise<void>;
+  onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
   pendingTurn?: { message: string; mode: string; startedAt: number } | null;
   overview?: OverviewPayload | null;
   runDetail?: RunDetailPayload | null;
+  workspaceChangeCount?: number;
   onFileChangeClick?: (path: string) => void;
   onTurnDiffSelect?: (turnIndex: number) => void;
   turnDiffLabel?: (turnIndex: number) => string;
@@ -76,12 +79,12 @@ export function Thread({
         <RuntimeSnapshot
           overview={overview ?? null}
           runDetail={runDetail ?? null}
+          workspaceChangeCount={workspaceChangeCount}
           events={events}
           onRuntimeAction={onRuntimeAction}
+          onOpenReview={onOpenReview}
           onResolveDecision={onResolveDecision}
-          onPermit={onPermit}
         />
-        <WorkflowMonitorCompact runDetail={runDetail ?? null} />
         <EmptyState onPrompt={onPrompt} />
       </section>
     );
@@ -89,15 +92,6 @@ export function Thread({
 
   return (
     <section className="thread" ref={threadRef}>
-      <RuntimeSnapshot
-        overview={overview ?? null}
-        runDetail={runDetail ?? null}
-        events={events}
-        onRuntimeAction={onRuntimeAction}
-        onResolveDecision={onResolveDecision}
-        onPermit={onPermit}
-      />
-      <WorkflowMonitorCompact runDetail={runDetail ?? null} />
       {showProcessControls && (
         <div className="threadProcessControls" aria-label="Process display controls">
           <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>Expand process</button>
@@ -126,6 +120,15 @@ export function Thread({
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
+      <RuntimeSnapshot
+        overview={overview ?? null}
+        runDetail={runDetail ?? null}
+        workspaceChangeCount={workspaceChangeCount}
+        events={events}
+        onRuntimeAction={onRuntimeAction}
+        onOpenReview={onOpenReview}
+        onResolveDecision={onResolveDecision}
+      />
     </section>
   );
 }

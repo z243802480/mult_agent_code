@@ -38,8 +38,6 @@ DEPRECATED_TASK_KINDS = frozenset(
         "simple_file",
         "single_file_bugfix",
         "complex_change",
-        "readonly",
-        "default",
     }
 )
 
@@ -144,7 +142,7 @@ def _project_fast_path(
 
     if risk.risk_tier == "readonly":
         return FastPathPolicy(
-            task_kind="readonly",
+            task_kind="complex_change",
             risk="low",
             risk_tier="readonly",
             goal_spec_tier="medium",

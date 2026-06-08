@@ -33,9 +33,17 @@ export function useWorkspaceReview(
   const refreshGitStatus = useCallback(async () => {
     setGitLoading(true);
     try {
-      setGitStatus(await api.gitStatus());
+      const status = await api.gitStatus();
+      setGitStatus(status);
+      return status;
     } catch {
-      setGitStatus({ ok: false, available: false, reason: "Could not load git status." });
+      const status: GitStatusPayload = {
+        ok: false,
+        available: false,
+        reason: "Could not load git status.",
+      };
+      setGitStatus(status);
+      return status;
     } finally {
       setGitLoading(false);
     }

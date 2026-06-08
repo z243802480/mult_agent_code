@@ -123,6 +123,34 @@ export function App() {
     await sessionEvents.runRuntimeAction(action);
   }, [sessionEvents]);
 
+  const openReviewFile = useCallback(async (pathValue: string) => {
+    setPanelOpen(true);
+    await review.refreshGitStatus();
+    await review.openFileChange(pathValue);
+  }, [review]);
+
+  const openTurnReview = useCallback((turnIndex: number) => {
+    setPanelOpen(true);
+    void review.refreshGitStatus();
+    review.selectTurnDiff(turnIndex);
+  }, [review]);
+
+  const openCurrentReview = useCallback(async () => {
+    setPanelOpen(true);
+    const status = await review.refreshGitStatus();
+    const firstPath = review.gitSelectedPath ?? status.changes?.[0]?.path;
+    if (firstPath) {
+      await review.openFileChange(firstPath);
+    }
+  }, [review]);
+
+  const runRuntimeAction = useCallback(async (action: string) => {
+    if (/^(review|accept)\b/i.test(action.trim())) {
+      await openCurrentReview();
+    }
+    await sessionEvents.runRuntimeAction(action);
+  }, [openCurrentReview, sessionEvents]);
+
   return (
     <div
       className={shellClassName}
@@ -200,17 +228,19 @@ export function App() {
           onSelect={runEvidence.selectEvent}
           onPrompt={bootstrap.pushPrompt}
           onPermit={sessionEvents.permitJob}
-          onRuntimeAction={sessionEvents.runRuntimeAction}
+          onRuntimeAction={runRuntimeAction}
+          onOpenReview={openCurrentReview}
           onResolveDecision={resolveDecision}
           pendingTurn={sessionEvents.pendingTurn}
           overview={bootstrap.overview}
           runDetail={runEvidence.runDetail}
-          onFileChangeClick={(pathValue) => void review.openFileChange(pathValue)}
-          onTurnDiffSelect={review.selectTurnDiff}
+          workspaceChangeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
+          onFileChangeClick={(pathValue) => void openReviewFile(pathValue)}
+          onTurnDiffSelect={openTurnReview}
           turnDiffLabel={(turnIndex) =>
             review.turnDiffScopes.find((scope) => scope.turnIndex === turnIndex)?.label ?? `T${turnIndex}`
           }
-          onAggregateDiffClick={review.selectTurnDiff}
+          onAggregateDiffClick={openTurnReview}
           viewMode={viewMode}
           onTurnRewind={onTurnRewind}
         />

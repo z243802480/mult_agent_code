@@ -1345,7 +1345,7 @@ class FakeUnsafeVerificationClient:
                         {
                             "tool_name": "run_command",
                             "args": {
-                                "command": "echo unsafe > out.txt",
+                                "command": "echo unsafe > ../../out.txt",
                                 "expected_returncodes": [0],
                             },
                             "reason": "unsafe shell command should be replaced",
@@ -1647,6 +1647,15 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
     assert loop_summary["exit_reason"] == "stop"
     assert loop_summary["recommended_command"] == "status --debug"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event.get("transcript_kind") == "subagent_summary"
+        and event.get("display_level") == "main"
+        for event in user_progress
+    )
 
 
 def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
@@ -1758,6 +1767,16 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
     assert subagent_plan["subagent_child_plan_id"] == "subagent-child-plan-0001"
     assert subagent_plan["planned_child_count"] == 1
     assert subagent_plan["planned_child_tasks"][0]["task_id"] == "task-0001"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    main_kinds = [
+        event.get("transcript_kind")
+        for event in user_progress
+        if event.get("display_level") == "main"
+    ]
+    assert "subagent_summary" in main_kinds
 
 
 def test_execute_command_runs_subagent_readonly_fanout_child_workers(
@@ -2044,8 +2063,20 @@ def test_execute_command_runs_bounded_loop_after_tool_observation(tmp_path: Path
     assert observations[-2]["next_recommended_action"] == "stop"
     assert observations[-1]["status"] == "stopped"
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    main_kinds = [
+        event.get("transcript_kind")
+        for event in user_progress
+        if event.get("display_level") == "main"
+    ]
     assert loop_summary["exit_reason"] == "stop"
     assert loop_summary["rounds_completed"] == 2
+    assert "tool_use" in main_kinds
+    assert "tool_result" in main_kinds
+    assert "stop" in main_kinds
 
 
 def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Path) -> None:
@@ -2084,8 +2115,18 @@ def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Pa
     assert observations[-1]["observation_type"] == "repair_result"
     assert observations[-1]["status"] == "pending"
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    main_kinds = {
+        event.get("transcript_kind")
+        for event in user_progress
+        if event.get("display_level") == "main"
+    }
     assert loop_summary["exit_reason"] == "repair_dispatch"
     assert loop_summary["recommended_command"] == "debug"
+    assert "repair" in main_kinds
 
 
 def test_execute_command_runtime_manages_repair_replan_validation_probe(
@@ -2136,6 +2177,15 @@ def test_execute_command_runtime_manages_repair_replan_validation_probe(
     assert observations[-1]["status"] == "pending"
     assert loop_summary["exit_reason"] == "repair_dispatch"
     assert loop_summary["recommended_command"] == "debug"
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(
+        event.get("transcript_kind") == "repair"
+        and event.get("ui_intent") == "needs_attention"
+        for event in user_progress
+    )
 
 
 def test_execute_command_runtime_manages_ask_stop_validation_probe(
@@ -3015,6 +3065,7 @@ def test_execute_command_records_runtime_request_without_writing_outside_scope(
     assert decisions[0]["metadata"]["runtime_request_ids"] == [
         runtime_requests[0]["runtime_request_id"]
     ]
+    assert decisions[0]["metadata"]["permission_preview"]["scope"] == "Write: generated/report.md"
     evidence = [
         json.loads(line)
         for line in (run_dir / "task_execution_evidence.jsonl")
@@ -3023,6 +3074,16 @@ def test_execute_command_records_runtime_request_without_writing_outside_scope(
     ]
     assert evidence[0]["failure_type"] == "runtime_request"
     assert runtime_requests[0]["runtime_request_id"] in evidence[0]["summary"]
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    runtime_request_progress = next(
+        event for event in progress if event.get("title") == "Runtime request created"
+    )
+    assert runtime_request_progress["data"]["permission_preview"]["scope_detail"]["write_scope"] == [
+        "generated/report.md"
+    ]
 
 
 def test_resume_applies_runtime_request_and_allows_follow_up_write(
@@ -3461,7 +3522,7 @@ def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -
     ).run()
 
     assert result.completed == 1
-    assert not (tmp_path / "out.txt").exists()
+    assert not (tmp_path.parent.parent / "out.txt").exists()
     assert not (run_dir / "decisions.jsonl").exists()
     evidence = [
         json.loads(line)
@@ -3469,7 +3530,15 @@ def test_execute_command_replaces_unsafe_verification_commands(tmp_path: Path) -
         .read_text(encoding="utf-8")
         .splitlines()
     ]
-    assert any(command in result["summary"] for result in evidence[0]["verification_results"])
+    verification_results = [
+        result
+        for item in evidence
+        for result in item["verification_results"]
+    ]
+    assert any(result["requested_command"] for result in verification_results)
+    assert all(result["executed_command"] for result in verification_results)
+    assert all("echo unsafe" not in str(result["requested_command"]) for result in verification_results)
+    assert all("echo unsafe" not in str(result["executed_command"]) for result in verification_results)
 
 
 def test_execute_command_retries_invalid_model_json_once(tmp_path: Path) -> None:

@@ -69,6 +69,34 @@ def test_agent_loop_decision_requires_action_to_match_execution_shape() -> None:
         validate_decision_matches_execution_action(decision, action)
 
 
+def test_agent_loop_decision_rejects_stop_that_also_executes_tools() -> None:
+    task = {"task_id": "task-1"}
+    action = {
+        "task_id": "task-1",
+        "summary": "write and stop",
+        "tool_calls": [{"tool_name": "write_file", "args": {"path": "a.txt"}}],
+        "verification": [],
+        "runtime_requests": [],
+        "agent_loop_decision": {
+            "next_action": {
+                "action": "stop",
+                "reason": "done",
+                "target_task_id": "task-1",
+                "capability_ref": {"type": "runtime", "name": "stop"},
+                "expected_observation": {"summary": "stopped"},
+                "risk": "low",
+                "budget_hint": {},
+                "evidence_refs": [],
+            }
+        },
+    }
+
+    decision = normalize_agent_loop_decision(action, task=task, run_id="run-1")
+
+    with pytest.raises(AgentLoopDecisionError, match="must not also execute"):
+        validate_decision_matches_execution_action(decision, action)
+
+
 def test_agent_next_action_maps_to_user_command() -> None:
     assert recommended_command_for_next_action({"action": "repair"}) == "debug"
     assert recommended_command_for_next_action({"action": "replan"}) == "replan"

@@ -310,21 +310,6 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.workflowMonitorCompact {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-  border-radius: 10px;
-  background: var(--panel-muted, rgba(255, 255, 255, 0.03));
-}
-
-.workflowMonitorCompactStats {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 8px;
-}
-
 .workflowMonitorList {
   display: grid;
   gap: 5px;

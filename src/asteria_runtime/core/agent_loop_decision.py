@@ -116,6 +116,10 @@ def validate_decision_matches_execution_action(
         raise AgentLoopDecisionError("ask next action requires runtime_requests")
     if kind in {"repair", "replan"} and tool_calls:
         raise AgentLoopDecisionError(f"{kind} next action should not also execute tool calls")
+    if kind == "stop" and (tool_calls or runtime_requests):
+        raise AgentLoopDecisionError(
+            "stop next action must not also execute tool calls or request runtime changes"
+        )
 
 
 def persist_agent_loop_decision(

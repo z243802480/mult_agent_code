@@ -57,7 +57,7 @@ test("Studio composer exposes product slash actions", async ({ page }) => {
   await expect(page.locator(".slashMenu", { hasText: "Plan" })).toBeVisible();
   await expect(page.locator(".slashMenu", { hasText: "Goal" })).toBeVisible();
   await page.locator(".slashMenu button").filter({ hasText: "Plan" }).click();
-  await expect(page.locator(".composerActionBar", { hasText: "Plan" })).toBeVisible();
+  await expect(page.locator(".composerModeSummary", { hasText: "Plan" })).toBeVisible();
   await expect(page.locator(".composer textarea")).toHaveValue(/Create a plan for/);
 });
 
@@ -65,31 +65,29 @@ async function driveToPermissionRequest(page) {
   await page.goto(`http://127.0.0.1:${port}/`);
 
   await expect(page.locator(".conversationTurn", { hasText: "Smoke-test Studio interactive path" })).toBeVisible();
-  await expect(page.locator(".contextWindowTrigger")).toBeVisible();
-  await page.locator(".contextWindowTrigger").click();
-  await expect(page.locator(".contextWindowPanel", { hasText: "Free space" })).toBeVisible();
-  await expect(page.locator(".contextWindowPanel", { hasText: "Detailed breakdown is available in diagnostics." })).toBeVisible();
-  await page.locator(".contextWindowTrigger").click();
-  await expect(page.locator(".threadProcessControls", { hasText: "Expand process" })).toBeVisible();
+  await expect(page.locator(".workflowMonitorCompact")).toHaveCount(0);
+  await expect(page.locator(".threadProcessControls")).toHaveCount(0);
   await expect(page.locator(".runtimeLoopSignals")).toHaveCount(0);
   await expect(page.locator(".runtimeSnapshot", { hasText: "1 decision need your input." })).toBeVisible();
-  await page.locator(".threadProcessControls button").filter({ hasText: "Expand process" }).click();
-  await expect(page.locator(".turnMiddleSteps").first()).toBeVisible();
-  await page.locator(".threadProcessControls button").filter({ hasText: "Collapse process" }).click();
-  await expect(page.locator(".turnMiddleSteps")).toHaveCount(0);
-  await page.locator(".turnMiddleBadge").first().click();
-  await expect(page.locator(".turnMiddleBadge.selected").first()).toBeVisible();
-  await expect(page.locator(".detailTitle", { hasText: "Progress" })).toBeVisible();
-  await page.locator(".inspectorTabList button").filter({ hasText: "Artifacts" }).click();
-  await expect(page.locator(".refList button", { hasText: "run_loop_summary.json" })).toBeVisible();
-  await page.locator(".refList button").filter({ hasText: "run_loop_summary.json" }).click();
-  await expect(page.locator(".preview", { hasText: "run_loop_summary.json" })).toBeVisible();
+  const actionFollowsTurn = await page.evaluate(() => {
+    const turn = document.querySelector(".conversationTurn");
+    const action = document.querySelector(".runtimeSnapshot");
+    return Boolean(turn && action && (turn.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(actionFollowsTurn).toBe(true);
   await expect(page.getByText("Choose the next Studio path.")).toBeVisible();
   await expect(page.locator(".decisionOptions button").filter({ hasText: "Continue" })).toBeVisible();
 
   await page.locator(".decisionOptions button").filter({ hasText: "Continue" }).click();
   await expect(page.getByText(/Decision action: resolve|Decision action/i)).toBeVisible({ timeout: 20_000 });
   await expect(page.locator(".runtimeActionButton").filter({ hasText: "Accept" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".runtimeActionButton").filter({ hasText: "Review changes" })).toBeVisible();
+
+  await page.getByTitle(/Hide side panel/).click();
+  await expect(page.locator(".appShell.panelCollapsed")).toBeVisible();
+  await page.locator(".runtimeActionButton").filter({ hasText: "Review changes" }).click();
+  await expect(page.locator(".appShell.panelOpen")).toBeVisible();
+  await expect(page.locator(".diffReviewPane", { hasText: "Diff review" })).toBeVisible();
 
   const actionResponse = page.waitForResponse((response) =>
     response.url().includes("/runtime-actions")
@@ -98,6 +96,9 @@ async function driveToPermissionRequest(page) {
   await page.locator(".runtimeActionButton").filter({ hasText: "Accept" }).click();
   await actionResponse;
   await expect(page.locator(".permissionCard")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator(".permissionPreview", { hasText: "Accept the reviewed result" })).toBeVisible();
+  await expect(page.locator(".permissionPreview", { hasText: "No network access requested." })).toBeVisible();
+  await expect(page.locator(".permissionPreview", { hasText: "Risk · low" })).toBeVisible();
   await expect(page.locator(".permissionAllow")).toBeVisible();
   await expect(page.locator(".permissionDeny")).toBeVisible();
 }

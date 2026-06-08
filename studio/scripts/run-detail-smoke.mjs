@@ -118,8 +118,29 @@ await writeJsonl("decisions.jsonl", [
     impact: { scope: "low", budget: "low", risk: "low", quality: "medium" },
     selected_option_id: null,
     created_at: "2099-01-01T00:00:00Z",
-    metadata: {},
+    metadata: {
+      kind: "runtime_request",
+      runtime_request_ids: ["runtime-request-0001"],
+    },
     resolved_at: null,
+  },
+]);
+await writeJsonl("runtime_requests.jsonl", [
+  {
+    schema_version: "0.1.0",
+    runtime_request_id: "runtime-request-0001",
+    run_id: runId,
+    task_id: "task-0001",
+    request_type: "scope_expansion",
+    risk: "medium",
+    reason: "Need to update the scoped smoke files.",
+    details: {
+      read_scope: ["src/current.py"],
+      write_scope: ["src/new.py", "tests/test_new.py"],
+    },
+    status: "decision_created",
+    decision_id: "decision-0001",
+    created_at: "2099-01-01T00:00:00Z",
   },
 ]);
 await writeJson("agent_run_graph.json", {
@@ -313,6 +334,12 @@ try {
   }
   if (!Array.isArray(detail.decision_requests) || detail.decision_requests[0]?.decision_id !== "decision-0001") {
     throw new Error("/api/runs/:id did not expose pending decision requests");
+  }
+  if (detail.decision_requests[0]?.metadata?.permission_preview?.scope !== "Read: src/current.py; Write: src/new.py, tests/test_new.py") {
+    throw new Error("/api/runs/:id did not enrich runtime request decisions with exact permission scope");
+  }
+  if (detail.runtime_requests?.[0]?.runtime_request_id !== "runtime-request-0001") {
+    throw new Error("/api/runs/:id did not keep runtime requests available for Inspector");
   }
   if (detail.main_action?.kind !== "decide" || detail.main_action?.decision_count !== 1) {
     throw new Error("/api/runs/:id did not expose a decision-backed main_action");

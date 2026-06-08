@@ -294,6 +294,7 @@ async function submitUserGoal(sessionId, body) {
 
   if (mode !== "plan" && permission !== "allow") {
     const command = executionRoute?.command || runtimeCommand(mode, goal);
+    const permissionPreview = permissionPreviewForMode(mode);
     const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command });
     await appendEvent(activeSessionId, {
@@ -302,6 +303,7 @@ async function submitUserGoal(sessionId, body) {
       title: "\u9700\u8981\u4f60\u786e\u8ba4",
       summary: "\u8fd9\u4e2a\u8bf7\u6c42\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
       command,
+      data: { permission_preview: permissionPreview },
       job_id: pendingJobId,
       content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002"
     });
@@ -344,6 +346,7 @@ async function handleRuntimeAction(sessionId, body) {
       title: "\u9700\u8981\u4f60\u786e\u8ba4",
       summary: action.permissionSummary,
       command: action.command,
+      data: { permission_preview: action.permissionPreview },
       job_id: pendingJobId,
       content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002",
     });
@@ -457,6 +460,14 @@ function runtimeActionByKind(kind) {
       requiresPermission: true,
       summary: "I will accept the verified result after confirmation.",
       permissionSummary: "\u63a5\u53d7\u7ed3\u679c\u4f1a\u66f4\u65b0\u5f53\u524d runtime \u72b6\u6001\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      permissionPreview: permissionPreview({
+        action: "Accept the reviewed result",
+        impact: "Finalize the reviewed runtime result.",
+        scope: "Current runtime state",
+        network: "No network access requested.",
+        risk: "low",
+        reversible: "Review changes before continuing.",
+      }),
     },
     continue: {
       kind: "continue",
@@ -467,6 +478,14 @@ function runtimeActionByKind(kind) {
       requiresPermission: true,
       summary: "I will continue the current goal after confirmation.",
       permissionSummary: "\u7ee7\u7eed\u63a8\u8fdb\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      permissionPreview: permissionPreview({
+        action: "Continue the current goal",
+        impact: "May edit workspace files and run local verification.",
+        scope: "Current workspace",
+        network: "Model provider may be contacted; external tools still require separate approval.",
+        risk: "medium",
+        reversible: "Changes remain reviewable before acceptance.",
+      }),
     },
     debug: {
       kind: "debug",
@@ -477,6 +496,14 @@ function runtimeActionByKind(kind) {
       requiresPermission: true,
       summary: "I will diagnose the blocked step and prepare a repair path after confirmation.",
       permissionSummary: "\u8c03\u8bd5\u4fee\u590d\u53ef\u80fd\u4f1a\u8bfb\u53d6\u8fd0\u884c\u8bc1\u636e\u5e76\u4fee\u6539\u6587\u4ef6\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      permissionPreview: permissionPreview({
+        action: "Diagnose and repair the blocked step",
+        impact: "Read failure evidence and may edit workspace files.",
+        scope: "Current workspace and run evidence",
+        network: "Model provider may be contacted; external tools still require separate approval.",
+        risk: "medium",
+        reversible: "Repairs remain reviewable before acceptance.",
+      }),
     },
     decide: {
       kind: "decide",
@@ -497,9 +524,51 @@ function runtimeActionByKind(kind) {
       requiresPermission: true,
       summary: "I will compact the current session context after confirmation.",
       permissionSummary: "Compacting context may summarize older turns. Confirm to continue.",
+      permissionPreview: permissionPreview({
+        action: "Compact session context",
+        impact: "Summarize older conversation turns to free context space.",
+        scope: "Current session context",
+        network: "No network access requested.",
+        risk: "low",
+        reversible: "Workspace files are not changed.",
+      }),
     },
   };
   return actions[kind] ?? null;
+}
+
+function permissionPreviewForMode(mode) {
+  const normalized = String(mode || "").toLowerCase();
+  if (normalized === "review") {
+    return permissionPreview({
+      action: "Review the current result",
+      impact: "Read project changes and verification evidence.",
+      scope: "Current workspace, read-only",
+      network: "No network access requested.",
+      risk: "low",
+      reversible: "No files will be changed.",
+    });
+  }
+  return permissionPreview({
+    action: normalized === "resume" || normalized === "continue" ? "Continue the current goal" : "Start working on this goal",
+    impact: "May edit workspace files and run local verification.",
+    scope: "Current workspace",
+    network: "Model provider may be contacted; external tools still require separate approval.",
+    risk: "medium",
+    reversible: "Changes remain reviewable before acceptance.",
+  });
+}
+
+function permissionPreview({ action, impact, scope, network, risk, reversible, scope_detail }) {
+  return {
+    action,
+    impact,
+    scope,
+    network,
+    risk,
+    reversible,
+    ...(scope_detail ? { scope_detail } : {}),
+  };
 }
 
 // Chat mode: instant local answer, zero CLI overhead
@@ -2487,8 +2556,12 @@ async function readRunDetail(runId) {
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
   payload.mcp_invocations = redact(await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80));
   payload.skill_invocations = redact(await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80));
+  const runtimeRequests = await readJsonlTail(path.join(runDir, "runtime_requests.jsonl"), 120);
   const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 120);
-  const currentDecisions = latestDecisions(decisions);
+  const currentDecisions = latestDecisions(decisions).map((decision) =>
+    enrichRuntimeRequestDecision(decision, runtimeRequests)
+  );
+  payload.runtime_requests = redact(runtimeRequests);
   payload.decision_requests = redact(currentDecisions.filter((decision) => decision?.status === "pending"));
   payload.decisions = redact(currentDecisions);
   payload.decision_history = redact(decisions);
@@ -2512,6 +2585,7 @@ async function readRunDetail(runId) {
     validation_results: payload.validation_results,
     mcp_invocations: payload.mcp_invocations,
     skill_invocations: payload.skill_invocations,
+    runtime_requests: payload.runtime_requests,
   });
   payload.legacy_events = redact(legacyEvents);
   payload.timeline_events_source = userProgress.length ? "user_progress" : "events";
@@ -2524,6 +2598,92 @@ async function readRunDetail(runId) {
   );
   payload.files = await listRunEvidenceFiles(runDir, runId);
   return redact(payload);
+}
+
+function enrichRuntimeRequestDecision(decision, runtimeRequests) {
+  const metadata = decision?.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
+  if (metadata.kind !== "runtime_request" || metadata.permission_preview) return decision;
+  const requestIds = new Set(Array.isArray(metadata.runtime_request_ids) ? metadata.runtime_request_ids.map(String) : []);
+  const matched = (runtimeRequests || []).filter((request) => requestIds.has(String(request.runtime_request_id || "")));
+  if (!matched.length) return decision;
+  return {
+    ...decision,
+    metadata: {
+      ...metadata,
+      permission_preview: permissionPreviewForRuntimeRequests(matched),
+    },
+  };
+}
+
+function permissionPreviewForRuntimeRequests(requests) {
+  const readScope = runtimeRequestDetailValues(requests, ["read_scope", "requested_read_scope", "paths"]);
+  const writeScope = runtimeRequestDetailValues(requests, ["write_scope", "requested_write_scope"]);
+  const tools = runtimeRequestDetailValues(requests, ["allowed_tools", "tools", "tool", "tool_name"]);
+  const requestTypes = [...new Set(requests.map((request) => String(request.request_type || "")).filter(Boolean))].sort();
+  const riskRank = { low: 0, medium: 1, high: 2 };
+  const risk = requests
+    .map((request) => String(request.risk || "medium").toLowerCase())
+    .sort((left, right) => (riskRank[right] ?? 1) - (riskRank[left] ?? 1))[0] || "medium";
+  let action = "Review a task boundary change";
+  let impact = "Review the requested task contract change before work continues.";
+  let reversible = "Rejecting keeps the current task boundary unchanged.";
+  if (writeScope.length) {
+    action = "Allow additional workspace changes";
+    impact = `Allow writing ${scopeValueSummary(writeScope)}.`;
+    reversible = "Changes remain reviewable before acceptance.";
+  } else if (readScope.length) {
+    action = "Allow additional project context";
+    impact = `Allow reading ${scopeValueSummary(readScope)}.`;
+    reversible = "Workspace files will not be changed by this approval.";
+  } else if (tools.length) {
+    action = "Allow an additional tool";
+    impact = `Allow use of ${scopeValueSummary(tools)}.`;
+    reversible = "The tool remains bounded by the current task contract.";
+  }
+  const scopeParts = [];
+  if (readScope.length) scopeParts.push(`Read: ${scopeValueSummary(readScope)}`);
+  if (writeScope.length) scopeParts.push(`Write: ${scopeValueSummary(writeScope)}`);
+  if (tools.length) scopeParts.push(`Tools: ${scopeValueSummary(tools)}`);
+  const externalTool = tools.some((tool) => /network|web|http|mcp/i.test(tool));
+  return permissionPreview({
+    action,
+    impact,
+    scope: scopeParts.join("; ") || "Current task contract",
+    network: externalTool
+      ? "The requested tool may access an external service."
+      : requestTypes.includes("model_upgrade_request")
+        ? "The model provider will be contacted for the requested route."
+        : "No additional network access requested.",
+    risk,
+    reversible,
+    scope_detail: {
+      read_scope: readScope,
+      write_scope: writeScope,
+      tools,
+      request_types: requestTypes,
+    },
+  });
+}
+
+function runtimeRequestDetailValues(requests, keys) {
+  const values = [];
+  for (const request of requests || []) {
+    const details = request?.details && typeof request.details === "object" ? request.details : {};
+    for (const key of keys) {
+      const raw = details[key];
+      const candidates = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      for (const candidate of candidates) {
+        const value = String(candidate).trim();
+        if (value && !values.includes(value)) values.push(value);
+      }
+    }
+  }
+  return values;
+}
+
+function scopeValueSummary(values) {
+  const visible = values.slice(0, 3);
+  return `${visible.join(", ")}${values.length > visible.length ? `, and ${values.length - visible.length} more` : ""}`;
 }
 
 function latestMainTranscriptEvent(events, transcriptKind) {

@@ -41,6 +41,70 @@ class CaptureActionClient:
         )
 
 
+class PrematureStopThenToolClient:
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            action = {
+                "schema_version": "0.1.0",
+                "task_id": "task-0001",
+                "summary": "stop before doing work",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "stop",
+                        "reason": "nothing else needed",
+                        "target_task_id": "task-0001",
+                        "capability_ref": {"type": "runtime", "name": "stop"},
+                        "expected_observation": {"summary": "stopped"},
+                        "risk": "low",
+                        "budget_hint": {},
+                        "evidence_refs": [],
+                    }
+                },
+            }
+        else:
+            action = {
+                "schema_version": "0.1.0",
+                "task_id": "task-0001",
+                "summary": "create expected artifact",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {"path": "result.txt", "content": "done"},
+                        "reason": "produce the expected artifact",
+                    }
+                ],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "produce the expected artifact",
+                        "target_task_id": "task-0001",
+                        "capability_ref": {"type": "tool", "name": "write_file"},
+                        "expected_observation": {"summary": "result.txt exists"},
+                        "risk": "low",
+                        "budget_hint": {},
+                        "evidence_refs": [],
+                    }
+                },
+            }
+        return ChatResponse(
+            content=json.dumps(action),
+            finish_reason="stop",
+            usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+            model_provider="fake",
+            model_name="fake",
+            raw_response={},
+        )
+
+
 def test_coder_agent_prompt_includes_harness_observations() -> None:
     client = CaptureActionClient()
     agent = CoderAgent(client, SchemaValidator(Path("schemas")))
@@ -172,3 +236,76 @@ def test_coder_agent_prompt_uses_slim_execution_context_for_fast_path() -> None:
     assert metadata["context_mode"] == "slim"
     assert metadata["fast_path_task_kind"] == "simple_file"
     assert len(runtime_context["tool_observations"]) == 9
+
+
+def test_coder_agent_slim_prompt_omits_unscoped_runtime_bulk() -> None:
+    client = CaptureActionClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.json"],
+            "read_scope": [],
+            "expected_artifacts": ["result.json"],
+        },
+        goal_spec={
+            "goal_id": "goal-1",
+            "original_goal": "Create a local file",
+            "target_outputs": ["result.json"],
+            "planner_internal_notes": "x" * 10_000,
+        },
+        project_config={"name": "demo", "internal_catalog": "x" * 10_000},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context={
+            "workspace_files": [{"path": "unrelated.py", "content": "x" * 10_000}],
+            "memory": [{"content": "x" * 10_000}],
+            "capability_registry": [{"name": "unused", "description": "x" * 10_000}],
+            "prompt_envelope": {
+                "capability_manifest": {
+                    "direct_tools": [{"name": "write_file", "description": "x" * 10_000}],
+                    "boundaries": {"internal": "x" * 10_000},
+                }
+            },
+        },
+    )
+
+    payload = json.loads(client.requests[0].messages[-1].content)
+    prompt_context = payload["runtime_context"]
+    assert "workspace_files" not in prompt_context
+    assert "memory" not in prompt_context
+    assert "capability_registry" not in prompt_context
+    assert payload["goal_spec"] == {
+        "goal_id": "goal-1",
+        "original_goal": "Create a local file",
+        "target_outputs": ["result.json"],
+    }
+    assert payload["project"] == {"name": "demo"}
+    assert prompt_context["prompt_envelope"]["capability_manifest"] == {
+        "direct_tools": [{"name": "write_file"}]
+    }
+    assert len(client.requests[0].messages[-1].content) < 8_000
+
+
+def test_coder_agent_retries_premature_first_round_stop_for_work_bearing_task() -> None:
+    client = PrematureStopThenToolClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    action = agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.txt"],
+            "expected_artifacts": ["result.txt"],
+        },
+        goal_spec={"goal_id": "goal-1", "original_goal": "Create result.txt"},
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+    )
+
+    assert action["agent_loop_decision"]["next_action"]["action"] == "tool"
+    assert len(client.requests) == 2
+    assert "stop is not grounded" in client.requests[1].messages[-1].content

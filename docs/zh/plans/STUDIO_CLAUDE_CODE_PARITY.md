@@ -2,7 +2,7 @@
 
 更新时间：2026-06-06  
 状态：**维护态 · F1 已签字**  
-**ACTIVE_SLICE**：**S54**（F2 内测）  
+**当前执行入口**：**S74**（F2 friction 仅作为 Beta convergence 输入）
 原始 brief：[`benchmarks/reference_briefs/S45-studio-claude-code-parity.md`](../../benchmarks/reference_briefs/S45-studio-claude-code-parity.md)
 
 ---

@@ -242,7 +242,7 @@ You must:
 {goal}
 
 Project context:
-{json.dumps(project_context, ensure_ascii=False, indent=2)}
+{json.dumps(self._prompt_project_context(project_context), ensure_ascii=False, indent=2)}
 
 Return this exact JSON shape:
 {{
@@ -271,3 +271,39 @@ Return this exact JSON shape:
     "max_model_calls": 60
   }}
 }}"""
+
+    def _prompt_project_context(self, project_context: dict) -> dict:
+        """Expose only goal-understanding context; execution capabilities stay in Runtime."""
+
+        compact: dict = {}
+        project = project_context.get("project")
+        if isinstance(project, dict):
+            compact["project"] = {
+                key: project[key]
+                for key in ("name", "description", "language", "framework", "type")
+                if key in project
+            }
+        runtime_context = project_context.get("runtime_context")
+        if isinstance(runtime_context, dict):
+            relevant_runtime = {
+                key: runtime_context[key]
+                for key in (
+                    "latest_snapshot",
+                    "latest_handoff",
+                    "acceptance_failures",
+                    "task_failures",
+                    "design_intel_research",
+                    "goal_spec_route_plan",
+                )
+                if runtime_context.get(key)
+            }
+            if relevant_runtime:
+                compact["runtime_context"] = relevant_runtime
+        policy = project_context.get("policy")
+        if isinstance(policy, dict):
+            compact["policy"] = {
+                key: policy[key]
+                for key in ("decision_granularity", "budgets", "permissions")
+                if key in policy
+            }
+        return compact

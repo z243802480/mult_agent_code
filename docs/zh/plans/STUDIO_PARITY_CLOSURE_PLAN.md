@@ -1,9 +1,9 @@
 # Studio 对标收尾与内测闭环计划（Phase F）
 
 更新时间：2026-06-06  
-状态：**active · F1 已签字**  
+状态：**maintenance input · F1 已签字，F2 friction 作为 S74 输入而非独立研发主线**
 前置：**S45–S53 已交付**  
-**ACTIVE_SLICE**：**F2-S54**（内测 ongoing · S56/S57 ✅）  
+**当前执行入口**：**S74**（Post-S73 Beta convergence）
 **并行**：F2/S54 · Harness/P 已签字 — 见 [`TRIPLE_TRACK_MAINT_PLAN.md`](./TRIPLE_TRACK_MAINT_PLAN.md)
 
 ---

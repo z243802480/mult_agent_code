@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 from asteria_runtime.agents.goal_spec_agent import GoalSpecAgent
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
@@ -89,6 +90,52 @@ def test_goal_spec_agent_metadata_uses_provider_route_deadline() -> None:
     assert metadata["agent_role_contract"]["provider_call_seconds"] == 42
     assert metadata["agent_role_contract"]["stream_idle_timeout_seconds"] == 7
     assert metadata["model_route"]["provider"] == "glm"
+
+
+def test_goal_spec_agent_prompt_uses_role_scoped_context() -> None:
+    client = FakeClient(valid_goal_spec_json())
+    agent = GoalSpecAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.generate(
+        "create greet.py",
+        {
+            "project": {
+                "name": "demo",
+                "language": "python",
+                "internal_catalog": "x" * 20_000,
+            },
+            "runtime_context": {
+                "workspace_files": [{"path": "unrelated.py", "content": "x" * 20_000}],
+                "capability_manifest": {"direct_tools": [{"description": "x" * 20_000}]},
+                "prompt_envelope": {"sections": ["x" * 20_000]},
+                "goal_spec_route_plan": {"selected_model_tier": "medium"},
+            },
+            "policy": {
+                "decision_granularity": "balanced",
+                "budgets": {"max_model_calls_per_goal": 200},
+                "permissions": {"shell": "review"},
+                "provider_route_strategy": {"internal": "x" * 20_000},
+            },
+            "capability_manifest": {"direct_tools": [{"description": "x" * 20_000}]},
+        },
+        "run-1",
+    )
+
+    prompt = client.requests[0].messages[-1].content
+    context_text = prompt.split("Project context:\n", 1)[1].split(
+        "\n\nReturn this exact JSON shape:", 1
+    )[0]
+    context = json.loads(context_text)
+    assert context == {
+        "project": {"name": "demo", "language": "python"},
+        "runtime_context": {"goal_spec_route_plan": {"selected_model_tier": "medium"}},
+        "policy": {
+            "decision_granularity": "balanced",
+            "budgets": {"max_model_calls_per_goal": 200},
+            "permissions": {"shell": "review"},
+        },
+    }
+    assert len(prompt) < 5_000
 
 
 def test_goal_spec_agent_falls_back_for_invalid_json() -> None:

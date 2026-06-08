@@ -53,7 +53,41 @@ def test_model_check_calls_model_and_accepts_valid_json(tmp_path: Path) -> None:
     assert result.provider == "fake"
     assert result.model_name == "fake-model"
     assert result.to_dict()["streaming"]["first_chunk_ms"] == 10
+    assert result.to_dict()["call_health"] == "healthy"
     assert "Streaming: streaming chunks=1" in result.to_text()
+
+
+def test_model_check_marks_successful_streaming_fallback_as_degraded(tmp_path: Path) -> None:
+    class DegradedClient:
+        def chat(self, request: ChatRequest) -> ChatResponse:
+            return ChatResponse(
+                content=json.dumps({"ok": True}),
+                finish_reason="stop",
+                usage=TokenUsage(1, 1, 2),
+                model_provider="fake",
+                model_name="fake-model",
+                raw_response={},
+                streaming=StreamingTelemetry(
+                    requested=True,
+                    supported=False,
+                    mode="streaming_fallback_non_streaming",
+                    duration_ms=88_000,
+                    error_type="streaming_transport_error",
+                ),
+            )
+
+    result = ModelCheckCommand(tmp_path, model_client=DegradedClient()).run()
+
+    assert result.call_ok
+    assert result.to_dict()["call_health"] == "degraded"
+    assert "degraded" in result.summary
+    route_check = json.loads(
+        (tmp_path / ".asteria" / "model" / "model_route_checks.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[0]
+    )
+    assert route_check["status"] == "success"
+    assert route_check["call_health"] == "degraded"
 
 
 def test_model_check_records_route_check_evidence(tmp_path: Path) -> None:

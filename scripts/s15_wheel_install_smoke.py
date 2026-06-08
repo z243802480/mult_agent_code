@@ -28,7 +28,9 @@ def main() -> None:
         wheels = sorted(dist_dir.glob("asteria_runtime-*.whl"))
     wheel = max(wheels, key=lambda item: item.stat().st_mtime)
 
-    base = Path(tempfile.mkdtemp(prefix="asteria-s15-wheel-"))
+    temp_root = root / ".asteria" / "tmp"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    base = Path(tempfile.mkdtemp(prefix="asteria-s15-wheel-", dir=temp_root))
     venv_dir = base / "venv"
     workspace = base / "workspace"
     try:

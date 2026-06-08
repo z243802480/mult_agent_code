@@ -27,6 +27,15 @@ pytestmark = [
 ]
 
 
+def test_real_model_acceptance_detects_current_source_checkout() -> None:
+    source_root = acceptance._source_checkout_root()
+
+    assert source_root == Path.cwd() / "src"
+    assert acceptance._merge_pythonpath(str(source_root), "existing") == (
+        f"{source_root}{os.pathsep}existing"
+    )
+
+
 def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
     assert "safe_file_renamer" in SCENARIOS
     assert "safe_file_renamer" in SUITES["core"]

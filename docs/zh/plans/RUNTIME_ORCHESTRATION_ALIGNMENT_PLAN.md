@@ -1,8 +1,8 @@
 # Runtime 编排对齐计划（R0–R5 · 多对多调度 · 非定向优化）
 
 更新时间：2026-06-07  
-状态：**active · S61**  
-**ACTIVE_SLICE**：S61（Runtime 编排对齐 R0→R5）  
+状态：**closed · S61 R0–R5 已签字，作为架构参考保留**
+**当前执行入口**：[`../研发总计划.md`](../研发总计划.md) §16
 哲学：[RUNTIME_MULTI_DISPATCH_MODEL.md](./RUNTIME_MULTI_DISPATCH_MODEL.md)  
 Brief：[S61-runtime-orchestration-alignment.md](../../benchmarks/reference_briefs/S61-runtime-orchestration-alignment.md)
 

@@ -66,6 +66,21 @@ export type StudioEvent = {
   created_at: string;
 };
 
+export type PermissionPreview = {
+  action?: string;
+  impact?: string;
+  scope?: string;
+  network?: string;
+  risk?: "low" | "medium" | "high" | string;
+  reversible?: string;
+  scope_detail?: {
+    read_scope?: string[];
+    write_scope?: string[];
+    tools?: string[];
+    request_types?: string[];
+  };
+};
+
 export type WorkspaceFile = {
   path: string;
   size: number;

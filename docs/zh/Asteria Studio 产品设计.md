@@ -2,7 +2,7 @@
 
 本文合并原 `Asteria Studio 产品与架构.md`、`Asteria Studio 用户侧工程设计哲学.md` 和 `Asteria Studio 真实任务基准.md`。Studio 是 Asteria 的独立产品交互面，不是新的执行内核、命令包装器或后台 dashboard。
 
-当前后端 runtime 优先级仍高于 Studio，但 Studio 的长期方向成立：用户在一个本地 workspace 中输入目标，看到可理解的进展、权限请求、文件变化、验证结果和最终交付；runtime 继续负责权限、预算、schema、证据、恢复和 gate。
+当后端主路径已具备执行、验证、恢复和审计闭环时，产品收敛优先于继续扩展后端能力：用户在一个本地 workspace 中输入目标，看到可理解的进展、权限请求、文件变化、验证结果和最终交付；runtime 继续负责权限、预算、schema、证据、恢复和 gate。
 
 Studio 的 session、context、主会话过程展示和 Inspector 诊断层必须遵守 [Studio 会话与上下文设计准则.md](./Studio%20会话与上下文设计准则.md)。新增 UI 前先判断它属于主会话叙事、用户动作入口，还是 Inspector 证据层；不得把 Studio 重新做成固定 runtime dashboard。
 
@@ -47,6 +47,8 @@ Ops / Debug Console 独立承载：
 - Debug Agent 对 backend state 的解释。
 
 默认主线程只展示用户能理解的进展，不展示裸 stdout、schema 噪声、run id 列表或 maintainer 命令。
+
+主线程中的下一步动作跟在对应过程和结果之后。不得用固定在顶部的 runtime/workflow 面板替代连续会话；内部 workflow、worker、route 与 gate 状态统一留在 Inspector 查证。
 
 ## 3. 前台事件模型
 
@@ -109,13 +111,15 @@ model/route/token telemetry
 
 权限卡必须说明：
 
-- 要运行什么命令。
-- 会读哪些范围。
-- 会写哪些范围。
-- 是否联网。
-- 预计 token/cost。
-- 风险等级。
-- 用户选择：允许一次、本会话允许同类操作、拒绝、修改目标。
+- 用户正在批准什么动作。
+- 可能产生的影响，以及读写范围。
+- 是否可能联系模型 provider；外部工具是否仍需独立批准。
+- 风险等级与可恢复性。
+- 用户选择：允许一次或拒绝。只有 Runtime 真正支持稳定的会话级授权时，才能展示“本会话允许同类操作”。
+
+主会话权限卡不得直接展示原始命令、policy 字段或内部 action 名；原始命令和权限证据进入 Inspector 查证。权限预览来自有限的产品动作 profile 或 Runtime 提供的语义契约，不通过前端穷举任意模型行为。
+
+Runtime request 必须优先提供真实的结构化读写范围。主会话可显示经过限长的 `Read:` / `Write:` / `Tools:` 摘要；完整 `scope_detail` 与原始 runtime request 留在 Inspector。旧 run 缺少语义预览时，Studio 只能从结构化 runtime request 补全，不得解析模型自然语言猜测范围。
 
 文件体验围绕“本次任务产物”，而不是全局文件列表：
 

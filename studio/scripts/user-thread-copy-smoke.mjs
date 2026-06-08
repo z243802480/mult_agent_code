@@ -53,10 +53,18 @@ try {
   for (const event of permissionRequests) {
     const visibleText = [event.title, event.summary, event.content_delta].filter(Boolean).join("\n");
     assert(/confirm|continue|确认|继续|取消|修改|运行|操作/i.test(visibleText), `permission copy should explain user action, got ${visibleText}`);
+    const preview = event.data?.permission_preview;
+    assert(preview && typeof preview === "object", "permission request must expose a user-semantic permission_preview");
+    for (const key of ["action", "impact", "scope", "network", "risk", "reversible"]) {
+      assert(String(preview[key] || "").trim(), `permission_preview.${key} must be present`);
+    }
   }
 
   const permissionCardSource = await fs.readFile(path.join(studioDir, "src", "components", "PermissionCard.tsx"), "utf8");
+  const eventCardSource = await fs.readFile(path.join(studioDir, "src", "components", "EventCard.tsx"), "utf8");
   assert(!/permissionCommand|event\.command|\.command\.join/.test(permissionCardSource), "PermissionCard must not render backend commands in the user thread");
+  assert(!/event\.command|\.command\.join/.test(eventCardSource), "EventCard must not render backend commands in the user thread");
+  assert(/permission_preview|Permission impact/.test(permissionCardSource), "PermissionCard must render semantic permission impact");
 
   console.log("Studio user-thread copy smoke passed");
 } finally {

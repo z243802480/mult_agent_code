@@ -32,6 +32,7 @@ class ModelCheckResult:
     streaming: StreamingTelemetry | None = None
     route_health: dict | None = None
     route_fallback: dict | None = None
+    call_health: str | None = None
 
     def to_text(self) -> str:
         route = self.route_health or {}
@@ -43,6 +44,7 @@ class ModelCheckResult:
             f"Route health: {route.get('status', 'unknown')}",
             f"Config: {'ok' if self.config_ok else 'failed'}",
             f"Call: {'ok' if self.call_ok else 'skipped/failed'}",
+            f"Call health: {self._call_health()}",
             f"Streaming: {self._streaming_text()}",
             f"Summary: {self.summary}",
         ]
@@ -90,6 +92,7 @@ class ModelCheckResult:
             "base_url": self.base_url,
             "config_ok": self.config_ok,
             "call_ok": self.call_ok,
+            "call_health": self._call_health(),
             "summary": self.summary,
             "failure_report_path": str(self.failure_report_path)
             if self.failure_report_path
@@ -99,6 +102,15 @@ class ModelCheckResult:
             "route_health": self.route_health or {},
             "route_fallback": self.route_fallback or {},
         }
+
+    def _call_health(self) -> str:
+        if self.call_health:
+            return self.call_health
+        if not self.call_ok:
+            return "skipped" if "skipped" in self.summary.lower() else "failed"
+        if _streaming_degraded(self.streaming):
+            return "degraded"
+        return "healthy"
 
 
 class ModelCheckCommand:
@@ -224,6 +236,12 @@ class ModelCheckCommand:
         effective_base_url = base_url
         if route_fallback.get("to_tier"):
             effective_base_url = resolve_model_route(str(route_fallback["to_tier"])).base_url
+        call_health = "degraded" if _streaming_degraded(response.streaming) else "healthy"
+        summary = (
+            "Model returned valid JSON, but the streaming route degraded and required fallback."
+            if call_health == "degraded"
+            else "Model returned valid JSON for the health check prompt."
+        )
         return self._record_and_return(
             ModelCheckResult(
                 provider=response.model_provider or provider,
@@ -231,10 +249,11 @@ class ModelCheckCommand:
                 base_url=effective_base_url or base_url,
                 config_ok=True,
                 call_ok=True,
-                summary="Model returned valid JSON for the health check prompt.",
+                summary=summary,
                 streaming=response.streaming,
                 route_health=route_health,
                 route_fallback=route_fallback,
+                call_health=call_health,
             )
         )
 
@@ -253,6 +272,7 @@ class ModelCheckCommand:
                 "model_name": result.model_name,
                 "base_url": result.base_url,
                 "status": "success" if result.call_ok else "failure",
+                "call_health": result._call_health(),
                 "summary": result.summary,
                 "failure_type": result.failure_type,
                 "deadline_ms": (result.streaming or StreamingTelemetry()).deadline_ms,
@@ -317,3 +337,13 @@ def _env_prefix_for_tier(model_tier: str) -> str:
 def _route_fallback(raw_response: dict) -> dict:
     fallback = raw_response.get("route_fallback") if isinstance(raw_response, dict) else None
     return fallback if isinstance(fallback, dict) else {}
+
+
+def _streaming_degraded(streaming: StreamingTelemetry | None) -> bool:
+    if streaming is None:
+        return False
+    return bool(
+        streaming.error_type
+        or streaming.mode == "streaming_fallback_non_streaming"
+        or (streaming.requested and not streaming.supported)
+    )
