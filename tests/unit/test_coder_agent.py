@@ -105,6 +105,75 @@ class PrematureStopThenToolClient:
         )
 
 
+class ToolUseRetryClient:
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            return ChatResponse(
+                content="",
+                finish_reason="tool_calls",
+                usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+                model_provider="fake",
+                model_name="fake",
+                raw_response={"choices": [{"message": {"role": "assistant", "content": ""}}]},
+            )
+        return ChatResponse(
+            content=json.dumps(
+                {
+                    "schema_version": "0.1.0",
+                    "task_id": "task-0001",
+                    "summary": "create expected artifact",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": "result.txt", "content": "done"},
+                            "reason": "produce the expected artifact",
+                        }
+                    ],
+                    "verification": [],
+                    "runtime_requests": [],
+                    "agent_loop_decision": {
+                        "next_action": {
+                            "action": "tool",
+                            "reason": "produce the expected artifact",
+                            "target_task_id": "task-0001",
+                            "capability_ref": {"type": "tool", "name": "write_file"},
+                            "expected_observation": {"summary": "result.txt exists"},
+                            "risk": "low",
+                            "budget_hint": {},
+                            "evidence_refs": [],
+                        }
+                    },
+                }
+            ),
+            finish_reason="stop",
+            usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+            model_provider="fake",
+            model_name="fake",
+            raw_response={
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "write_file",
+                                        "arguments": json.dumps(
+                                            {"path": "result.txt", "content": "done"}
+                                        ),
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+
+
 def test_coder_agent_prompt_includes_harness_observations() -> None:
     client = CaptureActionClient()
     agent = CoderAgent(client, SchemaValidator(Path("schemas")))
@@ -236,6 +305,29 @@ def test_coder_agent_prompt_uses_slim_execution_context_for_fast_path() -> None:
     assert metadata["context_mode"] == "slim"
     assert metadata["fast_path_task_kind"] == "simple_file"
     assert len(runtime_context["tool_observations"]) == 9
+
+
+def test_coder_agent_tool_use_retry_message_stays_on_native_tool_calls() -> None:
+    client = ToolUseRetryClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.txt"],
+            "read_scope": [],
+            "expected_artifacts": ["result.txt"],
+        },
+        goal_spec={"goal_id": "goal-1", "original_goal": "Create a local file"},
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context={"agent_role_contract": {"worker_transport": "tool_use"}},
+    )
+
+    assert "native tool calls only" in client.requests[1].messages[-1].content
+    assert "valid JSON object" not in client.requests[1].messages[-1].content
 
 
 def test_coder_agent_slim_prompt_omits_unscoped_runtime_bulk() -> None:

@@ -3,12 +3,32 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from asteria_runtime.core.fast_path_policy import classify_fast_path
+
 
 def resolve_worker_transport(
     *,
     policy: dict[str, Any] | None = None,
     runtime_context: dict[str, Any] | None = None,
+    task: dict[str, Any] | None = None,
 ) -> str:
+    for source in (
+        _transport_hint_from_task(task),
+        _transport_hint_from_runtime_context(runtime_context),
+    ):
+        if source:
+            return source
+    if isinstance(task, dict) and str(task.get("task_kind") or "").strip().lower() in {
+        "diagnostic",
+        "verification",
+    }:
+        fast_path = classify_fast_path(
+            str(task.get("description") or task.get("title") or ""),
+            target_files=_transport_target_files(task),
+            task=task,
+        )
+        if fast_path.task_kind in {"doc_update", "simple_file", "single_file_bugfix"}:
+            return "tool_use"
     for source in (
         (runtime_context or {}).get("agent_role_contract"),
         (policy or {}).get("agent_loop"),
@@ -19,6 +39,36 @@ def resolve_worker_transport(
         if value in {"json", "tool_use"}:
             return value
     return "json"
+
+
+def _transport_hint_from_task(task: dict[str, Any] | None) -> str | None:
+    if not isinstance(task, dict):
+        return None
+    return _transport_hint_from_mapping(task.get("runtime_profile_hints"))
+
+
+def _transport_hint_from_runtime_context(runtime_context: dict[str, Any] | None) -> str | None:
+    if not isinstance(runtime_context, dict):
+        return None
+    return _transport_hint_from_mapping(runtime_context.get("runtime_profile_hints"))
+
+
+def _transport_hint_from_mapping(value: object) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    transport = str(value.get("worker_transport") or "").strip().lower()
+    if transport in {"json", "tool_use"}:
+        return transport
+    return None
+
+
+def _transport_target_files(task: dict[str, Any]) -> list[str]:
+    files: list[str] = []
+    for key in ("expected_artifacts", "expected_changed_files", "write_scope", "read_scope"):
+        for item in task.get(key) or []:
+            if isinstance(item, str) and item.strip():
+                files.append(item)
+    return list(dict.fromkeys(files))
 
 
 def tool_definitions_for(available_tools: list[str]) -> list[dict[str, Any]]:
@@ -134,14 +184,15 @@ def execution_action_from_tool_calls(
     tool_calls: list[dict[str, Any]],
     summary: str = "tool_use execution",
 ) -> dict[str, Any]:
-    primary = tool_calls[0] if tool_calls else None
+    work_calls, verification_calls = _split_execution_and_verification_calls(tool_calls)
+    primary = (work_calls or verification_calls or [None])[0]
     capability_name = str((primary or {}).get("tool_name") or "write_file")
     return {
         "schema_version": "0.1.0",
         "task_id": task["task_id"],
         "summary": summary,
-        "tool_calls": tool_calls,
-        "verification": [],
+        "tool_calls": work_calls,
+        "verification": verification_calls,
         "runtime_requests": [],
         "completion_notes": "Generated from provider tool_use transport.",
         "agent_loop_decision": {
@@ -160,6 +211,25 @@ def execution_action_from_tool_calls(
             },
         },
     }
+
+
+def _split_execution_and_verification_calls(
+    tool_calls: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    work_calls: list[dict[str, Any]] = []
+    verification_calls: list[dict[str, Any]] = []
+    saw_mutation = False
+    for call in tool_calls:
+        tool_name = str(call.get("tool_name") or "")
+        if tool_name in {"write_file", "apply_patch"}:
+            saw_mutation = True
+            work_calls.append(call)
+            continue
+        if saw_mutation and tool_name in {"run_command", "run_tests"}:
+            verification_calls.append(call)
+            continue
+        work_calls.append(call)
+    return work_calls, verification_calls
 
 
 def _first_message(raw_response: dict[str, Any]) -> dict[str, Any] | None:

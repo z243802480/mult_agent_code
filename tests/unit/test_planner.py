@@ -500,6 +500,7 @@ def test_requirement_planner_groups_single_file_tool_into_one_slice() -> None:
     assert "Accept a password argument" in task["description"]
     assert "Common passwords return weak" in task["acceptance"]
     assert "single-file tool" in task["notes"]
+    assert task["runtime_profile_hints"]["worker_transport"] == "tool_use"
 
 
 def test_requirement_planner_groups_atomic_multifile_cli_artifacts() -> None:

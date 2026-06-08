@@ -61,6 +61,32 @@ class ExplodingPlanClient:
 
 class FakeExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
+        if request.worker_transport == "tool_use":
+            return ChatResponse(
+                content="",
+                finish_reason="tool_calls",
+                usage=TokenUsage(15, 25, 40),
+                model_provider="fake",
+                model_name="fake-execute",
+                raw_response=_tool_use_raw_response(
+                    [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                        },
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\"",
+                            },
+                        },
+                    ]
+                ),
+            )
         return ChatResponse(
             content=json.dumps(
                 {
@@ -133,6 +159,30 @@ class FakeReadonlyExecuteClient:
         )
 
 
+def _tool_use_raw_response(tool_calls: list[dict]) -> dict:
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": f"call-{index + 1}",
+                            "type": "function",
+                            "function": {
+                                "name": call["tool_name"],
+                                "arguments": json.dumps(call.get("args") or {}, ensure_ascii=False),
+                            },
+                        }
+                        for index, call in enumerate(tool_calls)
+                    ],
+                }
+            }
+        ]
+    }
+
+
 class FakeSubagentExecuteClient:
     def __init__(self) -> None:
         self.calls = 0
@@ -147,6 +197,31 @@ class FakeSubagentExecuteClient:
             self.latest_observations.append(latest_observation)
         task_id = str(request.metadata.get("task_id") or "task-0001")
         if runtime_context.get("subagent_worker"):
+            tool_calls = [
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "src/notes_tool.py",
+                        "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                        "overwrite": True,
+                    },
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                    },
+                },
+            ]
+            if request.worker_transport == "tool_use":
+                return ChatResponse(
+                    content="",
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(5, 8, 13),
+                    model_provider="fake",
+                    model_name="fake-subagent-execute",
+                    raw_response=_tool_use_raw_response(tool_calls),
+                )
             content = {
                 "schema_version": "0.1.0",
                 "task_id": task_id,
@@ -154,20 +229,14 @@ class FakeSubagentExecuteClient:
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
-                        "args": {
-                            "path": "src/notes_tool.py",
-                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
-                            "overwrite": True,
-                        },
+                        "args": tool_calls[0]["args"],
                         "reason": "create delegated artifact",
                     }
                 ],
                 "verification": [
                     {
                         "tool_name": "run_command",
-                        "args": {
-                            "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
-                        },
+                        "args": tool_calls[1]["args"],
                         "reason": "verify delegated artifact",
                     }
                 ],
@@ -432,6 +501,21 @@ class FakeSubagentReadonlyFanoutClient:
             with self._lock:
                 self.child_calls += 1
                 self.child_task_ids.append(task_id)
+            tool_calls = [
+                {
+                    "tool_name": "run_command",
+                    "args": {"command": 'python -c "assert True"'},
+                }
+            ]
+            if request.worker_transport == "tool_use":
+                return ChatResponse(
+                    content="",
+                    finish_reason="tool_calls",
+                    usage=TokenUsage(5, 8, 13),
+                    model_provider="fake",
+                    model_name="fake-subagent-readonly-fanout",
+                    raw_response=_tool_use_raw_response(tool_calls),
+                )
             content = {
                 "schema_version": "0.1.0",
                 "task_id": task_id,

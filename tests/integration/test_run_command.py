@@ -52,6 +52,35 @@ class FakePlanClient:
 
 class FakeExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
+        if request.worker_transport == "tool_use":
+            return ChatResponse(
+                content="",
+                finish_reason="tool_calls",
+                usage=TokenUsage(15, 25, 40),
+                model_provider="fake",
+                model_name="fake-execute",
+                raw_response=_tool_use_raw_response(
+                    [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "complete_module.py",
+                                "content": "def answer():\n    return 42\n",
+                                "overwrite": True,
+                            },
+                        },
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c "
+                                    '"from complete_module import answer; assert answer() == 42"'
+                                )
+                            },
+                        },
+                    ]
+                ),
+            )
         return ChatResponse(
             content=json.dumps(
                 {
@@ -118,6 +147,30 @@ class FakeReviewClient:
             model_name="fake-review",
             raw_response={},
         )
+
+
+def _tool_use_raw_response(tool_calls: list[dict]) -> dict:
+    return {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": f"call-{index + 1}",
+                            "type": "function",
+                            "function": {
+                                "name": call["tool_name"],
+                                "arguments": json.dumps(call.get("args") or {}, ensure_ascii=False),
+                            },
+                        }
+                        for index, call in enumerate(tool_calls)
+                    ],
+                }
+            }
+        ]
+    }
 
 
 class CombinedFastPathClient:
@@ -289,6 +342,25 @@ class FakeSequentialExecuteClient:
             path = "complete_module.py"
             body = "def answer():\n    return 42\n"
             command = 'python -c "from complete_module import answer; assert answer() == 42"'
+        tool_calls = [
+            {
+                "tool_name": "write_file",
+                "args": {"path": path, "content": body, "overwrite": True},
+            },
+            {
+                "tool_name": "run_command",
+                "args": {"command": command},
+            },
+        ]
+        if request.worker_transport == "tool_use":
+            return ChatResponse(
+                content="",
+                finish_reason="tool_calls",
+                usage=TokenUsage(15, 25, 40),
+                model_provider="fake",
+                model_name="fake-execute",
+                raw_response=_tool_use_raw_response(tool_calls),
+            )
         return ChatResponse(
             content=json.dumps(
                 {
@@ -298,14 +370,14 @@ class FakeSequentialExecuteClient:
                     "tool_calls": [
                         {
                             "tool_name": "write_file",
-                            "args": {"path": path, "content": body, "overwrite": True},
+                            "args": tool_calls[0]["args"],
                             "reason": "create artifact",
                         }
                     ],
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": command},
+                            "args": tool_calls[1]["args"],
                             "reason": "verify artifact",
                         }
                     ],
@@ -364,42 +436,66 @@ class FakeDecisionExecuteClient:
 
 class FakeApprovalExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = json.loads(request.messages[-1].content)["task"]["task_id"]
+        tool_calls = [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": (
+                        "python -c \"print('approval required')\" "
+                        "&& python -c \"print('approved')\""
+                    )
+                },
+            },
+            {
+                "tool_name": "write_file",
+                "args": {
+                    "path": "complete_module.py",
+                    "content": "def answer():\n    return 42\n",
+                    "overwrite": True,
+                },
+            },
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": (
+                        'python -c "from complete_module import answer; '
+                        'assert answer() == 42"'
+                    )
+                },
+            },
+        ]
+        if request.worker_transport == "tool_use":
+            return ChatResponse(
+                content="",
+                finish_reason="tool_calls",
+                usage=TokenUsage(15, 25, 40),
+                model_provider="fake",
+                model_name="fake-execute",
+                raw_response=_tool_use_raw_response(tool_calls),
+            )
         return ChatResponse(
             content=json.dumps(
                 {
                     "schema_version": "0.1.0",
-                    "task_id": json.loads(request.messages[-1].content)["task"]["task_id"],
+                    "task_id": task_id,
                     "summary": "Create artifact and verify with a shell operator.",
                     "tool_calls": [
                         {
                             "tool_name": "run_command",
-                            "args": {
-                                "command": (
-                                    "python -c \"print('approval required')\" "
-                                    "&& python -c \"print('approved')\""
-                                )
-                            },
+                            "args": tool_calls[0]["args"],
                             "reason": "exercise execution policy approval before changing files",
                         },
                         {
                             "tool_name": "write_file",
-                            "args": {
-                                "path": "complete_module.py",
-                                "content": "def answer():\n    return 42\n",
-                                "overwrite": True,
-                            },
+                            "args": tool_calls[1]["args"],
                             "reason": "create artifact",
                         },
                     ],
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {
-                                "command": (
-                                    'python -c "from complete_module import answer; '
-                                    'assert answer() == 42"'
-                                )
-                            },
+                            "args": tool_calls[2]["args"],
                             "reason": "verify behavior after approval",
                         }
                     ],

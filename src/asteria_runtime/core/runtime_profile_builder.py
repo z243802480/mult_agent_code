@@ -74,13 +74,18 @@ class RuntimeProfileBuilder:
 
         profile_base_id = f"profile-{worker_id}"
         model_purpose = self._model_purpose(task)
+        worker_transport = self._worker_transport_hint(task) or resolve_worker_transport(
+            policy=context.policy,
+            runtime_context=scoped,
+            task=task,
+        )
         role_contract = role_contract_for(
             role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
             purpose=model_purpose,
             policy=context.policy,
         )
         role_contract_dict = role_contract.to_dict()
-        role_contract_dict["worker_transport"] = resolve_worker_transport(policy=context.policy)
+        role_contract_dict["worker_transport"] = worker_transport
         model_selection = self._model_selection(task, context, model_purpose)
         model_tier = model_selection["selected_tier"]
         resolved_route = resolve_model_route(model_tier)
@@ -218,13 +223,18 @@ class RuntimeProfileBuilder:
         )
         scoped["capability_registry"] = loop_registry.registrations()
         scoped["route_guidance"] = self._route_guidance_for_task(context, purpose)
+        worker_transport = self._worker_transport_hint(task) or resolve_worker_transport(
+            policy=context.policy,
+            runtime_context=scoped,
+            task=task,
+        )
         scoped["agent_role_contract"] = {
             **role_contract_for(
                 role=str(task.get("assigned_agent_id") or task.get("role") or "CoderAgent"),
                 purpose=purpose,
                 policy=context.policy,
             ).to_dict(),
-            "worker_transport": resolve_worker_transport(policy=context.policy),
+            "worker_transport": worker_transport,
         }
         return scoped
 
@@ -567,6 +577,12 @@ class RuntimeProfileBuilder:
             return None
         value = hints.get(key)
         return str(value) if value else None
+
+    def _worker_transport_hint(self, task: dict) -> str | None:
+        explicit = self._runtime_hint(task, "worker_transport")
+        if explicit in {"json", "tool_use"}:
+            return explicit
+        return None
 
     def _worker_topology(self, task: dict, runtime_profile: RuntimeProfile) -> dict:
         hints = task.get("runtime_profile_hints")

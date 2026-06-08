@@ -4,7 +4,7 @@ import re
 
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.core.execution_preferences import apply_execution_preferences_to_task
-from asteria_runtime.core.fast_path_policy import classify_risk_tier
+from asteria_runtime.core.fast_path_policy import classify_fast_path, classify_risk_tier
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.task_contract import (
     completion_contract,
@@ -956,6 +956,7 @@ class RequirementPlanner:
             str(task.get("title") or task.get("description") or ""),
             task=task,
         ).risk_tier
+        self._maybe_hint_worker_transport(task, goal_spec)
         task["merge_strategy"] = "none"
         self._harden_broad_write_scope(task)
         self._mark_disjoint_write_scope(task)
@@ -965,6 +966,33 @@ class RequirementPlanner:
             f"{task.get('notes', '')} Multi-agent strategy: {strategy['mode']} "
             f"(max_child_workers={strategy['max_child_workers']}; {strategy['reason']})."
         ).strip()
+
+    def _maybe_hint_worker_transport(self, task: dict, goal_spec: dict | None) -> None:
+        hints = task.get("runtime_profile_hints")
+        if isinstance(hints, dict) and hints.get("worker_transport") in {"json", "tool_use"}:
+            return
+        if not isinstance(goal_spec, dict):
+            goal_spec = {}
+        fast_path = classify_fast_path(
+            str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or task.get("description") or task.get("title") or ""),
+            target_files=self._worker_transport_target_files(task),
+            goal_spec=goal_spec,
+            task=task,
+        )
+        if fast_path.task_kind not in {"doc_update", "simple_file", "single_file_bugfix"}:
+            return
+        hints = hints if isinstance(hints, dict) else {}
+        hints = dict(hints)
+        hints["worker_transport"] = "tool_use"
+        task["runtime_profile_hints"] = hints
+
+    def _worker_transport_target_files(self, task: dict) -> list[str]:
+        files: list[str] = []
+        for key in ("expected_artifacts", "expected_changed_files", "write_scope", "read_scope"):
+            for item in task.get(key) or []:
+                if isinstance(item, str) and item.strip():
+                    files.append(item)
+        return list(dict.fromkeys(files))
 
     def _harden_broad_write_scope(self, task: dict) -> None:
         broad = {"src/", "tests/", "docs/", "docs/zh/"}

@@ -2,7 +2,13 @@ import json
 from pathlib import Path
 
 from asteria_runtime.agents.coder_agent import CoderAgent
-from asteria_runtime.core.worker_transport import extract_tool_calls
+from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
+from asteria_runtime.core.worker_transport import (
+    execution_action_from_tool_calls,
+    extract_tool_calls,
+    resolve_worker_transport,
+)
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
@@ -97,3 +103,77 @@ def test_extract_tool_calls_reads_openai_shape() -> None:
     calls = extract_tool_calls(raw)
     assert calls[0]["tool_name"] == "run_command"
     assert calls[0]["args"]["command"] == "python -m pytest"
+
+
+def test_tool_use_execution_action_preserves_preflight_and_verification_order() -> None:
+    action = execution_action_from_tool_calls(
+        task={"task_id": "task-0001"},
+        run_id="run-0001",
+        sequence=1,
+        tool_calls=[
+            {
+                "tool_name": "run_command",
+                "args": {"command": "python -c \"print('approval required')\" && echo ok"},
+            },
+            {
+                "tool_name": "write_file",
+                "args": {"path": "complete_module.py", "content": "def answer():\n    return 42\n"},
+            },
+            {
+                "tool_name": "run_command",
+                "args": {"command": "python -c \"from complete_module import answer\""},
+            },
+        ],
+    )
+
+    assert [call["tool_name"] for call in action["tool_calls"]] == [
+        "run_command",
+        "write_file",
+    ]
+    assert [call["tool_name"] for call in action["verification"]] == ["run_command"]
+
+
+def test_resolve_worker_transport_prefers_tool_use_for_single_file_fast_path() -> None:
+    task = {
+        "task_id": "task-0001",
+        "task_kind": "diagnostic",
+        "title": "Fix parser behavior",
+        "description": "Fix parser behavior",
+        "write_scope": ["src/parser.py"],
+        "expected_artifacts": ["src/parser.py"],
+        "expected_changed_files": ["src/parser.py"],
+    }
+
+    assert resolve_worker_transport(task=task) == "tool_use"
+
+
+def test_runtime_profile_builder_projects_tool_use_for_single_file_fast_path(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path("schemas"))
+    builder = RuntimeProfileBuilder(validator)
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id=None,
+        policy={"permissions": {}, "agent_loop": {"worker_transport": "json"}},
+        validator=validator,
+    )
+    task = {
+        "task_id": "task-0001",
+        "role": "CoderAgent",
+        "task_kind": "diagnostic",
+        "description": "Fix parser behavior",
+        "allowed_tools": ["write_file", "run_command"],
+        "expected_artifacts": ["src/parser.py"],
+        "expected_changed_files": ["src/parser.py"],
+        "write_scope": ["src/parser.py"],
+        "read_scope": ["src/parser.py"],
+        "parallel_safety": "serial",
+    }
+
+    mount = builder.build_and_record(
+        context=context,
+        task=task,
+        worker_id="worker-1",
+        runtime_context={},
+    )
+
+    assert mount.runtime_context["agent_role_contract"]["worker_transport"] == "tool_use"

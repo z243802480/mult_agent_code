@@ -47,8 +47,9 @@ class CoderAgent:
             goal_spec=goal_spec,
         )
         transport = resolve_worker_transport(runtime_context=base_runtime_context)
+        system_prompt = self._system_prompt(transport)
         messages = [
-            ChatMessage(role="system", content=self._system_prompt()),
+            ChatMessage(role="system", content=system_prompt),
             ChatMessage(
                 role="user",
                 content=self._user_prompt(
@@ -57,6 +58,7 @@ class CoderAgent:
                     project_config,
                     available_tools,
                     prompt_runtime_context,
+                    transport,
                 ),
             ),
         ]
@@ -102,24 +104,38 @@ class CoderAgent:
                     )
             except CoderAgentError as exc:
                 last_error = exc
+                retry_prompt = self._retry_prompt(exc, transport, available_tools)
                 messages.extend(
                     [
                         ChatMessage(role="assistant", content=response.content[:4000]),
-                        ChatMessage(
-                            role="user",
-                            content=(
-                                "Your previous response could not be used: "
-                                f"{exc}. Return only one valid JSON object matching the schema. "
-                                "For work-bearing tasks, use a tool action to produce or verify "
-                                "the expected result, or use ask/replan when progress is blocked."
-                            ),
-                        ),
+                        ChatMessage(role="user", content=retry_prompt),
                     ]
                 )
                 continue
             return action
         raise CoderAgentError(
             str(last_error) if last_error else "ExecutionAction generation failed"
+        )
+
+    def _retry_prompt(
+        self,
+        exc: Exception,
+        transport: str,
+        available_tools: list[str],
+    ) -> str:
+        tools_text = ", ".join(available_tools) or "the available tools"
+        if transport == "tool_use":
+            return (
+                "Your previous response could not be used: "
+                f"{exc}. Return one assistant message with native tool calls only. "
+                "Do not return plain JSON or markdown. Use the available tools "
+                f"({tools_text}) to complete the task, and include verification if needed."
+            )
+        return (
+            "Your previous response could not be used: "
+            f"{exc}. Return only one valid JSON object matching the schema. "
+            "For work-bearing tasks, use a tool action to produce or verify "
+            "the expected result, or use ask/replan when progress is blocked."
         )
 
     def _validated_action_from_tool_calls(
@@ -264,7 +280,29 @@ class CoderAgent:
             raise CoderAgentError(f"ExecutionAction response was not valid JSON: {exc}") from exc
         return parsed
 
-    def _system_prompt(self) -> str:
+    def _system_prompt(self, transport: str) -> str:
+        if transport == "tool_use":
+            return """You are CoderAgent in a local-first autonomous development runtime.
+
+Use native tool calls when work is needed. Do not return plain JSON or markdown.
+
+You must:
+- Make a small, verifiable change for the assigned task.
+- Use only tools from available_tools. These are model-facing primitives backed by runtime policy.
+- Prefer edit_file for editing existing files and write_file for new files.
+- Prefer grep/glob/read_file/list_files before shell, and prefer run_tests for verification.
+- Include verification tool calls when possible.
+- Use cross-platform Python commands for verification; do not rely on Unix-only commands like cat, wc, grep, or sed.
+- Do not use shell control operators or redirection in verification commands: &&, ||, ;, |, <, >, 2>, 2>&1.
+- Do not use destructive cleanup commands like rm -rf; use a Python command for temporary test cleanup.
+- If a verification command is expected to return a non-zero code, pass expected_returncodes in run_command args.
+- Avoid destructive commands, global installs, deployment, or network calls unless explicitly allowed.
+- Keep the implementation practical and production-oriented; do not create placeholder-only files.
+- Use stop only after an execution or verification observation proves the task is complete, unsafe, or unable to continue. Do not stop on the first round of a task that still has expected work.
+- If the task contract is too narrow, request a runtime change with runtime_requests instead of attempting an out-of-scope tool call.
+- For a new documentation or text-only artifact with an explicit expected_artifacts/write_scope path, write the file directly. Do not request more context merely to create a standalone checklist, note, README, markdown, or text file.
+- For documentation/text-only verification, prefer a simple Python existence-and-nonempty check for the expected file. Do not generate complex Python one-liners that inspect unrelated files.
+"""
         return """You are CoderAgent in a local-first autonomous development runtime.
 
 Return only valid JSON matching the ExecutionAction schema. Do not wrap in markdown.
@@ -296,6 +334,7 @@ You must:
         project_config: dict,
         available_tools: list[str],
         runtime_context: dict,
+        transport: str,
     ) -> str:
         slim = ((runtime_context.get("context_policy") or {}).get("mode")) == "slim"
         payload = {
@@ -318,7 +357,35 @@ You must:
             "model_tool_surface": (
                 {} if slim else runtime_context.get("model_tool_surface", {})
             ),
-            "output_schema": {
+        }
+        if transport == "tool_use":
+            payload["tool_use_contract"] = {
+                "mode": "native_tool_calls",
+                "instruction": (
+                    "Respond with tool calls only. Do not emit a JSON object in the message body."
+                ),
+                "preferred_pattern": {
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {"path": "example.txt", "content": "...", "overwrite": True},
+                            "reason": "why this call is needed",
+                        }
+                    ],
+                    "verification": [
+                        {
+                            "tool_name": "run_tests",
+                            "args": {
+                                "command": "python -m pytest",
+                                "expected_returncodes": [0],
+                            },
+                            "reason": "verify the change; use expected_returncodes for expected non-zero CLI usage checks",
+                        }
+                    ],
+                },
+            }
+        else:
+            payload["output_schema"] = {
                 "schema_version": "0.1.0",
                 "task_id": task["task_id"],
                 "summary": "short execution summary",
@@ -362,8 +429,7 @@ You must:
                     }
                 },
                 "completion_notes": "what should be true after execution",
-            },
-        }
+            }
         return json.dumps(payload, ensure_ascii=False, indent=2)
 
     def _prompt_task(self, task: dict) -> dict:
