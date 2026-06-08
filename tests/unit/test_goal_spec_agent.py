@@ -204,3 +204,39 @@ def test_goal_spec_agent_preserves_exact_user_goal_over_model_rewrite() -> None:
     result = agent.generate("Create notes stored in notes.json.", {}, "run-1")
 
     assert result["original_goal"] == "Create notes stored in notes.json."
+
+
+def test_goal_spec_agent_preserves_explicit_execution_controls() -> None:
+    agent = GoalSpecAgent(FakeClient(valid_goal_spec_json()), SchemaValidator(Path("schemas")))
+
+    result = agent.generate(
+        "Delegate the review to a subagent. Inspect all Markdown files under input/.",
+        {},
+        "run-1",
+    )
+
+    assert result["execution_preferences"] == {
+        "delegation": "required",
+        "requested_capability": "subagent",
+        "requested_read_scope": ["input/"],
+    }
+
+
+def test_goal_spec_agent_does_not_allow_model_to_expand_user_execution_controls() -> None:
+    content = valid_goal_spec_json().replace(
+        '"budget": {"max_iterations": 8, "max_model_calls": 60}',
+        (
+            '"execution_preferences": {"delegation": "required", '
+            '"requested_capability": "subagent", "requested_read_scope": ["reports/"]}, '
+            '"budget": {"max_iterations": 8, "max_model_calls": 60}'
+        ),
+    )
+    agent = GoalSpecAgent(FakeClient(content), SchemaValidator(Path("schemas")))
+
+    result = agent.generate("Create a local review report.", {}, "run-1")
+
+    assert result["execution_preferences"] == {
+        "delegation": "auto",
+        "requested_capability": None,
+        "requested_read_scope": [],
+    }

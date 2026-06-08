@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
 from asteria_runtime.core.design_intel_contract import apply_research_type_to_goal_spec
+from asteria_runtime.core.execution_preferences import normalize_execution_preferences
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
 from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
 from asteria_runtime.storage.schema_validator import SchemaValidationError, SchemaValidator
@@ -113,6 +114,7 @@ class GoalSpecAgent:
                 "Verification evidence is recorded.",
             ],
             "verification_strategy": ["Run the smallest local verification for the requested output."],
+            "execution_preferences": normalize_execution_preferences(None, original_goal=goal),
             "budget": {
                 "max_iterations": 3,
                 "max_model_calls": 12,
@@ -141,6 +143,10 @@ class GoalSpecAgent:
         )
         budget = normalized.get("budget")
         normalized["budget"] = budget if isinstance(budget, dict) else {}
+        normalized["execution_preferences"] = normalize_execution_preferences(
+            normalized.get("execution_preferences"),
+            original_goal=original_goal,
+        )
         return apply_research_type_to_goal_spec(normalized)
 
     def _requirements(self, value: object, fallback_description: str) -> list[dict]:
@@ -234,6 +240,7 @@ You must:
 - Separate assumptions, constraints, non-goals, and expanded requirements.
 - Include must/should/could priorities.
 - Include a verifiable definition_of_done and verification_strategy.
+- Preserve explicit execution controls such as required subagent delegation and named read directories.
 - Prefer local-first and privacy-safe defaults.
 """
 
@@ -266,6 +273,11 @@ Return this exact JSON shape:
   "target_outputs": [],
   "definition_of_done": [],
   "verification_strategy": [],
+  "execution_preferences": {{
+    "delegation": "auto|preferred|required",
+    "requested_capability": "subagent|null",
+    "requested_read_scope": []
+  }},
   "budget": {{
     "max_iterations": 8,
     "max_model_calls": 60

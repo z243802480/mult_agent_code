@@ -3,7 +3,7 @@
 更新时间：2026-06-06  
 状态：**已完成**  
 依赖：S45k 规划、runtime resume/replan 已存在  
-计划：[`docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md`](../../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md)
+计划：[`docs/zh/Asteria Studio 产品设计.md`](../../docs/zh/Asteria%20Studio%20产品设计.md)
 
 ## 1. 对标（Claude Code `/rewind`）
 

@@ -26,6 +26,6 @@ python scripts/harness_repeatability_pulse.py --root . --with-b6  # 维护者 + 
 ## 备注
 
 - B6 `--with-b6` friction 以维护者环境为准（decide/debug/resume ≤ gate）。
-- Studio 新面板仍遵循 F2 friction 规则；harness UX 渐进放开见 [`TRIPLE_TRACK_MAINT_PLAN.md`](../plans/TRIPLE_TRACK_MAINT_PLAN.md) §6。
+- Studio 新面板仍遵循 F2 friction 规则；harness UX 渐进放开见 [`研发总计划.md`](../研发总计划.md) §6。
 
 **下一 ACTIVE_SLICE**：S56（Beta 任务包脉搏）

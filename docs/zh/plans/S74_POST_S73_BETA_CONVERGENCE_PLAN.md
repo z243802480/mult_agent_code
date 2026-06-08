@@ -152,3 +152,67 @@ studio_runtime_consistent
 - 角色上下文投影后的当前源码真实灰度已通过：`validation_small_cli` 风格任务耗时 `32.565s`，2 次模型调用、3 次工具调用、0 repair、0 strong call；首轮 Coder 返回 tool action，写入 `greet.py` 并通过两条真实命令验证，Review 走 deterministic-first。
 - GoalSpec context estimate 从约 `32.8k` 降至 `1.4k` tokens，真实 input 从约 `26.5k` 降至 `1.3k`；Coder context estimate 约 `8.0k`。证据：`.asteria/verification/s74-role-context-gray.json`。
 - 下一步继续用 2–4 个真实 Beta 任务检查角色上下文投影是否对 doc update、bugfix、subagent 路径同样成立；不得为单次 provider outage 增加 recovery/parser 分支。
+
+### 2026-06-08 Beta 验证扩展
+
+| 路径 | 结果 | 调用与耗时 | 结论 |
+| --- | --- | --- | --- |
+| 当前源码 doc update | 通过 | `64.842s`；3 model calls；2 tool calls；0 repair；medium only | 角色上下文主路径成立；streaming fallback 与一次 compact 仍有优化空间 |
+| 当前源码 bugfix + repair | 通过 | `94.635s`；5 model calls；4 tool calls；1 repair；medium + strong | 失败正确进入 repair 并完成验证；strong review streaming failure 是主要耗时证据 |
+| subagent Execute 机制灰度 | 通过 | 4 条集成路径全绿；spawn fake pulse `23/23` | 父子 evidence、bounded child loop、readonly fanout 与写入阻断成立；尚缺真实 provider 模型主动选择 subagent 的任务证明 |
+| 文档真源与维护 pulse | 通过 | documentation contracts `13 passed`；maintainer pulse 全绿 | pulse 已从 `vibe_slices.json` 动态读取 S74，旧 active 值与过时过程计划已清理 |
+
+当前判断：
+
+1. 默认单任务与 repair 主路径已经可用，不新增 parser/recovery 尾巴。
+2. 下一项最高价值验证是“真实 provider 模型选择 subagent 并回收结果”；在此之前不扩大 subagent 默认使用面。
+3. bugfix 的 strong review 需要继续观察真实样本；若持续拉长简单任务，优先收缩 route/prompt，而不是增加 timeout 分支。
+4. L3 与 parallel writes 仍保持显式 opt-in，只有真实任务证明收益后才进入 DecisionPoint。
+
+### 2026-06-08 真实 provider subagent 主路径验证
+
+任务明确要求委派独立 subagent 审查四份文档并回收报告。运行最终完成、Review 通过，但真实 evidence 显示：
+
+- 首轮与恢复后的 `AgentLoopDecision` 都选择 `tool`，未选择 `subagent`。
+- 两个 worker 均为 `primary`；`subagent_child_plans.jsonl` 不存在。
+- GoalSpec 首轮遗漏 `input/` read scope，正常读取触发 DecisionPoint；批准后同一 session 能恢复并完成。
+- 生成报告文本自称 `Reviewer: Subagent (CoderAgent)`，但执行 evidence 不支持该声明。
+- run 已完成且 blockers 为空，但 `final_report_summary.next_actions` / `goal_policy` 仍残留已解决的 `decide --decision-id decision-0001`。
+
+结论：当前不能签字“真实 provider subagent 主路径可用”。下一步不应增加更多 spawn 规则，而应修正三处主链契约：
+
+1. GoalSpec/TaskPlan 必须保留用户明确的 delegation intent 与所需 read scope。
+2. 用户可见角色声明必须来自 worker/dispatch evidence，不能来自模型自由文本。
+3. decision resolve + resume 完成后必须刷新 final summary 与下一步，清除已解决 DecisionPoint。
+
+证据目录：`.asteria/tmp/s74-real-subagent/.asteria/runs/run-20260608-0001/`。
+
+### 2026-06-08 明确委派契约纠正与复验
+
+本轮不新增 spawn 规则，而是按成熟产品的控制面原则统一修正执行事实契约：
+
+- 新增窄 `execution_preferences`：用户明确要求的 delegation 与 read scope 从原始目标进入 GoalSpec/Task；模型不能自行扩写权限。
+- Runtime 在父任务首轮校验 `delegation=required`；模型若返回直接 tool action，统一纠正为 `subagent`，child worker 不重复委派。
+- 显式 read scope 采用能力增量语义，与默认可读输出路径合并，不再覆盖已有能力。
+- run 完成且无 pending DecisionPoint 时，final summary / active goal memory 清除已解决的旧 `decide` 指引。
+
+纠正过程：
+
+1. 首次复验已产生真实 `subagent` decision 与 child evidence，但发现显式 `input/` 覆盖默认输出 read scope；改为增量合并。
+2. 第二次复验发现 GoalSpec 模型自行加入历史 `reports/`；改为执行控制只从用户原始目标提取。
+3. 干净 workspace 复验最终完成、Review 通过、输出存在，`input/` scope、subagent dispatch、child plan 与最终结果一致。
+
+复验结论：
+
+| 项 | 结果 |
+| --- | --- |
+| delegation truth | 首轮 `subagent` decision；`agent_loop_execution_results.jsonl` 有 dispatch；`subagent_child_plans.jsonl` 存在 |
+| scope truth | GoalSpec requested read scope 仅 `input/`；Task 在此基础上合并默认可读输出路径 |
+| final state | completed；Review pass；0 blocker；下一步 `accept` |
+| 成本 | 约 10 分钟；17 model calls；多轮 repair |
+
+当前签字：**明确委派事实契约可用，但 subagent 默认路径效率不合格，暂不放量。**
+
+下一项最高价值工作不是增加更多编排能力，而是减少父任务重入、child 无效 JSON、Debug 重写和重复 Review 调用；目标是让同类小任务在保留 evidence/权限隔离的前提下恢复到分钟级。
+
+证据目录：`.asteria/tmp/s74-real-subagent-clean/.asteria/runs/run-20260608-0001/`。

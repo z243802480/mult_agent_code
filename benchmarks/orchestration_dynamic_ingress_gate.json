@@ -2,7 +2,7 @@
   "schema_version": "0.1.0",
   "purpose": "L3 dynamic orchestration ingress gate — strong model selects run_dynamic_orchestration vs session paths",
   "brief": "benchmarks/reference_briefs/S70-dynamic-orchestration-ingress-eval.md",
-  "plan": "docs/zh/plans/S70-S71-orchestration-ingress-band-plan.md",
+  "plan": "docs/zh/研发总计划.md",
   "requires_dynamic_workflows_gray": true,
   "thresholds": {
     "min_hit_rate": 1.0,

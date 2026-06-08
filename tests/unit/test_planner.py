@@ -42,6 +42,40 @@ def test_requirement_planner_adds_expected_artifacts_and_quality_notes() -> None
     assert "Quality:" in task["notes"]
 
 
+def test_requirement_planner_propagates_explicit_execution_preferences() -> None:
+    goal_spec = {
+        "schema_version": "0.1.0",
+        "goal_id": "goal-0001",
+        "original_goal": "Delegate the review to a subagent and inspect input/.",
+        "normalized_goal": "Review input documents",
+        "target_outputs": ["reports/review.md"],
+        "definition_of_done": ["Review exists"],
+        "verification_strategy": ["Verify report exists"],
+        "execution_preferences": {
+            "delegation": "required",
+            "requested_capability": "subagent",
+            "requested_read_scope": ["input/"],
+        },
+        "expanded_requirements": [
+            {
+                "id": "req-0001",
+                "priority": "must",
+                "description": "Create reports/review.md",
+                "acceptance": ["Report exists"],
+            }
+        ],
+    }
+
+    task = RequirementPlanner().build_task_plan(
+        goal_spec,
+        execution_profile=SESSION_AGENT,
+    )["tasks"][0]
+
+    assert task["execution_preferences"]["delegation"] == "required"
+    assert "input/" in task["read_scope"]
+    assert "reports/review.md" in task["read_scope"]
+
+
 def test_validation_probe_hint_forces_readonly_fanout_strategy() -> None:
     task_plan = {
         "tasks": [

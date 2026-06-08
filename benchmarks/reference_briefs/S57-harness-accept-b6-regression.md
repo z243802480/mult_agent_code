@@ -3,7 +3,7 @@
 更新时间：2026-06-07  
 状态：**✅ 已交付**  
 依赖：S55 · S56  
-计划：[`docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md`](../../docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md)
+计划：[`docs/zh/研发总计划.md`](../../docs/zh/研发总计划.md)
 
 ## 1. 调研结论
 

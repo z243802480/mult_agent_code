@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
+from asteria_runtime.core.execution_preferences import apply_execution_preferences_to_task
 from asteria_runtime.core.fast_path_policy import classify_risk_tier
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.task_contract import (
@@ -97,7 +98,7 @@ class RequirementPlanner:
             }
             task["completion_contract"] = completion_contract(task)
             task["verification_policy"] = self._verification_policy(task, goal_spec)
-            self._apply_runtime_contract(task)
+            self._apply_runtime_contract(task, goal_spec)
             tasks.append(task)
 
         if not tasks:
@@ -136,7 +137,7 @@ class RequirementPlanner:
             }
             task["completion_contract"] = completion_contract(task)
             task["verification_policy"] = self._verification_policy(task, goal_spec)
-            self._apply_runtime_contract(task)
+            self._apply_runtime_contract(task, goal_spec)
             tasks.append(task)
         return {"schema_version": "0.1.0", "tasks": tasks}
 
@@ -260,7 +261,7 @@ class RequirementPlanner:
         }
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = self._verification_policy(task, goal_spec)
-        self._apply_runtime_contract(task)
+        self._apply_runtime_contract(task, goal_spec)
         return task
 
     def _targeted_repair_description(self, goal_spec: dict) -> str:
@@ -340,7 +341,7 @@ class RequirementPlanner:
         }
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = self._verification_policy(task, goal_spec)
-        self._apply_runtime_contract(task)
+        self._apply_runtime_contract(task, goal_spec)
         return task
 
     def _atomic_multifile_acceptance(self, goal_spec: dict, artifacts: list[str]) -> list[str]:
@@ -495,7 +496,7 @@ class RequirementPlanner:
         }
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = self._verification_policy(task, goal_spec)
-        self._apply_runtime_contract(task)
+        self._apply_runtime_contract(task, goal_spec)
         return task
 
     def _session_agent_task_kind(self, requirements: list[dict], goal_spec: dict) -> str:
@@ -591,7 +592,7 @@ class RequirementPlanner:
         }
         task["completion_contract"] = completion_contract(task)
         task["verification_policy"] = self._verification_policy(task, goal_spec)
-        self._apply_runtime_contract(task)
+        self._apply_runtime_contract(task, goal_spec)
         return task
 
     def _single_file_artifact(self, goal_spec: dict) -> str:
@@ -942,7 +943,9 @@ class RequirementPlanner:
             "commands": commands[:5],
         }
 
-    def _apply_runtime_contract(self, task: dict) -> None:
+    def _apply_runtime_contract(self, task: dict, goal_spec: dict | None = None) -> None:
+        task["read_scope"] = read_scope(task)
+        apply_execution_preferences_to_task(task, goal_spec)
         task["read_scope"] = read_scope(task)
         task["write_scope"] = write_scope(task)
         task["context_requirements"] = context_requirements(task)

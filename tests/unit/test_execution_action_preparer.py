@@ -432,3 +432,55 @@ def test_preparer_rejects_empty_action() -> None:
             ),
             {},
         )
+
+
+def test_preparer_enforces_required_subagent_only_on_parent_first_round() -> None:
+    action = {
+        "summary": "inspect directly",
+        "tool_calls": [{"tool_name": "read_file", "args": {"path": "input/a.md"}}],
+        "verification": [],
+        "runtime_requests": [],
+        "agent_loop_decision": {
+            "schema_version": "0.1.0",
+            "decision_id": "agent-loop-decision-0001",
+            "run_id": "run-1",
+            "task_id": "task-0001",
+            "created_at": "2026-06-08T00:00:00+08:00",
+            "next_action": {
+                "action": "tool",
+                "reason": "inspect directly",
+                "target_task_id": "task-0001",
+                "capability_ref": {"type": "tool", "name": "read_file"},
+                "expected_observation": {},
+                "risk": "low",
+                "budget_hint": {},
+                "evidence_refs": [],
+            },
+        },
+    }
+    task = _task(
+        allowed_tools=["read_file"],
+        read_scope=["input/"],
+        write_scope=["reports/review.md"],
+        execution_preferences={
+            "delegation": "required",
+            "requested_capability": "subagent",
+            "requested_read_scope": ["input/"],
+        },
+        verification_policy={"required": False, "commands": []},
+    )
+
+    prepared = _preparer().prepare(action, task, {}, round_index=1)
+    later = _preparer().prepare(action, task, {}, round_index=2)
+    child = _preparer().prepare(
+        action,
+        {**task, "runtime_profile_hints": {"worker_kind": "subagent"}},
+        {},
+        round_index=1,
+    )
+
+    assert prepared["agent_loop_decision"]["next_action"]["action"] == "subagent"
+    assert prepared["agent_loop_decision"]["next_action"]["capability_ref"]["type"] == "subagent"
+    assert prepared["tool_calls"] == []
+    assert later["agent_loop_decision"]["next_action"]["action"] == "tool"
+    assert child["agent_loop_decision"]["next_action"]["action"] == "tool"

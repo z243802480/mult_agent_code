@@ -1,7 +1,7 @@
 # Slice S65 — Isolated Parallel Write Production Path (Wave 5 / L2)
 
-更新时间：2026-06-07  
-状态：**active — L2 生产路径 gate**  
+更新时间：2026-06-07
+状态：**closed · L2 production-path historical reference**
 依赖：Wave 4 ✅ · S23/S34 蜂群栈 · [参考对齐报告](../docs/zh/reports/S64-W4-W5-reference-alignment-20260607.md)
 
 ## observed_pattern（Cursor / CC / Codex · L2）

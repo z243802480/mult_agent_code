@@ -3,7 +3,7 @@
 **版本**：1.0.0  
 **状态**：current — S61 R0–R5 哲学真源  
 **日期**：2026-06-07  
-**关联**：[RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md](./RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md) · [RUNTIME_SESSION_AGENT_RFC.md](./RUNTIME_SESSION_AGENT_RFC.md) · [SWARM_SANDBOX_RFC.md](../deferred/SWARM_SANDBOX_RFC.md) · [大模型循环与动态上下文设计.md](../大模型循环与动态上下文设计.md) §3.1
+**关联**：[RUNTIME_SESSION_AGENT_RFC.md](./RUNTIME_SESSION_AGENT_RFC.md) · [SWARM_SANDBOX_RFC.md](../deferred/SWARM_SANDBOX_RFC.md) · [大模型循环与动态上下文设计.md](../大模型循环与动态上下文设计.md) §3.1
 
 ---
 

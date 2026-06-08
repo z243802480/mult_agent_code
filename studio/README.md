@@ -117,7 +117,7 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | Global settings UI | 🔲 defer |
 | Git worktree 并行 session | 🔲 defer RFC |
 
-**对标与收尾**：[`STUDIO_CLAUDE_CODE_PARITY.md`](../docs/zh/plans/STUDIO_CLAUDE_CODE_PARITY.md) · [`STUDIO_PARITY_CLOSURE_PLAN.md`](../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md) · **签字**：[`S45-S50-studio-parity-signoff-20260606.md`](../docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md)
+**产品设计真源**：[`Asteria Studio 产品设计.md`](../docs/zh/Asteria%20Studio%20产品设计.md) · [`Studio 会话与上下文设计准则.md`](../docs/zh/Studio%20会话与上下文设计准则.md) · **历史签字**：[`S45-S50-studio-parity-signoff-20260606.md`](../docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md)
 
 ---
 

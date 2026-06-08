@@ -3,7 +3,7 @@
 更新时间：2026-06-06  
 状态：**✅ 基线已交付 · F2 dogfood 待招募**  
 依赖：S53 parity signoff  
-计划：[`docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md`](../../docs/zh/plans/STUDIO_PARITY_CLOSURE_PLAN.md) § Phase F2
+计划：[`docs/zh/Asteria Studio 产品设计.md`](../../docs/zh/Asteria%20Studio%20产品设计.md) § Phase F2
 
 ## 1. 目标
 

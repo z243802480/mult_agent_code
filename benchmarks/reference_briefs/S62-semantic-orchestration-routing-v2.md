@@ -1,8 +1,8 @@
 # Slice S62 — Semantic Orchestration Routing v2
 
-更新时间：2026-06-07  
-状态：**active · S62-1/2/3/4/5 ✅ · model+strong**  
-依赖：S61 R0–R5 · Studio orchestration hook  
+更新时间：2026-06-07
+状态：**closed · S62-1/2/3/4/5 signed · historical reference**
+依赖：S61 R0–R5 · Studio orchestration hook
 哲学：[`docs/zh/plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](../../docs/zh/plans/RUNTIME_MULTI_DISPATCH_MODEL.md) §8
 
 ## 架构原则（2026-06 收束）

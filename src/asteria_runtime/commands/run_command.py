@@ -708,6 +708,21 @@ class RunCommand:
         run_dir = self.root / ".asteria" / "runs" / run_id
         current_blocker = self._optional_str(status_payload.get("current_blocker"))
         recommended = self._optional_str(status_payload.get("recommended_next_command"))
+        blockers = self._string_list(status_payload.get("blockers"))
+        next_actions = self._string_list(status_payload.get("next_actions"))
+        if status == "completed" and not self._pending_decisions(run_dir):
+            current_blocker = self._clear_resolved_decision_guidance(current_blocker)
+            recommended = self._clear_resolved_decision_guidance(recommended)
+            blockers = [
+                item
+                for item in blockers
+                if self._clear_resolved_decision_guidance(item) is not None
+            ]
+            next_actions = [
+                item
+                for item in next_actions
+                if self._clear_resolved_decision_guidance(item) is not None
+            ]
         model_route_timeline_path = self._write_model_route_timeline(run_id)
         model_route_timeline = self._model_route_timeline(run_dir, limit=20)
         workspace_envelope = self._workspace_envelope(run_dir)
@@ -729,6 +744,10 @@ class RunCommand:
         workflow_state = self._optional_str(status_payload.get("workflow_state"))
         status_payload_with_todo = {
             **status_payload,
+            "current_blocker": current_blocker,
+            "recommended_next_command": recommended,
+            "blockers": blockers,
+            "next_actions": next_actions,
             "run_status": status_payload.get("run_status") or self._run_record_summary(run_id),
             "task_summary": status_payload.get("task_summary")
             or {"total": task_count, "remaining": task_count - done_count},
@@ -796,8 +815,8 @@ class RunCommand:
             "model_route_timeline": model_route_timeline,
             "file_changes": file_changes,
             "validation_conclusion": validation_conclusion,
-            "blockers": self._string_list(status_payload.get("blockers")),
-            "next_actions": self._string_list(status_payload.get("next_actions")),
+            "blockers": blockers,
+            "next_actions": next_actions,
             "goal_policy": self._goal_policy_summary(run_dir, status_payload),
             "updated_at": now_iso(),
         }
@@ -806,8 +825,8 @@ class RunCommand:
         self._write_active_goal_memory(
             run_id=run_id,
             review_status=review_status,
-            blockers=self._string_list(status_payload.get("blockers")),
-            next_actions=self._string_list(status_payload.get("next_actions")),
+            blockers=blockers,
+            next_actions=next_actions,
         )
         return path
 
@@ -1849,15 +1868,38 @@ class RunCommand:
             if isinstance(status_payload.get("current_context"), dict)
             else None
         )
-        if isinstance(context_policy, dict) and context_policy:
+        if isinstance(context_policy, dict) and context_policy and not self._resolved_decision_policy(
+            run_dir, context_policy
+        ):
             return context_policy
         marker = self._read_unvalidated_json(run_dir / "goal_policy.json")
         marker_policy = marker.get("goal_policy")
-        if isinstance(marker_policy, dict) and marker_policy:
+        if isinstance(marker_policy, dict) and marker_policy and not self._resolved_decision_policy(
+            run_dir, marker_policy
+        ):
             return marker_policy
         report = self._read_json_if_exists(run_dir / "eval_report.json", "eval_report")
         policy = (report.get("trajectory_eval") or {}).get("failure_classification")
         return policy if isinstance(policy, dict) else {}
+
+    def _resolved_decision_policy(self, run_dir: Path, policy: dict) -> bool:
+        category = str(policy.get("category") or policy.get("action") or "").lower()
+        recommended = str(policy.get("recommended_command") or "").lower()
+        return not self._pending_decisions(run_dir) and (
+            category == "decision_required" or recommended.startswith("decide")
+        )
+
+    def _clear_resolved_decision_guidance(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        if normalized.startswith(("decide ", "asteria decide", "run `asteria decide")):
+            return None
+        if "decision-" in normalized and any(
+            marker in normalized for marker in {"resolve", "pending", "waiting", "decide"}
+        ):
+            return None
+        return value
 
     def _read_json_if_exists(self, path: Path, schema_name: str) -> dict:
         if not path.exists():

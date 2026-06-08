@@ -1,8 +1,8 @@
 # Slice S64-W4 — Orchestration Workflows Gray Probe
 
-更新时间：2026-06-07  
-状态：**active — Wave 4 maintainer probe**  
-依赖：Wave 3 catalog gray ✅ · S23 real_disjoint probe · S62/S63 eval  
+更新时间：2026-06-07
+状态：**closed · Wave 4 historical reference**
+依赖：Wave 3 catalog gray ✅ · S23 real_disjoint probe · S62/S63 eval
 
 **调研**：[`docs/zh/reports/S64-parallel-rollout-research-20260607.md`](../../docs/zh/reports/S64-parallel-rollout-research-20260607.md)
 

@@ -379,6 +379,7 @@ You must:
             "allowed_tools",
             "risk_tier",
             "parallel_safety",
+            "execution_preferences",
         )
         return {key: task[key] for key in keys if key in task}
 
@@ -390,6 +391,7 @@ You must:
             "definition_of_done",
             "constraints",
             "target_outputs",
+            "execution_preferences",
         )
         return {key: goal_spec[key] for key in keys if key in goal_spec}
 

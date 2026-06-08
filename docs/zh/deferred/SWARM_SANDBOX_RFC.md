@@ -101,7 +101,7 @@ Layer 1 — Harness（蜂群 / 多写者 / 晋升）
 - `src/asteria_runtime/core/worker_spawn.py`
 - `src/asteria_runtime/core/swarm_pipeline.py`
 - [`plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](../plans/RUNTIME_MULTI_DISPATCH_MODEL.md)（S61 多对多调度哲学）
-- [`plans/RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md`](../plans/RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md)（R0–R5）
+- [`plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](../plans/RUNTIME_MULTI_DISPATCH_MODEL.md)（现行编排机制）
 - `docs/zh/reports/phase5-swarm-entry-signoff-20260606.md`
 - 研发总计划 Phase 5 · §6 KEEP_PLACEHOLDER
 

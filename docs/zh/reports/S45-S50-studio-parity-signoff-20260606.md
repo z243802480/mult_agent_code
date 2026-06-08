@@ -3,7 +3,7 @@
 更新时间：2026-06-06  
 状态：**已签字**  
 签字人：维护者 agent（Phase F1 闭合）  
-计划：[`STUDIO_PARITY_CLOSURE_PLAN.md`](../plans/STUDIO_PARITY_CLOSURE_PLAN.md)
+计划：[`Asteria Studio 产品设计.md`](../Asteria%20Studio%20产品设计.md)
 
 ---
 
@@ -52,6 +52,6 @@ node studio/scripts/git-changes-smoke.mjs
 
 ## 相关
 
-- 收尾计划：[`STUDIO_PARITY_CLOSURE_PLAN.md`](../plans/STUDIO_PARITY_CLOSURE_PLAN.md)
-- 对标表：[`STUDIO_CLAUDE_CODE_PARITY.md`](../plans/STUDIO_CLAUDE_CODE_PARITY.md)
+- 收尾计划：[`Asteria Studio 产品设计.md`](../Asteria%20Studio%20产品设计.md)
+- 对标表：[`Asteria Studio 产品设计.md`](../Asteria%20Studio%20产品设计.md)
 - Studio 功能表：[`studio/README.md`](../../studio/README.md)

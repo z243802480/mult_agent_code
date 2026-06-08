@@ -2229,7 +2229,12 @@ class ExecuteCommand:
                     run_id=context.run_id or "",
                     runtime_context=runtime_context,
                 )
-                action = self.action_preparer.prepare(action, task, context.policy)
+                action = self.action_preparer.prepare(
+                    action,
+                    task,
+                    context.policy,
+                    round_index=round_index,
+                )
                 runtime_requests = list(action.get("runtime_requests") or [])
                 loop_decision = action.get("agent_loop_decision")
                 loop_execution_result = None

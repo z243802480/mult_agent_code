@@ -83,6 +83,14 @@
       "enum": ["none", "first_passed", "best_score", "lowest_cost_passed", "manual_decision"]
     },
     "runtime_profile_hints": { "type": "object" },
+    "execution_preferences": {
+      "type": "object",
+      "properties": {
+        "delegation": { "type": "string", "enum": ["auto", "preferred", "required"] },
+        "requested_capability": { "type": ["string", "null"] },
+        "requested_read_scope": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "task_kind": {
       "type": "string",
       "enum": ["diagnostic", "implementation", "verification", "research", "decision", "report", "ui"]

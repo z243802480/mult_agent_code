@@ -3,7 +3,7 @@
 更新时间：2026-06-06  
 状态：**✅ 已签字**  
 依赖：S54 · S17 session_agent  
-计划：[`docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md`](../../docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md)
+计划：[`docs/zh/研发总计划.md`](../../docs/zh/研发总计划.md)
 
 ## 0. 调研结论（2026-06-06）
 

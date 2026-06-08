@@ -1,7 +1,7 @@
 # Slice S58 — Beta GitHub Release 分发包
 
-更新时间：2026-06-07  
-状态：**🔄 active**  
+更新时间：2026-06-07
+状态：**closed · historical reference**
 依赖：S56 · S57
 
 ## 目标

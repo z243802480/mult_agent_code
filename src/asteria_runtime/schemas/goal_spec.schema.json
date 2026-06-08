@@ -54,6 +54,14 @@
     "target_outputs": { "type": "array", "items": { "type": "string" } },
     "definition_of_done": { "type": "array", "items": { "type": "string" } },
     "verification_strategy": { "type": "array", "items": { "type": "string" } },
+    "execution_preferences": {
+      "type": "object",
+      "properties": {
+        "delegation": { "type": "string", "enum": ["auto", "preferred", "required"] },
+        "requested_capability": { "type": ["string", "null"] },
+        "requested_read_scope": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "budget": { "type": "object" },
     "risk_tier": {
       "type": "string",

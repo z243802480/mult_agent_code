@@ -1,7 +1,7 @@
 # S54 F2 Beta friction 基线 — 2026-06-06
 
-状态：**基线已建立 · 待真人 dogfood**  
-计划：[`STUDIO_PARITY_CLOSURE_PLAN.md`](../plans/STUDIO_PARITY_CLOSURE_PLAN.md) § F2  
+状态：**基线已建立 · 待真人 dogfood**
+计划：[`Asteria Studio 产品设计.md`](../Asteria%20Studio%20产品设计.md) § F2
 Brief：[`S54-studio-f2-beta-baseline.md`](../../benchmarks/reference_briefs/S54-studio-f2-beta-baseline.md)
 
 ---
@@ -39,7 +39,7 @@ python scripts/beta_friction_aggregate.py --root . --markdown
 | side_ask | 0 | |
 | other | 2 | maintainer-smoke：repair 偏多、文档偏差（非 Studio 桶） |
 
-**Top bucket**：**(none)**  
+**Top bucket**：**(none)**
 **下一刀规则**：**defer** — 无 friction top 项；不开新 Studio feature，直至 ≥1 名非维护者试跑并填 §5.1 分桶。
 
 ---

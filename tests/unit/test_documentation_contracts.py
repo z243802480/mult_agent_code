@@ -292,3 +292,30 @@ def test_active_slice_sources_agree() -> None:
     assert active_slice in snapshot
     assert active_slice in master
     assert slices["active_phase"] in snapshot
+
+
+def test_maintainer_pulse_reads_active_state_from_vibe_slices() -> None:
+    pulse = Path("scripts/triple_track_pulse.py").read_text(encoding="utf-8")
+
+    assert 'root / "benchmarks" / "vibe_slices.json"' in pulse
+    assert '"active_slice": slices["active_slice"]' in pulse
+    assert '"active_phase": slices["active_phase"]' in pulse
+    assert '"active_slice": "S63"' not in pulse
+
+
+def test_only_current_plan_and_brief_claim_active_status() -> None:
+    allowed = {
+        Path("docs/zh/plans/S74_POST_S73_BETA_CONVERGENCE_PLAN.md"),
+        Path("benchmarks/reference_briefs/S74-post-s73-beta-convergence.md"),
+    }
+    candidates = [
+        *Path("docs/zh/plans").glob("*.md"),
+        *Path("benchmarks/reference_briefs").glob("*.md"),
+    ]
+    active = {
+        path
+        for path in candidates
+        if re.search(r"状态[：:].{0,8}(?:\*\*)?(?:🔄\s*)?active\b", path.read_text(encoding="utf-8"), re.I)
+    }
+
+    assert active <= allowed

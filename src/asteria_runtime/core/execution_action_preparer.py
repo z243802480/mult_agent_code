@@ -16,7 +16,8 @@ ShellDenial = Callable[[dict, str], str | None]
 class ExecutionActionPreparer:
     shell_denial: ShellDenial
 
-    def prepare(self, action: dict, task: dict, policy: dict) -> dict:
+    def prepare(self, action: dict, task: dict, policy: dict, *, round_index: int = 1) -> dict:
+        action = self._enforce_required_delegation(action, task, round_index=round_index)
         if self._runtime_managed_action(action):
             self.require_non_empty(action)
             return action
@@ -29,6 +30,65 @@ class ExecutionActionPreparer:
         prepared = self._drop_redundant_root_list_for_standalone_artifact(prepared, task)
         self.require_non_empty(prepared)
         return prepared
+
+    def _enforce_required_delegation(
+        self,
+        action: dict,
+        task: dict,
+        *,
+        round_index: int,
+    ) -> dict:
+        preferences = task.get("execution_preferences")
+        preferences = preferences if isinstance(preferences, dict) else {}
+        hints = task.get("runtime_profile_hints")
+        hints = hints if isinstance(hints, dict) else {}
+        decision = action.get("agent_loop_decision")
+        decision = decision if isinstance(decision, dict) else {}
+        next_action = decision.get("next_action")
+        next_action = next_action if isinstance(next_action, dict) else {}
+        if (
+            preferences.get("delegation") != "required"
+            or round_index != 1
+            or hints.get("worker_kind") == "subagent"
+            or next_action.get("action") == "subagent"
+        ):
+            return action
+
+        strategy = task.get("multi_agent_strategy")
+        strategy = strategy if isinstance(strategy, dict) else {}
+        capability_name = str(preferences.get("requested_capability") or "CoderAgent")
+        if capability_name == "subagent":
+            capability_name = "CoderAgent"
+        normalized = dict(action)
+        normalized["summary"] = "Runtime honored the user's required subagent delegation."
+        normalized["tool_calls"] = []
+        normalized["verification"] = []
+        normalized["runtime_requests"] = []
+        normalized["completion_notes"] = "Required subagent delegation dispatched."
+        normalized["agent_loop_decision"] = {
+            **decision,
+            "schema_version": str(decision.get("schema_version") or "0.1.0"),
+            "next_action": {
+                "action": "subagent",
+                "reason": "The user explicitly required this task to be delegated to a subagent.",
+                "target_task_id": str(task.get("task_id") or ""),
+                "capability_ref": {"type": "subagent", "name": capability_name},
+                "expected_observation": {
+                    "summary": "Subagent returns evidence-backed task results.",
+                    "success_signal": "subagent worker result and execution evidence are recorded",
+                    "read_scope": task.get("read_scope") or [],
+                    "write_scope": task.get("write_scope") or [],
+                    "allowed_tools": task.get("allowed_tools") or [],
+                    "acceptance": task.get("acceptance") or [],
+                    "parallel_safety": task.get("parallel_safety") or "serial",
+                    "multi_agent_strategy": strategy,
+                },
+                "risk": str(next_action.get("risk") or "medium"),
+                "budget_hint": {"model_calls": 2, "tool_budget_units": 2},
+                "evidence_refs": list(next_action.get("evidence_refs") or []),
+            },
+        }
+        return normalized
 
     def require_non_empty(self, action: dict) -> None:
         if self._runtime_managed_action(action):

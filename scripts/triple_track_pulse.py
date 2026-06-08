@@ -18,6 +18,7 @@ def main() -> None:
     args = parser.parse_args()
 
     root = args.root.resolve()
+    slices = json.loads((root / "benchmarks" / "vibe_slices.json").read_text(encoding="utf-8"))
     tracks: dict[str, object] = {}
 
     tracks["A_steady"] = _run_python(
@@ -48,9 +49,10 @@ def main() -> None:
     ok = all(isinstance(step, dict) and step.get("ok") for step in steps)
     report = {
         "ok": ok,
-        "purpose": "Triple-track pulse (A steady + F2 friction + P pack + H contract + S62 route + S63 spawn)",
-        "plan": "docs/zh/plans/TRIPLE_TRACK_MAINT_PLAN.md",
-        "active_slice": "S63",
+        "purpose": "Maintainer convergence pulse (steady + friction + beta + harness + orchestration)",
+        "plan": slices["master_plan"],
+        "active_slice": slices["active_slice"],
+        "active_phase": slices["active_phase"],
         "tracks": tracks,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))

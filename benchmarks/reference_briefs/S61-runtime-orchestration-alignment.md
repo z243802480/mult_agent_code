@@ -1,8 +1,8 @@
 # Slice S61 — Runtime 编排对齐（R0–R5 · 多对多调度）
 
-更新时间：2026-06-07  
-状态：**active · R0–R5 代码交付**  
-计划：[`docs/zh/plans/RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md`](../../docs/zh/plans/RUNTIME_ORCHESTRATION_ALIGNMENT_PLAN.md)  
+更新时间：2026-06-07
+状态：**closed · R0–R5 signed · historical reference**
+计划：[`docs/zh/plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](../../docs/zh/plans/RUNTIME_MULTI_DISPATCH_MODEL.md)
 哲学：[`docs/zh/plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](../../docs/zh/plans/RUNTIME_MULTI_DISPATCH_MODEL.md)
 
 ## observed_pattern

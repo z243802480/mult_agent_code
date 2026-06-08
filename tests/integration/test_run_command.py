@@ -1537,6 +1537,12 @@ def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Pa
     )
     assert active_goal["updated_by"] == "resume"
     assert active_goal["update_reason"] == "resume_applied_decisions"
+    final_summary = json.loads(
+        (run_dir / "final_report_summary.json").read_text(encoding="utf-8")
+    )
+    assert final_summary["goal_policy"].get("category") != "decision_required"
+    assert not any("decision-0001" in item for item in final_summary["next_actions"])
+    assert "decide" not in str(final_summary.get("recommended_next_command") or "").lower()
 
 
 def test_resume_command_records_constraint_action_without_creating_task(tmp_path: Path) -> None:
