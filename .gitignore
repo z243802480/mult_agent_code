@@ -29,3 +29,8 @@ secrets/
 /safe_file_renamer/
 /file_smoke/
 /claude_code/
+# Local real-model acceptance workspaces (--repo . creates these at repo root)
+/validation_doc_update/
+/validation_small_cli/
+/validation_subagent_delegation/
+/out/
