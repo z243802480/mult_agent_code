@@ -15,6 +15,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run triple-track maintainer pulse.")
     parser.add_argument("--root", type=Path, default=Path("."), help="Repository root")
     parser.add_argument("--skip-b6", action="store_true", help="Skip B6 sim in steady track")
+    parser.add_argument(
+        "--with-orchestration",
+        action="store_true",
+        help="Include S62/S63 orchestration maintainer pulses (off by default during S74 convergence)",
+    )
     args = parser.parse_args()
 
     root = args.root.resolve()
@@ -34,16 +39,17 @@ def main() -> None:
         "scripts/harness_repeatability_pulse.py",
         ["--root", str(root)],
     )
-    tracks["S62_orchestration_route"] = _run_python(
-        root,
-        "scripts/orchestration_route_pulse.py",
-        ["--root", str(root)],
-    )
-    tracks["S63_spawn_decision"] = _run_python(
-        root,
-        "scripts/orchestration_spawn_pulse.py",
-        ["--root", str(root)],
-    )
+    if args.with_orchestration:
+        tracks["S62_orchestration_route"] = _run_python(
+            root,
+            "scripts/orchestration_route_pulse.py",
+            ["--root", str(root)],
+        )
+        tracks["S63_spawn_decision"] = _run_python(
+            root,
+            "scripts/orchestration_spawn_pulse.py",
+            ["--root", str(root)],
+        )
 
     steps = list(tracks.values())
     ok = all(isinstance(step, dict) and step.get("ok") for step in steps)

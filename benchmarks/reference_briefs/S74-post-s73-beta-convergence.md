@@ -12,7 +12,8 @@
 - `docs/zh/当前状态与路线.md`
 - `benchmarks/vibe_slices.json`
 - `tests/integration/test_execute_command.py`
-- `scripts/orchestration_s73_signoff_pulse.py`
+- `scripts/steady_iteration_check.py`
+- `benchmarks/s74_beta_matrix_gate.json`
 - `scripts/beta_task_pack_check.py`
 - `scripts/beta_friction_aggregate.py`
 
@@ -45,11 +46,8 @@
 
 ```powershell
 pytest tests/unit/test_documentation_contracts.py -q
-pytest tests/integration/test_execute_command.py -q
-python scripts/orchestration_s73_signoff_pulse.py --root .
-python scripts/beta_task_pack_check.py --root .
-python scripts/beta_friction_aggregate.py --root .
 python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel
+python scripts/beta_friction_aggregate.py --root .
 ```
 
 ## 2026-06-09 action-boundary correction

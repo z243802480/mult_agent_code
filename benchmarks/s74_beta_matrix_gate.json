@@ -1,0 +1,77 @@
+{
+  "schema_version": "0.1.0",
+  "purpose": "S74 Beta task matrix — real provider slots and unified result fields (config only, not a pulse entry)",
+  "brief": "benchmarks/reference_briefs/S74-post-s73-beta-convergence.md",
+  "plan": "docs/zh/plans/S74_POST_S73_BETA_CONVERGENCE_PLAN.md",
+  "maintainer_real_provider_command": "python scripts/real_model_acceptance.py --repo . --scenario <scenario> --fresh",
+  "matrix_evidence_command": "python scripts/s74_beta_matrix_evidence.py --root .",
+  "audit_policy": {
+    "mode": "audit_only",
+    "matrix_blocking": false,
+    "reference": {
+      "claude_code": "Session transcript process audit + Inspector raw evidence",
+      "codex": "Same-thread iteration telemetry; SLO for DecisionPoint not Runtime hard-stop"
+    },
+    "adr": "docs/zh/adr/0010-open-agent-loop-and-evaluation-boundaries.md",
+    "slo_thresholds": {
+      "model_calls_max": 8,
+      "repair_count_max": 2,
+      "elapsed_total_seconds_max": 600
+    },
+    "consistency_checks": {
+      "user_progress": [
+        "user_progress_protocol",
+        "user_progress_semantic_contract",
+        "main_thread_no_raw_model_delta",
+        "inspector_model_delta_boundary"
+      ],
+      "studio_runtime": [
+        "task_progress",
+        "permission_or_result",
+        "inspector_separation"
+      ]
+    }
+  },
+  "beta_matrix_slots": [
+    {
+      "id": "session_small_cli",
+      "path": "session_agent",
+      "scenario": "validation_small_cli",
+      "requires_real_provider": true,
+      "reference": "Codex single-thread code edit + verify"
+    },
+    {
+      "id": "session_doc_update",
+      "path": "session_agent",
+      "scenario": "validation_doc_update",
+      "requires_real_provider": true,
+      "reference": "Codex doc change in same thread"
+    },
+    {
+      "id": "subagent_delegation",
+      "path": "subagent",
+      "scenario": "runtime_delegation_contract",
+      "requires_real_provider": false,
+      "reference": "Claude Code sub-agent returns to parent session"
+    },
+    {
+      "id": "subagent_real_delegation",
+      "path": "subagent",
+      "scenario": "validation_subagent_delegation",
+      "requires_real_provider": true,
+      "reference": "Real provider explicit delegation; CL-010 parent loop stop after child success"
+    }
+  ],
+  "result_fields": [
+    "goal_completed",
+    "artifact_verified",
+    "accepted_or_blocked_reason",
+    "elapsed_total",
+    "model_calls",
+    "tool_calls",
+    "repair_count",
+    "replan_count",
+    "user_progress_consistent",
+    "studio_runtime_consistent"
+  ]
+}

@@ -851,6 +851,26 @@ def write_matrix_summary_json(path: Path, payload: dict[str, Any]) -> None:
     write_json(path, payload)
 
 
+def run_already_completed_successfully(workspace: Path, run_id: str) -> bool:
+    run_dir = workspace / ".asteria" / "runs" / run_id
+    run_path = run_dir / "run.json"
+    if not run_path.exists():
+        return False
+    run = json.loads(run_path.read_text(encoding="utf-8"))
+    if run.get("status") != "completed":
+        return False
+    task_plan_path = run_dir / "task_plan.json"
+    if not task_plan_path.exists():
+        return True
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    unfinished = [
+        task
+        for task in task_plan.get("tasks", [])
+        if isinstance(task, dict) and task.get("status") not in {"done", "discarded"}
+    ]
+    return not unfinished
+
+
 def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
     workspace = result.workspace
     run_command(result, args.python, "/init", "--root", str(workspace), name="init")
@@ -885,6 +905,7 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
         and result.run_id
         and (workspace / ".asteria" / "runs" / result.run_id / "goal_spec.json").exists()
         and not (workspace / ".asteria" / "runs" / result.run_id / "eval_report.json").exists()
+        and not run_already_completed_successfully(workspace, result.run_id)
     ):
         run_command(
             result,

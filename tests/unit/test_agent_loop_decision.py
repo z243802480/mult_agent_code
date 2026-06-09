@@ -41,6 +41,36 @@ def test_agent_loop_decision_normalizes_tool_action_from_execution_action(tmp_pa
     assert latest_agent_loop_decision(tmp_path, SchemaValidator(Path("schemas"))) == decision
 
 
+def test_agent_loop_decision_normalizes_subagent_capability_ref_transport() -> None:
+    task = {"task_id": "task-1", "risk": "low"}
+    action = {
+        "task_id": "task-1",
+        "summary": "delegate review",
+        "tool_calls": [],
+        "verification": [],
+        "runtime_requests": [],
+        "agent_loop_decision": {
+            "next_action": {
+                "action": "subagent",
+                "reason": "delegate bounded review",
+                "target_task_id": "task-1",
+                "capability_ref": {"type": "skill", "name": "subagent"},
+                "expected_observation": {"summary": "child returns report"},
+                "risk": "low",
+                "budget_hint": {"model_calls": 1, "tool_budget_units": 2},
+                "evidence_refs": [],
+            }
+        },
+    }
+
+    decision = normalize_agent_loop_decision(action, task=task, run_id="run-1")
+
+    assert decision["next_action"]["capability_ref"] == {
+        "type": "subagent",
+        "name": "CoderAgent",
+    }
+
+
 def test_agent_loop_decision_requires_action_to_match_execution_shape() -> None:
     task = {"task_id": "task-1"}
     action = {

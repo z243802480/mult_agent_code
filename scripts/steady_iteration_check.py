@@ -28,6 +28,9 @@ def main() -> None:
     for rel in gate.get("contract_tests", []):
         steps.append(_run_pytest(root, str(rel)))
 
+    for rel in gate.get("s74_convergence_tests", []):
+        steps.append(_run_pytest(root, str(rel)))
+
     if not args.skip_wheel:
         steps.append(_run_python(root, "scripts/s15_wheel_install_smoke.py", ["--root", str(root)]))
 

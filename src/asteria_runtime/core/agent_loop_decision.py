@@ -225,8 +225,15 @@ def _capability_ref(
     action: str,
 ) -> dict[str, str]:
     raw_ref = next_action.get("capability_ref")
-    if isinstance(raw_ref, dict) and raw_ref.get("type") and raw_ref.get("name"):
-        return {"type": str(raw_ref["type"]), "name": str(raw_ref["name"])}
+    if isinstance(raw_ref, dict) and raw_ref.get("name"):
+        name = str(raw_ref["name"])
+        if action == "subagent":
+            capability_name = name
+            if name.lower() in {"subagent", "sub-agent", "child agent"}:
+                capability_name = "CoderAgent"
+            return {"type": "subagent", "name": capability_name}
+        if raw_ref.get("type"):
+            return {"type": str(raw_ref["type"]), "name": name}
     if action == "tool":
         calls = list(raw.get("tool_calls") or []) + list(raw.get("verification") or [])
         for call in calls:

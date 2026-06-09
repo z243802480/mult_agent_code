@@ -82,7 +82,7 @@ exit_date
 | decision | `REPLACE_IMPLEMENTATION` |
 | action | 保留样本缺失硬失败和全部指标；效率目标越界改为 `pass_with_warnings` + `slo_warnings`，不再生成 gate violation |
 | verification | phase2 stability unit/integration、documentation contracts、steady iteration |
-| exit | 后续产品 DecisionPoint 消费趋势与 warning；不得重新把统一效率目标升级为 Runtime 硬 Gate |
+| exit | 2026-06-09 已改为 `pass_with_warnings` + `slo_warnings`；效率越界不阻塞 matrix 或 steady gate |
 
 ### CL-003：Run Health 用固定 repair/replan 次数判定失败
 
@@ -146,7 +146,7 @@ exit_date
 | decision | `DELETE` |
 | action | 删除两个实现及只保护旧行为的单元测试 |
 | verification | planner、review、run、documentation contracts |
-| exit | 禁止重新通过 review follow-up 或关键词表创建任务/DecisionPoint |
+| exit | 2026-06-09 已删除实现；doc contracts 禁止 stale 引用；S9 brief 已改 closed |
 
 ### CL-008：真实 Provider 验证合成成功
 
@@ -171,6 +171,19 @@ exit_date
 | action | 保留显式 debug 产品能力，下一批替换为诊断/恢复薄适配器；禁止继续扩展独立 repair engine |
 | verification | explicit debug paired eval、session resume、candidate safety、user_progress |
 | exit | 显式 debug 不再拥有第二套工具执行与任务状态机 |
+
+### CL-010：Subagent 成功后父 Agent Loop 误继续
+
+| 字段 | 结论 |
+| --- | --- |
+| capability_contract | 子 Agent 完成后结果回到主 Session；父 loop 不自动再跑一轮 |
+| current_implementation | `_should_continue_after_subagent` 在 `status=succeeded` 且 `next=stop` 时仍返回 True，导致多余 model/repair 回合 |
+| reference_mechanism | Claude Code subagent stop 回主会话；Codex 同线程继续由用户驱动 |
+| evidence | 真实委派任务约 17 model calls / 10 分钟；集成测试期望 subagent observation `next=stop` |
+| decision | `REPLACE_IMPLEMENTATION` |
+| action | succeeded/pending 不继续父 loop；仅 failed 且 next 为 repair/replan/ask/tool 时继续 |
+| verification | `test_execute_subagent_continuation.py`、Execute 集成、`steady_iteration_check` |
+| exit | 2026-06-09 复验 `validation_subagent_delegation`：114s / 3 model calls（基线 17 calls / ~10min） |
 
 ## 横向反查清单
 

@@ -111,11 +111,13 @@ class StudioBenchmarkCommand:
         manifest: Path | None = None,
         session_id: str | None = None,
         run_id: str | None = None,
+        runs_root: Path | None = None,
     ) -> None:
         self.root = root
         self.manifest = manifest or root / "benchmarks" / "studio_user_tasks.json"
         self.session_id = session_id
         self.run_id = run_id
+        self.runs_root = runs_root
 
     def run(self) -> StudioBenchmarkResult:
         manifest = self._read_json(self.manifest)
@@ -169,8 +171,11 @@ class StudioBenchmarkCommand:
             )
         return sessions
 
+    def _resolved_runs_root(self) -> Path:
+        return self.runs_root or (self.root / ".asteria" / "runs")
+
     def _load_user_progress_events(self) -> list[dict[str, Any]]:
-        runs_root = self.root / ".asteria" / "runs"
+        runs_root = self._resolved_runs_root()
         if not runs_root.exists():
             return []
         if self.run_id:

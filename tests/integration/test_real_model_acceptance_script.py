@@ -48,6 +48,7 @@ def test_real_model_acceptance_core_includes_safe_file_renamer() -> None:
         "validation_debug_repair",
         "validation_doc_update",
         "validation_small_cli",
+        "validation_subagent_delegation",
         "validation_refactor",
         "runtime_request_resume",
     ]

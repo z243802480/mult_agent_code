@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable
 
-from asteria_runtime.core.task_contract import validation_commands
+from asteria_runtime.core.task_contract import completion_contract, validation_commands
 
 
 ShellDenial = Callable[[dict, str], str | None]
@@ -245,12 +245,24 @@ class ExecutionActionPreparer:
     def _ensure_planned_verification(self, action: dict, task: dict) -> dict:
         if action.get("verification") or not task.get("verification_policy", {}).get("required"):
             return action
+        if self._should_defer_verification_until_artifact(action, task):
+            return action
         planned = self._planned_verification_calls(task)
         if not planned:
             return action
         normalized = dict(action)
         normalized["verification"] = planned
         return normalized
+
+    def _should_defer_verification_until_artifact(self, action: dict, task: dict) -> bool:
+        contract = completion_contract(task)
+        if not contract.get("requires_changed_artifact"):
+            return False
+        tool_calls = list(action.get("tool_calls") or [])
+        has_write = any(
+            call.get("tool_name") in {"write_file", "apply_patch"} for call in tool_calls
+        )
+        return not has_write
 
     def _planned_verification_calls(self, task: dict) -> list[dict]:
         if "run_command" not in set(task.get("allowed_tools", [])):
@@ -292,6 +304,8 @@ class ExecutionActionPreparer:
     def _stabilize_text_artifact_verification(self, action: dict, task: dict) -> dict:
         artifacts = self._text_only_artifacts(task)
         if not artifacts or "run_command" not in set(task.get("allowed_tools", [])):
+            return action
+        if self._should_defer_verification_until_artifact(action, task):
             return action
         if action.get("verification") and not self._has_broken_text_verification(action):
             return action

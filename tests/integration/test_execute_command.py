@@ -1725,11 +1725,8 @@ def test_execute_command_records_subagent_dispatch_gray_path(tmp_path: Path) -> 
     assert subagent_observation["status"] == "succeeded"
     assert subagent_observation["next_recommended_action"] == "stop"
     assert "subagent-child-plan-0001" in subagent_observation["evidence_refs"]
-    assert (
-        client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
-    )
     loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
-    assert loop_summary["exit_reason"] == "stop"
+    assert loop_summary["exit_reason"] == "completed"
     assert loop_summary["recommended_command"] == "status --debug"
     user_progress = [
         json.loads(line)
@@ -1777,9 +1774,7 @@ def test_execute_command_runs_subagent_child_bounded_loop_with_parent_evidence(
         item for item in observations if item["observation_type"] == "subagent_result"
     ][-1]
     assert subagent_observation["status"] == "succeeded"
-    assert (
-        client.latest_observations[-1]["observation_id"] == subagent_observation["observation_id"]
-    )
+    assert subagent_observation["next_recommended_action"] == "stop"
     worker_results = [
         json.loads(line)
         for line in (run_dir / "worker_results.jsonl").read_text(encoding="utf-8").splitlines()

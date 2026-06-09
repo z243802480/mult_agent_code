@@ -107,7 +107,6 @@
       "depends_on": ["S8"],
       "user_demo": "ask/chat 装载 manifest；CLI Start 组 Goal/Plan/Ask",
       "green_checks": [
-        "pytest tests/unit/test_capability_manifest_catalog.py -q",
         "pytest tests/integration/test_chat_capability_manifest.py -q",
         "pytest tests/unit/test_cli.py -q -k ask"
       ],
@@ -684,10 +683,7 @@
       "depends_on": ["S73"],
       "user_demo": "latest main path is green and 3-5 real Beta tasks produce reproducible product evidence",
       "green_checks": [
-        "pytest tests/unit/test_documentation_contracts.py -q",
-        "pytest tests/integration/test_execute_command.py -q",
-        "python scripts/orchestration_s73_signoff_pulse.py --root .",
-        "python scripts/beta_task_pack_check.py --root .",
+        "python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel",
         "python scripts/beta_friction_aggregate.py --root ."
       ],
       "reference_brief": "benchmarks/reference_briefs/S74-post-s73-beta-convergence.md"

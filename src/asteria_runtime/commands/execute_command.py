@@ -1259,15 +1259,10 @@ class ExecuteCommand:
     ) -> bool:
         if round_index >= max_rounds or not isinstance(observation, dict):
             return False
-        if str(observation.get("status") or "") == "pending":
+        if str(observation.get("status") or "") in {"pending", "succeeded"}:
             return False
-        if str(observation.get("next_recommended_action") or "") not in {
-            "repair",
-            "replan",
-            "ask",
-            "stop",
-            "tool",
-        }:
+        next_action = str(observation.get("next_recommended_action") or "")
+        if next_action not in {"repair", "replan", "ask", "tool"}:
             return False
         if context.budget is None:
             return False
@@ -1493,18 +1488,22 @@ class ExecuteCommand:
     ) -> bool:
         if round_index >= max_rounds or not isinstance(observation, dict):
             return False
-        if not self._loop_continuation_requested(
-            next_action=next_action,
-            attempt_status=attempt_status,
-        ):
-            return False
         observation_next_action = str(observation.get("next_recommended_action") or "")
-        if observation_next_action not in {"tool", "repair", "replan", "stop"}:
-            return False
         if context.budget is None:
             return False
         pressure = BudgetController.pressure(context.policy, context.budget.cost_report())
-        return str(pressure.get("status") or "") not in {"hard_stop", "exceeded"}
+        if str(pressure.get("status") or "") in {"hard_stop", "exceeded"}:
+            return False
+        if attempt_status != "done":
+            if observation_next_action == "stop":
+                return False
+            return observation_next_action in {"tool", "repair", "replan"}
+        if observation_next_action not in {"tool", "repair", "replan", "stop"}:
+            return False
+        return self._loop_continuation_requested(
+            next_action=next_action,
+            attempt_status=attempt_status,
+        )
 
     def _agent_loop_exit_reason_after_attempt(
         self,
@@ -2164,6 +2163,14 @@ class ExecuteCommand:
         )
         return [str(decisions_path), str(mcp_path)]
 
+    def _reopen_task_for_agent_loop_round(self, task_board: TaskBoard, task_id: str) -> None:
+        status = str(task_board.get_task(task_id).get("status") or "")
+        if status == "blocked":
+            task_board.update_status(task_id, "ready")
+            status = "ready"
+        if status == "ready":
+            task_board.update_status(task_id, "in_progress")
+
     def _execute_task(
         self,
         task: dict,
@@ -2214,6 +2221,8 @@ class ExecuteCommand:
             latest_loop_observation: dict | None = None
             latest_summary: TaskExecutionSummary | None = None
             for round_index in range(1, max_rounds + 1):
+                if round_index > 1:
+                    self._reopen_task_for_agent_loop_round(task_board, task_id)
                 self._refresh_harness_observations(runtime_context, context)
                 runtime_context["agent_loop_round"] = {
                     "index": round_index,

@@ -154,6 +154,34 @@ SCENARIOS: dict[str, AcceptanceScenario] = {
         expected_text="Hello",
         max_iterations=3,
     ),
+    "validation_subagent_delegation": AcceptanceScenario(
+        name="validation_subagent_delegation",
+        capability="validation_subagent_delegation",
+        tier="validation",
+        goal=(
+            "Delegate the document review to a subagent. The subagent must read all "
+            "Markdown files under input/ and write a consolidated review report to "
+            "reports/delegation_review.md. The report must mention each input file by "
+            "name and include at least one finding per file."
+        ),
+        expected_file="reports/delegation_review.md",
+        expected_text="input/",
+        max_iterations=5,
+        setup_files={
+            "input/overview.md": (
+                "# Overview\n\nThis module handles local note storage for validation.\n"
+            ),
+            "input/setup.md": (
+                "# Setup\n\nInstall dependencies with pip before running the CLI.\n"
+            ),
+            "input/usage.md": (
+                "# Usage\n\nRun `python notes.py list` to inspect stored notes.\n"
+            ),
+            "input/limitations.md": (
+                "# Limitations\n\nOffline mode does not sync to remote services.\n"
+            ),
+        },
+    ),
     "validation_refactor": AcceptanceScenario(
         name="validation_refactor",
         capability="validation_controlled_refactor",
@@ -373,6 +401,7 @@ SUITES = {
         "validation_debug_repair",
         "validation_doc_update",
         "validation_small_cli",
+        "validation_subagent_delegation",
         "validation_refactor",
         "runtime_request_resume",
     ],

@@ -59,7 +59,7 @@ This pattern supports indefinitely long working sessions: each goal produces one
 | Turn-scoped diff tabs (T1/T2/Current) | Claude `/diff` turn views | Inspector **Diff review** + Thread **Tn diff**（**T1=最新一轮**） |
 | Unified diff line numbers + coloring | CLI diff TUI | **`DiffPreview`** in Inspector |
 | Primary project folder (cwd) | Claude Desktop project picker | Workspace switcher + top-bar chip |
-| Phase strip (Plan → Execute → Verify) | Codex/Cursor task workflows | `WorkflowPhaseStrip` under header |
+| Session transcript (真实过程) | Claude/Codex thread messages | Thread 主会话 timeline（S74 删除固定 phase strip） |
 | Git working tree review | Claude `/diff` Current view | **Diff review** 双栏（S48） |
 | Side question | Desktop side chat | **Quick ask**（S49–S50） |
 | Focus layout | Desktop pane density | **Focus/Normal/Verbose**（S46） |
@@ -105,7 +105,7 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | **Side chat（Ctrl+;）+ Composer Quick ask** | ✅ S49–S50 |
 | **Turn Rewind → runtime continue** | ✅ S51 |
 | **Tool 输出 clamp + copy** | ✅ S52 |
-| **Workflow phase strip (Plan/Execute/Verify)** | ✅ |
+| Session transcript 驱动主会话（无固定 phase strip） | ✅ S74 |
 | Side-by-side diff (Unified / Split) | ✅ |
 | Session Ctrl+Tab switch | ✅ |
 | Session rename + goal preview | ✅ |

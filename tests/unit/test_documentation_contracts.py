@@ -465,7 +465,32 @@ def test_product_architecture_is_session_loop_not_global_state_machine() -> None
         assert claim not in architecture
 
 
-def test_debug_is_a_thin_session_recovery_adapter() -> None:
+_DELETED_REFERENCE_PATHS = (
+    "capability_manifest_catalog.py",
+    "test_capability_manifest_catalog.py",
+    "runtime_readiness_gate.py",
+    "decision_policy.py",
+    "WorkflowPhaseStrip.tsx",
+    "s74_week1_pulse.py",
+)
+
+
+def test_reference_briefs_do_not_reference_deleted_paths() -> None:
+    brief_dir = Path("benchmarks/reference_briefs")
+    offenders: list[str] = []
+    for path in brief_dir.glob("*.md"):
+        text = path.read_text(encoding="utf-8")
+        for fragment in _DELETED_REFERENCE_PATHS:
+            if fragment in text:
+                offenders.append(f"{path.as_posix()} -> {fragment}")
+    assert not offenders, "Stale brief references:\n" + "\n".join(offenders)
+
+
+def test_steady_gate_includes_s74_convergence_without_extra_pulse() -> None:
+    gate = json.loads(Path("benchmarks/phase4_steady_iteration_gate.json").read_text(encoding="utf-8"))
+    assert gate.get("s74_convergence_tests")
+    assert not Path("scripts/s74_week1_pulse.py").exists()
+    assert Path("benchmarks/s74_beta_matrix_gate.json").is_file()
     debug_command = Path("src/asteria_runtime/commands/debug_command.py").read_text(
         encoding="utf-8"
     )

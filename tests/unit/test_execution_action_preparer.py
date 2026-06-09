@@ -434,6 +434,32 @@ def test_preparer_rejects_empty_action() -> None:
         )
 
 
+def test_preparer_defers_planned_verification_until_text_artifact_write() -> None:
+    action = {
+        "tool_calls": [{"tool_name": "list_files", "args": {"path": "docs"}}],
+        "verification": [],
+    }
+
+    prepared = _preparer().prepare(
+        action,
+        _task(
+            allowed_tools=["list_files", "write_file", "run_command"],
+            expected_artifacts=["docs/README.md"],
+            expected_changed_files=["docs/README.md"],
+            verification_policy={"required": True, "commands": []},
+            completion_contract={
+                "requires_changed_artifact": True,
+                "requires_verification": True,
+                "allows_expected_failure": False,
+            },
+        ),
+        {},
+    )
+
+    assert prepared["tool_calls"] == [{"tool_name": "list_files", "args": {"path": "docs"}}]
+    assert prepared["verification"] == []
+
+
 def test_preparer_enforces_required_subagent_only_on_parent_first_round() -> None:
     action = {
         "summary": "inspect directly",
