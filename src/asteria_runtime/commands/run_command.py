@@ -6,14 +6,11 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.commands.compact_command import CompactCommand
-from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
-from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.commands.research_command import ResearchCommand
-from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand, StatusResult
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
@@ -21,7 +18,6 @@ from asteria_runtime.core.active_next_step import capability_feedback_active_nex
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
 from asteria_runtime.core.budget import BudgetController
-from asteria_runtime.core.agent_harness import recommended_route_from_observation_plan
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.main_path import (
     build_main_path,
@@ -31,7 +27,6 @@ from asteria_runtime.core.main_path import (
 from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.run_config import load_run_config
-from asteria_runtime.core.permission_policy import normalize_permission_mode
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
@@ -158,8 +153,6 @@ class RunCommand:
         self.model_client = model_client
         self.plan_model_client = plan_model_client
         self.execute_model_client = execute_model_client
-        self.debug_model_client = debug_model_client
-        self.review_model_client = review_model_client
         self.research_model_client = research_model_client
         self.enable_research = enable_research
         self.parallel_writes = parallel_writes
@@ -373,103 +366,7 @@ class RunCommand:
                 return self._finalize_validation_probe_run(run_id, steps, _progress)
             if self._run_status(run_id) in {"blocked", "paused"}:
                 break
-
-            if self._budget_guard(run_id, steps, f"iteration-{index + 1}-review"):
-                break
-            _progress.record(
-                run_id=run_id,
-                channel="progress",
-                phase="review",
-                status="running",
-                title="评审阶段",
-                summary="正在评审本轮执行结果，判断是否需要修复或继续。",
-                display_level="main",
-                transcript_kind="verification",
-                ui_intent="work_progress",
-            )
-            review = ReviewCommand(
-                self.root,
-                run_id=run_id,
-                model_client=self.review_model_client,
-            ).run()
-            steps.append(
-                RunStepSummary(
-                    "review",
-                    review.status,
-                    (
-                        f"Score {review.score:.2f}; "
-                        f"{review.follow_up_count} follow-up task(s); "
-                        f"{review.decision_count} decision point(s)."
-                    ),
-                )
-            )
-            _progress.record(
-                run_id=run_id,
-                channel="progress",
-                phase="review",
-                status="running" if review.follow_up_count > 0 else "completed",
-                title="评审完成",
-                summary=(
-                    f"评分 {review.score:.2f}；"
-                    f"{review.follow_up_count} 个后续任务；"
-                    f"{review.decision_count} 个待决策点。"
-                ),
-                display_level="main",
-                transcript_kind="verification",
-                ui_intent="work_progress" if review.follow_up_count == 0 and review.decision_count == 0 else "needs_input",
-                actions=self._review_progress_actions(
-                    follow_up_count=review.follow_up_count,
-                    decision_count=review.decision_count,
-                ),
-            )
-            self._emit_execution_progress_events(_progress, run_id, phase="review")
-            goal_decision = self._goal_loop_decision(
-                run_id=run_id,
-                review_status=review.status,
-                follow_up_count=review.follow_up_count,
-                decision_count=review.decision_count,
-                iteration=index + 1,
-                max_iterations=max_iterations,
-            )
-            steps.append(
-                RunStepSummary(
-                    "goal-policy",
-                    str(goal_decision["action"]),
-                    str(goal_decision["reason"]),
-                )
-            )
-            self._write_goal_policy_marker(
-                run_id,
-                {
-                    "category": str(goal_decision.get("category") or "none"),
-                    "recommended_command": str(goal_decision.get("recommended_command") or ""),
-                    "reason": str(goal_decision.get("reason") or ""),
-                },
-            )
-            if goal_decision["action"] == "auto_accept":
-                from asteria_runtime.commands.accept_command import AcceptCommand
-
-                accept = AcceptCommand(
-                    self.root,
-                    run_id=run_id,
-                    skip_review=True,
-                    promote_all=False,
-                ).run()
-                steps.append(
-                    RunStepSummary(
-                        "accept",
-                        "accepted" if accept.accepted else "blocked",
-                        accept.primary_blocker or "Accepted automatically by goal loop policy.",
-                    )
-                )
-                break
-            if goal_decision["action"] in {
-                "stop_for_decision",
-                "stop_for_accept",
-                "stop_for_repair",
-            }:
-                break
-            if index == max_iterations - 1:
+            if self._ready_count(run_id) == 0:
                 break
 
         compact = CompactCommand(self.root, run_id=run_id, focus="final run handoff").run()
@@ -1125,18 +1022,6 @@ class RunCommand:
             )
         return f"Selected {selected} for {purpose}: {reason}."
 
-    def _review_progress_actions(
-        self,
-        *,
-        follow_up_count: int,
-        decision_count: int,
-    ) -> list[dict[str, str]]:
-        if decision_count:
-            return [{"kind": "decision", "label": "Decide", "command": "decide --list"}]
-        if follow_up_count:
-            return [{"kind": "continue", "label": "Continue", "command": "run --resume"}]
-        return [{"kind": "accept", "label": "Accept", "command": "accept --latest"}]
-
     def _file_change_summary(self, run_dir: Path) -> list[dict[str, str]]:
         changes: dict[str, dict[str, str]] = {}
         artifact_log = run_dir / "artifacts.jsonl"
@@ -1336,57 +1221,11 @@ class RunCommand:
                         },
                     )
                     return progressed
-                if progress:
-                    progress.record(
-                        run_id=run_id,
-                        channel="progress",
-                        phase="execute",
-                        status="running",
-                        title="调试阶段",
-                        summary="检测到阻塞任务，正在分析失败原因并尝试修复。",
-                        display_level="main",
-                    )
-                debug = DebugCommand(
-                    self.root,
-                    run_id=run_id,
-                    model_client=self.debug_model_client or self.model_client,
-                ).run()
-                if progress:
-                    progress.record(
-                        run_id=run_id,
-                        channel="progress",
-                        phase="execute",
-                        status="blocked" if debug.still_blocked else "completed",
-                        title="Repair attempted",
-                        summary=(
-                            f"Asteria repaired {debug.repaired} task(s); "
-                            f"{debug.still_blocked} task(s) still need attention."
-                        ),
-                        display_level="main",
-                        transcript_kind="repair",
-                        ui_intent="needs_attention" if debug.still_blocked else "work_progress",
-                        actions=(
-                            [
-                                {
-                                    "kind": "replan",
-                                    "label": "Replan",
-                                    "command": "replan",
-                                },
-                                {
-                                    "kind": "ask",
-                                    "label": "Decide",
-                                    "command": "decide --list",
-                                },
-                            ]
-                            if debug.still_blocked
-                            else []
-                        ),
-                    )
                 steps.append(
                     RunStepSummary(
-                        "debug",
-                        "completed",
-                        (f"{debug.repaired} repaired, {debug.still_blocked} still blocked."),
+                        "execute",
+                        "blocked",
+                        "Execution stopped at a resumable session boundary.",
                     )
                 )
                 if progress:
@@ -1394,77 +1233,25 @@ class RunCommand:
                         run_id=run_id,
                         channel="progress",
                         phase="execute",
-                        status="running",
-                        title="调试完成",
-                        summary=f"修复 {debug.repaired} 个任务，仍阻塞 {debug.still_blocked} 个。",
+                        status="blocked",
+                        title="Execution needs attention",
+                        summary=(
+                            "The current session stopped after a blocked observation. "
+                            "Continue the session so the agent can repair, replan, ask, or stop "
+                            "from the recorded evidence."
+                        ),
                         display_level="main",
+                        transcript_kind="repair",
+                        ui_intent="needs_attention",
+                        actions=[
+                            {
+                                "kind": "continue",
+                                "label": "Continue",
+                                "command": "resume",
+                            }
+                        ],
                     )
-                if self._run_status(run_id) == "blocked":
-                    blocked_route = self._blocked_route_from_observation_plan(run_id)
-                    profile = self._execution_profile(run_id)
-                    if profile.is_session_agent:
-                        requeued = self._requeue_blocked_tasks_for_session_agent(run_id)
-                        if requeued:
-                            if progress:
-                                progress.record(
-                                    run_id=run_id,
-                                    channel="progress",
-                                    phase="execute",
-                                    status="running",
-                                    title="同任务重试",
-                                    summary=(
-                                        f"Session-agent 模式：{requeued} 个阻塞任务已重新排队，"
-                                        "继续在同一会话内修复。"
-                                    ),
-                                    display_level="main",
-                                    transcript_kind="repair",
-                                    ui_intent="work_progress",
-                                )
-                            progressed = True
-                            continue
-                        blocked_route = blocked_route or "ask"
-                    if blocked_route in {"ask", "stop"}:
-                        steps.append(
-                            RunStepSummary(
-                                "observe",
-                                blocked_route,
-                                (
-                                    "Observation plan selected "
-                                    f"{blocked_route}; not replanning automatically."
-                                ),
-                            )
-                        )
-                        return progressed
-                    if profile.is_session_agent:
-                        steps.append(
-                            RunStepSummary(
-                                "observe",
-                                "ask",
-                                "Session-agent mode paused for operator review; no replan lineage.",
-                            )
-                        )
-                        return progressed
-                    if self._budget_guard(run_id, steps, f"iteration-{iteration}-replan"):
-                        return progressed
-                    replan = ReplanCommand(
-                        self.root,
-                        run_id=run_id,
-                        max_replans_per_task=self._policy_replans_per_task(),
-                    ).run()
-                    steps.append(
-                        RunStepSummary(
-                            "replan",
-                            "completed",
-                            (
-                                f"{replan.created_tasks} task(s), "
-                                f"{replan.created_decisions} decision(s)."
-                            ),
-                        )
-                    )
-                    if replan.created_tasks:
-                        progressed = True
-                        continue
-                    return progressed
+                return progressed
             if execute.completed == 0 and execute.blocked == 0:
                 steps.append(
                     RunStepSummary(
@@ -1752,116 +1539,6 @@ class RunCommand:
         run["summary"] = summary
         run_store.update_run(run)
 
-    def _goal_loop_decision(
-        self,
-        *,
-        run_id: str,
-        review_status: str,
-        follow_up_count: int,
-        decision_count: int,
-        iteration: int,
-        max_iterations: int,
-    ) -> dict[str, object]:
-        failure_classification = self._review_failure_classification(run_id)
-        if decision_count or self._pending_decisions(self.root / ".asteria" / "runs" / run_id):
-            return {
-                "action": "stop_for_decision",
-                "reason": "DecisionPoint is pending; stop instead of guessing or continuing.",
-                "category": "decision_required",
-                "recommended_command": "decide --list",
-            }
-        if self._pending_budget_decision(run_id):
-            return {
-                "action": "stop_for_decision",
-                "reason": "Budget guard DecisionPoint is pending; user approval is required.",
-                "category": "decision_required",
-                "recommended_command": "decide --list",
-            }
-        pending_promotions = CandidatePromotionQueue(self.validator).summary(
-            self.root / ".asteria" / "runs" / run_id
-        )
-        promotion_blockers = list(pending_promotions.get("pending") or []) + list(
-            pending_promotions.get("blocked") or []
-        )
-        if review_status == "pass":
-            if (
-                normalize_permission_mode(self.permission_level) == "auto"
-                and not promotion_blockers
-            ):
-                return {
-                    "action": "auto_accept",
-                    "reason": "Review passed, permission level is auto, and no candidate promotion requires approval.",
-                    "category": "none",
-                    "recommended_command": "accept",
-                }
-            if promotion_blockers:
-                return {
-                    "action": "stop_for_accept",
-                    "reason": "Review passed but candidate promotion still requires explicit accept/promotion handling.",
-                    "category": "acceptance_required",
-                    "recommended_command": "accept",
-                }
-            return {
-                "action": "stop_for_accept",
-                "reason": "Review passed; ask/balanced permission requires explicit `asteria accept`.",
-                "category": "acceptance_required",
-                "recommended_command": "accept",
-            }
-        if failure_classification.get("recommended_command") == "decide --list":
-            return {
-                "action": "stop_for_decision",
-                "reason": str(failure_classification.get("reason") or "Decision is required."),
-                "category": failure_classification.get("category") or "decision_required",
-                "recommended_command": "decide --list",
-            }
-        if failure_classification.get("category") == "plan_gap":
-            if (
-                failure_classification.get("recommended_command") == "resume"
-                or self._execution_profile(run_id).is_session_agent
-            ):
-                return {
-                    "action": "continue_repair",
-                    "reason": str(
-                        failure_classification.get("reason")
-                        or "Session-agent mode retries in-place instead of replan lineage."
-                    ),
-                    "category": "plan_gap",
-                    "recommended_command": "resume",
-                }
-            if failure_classification.get("recommended_command") == "replan":
-                return {
-                    "action": "stop_for_replan",
-                    "reason": str(
-                        failure_classification.get("reason") or "Review identified a plan gap."
-                    ),
-                    "category": "plan_gap",
-                    "recommended_command": "replan",
-                }
-        if follow_up_count > 0 and iteration < max_iterations:
-            return {
-                "action": "continue_repair",
-                "reason": "Review created follow-up tasks; continue bounded repair loop.",
-                "category": failure_classification.get("category") or "repairable_follow_up",
-                "recommended_command": "debug",
-            }
-        return {
-            "action": "stop_for_repair",
-            "reason": str(
-                failure_classification.get("reason")
-                or f"Review status is {review_status}; run debug before continuing."
-            ),
-            "category": failure_classification.get("category") or "review_failed",
-            "recommended_command": failure_classification.get("recommended_command") or "debug",
-        }
-
-    def _review_failure_classification(self, run_id: str) -> dict:
-        eval_path = self.root / ".asteria" / "runs" / run_id / "eval_report.json"
-        if not eval_path.exists():
-            return {}
-        report = self.store.read(eval_path, "eval_report")
-        classification = (report.get("trajectory_eval") or {}).get("failure_classification")
-        return classification if isinstance(classification, dict) else {}
-
     def _goal_policy_summary(self, run_dir: Path, status_payload: dict) -> dict:
         context_policy = (
             (status_payload.get("current_context") or {}).get("goal_policy")
@@ -1940,12 +1617,6 @@ class RunCommand:
         policy = self._policy()
         return int(policy["budgets"]["max_iterations_per_goal"])
 
-    def _policy_replans_per_task(self) -> int:
-        if not (self.root / ".asteria" / "policies.json").exists():
-            return 2
-        policy = self._policy()
-        return int(policy["budgets"].get("max_replans_per_task", 2))
-
     def _policy_max_inner_execute_cycles(self, run_id: str | None = None) -> int:
         if not (self.root / ".asteria" / "policies.json").exists():
             base = 6
@@ -1963,28 +1634,6 @@ class RunCommand:
     def _execution_profile(self, run_id: str):
         run_dir = self.root / ".asteria" / "runs" / run_id
         return execution_profile_from_run_config(load_run_config(run_dir, self.validator))
-
-    def _requeue_blocked_tasks_for_session_agent(self, run_id: str) -> int:
-        run_dir = self.root / ".asteria" / "runs" / run_id
-        task_plan_path = run_dir / "task_plan.json"
-        task_plan = self.store.read(task_plan_path, "task_board")
-        requeued = 0
-        for task in task_plan.get("tasks") or []:
-            if task.get("status") != "blocked":
-                continue
-            task["status"] = "ready"
-            task["updated_at"] = now_iso()
-            requeued += 1
-        if not requeued:
-            return 0
-        self.store.write(task_plan_path, task_plan, "task_board")
-        run_store = RunStore(self.root / ".asteria", self.validator)
-        run = run_store.load_run(run_id)
-        if run.get("status") == "blocked":
-            run["status"] = "running"
-            run["summary"] = "Session-agent requeued blocked task(s) for in-session retry."
-            run_store.update_run(run)
-        return requeued
 
     def _pause_for_recovery_limit(
         self,
@@ -2784,12 +2433,6 @@ class RunCommand:
         if risks:
             return ["Review risks, then run `asteria /acceptance-gate` before release."]
         return ["Run `asteria /acceptance-gate --suite core --min-scenarios 6` before release."]
-
-    def _blocked_route_from_observation_plan(self, run_id: str) -> str | None:
-        plan = self._latest_observation_plan(self.root / ".asteria" / "runs" / run_id)
-        if not plan:
-            return None
-        return str(plan.get("recommended_route") or recommended_route_from_observation_plan(plan))
 
     def _latest_provider_transient_failure(self, run_id: str) -> dict | None:
         run_dir = self.root / ".asteria" / "runs" / run_id

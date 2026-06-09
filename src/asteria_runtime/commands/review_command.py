@@ -1,24 +1,18 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from asteria_runtime.agents.planner import FollowUpTaskPlanner
 from asteria_runtime.agents.review_agent import ReviewAgent
-from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.core.agent_harness import (
     latest_observation_next_action_plan,
     load_raw_tool_observations,
     observation_next_action_plan,
     tool_observation_action_options,
 )
-from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
-from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.budget import BudgetController
-from asteria_runtime.core.decision_policy import DecisionPolicy
 from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
@@ -228,12 +222,7 @@ class ReviewCommand:
             )
             try:
                 eval_report = reviewer.evaluate(model_review_context, run_id)
-            except Exception as exc:
-                self._record_review_failure_decision(
-                    run_dir=run_dir,
-                    run_id=run_id,
-                    error=exc,
-                )
+            except Exception:
                 self.store.write(
                     cost_report_path,
                     self._merge_cost_reports(
@@ -251,11 +240,8 @@ class ReviewCommand:
         eval_report["trajectory_eval"]["failure_classification"] = failure_classification
         eval_report_path = run_dir / "eval_report.json"
         self.store.write(eval_report_path, eval_report, "eval_report")
-        follow_up_count, decision_count = self._handle_follow_up_actions(
-            agent_dir,
-            run_dir,
-            eval_report,
-        )
+        follow_up_count = 0
+        decision_count = 0
         review_report_path = run_dir / "review_report.md"
         review_report_path.write_text(
             self._markdown_report(
@@ -474,63 +460,6 @@ class ReviewCommand:
             blockers.append("cost_not_within_budget")
         return blockers
 
-    def _record_review_failure_decision(
-        self,
-        *,
-        run_dir: Path,
-        run_id: str,
-        error: Exception,
-    ) -> None:
-        message = str(error) or error.__class__.__name__
-        normalized = message.lower()
-        action = "repair"
-        if "budget" in normalized or "permission" in normalized:
-            action = "ask"
-        elif "plan" in normalized or "coverage" in normalized:
-            action = "replan"
-        decision = persist_runtime_agent_loop_decision(
-            run_dir=run_dir,
-            validator=self.validator,
-            run_id=run_id,
-            task_id=self._latest_task_id(run_dir),
-            action=action,
-            reason=(f"Review failed before a model-authored next action was available: {message}"),
-            capability_name="review_failure",
-            expected_observation={
-                "summary": "Review failure is routed into the agent loop instead of stopping at provider/review.",
-                "success_signal": "Asteria debug, replan, decide, or status can continue from this evidence.",
-            },
-            risk="medium",
-            evidence_refs=[
-                str(run_dir / "user_progress.jsonl"),
-                str(run_dir / "model_calls.jsonl"),
-            ],
-            budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "review_failure"},
-        )
-        if decision is not None:
-            persist_agent_loop_execution_result(
-                run_dir=run_dir,
-                validator=self.validator,
-                decision=decision,
-                create_decision_point=action == "ask",
-            )
-
-    def _latest_task_id(self, run_dir: Path) -> str | None:
-        task_plan_path = run_dir / "task_plan.json"
-        if not task_plan_path.exists():
-            return None
-        try:
-            task_plan = self.store.read(task_plan_path, "task_board")
-        except Exception:
-            return None
-        tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else None
-        if not isinstance(tasks, list):
-            return None
-        for task in reversed(tasks):
-            if isinstance(task, dict) and task.get("task_id"):
-                return str(task["task_id"])
-        return None
-
     def _result_blockers(
         self,
         eval_report: dict,
@@ -592,12 +521,6 @@ class ReviewCommand:
                 "recommended_command": "accept",
                 "reason": "Review passed.",
             }
-        if self._needs_decision(eval_report):
-            return {
-                "category": "decision_required",
-                "recommended_command": "decide --list",
-                "reason": "Review found high-risk, unclear, permission, or cost-sensitive follow-up work.",
-            }
         goal_eval = eval_report.get("goal_eval") or {}
         artifact_eval = eval_report.get("artifact_eval") or {}
         outcome_eval = eval_report.get("outcome_eval") or {}
@@ -609,26 +532,26 @@ class ReviewCommand:
         if coverage < 0.8 or artifacts_present is False:
             classification = {
                 "category": "plan_gap",
-                "recommended_command": "replan",
-                "reason": "Requirement coverage or artifact fit is insufficient; revise the plan before more execution.",
+                "recommended_command": "resume",
+                "reason": "Requirement coverage or artifact fit is insufficient; continue the session with this review feedback.",
             }
             return self._soften_failure_classification(eval_report, classification)
         if blocked_tasks > 0:
             return {
                 "category": "execution_blocked",
-                "recommended_command": "debug",
-                "reason": "Execution has blocked tasks; debug the concrete failure before replanning.",
+                "recommended_command": "resume",
+                "reason": "Execution has blocked tasks; continue the session from the concrete failure evidence.",
             }
         if verification_rate < 1.0 or "verification" in overall_reason:
             return {
                 "category": "verification_failed",
-                "recommended_command": "debug",
-                "reason": "Verification did not pass; repair implementation or test failures.",
+                "recommended_command": "resume",
+                "reason": "Verification did not pass; continue the session with the review findings.",
             }
         return {
             "category": "review_failed",
-            "recommended_command": "debug",
-            "reason": f"Review status is {status}; inspect eval_report.json before continuing.",
+            "recommended_command": "resume",
+            "reason": f"Review status is {status}; continue the session with the recorded feedback.",
         }
 
     def _soften_failure_classification(self, eval_report: dict, classification: dict) -> dict:
@@ -650,76 +573,6 @@ class ReviewCommand:
             ).strip()
         return updated
 
-    def _needs_decision(self, eval_report: dict) -> bool:
-        follow_ups = self._follow_ups(eval_report)
-        policy = load_policy_config(self.root / ".asteria", self.validator)
-        decision_policy = DecisionPolicy(policy)
-        return any(decision_policy.candidate_for_follow_up(item) is not None for item in follow_ups)
-
-    def _handle_follow_up_actions(
-        self,
-        agent_dir: Path,
-        run_dir: Path,
-        eval_report: dict,
-    ) -> tuple[int, int]:
-        if eval_report["overall"]["status"] == "pass":
-            return 0, 0
-        policy = load_policy_config(agent_dir, self.validator)
-        task_follow_ups, decision_count = self._split_follow_ups(run_dir, eval_report, policy)
-        task_plan_path = run_dir / "task_plan.json"
-        task_plan = self.store.read(task_plan_path, "task_board")
-        task_eval_report = dict(eval_report)
-        task_eval_report["outcome_eval"] = dict(eval_report.get("outcome_eval", {}))
-        task_eval_report["outcome_eval"]["follow_up_tasks"] = task_follow_ups
-        task_eval_report["trajectory_eval"] = dict(eval_report.get("trajectory_eval", {}))
-        task_eval_report["trajectory_eval"]["follow_up_tasks"] = []
-        new_tasks = FollowUpTaskPlanner().build_follow_up_tasks(
-            task_eval_report,
-            task_plan["tasks"],
-        )
-        if not new_tasks:
-            return 0, decision_count
-        task_plan["tasks"].extend(new_tasks)
-        self._promote_ready_follow_ups(task_plan)
-        self.store.write(task_plan_path, task_plan, "task_board")
-        self.store.write(self.root / ".asteria" / "tasks" / "backlog.json", task_plan, "task_board")
-        return len(new_tasks), decision_count
-
-    def _split_follow_ups(
-        self,
-        run_dir: Path,
-        eval_report: dict,
-        policy: dict,
-    ) -> tuple[list[dict], int]:
-        follow_ups = self._follow_ups(eval_report)
-        if not follow_ups:
-            return [], 0
-        decision_policy = DecisionPolicy(policy)
-        pending_questions = self._pending_decision_questions(run_dir)
-        task_follow_ups = []
-        decision_count = 0
-        for follow_up in follow_ups:
-            candidate = decision_policy.candidate_for_follow_up(follow_up)
-            if candidate is None:
-                task_follow_ups.append(follow_up)
-                continue
-            normalized_question = self._normalize(candidate.question)
-            if normalized_question in pending_questions:
-                decision_count += 1
-                continue
-            DecideCommand(
-                self.root,
-                run_id=str(eval_report["run_id"]),
-                question=candidate.question,
-                options_json=json.dumps(candidate.options, ensure_ascii=False),
-                recommended_option_id=candidate.recommended_option_id,
-                default_option_id=candidate.default_option_id,
-                impact_json=json.dumps(candidate.impact, ensure_ascii=False),
-            ).run()
-            pending_questions.add(normalized_question)
-            decision_count += 1
-        return task_follow_ups, decision_count
-
     def _follow_ups(self, eval_report: dict) -> list[dict]:
         follow_ups = eval_report.get("outcome_eval", {}).get("follow_up_tasks", [])
         if not follow_ups:
@@ -727,19 +580,6 @@ class ReviewCommand:
         if not isinstance(follow_ups, list):
             return []
         return [item for item in follow_ups if isinstance(item, dict)]
-
-    def _pending_decision_questions(self, run_dir: Path) -> set[str]:
-        decisions_path = run_dir / "decisions.jsonl"
-        if not decisions_path.exists():
-            return set()
-        return {
-            self._normalize(decision["question"])
-            for decision in self.jsonl.read_all(decisions_path, "decision_point")
-            if decision["status"] == "pending"
-        }
-
-    def _normalize(self, value: object) -> str:
-        return " ".join(str(value).strip().lower().split())
 
     def _merge_cost_reports(self, review_cost: dict, latest_cost: dict) -> dict:
         merged = dict(review_cost)
@@ -754,13 +594,6 @@ class ReviewCommand:
         merged["warnings"] = warnings
         merged["status"] = "near_limit" if warnings else review_cost.get("status", "within_budget")
         return merged
-
-    def _promote_ready_follow_ups(self, task_plan: dict) -> None:
-        done = {task["task_id"] for task in task_plan["tasks"] if task["status"] == "done"}
-        for task in task_plan["tasks"]:
-            if task["status"] == "backlog" and all(dep in done for dep in task["depends_on"]):
-                task["status"] = "ready"
-                task["updated_at"] = now_iso()
 
     def _review_context(self, agent_dir: Path, run_dir: Path, run_id: str) -> dict:
         goal_spec = self.store.read(run_dir / "goal_spec.json", "goal_spec")

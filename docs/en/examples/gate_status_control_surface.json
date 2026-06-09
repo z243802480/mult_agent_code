@@ -22,7 +22,6 @@
       "plugin_risks",
       "runtime_progress_metrics",
       "runtime_validation_matrix",
-      "runtime_readiness_gate",
       "v0_2_rolling_validation",
       "readiness_explanation",
       "recovery_pressure",
@@ -56,15 +55,6 @@
       "ok": null,
       "status": "missing"
     }
-  },
-  "runtime_readiness_gate": {
-    "schema_version": "0.1.0",
-    "status": "review",
-    "blocked": 0,
-    "review": 0,
-    "ready": 0,
-    "checks": [],
-    "next_actions": []
   },
   "v0_2_rolling_validation": {},
   "route_environment": {

@@ -1,15 +1,12 @@
 import React from "react";
 import { FolderOpen, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw } from "lucide-react";
-import type { RunDetailPayload, SettingsPayload } from "../types";
-import { WorkflowPhaseStrip } from "../components/WorkflowPhaseStrip";
+import type { SettingsPayload } from "../types";
 import { SideChatToggle } from "../features/sidechat/SideChatPanel";
 import { viewModeLabel, type StudioViewMode } from "../hooks/useViewMode";
 
 type MissionPaneHeaderProps = {
   title: string;
   settings: SettingsPayload | null;
-  runDetail: RunDetailPayload | null;
-  isRunning: boolean;
   viewMode: StudioViewMode;
   panelOpen: boolean;
   diffFocus: boolean;
@@ -26,8 +23,6 @@ type MissionPaneHeaderProps = {
 export function MissionPaneHeader({
   title,
   settings,
-  runDetail,
-  isRunning,
   viewMode,
   panelOpen,
   diffFocus,
@@ -53,12 +48,6 @@ export function MissionPaneHeader({
           <FolderOpen size={13} />
           <span>{settings?.workspaceName ?? "Workspace"}</span>
         </button>
-        <WorkflowPhaseStrip
-          runDetail={runDetail}
-          isRunning={isRunning}
-          compact
-          hidden={viewMode === "focus" && !isRunning}
-        />
       </div>
       <div className="topActions">
         <button

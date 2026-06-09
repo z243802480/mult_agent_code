@@ -181,182 +181,33 @@ def test_validation_run_accepts_current_readonly_fanout_strategy_name(tmp_path: 
     status, summary, refs = ValidationRunCommand(tmp_path, dry_run=True)._probe_status(
         "readonly_fanout_succeeds",
         decisions=[],
-        workers=[],
-        worker_results=[],
         child_plans=[
             {
                 "subagent_child_plan_id": "subagent-child-plan-0001",
                 "scheduling_strategy": "parallel_readonly_safe",
+                "child_tasks": [{"child_task_id": "task-child-1"}],
+            }
+        ],
+        workers=[
+            {
+                "worker_invocation_id": "worker-child-1",
+                "task_id": "task-child-1",
+                "parallel_safety": "readonly",
+            }
+        ],
+        worker_results=[
+            {
+                "worker_invocation_id": "worker-child-1",
+                "status": "succeeded",
             }
         ],
         observations=[],
         run_summary={},
-        readiness_checks={
-            "subagent_readonly_fanout": {
-                "status": "ready",
-                "summary": "Readonly fanout recorded 2/2 child worker(s).",
-            }
-        },
     )
 
     assert status == "passed"
-    assert "Readonly fanout recorded" in summary
-    assert refs == ["subagent-child-plan-0001"]
-
-
-def test_targeted_validation_probe_can_bypass_stale_loop_readiness_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["readonly_fanout_succeeds"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "agent_loop_execution", "status": "blocked"},
-                    {"name": "subagent_readonly_fanout", "status": "blocked"},
-                    {"name": "route_guidance", "status": "review"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
-
-
-def test_targeted_disjoint_probe_can_bypass_disjoint_gate_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["disjoint_write_gate_blocks_unsafe_fanout"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "agent_loop_execution", "status": "blocked"},
-                    {"name": "subagent_disjoint_write_gate", "status": "blocked"},
-                    {"name": "candidate_promotion_safety", "status": "blocked"},
-                    {"name": "route_guidance", "status": "review"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
-
-
-def test_targeted_parent_stop_probe_can_bypass_observation_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["parent_loop_stops_after_observation"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "agent_loop_execution", "status": "blocked"},
-                    {"name": "observation_next_action", "status": "blocked"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
-
-
-def test_targeted_ask_stop_probe_can_bypass_stale_readonly_fanout_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["ask_stop_path"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "agent_loop_execution", "status": "blocked"},
-                    {"name": "subagent_readonly_fanout", "status": "blocked"},
-                    {"name": "observation_next_action", "status": "blocked"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
-
-
-def test_targeted_context_pressure_probe_can_bypass_stale_readonly_fanout_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["context_pressure_path"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "agent_loop_execution", "status": "blocked"},
-                    {"name": "context_pressure", "status": "blocked"},
-                    {"name": "subagent_readonly_fanout", "status": "blocked"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
-
-
-def test_targeted_capability_selection_probe_can_bypass_stale_readonly_fanout_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["capability_selection_path"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "capability_selection", "status": "blocked"},
-                    {"name": "subagent_readonly_fanout", "status": "blocked"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
+    assert "readonly boundary" in summary
+    assert refs == ["subagent-child-plan-0001", "worker-child-1"]
 
 
 def test_second_batch_probes_evaluate_recovery_ask_context_and_capability(
@@ -457,31 +308,6 @@ def test_second_batch_probes_evaluate_recovery_ask_context_and_capability(
     ]
 
 
-def test_targeted_second_batch_probe_can_bypass_matching_readiness_block(
-    tmp_path: Path,
-) -> None:
-    command = ValidationRunCommand(
-        tmp_path,
-        dry_run=True,
-        probe_ids=["context_pressure_path"],
-    )
-
-    reasons = command._blocked_reasons(
-        {"ok": True},
-        {
-            "stage": "runtime_readiness_blocked",
-            "runtime_readiness_gate": {
-                "checks": [
-                    {"name": "context_pressure", "status": "blocked"},
-                    {"name": "route_guidance", "status": "review"},
-                ]
-            },
-        },
-    )
-
-    assert reasons == []
-
-
 def test_validation_run_explains_blocked_route_guidance(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     _configure_release_routes(monkeypatch)
@@ -574,7 +400,10 @@ def test_validation_run_executes_small_task_and_collects_route_evidence(
     }
     assert probe_results["parent_selects_subagent"]["status"] == "passed"
     assert probe_results["readonly_write_tool_blocked"]["status"] == "passed"
-    assert probe_results["disjoint_write_gate_blocks_unsafe_fanout"]["status"] == "passed"
+    assert (
+        probe_results["disjoint_write_gate_blocks_unsafe_fanout"]["status"]
+        == "missing_evidence"
+    )
     assert probe_results["parent_loop_stops_after_observation"]["status"] == "passed"
     assert evidence_probe_results == probe_results
     assert any(

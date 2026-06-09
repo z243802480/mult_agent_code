@@ -4,7 +4,7 @@ import re
 
 from asteria_runtime.core.execution_profile import HARNESS, SESSION_AGENT
 from asteria_runtime.core.execution_preferences import apply_execution_preferences_to_task
-from asteria_runtime.core.fast_path_policy import classify_fast_path, classify_risk_tier
+from asteria_runtime.core.fast_path_policy import classify_risk_tier
 from asteria_runtime.core.multi_agent_strategy import MultiAgentStrategyAdvisor
 from asteria_runtime.core.task_contract import (
     completion_contract,
@@ -956,7 +956,6 @@ class RequirementPlanner:
             str(task.get("title") or task.get("description") or ""),
             task=task,
         ).risk_tier
-        self._maybe_hint_worker_transport(task, goal_spec)
         task["merge_strategy"] = "none"
         self._harden_broad_write_scope(task)
         self._mark_disjoint_write_scope(task)
@@ -966,33 +965,6 @@ class RequirementPlanner:
             f"{task.get('notes', '')} Multi-agent strategy: {strategy['mode']} "
             f"(max_child_workers={strategy['max_child_workers']}; {strategy['reason']})."
         ).strip()
-
-    def _maybe_hint_worker_transport(self, task: dict, goal_spec: dict | None) -> None:
-        hints = task.get("runtime_profile_hints")
-        if isinstance(hints, dict) and hints.get("worker_transport") in {"json", "tool_use"}:
-            return
-        if not isinstance(goal_spec, dict):
-            goal_spec = {}
-        fast_path = classify_fast_path(
-            str(goal_spec.get("original_goal") or goal_spec.get("normalized_goal") or task.get("description") or task.get("title") or ""),
-            target_files=self._worker_transport_target_files(task),
-            goal_spec=goal_spec,
-            task=task,
-        )
-        if fast_path.task_kind not in {"doc_update", "simple_file", "single_file_bugfix"}:
-            return
-        hints = hints if isinstance(hints, dict) else {}
-        hints = dict(hints)
-        hints["worker_transport"] = "tool_use"
-        task["runtime_profile_hints"] = hints
-
-    def _worker_transport_target_files(self, task: dict) -> list[str]:
-        files: list[str] = []
-        for key in ("expected_artifacts", "expected_changed_files", "write_scope", "read_scope"):
-            for item in task.get(key) or []:
-                if isinstance(item, str) and item.strip():
-                    files.append(item)
-        return list(dict.fromkeys(files))
 
     def _harden_broad_write_scope(self, task: dict) -> None:
         broad = {"src/", "tests/", "docs/", "docs/zh/"}
@@ -1280,112 +1252,6 @@ class RequirementPlanner:
             if isinstance(hint, dict) and hint.get("message"):
                 parts.append(f"capability feedback: {hint['message']}")
         return f" Context: {', '.join(parts)}." if parts else ""
-
-
-class FollowUpTaskPlanner:
-    def build_follow_up_tasks(self, eval_report: dict, existing_tasks: list[dict]) -> list[dict]:
-        follow_ups = eval_report.get("outcome_eval", {}).get("follow_up_tasks", [])
-        if not follow_ups:
-            follow_ups = eval_report.get("trajectory_eval", {}).get("follow_up_tasks", [])
-        if not isinstance(follow_ups, list):
-            return []
-
-        next_index = self._next_index(existing_tasks)
-        done_or_ready = [
-            task["task_id"] for task in existing_tasks if task["status"] != "discarded"
-        ]
-        known_items = {self._normalize(task.get("title", "")) for task in existing_tasks} | {
-            self._normalize(task.get("description", "")) for task in existing_tasks
-        }
-        dependency = done_or_ready[-1:] if done_or_ready else []
-        tasks: list[dict] = []
-        for item in follow_ups:
-            if not isinstance(item, dict):
-                continue
-            description = str(item.get("description") or item.get("title") or "").strip()
-            if not description:
-                continue
-            title = self._title(str(item.get("title") or description))
-            if self._normalize(title) in known_items or self._normalize(description) in known_items:
-                continue
-            task_id = f"task-{next_index:04d}"
-            next_index += 1
-            acceptance = item.get("acceptance")
-            expected_artifacts = item.get("expected_artifacts")
-            if not isinstance(acceptance, list) or not acceptance:
-                acceptance = ["Follow-up requirement is implemented and verified"]
-            if not isinstance(expected_artifacts, list) or not expected_artifacts:
-                expected_artifacts = self._infer_expected_artifacts(item)
-            kind = str(item.get("task_kind") or "implementation")
-            task: dict = {
-                "schema_version": "0.1.0",
-                "task_id": task_id,
-                "title": title,
-                "description": description,
-                "status": "ready" if not dependency and not tasks else "backlog",
-                "priority": self._priority(str(item.get("priority") or "medium")),
-                "role": str(item.get("role") or "CoderAgent"),
-                "depends_on": dependency if not tasks else [tasks[-1]["task_id"]],
-                "acceptance": [str(value) for value in acceptance],
-                "allowed_tools": RequirementPlanner()._allowed_tools(kind),
-                "expected_artifacts": expected_artifacts,
-                "task_kind": kind,
-                "expected_changed_files": expected_changed_files(kind, expected_artifacts),
-                "assigned_agent_id": None,
-                "created_at": now_iso(),
-                "updated_at": now_iso(),
-                "notes": f"Generated from review follow-up for {eval_report.get('run_id')}",
-            }
-            task["completion_contract"] = completion_contract(task)
-            task["verification_policy"] = {
-                "required": bool(task["completion_contract"].get("requires_verification", False)),
-                "allow_expected_failure": bool(
-                    task["completion_contract"].get("allows_expected_failure", False)
-                ),
-                "commands": [],
-            }
-            RequirementPlanner()._apply_runtime_contract(task)
-            tasks.append(task)
-            known_items.add(self._normalize(title))
-            known_items.add(self._normalize(description))
-        return tasks
-
-    def _next_index(self, tasks: list[dict]) -> int:
-        indexes = []
-        for task in tasks:
-            suffix = task["task_id"].rsplit("-", 1)[-1]
-            if suffix.isdigit():
-                indexes.append(int(suffix))
-        return (max(indexes) + 1) if indexes else 1
-
-    def _priority(self, value: str) -> str:
-        return value if value in {"critical", "high", "medium", "low"} else "medium"
-
-    def _title(self, value: str) -> str:
-        trimmed = value.strip()
-        if len(trimmed) <= 60:
-            return trimmed
-        return trimmed[:57].rstrip() + "..."
-
-    def _infer_expected_artifacts(self, item: dict) -> list[str]:
-        text = " ".join(str(item.get(key) or "") for key in ("title", "description"))
-        acceptance = item.get("acceptance", [])
-        if isinstance(acceptance, list):
-            text = " ".join([text, *[str(value) for value in acceptance if value]])
-        explicit = re.findall(r"[\w./-]+\.(?:py|md|txt|json|html|css|js|ts|tsx|pdf)", text)
-        if explicit:
-            return [explicit[0]]
-        title = str(item.get("title") or item.get("description") or "follow up").strip()
-        stem = re.sub(r"^(create|add|implement|write|update)\s+", "", title, flags=re.I)
-        stem = re.sub(r"[^A-Za-z0-9]+", "_", stem).strip("_").upper()
-        if not stem:
-            stem = "FOLLOW_UP"
-        if "README" in stem:
-            return [f"{stem}.md"]
-        return [f"{stem.lower()}.txt"]
-
-    def _normalize(self, value: object) -> str:
-        return " ".join(str(value).strip().lower().split())
 
 
 def expected_changed_files(kind: str, expected_artifacts: list[str]) -> list[str]:

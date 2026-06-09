@@ -674,12 +674,6 @@ def run_scenario(
                 text_or_empty(exc.stderr)
                 + f"\nScenario timed out after {timeout_budget.subprocess_seconds}s."
             )
-            salvaged = salvage_timed_out_smoke_summary(
-                workspace=workspace,
-                scenario=scenario,
-                summary_path=summary_path,
-                started_at=started_at,
-            )
             record_acceptance_timeout_loop_decision(
                 workspace=workspace,
                 scenario=scenario,
@@ -690,29 +684,13 @@ def run_scenario(
                 {
                     "attempt": attempt,
                     "returncode": None,
-                    "retryable": salvaged is None,
-                    "failure_type": "timeout_salvaged" if salvaged else "timeout",
+                    "retryable": True,
+                    "failure_type": "timeout",
                     "stdout_tail": stdout[-2000:],
                     "stderr_tail": stderr[-2000:],
                     "timeout_budget": timeout_budget.as_dict(),
                 }
             )
-            if salvaged:
-                route_evidence = route_evidence_from_smoke_summary(salvaged)
-                return {
-                    "scenario": scenario.name,
-                    "capability": scenario.capability,
-                    "tier": scenario.tier,
-                    "ok": True,
-                    "workspace": str(workspace),
-                    "duration_seconds": round(time.monotonic() - started_at, 3),
-                    "attempts": attempts,
-                    "summary": salvaged,
-                    "route_evidence": route_evidence,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "timeout_budget": timeout_budget.as_dict(),
-                }
             if attempt >= max_attempts:
                 return {
                     "scenario": scenario.name,
@@ -800,70 +778,6 @@ def classify_acceptance_subprocess_failure(
         if any(needle in text for needle in needles):
             return True, failure_type
     return False, "scenario_failure"
-
-
-def salvage_timed_out_smoke_summary(
-    *,
-    workspace: Path,
-    scenario: AcceptanceScenario,
-    summary_path: Path,
-    started_at: float,
-) -> dict[str, Any] | None:
-    existing = read_json(summary_path)
-    if existing.get("run_id") and existing.get("diagnostics", {}).get("accepted_review_timeout"):
-        return existing
-    run_id = current_run_id(workspace)
-    if not run_id:
-        return None
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    expected_file = workspace / scenario.expected_file
-    if not expected_file.exists():
-        return None
-    if scenario.expected_text not in expected_file.read_text(encoding="utf-8"):
-        return None
-    if not any(item.get("type") == "run_completed" for item in read_jsonl(run_dir / "events.jsonl")):
-        return None
-    evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")
-    if not any(item.get("status") == "done" for item in evidence):
-        return None
-    verification_passed = False
-    for item in evidence:
-        if item.get("status") != "done":
-            continue
-        results = item.get("verification_results")
-        if isinstance(results, list) and results:
-            verification_passed = all(
-                bool(result.get("ok")) for result in results if isinstance(result, dict)
-            )
-            break
-    if not verification_passed:
-        return None
-    cost_report = read_json(run_dir / "cost_report.json")
-    summary = {
-        "workspace": str(workspace),
-        "run_id": run_id,
-        "expected_file": str(expected_file),
-        "final_report": str(run_dir / "final_report.md"),
-        "transcript": str(workspace / "real_model_smoke_transcript.json"),
-        "duration_seconds": round(time.monotonic() - started_at, 3),
-        "diagnostics": {
-            "run_status": read_json(run_dir / "run.json").get("status"),
-            "review_status": "pass",
-            "review_score": 0.85,
-            "model_calls": int(cost_report.get("model_calls", 0)),
-            "tool_calls": int(cost_report.get("tool_calls", 0)),
-            "estimated_input_tokens": int(cost_report.get("estimated_input_tokens", 0)),
-            "estimated_output_tokens": int(cost_report.get("estimated_output_tokens", 0)),
-            "repair_attempts": int(cost_report.get("repair_attempts", 0)),
-            "context_compactions": int(cost_report.get("context_compactions", 0)),
-            "cost_status": cost_report.get("status"),
-            "accepted_review_timeout": True,
-            "accepted_run_completed_event": True,
-        },
-        "commands": [],
-    }
-    write_summary(summary_path, summary)
-    return summary
 
 
 def record_acceptance_timeout_loop_decision(

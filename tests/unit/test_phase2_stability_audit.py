@@ -64,3 +64,18 @@ def test_evaluate_stability_samples_passes_within_thresholds() -> None:
 
     assert audit["ok"] is True
     assert audit["metrics"]["median_model_calls"] == 3.0
+    assert audit["slo_warnings"] == []
+
+
+def test_evaluate_stability_samples_keeps_efficiency_misses_as_slo_warnings() -> None:
+    audit = evaluate_stability_samples(
+        [
+            {"permission_mode": "reviewed_auto", "model_calls": 8, "repair_attempts": 2},
+            {"permission_mode": "reviewed_auto", "model_calls": 6, "repair_attempts": 3},
+        ]
+    )
+
+    assert audit["ok"] is True
+    assert audit["status"] == "pass_with_warnings"
+    assert len(audit["slo_warnings"]) == 2
+    assert audit["violations"] == []

@@ -58,7 +58,8 @@ def test_evaluate_run_health_fails_on_blocked_status_and_large_progress() -> Non
 
     assert audit["ok"] is False
     assert audit["status"] == "fail"
-    assert len(audit["violations"]) >= 4
+    assert len(audit["violations"]) == 3
+    assert len(audit["slo_warnings"]) == 2
 
 
 def test_evaluate_run_health_passes_healthy_sample() -> None:
@@ -74,6 +75,24 @@ def test_evaluate_run_health_passes_healthy_sample() -> None:
 
     assert audit["ok"] is True
     assert audit["status"] == "pass"
+    assert audit["slo_warnings"] == []
+
+
+def test_evaluate_run_health_keeps_repair_and_replan_counts_as_slo_warnings() -> None:
+    audit = evaluate_run_health(
+        {
+            "run_status": "completed",
+            "user_progress_bytes": 120_000,
+            "user_progress_events": 80,
+            "replan_task_count": 9,
+            "repair_attempts": 7,
+        }
+    )
+
+    assert audit["ok"] is True
+    assert audit["status"] == "pass_with_warnings"
+    assert audit["violations"] == []
+    assert len(audit["slo_warnings"]) == 2
 
 
 def test_evaluate_run_health_from_manifest_reads_gate_thresholds(tmp_path: Path) -> None:

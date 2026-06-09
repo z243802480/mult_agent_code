@@ -1,6 +1,6 @@
 # S74 Post-S73 Beta Convergence 实施计划
 
-更新时间：2026-06-08
+更新时间：2026-06-09
 状态：**active**
 Brief：[`../../../benchmarks/reference_briefs/S74-post-s73-beta-convergence.md`](../../../benchmarks/reference_briefs/S74-post-s73-beta-convergence.md)
 前置：[`../reports/S73-beta-opt-in-ingress-signoff-20260607.md`](../reports/S73-beta-opt-in-ingress-signoff-20260607.md)
@@ -16,6 +16,22 @@ S61–S73 已经证明 Asteria 具备 route、spawn、dynamic workflow、live pr
 5. Studio、runtime 与 evidence 已有大量能力，但是否真实帮助用户完成任务尚未形成统一结果证据。
 
 因此 S74 禁止继续新增编排 Wave，先完成产品收敛。
+
+### 1.1 2026-06-09 方法校正
+
+S74 不再把统一低模型调用数或低 repair 次数作为 Agent Runtime 硬停止条件。成熟 Harness 的公开机制显示：模型应在工具 observation 循环中自主推进，权限/sandbox/不可逆操作属于硬边界，turns/预算/deadline 属于可配置资源保险丝，调用次数、repair 和耗时属于按任务类型评估的产品 SLO。
+
+因此：
+
+- 简单任务调用量和 repair 超出目标时记录性能回归，但不据此限制复杂任务。
+- 长任务只要持续产生新 evidence、artifact 或 verification，就允许在授权预算内继续。
+- 重复相同失败且没有新增证据时，才进入 no-progress 的 ask/stop/resume 边界。
+- provider、schema、tool/verification repair 分层归因。
+- 任何改变自主边界或停止条件的建议必须先调研、写明分类、建立 eval，并提供回滚/删除条件。
+
+执行依据：[`../adr/0010-open-agent-loop-and-evaluation-boundaries.md`](../adr/0010-open-agent-loop-and-evaluation-boundaries.md)。
+
+复杂度清算必须同时遵守 [`../adr/0011-reference-first-complexity-liquidation.md`](../adr/0011-reference-first-complexity-liquidation.md)。愿景与实现分开裁决：Asteria 特有能力可以保留，但确认当前实现劣于成熟产品的稳定原语后，必须停止修补，保留能力契约并替换实现；无产品价值的能力与实现一并删除。
 
 ## 2. 工作分层
 
@@ -89,6 +105,28 @@ studio_runtime_consistent
 
 全局默认开启 parallel writes 必须是新的产品 DecisionPoint，不由 S74 自动批准。
 
+### S74-E：复杂度价值审计（P1）
+
+不是把现有大代码库整体推倒，也不是继续默认保留。按行为路径而不是按文件行数审计：
+
+1. 建立当前默认路径 Golden Trace，固定结果正确性、安全边界和用户可见行为。
+2. 为每条候选复杂路径标注 owner、用户价值、真实调用入口、eval、维护成本和退出条件。
+3. 没有真实入口、没有 eval、只服务历史单点失败或与其他路径重复的实现进入冻结/删除候选。
+4. 一次只停用或删除一条路径，使用相同 Golden Tasks 配对复验。
+5. 删除后结果、安全和恢复不退化，且主路径更短或更易维护，才完成清算。
+
+审计优先级：
+
+| 优先级 | 对象 | 原因 |
+| --- | --- | --- |
+| P0 | 默认主路径中的重复 retry / repair / review 重入 | 直接影响用户等待与收敛 |
+| P0 | JSON action 与 native `tool_use` 双路径 | 必须用配对 eval 决定默认、opt-in 或回退 |
+| P1 | 只服务历史 failure-tail 的 parser/gate/recommendation 分支 | 最容易形成面条代码 |
+| P1 | 重复 summary / progress / evidence 投影 | 容易造成真源冲突 |
+| P2 | maintainer-only orchestration 与验证壳 | 默认隐藏，确认无调用后再合并或删除 |
+
+全系统队列、裁决字段与横向反查清单见 [`S74_COMPLEXITY_LIQUIDATION_REGISTER.md`](./S74_COMPLEXITY_LIQUIDATION_REGISTER.md)。清算范围不限于上表；任何发现的重复语义、无消费者 evidence、只为 probe 存在的产品代码、永久 flag、历史 fallback 和劣质自研抽象都必须进入登记表。
+
 ## 3. 四个产品方向的关系
 
 | 方向 | S74 中的任务 |
@@ -106,6 +144,8 @@ studio_runtime_consistent
 - 模型输出宽泛时，先简化 prompt/schema/主流程，不新增 parser 分支。
 - 复杂能力没有可衡量收益时，允许删除或回退。
 - Runtime 主路径基线足够后，暂停后端能力扩展，优先修复 Studio 会话心流、权限护栏和可查证交互。
+- 不把 model/tool calls、repair/replan 或耗时 SLO 直接升级为所有任务的 Runtime 硬停止条件。
+- 没有 reference、eval 和退出条件，不接受改变 Agent 自主边界或默认路径的研发建议。
 
 ## 5. S74 完成定义
 
@@ -115,6 +155,8 @@ studio_runtime_consistent
 4. 3–5 个真实 Beta 任务形成统一结果报告。
 5. Studio/runtime/evidence 对同一任务结论一致。
 6. 产生下一阶段 DecisionPoint，并明确保留、扩大或回退哪些复杂能力。
+7. 完成第一批复杂度价值审计，形成带证据的保留、冻结、合并和删除候选清单。
+8. 所有审计项使用 ADR-0011 四道裁决门；确认劣质实现后停止修补并执行替换或删除。
 
 ## 6. 当前收敛进展（2026-06-08）
 

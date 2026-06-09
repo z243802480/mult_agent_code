@@ -133,7 +133,7 @@ def test_tool_use_execution_action_preserves_preflight_and_verification_order() 
     assert [call["tool_name"] for call in action["verification"]] == ["run_command"]
 
 
-def test_resolve_worker_transport_prefers_tool_use_for_single_file_fast_path() -> None:
+def test_resolve_worker_transport_keeps_policy_default_for_single_file_fast_path() -> None:
     task = {
         "task_id": "task-0001",
         "task_kind": "diagnostic",
@@ -144,10 +144,10 @@ def test_resolve_worker_transport_prefers_tool_use_for_single_file_fast_path() -
         "expected_changed_files": ["src/parser.py"],
     }
 
-    assert resolve_worker_transport(task=task) == "tool_use"
+    assert resolve_worker_transport(task=task) == "json"
 
 
-def test_runtime_profile_builder_projects_tool_use_for_single_file_fast_path(tmp_path: Path) -> None:
+def test_runtime_profile_builder_keeps_policy_transport_for_single_file_fast_path(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
     builder = RuntimeProfileBuilder(validator)
     context = RuntimeContext(
@@ -176,4 +176,4 @@ def test_runtime_profile_builder_projects_tool_use_for_single_file_fast_path(tmp
         runtime_context={},
     )
 
-    assert mount.runtime_context["agent_role_contract"]["worker_transport"] == "tool_use"
+    assert mount.runtime_context["agent_role_contract"]["worker_transport"] == "json"

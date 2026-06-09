@@ -59,7 +59,7 @@ def test_phase2_stability_gate_fake_scoped_runs(tmp_path: Path) -> None:
     assert audit["metrics"]["max_repair_attempts"] <= GATE["thresholds"]["max_repair_attempts_per_run"]
 
 
-def test_evaluate_stability_samples_flags_violations() -> None:
+def test_evaluate_stability_samples_reports_slo_warnings_without_blocking() -> None:
     audit = evaluate_stability_samples(
         [
             {"permission_mode": "reviewed_auto", "model_calls": 8, "repair_attempts": 0},
@@ -69,5 +69,7 @@ def test_evaluate_stability_samples_flags_violations() -> None:
         max_repair_attempts_per_run=1,
     )
 
-    assert audit["ok"] is False
-    assert len(audit["violations"]) == 2
+    assert audit["ok"] is True
+    assert audit["status"] == "pass_with_warnings"
+    assert audit["violations"] == []
+    assert len(audit["slo_warnings"]) == 2

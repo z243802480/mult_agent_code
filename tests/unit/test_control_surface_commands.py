@@ -783,10 +783,10 @@ def test_gate_status_ignores_observation_plan_superseded_by_release_evidence(
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
     assert payload["latest_observation_plan"] == {}
-    assert payload["runtime_readiness_gate"]["status"] != "blocked"
+    assert "runtime_readiness_gate" not in payload
 
 
-def test_gate_status_surfaces_disjoint_write_gate_check(tmp_path: Path) -> None:
+def test_gate_status_does_not_reaudit_disjoint_write_execution(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     validator = SchemaValidator(Path("schemas"))
     agent_dir = tmp_path / ".asteria"
@@ -892,8 +892,7 @@ def test_gate_status_surfaces_disjoint_write_gate_check(tmp_path: Path) -> None:
 
     result = GateStatusCommand(tmp_path).run()
 
-    assert "Disjoint write gate: ready" in result.to_text()
-    assert "real parallel execution remains gated" in result.to_text()
+    assert "Disjoint write gate:" not in result.to_text()
 
 
 def test_status_reports_candidate_promotion_summary(tmp_path: Path) -> None:

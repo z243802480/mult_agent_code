@@ -4,7 +4,9 @@
 
 ## 状态
 
-Accepted
+Superseded by ADR-0012
+
+> `runtime_progress` 继续作为 CLI Status、诊断和兼容对象存在；本文关于 Studio 主屏消费 `runtime_progress` 的决策不再生效。
 
 ## 背景
 

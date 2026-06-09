@@ -188,7 +188,7 @@ def test_real_model_smoke_accepts_review_pass_with_pending_budget_guard(tmp_path
     )
 
 
-def test_real_model_smoke_accepts_completed_evidence_when_review_timed_out(
+def test_real_model_smoke_rejects_missing_runtime_final_report(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -237,21 +237,17 @@ def test_real_model_smoke_accepts_completed_evidence_when_review_timed_out(
         transcript=workspace / "real_model_smoke_transcript.json",
     )
 
-    final_report = validate_artifacts(
-        workspace,
-        "run-1",
-        result=result,
-        expected_file=expected_file,
-        expected_text="return a + b",
-    )
-
-    assert final_report.exists()
-    assert (run_dir / "eval_report.json").exists()
-    assert result.diagnostics["accepted_review_timeout"]
-    assert result.diagnostics["accepted_run_completed_event"]
+    with pytest.raises(smoke_runtime.SmokeFailure, match="final_report.md"):
+        validate_artifacts(
+            workspace,
+            "run-1",
+            result=result,
+            expected_file=expected_file,
+            expected_text="return a + b",
+        )
 
 
-def test_real_model_smoke_accepts_verified_artifact_with_redundant_unfinished_tasks(
+def test_real_model_smoke_rejects_verified_artifact_with_unfinished_tasks(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -312,21 +308,17 @@ def test_real_model_smoke_accepts_verified_artifact_with_redundant_unfinished_ta
         transcript=workspace / "real_model_smoke_transcript.json",
     )
 
-    final_report = validate_artifacts(
-        workspace,
-        "run-1",
-        result=result,
-        expected_file=expected_file,
-        expected_text="class Shape",
-    )
-
-    assert final_report.exists()
-    assert result.diagnostics["accepted_artifact_verified_partial"]
-    assert result.diagnostics["accepted_unfinished_tasks"] == ["task-2:blocked"]
-    assert result.diagnostics["accepted_review_status"] == "fail"
+    with pytest.raises(smoke_runtime.SmokeFailure, match="status is 'paused'"):
+        validate_artifacts(
+            workspace,
+            "run-1",
+            result=result,
+            expected_file=expected_file,
+            expected_text="class Shape",
+        )
 
 
-def test_real_model_smoke_accepts_verified_artifact_when_review_artifacts_missing(
+def test_real_model_smoke_does_not_synthesize_missing_reports(
     tmp_path: Path,
 ) -> None:
     workspace = tmp_path / "workspace"
@@ -379,17 +371,14 @@ def test_real_model_smoke_accepts_verified_artifact_when_review_artifacts_missin
         transcript=workspace / "real_model_smoke_transcript.json",
     )
 
-    final_report = validate_artifacts(
-        workspace,
-        "run-1",
-        result=result,
-        expected_file=expected_file,
-        expected_text="real model smoke ok",
-    )
-
-    assert final_report.exists()
-    assert result.diagnostics["accepted_artifact_verified_partial"]
-    assert result.diagnostics["review_status"] == "pass"
+    with pytest.raises(smoke_runtime.SmokeFailure, match="final_report.md"):
+        validate_artifacts(
+            workspace,
+            "run-1",
+            result=result,
+            expected_file=expected_file,
+            expected_text="real model smoke ok",
+        )
 
 
 def test_real_model_gate_runs_offline_when_explicitly_allowed(tmp_path: Path) -> None:

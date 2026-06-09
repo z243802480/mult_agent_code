@@ -65,6 +65,7 @@ def evaluate_run_health(
     allowed_terminal_statuses: tuple[str, ...] = ("completed", "running", "reviewed", "paused"),
 ) -> dict[str, Any]:
     violations: list[str] = []
+    slo_warnings: list[str] = []
     progress_bytes = int(sample.get("user_progress_bytes") or 0)
     progress_events = int(sample.get("user_progress_events") or 0)
     replan_tasks = int(sample.get("replan_task_count") or 0)
@@ -80,18 +81,25 @@ def evaluate_run_health(
             f"user_progress_events {progress_events} exceeds {max_user_progress_events}"
         )
     if replan_tasks > max_replan_tasks:
-        violations.append(f"replan_task_count {replan_tasks} exceeds {max_replan_tasks}")
+        slo_warnings.append(f"replan_task_count {replan_tasks} exceeds {max_replan_tasks}")
     if repair_attempts > max_repair_attempts:
-        violations.append(f"repair_attempts {repair_attempts} exceeds {max_repair_attempts}")
+        slo_warnings.append(f"repair_attempts {repair_attempts} exceeds {max_repair_attempts}")
     if run_status == "blocked":
         violations.append("run_status blocked after bounded recovery")
 
     ok = not violations
     healthy_terminal = run_status in allowed_terminal_statuses or ok
     return {
-        "status": "pass" if ok and healthy_terminal else "fail",
+        "status": (
+            "fail"
+            if not ok or not healthy_terminal
+            else "pass_with_warnings"
+            if slo_warnings
+            else "pass"
+        ),
         "ok": ok and healthy_terminal,
         "violations": violations,
+        "slo_warnings": slo_warnings,
         "thresholds": {
             "max_user_progress_bytes": max_user_progress_bytes,
             "max_user_progress_events": max_user_progress_events,

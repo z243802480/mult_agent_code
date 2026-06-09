@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "purpose": "Phase 4 run health gate: bounded recovery loops and user_progress volume.",
+  "purpose": "Phase 4 run health gate: terminal state and user_progress resource health, with recovery-loop SLO observations.",
   "phase": "4",
   "depends_on_signoff": "docs/zh/reports/S12-north-star-signoff-20260606.md",
   "thresholds": {
@@ -13,5 +13,5 @@
   "unhealthy_fixture_run": ".asteria/s7-signoff-workspace/.asteria/runs/run-20260606-0001",
   "healthy_fixture_run": ".asteria/s13-clean-run-workspace/.asteria/runs/run-20260606-0002",
   "signoff_report": "docs/zh/reports/S13-run-health-signoff-20260606.md",
-  "notes": "Healthy real-provider S7 clean re-run must pass thresholds; legacy S7 signoff run is the negative fixture."
+  "notes": "Blocked terminal state and excessive progress volume remain hard health failures. Replan and repair thresholds are SLO warnings unless no-progress evidence proves a stuck loop."
 }

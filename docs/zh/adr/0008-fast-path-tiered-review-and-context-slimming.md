@@ -67,7 +67,7 @@ deterministic verify -> medium semantic review -> strong review
 
 ### 4. 复杂机制保留在正确层
 
-已有 AgentLoop、RuntimeReadinessGate、worker、candidate workspace、promotion、merge gate、context budget 不是废弃能力，但必须按层使用：
+已有 AgentLoop、worker、candidate workspace、promotion、merge gate、context budget 不是废弃能力，但必须按层使用。全局 RuntimeReadinessGate 已由 ADR-0013 删除：
 
 - 主路径：快、短、可解释。
 - 风险边界：权限、sandbox、merge/promotion、强 gate。

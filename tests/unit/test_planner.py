@@ -1,4 +1,4 @@
-from asteria_runtime.agents.planner import FollowUpTaskPlanner, RequirementPlanner
+from asteria_runtime.agents.planner import RequirementPlanner
 from asteria_runtime.commands.plan_command import _apply_validation_probe_hints
 from asteria_runtime.core.execution_profile import SESSION_AGENT
 
@@ -500,7 +500,7 @@ def test_requirement_planner_groups_single_file_tool_into_one_slice() -> None:
     assert "Accept a password argument" in task["description"]
     assert "Common passwords return weak" in task["acceptance"]
     assert "single-file tool" in task["notes"]
-    assert task["runtime_profile_hints"]["worker_transport"] == "tool_use"
+    assert "worker_transport" not in task.get("runtime_profile_hints", {})
 
 
 def test_requirement_planner_groups_atomic_multifile_cli_artifacts() -> None:
@@ -830,67 +830,6 @@ def test_requirement_planner_adds_multi_agent_strategy_for_disjoint_artifacts() 
     assert tasks[0]["multi_agent_strategy"]["mode"] == "disjoint_write_workers"
     assert tasks[0]["multi_agent_strategy"]["max_child_workers"] == 3
     assert "Multi-agent strategy: disjoint_write_workers" in tasks[0]["notes"]
-
-
-def test_follow_up_planner_skips_duplicate_tasks() -> None:
-    existing_tasks = [
-        {
-            "task_id": "task-0001",
-            "title": "Create README helper",
-            "description": "Create README helper artifact",
-            "status": "done",
-        }
-    ]
-    eval_report = {
-        "run_id": "run-1",
-        "outcome_eval": {
-            "follow_up_tasks": [
-                {
-                    "title": "Create README helper",
-                    "description": "Create README helper artifact",
-                }
-            ]
-        },
-        "trajectory_eval": {},
-    }
-
-    tasks = FollowUpTaskPlanner().build_follow_up_tasks(eval_report, existing_tasks)
-
-    assert tasks == []
-
-
-def test_follow_up_planner_chains_new_tasks_after_existing_work() -> None:
-    existing_tasks = [
-        {
-            "task_id": "task-0001",
-            "title": "Build core",
-            "description": "Build core module",
-            "status": "done",
-        }
-    ]
-    eval_report = {
-        "run_id": "run-1",
-        "outcome_eval": {
-            "follow_up_tasks": [
-                {
-                    "title": "Add report",
-                    "description": "Add final report artifact",
-                    "acceptance": ["Report exists"],
-                },
-                {
-                    "title": "Add docs",
-                    "description": "Add user docs",
-                },
-            ]
-        },
-        "trajectory_eval": {},
-    }
-
-    tasks = FollowUpTaskPlanner().build_follow_up_tasks(eval_report, existing_tasks)
-
-    assert [task["task_id"] for task in tasks] == ["task-0002", "task-0003"]
-    assert tasks[0]["depends_on"] == ["task-0001"]
-    assert tasks[1]["depends_on"] == ["task-0002"]
 
 
 def test_planner_notes_include_capability_feedback_hint() -> None:

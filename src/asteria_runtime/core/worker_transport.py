@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from asteria_runtime.core.fast_path_policy import classify_fast_path
-
 
 def resolve_worker_transport(
     *,
@@ -18,17 +16,6 @@ def resolve_worker_transport(
     ):
         if source:
             return source
-    if isinstance(task, dict) and str(task.get("task_kind") or "").strip().lower() in {
-        "diagnostic",
-        "verification",
-    }:
-        fast_path = classify_fast_path(
-            str(task.get("description") or task.get("title") or ""),
-            target_files=_transport_target_files(task),
-            task=task,
-        )
-        if fast_path.task_kind in {"doc_update", "simple_file", "single_file_bugfix"}:
-            return "tool_use"
     for source in (
         (runtime_context or {}).get("agent_role_contract"),
         (policy or {}).get("agent_loop"),
@@ -60,15 +47,6 @@ def _transport_hint_from_mapping(value: object) -> str | None:
     if transport in {"json", "tool_use"}:
         return transport
     return None
-
-
-def _transport_target_files(task: dict[str, Any]) -> list[str]:
-    files: list[str] = []
-    for key in ("expected_artifacts", "expected_changed_files", "write_scope", "read_scope"):
-        for item in task.get(key) or []:
-            if isinstance(item, str) and item.strip():
-                files.append(item)
-    return list(dict.fromkeys(files))
 
 
 def tool_definitions_for(available_tools: list[str]) -> list[dict[str, Any]]:

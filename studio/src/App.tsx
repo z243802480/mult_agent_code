@@ -206,8 +206,6 @@ export function App() {
         <MissionPaneHeader
           title={bootstrap.activeSession?.title ?? "New task"}
           settings={bootstrap.settings}
-          runDetail={runEvidence.runDetail}
-          isRunning={sessionEvents.isRunning}
           viewMode={viewMode}
           panelOpen={panelOpen}
           diffFocus={diffFocus}

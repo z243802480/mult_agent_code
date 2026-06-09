@@ -26,7 +26,6 @@ from asteria_runtime.core.runtime_validation_matrix import (
     runtime_validation_matrix_text_lines,
 )
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
-from asteria_runtime.core.runtime_readiness_gate import runtime_readiness_gate
 from asteria_runtime.core.agent_loop_decision import (
     latest_agent_loop_decision,
     recommended_command_for_next_action,
@@ -55,7 +54,6 @@ class GateStatusResult:
     plugin_risks: dict[str, Any] = field(default_factory=dict)
     runtime_progress_metrics: dict[str, Any] = field(default_factory=dict)
     runtime_validation_matrix: dict[str, Any] = field(default_factory=dict)
-    runtime_readiness_gate: dict[str, Any] = field(default_factory=dict)
     v0_2_rolling_validation: dict[str, Any] = field(default_factory=dict)
     recovery_pressure: dict[str, Any] = field(default_factory=dict)
     context_pressure_summary: dict[str, Any] = field(default_factory=dict)
@@ -94,7 +92,6 @@ class GateStatusResult:
                     "plugin_risks",
                     "runtime_progress_metrics",
                     "runtime_validation_matrix",
-                    "runtime_readiness_gate",
                     "v0_2_rolling_validation",
                     "readiness_explanation",
                     "recovery_pressure",
@@ -126,7 +123,6 @@ class GateStatusResult:
             "plugin_risks": self.plugin_risks,
             "runtime_progress_metrics": self.runtime_progress_metrics,
             "runtime_validation_matrix": self.runtime_validation_matrix,
-            "runtime_readiness_gate": self.runtime_readiness_gate,
             "v0_2_rolling_validation": self.v0_2_rolling_validation,
             "readiness_explanation": self._readiness_explanation(release_state),
             "recovery_pressure": self.recovery_pressure,
@@ -147,7 +143,6 @@ class GateStatusResult:
             "current_environment_incomplete",
             "route_guidance_blocked",
             "model_call_contract_blocked",
-            "runtime_readiness_blocked",
             "candidate_promotion_risk_blocked",
             "plugin_manifests_blocked",
         }:
@@ -207,33 +202,6 @@ class GateStatusResult:
             )
         lines.extend(real_provider_matrix_text_lines(self.latest_real_provider_matrix))
         lines.extend(runtime_validation_matrix_text_lines(self.runtime_validation_matrix))
-        if self.runtime_readiness_gate:
-            lines.append(
-                "Runtime readiness gate: "
-                f"{self.runtime_readiness_gate.get('status', 'unknown')} "
-                f"(blocked={self.runtime_readiness_gate.get('blocked', 0)}, "
-                f"review={self.runtime_readiness_gate.get('review', 0)})"
-            )
-            for check in self.runtime_readiness_gate.get("checks") or []:
-                if not isinstance(check, dict):
-                    continue
-                if check.get("name") == "subagent_readonly_fanout":
-                    lines.append(
-                        "Readonly fanout: "
-                        f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
-                    )
-                if check.get("name") == "subagent_disjoint_write_gate":
-                    lines.append(
-                        "Disjoint write gate: "
-                        f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
-                    )
-                if check.get("name") == "candidate_promotion_safety":
-                    lines.append(
-                        "Candidate promotion safety: "
-                        f"{check.get('status', 'unknown')} - {check.get('summary', '')}"
-                    )
-            for action in list(self.runtime_readiness_gate.get("next_actions") or [])[:3]:
-                lines.append(f"  - {action}")
         if self.v0_2_rolling_validation:
             coverage = self.v0_2_rolling_validation.get("coverage") or {}
             covered = [name for name, ok in coverage.items() if ok]
@@ -382,14 +350,6 @@ class GateStatusResult:
         elif self.route_guidance.get("status") == "blocked":
             summary = "provider route health is blocked by recent capability evidence."
             status = "route_health_blocked"
-        elif self.runtime_readiness_gate.get("status") == "blocked":
-            summary = (
-                "runtime readiness gate blocked on model/context/capability/decision evidence."
-            )
-            status = "runtime_readiness_blocked"
-        elif self.runtime_readiness_gate.get("status") == "review":
-            summary = "runtime readiness gate needs review before widening validation."
-            status = "runtime_readiness_review"
         else:
             summary = self.next_actions[0] if self.next_actions else "gate is blocked."
             status = "blocked"
@@ -401,7 +361,6 @@ class GateStatusResult:
             "gate_statuses": gates,
             "runtime_validation_gap_summary": gap_summary,
             "route_guidance_status": self.route_guidance.get("status"),
-            "runtime_readiness_gate_status": self.runtime_readiness_gate.get("status"),
             "v0_2_rolling_validation_status": self.v0_2_rolling_validation.get("status"),
         }
 
@@ -499,32 +458,6 @@ class GateStatusCommand:
         recovery_pressure = recovery_pressure_report(self.root, self.validator)
         context_pressure_summary = _context_pressure_summary(self.root)
         v0_2_rolling_validation = _latest_v0_2_rolling_validation(self.root)
-        readiness_gate = runtime_readiness_gate(
-            root=self.root,
-            validator=self.validator,
-            model_call_contract=model_call_contract,
-            route_guidance=route_guidance,
-            context_pressure_summary=context_pressure_summary,
-            latest_observation_plan=latest_observation_plan,
-        )
-        if (
-            stage == "ready_for_small_real_task_validation"
-            and readiness_gate.get("status") == "blocked"
-        ):
-            stage = "runtime_readiness_blocked"
-            actions = [
-                "Resolve runtime readiness gate blockers before validation.",
-                *[str(item) for item in readiness_gate.get("next_actions", [])],
-                *actions,
-            ]
-        elif (
-            stage == "ready_for_small_real_task_validation"
-            and readiness_gate.get("status") == "review"
-        ):
-            actions = [
-                *actions,
-                *[str(item) for item in readiness_gate.get("next_actions", [])],
-            ]
         rolling_status = str(v0_2_rolling_validation.get("status") or "")
         if rolling_status in {"needs_more_samples", "needs_evidence"}:
             actions = [
@@ -552,7 +485,6 @@ class GateStatusCommand:
             plugin_risks=plugin_risks,
             runtime_progress_metrics=progress_metrics,
             runtime_validation_matrix=validation_matrix,
-            runtime_readiness_gate=readiness_gate,
             v0_2_rolling_validation=v0_2_rolling_validation,
             recovery_pressure=recovery_pressure,
             context_pressure_summary=context_pressure_summary,

@@ -812,7 +812,7 @@ class FakeQualityRevisionExecuteClient:
         )
 
 
-def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
+def test_run_command_executes_then_stops_ready_for_explicit_review(tmp_path: Path) -> None:
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -826,13 +826,14 @@ def test_run_command_executes_minimal_closed_loop(tmp_path: Path) -> None:
     assert result.final_report_path.exists()
     assert (tmp_path / "complete_module.py").exists()
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
-    assert (run_dir / "review_report.md").exists()
+    assert not (run_dir / "review_report.md").exists()
+    assert not (run_dir / "eval_report.json").exists()
     assert (run_dir / "final_report.md").exists()
     final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
     assert "## Current State" in final_report
-    assert "Completion: complete" in final_report
+    assert "Completion: implemented_needs_review" in final_report
     assert "Release gate signal: not_run" in final_report
-    assert "Review status: pass" in final_report
+    assert "Review status: pass" not in final_report
     assert "## Execution Evidence" in final_report
     assert "strategy=" in final_report
     assert "promoted=complete_module.py" in final_report
@@ -939,7 +940,7 @@ def _write_single_file_bugfix_matrix(root: Path) -> None:
     )
 
 
-def test_run_command_keeps_default_review_deterministic_when_model_client_is_shared(
+def test_run_command_does_not_invoke_review_when_model_client_is_shared(
     tmp_path: Path,
 ) -> None:
     result = RunCommand(
@@ -951,10 +952,8 @@ def test_run_command_keeps_default_review_deterministic_when_model_client_is_sha
 
     assert result.status == "completed"
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
-    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
-    review_tier = eval_report["trajectory_eval"]["review_tier"]
-    assert review_tier["mode"] == "deterministic_first"
-    assert review_tier["accepted_without_model"] is True
+    assert not (run_dir / "eval_report.json").exists()
+    assert not (run_dir / "review_report.md").exists()
     model_calls = [
         json.loads(line)
         for line in (run_dir / "model_calls.jsonl").read_text(encoding="utf-8").splitlines()
@@ -1347,7 +1346,7 @@ def test_run_command_without_goal_continues_current_session(tmp_path: Path) -> N
     assert (tmp_path / "complete_module.py").exists()
 
 
-def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:
+def test_run_command_stops_blocked_without_invoking_debug(tmp_path: Path) -> None:
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -1358,13 +1357,11 @@ def test_run_command_repairs_blocked_task_before_review(tmp_path: Path) -> None:
         enable_research=False,
     ).run()
 
-    assert result.status == "completed"
-    assert (tmp_path / "complete_module.py").read_text(encoding="utf-8") == (
-        "def answer():\n    return 42\n"
-    )
+    assert result.status == "blocked"
+    assert not (tmp_path / "complete_module.py").exists()
     final_report = result.final_report_path.read_text(encoding="utf-8")
-    assert "debug: completed" in final_report
-    assert "Blocked tasks: 0" in final_report
+    assert "debug: completed" not in final_report
+    assert "Execution stopped at a resumable session boundary." in final_report
 
 
 def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -> None:
@@ -1402,7 +1399,7 @@ def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -
     assert not any(call.get("purpose") == "task_repair" for call in model_calls)
 
 
-def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
+def test_run_command_does_not_replan_after_blocked_execution(tmp_path: Path) -> None:
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -1415,15 +1412,13 @@ def test_run_command_replans_when_debug_cannot_repair(tmp_path: Path) -> None:
         force_harness=True,
     ).run()
 
-    assert result.status == "completed"
-    assert (tmp_path / "complete_module.py").read_text(encoding="utf-8") == (
-        "def answer():\n    return 42\n"
-    )
+    assert result.status == "blocked"
+    assert not (tmp_path / "complete_module.py").exists()
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
-    assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "done"]
+    assert [task["status"] for task in task_plan["tasks"]] == ["blocked"]
     final_report = result.final_report_path.read_text(encoding="utf-8")
-    assert "replan: completed - 1 task(s), 0 decision(s)." in final_report
+    assert "replan: completed" not in final_report
 
 
 def test_run_command_pauses_when_recovery_cycle_limit_reached(tmp_path: Path) -> None:
@@ -1528,7 +1523,7 @@ def test_run_command_pauses_at_budget_hard_stop(tmp_path: Path) -> None:
     assert "Budget guard created" in final_report
 
 
-def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path) -> None:
+def test_run_command_uses_research_without_review_follow_up_orchestration(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "complete.md").write_text(
@@ -1549,18 +1544,18 @@ def test_run_command_uses_research_and_executes_review_follow_up(tmp_path: Path)
 
     assert result.status == "completed"
     assert (tmp_path / "complete_module.py").exists()
-    assert (tmp_path / "README_HELPER.md").exists()
-    assert review_client.calls == 2
+    assert not (tmp_path / "README_HELPER.md").exists()
+    assert review_client.calls == 0
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
-    assert len(task_plan["tasks"]) == 2
+    assert len(task_plan["tasks"]) == 1
     assert all(task["status"] == "done" for task in task_plan["tasks"])
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "research: completed" in final_report
-    assert "follow-up task(s)" in final_report
+    assert "follow-up task(s)" not in final_report
 
 
-def test_run_command_pauses_when_review_creates_decision_point(tmp_path: Path) -> None:
+def test_run_command_does_not_create_decision_from_review_feedback(tmp_path: Path) -> None:
     result = RunCommand(
         tmp_path,
         "create a complete module",
@@ -1571,14 +1566,11 @@ def test_run_command_pauses_when_review_creates_decision_point(tmp_path: Path) -
         enable_research=False,
     ).run()
 
-    assert result.status == "paused"
+    assert result.status == "completed"
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
-    decisions = (run_dir / "decisions.jsonl").read_text(encoding="utf-8")
-    assert "Should the first product surface be a web UI?" in decisions
+    assert not (run_dir / "decisions.jsonl").exists()
     final_report = result.final_report_path.read_text(encoding="utf-8")
-    assert "decision point(s)" in final_report
-    assert "## Pending Decisions" in final_report
-    assert "decision-0001" in final_report
+    assert "Should the first product surface be a web UI?" not in final_report
 
 
 def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Path) -> None:
@@ -1591,7 +1583,30 @@ def test_resume_command_applies_resolved_decision_and_continues_run(tmp_path: Pa
         review_model_client=FakeDecisionReviewClient(),
         enable_research=False,
     ).run()
-    assert paused.status == "paused"
+    assert paused.status == "completed"
+    DecideCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        question="Should the first product surface be a web UI?",
+        options_json=json.dumps(
+            [
+                {
+                    "option_id": "approve",
+                    "label": "Add web UI",
+                    "tradeoff": "Adds the requested UI artifact.",
+                    "action": "create_task",
+                },
+                {
+                    "option_id": "defer",
+                    "label": "Defer",
+                    "tradeoff": "Keep current scope.",
+                    "action": "record_constraint",
+                },
+            ]
+        ),
+        recommended_option_id="approve",
+        default_option_id="defer",
+    ).run()
 
     DecideCommand(
         tmp_path,
@@ -1651,7 +1666,30 @@ def test_resume_command_records_constraint_action_without_creating_task(tmp_path
         review_model_client=FakeDecisionReviewClient(),
         enable_research=False,
     ).run()
-    assert paused.status == "paused"
+    assert paused.status == "completed"
+    DecideCommand(
+        tmp_path,
+        run_id=paused.run_id,
+        question="Should the first product surface be a web UI?",
+        options_json=json.dumps(
+            [
+                {
+                    "option_id": "approve",
+                    "label": "Add web UI",
+                    "tradeoff": "Adds the requested UI artifact.",
+                    "action": "create_task",
+                },
+                {
+                    "option_id": "defer",
+                    "label": "Defer",
+                    "tradeoff": "Keep current scope.",
+                    "action": "record_constraint",
+                },
+            ]
+        ),
+        recommended_option_id="approve",
+        default_option_id="defer",
+    ).run()
 
     DecideCommand(
         tmp_path,
@@ -1944,7 +1982,7 @@ def test_final_report_marks_implemented_unverified_when_no_verification_calls(
 
     run_dir = tmp_path / ".asteria" / "runs" / result.run_id
     final_report = (run_dir / "final_report.md").read_text(encoding="utf-8")
-    assert "implemented_unverified" in final_report
+    assert "implemented_needs_review" in final_report
     assert "No verification commands" in final_report
 
 

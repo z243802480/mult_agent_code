@@ -20,7 +20,6 @@ from asteria_runtime.core.runtime_validation_evidence import (
     record_runtime_validation_matrix_evidence,
 )
 from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
-from asteria_runtime.core.runtime_readiness_gate import runtime_readiness_gate
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
 from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.json_store import JsonStore
@@ -301,8 +300,6 @@ class ValidationRunCommand:
         if doctor.get("ok") is not True:
             reasons.append("Fix `asteria doctor` error checks before validation-run.")
         if gate.get("stage") != "ready_for_small_real_task_validation":
-            if self._allow_targeted_probe_over_runtime_readiness(gate):
-                return reasons
             blocking_reason = gate.get("blocking_reason")
             if blocking_reason:
                 reasons.append(str(blocking_reason))
@@ -382,58 +379,6 @@ class ValidationRunCommand:
             ),
             f"Suggested probe commands: {commands}",
         ]
-
-    def _allow_targeted_probe_over_runtime_readiness(self, gate: dict[str, Any]) -> bool:
-        if not self.probe_ids or gate.get("stage") != "runtime_readiness_blocked":
-            return False
-        readiness = gate.get("runtime_readiness_gate")
-        readiness = readiness if isinstance(readiness, dict) else {}
-        blocked = [
-            str(check.get("name") or "")
-            for check in readiness.get("checks") or []
-            if isinstance(check, dict) and check.get("status") == "blocked"
-        ]
-        allowed = {"agent_loop_execution"}
-        probe_allowed_checks = {
-            "parent_selects_subagent": {"agent_loop_execution"},
-            "readonly_fanout_succeeds": {"agent_loop_execution", "subagent_readonly_fanout"},
-            "readonly_write_tool_blocked": {
-                "agent_loop_execution",
-                "subagent_readonly_fanout",
-            },
-            "disjoint_write_gate_blocks_unsafe_fanout": {
-                "agent_loop_execution",
-                "subagent_disjoint_write_gate",
-                "candidate_promotion_safety",
-            },
-            "parent_loop_stops_after_observation": {
-                "agent_loop_execution",
-                "observation_next_action",
-            },
-            "repair_replan_path": {
-                "agent_loop_execution",
-                "observation_next_action",
-                "subagent_readonly_fanout",
-            },
-            "ask_stop_path": {
-                "agent_loop_execution",
-                "observation_next_action",
-                "subagent_readonly_fanout",
-            },
-            "context_pressure_path": {
-                "agent_loop_execution",
-                "context_pressure",
-                "subagent_context_isolation",
-                "subagent_readonly_fanout",
-            },
-            "capability_selection_path": {
-                "capability_selection",
-                "subagent_readonly_fanout",
-            },
-        }
-        for probe_id in self.probe_ids:
-            allowed.update(probe_allowed_checks.get(probe_id, set()))
-        return bool(blocked) and set(blocked) <= allowed
 
     def _build_summary(
         self,
@@ -601,7 +546,7 @@ class ValidationRunCommand:
                     "intent": "Verify a readonly child cannot use write tools.",
                     "expected_evidence": [
                         "agent_loop_observations.jsonl:write tool denied for readonly child",
-                        "runtime_readiness_gate:subagent_readonly_fanout blocked or reviewed",
+                        "agent_loop_observations.jsonl:readonly write tool denied",
                     ],
                     "gate_policy": "strong_block_on_uncontrolled_write",
                 },
@@ -612,8 +557,8 @@ class ValidationRunCommand:
                         "merge gate, or clean promotion recovery evidence."
                     ),
                     "expected_evidence": [
-                        "runtime_readiness_gate:subagent_disjoint_write_gate blocked",
-                        "gate-status:Disjoint write gate summary",
+                        "subagent_child_plans.jsonl:unsafe disjoint write plan rejected",
+                        "merge_gate_evidence.jsonl:write boundary blocked",
                     ],
                     "gate_policy": "strong_block_before_real_parallel_write_enable",
                 },
@@ -695,18 +640,6 @@ class ValidationRunCommand:
         )
         cost_report = self._read_optional(run_dir / "cost_report.json", "cost_report")
         progress_metrics = runtime_progress_metrics(self.root, self.validator)
-        readiness = runtime_readiness_gate(
-            root=self.root,
-            validator=self.validator,
-            model_call_contract={"status": "healthy"},
-            context_pressure_summary={"max_context_window_ratio": 0.1},
-            latest_observation_plan={},
-        )
-        readiness_checks = {
-            str(check.get("name") or ""): check
-            for check in readiness.get("checks", [])
-            if isinstance(check, dict)
-        }
         return [
             self._evaluate_probe(
                 str(probe["id"]),
@@ -723,7 +656,6 @@ class ValidationRunCommand:
                 run_summary=run_summary,
                 cost_report=cost_report,
                 progress_metrics=progress_metrics,
-                readiness_checks=readiness_checks,
             )
             for probe in plan["probes"]
         ]
@@ -757,7 +689,6 @@ class ValidationRunCommand:
         run_summary: dict[str, Any],
         cost_report: dict[str, Any],
         progress_metrics: dict[str, Any],
-        readiness_checks: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
         status, summary, evidence_refs = self._probe_status(
             probe_id,
@@ -773,7 +704,6 @@ class ValidationRunCommand:
             run_summary=run_summary,
             cost_report=cost_report,
             progress_metrics=progress_metrics,
-            readiness_checks=readiness_checks,
         )
         return {
             "id": probe_id,
@@ -799,7 +729,6 @@ class ValidationRunCommand:
         run_summary: dict[str, Any] | None = None,
         cost_report: dict[str, Any] | None = None,
         progress_metrics: dict[str, Any] | None = None,
-        readiness_checks: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[str, str, list[str]]:
         execution_results = execution_results or []
         runtime_requests = runtime_requests or []
@@ -808,7 +737,6 @@ class ValidationRunCommand:
         run_summary = run_summary or {}
         cost_report = cost_report or {}
         progress_metrics = progress_metrics or {}
-        readiness_checks = readiness_checks or {}
         if probe_id == "parent_selects_subagent":
             has_decision = any(
                 _nested_str(item, ["next_action", "action"]) == "subagent" for item in decisions
@@ -836,21 +764,37 @@ class ValidationRunCommand:
                 [*worker_ids[:2], *result_ids[:2]],
             )
         if probe_id == "readonly_fanout_succeeds":
-            plan_ids = [
-                str(item.get("subagent_child_plan_id") or "")
-                for item in child_plans
-                if _is_readonly_fanout_strategy(item)
+            readonly_plans = [item for item in child_plans if _is_readonly_fanout_strategy(item)]
+            plan_ids = [str(item.get("subagent_child_plan_id") or "") for item in readonly_plans]
+            expected_task_ids = {
+                str(child.get("child_task_id") or child.get("task_id") or "")
+                for plan in readonly_plans
+                for child in plan.get("child_tasks") or []
+                if isinstance(child, dict)
+            }
+            readonly_workers = [
+                item
+                for item in workers
+                if str(item.get("task_id") or "") in expected_task_ids
+                and str(item.get("parallel_safety") or "") == "readonly"
             ]
-            fanout = readiness_checks.get("subagent_readonly_fanout", {})
-            if plan_ids and fanout.get("status") == "ready":
+            worker_ids = {
+                str(item.get("worker_invocation_id") or "") for item in readonly_workers
+            }
+            succeeded_worker_ids = {
+                str(item.get("worker_invocation_id") or "")
+                for item in worker_results
+                if str(item.get("status") or "") == "succeeded"
+            }
+            if expected_task_ids and len(readonly_workers) == len(expected_task_ids) and worker_ids <= succeeded_worker_ids:
                 return (
                     "passed",
-                    str(fanout.get("summary") or "Readonly fanout succeeded."),
-                    plan_ids[:3],
+                    "Readonly fanout child workers completed inside the readonly boundary.",
+                    [*plan_ids[:2], *sorted(worker_ids)[:2]],
                 )
             return (
                 "missing_evidence",
-                str(fanout.get("summary") or "Readonly fanout evidence was not present."),
+                "Readonly fanout does not have matching successful readonly child workers.",
                 plan_ids[:3],
             )
         if probe_id == "readonly_write_tool_blocked":
@@ -861,9 +805,8 @@ class ValidationRunCommand:
                 and "write" in str(item).lower()
                 and ("denied" in str(item).lower() or "cannot use write tool" in str(item).lower())
             ]
-            fanout = readiness_checks.get("subagent_readonly_fanout", {})
-            if denied or fanout.get("status") in {"blocked", "review"}:
-                return "passed", "Readonly write attempt was blocked or reviewed.", denied[:3]
+            if denied:
+                return "passed", "Readonly write attempt was denied at the action boundary.", denied[:3]
             return "missing_evidence", "No readonly write-tool denial evidence was found.", []
         if probe_id == "disjoint_write_gate_blocks_unsafe_fanout":
             has_disjoint_plan = any(
@@ -872,37 +815,28 @@ class ValidationRunCommand:
                 or str(item.get("parallel_safety") or "") == "disjoint_writes"
                 for item in child_plans
             )
-            disjoint = readiness_checks.get("subagent_disjoint_write_gate", {})
-            refs = [str(item) for item in disjoint.get("evidence_refs") or []][:4]
+            blocked = [
+                str(item.get("observation_id") or item.get("execution_id") or "")
+                for item in [*observations, *execution_results]
+                if "disjoint" in str(item).lower()
+                and ("blocked" in str(item).lower() or "denied" in str(item).lower())
+            ]
             if not has_disjoint_plan:
                 return (
                     "missing_evidence",
-                    str(disjoint.get("summary") or "No disjoint write fanout evidence was found."),
-                    refs,
+                    "No disjoint write fanout evidence was found.",
+                    [],
                 )
-            if disjoint.get("status") == "blocked":
+            if blocked:
                 return (
                     "passed",
-                    str(disjoint.get("summary") or "Disjoint write gate blocked."),
-                    refs,
-                )
-            if disjoint.get("status") == "ready":
-                summary = str(disjoint.get("summary") or "")
-                if "blocked unsafe" in summary:
-                    return (
-                        "passed",
-                        summary,
-                        refs,
-                    )
-                return (
-                    "failed",
-                    summary or "Disjoint write gate did not block unsafe fanout.",
-                    refs,
+                    "Unsafe disjoint write fanout was denied at the action boundary.",
+                    blocked[:4],
                 )
             return (
                 "missing_evidence",
-                str(disjoint.get("summary") or "No disjoint write fanout evidence was found."),
-                refs,
+                "Disjoint write plan exists, but no action-boundary denial evidence was recorded.",
+                [],
             )
         if probe_id == "parent_loop_stops_after_observation":
             exit_reason = str(run_summary.get("exit_reason") or "")

@@ -319,3 +319,147 @@ def test_only_current_plan_and_brief_claim_active_status() -> None:
     }
 
     assert active <= allowed
+
+
+def test_agent_loop_limits_remain_eval_slos_not_universal_hard_stops() -> None:
+    master = Path("docs/zh/研发总计划.md").read_text(encoding="utf-8")
+    quality = Path("docs/zh/质量与评估.md").read_text(encoding="utf-8")
+    active_plan = Path(
+        "docs/zh/plans/S74_POST_S73_BETA_CONVERGENCE_PLAN.md"
+    ).read_text(encoding="utf-8")
+    adr = Path(
+        "docs/zh/adr/0010-open-agent-loop-and-evaluation-boundaries.md"
+    ).read_text(encoding="utf-8")
+
+    assert "调用/repair 次数是 SLO，不是统一硬停止条件" in master
+    assert "不得把统一低 model-call 或 repair 数量作为所有任务的 Runtime 完成门槛" in quality
+    assert "不把 model/tool calls、repair/replan 或耗时 SLO 直接升级为所有任务的 Runtime 硬停止条件" in active_plan
+    assert "开放 Agent Loop + 分层硬边界 + Eval/SLO 反馈" in adr
+
+
+def test_complexity_liquidation_requires_reference_evidence_and_decision() -> None:
+    master = Path("docs/zh/研发总计划.md").read_text(encoding="utf-8")
+    governance = Path("docs/zh/工程治理体系.md").read_text(encoding="utf-8")
+    active_plan = Path(
+        "docs/zh/plans/S74_POST_S73_BETA_CONVERGENCE_PLAN.md"
+    ).read_text(encoding="utf-8")
+    adr = Path(
+        "docs/zh/adr/0011-reference-first-complexity-liquidation.md"
+    ).read_text(encoding="utf-8")
+    register = Path(
+        "docs/zh/plans/S74_COMPLEXITY_LIQUIDATION_REGISTER.md"
+    ).read_text(encoding="utf-8")
+
+    assert "自研愿景不能保护劣质实现" in master
+    assert "Reference-First Complexity Liquidation" in governance
+    assert "确认当前实现劣于成熟产品的稳定原语后" in active_plan
+    assert "产品必要性" in adr
+    assert "成熟参考与机制合理性" in adr
+    assert "可测产品收益" in adr
+    assert "实现质量与可替换性" in adr
+    assert "REPLACE_IMPLEMENTATION" in register
+    assert "DELETE" in register
+
+
+def test_studio_main_path_uses_session_transcript_not_runtime_projection() -> None:
+    adr = Path(
+        "docs/zh/adr/0012-session-transcript-as-studio-main-path.md"
+    ).read_text(encoding="utf-8")
+    studio_rules = Path("docs/zh/Studio 会话与上下文设计准则.md").read_text(
+        encoding="utf-8"
+    )
+    runtime_narrative = Path(
+        "studio/src/features/thread/runtimeNarrative.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "Studio 主会话只消费 `user_progress`" in adr
+    assert "主会话 timeline 只消费 `user_progress`" in studio_rules
+    assert "synthesizedRuntimeProgressEvents" not in runtime_narrative
+    assert "runtime-progress-${runId" not in runtime_narrative
+    assert "if (!event.transcript_kind) return null" in runtime_narrative
+    assert "events.push(...userProgress)" in runtime_narrative
+    assert not Path("studio/src/components/WorkflowPhaseStrip.tsx").exists()
+
+
+def test_runtime_risk_is_enforced_at_action_boundaries() -> None:
+    gate_status = Path(
+        "src/asteria_runtime/commands/gate_status_command.py"
+    ).read_text(encoding="utf-8")
+    validation_run = Path(
+        "src/asteria_runtime/commands/validation_run_command.py"
+    ).read_text(encoding="utf-8")
+    adr = Path(
+        "docs/zh/adr/0013-enforce-risk-at-action-boundaries.md"
+    ).read_text(encoding="utf-8")
+
+    assert not Path("src/asteria_runtime/core/runtime_readiness_gate.py").exists()
+    assert "runtime_readiness_gate" not in gate_status
+    assert "_allow_targeted_probe_over_runtime_readiness" not in validation_run
+    assert "runtime_readiness_gate" not in validation_run
+    assert "动作边界" in adr
+
+
+def test_run_recovery_has_one_default_controller() -> None:
+    run_command = Path("src/asteria_runtime/commands/run_command.py").read_text(encoding="utf-8")
+    review_command = Path("src/asteria_runtime/commands/review_command.py").read_text(
+        encoding="utf-8"
+    )
+    adr = Path(
+        "docs/zh/adr/0014-single-session-recovery-and-explicit-review.md"
+    ).read_text(encoding="utf-8")
+
+    assert "from asteria_runtime.commands.debug_command import DebugCommand" not in run_command
+    assert "from asteria_runtime.commands.review_command import ReviewCommand" not in run_command
+    assert "DebugCommand(" not in run_command
+    assert "ReviewCommand(" not in run_command
+    assert "_goal_loop_decision" not in run_command
+    assert "FollowUpTaskPlanner" not in review_command
+    assert "DecideCommand" not in review_command
+    assert "persist_runtime_agent_loop_decision" not in review_command
+    assert "persist_agent_loop_execution_result" not in review_command
+    assert "单 Session 恢复" in adr
+
+
+def test_system_audit_forbids_fake_success_and_dead_follow_up_orchestration() -> None:
+    verdict = Path("docs/zh/plans/S74_SYSTEM_AUDIT_VERDICT.md").read_text(encoding="utf-8")
+    smoke = Path("src/asteria_runtime/real_model_smoke.py").read_text(encoding="utf-8")
+    gate = Path("src/asteria_runtime/real_model_gate.py").read_text(encoding="utf-8")
+    acceptance = Path("src/asteria_runtime/real_model_acceptance.py").read_text(encoding="utf-8")
+    planner = Path("src/asteria_runtime/agents/planner.py").read_text(encoding="utf-8")
+
+    assert "完整裁决矩阵" in verdict
+    assert "FollowUpTaskPlanner" not in planner
+    assert not Path("src/asteria_runtime/core/decision_policy.py").exists()
+    assert "_write_review_timeout_artifacts" not in smoke
+    assert "_write_artifact_verified_fallback_artifacts" not in smoke
+    assert "salvage_timed_out_smoke_summary" not in gate
+    assert "salvage_timed_out_smoke_summary" not in acceptance
+
+
+def test_product_architecture_is_session_loop_not_global_state_machine() -> None:
+    architecture = Path("docs/zh/架构设计.md").read_text(encoding="utf-8")
+    baseline = Path(
+        "docs/zh/plans/S74_REFERENCE_PRODUCT_BASELINE.md"
+    ).read_text(encoding="utf-8")
+    adr = Path(
+        "docs/zh/adr/0015-session-loop-is-product-architecture.md"
+    ).read_text(encoding="utf-8")
+
+    assert "连续 Session Agent Loop" in architecture
+    assert "model -> action -> observation -> model" in architecture
+    assert "状态字段只服务于持久化、恢复和查证" in adr
+    assert "Claude Code" in baseline
+    assert "Codex" in baseline
+    assert "OpenCode" in baseline
+
+    forbidden_architecture_claims = [
+        "Runtime first, agents second",
+        "TaskGraph 优先于线性对话",
+        "## 5. 状态机",
+        "编排器状态转换",
+        "产品生产控制平面",
+        "PlannerAgent",
+        "ReviewAgent 汇总差异",
+    ]
+    for claim in forbidden_architecture_claims:
+        assert claim not in architecture

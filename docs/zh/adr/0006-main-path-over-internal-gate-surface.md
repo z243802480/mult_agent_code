@@ -2,9 +2,13 @@
 
 日期：2026-06-03
 
+> 2026-06-09 校正：本 ADR 的“用户看到任务主路径而非内部 gate”原则继续有效；Studio 的数据源部分已被 ADR-0012 替代。Studio 主会话只消费 Session Transcript，不再消费或展示 `main_path` 投影对象。
+>
+> 同日校正：全局 `RuntimeReadinessGate` 已由 ADR-0013 删除；必要风险护栏仍保留在具体动作边界。
+
 ## 背景
 
-Asteria 已经具备 AgentLoopDecision、RuntimeReadinessGate、route/deadline、context/capability、worker/subagent、promotion/recovery 等证据链。继续把这些内部对象直接放到默认用户界面，会让产品越来越像维护者控制台，而不是自主开发运行时。
+Asteria 已经具备 AgentLoopDecision、route/deadline、context/capability、worker/subagent、promotion/recovery 等证据链，也曾使用全局 RuntimeReadinessGate。继续把这些内部对象直接放到默认用户界面，会让产品越来越像维护者控制台，而不是自主开发运行时。
 
 Claude Code 的成熟产品思路值得吸收：用户默认看到的是一个简洁的 coding loop：理解目标、计划/待办、使用工具、验证、必要时修复或询问、最后停止并交付。权限、hook、security、tool policy 是执行边界，不是普通用户每天必须理解的主屏概念。
 

@@ -11,10 +11,10 @@ Asteria 的核心方向是：
 编排路径由模型根据 ContextEnvelope + CapabilityManifest 选择，不由固定 if/else 流水线写死。
 ```
 
-**哲学真源（三层调度 + 模型掌舵）**：[`plans/RUNTIME_MULTI_DISPATCH_MODEL.md`](./plans/RUNTIME_MULTI_DISPATCH_MODEL.md) §8。  
+**产品架构真源**：[`架构设计.md`](./架构设计.md)。
 **动态调度反模式（禁止 domain 硬分支）**：[`大模型循环与动态上下文设计.md`](./大模型循环与动态上下文设计.md) §3.1。
 
-状态机仍然重要，但它不替模型写死完整流程。Runtime 的职责是：
+状态字段只服务于持久化、恢复和查证，不是产品架构，也不替模型写死完整流程。Runtime 的职责是：
 
 - 组织用户目标、项目规则、上下文、能力目录、预算和历史证据。
 - 向模型暴露可理解的能力：tools、MCP、skills、subagents、candidate workspace、validation、promotion。
@@ -32,7 +32,8 @@ Asteria 的核心方向是：
 
 ## 2. Agent Loop 契约
 
-模型每轮必须产出稳定的 `AgentLoopDecision`。
+`AgentLoopDecision` 是当前结构化 transport 契约，不是对模型行为的完整本体定义。
+Runtime 只在需要执行动作时要求可校验的结构；自然语言说明、提问和最终结果仍属于 Session。
 
 允许的 next action：
 
@@ -90,24 +91,20 @@ AgentLoopDecision
 - 需要用户判断时进入 ask。
 - 需要分派时进入 subagent。
 
-## 4. Runtime Gate
+## 4. Runtime 护栏与验证分层
 
-RuntimeReadinessGate 当前输入：
+全局 `RuntimeReadinessGate` 已由 ADR-0013 删除。Runtime 不再事后扫描全部内部对象并决定
+系统是否可用，责任改为：
 
-- model call contract：role、deadline、streaming telemetry。
-- route guidance：provider route health 和 fallback evidence。
-- context pressure：context window ratio、section source、subagent child snapshot、compact boundary 和 duplicate context signals。
-- observation decision：失败 observation 是否进入 AgentLoopDecision。
-- agent loop execution：decision 是否有 matching execution result；subagent 是否有 worker evidence。
-- subagent context isolation：最新 child worker 是否有 ContextBudgetMeter v2 snapshot，是否触发 compact/dedupe gate。
-- capability selection：catalog 和实际 tool/skill/MCP/subagent 选择是否一致。
+- 权限、sandbox、写入、网络和越权风险在 Tool Gateway 动作发生前执行。
+- candidate、merge、promotion 和不可逆操作在对应边界执行强护栏。
+- Agent Loop 在 observation 后由模型继续决定 tool/subagent/repair/replan/ask/stop。
+- schema、execution/observation 对应关系和 summary 一致性由 focused tests 与 Inspector
+  diagnostics 查证，不升级为全局 Runtime block。
+- provider route 与发布放量由 doctor、model-check、gate-status、validation 和 acceptance
+  负责。
 
-下一步 gate 需要继续加强：
-
-- 最新 loop execution 后必须有 observation。
-- 最新 bounded loop 必须有 `agent_loop_run_summary.json`。
-- summary 中 latest ids 必须能对应 JSONL evidence。
-- exit_reason 必须映射到可执行下一步命令。
+禁止重新建立以内部 evidence 完整性为目标的全局 Runtime Gate。
 
 ## 5. Subagent 设计
 

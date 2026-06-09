@@ -1,5 +1,8 @@
 # ADR-0004: 适应性 Gate 保留 Agent 灵活性
 
+> 2026-06-09 校正：本 ADR 的动作边界原则继续有效；全局 `RuntimeReadinessGate` 已由
+> ADR-0013 删除。Context/capability/evidence 缺口进入诊断或验证，不再形成全局 Runtime block。
+
 ## 状态
 
 Accepted
@@ -34,7 +37,7 @@ Asteria 需要学习 Claude Code、Codex、opencode 等优秀编程 agent 产品
 ## 后果
 
 - `disjoint_write_workers` 的严格 gate 只应用在真实并行写 worker 放量、candidate promotion 和 readiness/release 判断上；不应把普通 planner 输出或 readonly/fake-path 探索变成繁重审批。
-- ContextBudgetMeter、capability audit 和 RuntimeReadinessGate 应优先解释风险与恢复路径，而不是增加不必要的阻塞项。
+- ContextBudgetMeter 与 capability audit 应优先解释风险与恢复路径，而不是增加不必要的阻塞项；全局 RuntimeReadinessGate 已删除。
 - 新增 gate 前必须说明它保护的风险类型、适用阶段、恢复路径，以及为什么不会削弱 agent 在低风险阶段的发挥。
 - 当 gate 影响真实开发速度时，优先考虑降级为 review、warning、light trace 或 maintainer-only 检查，而不是默认 blocked。
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "purpose": "Phase 2 stability gate: reviewed_auto scoped model-call and repair budgets.",
+  "purpose": "Phase 2 stability observation: reviewed_auto scoped model-call and repair SLOs.",
   "phase": "2",
   "depends_on_signoff": "docs/zh/reports/S7-mvp-signoff-20260606.md",
   "permission_mode": "reviewed_auto",
@@ -27,5 +27,5 @@
   "optional_checks": [
     "python -m asteria_runtime evidence-bundle --root .asteria/s7-signoff-workspace --json"
   ],
-  "notes": "CI uses fake scoped runs via contract_test. Real provider rolling matrix (Phase 3) satisfies stability thresholds when cases show model_calls<=5 and repair_attempts<=1."
+  "notes": "CI requires scoped evidence to exist. Model-call and repair thresholds are SLO observations: misses produce warnings and product DecisionPoint input, not universal Runtime gate failures."
 }

@@ -259,13 +259,8 @@ def run_gate(args: argparse.Namespace, result: GateResult) -> None:
         name="real-model-smoke",
     )
     if smoke.returncode is None:
-        result.smoke_summary = salvage_timed_out_smoke_summary(result.workspace, smoke_summary)
-        result.checks["smoke"] = bool(result.smoke_summary)
-        if result.checks["smoke"]:
-            timeout_failure = "real-model-smoke timed out"
-            result.failures = [
-                failure for failure in result.failures if timeout_failure not in failure
-            ]
+        result.checks["smoke"] = False
+        result.smoke_summary = read_json(smoke_summary)
     else:
         result.checks["smoke"] = smoke.returncode == 0
         result.smoke_summary = read_json(smoke_summary)
@@ -398,53 +393,6 @@ def run_command(
     if completed.returncode != 0:
         result.failures.append(f"{name} failed with exit code {completed.returncode}")
     return command
-
-
-def salvage_timed_out_smoke_summary(workspace: Path, summary_path: Path) -> dict[str, Any]:
-    existing = read_json(summary_path)
-    if existing.get("run_id"):
-        return existing
-    run_id = current_run_id(workspace)
-    if not run_id:
-        return {}
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    expected_file = workspace / "hello_runtime.txt"
-    if not expected_file.exists():
-        return {}
-    if "real model smoke ok" not in expected_file.read_text(encoding="utf-8"):
-        return {}
-    if not any(item.get("type") == "run_completed" for item in read_jsonl(run_dir / "events.jsonl")):
-        return {}
-    evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")
-    if not any(item.get("status") == "done" for item in evidence):
-        return {}
-    cost_report = read_json(run_dir / "cost_report.json")
-    summary: dict[str, Any] = {
-        "workspace": str(workspace),
-        "run_id": run_id,
-        "expected_file": str(expected_file),
-        "final_report": str(run_dir / "final_report.md"),
-        "transcript": str(workspace / "real_model_smoke_transcript.json"),
-        "duration_seconds": None,
-        "diagnostics": {
-            "run_status": read_json(run_dir / "run.json").get("status"),
-            "review_status": "pass",
-            "review_score": 0.85,
-            "model_calls": int(cost_report.get("model_calls", 0)),
-            "tool_calls": int(cost_report.get("tool_calls", 0)),
-            "estimated_input_tokens": int(cost_report.get("estimated_input_tokens", 0)),
-            "estimated_output_tokens": int(cost_report.get("estimated_output_tokens", 0)),
-            "repair_attempts": int(cost_report.get("repair_attempts", 0)),
-            "context_compactions": int(cost_report.get("context_compactions", 0)),
-            "cost_status": cost_report.get("status"),
-            "accepted_review_timeout": True,
-            "accepted_run_completed_event": True,
-        },
-        "commands": [],
-    }
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    return summary
 
 
 def current_run_id(workspace: Path) -> str | None:

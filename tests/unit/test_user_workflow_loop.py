@@ -309,13 +309,13 @@ def test_review_failure_text_names_primary_blocker_and_next_command(tmp_path: Pa
     assert review.primary_blocker == (
         "Review verdict is partial: Verification evidence is incomplete."
     )
-    assert review.recommended_next_command == "debug"
+    assert review.recommended_next_command == "resume"
     payload = review.to_dict()
     assert payload["primary_blocker"] == review.primary_blocker
-    assert payload["recommended_next_command"] == "debug"
+    assert payload["recommended_next_command"] == "resume"
     text = review.to_text()
     assert "Primary blocker: Review verdict is partial" in text
-    assert "Recommended next command: asteria debug" in text
+    assert "Recommended next command: asteria resume" in text
     report_text = review.review_report_path.read_text(encoding="utf-8")
     assert "## Failure Classification" in report_text
     assert "- Category: verification_failed" in report_text
@@ -323,7 +323,7 @@ def test_review_failure_text_names_primary_blocker_and_next_command(tmp_path: Pa
         review.eval_report_path,
         "eval_report",
     )
-    assert eval_report["failure_classification"]["recommended_command"] == "debug"
+    assert eval_report["failure_classification"]["recommended_command"] == "resume"
 
 
 def test_status_ignores_task_failure_superseded_by_done_evidence(tmp_path: Path) -> None:
@@ -569,7 +569,7 @@ def test_goal_run_result_surfaces_user_workflow_state(tmp_path: Path) -> None:
     assert "Loop steps:" in text
 
 
-def test_goal_loop_policy_auto_accepts_passed_review_in_auto_mode(tmp_path: Path) -> None:
+def test_run_does_not_auto_review_or_accept_in_auto_mode(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -583,14 +583,13 @@ def test_goal_loop_policy_auto_accepts_passed_review_in_auto_mode(tmp_path: Path
     ).continue_run(run_id)
 
     assert result.status == "completed"
-    assert result.workflow_state == "accepted"
-    assert result.current_phase == "ACCEPTED"
-    assert any(step.name == "goal-policy" and step.status == "auto_accept" for step in result.steps)
-    assert any(step.name == "accept" and step.status == "accepted" for step in result.steps)
-    assert result.final_report_summary["workflow_state"] == "accepted"
+    assert result.workflow_state == "ready_for_review"
+    assert result.current_phase == "DONE"
+    assert result.recommended_next_command == "review"
+    assert not any(step.name in {"goal-policy", "review", "accept"} for step in result.steps)
 
 
-def test_goal_loop_policy_stops_for_explicit_accept_in_balanced_mode(tmp_path: Path) -> None:
+def test_run_stops_for_explicit_review_in_balanced_mode(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -603,16 +602,13 @@ def test_goal_loop_policy_stops_for_explicit_accept_in_balanced_mode(tmp_path: P
         permission_level="balanced",
     ).continue_run(run_id)
 
-    assert result.workflow_state == "ready_for_accept"
-    assert result.current_phase == "REVIEWED"
-    assert result.recommended_next_command == "accept"
-    assert any(
-        step.name == "goal-policy" and step.status == "stop_for_accept" for step in result.steps
-    )
-    assert not any(step.name == "accept" for step in result.steps)
+    assert result.workflow_state == "ready_for_review"
+    assert result.current_phase == "DONE"
+    assert result.recommended_next_command == "review"
+    assert not any(step.name in {"goal-policy", "review", "accept"} for step in result.steps)
 
 
-def test_goal_loop_policy_stops_for_repair_after_failed_review(tmp_path: Path) -> None:
+def test_run_does_not_invoke_review_model_for_repair_policy(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -625,17 +621,13 @@ def test_goal_loop_policy_stops_for_repair_after_failed_review(tmp_path: Path) -
         permission_level="auto",
     ).continue_run(run_id)
 
-    assert result.status == "running"
-    assert result.workflow_state == "needs_action"
-    assert result.recommended_next_command == "debug"
-    assert any(
-        step.name == "goal-policy" and step.status == "stop_for_repair" for step in result.steps
-    )
-    assert result.final_report_summary["recommended_next_command"] == "debug"
-    assert result.final_report_summary["goal_policy"]["recommended_command"] == "debug"
+    assert result.status == "completed"
+    assert result.workflow_state == "ready_for_review"
+    assert result.recommended_next_command == "review"
+    assert not any(step.name in {"goal-policy", "review"} for step in result.steps)
 
 
-def test_goal_loop_policy_recommends_replan_for_plan_gap(tmp_path: Path) -> None:
+def test_run_does_not_route_from_review_plan_gap(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -648,18 +640,11 @@ def test_goal_loop_policy_recommends_replan_for_plan_gap(tmp_path: Path) -> None
         permission_level="auto",
     ).continue_run(run_id)
 
-    assert result.recommended_next_command == "resume"
-    assert any(
-        step.name == "goal-policy" and step.status == "continue_repair" for step in result.steps
-    )
-    assert result.final_report_summary["goal_policy"]["category"] == "plan_gap"
-    assert result.final_report_summary["goal_policy"]["recommended_command"] == "resume"
-    status_payload = StatusCommand(tmp_path).run().to_dict()
-    assert status_payload["recommended_next_command"] == "resume"
-    assert status_payload["goal_policy"]["category"] == "plan_gap"
+    assert result.recommended_next_command == "review"
+    assert not any(step.name in {"goal-policy", "review", "replan"} for step in result.steps)
 
 
-def test_goal_loop_policy_creates_decision_for_high_risk_follow_up(tmp_path: Path) -> None:
+def test_run_does_not_create_decision_from_review_follow_up(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
 
@@ -672,18 +657,9 @@ def test_goal_loop_policy_creates_decision_for_high_risk_follow_up(tmp_path: Pat
         permission_level="auto",
     ).continue_run(run_id)
 
-    assert result.recommended_next_command == "decide --list"
-    assert any(
-        step.name == "goal-policy" and step.status == "stop_for_decision" for step in result.steps
-    )
-    assert result.final_report_summary["goal_policy"]["category"] == "decision_required"
-    decisions = JsonlStore(SchemaValidator(Path("schemas"))).read_all(
-        tmp_path / ".asteria" / "runs" / run_id / "decisions.jsonl",
-        "decision_point",
-    )
-    assert decisions
-    assert decisions[-1]["status"] == "pending"
-    assert "production" in decisions[-1]["question"].lower()
+    assert result.recommended_next_command == "review"
+    assert not any(step.name in {"goal-policy", "review", "decide"} for step in result.steps)
+    assert not (tmp_path / ".asteria" / "runs" / run_id / "decisions.jsonl").exists()
 
 
 def test_budget_guard_goal_policy_is_exposed_in_final_summary(tmp_path: Path) -> None:

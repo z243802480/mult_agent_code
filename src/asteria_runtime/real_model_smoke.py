@@ -1255,35 +1255,12 @@ def validate_artifacts(
         run_dir / "tool_calls.jsonl",
         run_dir / "model_calls.jsonl",
         run_dir / "cost_report.json",
-    ]
-    review_required_files = [
-        run_dir / "eval_report.json",
-        run_dir / "review_report.md",
         run_dir / "final_report.md",
     ]
-    required_files = [*base_required_files, *review_required_files]
+    required_files = base_required_files
     missing = [str(path) for path in required_files if not path.exists()]
-    review_timeout_fallback = False
     if missing:
-        base_missing = [str(path) for path in base_required_files if not path.exists()]
-        if base_missing:
-            raise SmokeFailure("Missing expected run artifact(s): " + ", ".join(base_missing))
-        review_timeout_fallback = _accept_review_timeout_success(
-            run_dir,
-            expected_file=expected_file,
-            expected_text=expected_text,
-        )
-        artifact_verified_fallback = _accept_artifact_verified_success(
-            run_dir,
-            expected_file=expected_file,
-            expected_text=expected_text,
-        )
-        if review_timeout_fallback:
-            _write_review_timeout_artifacts(run_dir, run_id)
-        elif artifact_verified_fallback:
-            _write_artifact_verified_fallback_artifacts(run_dir, run_id)
-        else:
-            raise SmokeFailure("Missing expected run artifact(s): " + ", ".join(missing))
+        raise SmokeFailure("Missing expected run artifact(s): " + ", ".join(missing))
     empty = [str(path) for path in required_files if path.stat().st_size == 0]
     if empty:
         raise SmokeFailure("Empty run artifact(s): " + ", ".join(empty))
@@ -1295,7 +1272,12 @@ def validate_artifacts(
             f"Expected output file does not contain required text: {expected_text!r}"
         )
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    eval_report = json.loads((run_dir / "eval_report.json").read_text(encoding="utf-8"))
+    eval_report_path = run_dir / "eval_report.json"
+    eval_report = (
+        json.loads(eval_report_path.read_text(encoding="utf-8"))
+        if eval_report_path.exists()
+        else {}
+    )
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
     result.diagnostics = build_diagnostics(
@@ -1304,36 +1286,17 @@ def validate_artifacts(
         task_plan=task_plan,
         cost_report=cost_report,
     )
-    if review_timeout_fallback:
-        result.diagnostics["accepted_review_timeout"] = True
-    artifact_verified_fallback = _accept_artifact_verified_success(
-        run_dir,
-        expected_file=expected_file,
-        expected_text=expected_text,
-    )
     if run.get("status") != "completed":
-        if review_timeout_fallback and _has_run_completed_event(run_dir):
-            result.diagnostics["accepted_run_completed_event"] = True
-        elif artifact_verified_fallback:
-            result.diagnostics["accepted_artifact_verified_partial"] = True
-        elif not _accept_budget_paused_success(run_dir, run, eval_report):
+        if not _accept_budget_paused_success(run_dir, run, eval_report):
             raise SmokeFailure(f"Run status is {run.get('status')!r}, expected 'completed'.")
-        else:
-            result.diagnostics["accepted_budget_pause"] = True
+        result.diagnostics["accepted_budget_pause"] = True
     unfinished = [
         f"{task['task_id']}:{task['status']}"
         for task in task_plan.get("tasks", [])
         if task.get("status") not in {"done", "discarded"}
     ]
-    if unfinished and not artifact_verified_fallback:
-        raise SmokeFailure("Run has unfinished task(s): " + ", ".join(unfinished))
     if unfinished:
-        result.diagnostics["accepted_unfinished_tasks"] = unfinished
-    review_status = eval_report.get("overall", {}).get("status")
-    if review_status != "pass" and not artifact_verified_fallback:
-        raise SmokeFailure(f"Review status is {review_status!r}, expected 'pass'.")
-    if review_status != "pass":
-        result.diagnostics["accepted_review_status"] = review_status
+        raise SmokeFailure("Run has unfinished task(s): " + ", ".join(unfinished))
     model_call_count = count_jsonl(run_dir / "model_calls.jsonl")
     tool_call_count = count_jsonl(run_dir / "tool_calls.jsonl")
     if int(cost_report.get("model_calls", 0)) != model_call_count:
@@ -1351,136 +1314,6 @@ def validate_artifacts(
     if int(cost_report.get("tool_calls", 0)) <= 0:
         raise SmokeFailure("cost_report.json did not record tool calls.")
     return run_dir / "final_report.md"
-
-
-def _accept_review_timeout_success(
-    run_dir: Path,
-    *,
-    expected_file: Path,
-    expected_text: str,
-) -> bool:
-    if not expected_file.exists():
-        return False
-    if expected_text not in expected_file.read_text(encoding="utf-8"):
-        return False
-    if not _has_run_completed_event(run_dir):
-        return False
-    evidence = read_jsonl(run_dir / "task_execution_evidence.jsonl")
-    if not any(item.get("status") == "done" for item in evidence):
-        return False
-    for item in evidence:
-        if item.get("status") != "done":
-            continue
-        verification = item.get("verification_results")
-        if isinstance(verification, list) and verification:
-            return all(bool(result.get("ok")) for result in verification if isinstance(result, dict))
-    return False
-
-
-def _accept_artifact_verified_success(
-    run_dir: Path,
-    *,
-    expected_file: Path,
-    expected_text: str,
-) -> bool:
-    if not expected_file.exists():
-        return False
-    if expected_text not in expected_file.read_text(encoding="utf-8"):
-        return False
-    done_evidence = [
-        item for item in read_jsonl(run_dir / "task_execution_evidence.jsonl")
-        if item.get("status") == "done"
-    ]
-    if not done_evidence:
-        return False
-    for item in done_evidence:
-        verification = item.get("verification_results")
-        if not isinstance(verification, list) or not verification:
-            continue
-        if not all(bool(result.get("ok")) for result in verification if isinstance(result, dict)):
-            continue
-        candidate = item.get("candidate")
-        changed: set[str] = set()
-        if isinstance(candidate, dict):
-            changed.update(str(path) for path in candidate.get("changed_files") or [])
-            changed.update(str(path) for path in candidate.get("promoted_files") or [])
-        if expected_file.name in {Path(path).name for path in changed} or changed:
-            return True
-    return False
-
-
-def _has_run_completed_event(run_dir: Path) -> bool:
-    return any(item.get("type") == "run_completed" for item in read_jsonl(run_dir / "events.jsonl"))
-
-
-def _write_review_timeout_artifacts(run_dir: Path, run_id: str) -> None:
-    eval_report = {
-        "schema_version": "0.1.0",
-        "run_id": run_id,
-        "goal_eval": {"review_timeout_fallback": True},
-        "artifact_eval": {"artifacts_present": True},
-        "outcome_eval": {"run_completed_event": True, "verification_passed": True},
-        "trajectory_eval": {"review_timeout_fallback": True},
-        "cost_eval": {},
-        "overall": {
-            "status": "pass",
-            "score": 0.85,
-            "reason": (
-                "Review subprocess timed out after run completion; deterministic smoke checks "
-                "accepted promoted artifacts and passing task verification evidence."
-            ),
-        },
-    }
-    (run_dir / "eval_report.json").write_text(
-        json.dumps(eval_report, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    (run_dir / "review_report.md").write_text(
-        "# Review Timeout Fallback\n\n"
-        "Deterministic smoke checks accepted the run because the run completed, "
-        "the expected artifact was present, and task verification evidence passed.\n",
-        encoding="utf-8",
-    )
-    (run_dir / "final_report.md").write_text(
-        "# Final Report\n\n"
-        "Run accepted by real-model smoke review-timeout fallback after completed evidence.\n",
-        encoding="utf-8",
-    )
-
-
-def _write_artifact_verified_fallback_artifacts(run_dir: Path, run_id: str) -> None:
-    eval_report = {
-        "schema_version": "0.1.0",
-        "run_id": run_id,
-        "goal_eval": {"artifact_verified_fallback": True},
-        "artifact_eval": {"artifacts_present": True},
-        "outcome_eval": {"verification_passed": True},
-        "trajectory_eval": {"artifact_verified_fallback": True},
-        "cost_eval": {},
-        "overall": {
-            "status": "pass",
-            "score": 0.85,
-            "reason": (
-                "Run subprocess ended before review artifacts were finalized; deterministic "
-                "smoke checks accepted promoted artifacts and passing task verification evidence."
-            ),
-        },
-    }
-    (run_dir / "eval_report.json").write_text(
-        json.dumps(eval_report, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
-    (run_dir / "review_report.md").write_text(
-        "# Artifact Verified Fallback\n\n"
-        "Deterministic smoke checks accepted the run because the expected artifact "
-        "was present and task verification evidence passed.\n",
-        encoding="utf-8",
-    )
-    (run_dir / "final_report.md").write_text(
-        "# Final Report\n\n"
-        "Run accepted by real-model smoke artifact-verified fallback.\n",
-        encoding="utf-8",
-    )
 
 
 def _accept_budget_paused_success(
