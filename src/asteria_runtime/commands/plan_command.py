@@ -224,7 +224,8 @@ class PlanCommand:
             actor="PlanCommand",
         )
         capability_manifest = prompt_envelope.envelope.capability_manifest
-        runtime_context["capability_manifest"] = capability_manifest.to_dict()
+        capability_discovery = capability_manifest.discovery_view()
+        runtime_context["capability_manifest"] = capability_discovery
         runtime_context["prompt_envelope"] = prompt_envelope.context_ref()
         goal_spec_route_plan = CapabilityFeedbackAdvisor(self.validator).goal_spec_execution_plan(
             agent_dir, self.goal
@@ -285,7 +286,7 @@ class PlanCommand:
                 "provider_route_strategy": policy.get("provider_route_strategy", {}),
                 "runtime_deadlines": policy.get("runtime_deadlines", {}),
             },
-            "capability_manifest": capability_manifest.to_dict(),
+            "capability_manifest": capability_discovery,
         }
         selected_model_tier = str(goal_spec_route_plan.get("selected_model_tier") or "strong")
         max_goal_spec_attempts = 2

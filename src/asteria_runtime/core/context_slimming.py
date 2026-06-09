@@ -26,6 +26,7 @@ SLIM_EXECUTION_KEYS = {
     "context_policy",
     "harness_observations",
     "latest_agent_loop_observation",
+    "memory",
     "model_profile_id",
     "observation_next_action_plan",
     "prompt_envelope",
@@ -169,6 +170,7 @@ def _execution_target_files(task: dict[str, Any], goal_spec: dict[str, Any]) -> 
 
 def _slim_top_level_lists(context: dict[str, Any], raw_refs: dict[str, Any]) -> None:
     for key, limit in (
+        ("memory", 5),
         ("tool_observations", 5),
         ("harness_observations", 5),
         ("capability_decisions", 5),
@@ -176,7 +178,7 @@ def _slim_top_level_lists(context: dict[str, Any], raw_refs: dict[str, Any]) -> 
         value = context.get(key)
         if isinstance(value, list):
             raw_refs[key] = _omission_summary(value, limit)
-            context[key] = value[-limit:]
+            context[key] = [_slim_context_item(item) for item in value[-limit:]]
 
 
 def _slim_context_package(package: dict[str, Any]) -> dict[str, Any]:

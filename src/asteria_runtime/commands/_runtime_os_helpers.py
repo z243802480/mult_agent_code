@@ -7,7 +7,6 @@ from typing import Any
 
 from asteria_runtime.acceptance.runtime_os_gate import RuntimeOSGateEvaluator
 from asteria_runtime.acceptance.runtime_os_catalog import RUNTIME_OS_CAPABILITIES
-from asteria_runtime.core.capability_manifest_catalog import capability_manifest_catalog_audit
 from asteria_runtime.core.prompt_envelope import capability_manifest_hash, cache_break_reasons
 
 
@@ -106,14 +105,10 @@ def runtime_os_release_evidence(
             "cache_break_reasons": [],
             "model_metadata_complete": False,
             "context_envelope_metadata_complete": False,
-            "catalog_aligned": True,
-            "catalog_audit_status": "skipped",
-            "catalog_mismatches": [],
             "audit_chain": "manifest/context_envelope -> cache_break_reasons -> model_call_metadata",
         },
     }
     manifest_audit = _empty_manifest_audit()
-    catalog_audits: list[dict[str, Any]] = []
     for run_dir in run_dirs:
         workers = read_jsonl(run_dir / "workers.jsonl", "worker_invocation")
         worker_results = read_jsonl(run_dir / "worker_results.jsonl", "worker_result")
@@ -158,14 +153,7 @@ def runtime_os_release_evidence(
             [item for item in promotions if item.get("status") == "promoted"]
         )
         _merge_manifest_audit(manifest_audit, _capability_manifest_audit(run_dir, read_jsonl))
-        catalog_audits.append(capability_manifest_catalog_audit(run_dir))
     manifest_hashes = sorted(manifest_audit["manifest_hashes"])
-    catalog_mismatches = [
-        mismatch
-        for audit in catalog_audits
-        for mismatch in (audit.get("mismatches") or [])
-    ]
-    catalog_statuses = {str(audit.get("status") or "skipped") for audit in catalog_audits}
     summary["capability_manifest_audit"] = {
         "prompt_envelopes": manifest_audit["prompt_envelopes"],
         "context_envelopes": manifest_audit["context_envelopes"],
@@ -189,15 +177,6 @@ def runtime_os_release_evidence(
             manifest_audit["context_envelopes"] > 0
             and manifest_audit["model_calls_with_context_envelope"] > 0
         ),
-        "catalog_aligned": not catalog_mismatches,
-        "catalog_audit_status": (
-            "checked"
-            if "checked" in catalog_statuses
-            else "skipped"
-            if catalog_audits
-            else "skipped"
-        ),
-        "catalog_mismatches": catalog_mismatches,
         "audit_chain": "manifest/context_envelope -> cache_break_reasons -> model_call_metadata",
     }
     return summary

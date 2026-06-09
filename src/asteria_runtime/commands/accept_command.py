@@ -5,10 +5,11 @@ from pathlib import Path
 
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.review_command import ReviewCommand
-from asteria_runtime.commands.run_command import RunCommand, RunStepSummary
+from asteria_runtime.commands.run_command import RunStepSummary
 from asteria_runtime.core.budget import BudgetController
 from asteria_runtime.core.policy_config import load_policy_config, merge_policy_defaults
 from asteria_runtime.core.run_config import effective_policy_for_run
+from asteria_runtime.core.session_result_service import SessionResultService
 from asteria_runtime.core.goal_queue import GoalQueueStore
 from asteria_runtime.core.long_horizon_completion import (
     evaluate_and_persist_slice_completion,
@@ -116,6 +117,7 @@ class AcceptCommand:
         self.promote_all = promote_all
         self.model_client = model_client
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+        self.session_results = SessionResultService(self.root, self.validator)
 
     def run(self) -> AcceptResult:
         agent_dir = self.root / ".asteria"
@@ -257,7 +259,7 @@ class AcceptCommand:
             final_report_summary_path,
             "final_report_summary",
         )
-        RunCommand(self.root)._write_run_loop_summary(
+        self.session_results.write_run_loop_summary(
             run_id=run_id,
             steps=[RunStepSummary("accept", "completed", "Operator accepted the reviewed result.")],
             status_payload={
@@ -269,7 +271,7 @@ class AcceptCommand:
             },
             stop_reason="accepted" if accepted else "accept_blocked",
         )
-        RunCommand(self.root)._write_active_goal_memory(
+        self.session_results.write_active_goal_memory(
             run_id=run_id,
             review_status=review_status,
             steps=[RunStepSummary("accept", "completed", "Operator accepted the reviewed result.")],
@@ -380,14 +382,14 @@ class AcceptCommand:
         path = run_dir / "eval_report.json"
         if not path.exists():
             return "unknown"
-        return str(RunCommand(self.root)._latest_review_status(run_dir.name))
+        return self.session_results.latest_review_status(run_dir.name)
 
     def _pending_promotions(self, run_dir: Path) -> list[dict]:
         summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         return list(summary.get("pending") or []) + list(summary.get("blocked") or [])
 
     def _write_final_report(self, run_id: str, review_status: str) -> Path:
-        return RunCommand(self.root)._write_final_report(
+        return self.session_results.write_final_report(
             run_id,
             review_status,
             [RunStepSummary("accept", "completed", "Operator acceptance workflow executed.")],
@@ -404,7 +406,7 @@ class AcceptCommand:
         next_actions: list[str],
         recommended_next_command: str | None,
     ) -> Path:
-        return RunCommand(self.root)._write_final_report_summary(
+        return self.session_results.write_final_report_summary(
             run_id=run_id,
             status=status,
             review_status=review_status,

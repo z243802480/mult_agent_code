@@ -53,6 +53,11 @@ def test_chat_command_persists_capability_manifest_and_model_metadata(tmp_path: 
     assert envelope["capability_manifest"]["direct_tools"]
     user_payload = json.loads(client.requests[0].messages[-1].content)
     assert user_payload["capability_manifest"]["direct_tools"]
+    assert "role_contracts" not in user_payload["capability_manifest"]["boundaries"]
+    assert not any(
+        item.get("permission") == "deny"
+        for item in user_payload["capability_manifest"]["direct_tools"]
+    )
     assert user_payload["prompt_envelope"]["capability_manifest_hash"] == metadata[
         "capability_manifest_hash"
     ]

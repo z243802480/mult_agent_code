@@ -300,6 +300,7 @@ Return this exact JSON shape:
             relevant_runtime = {
                 key: runtime_context[key]
                 for key in (
+                    "memory",
                     "latest_snapshot",
                     "latest_handoff",
                     "acceptance_failures",

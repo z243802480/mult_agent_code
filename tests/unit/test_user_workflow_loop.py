@@ -662,7 +662,7 @@ def test_run_does_not_create_decision_from_review_follow_up(tmp_path: Path) -> N
     assert not (tmp_path / ".asteria" / "runs" / run_id / "decisions.jsonl").exists()
 
 
-def test_budget_guard_goal_policy_is_exposed_in_final_summary(tmp_path: Path) -> None:
+def test_budget_guard_exposes_pending_decision_as_active_next_step(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     run_id = _create_minimal_completed_run(tmp_path)
     validator = SchemaValidator(Path("schemas"))
@@ -682,10 +682,10 @@ def test_budget_guard_goal_policy_is_exposed_in_final_summary(tmp_path: Path) ->
     ).continue_run(run_id)
 
     assert result.recommended_next_command.startswith("decide --decision-id")
-    assert result.final_report_summary["goal_policy"]["category"] == "budget_guard"
-    assert result.final_report_summary["goal_policy"]["recommended_command"] == "decide --list"
+    assert "goal_policy" not in result.final_report_summary
     status_payload = StatusCommand(tmp_path).run().to_dict()
-    assert status_payload["goal_policy"]["category"] == "budget_guard"
+    assert status_payload["pending_decision_count"] == 1
+    assert status_payload["recommended_next_command"].startswith("decide --decision-id")
 
 
 def test_status_and_sessions_context_expose_run_loop_summary(tmp_path: Path) -> None:

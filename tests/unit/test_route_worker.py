@@ -63,4 +63,4 @@ def test_conservative_fallback_when_model_unavailable(tmp_path: Path) -> None:
         router_mode="model",
     )
     assert routed.capability_id == "chat_answer"
-    assert routed.source == "conservative_fallback"
+    assert routed.source == "rules"

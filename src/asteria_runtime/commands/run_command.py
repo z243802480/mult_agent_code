@@ -714,7 +714,6 @@ class RunCommand:
             "validation_conclusion": validation_conclusion,
             "blockers": blockers,
             "next_actions": next_actions,
-            "goal_policy": self._goal_policy_summary(run_dir, status_payload),
             "updated_at": now_iso(),
         }
         path = run_dir / "final_report_summary.json"
@@ -1211,15 +1210,6 @@ class RunCommand:
                             transcript_kind="diagnostic",
                             ui_intent="needs_attention",
                         )
-                    self._write_goal_policy_marker(
-                        run_id,
-                        {
-                            "category": "provider_transient",
-                            "recommended_command": "model-check --tier medium",
-                            "reason": provider_blocker.get("summary")
-                            or "Provider transport failed before a usable model action.",
-                        },
-                    )
                     return progressed
                 steps.append(
                     RunStepSummary(
@@ -1325,31 +1315,11 @@ class RunCommand:
             return False
         if self._pending_budget_decision(run_id):
             self._pause_run_for_budget(run_id, "Budget guard waiting for an existing decision.")
-            self._write_goal_policy_marker(
-                run_id,
-                {
-                    "category": "budget_guard",
-                    "recommended_command": "decide --list",
-                    "reason": "Budget guard is waiting for an existing DecisionPoint.",
-                },
-            )
             return True
         decision = self._create_budget_decision(run_id, pressure, phase)
         self._pause_run_for_budget(
             run_id,
             f"Budget guard paused before {phase}: {decision['decision_id']}.",
-        )
-        self._write_goal_policy_marker(
-            run_id,
-            {
-                "category": "budget_guard",
-                "recommended_command": "decide --list",
-                "reason": (
-                    f"Budget guard reached {pressure['status']} before {phase}; "
-                    f"{pressure['highest_label']} at {pressure['highest_ratio']:.0%}."
-                ),
-                "decision_id": decision["decision_id"],
-            },
         )
         steps.append(
             RunStepSummary(
@@ -1539,33 +1509,6 @@ class RunCommand:
         run["summary"] = summary
         run_store.update_run(run)
 
-    def _goal_policy_summary(self, run_dir: Path, status_payload: dict) -> dict:
-        context_policy = (
-            (status_payload.get("current_context") or {}).get("goal_policy")
-            if isinstance(status_payload.get("current_context"), dict)
-            else None
-        )
-        if isinstance(context_policy, dict) and context_policy and not self._resolved_decision_policy(
-            run_dir, context_policy
-        ):
-            return context_policy
-        marker = self._read_unvalidated_json(run_dir / "goal_policy.json")
-        marker_policy = marker.get("goal_policy")
-        if isinstance(marker_policy, dict) and marker_policy and not self._resolved_decision_policy(
-            run_dir, marker_policy
-        ):
-            return marker_policy
-        report = self._read_json_if_exists(run_dir / "eval_report.json", "eval_report")
-        policy = (report.get("trajectory_eval") or {}).get("failure_classification")
-        return policy if isinstance(policy, dict) else {}
-
-    def _resolved_decision_policy(self, run_dir: Path, policy: dict) -> bool:
-        category = str(policy.get("category") or policy.get("action") or "").lower()
-        recommended = str(policy.get("recommended_command") or "").lower()
-        return not self._pending_decisions(run_dir) and (
-            category == "decision_required" or recommended.startswith("decide")
-        )
-
     def _clear_resolved_decision_guidance(self, value: str | None) -> str | None:
         if value is None:
             return None
@@ -1643,14 +1586,6 @@ class RunCommand:
         *,
         reason: str,
     ) -> None:
-        self._write_goal_policy_marker(
-            run_id,
-            {
-                "category": "recovery_limit",
-                "recommended_command": "decide --list",
-                "reason": reason,
-            },
-        )
         if progress:
             progress.record(
                 run_id=run_id,
@@ -1747,17 +1682,6 @@ class RunCommand:
         run["current_phase"] = "DECISION"
         run["summary"] = summary
         run_store.update_run(run)
-
-    def _write_goal_policy_marker(self, run_id: str, goal_policy: dict) -> Path:
-        run_dir = self.root / ".asteria" / "runs" / run_id
-        marker = {
-            "schema_version": "0.1.0",
-            "goal_policy": goal_policy,
-            "updated_at": now_iso(),
-        }
-        path = run_dir / "goal_policy.json"
-        path.write_text(json.dumps(marker, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        return path
 
     def _run_status(self, run_id: str) -> str:
         run = RunStore(self.root / ".asteria", self.validator).load_run(run_id)

@@ -21,7 +21,6 @@
     "tool_calls.jsonl",
     "experiments.jsonl",
     "artifacts.jsonl",
-    "review_report.md",
     "final_report.md"
   ],
   "acceptance": [

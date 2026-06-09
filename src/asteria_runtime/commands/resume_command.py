@@ -5,6 +5,7 @@ from pathlib import Path
 
 from asteria_runtime.commands.run_command import RunCommand, RunResult, RunStepSummary
 from asteria_runtime.core.runtime_evidence import RuntimeEvidenceReader
+from asteria_runtime.core.session_result_service import SessionResultService
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.event_logger import EventLogger
 from asteria_runtime.storage.json_store import JsonStore
@@ -68,6 +69,7 @@ class ResumeCommand:
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
         self.runtime_evidence = RuntimeEvidenceReader(self.validator)
+        self.session_results = SessionResultService(self.root, self.validator)
 
     def run(self) -> ResumeResult:
         agent_dir = self.root / ".asteria"
@@ -186,7 +188,7 @@ class ResumeCommand:
             parallel_writes=self.parallel_writes,
         )
         result = run_command.continue_run(run_id, steps, _progress=progress)
-        run_command._write_active_goal_memory(
+        self.session_results.write_active_goal_memory(
             run_id=run_id,
             review_status="unknown",
             steps=[*steps, *result.steps],

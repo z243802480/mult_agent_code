@@ -105,7 +105,7 @@ class ChatContextBuilder:
             self.root,
             validator=self.validator,
         )
-        manifest_payload = capability_manifest.to_dict()
+        manifest_payload = capability_manifest.discovery_view()
         manifest_payload["orchestration_paths"] = orchestration_catalog.to_dict()
         return {
             "chat_intent": intent,

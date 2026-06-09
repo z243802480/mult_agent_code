@@ -80,6 +80,36 @@ def test_agent_harness_builds_model_visible_capability_manifest() -> None:
     assert "Direct tools" in manifest.prompt_summary()
 
 
+def test_capability_discovery_view_hides_denied_and_internal_policy_detail() -> None:
+    manifest = AgentHarness(
+        {
+            "permissions": {"allow_shell": False, "allow_network": False},
+            "protected_paths": [".env"],
+        },
+        tool_names=["read_file", "run_command"],
+    ).capability_manifest(mode="build")
+
+    discovery = manifest.discovery_view()
+
+    assert {item["name"] for item in discovery["direct_tools"]} == {
+        "read_file",
+        "search",
+        "edit_file",
+    }
+    assert {item["name"] for item in discovery["verification"]} == {
+        "review_agent",
+        "merge_gate",
+    }
+    assert discovery["boundaries"] == {
+        "active_mode": "build",
+        "network": "ask_or_deny",
+        "shell": "deny",
+        "writes": "candidate_workspace_preferred",
+    }
+    assert "role_contracts" not in discovery["boundaries"]
+    assert "model_tool_surface" not in discovery["boundaries"]
+
+
 def test_agent_harness_builds_prompt_envelope_without_full_prompt_body() -> None:
     policy = {
         "permissions": {

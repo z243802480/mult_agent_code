@@ -70,6 +70,11 @@
 
 验收：同一下一步只存在一个产品语义来源；Accept/Resume 不实例化 Run 只为调用私有 helper。
 
+实现进展：`goal_policy` 概念及其 JSON marker、Schema、Status/Sessions/Studio 投影已删除。
+预算暂停直接暴露 pending DecisionPoint；普通恢复直接暴露 Session active next step。
+`SessionResultService` 已成为 Accept/Resume 的唯一公开结果写入入口；外部命令不再调用
+`RunCommand` 私有报告、loop summary、review status 或 active goal memory helper。
+
 ### Batch C：上下文与能力目录归一
 
 - 绘制 ContextEnvelope、context package、budget snapshot、compact 的唯一生产/消费图。
@@ -78,6 +83,14 @@
 
 验收：每个 context/capability 对象存在稳定生产者和消费者，并证明减少 prompt/维护成本。
 
+实现进展：完整 `CapabilityManifest` 只作为持久化审计事实；Plan/Chat/Execute/Review
+模型上下文改用权限过滤的 discovery view，只包含可发现能力的名称、用途、许可和必要动作边界。
+denied 能力与 role/spawn/model-surface 等内部策略不再默认复制到模型上下文。
+已删除 `capability_manifest_catalog_audit` 及其 Runtime OS release 投影；它把全局审计 manifest
+与任务局部 catalog 强制对齐，既不执行权限边界，也与按需发现冲突。Context 压力继续统一由
+`BudgetController -> context_pressure -> compact` 驱动，层级项目 memory 在 slim context 中
+保留最近 5 条并截断长内容。
+
 ### Batch D：编排与运维壳收缩
 
 - subagent/L3/parallel writes 保持 opt-in，以 3–5 个真实任务配对收益裁决。
@@ -85,6 +98,20 @@
 - 保留动作边界、安全 evidence 和 release preflight。
 
 验收：默认产品路径不受实验编排与 maintainer 壳影响；删除对象通过 reachability 与 paired eval 证明。
+
+执行规则：Batch D 不是新增 gate。以同一任务、同一 provider/profile 的默认 Session 路径与
+opt-in 编排路径做配对，至少重复三次，记录完成/验证、首次有效工具时间、模型与工具调用、
+恢复轮次和总耗时。没有稳定收益的实验路径保持 opt-in、回退或删除。
+
+2026-06-09 真实校准结果：
+
+- `validation_file_artifact`：通过，约 68 秒；主要等待 medium provider，工具开销不是主因。
+- `validation_small_cli`：失败，约 181 秒；3 次工具调用后仍 blocked，strong review 路径超时。
+- `validation_doc_update`：失败，约 251 秒；provider 失败前未形成有效工具调用，随后 review 超时。
+- `runtime_delegation_contract`：契约通过但无真实模型调用，只证明护栏，不证明效率收益。
+
+裁决：默认 Session Agent Loop 保持唯一主路径；delegation/L3/parallel writes 保留 opt-in，
+不扩大默认面。当前真实 friction 是 provider/route/review latency 与不必要恢复流程，不是工具执行。
 
 ## 禁止事项
 

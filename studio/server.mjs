@@ -1266,11 +1266,10 @@ async function chatStatusAnswer(sessionId) {
   const run = context.run;
   const summary = context.finalSummary;
   const loop = context.runLoopSummary;
-  const policy = context.goalPolicy;
   const progress = context.runtimeProgress || {};
   const progressTodo = progress.todo || {};
   const verification = progress.verification || {};
-  const next = firstRuntimeText(progress.next_command, commandFromStatus(status, summary, loop, policy), "");
+  const next = firstRuntimeText(progress.next_command, commandFromStatus(status, summary, loop), "");
   const decisionId = context.latestDecision ? (context.latestDecision.decision_id || context.latestDecision.id) : "";
   const blocker = firstRuntimeText(
     summary.current_blocker,
@@ -1363,17 +1362,15 @@ async function readChatContext(sessionId) {
     finalSummary: detail.final_report_summary || {},
     runLoopSummary: detail.run_loop_summary || {},
     runtimeProgress: detail.runtime_progress || (detail.final_report_summary || {}).runtime_progress || (detail.run_loop_summary || {}).runtime_progress || {},
-    goalPolicy: detail.goal_policy || (detail.final_report_summary || {}).goal_policy || {},
     modelRouteTimeline: detail.model_route_timeline || {},
     latestDecision: pendingDecision || null,
   };
 }
 
-function commandFromStatus(status, summary, loop, policy) {
+function commandFromStatus(status, summary, loop) {
   const raw = firstRuntimeText(
     summary.recommended_next_command,
     loop.recommended_next_command,
-    policy.recommended_command,
     status.recommended_next_command,
     ""
   );
@@ -2538,8 +2535,7 @@ async function readRunDetail(runId) {
     agent_loop_run_summary: "agent_loop_run_summary.json",
     run_loop_summary: "run_loop_summary.json",
     final_report_summary: "final_report_summary.json",
-    model_route_timeline: "model_route_timeline.json",
-    goal_policy: "goal_policy.json"
+    model_route_timeline: "model_route_timeline.json"
   };
   const payload = { ok: true, run_id: runId };
   for (const [key, file] of Object.entries(jsonFiles)) {

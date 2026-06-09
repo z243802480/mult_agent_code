@@ -26,6 +26,7 @@ from asteria_runtime.commands.supervised_goal_loop_command import SupervisedGoal
 from asteria_runtime.commands.model_check_command import ModelCheckCommand
 from asteria_runtime.commands.new_command import NewCommand
 from asteria_runtime.commands.orchestration_run_command import OrchestrationRunCommand
+from asteria_runtime.commands.ops_signal_command import OpsSignalCommand
 from asteria_runtime.commands.package_check_command import PackageCheckCommand
 from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.decide_command import DecideCommand

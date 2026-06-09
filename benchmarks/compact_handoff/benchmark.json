@@ -21,7 +21,6 @@
     "task_plan_eval.json",
     "events.jsonl",
     "cost_report.json",
-    "review_report.md",
     "final_report.md"
   ],
   "acceptance": [

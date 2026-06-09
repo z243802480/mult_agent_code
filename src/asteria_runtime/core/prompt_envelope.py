@@ -34,7 +34,7 @@ class PromptEnvelopeRecord:
                 }
                 for section in self.data["sections"]
             ],
-            "capability_manifest": self.data["capability_manifest"],
+            "capability_manifest": self.envelope.capability_manifest.discovery_view(),
         }
 
 

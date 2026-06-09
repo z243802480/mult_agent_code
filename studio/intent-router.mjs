@@ -11,7 +11,7 @@ export function isRuntimeMetaQuestion(input) {
     "status", "next", "project status", "current run", "latest run", "blocked", "decisionpoint",
     "model route", "route rationale", "cheap mode", "cost mode", "why this model",
     "项目状态", "项目什么状态", "现在项目", "现在什么状态", "下一步", "最近的 run",
-    "为什么用", "模型路线", "省钱模式", "后台", "run_loop", "goal_policy",
+    "为什么用", "模型路线", "省钱模式", "后台", "run_loop",
   ]);
 }
 

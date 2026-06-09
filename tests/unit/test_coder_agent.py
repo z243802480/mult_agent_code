@@ -367,7 +367,8 @@ def test_coder_agent_slim_prompt_omits_unscoped_runtime_bulk() -> None:
     payload = json.loads(client.requests[0].messages[-1].content)
     prompt_context = payload["runtime_context"]
     assert "workspace_files" not in prompt_context
-    assert "memory" not in prompt_context
+    assert len(prompt_context["memory"]) == 1
+    assert prompt_context["memory"][0]["content_truncated"] is True
     assert "capability_registry" not in prompt_context
     assert payload["goal_spec"] == {
         "goal_id": "goal-1",

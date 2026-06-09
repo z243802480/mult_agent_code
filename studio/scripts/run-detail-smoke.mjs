@@ -97,11 +97,6 @@ await writeJson("model_route_timeline.json", {
     },
   ],
 });
-await writeJson("goal_policy.json", {
-  category: "none",
-  reason: "No policy blocker in smoke fixture",
-  recommended_action: "accept",
-});
 await writeJson("cost_report.json", costReportFixture());
 await writeJsonl("decisions.jsonl", [
   {
@@ -318,7 +313,7 @@ try {
     throw new Error("/api/diagnostics should mark diagnostics_loaded=true");
   }
   const detail = await fetchJson(`http://127.0.0.1:${port}/api/runs/${runId}`);
-  for (const key of ["agent_loop_run_summary", "run_loop_summary", "runtime_progress", "main_action", "final_report_summary", "model_route_timeline", "goal_policy", "worker_tree"]) {
+  for (const key of ["agent_loop_run_summary", "run_loop_summary", "runtime_progress", "main_action", "final_report_summary", "model_route_timeline", "worker_tree"]) {
     if (!Object.prototype.hasOwnProperty.call(detail, key)) {
       throw new Error(`/api/runs/:id missing ${key}`);
     }

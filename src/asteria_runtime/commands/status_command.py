@@ -91,8 +91,6 @@ class StatusResult:
         final_report_summary_path = (
             self.current_context.get("final_report_summary_path") if self.current_context else None
         )
-        goal_policy = self.current_context.get("goal_policy") if self.current_context else {}
-        goal_policy = goal_policy or {}
         recommended = (
             self.current_context.get("recommended_next_command") if self.current_context else None
         )
@@ -169,7 +167,6 @@ class StatusResult:
                     "run_loop_summary",
                     "final_report_summary_path",
                     "final_report_summary",
-                    "goal_policy",
                     "workspace_envelope",
                     "active_goal_memory_path",
                     "active_goal_memory",
@@ -217,7 +214,6 @@ class StatusResult:
             "run_loop_summary": run_loop_summary,
             "final_report_summary_path": final_report_summary_path,
             "final_report_summary": final_report_summary,
-            "goal_policy": goal_policy,
             "workspace_envelope": workspace_envelope,
             "active_goal_memory_path": str(self.active_goal_memory_path)
             if self.active_goal_memory_path
@@ -675,14 +671,6 @@ class StatusResult:
                         f"{item.get('selected_tier', 'unknown')} "
                         f"({item.get('reason', 'no reason recorded')})"
                     )
-            goal_policy = context.get("goal_policy") or {}
-            if goal_policy:
-                lines.append(
-                    "Goal policy: "
-                    f"{goal_policy.get('category', 'unknown')} -> "
-                    f"{goal_policy.get('recommended_command', 'unknown')} "
-                    f"({goal_policy.get('reason', 'no reason recorded')})"
-                )
             worker_tree = context.get("worker_tree") or {}
             if worker_tree.get("total_workers"):
                 graph = worker_tree.get("agent_run_graph") or {}

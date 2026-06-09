@@ -256,17 +256,6 @@ class SessionsCommand:
         route_health = self._route_health(run_dir)
         run_loop_summary = self._run_loop_summary(run_dir)
         final_report_summary = self._final_report_summary(run_dir)
-        latest_review = self._latest_review_report(run_dir)
-        goal_policy = (final_report_summary.get("goal_policy") or {}) if final_report_summary else {}
-        if not goal_policy:
-            marker = self._read_unvalidated_json(run_dir / "goal_policy.json")
-            goal_policy = marker.get("goal_policy") or {}
-        if not goal_policy:
-            goal_policy = self._goal_policy_from_pending_decisions(pending_decisions)
-        if not goal_policy:
-            goal_policy = (latest_review.get("trajectory_eval") or {}).get(
-                "failure_classification"
-            ) or {}
         worker_tree = WorkerTreeBuilder(self.validator).build(run_dir)
         promotion_summary = CandidatePromotionQueue(self.validator).summary(run_dir)
         blockers = self._blockers(
@@ -310,18 +299,7 @@ class SessionsCommand:
                 "recommended_next_command"
             ) or self._first_next_action(snapshot)
         profile = execution_profile_from_run_config(load_run_config(run_dir, self.validator))
-        phase = str(run_status.get("current_phase") or "")
-        policy_command = str(goal_policy.get("recommended_command") or "")
-        if (
-            policy_command
-            and phase != "ACCEPTED"
-            and not pending_decisions
-        ):
-            recommended_next_command = session_agent_recommended_command(
-                policy_command,
-                is_session_agent=profile.is_session_agent,
-            )
-        elif recommended_next_command:
+        if recommended_next_command:
             recommended_next_command = session_agent_recommended_command(
                 recommended_next_command,
                 is_session_agent=profile.is_session_agent,
@@ -423,7 +401,6 @@ class SessionsCommand:
             "progress_timeline": progress_timeline["events"],
             "model_route_timeline_path": model_route_timeline_path,
             "model_route_timeline": model_route_timeline,
-            "goal_policy": goal_policy,
             "route_health": route_health,
             "latest_observation_plan": latest_observation_plan,
             "latest_agent_loop_decision": latest_loop_decision,
@@ -571,31 +548,6 @@ class SessionsCommand:
             for decision in decisions
             if decision["status"] == "pending"
         ]
-
-    def _goal_policy_from_pending_decisions(self, pending_decisions: list[dict]) -> dict:
-        if not pending_decisions:
-            return {}
-        decision = pending_decisions[0]
-        metadata = decision.get("metadata") or {}
-        kind = str(metadata.get("kind") or "")
-        question = str(decision.get("question") or "")
-        decision_text = f"{kind} {question}".lower()
-        if "budget" in decision_text or "cost" in decision_text:
-            category = "budget_guard"
-        elif any(
-            term in decision_text
-            for term in ("permission", "policy", "runtime_request", "tool")
-        ):
-            category = "permission_guard"
-        else:
-            category = "decision_required"
-        decision_id = str(decision["decision_id"])
-        return {
-            "category": category,
-            "recommended_command": f"decide --decision-id {decision_id}",
-            "reason": f"DecisionPoint is pending: {question}",
-            "decision_id": decision_id,
-        }
 
     def _task_failures(self, run_dir: Path) -> list[dict]:
         failures = self._read_jsonl(run_dir / "task_failures.jsonl", "task_failure_evidence")

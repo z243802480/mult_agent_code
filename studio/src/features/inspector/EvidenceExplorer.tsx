@@ -323,7 +323,6 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   const agentLoopSummary = (runDetail.agent_loop_run_summary ?? {}) as AnyRecord;
   const mainAction = asRecord(runDetail.main_action);
   const routeArtifact = (runDetail.model_route_timeline ?? {}) as AnyRecord;
-  const goalPolicy = (finalSummary.goal_policy ?? runDetail.goal_policy ?? {}) as AnyRecord;
   const timeline = (
     Array.isArray(routeArtifact.timeline)
       ? routeArtifact.timeline
@@ -349,7 +348,7 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
       <div className="evidenceStats">
         <Metric label="State" value={workflowState} tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"} />
         <Metric label="Next" value={nextLabel} tone={nextCommand === "none" ? "good" : "warn"} />
-        <Metric label="Policy" value={String(goalPolicy.category ?? "none")} tone={String(goalPolicy.category ?? "none") === "none" ? "good" : "warn"} />
+        <Metric label="Loop exit" value={loopExit} tone={/blocked|fail|limit/i.test(loopExit) ? "warn" : "good"} />
       </div>
       <div className="keyValueList">
         <div><small>Current status</small><pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre></div>
@@ -360,8 +359,6 @@ status=${String(mainAction.status ?? "unknown")}
 requires_permission=${String(mainAction.requires_permission ?? "unknown")}
 source=${String(mainAction.source ?? "unknown")}
 evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre></div>
-        <div><small>Goal policy</small><pre>{`${String(goalPolicy.category ?? "none")} -> ${String(goalPolicy.recommended_command ?? goalPolicy.recommended_next_command ?? goalPolicy.recommended_action ?? nextCommand)}
-${String(goalPolicy.reason ?? "No policy reason recorded.")}`}</pre></div>
         <div><small>Run loop summary</small><pre>{`exit=${loopExit}
 rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre></div>
         <div><small>Model route rationale</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}

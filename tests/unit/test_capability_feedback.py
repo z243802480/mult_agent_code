@@ -609,7 +609,7 @@ def test_goal_spec_execution_plan_downgrades_low_risk_docs_when_route_blocked(
 
     assert plan["decision"] == "block_validation"
     assert plan["selected_model_tier"] == "medium"
-    assert plan["fast_path"]["task_kind"] == "doc_update"
+    assert plan["fast_path"]["task_kind"] == "complex_change"
     assert "downgrade_low_risk_goal_spec_to_medium" in plan["actions"]
 
 

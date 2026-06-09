@@ -66,6 +66,10 @@ def test_slim_review_context_keeps_focused_mode_for_high_risk() -> None:
 
 def test_slim_execution_context_trims_task_prompt_context_without_mutating_source() -> None:
     runtime_context = {
+        "memory": [
+            {"content": f"decision-{index} " + ("x" * 1500)}
+            for index in range(7)
+        ],
         "tool_observations": [{"id": f"obs-{index}"} for index in range(9)],
         "harness_observations": [{"id": f"harness-{index}"} for index in range(7)],
         "context_package": {
@@ -87,6 +91,8 @@ def test_slim_execution_context_trims_task_prompt_context_without_mutating_sourc
     assert slimmed["context_policy"]["mode"] == "slim"
     assert slimmed["context_policy"]["fast_path"]["task_kind"] == "simple_file"
     assert len(slimmed["tool_observations"]) == 5
+    assert len(slimmed["memory"]) == 5
+    assert slimmed["memory"][0]["content_truncated"] is True
     assert len(slimmed["harness_observations"]) == 5
     assert len(slimmed["context_package"]["read_scope_files"]) == 5
     assert slimmed["context_package"]["read_scope_files"][0]["content_truncated"] is True

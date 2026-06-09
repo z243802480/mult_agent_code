@@ -98,3 +98,25 @@ python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel
   Session Agent Loop, tool gateway, candidate workspace, verification, and action boundaries.
 - Asteria therefore replaces the independent DebugCommand repair engine with a thin adapter over
   targeted ExecuteCommand session recovery.
+
+## 2026-06-09 capability discovery correction
+
+- Claude Code uses hierarchical instructions and loads focused skills when relevant. OpenCode
+  exposes permitted skill descriptions and loads full skill content on demand; denied capabilities
+  can be hidden from the model surface.
+- Asteria therefore persists a complete CapabilityManifest for audit, but sends models a compact,
+  permission-filtered discovery view. Internal role, spawn, catalog, and model-surface policy stays
+  in Runtime evidence unless the model explicitly needs a scoped capability.
+- Real Beta comparison must measure task outcome and latency before deleting or expanding an
+  opt-in orchestration path. Batch D paired evaluation is evidence collection, not another gate.
+
+## 2026-06-09 Batch B-D convergence result
+
+- Accept and Resume now depend on one public SessionResultService boundary instead of calling
+  RunCommand private result helpers.
+- The cross-catalog manifest alignment audit was deleted. Complete manifests remain audit facts;
+  task catalogs remain local dispatch facts; permission is enforced at the action boundary.
+- Three current-source real-provider tasks produced one pass and two failures. Tool execution was
+  not the dominant latency; provider streaming/fallback and explicit review recovery were.
+- Delegation/L3/parallel writes therefore remain opt-in. The default path stays the continuous
+  Session Agent Loop, and no new completeness gate or orchestration wave is justified.

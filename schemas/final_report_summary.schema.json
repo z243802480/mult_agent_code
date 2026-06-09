@@ -14,7 +14,6 @@
     "model_selection",
     "blockers",
     "next_actions",
-    "goal_policy",
     "updated_at"
   ],
   "properties": {
@@ -51,7 +50,6 @@
       "type": "array",
       "items": { "type": "string" }
     },
-    "goal_policy": { "type": "object" },
     "updated_at": { "type": "string" }
   },
   "additionalProperties": false

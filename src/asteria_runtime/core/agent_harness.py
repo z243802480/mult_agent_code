@@ -80,24 +80,58 @@ class CapabilityManifest:
             "boundaries": self.boundaries,
         }
 
+    def discovery_view(self) -> dict[str, Any]:
+        """Return the compact, permission-filtered capability surface shown to models."""
+
+        return {
+            "modes": self.modes,
+            "direct_tools": self._discoverable(self.tools),
+            "deferred_tools": self._discoverable(self.deferred_tools),
+            "mcp_tools": self._discoverable(self.mcp_tools),
+            "skills": self._discoverable(self.skills),
+            "subagents": self._discoverable(self.subagents),
+            "verification": self._discoverable(self.verification),
+            "boundaries": {
+                key: self.boundaries.get(key)
+                for key in ("active_mode", "network", "shell", "writes")
+                if key in self.boundaries
+            },
+        }
+
+    @staticmethod
+    def _discoverable(tools: list[CapabilityTool]) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": tool.name,
+                "kind": tool.kind,
+                "permission": tool.permission,
+                "description": tool.description,
+            }
+            for tool in tools
+            if tool.permission != "deny"
+        ]
+
     def prompt_summary(self) -> str:
+        discovery = self.discovery_view()
         tool_lines = [
-            f"- {tool.name}: {tool.kind}, permission={tool.permission}"
-            for tool in self.tools
+            f"- {tool['name']}: {tool['description']} (permission={tool['permission']})"
+            for tool in discovery["direct_tools"]
         ]
-        boundary_lines = [
-            f"- {key}: {value}" for key, value in sorted(self.boundaries.items())
-        ]
+        boundary_lines = [f"- {key}: {value}" for key, value in discovery["boundaries"].items()]
         return "\n".join(
             [
-                "Available modes: " + ", ".join(self.modes),
+                "Available modes: " + ", ".join(discovery["modes"]),
                 "Direct tools:",
                 *tool_lines,
                 "Deferred tools: "
-                + ", ".join(tool.name for tool in self.deferred_tools + self.mcp_tools),
-                "Skills: " + ", ".join(tool.name for tool in self.skills),
-                "Subagents: " + ", ".join(tool.name for tool in self.subagents),
-                "Verification: " + ", ".join(tool.name for tool in self.verification),
+                + ", ".join(
+                    item["name"]
+                    for item in discovery["deferred_tools"] + discovery["mcp_tools"]
+                ),
+                "Skills: " + ", ".join(item["name"] for item in discovery["skills"]),
+                "Subagents: " + ", ".join(item["name"] for item in discovery["subagents"]),
+                "Verification: "
+                + ", ".join(item["name"] for item in discovery["verification"]),
                 "Runtime boundaries:",
                 *boundary_lines,
             ]
