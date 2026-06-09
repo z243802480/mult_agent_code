@@ -108,6 +108,23 @@ def test_execution_coordinator_allocates_slots_for_serial_selection(tmp_path: Pa
     assert calls == [("task-0001", "worker-0001", "worker-result-0001")]
 
 
+def test_execution_coordinator_can_target_session_recovery_task(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    board = _task_board(
+        tmp_path,
+        validator,
+        [_task("task-other", "ready"), _task("task-failed", "ready")],
+    )
+
+    selection = ExecutionCoordinator(
+        max_tasks=1,
+        task_ids=frozenset({"task-failed"}),
+    ).select_tasks(board)
+
+    assert [task["task_id"] for task in selection.selected] == ["task-failed"]
+    assert selection.reason == "targeted_session_recovery_selection"
+
+
 def _task(task_id: str, status: str, *, parallel_safety: str = "serial") -> dict:
     return {
         "task_id": task_id,

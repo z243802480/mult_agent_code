@@ -463,3 +463,17 @@ def test_product_architecture_is_session_loop_not_global_state_machine() -> None
     ]
     for claim in forbidden_architecture_claims:
         assert claim not in architecture
+
+
+def test_debug_is_a_thin_session_recovery_adapter() -> None:
+    debug_command = Path("src/asteria_runtime/commands/debug_command.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ExecuteCommand(" in debug_command
+    assert "session_recovery_requested" in debug_command
+    assert "DebugAgent" not in debug_command
+    assert "CandidateWorkspace" not in debug_command
+    assert "create_default_tool_registry" not in debug_command
+    assert "check_completion_contract" not in debug_command
+    assert '"session_recovery"' in debug_command

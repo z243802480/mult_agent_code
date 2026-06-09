@@ -1486,7 +1486,7 @@ def build_parser() -> argparse.ArgumentParser:
                     ("status", "Show user-level progress, blockers, and next actions."),
                     ("review", "Inspect result quality before accepting candidate outputs."),
                     ("accept", "Accept reviewed results and finalize the run."),
-                    ("debug", "Repair failed execution evidence."),
+                    ("debug", "Continue failed work in the current session."),
                 ],
             ),
             (

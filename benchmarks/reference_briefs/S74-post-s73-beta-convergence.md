@@ -88,3 +88,13 @@ python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel
   persistence and recovery details, and Studio narrates user work rather than internal control
   objects.
 - Research baseline: `docs/zh/plans/S74_REFERENCE_PRODUCT_BASELINE.md`.
+
+## 2026-06-09 explicit recovery correction
+
+- Claude Code returns hook/tool failures to the current model, resumes the same session, and uses
+  checkpoint/rewind for session-level recovery. OpenCode treats repeated-tool doom loops as an
+  approval interruption rather than a second repair runtime.
+- Explicit debug may select failed work and add diagnostic intent, but it must reuse the ordinary
+  Session Agent Loop, tool gateway, candidate workspace, verification, and action boundaries.
+- Asteria therefore replaces the independent DebugCommand repair engine with a thin adapter over
+  targeted ExecuteCommand session recovery.

@@ -14,6 +14,7 @@ pytestmark = pytest.mark.workflow
 
 class FakePlanClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
+        del request
         return ChatResponse(
             content=json.dumps(
                 {
@@ -22,454 +23,15 @@ class FakePlanClient:
                     "original_goal": "create a repairable module",
                     "normalized_goal": "Create a repairable module",
                     "goal_type": "software_tool",
-                    "assumptions": ["local python module"],
-                    "constraints": ["no network"],
-                    "non_goals": [],
-                    "expanded_requirements": [
-                        {
-                            "id": "req-0001",
-                            "priority": "must",
-                            "description": "Create a module exposing VALUE = 2",
-                            "source": "inferred",
-                            "acceptance": ["VALUE equals 2"],
-                        }
-                    ],
-                    "target_outputs": ["repairable.py"],
-                    "definition_of_done": ["VALUE equals 2"],
-                    "verification_strategy": ["python command"],
-                    "budget": {"max_iterations": 8, "max_model_calls": 60},
-                },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(10, 20, 30),
-            model_provider="fake",
-            model_name="fake-plan",
-            raw_response={},
-        )
-
-
-class FakeBrokenExecuteClient:
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Create module with wrong value.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "repairable.py",
-                                "content": "VALUE = 1\n",
-                                "overwrite": True,
-                            },
-                            "reason": "create initial implementation",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
-                            },
-                            "reason": "verify expected value",
-                        }
-                    ],
-                    "completion_notes": "intentionally broken",
-                },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(15, 25, 40),
-            model_provider="fake",
-            model_name="fake-execute",
-            raw_response={},
-        )
-
-
-class FakeDebugClient:
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        payload = json.loads(request.messages[-1].content)
-        failure_evidence = payload["failure_evidence"]
-        assert "prompt_envelope" in payload["runtime_context"]
-        assert "capability_manifest" in payload["runtime_context"]["prompt_envelope"]
-        assert payload["runtime_context"]["tool_observations"]
-        assert any(
-            item.get("ok") is False
-            and item.get("next_hint") == "diagnose_then_repair_replan_ask_or_stop"
-            for item in payload["runtime_context"]["tool_observations"]
-        )
-        actions = payload["runtime_context"]["tool_observation_actions"]
-        assert {item["action"] for item in actions} >= {
-            "diagnose",
-            "repair",
-            "replan",
-            "ask",
-            "stop",
-        }
-        assert "runtime_os_evidence" in failure_evidence
-        assert "recent_worker_results" in failure_evidence
-        assert "recent_merge_gate_evidence" in failure_evidence
-        assert "recent_runtime_requests" in failure_evidence
-        assert "recent_tool_failures" in request.messages[-1].content
-        assert "recent_task_failures" in request.messages[-1].content
-        assert "recent_task_execution_evidence" in request.messages[-1].content
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Fix VALUE to satisfy verification.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "repairable.py",
-                                "content": "VALUE = 2\n",
-                                "overwrite": True,
-                            },
-                            "reason": "minimal repair",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
-                            },
-                            "reason": "verify repaired value",
-                        }
-                    ],
-                    "completion_notes": "repairable.py now exposes VALUE = 2",
-                },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(12, 18, 30),
-            model_provider="fake",
-            model_name="fake-debug",
-            raw_response={},
-        )
-
-
-class FakePatchDebugClient:
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        assert (
-            '"tool_name": "apply_patch"'
-            in request.messages[0].content + request.messages[-1].content
-        )
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Patch VALUE to satisfy verification.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "apply_patch",
-                            "args": {
-                                "patch": "--- a/repairable.py\n+++ b/repairable.py\n@@\n-VALUE = 0\n+VALUE = 2\n"
-                            },
-                            "reason": "minimal patch repair",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
-                            },
-                            "reason": "verify repaired value",
-                        }
-                    ],
-                    "completion_notes": "repairable.py patched to VALUE = 2",
-                },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(12, 18, 30),
-            model_provider="fake",
-            model_name="fake-debug",
-            raw_response={},
-        )
-
-
-class FakeStillBrokenDebugClient:
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Attempt a repair that still fails verification.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "repairable.py",
-                                "content": "VALUE = 3\n",
-                                "overwrite": True,
-                            },
-                            "reason": "incorrect repair",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
-                            },
-                            "reason": "verify repaired value",
-                        }
-                    ],
-                    "completion_notes": "still broken",
-                },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(12, 18, 30),
-            model_provider="fake",
-            model_name="fake-debug",
-            raw_response={},
-        )
-
-
-class FakeVerifyOnlyDebugClient:
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Verify the artifact is already correct.",
-                    "tool_calls": [],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
-                            },
-                            "reason": "prove task is already satisfied",
-                        }
-                    ],
-                    "completion_notes": "repairable.py already exposes VALUE = 2",
-                },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(12, 18, 30),
-            model_provider="fake",
-            model_name="fake-debug",
-            raw_response={},
-        )
-
-
-def test_debug_command_repairs_blocked_task_and_updates_costs(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
-    ).run()
-    assert execute.blocked == 1
-
-    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeDebugClient()).run()
-
-    assert result.repaired == 1
-    assert result.still_blocked == 0
-    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
-
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    debug_envelope = json.loads(
-        (run_dir / "prompt_envelope_debug.json").read_text(encoding="utf-8")
-    )
-    assert debug_envelope["mode"] == "debug"
-    assert "failure_repair" in debug_envelope["section_order"]
-    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
-    assert task_plan["tasks"][0]["status"] == "done"
-    assert "VALUE = 2" in task_plan["tasks"][0]["notes"]
-
-    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
-    assert "repair_started" in events
-    assert "repair_completed" in events
-    task_failures = [
-        json.loads(line)
-        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert task_failures[0]["failure_type"] == "contract_violation"
-    assert task_failures[0]["verification_failures"][0]["error"] == "nonzero_exit"
-    execution_evidence = [
-        json.loads(line)
-        for line in (run_dir / "task_execution_evidence.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    assert [item["status"] for item in execution_evidence] == ["blocked", "done"]
-    assert execution_evidence[-1]["candidate"]["promoted_files"] == ["repairable.py"]
-    assert execution_evidence[-1]["verification_results"][0]["ok"] is True
-
-    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 3
-    assert cost_report["tool_calls"] == 5
-    assert cost_report["repair_attempts"] == 1
-    assert cost_report["estimated_input_tokens"] == 37
-    assert cost_report["estimated_output_tokens"] == 63
-
-
-def test_debug_command_records_repair_user_progress(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
-    ).run()
-    assert execute.blocked == 1
-
-    DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeDebugClient()).run()
-
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    progress = [
-        json.loads(line)
-        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    titles = [event["title"] for event in progress]
-    assert "Repair started" in titles
-    assert "Repair evidence loaded" in titles
-    assert "Repair action requested" in titles
-    assert "Repair action proposed" in titles
-    assert "Repair candidate workspace created" in titles
-    assert "Repair verification started" in titles
-    assert "Repair contract checked" in titles
-    assert "Repair candidate promoted" in titles
-    assert "Repair evidence recorded" in titles
-    assert any(
-        event["channel"] == "file" and event["file_changes"]
-        for event in progress
-    )
-    assert any(
-        event["channel"] == "evidence"
-        and event["phase"] == "result"
-        and event["title"] == "Repair evidence recorded"
-        for event in progress
-    )
-    active_goal = json.loads(
-        (tmp_path / ".asteria" / "memory" / "active_goal.json").read_text(encoding="utf-8")
-    )
-    assert active_goal["updated_by"] == "repair"
-    assert active_goal["update_reason"] == "repair_completed"
-
-
-def test_debug_command_can_repair_with_apply_patch(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    (tmp_path / "repairable.py").write_text("VALUE = 0\n", encoding="utf-8")
-    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
-    ).run()
-    assert execute.blocked == 1
-    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 0\n"
-
-    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakePatchDebugClient()).run()
-
-    assert result.repaired == 1
-    assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    tool_calls = (run_dir / "tool_calls.jsonl").read_text(encoding="utf-8")
-    assert "apply_patch" in tool_calls
-
-
-def test_debug_command_discards_failed_repair_candidate(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    execute = ExecuteCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()
-    ).run()
-    assert execute.blocked == 1
-
-    result = DebugCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeStillBrokenDebugClient()
-    ).run()
-
-    assert result.repaired == 0
-    assert result.still_blocked == 1
-    assert not (tmp_path / "repairable.py").exists()
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    experiments = [
-        json.loads(line)
-        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert experiments[-1]["decision"] == "discard"
-    assert experiments[-1]["candidate"]["workspace"]
-    assert (Path(experiments[-1]["candidate"]["workspace"]) / "repairable.py").exists()
-    assert experiments[-1]["candidate"]["rollback"] == []
-    assert experiments[-1]["candidate"]["promoted_files"] == []
-    task_failures = [
-        json.loads(line)
-        for line in (run_dir / "task_failures.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert task_failures[-1]["failure_type"] == "repair_contract_violation"
-    assert task_failures[-1]["contract_check"]["violations"] == ["verification did not pass"]
-    execution_evidence = [
-        json.loads(line)
-        for line in (run_dir / "task_execution_evidence.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
-    ]
-    assert execution_evidence[-1]["status"] == "blocked"
-    assert execution_evidence[-1]["failure_type"] == "repair_contract_violation"
-    assert execution_evidence[-1]["candidate"]["promoted_files"] == []
-
-
-def test_debug_command_can_mark_already_satisfied_task_done(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
-    task_plan["tasks"][0]["status"] = "blocked"
-    task_plan["tasks"][0]["notes"] = (
-        "Verification command failed, but artifact may already be correct."
-    )
-    (run_dir / "task_plan.json").write_text(json.dumps(task_plan), encoding="utf-8")
-    (tmp_path / "repairable.py").write_text("VALUE = 2\n", encoding="utf-8")
-
-    result = DebugCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeVerifyOnlyDebugClient()
-    ).run()
-
-    assert result.repaired == 1
-    updated = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
-    assert updated["tasks"][0]["status"] == "done"
-    experiments = [
-        json.loads(line)
-        for line in (run_dir / "experiments.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    assert experiments[-1]["decision"] == "keep"
-    assert "already satisfied" in experiments[-1]["reason"]
-
-
-class FakeWriteScopePlanClient:
-    """Plan that creates a write-scope task with no expected_artifacts — triggers delegation gate."""
-
-    def chat(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content=json.dumps(
-                {
-                    "schema_version": "0.1.0",
-                    "goal_id": "goal-gate",
-                    "original_goal": "write without contract",
-                    "normalized_goal": "Write a file without an output contract",
-                    "goal_type": "software_tool",
                     "assumptions": [],
                     "constraints": [],
                     "non_goals": [],
                     "expanded_requirements": [],
-                    "target_outputs": [],
-                    "definition_of_done": ["file exists"],
-                    "verification_strategy": [],
+                    "target_outputs": ["repairable.py"],
+                    "definition_of_done": ["VALUE equals 2"],
+                    "verification_strategy": ["python command"],
                     "budget": {"max_iterations": 8, "max_model_calls": 60},
-                },
-                ensure_ascii=False,
+                }
             ),
             finish_reason="stop",
             usage=TokenUsage(10, 20, 30),
@@ -479,100 +41,109 @@ class FakeWriteScopePlanClient:
         )
 
 
-class FakeWriteScopeExecuteClient:
-    """Execute client that writes a file but triggers a verification failure, leaving task blocked."""
+class FakeExecutionClient:
+    def __init__(self, value: int) -> None:
+        self.value = value
 
     def chat(self, request: ChatRequest) -> ChatResponse:
+        del request
         return ChatResponse(
             content=json.dumps(
                 {
                     "schema_version": "0.1.0",
                     "task_id": "task-0001",
-                    "summary": "Write file without verification contract.",
+                    "summary": f"Set VALUE to {self.value}.",
                     "tool_calls": [
                         {
                             "tool_name": "write_file",
-                            "args": {"path": "out.txt", "content": "hello", "overwrite": True},
-                            "reason": "create output",
+                            "args": {
+                                "path": "repairable.py",
+                                "content": f"VALUE = {self.value}\n",
+                                "overwrite": True,
+                            },
+                            "reason": "implement task",
                         }
                     ],
                     "verification": [
                         {
                             "tool_name": "run_command",
-                            "args": {"command": "python -c \"assert False, 'force fail'\""},
-                            "reason": "intentionally fail to put task in blocked state",
+                            "args": {
+                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                            },
+                            "reason": "verify value",
                         }
                     ],
-                    "completion_notes": "blocked intentionally",
-                },
-                ensure_ascii=False,
+                    "completion_notes": "execution finished",
+                }
             ),
             finish_reason="stop",
-            usage=TokenUsage(15, 25, 40),
+            usage=TokenUsage(10, 20, 30),
             model_provider="fake",
             model_name="fake-execute",
             raw_response={},
         )
 
 
-def test_debug_command_blocks_repair_when_delegation_gate_fails(tmp_path: Path) -> None:
+def _blocked_run(tmp_path: Path) -> str:
     InitCommand(tmp_path).run()
-    plan = PlanCommand(
-        tmp_path,
-        "write without contract",
-        model_client=FakeWriteScopePlanClient(),
-    ).run()
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    task_plan_path = run_dir / "task_plan.json"
-    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
-    # patch the task: write_file in allowed_tools (risk="write") but clear both
-    # write_scope and expected_artifacts so allowed_writes is empty (quality fails).
-    # write_scope is used rather than expected_artifacts alone because expected_artifacts
-    # may be re-computed during execution; write_scope stays stable.
-    task_plan["tasks"][0]["allowed_tools"] = [
-        "write_file",
-        "run_command",
-        "read_file",
-        "list_dir",
-        "find_files",
-        "search_in_files",
-    ]
-    task_plan["tasks"][0]["expected_artifacts"] = []
-    task_plan["tasks"][0]["write_scope"] = []
-    task_plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
-    execute = ExecuteCommand(
-        tmp_path, run_id=plan.run_id, model_client=FakeWriteScopeExecuteClient()
-    ).run()
-    assert execute.blocked == 1
-
-    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakeDebugClient()).run()
-
-    assert result.still_blocked == 1
-    assert result.repaired == 0
-    repair = result.repairs[0]
-    assert repair.status == "blocked"
-    assert "delegation brief" in repair.summary.lower() or "quality gate" in repair.summary.lower()
-    events = (run_dir / "events.jsonl").read_text(encoding="utf-8")
-    assert "repair_delegation_gate_blocked" in events
-
-
-def test_debug_command_repairs_in_progress_task_with_failure_notes(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    (tmp_path / "repairable.py").write_text("VALUE = 0\n", encoding="utf-8")
     plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
-    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
-    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
-    task_plan["tasks"][0]["status"] = "in_progress"
-    task_plan["tasks"][0]["notes"] = "Task completion contract violated: verification did not pass"
-    (run_dir / "task_plan.json").write_text(json.dumps(task_plan), encoding="utf-8")
+    result = ExecuteCommand(
+        tmp_path,
+        run_id=plan.run_id,
+        model_client=FakeExecutionClient(1),
+    ).run()
+    assert result.blocked == 1
+    return plan.run_id
 
-    result = DebugCommand(tmp_path, run_id=plan.run_id, model_client=FakePatchDebugClient()).run()
+
+def test_debug_continues_failed_task_through_execute_session_loop(tmp_path: Path) -> None:
+    run_id = _blocked_run(tmp_path)
+
+    result = DebugCommand(
+        tmp_path,
+        run_id=run_id,
+        model_client=FakeExecutionClient(2),
+    ).run()
 
     assert result.repaired == 1
+    assert result.still_blocked == 0
     assert (tmp_path / "repairable.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    assert not (run_dir / "prompt_envelope_debug.json").exists()
+    assert "session_recovery_requested" in (run_dir / "events.jsonl").read_text(
+        encoding="utf-8"
+    )
+    progress = (run_dir / "user_progress.jsonl").read_text(encoding="utf-8")
+    assert "session_agent_loop" in progress
 
 
-def test_task_needs_debug_repair_for_in_progress_contract_failure() -> None:
+def test_debug_only_requeues_selected_failed_task(tmp_path: Path) -> None:
+    run_id = _blocked_run(tmp_path)
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    other = dict(task_plan["tasks"][0])
+    other["task_id"] = "task-0002"
+    other["title"] = "Unrelated ready work"
+    other["status"] = "ready"
+    task_plan["tasks"].insert(0, other)
+    task_plan_path.write_text(json.dumps(task_plan), encoding="utf-8")
+
+    result = DebugCommand(
+        tmp_path,
+        run_id=run_id,
+        task_id="task-0001",
+        model_client=FakeExecutionClient(2),
+    ).run()
+
+    assert [item.task_id for item in result.repairs] == ["task-0001"]
+    updated = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    statuses = {item["task_id"]: item["status"] for item in updated["tasks"]}
+    assert statuses["task-0001"] == "done"
+    assert statuses["task-0002"] == "ready"
+
+
+def test_debug_requeues_in_progress_failure_notes() -> None:
     command = DebugCommand(Path("."))
     assert command._task_needs_debug_repair(
         {

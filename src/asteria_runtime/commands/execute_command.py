@@ -116,6 +116,8 @@ class ExecuteCommand:
         model_client: ModelClient | None = None,
         parallel_readonly: bool = False,
         parallel_writes: bool = False,
+        task_ids: set[str] | None = None,
+        context_overrides: dict | None = None,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
@@ -123,6 +125,8 @@ class ExecuteCommand:
         self.model_client = model_client
         self.parallel_readonly = parallel_readonly
         self.parallel_writes = parallel_writes
+        self.task_ids = frozenset(task_ids or set())
+        self.context_overrides = dict(context_overrides or {})
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.registry = create_default_tool_registry()
@@ -202,6 +206,7 @@ class ExecuteCommand:
         coder = CoderAgent(model_client, self.validator)
         task_board = TaskBoard(run_dir / "task_plan.json", self.validator)
         runtime_context = ContextLoader(self.root, self.validator).load(run_id)
+        runtime_context.update(self.context_overrides)
         prompt_envelope = persist_prompt_envelope(
             root=self.root,
             run_dir=run_dir,
@@ -261,6 +266,7 @@ class ExecuteCommand:
             max_tasks=self.max_tasks,
             parallel_readonly=self.parallel_readonly,
             parallel_writes=self.parallel_writes,
+            task_ids=self.task_ids,
             actor="ExecuteCommand",
         )
         selection = coordinator.select_tasks(task_board)

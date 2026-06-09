@@ -31,6 +31,7 @@ SLIM_EXECUTION_KEYS = {
     "prompt_envelope",
     "raw_context_refs",
     "runtime_profile_id",
+    "session_recovery",
     "subagent_child_plan",
     "subagent_worker",
     "task_contract",

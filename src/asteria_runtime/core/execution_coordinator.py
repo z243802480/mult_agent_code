@@ -20,9 +20,25 @@ class ExecutionCoordinator:
     max_tasks: int = 1
     parallel_readonly: bool = False
     parallel_writes: bool = False
+    task_ids: frozenset[str] = frozenset()
     actor: str = "ExecutionCoordinator"
 
     def select_tasks(self, task_board: TaskBoard) -> ReadySelection:
+        if self.task_ids:
+            tasks = task_board.list_tasks()
+            done = {task["task_id"] for task in tasks if task.get("status") == "done"}
+            selected = [
+                task
+                for task in tasks
+                if task.get("task_id") in self.task_ids
+                and task.get("status") == "ready"
+                and all(dep in done for dep in task.get("depends_on") or [])
+            ][: self.max_tasks]
+            return ReadySelection(
+                selected=selected,
+                blocked=[],
+                reason="targeted_session_recovery_selection",
+            )
         scheduler = TaskGraphScheduler(task_board.list_tasks())
         if self.parallel_writes:
             selection = scheduler.select_parallel_safe_batch(self.max_tasks)

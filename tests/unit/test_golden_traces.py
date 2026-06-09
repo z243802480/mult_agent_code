@@ -263,7 +263,7 @@ class TestRuntimeOSFixtureCoverage:
         assert {item["capability"] for item in catalog["capabilities"]} == {
             item.capability for item in RUNTIME_OS_CAPABILITIES
         }
-        assert "debug_consumed_failure_next_hint" in catalog["evidence_keys"]
+        assert "session_recovery_consumed_failure_next_hint" in catalog["evidence_keys"]
         assert "delegation_evidence_consistent" in catalog["evidence_keys"]
 
 

@@ -120,12 +120,12 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: worker did not create an auditable runtime request"
         if key == "capability_feedback_recorded":
             return f"{scenario_name}: capability profile did not record runtime feedback signals"
-        if key == "debug_consumed_runtime_evidence":
-            return f"{scenario_name}: debug did not consume Runtime OS evidence"
+        if key == "session_recovery_consumed_runtime_evidence":
+            return f"{scenario_name}: session recovery did not consume Runtime OS evidence"
         if key == "review_consumed_runtime_evidence":
             return f"{scenario_name}: review did not consume Runtime OS evidence"
-        if key == "debug_consumed_failure_next_hint":
-            return f"{scenario_name}: debug did not consume failure ToolObservation next_hint"
+        if key == "session_recovery_consumed_failure_next_hint":
+            return f"{scenario_name}: session recovery did not consume failure ToolObservation next_hint"
         if key == "review_consumed_failure_next_hint":
             return f"{scenario_name}: review did not consume failure ToolObservation next_hint"
         if key == "prompt_envelope_persisted":

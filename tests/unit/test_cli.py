@@ -32,13 +32,13 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "status  Show user-level progress" in help_text
     assert "review  Inspect result quality" in help_text
     assert "accept  Accept reviewed results" in help_text
-    assert "debug   Repair failed execution evidence." in help_text
-    assert "init      Initialize a local-first Asteria workspace." in help_text
-    assert "resume    Continue after approvals" in help_text
+    assert "debug   Continue failed work in the current session." in help_text
+    assert "init        Initialize a local-first Asteria workspace." in help_text
+    assert "resume      Continue after approvals" in help_text
     assert "chat      Lightweight" not in help_text
     assert help_text.index("goal    Long-task") < help_text.index("ask     Lightweight")
     assert help_text.index("ask     Lightweight") < help_text.index("status  Show user-level")
-    assert help_text.index("debug   Repair") < help_text.index("Support")
+    assert help_text.index("debug   Continue") < help_text.index("Support")
     assert "run                    Compatibility alias for goal mode." not in help_text
     assert "gate                   Run staged validation checks" not in help_text
     assert "real-model-acceptance" not in help_text

@@ -242,7 +242,7 @@ class RuntimeAcceptanceClient:
         )
 
 
-class RuntimeEvidenceDebugClient:
+class RuntimeEvidenceRecoveryClient:
     def __init__(self) -> None:
         self.consumed_runtime_evidence = False
         self.consumed_failure_next_hint = False
@@ -252,15 +252,16 @@ class RuntimeEvidenceDebugClient:
 
         payload = json.loads(request.messages[-1].content)
         task = payload["task"]
-        evidence = payload.get("failure_evidence", {})
         runtime_context = payload.get("runtime_context", {})
+        recovery = runtime_context.get("session_recovery", {})
+        task_evidence = recovery.get("task_evidence", {})
+        evidence = task_evidence.get(task["task_id"], {})
         observations = runtime_context.get("tool_observations")
         observations = observations if isinstance(observations, list) else []
-        runtime_evidence = evidence.get("runtime_os_evidence")
         self.consumed_runtime_evidence = bool(
-            isinstance(runtime_evidence, dict)
-            and runtime_evidence.get("worker_results")
-            and runtime_evidence.get("task_execution_evidence")
+            isinstance(evidence, dict)
+            and evidence.get("worker_results")
+            and evidence.get("task_execution_evidence")
         )
         self.consumed_failure_next_hint = any(
             isinstance(item, dict)
@@ -302,7 +303,7 @@ class RuntimeEvidenceDebugClient:
             finish_reason="stop",
             usage=TokenUsage(1, 1, 2),
             model_provider="runtime-acceptance",
-            model_name="runtime-evidence-debug",
+            model_name="runtime-evidence-recovery",
             raw_response={},
         )
 
@@ -1002,26 +1003,31 @@ def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]
         run_id=run_id,
         model_client=RuntimeAcceptanceClient("failure"),
     ).run()
-    debug_client = RuntimeEvidenceDebugClient()
-    DebugCommand(workspace, run_id=run_id, model_client=debug_client).run()
+    recovery_client = RuntimeEvidenceRecoveryClient()
+    DebugCommand(workspace, run_id=run_id, model_client=recovery_client).run()
     review_client = RuntimeEvidenceReviewClient()
     ReviewCommand(workspace, run_id=run_id, model_client=review_client).run()
     run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
-    evidence["debug_consumed_runtime_evidence"] = debug_client.consumed_runtime_evidence
+    evidence["session_recovery_consumed_runtime_evidence"] = (
+        recovery_client.consumed_runtime_evidence
+    )
     evidence["review_consumed_runtime_evidence"] = review_client.consumed_runtime_evidence
-    evidence["debug_consumed_failure_next_hint"] = debug_client.consumed_failure_next_hint
+    evidence["session_recovery_consumed_failure_next_hint"] = (
+        recovery_client.consumed_failure_next_hint
+    )
     evidence["review_consumed_failure_next_hint"] = review_client.consumed_failure_next_hint
     ok = (
-        evidence["debug_consumed_runtime_evidence"] and evidence["review_consumed_runtime_evidence"]
-        and evidence["debug_consumed_failure_next_hint"]
+        evidence["session_recovery_consumed_runtime_evidence"]
+        and evidence["review_consumed_runtime_evidence"]
+        and evidence["session_recovery_consumed_failure_next_hint"]
         and evidence["review_consumed_failure_next_hint"]
     )
     summary = _runtime_summary(
         "runtime_evidence_consumption",
         run_id,
         evidence,
-        result="debug and review consumed Runtime OS evidence",
+        result="session recovery and review consumed Runtime OS evidence",
     )
     return ok, summary
 

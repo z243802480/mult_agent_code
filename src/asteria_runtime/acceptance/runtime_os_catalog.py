@@ -84,9 +84,9 @@ RUNTIME_OS_CAPABILITIES: tuple[RuntimeOSCapability, ...] = (
         scenario="runtime_evidence_consumption",
         capability="runtime_evidence_consumption",
         special_evidence=(
-            "debug_consumed_runtime_evidence",
+            "session_recovery_consumed_runtime_evidence",
             "review_consumed_runtime_evidence",
-            "debug_consumed_failure_next_hint",
+            "session_recovery_consumed_failure_next_hint",
             "review_consumed_failure_next_hint",
         ),
     ),

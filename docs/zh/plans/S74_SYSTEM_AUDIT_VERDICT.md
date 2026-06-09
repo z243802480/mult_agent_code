@@ -50,13 +50,17 @@
 
 ## 后续执行批次
 
-### Batch A：恢复执行器归一
+### Batch A：恢复执行器归一（已实现）
 
 - 将 `DebugCommand` 从独立 repair engine 改为显式诊断/恢复适配器。
 - 复用 Execute Agent Loop、tool gateway、candidate workspace 和 observation evidence。
 - 删除 DebugCommand 内重复的工具执行、验证、候选推广和任务状态机。
 
 验收：显式 debug 仍可解释失败并继续当前 Session；默认 Run、Review 不依赖 DebugCommand。
+
+实现结果：`DebugCommand` 已删除独立 DebugAgent、tool gateway、candidate、验证、promotion、
+预算和任务完成逻辑；现在只选择失败任务、写入恢复意图，并通过指定任务入口复用
+`ExecuteCommand` 的 Session Agent Loop。
 
 ### Batch B：产品状态真源归一
 
