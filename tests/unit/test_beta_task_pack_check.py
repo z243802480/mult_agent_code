@@ -20,3 +20,7 @@ def test_beta_task_pack_check_passes_for_repo() -> None:
     report = json.loads(completed.stdout)
     assert report["ok"] is True
     assert "small_code_change" in report["task_ids"]
+    labels = {item["label"] for item in report["checks"]}
+    assert "trial template captures session experience" in labels
+    assert "trial template enforces external evidence boundary" in labels
+    assert "maintainer invitation has release preflight" in labels

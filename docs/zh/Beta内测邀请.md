@@ -72,6 +72,17 @@ python scripts/beta_friction_aggregate.py --root . --write-md docs/zh/reports/be
 **过门**：至少 3 名明确标记为非维护者的测试者完成独立试跑，且至少 1 名独立完成 A/B/C。
 维护者 smoke、Agent 受限模拟和未填写测试者身份的记录只作为诊断，不构成用户价值签字。
 
+发放前运行：
+
+```powershell
+python scripts/beta_task_pack_check.py --root .
+python scripts/beta_trial_smoke.py --root .
+python scripts/build_beta_release.py --root .
+```
+
+发放后只根据重复真实 friction 打开产品 Slice。Provider 延迟记为 SLO 样本；复杂编排继续
+使用相同任务配对评估，不因单次成功、失败或主观印象扩大默认面。
+
 ## 6. 相关签字
 
 - Phase 7 关闭：[`phase7-beta-close-signoff-20260606.md`](./reports/phase7-beta-close-signoff-20260606.md)

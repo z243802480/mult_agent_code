@@ -182,6 +182,13 @@ studio_runtime_consistent
 - 下一产品切片必须由至少 3 个非维护者独立试跑中的重复摩擦触发；在此之前冻结默认 Runtime、Context、Tool 与 Studio 功能扩展。
 - provider 延迟继续作为 SLO 样本记录；不得把耗时波动升级为新的恢复控制器、统一调用次数硬限制或编排扩张依据。
 
+### 5.4 发放前准备（2026-06-10）
+
+- 现有 `beta_task_pack_check.py`、`beta_trial_smoke.py` 与 `build_beta_release.py` 构成唯一发放前链路；不新增 Beta readiness gate。
+- 试跑记录必须包含首次有效动作、最长无反馈等待、是否理解下一步和 Inspector 查证价值，避免只收集“通过/失败”。
+- Provider 性能继续使用 Golden Beta 与真实试跑 SLO 字段；复杂能力继续使用相同任务配对矩阵，不重复建设评估框架。
+- 维护者可以完成发放准备、基线采样和配对评估；Studio 摩擦修复、产品 Slice 与放量 DecisionPoint 必须等待真实非维护者证据。
+
 ## 6. 当前收敛进展（2026-06-08）
 
 - Execute 完整集成：`43 passed`。
