@@ -27,7 +27,9 @@ Claude Code 与 Codex 在 subagent 完成后把结果作为 observation 回到**
 python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel
 pytest tests/unit/test_execute_subagent_continuation.py -q
 pytest tests/integration/test_execute_command.py -q
-python scripts/s74_beta_matrix_evidence.py --root .
+python scripts/s74_beta_matrix_evidence.py --root . --import-summary <summary.json>
+# Explicit live execution only:
+python scripts/s74_beta_matrix_evidence.py --root . --live
 ```
 
 ## reference

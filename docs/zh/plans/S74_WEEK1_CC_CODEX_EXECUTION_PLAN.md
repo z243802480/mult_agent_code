@@ -13,10 +13,10 @@
 | 1 文档真源一致 | W1-A | ✅ steady + doc contracts 绿 |
 | 2 Execute 集成全绿 | W1-A / W1-C | ✅ 43 passed |
 | 3 pulse 可复现 | W1-A | ✅ `steady_iteration_check` |
-| 4 3–5 真实 Beta 统一报告 | **W1-D** | ✅ 4 槽（含真实委派） |
+| 4 3–5 真实 Beta 统一报告 | **W1-D** | ✅ 三类默认 Session 共 9/9；脱敏摘要可复核 |
 | W1-C 主路径效率 | CL-010 + 委派复验 | ✅ 114s / 3 model calls（基线 17） |
 | 5 Studio/runtime 一致 | W1-D 字段 | ✅ run-scoped 审计（`s74_session_telemetry_audit`） |
-| 6 DecisionPoint | **W1-E** | ✅ 正式（选项 1） |
+| 6 DecisionPoint | **W1-E** | ✅ 正式复签（选项 1） |
 | 7–8 复杂度审计 | W1-B | 🔄 CL-010 ✅；CL-002/007 exit ✅；Batch C S9 reachability ✅ |
 
 **原则**：干扰项清理（删重复 pulse、过期引用）仅为 W1-A 子项；**不得替代** W1-D 矩阵与 W1-E 裁决。
@@ -125,8 +125,8 @@ python scripts/real_model_acceptance.py --repo . --scenario validation_small_cli
 
 1. `steady_iteration_check` 默认路径全绿（含 S74 收敛测试） — **✅**  
 2. CL-010 落地 + REGISTER 更新 — **✅**  
-3. ≥3 个 Beta 矩阵槽位有统一 JSON 证据 — **✅**（见 `.asteria/verification/s74_beta_matrix_20260609.json`）  
-4. DecisionPoint 草案完成 — **✅**（见 `docs/zh/reports/S74-week1-decision-draft-20260609.md`）  
+3. ≥3 个 Golden Beta 任务类型有统一、可复现证据 — **✅**（见 `benchmarks/s74_golden_beta_summary.json`）
+4. DecisionPoint 正式复签 — **✅**（见 `docs/zh/reports/S74-week1-decision-draft-20260609.md`）
 5. 文档三源指向 S74 Week-1 进展 — **✅**（矩阵 + run-scoped 一致审计 + DecisionPoint 正式）
 
 矩阵证据命令会在 `audit_policy.mode=audit_only` 下填充 `user_progress_consistent` / `studio_runtime_consistent` 与 `session_audit.telemetry`（SLO 仅 warning，不阻塞 matrix `ok`）。
@@ -135,7 +135,9 @@ python scripts/real_model_acceptance.py --repo . --scenario validation_small_cli
 
 ```powershell
 python scripts/steady_iteration_check.py --root . --skip-b6 --skip-wheel
-python scripts/s74_beta_matrix_evidence.py --root .
+python scripts/s74_beta_matrix_evidence.py --root . --import-summary <summary.json>
+# 只有明确要启动真实 provider/scenario 时：
+python scripts/s74_beta_matrix_evidence.py --root . --live
 pytest tests/integration/test_execute_command.py -q
 python scripts/beta_friction_aggregate.py --root . --markdown
 # 编排 maintainer（S74 默认不跑）

@@ -24,7 +24,7 @@
 | --- | --- |
 | [`Beta试跑清单.md`](../Beta试跑清单.md) | ☐ |
 | [`Beta用户入门.md`](../Beta用户入门.md) | ☐ |
-| 仓库 clone 地址 | ☐ |
+| GitHub Release 下载地址 | ☐ |
 | API Key 配置说明（无私钥进 git） | ☐ |
 | **未**口头逐步带操作 | ☐ |
 

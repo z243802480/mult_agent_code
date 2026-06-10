@@ -25,10 +25,14 @@ def test_aggregate_reports_skips_template() -> None:
     sources = [record["source"] for record in summary["records"]]
     assert all("template" not in source for source in sources)
     assert summary["report_count"] >= 1
+    assert summary["non_maintainer_count"] == 0
+    assert summary["completed_abc_count"] == 0
     assert summary["ok"] is True
     studio = summary["studio_friction"]
     assert "buckets" in studio
     assert set(studio["buckets"]) >= {"diff", "context", "session", "side_ask", "other"}
+    assert studio["top_bucket"] is None
+    assert summary["diagnostics"]["studio_friction"]["top_bucket"] == "session"
 
 
 def test_classify_blocker_bucket_maps_studio_pain_points() -> None:
@@ -43,3 +47,18 @@ def test_aggregate_studio_buckets_empty_when_no_beta_reports() -> None:
     studio = aggregate_studio_buckets([])
     assert studio["top_bucket"] is None
     assert studio["next_slice_rule"] == "defer — no Studio friction top bucket yet"
+
+
+def test_unknown_trial_record_is_diagnostic_not_beta(tmp_path: Path) -> None:
+    report = tmp_path / "S14-beta-user-trial-unknown.md"
+    report.write_text(
+        "# Trial\n\n## 5. 阻塞与反馈\n\n- session switch was confusing\n",
+        encoding="utf-8",
+    )
+
+    summary = aggregate_reports(tmp_path)
+
+    assert summary["non_maintainer_count"] == 0
+    assert summary["diagnostic_record_count"] == 1
+    assert summary["studio_friction"]["top_bucket"] is None
+    assert summary["diagnostics"]["studio_friction"]["top_bucket"] == "session"

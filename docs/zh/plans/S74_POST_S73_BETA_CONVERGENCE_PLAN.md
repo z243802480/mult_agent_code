@@ -152,11 +152,35 @@ studio_runtime_consistent
 1. 文档真源一致，无过期 active 计划。
 2. Execute 完整集成测试全绿。
 3. S73 与 steady pulse 可复现。
-4. 3–5 个真实 Beta 任务形成统一结果报告。
+4. 3–5 个真实 Beta 任务形成可提交的脱敏统一结果摘要，或能从明确导入证据重建；本机 `.asteria` 不单独构成签字。
 5. Studio/runtime/evidence 对同一任务结论一致。
 6. 产生下一阶段 DecisionPoint，并明确保留、扩大或回退哪些复杂能力。
 7. 完成第一批复杂度价值审计，形成带证据的保留、冻结、合并和删除候选清单。
 8. 所有审计项使用 ADR-0011 四道裁决门；确认劣质实现后停止修补并执行替换或删除。
+
+### 5.1 证据执行边界（2026-06-10 校正）
+
+- `scripts/s74_beta_matrix_evidence.py` 默认只汇总 `--import-summary` 明确提供的证据，不启动 provider 或 scenario。
+- 只有维护者显式传入 `--live` 时才运行缺失槽位。
+- 状态页、计划和 DecisionPoint 只能引用可复现 evidence；不得从本机 `.asteria` 或生成式摘要推导“阶段已完成”。
+- 不再维护独立“项目驾驶舱”投影；总计划决定方向，当前状态引用事实，evidence 证明结论。
+
+### 5.2 Golden Beta 当前裁决（2026-06-10）
+
+- 默认 Session 三类任务共 9/9 通过，见 `benchmarks/s74_golden_beta_summary.json`。
+- small CLI、doc update、context maintenance 均固定为 2 次 medium 调用、0 repair。
+- context pressure 约 4.3%，没有证据支持继续修改 slim context 或 Runtime 主循环。
+- 耗时波动主要来自 provider 返回等待；后续作为 SLO 与外部 Beta friction 观察，不增加恢复控制器。
+- 默认主路径进入冻结维护；下一项产品工作是外部非维护者 Beta 与 Studio 用户心流验证。
+- 当前 Studio build 与主路径 smoke 全绿，但非维护者 friction 样本为 0；没有重复真实摩擦前不新增 Studio 功能。
+
+### 5.3 外部 Beta 证据边界（2026-06-10）
+
+- Beta 发放链、Studio 主路径与 maintainer beta trial smoke 已通过；Windows 短路径/长路径只在 smoke 比较层规范化，不改变产品行为。
+- `beta_friction_aggregate` 只允许明确 `is_maintainer: false` 的记录驱动产品 top bucket、下一 Slice 或 DecisionPoint。
+- maintainer、受限 Agent 模拟与身份未知记录只作为诊断附录；它们可以发现工程缺陷，但不能构成用户价值签字。
+- 下一产品切片必须由至少 3 个非维护者独立试跑中的重复摩擦触发；在此之前冻结默认 Runtime、Context、Tool 与 Studio 功能扩展。
+- provider 延迟继续作为 SLO 样本记录；不得把耗时波动升级为新的恢复控制器、统一调用次数硬限制或编排扩张依据。
 
 ## 6. 当前收敛进展（2026-06-08）
 

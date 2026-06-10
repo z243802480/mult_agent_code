@@ -277,9 +277,10 @@ def aggregate_reports(report_dir: Path) -> dict[str, object]:
     )
     records = [parse_trial_report(path) for path in reports]
     non_maintainer = [record for record in records if record.is_maintainer is False]
+    maintainer_or_unknown = [record for record in records if record.is_maintainer is not False]
     completed_abc = [
         record
-        for record in records
+        for record in non_maintainer
         if all(record.steps_passed.get(key, False) for key in ("A1–A5 安装 + Studio", "B1–B4 Goal 执行", "C1–C3 Review + Accept"))
         or (
             record.goal_completed
@@ -289,18 +290,31 @@ def aggregate_reports(report_dir: Path) -> dict[str, object]:
     ]
 
     blocker_counts: dict[str, int] = {}
-    for record in records:
+    for record in non_maintainer:
         for blocker in record.blockers:
             blocker_counts[blocker] = blocker_counts.get(blocker, 0) + 1
 
-    studio = aggregate_studio_buckets(records)
+    diagnostic_blocker_counts: dict[str, int] = {}
+    for record in maintainer_or_unknown:
+        for blocker in record.blockers:
+            diagnostic_blocker_counts[blocker] = diagnostic_blocker_counts.get(blocker, 0) + 1
+
+    studio = aggregate_studio_buckets(non_maintainer)
     return {
         "ok": True,
         "report_count": len(records),
         "non_maintainer_count": len(non_maintainer),
+        "diagnostic_record_count": len(maintainer_or_unknown),
         "completed_abc_count": len(completed_abc),
         "top_blockers": sorted(blocker_counts.items(), key=lambda item: (-item[1], item[0]))[:8],
         "studio_friction": studio,
+        "diagnostics": {
+            "top_blockers": sorted(
+                diagnostic_blocker_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:8],
+            "studio_friction": aggregate_studio_buckets(maintainer_or_unknown),
+        },
         "records": [asdict(record) for record in records],
     }
 
@@ -311,6 +325,7 @@ def render_markdown(summary: dict[str, object]) -> str:
         "",
         f"- Reports: **{summary['report_count']}**",
         f"- Non-maintainer: **{summary['non_maintainer_count']}**",
+        f"- Maintainer/unknown diagnostics: **{summary['diagnostic_record_count']}**",
         f"- Completed A/B/C: **{summary['completed_abc_count']}**",
         "",
         "## Top blockers",
@@ -324,7 +339,7 @@ def render_markdown(summary: dict[str, object]) -> str:
             lines.append(f"- ({count}×) {text}")
     lines.append("")
     studio = summary.get("studio_friction") or {}
-    lines.extend(["## Studio friction buckets", ""])
+    lines.extend(["## External Beta Studio friction buckets", ""])
     buckets = studio.get("buckets") or {}
     if not isinstance(buckets, dict):
         buckets = {}
@@ -338,14 +353,23 @@ def render_markdown(summary: dict[str, object]) -> str:
     lines.append(f"- Top bucket: **{top_bucket or '(none)'}**")
     lines.append(f"- Next slice: **{next_rule}**")
     lines.append("")
+    lines.append("Maintainer and unknown records are diagnostic only; they cannot open a product slice.")
+    lines.append("")
     lines.append("## Records")
     lines.append("")
     for record in summary.get("records") or []:
         if not isinstance(record, dict):
             continue
+        audience = (
+            "beta"
+            if record.get("is_maintainer") is False
+            else "maintainer"
+            if record.get("is_maintainer") is True
+            else "unknown"
+        )
         lines.append(
             f"- `{record.get('tester') or 'unknown'}` "
-            f"({'maintainer' if record.get('is_maintainer') else 'beta'}) "
+            f"({audience}) "
             f"steps={len(record.get('steps_passed') or {})} "
             f"blockers={len(record.get('blockers') or [])}"
         )

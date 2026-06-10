@@ -185,6 +185,19 @@ exit_date
 | verification | `test_execute_subagent_continuation.py`、Execute 集成、`steady_iteration_check` |
 | exit | 2026-06-09 复验 `validation_subagent_delegation`：114s / 3 model calls（基线 17 calls / ~10min） |
 
+### CL-011：Real-model smoke 充当第二恢复控制器
+
+| 字段 | 结论 |
+| --- | --- |
+| capability_contract | smoke / acceptance 观察真实产品路径并严格验证结果 |
+| current_implementation | `/run` blocked 后，smoke 自动执行 Review、resolve DecisionPoint、Resume、final Review，并在命令失败时写入 AgentLoopDecision |
+| evidence | 2026-06-10 `validation_small_cli`：主运行 3 次 medium 调用、0 tool 后 blocked；smoke 额外执行两次 40s review timeout，将总耗时拉到 161.7s 并污染 loop decision |
+| duplicate_responsibilities | Session Agent Loop、显式 Resume/Review 与 smoke recovery 同时控制任务下一步 |
+| decision | `DELETE` |
+| action | 删除 smoke 自动 review/decision/resume/final-review 及失败时写 loop decision；保留真实 `/run` 结果、只读 evidence 与严格 artifact 验证 |
+| verification | real-model smoke script tests、acceptance tests、S74 explicit live single-slot |
+| exit | 2026-06-10 配对复验：同一 `validation_small_cli` 连续 3 次通过（26.8s / 52.8s / 116.2s，均 2 model calls、0 repair、Studio 一致性 1.0）；smoke 不再改变被测 run |
+
 ## 横向反查清单
 
 每次审计还必须反查：

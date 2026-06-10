@@ -13,8 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
-from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
 from asteria_runtime.models.model_failure import classify_model_failure
@@ -395,17 +393,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow-fake",
         action="store_true",
         help="Allow AGENT_MODEL_PROVIDER=fake/offline. Intended for CI coverage of this script.",
-    )
-    parser.add_argument(
-        "--no-recovery",
-        action="store_true",
-        help="Do not attempt review/resume recovery after a failed /run.",
-    )
-    parser.add_argument(
-        "--recovery-rounds",
-        type=int,
-        default=2,
-        help="Maximum bounded review/decision/resume recovery rounds.",
     )
     parser.add_argument(
         "--no-research",
@@ -851,26 +838,6 @@ def write_matrix_summary_json(path: Path, payload: dict[str, Any]) -> None:
     write_json(path, payload)
 
 
-def run_already_completed_successfully(workspace: Path, run_id: str) -> bool:
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    run_path = run_dir / "run.json"
-    if not run_path.exists():
-        return False
-    run = json.loads(run_path.read_text(encoding="utf-8"))
-    if run.get("status") != "completed":
-        return False
-    task_plan_path = run_dir / "task_plan.json"
-    if not task_plan_path.exists():
-        return True
-    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
-    unfinished = [
-        task
-        for task in task_plan.get("tasks", [])
-        if isinstance(task, dict) and task.get("status") not in {"done", "discarded"}
-    ]
-    return not unfinished
-
-
 def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
     workspace = result.workspace
     run_command(result, args.python, "/init", "--root", str(workspace), name="init")
@@ -899,27 +866,6 @@ def run_smoke(args: argparse.Namespace, result: SmokeResult) -> None:
             except SmokeFailure:
                 pass
         raise SmokeFailure("asteria /run failed; see transcript for command output.")
-
-    if (
-        not args.no_recovery
-        and result.run_id
-        and (workspace / ".asteria" / "runs" / result.run_id / "goal_spec.json").exists()
-        and not (workspace / ".asteria" / "runs" / result.run_id / "eval_report.json").exists()
-        and not run_already_completed_successfully(workspace, result.run_id)
-    ):
-        run_command(
-            result,
-            args.python,
-            "/review",
-            "--root",
-            str(workspace),
-            "--session-id",
-            result.run_id,
-            name="recovery-review",
-            check=False,
-            timeout_seconds=review_timeout_seconds(),
-        )
-        recover_run(args, result)
 
     result.run_id = result.run_id or current_run_id(workspace)
     result.final_report = validate_artifacts(
@@ -965,112 +911,6 @@ def run_agent_run_with_retries(args: argparse.Namespace, result: SmokeResult) ->
     return last_record
 
 
-def resolve_pending_decisions(args: argparse.Namespace, result: SmokeResult) -> None:
-    if not result.run_id:
-        return
-    for decision in pending_decisions(result.workspace, result.run_id):
-        decision_id = str(decision["decision_id"])
-        option_id = recovery_option_id(decision)
-        option_args = ["--select-option-id", option_id] if option_id else ["--use-default"]
-        record = run_command(
-            result,
-            args.python,
-            "/decide",
-            "--root",
-            str(result.workspace),
-            "--session-id",
-            result.run_id,
-            "--decision-id",
-            decision_id,
-            *option_args,
-            name=f"recovery-decide-{decision_id}",
-            check=False,
-        )
-        if record.returncode != 0:
-            if (
-                is_budget_guard_decision(decision)
-                and "user_decisions exceeded budget" in record.stderr
-            ):
-                return
-            raise SmokeFailure(f"{record.name} failed with exit code {record.returncode}.")
-
-
-def recover_run(args: argparse.Namespace, result: SmokeResult) -> None:
-    if not result.run_id:
-        return
-    for round_index in range(1, max(1, int(args.recovery_rounds)) + 1):
-        resolve_pending_decisions(args, result)
-        record = run_command(
-            result,
-            args.python,
-            "/resume",
-            "--root",
-            str(result.workspace),
-            "--session-id",
-            result.run_id,
-            "--max-iterations",
-            str(args.max_iterations),
-            "--max-tasks-per-iteration",
-            str(args.max_tasks_per_iteration),
-            name="recovery-resume" if round_index == 1 else f"recovery-resume-{round_index}",
-        )
-        if "Status: completed" in record.stdout:
-            return
-        if not pending_decision_ids(result.workspace, result.run_id):
-            break
-    run_command(
-        result,
-        args.python,
-        "/review",
-        "--root",
-        str(result.workspace),
-        "--session-id",
-        result.run_id,
-        name="recovery-review-final",
-        check=False,
-        timeout_seconds=review_timeout_seconds(),
-    )
-
-
-def recovery_option_id(decision: dict[str, Any]) -> str | None:
-    raw_metadata = decision.get("metadata")
-    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
-    option_ids = {
-        str(option.get("option_id"))
-        for option in decision.get("options", [])
-        if isinstance(option, dict) and option.get("option_id")
-    }
-    if metadata.get("kind") == "budget_guard" and "continue_once" in option_ids:
-        return "continue_once"
-    if metadata.get("kind") == "execution_policy_approval" and "approve_once" in option_ids:
-        return "approve_once"
-    return None
-
-
-def is_budget_guard_decision(decision: dict[str, Any]) -> bool:
-    raw_metadata = decision.get("metadata")
-    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
-    return metadata.get("kind") == "budget_guard"
-
-
-def pending_decision_ids(workspace: Path, run_id: str) -> list[str]:
-    return [str(decision["decision_id"]) for decision in pending_decisions(workspace, run_id)]
-
-
-def pending_decisions(workspace: Path, run_id: str) -> list[dict[str, Any]]:
-    path = workspace / ".asteria" / "runs" / run_id / "decisions.jsonl"
-    if not path.exists():
-        return []
-    decisions: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        decision = json.loads(line)
-        if decision.get("status") == "pending" and decision.get("decision_id"):
-            decisions.append(decision)
-    return decisions
-
-
 def is_transient_provider_failure(record: CommandRecord) -> bool:
     text = f"{record.stdout}\n{record.stderr}".lower()
     transient_markers = [
@@ -1093,6 +933,28 @@ def is_transient_provider_failure(record: CommandRecord) -> bool:
         "urlopen error",
     ]
     return any(marker in text for marker in transient_markers)
+
+
+def pending_decisions(workspace: Path, run_id: str) -> list[dict[str, Any]]:
+    """Read pending decisions for evidence validation without resolving them."""
+
+    path = workspace / ".asteria" / "runs" / run_id / "decisions.jsonl"
+    if not path.exists():
+        return []
+    decisions: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        decision = json.loads(line)
+        if decision.get("status") == "pending" and decision.get("decision_id"):
+            decisions.append(decision)
+    return decisions
+
+
+def is_budget_guard_decision(decision: dict[str, Any]) -> bool:
+    raw_metadata = decision.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    return metadata.get("kind") == "budget_guard"
 
 
 def run_command(
@@ -1132,7 +994,6 @@ def run_command(
             stderr=redact(stderr),
         )
         result.commands.append(record)
-        record_recovery_loop_decision(result, record, reason=f"{name} timed out after {timeout}s.")
         if check:
             raise SmokeFailure(f"{name} timed out after {timeout}s.")
         return record
@@ -1144,91 +1005,13 @@ def run_command(
         stderr=redact(completed.stderr),
     )
     result.commands.append(record)
-    if completed.returncode != 0:
-        record_recovery_loop_decision(
-            result,
-            record,
-            reason=f"{name} failed with exit code {completed.returncode}.",
-        )
     if check and completed.returncode != 0:
         raise SmokeFailure(f"{name} failed with exit code {completed.returncode}.")
     return record
 
 
-def record_recovery_loop_decision(
-    result: SmokeResult,
-    record: CommandRecord,
-    *,
-    reason: str,
-) -> None:
-    if not result.run_id or not _is_review_or_recovery_command(record.name):
-        return
-    run_dir = result.workspace / ".asteria" / "runs" / result.run_id
-    if not run_dir.exists():
-        return
-    text = f"{record.stdout}\n{record.stderr}\n{reason}".lower()
-    action = "repair"
-    if "decision" in text or "permission" in text or "budget" in text:
-        action = "ask"
-    elif "plan" in text or "scope" in text:
-        action = "replan"
-    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
-    decision = persist_runtime_agent_loop_decision(
-        run_dir=run_dir,
-        validator=validator,
-        run_id=result.run_id,
-        task_id=latest_task_id(run_dir),
-        action=action,
-        reason=(
-            "Recovery command failed before a model-authored next action was available: "
-            f"{reason}"
-        ),
-        capability_name=record.name,
-        expected_observation={
-            "summary": "Review or recovery failure is captured as a loop decision.",
-            "success_signal": "The next runtime command can continue through debug, replan, decide, or stop.",
-            "command": record.name,
-        },
-        risk="medium",
-        evidence_refs=[str(run_dir / "user_progress.jsonl"), str(run_dir / "model_calls.jsonl")],
-        budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "recovery_failure"},
-    )
-    if decision is not None:
-        persist_agent_loop_execution_result(
-            run_dir=run_dir,
-            validator=validator,
-            decision=decision,
-            create_decision_point=action == "ask",
-        )
-
-
-def _is_review_or_recovery_command(name: str) -> bool:
-    return name in {"run", "review"} or name.startswith("run-retry-") or name.startswith("recovery-")
-
-
-def latest_task_id(run_dir: Path) -> str | None:
-    task_plan_path = run_dir / "task_plan.json"
-    if not task_plan_path.exists():
-        return None
-    try:
-        task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    tasks = task_plan.get("tasks") if isinstance(task_plan, dict) else None
-    if not isinstance(tasks, list):
-        return None
-    for task in reversed(tasks):
-        if isinstance(task, dict) and task.get("task_id"):
-            return str(task["task_id"])
-    return None
-
-
 def args_model_max_retries() -> int:
     return int(os.getenv("AGENT_MODEL_SMOKE_MODEL_MAX_RETRIES", "1"))
-
-
-def review_timeout_seconds() -> int:
-    return int(os.getenv("AGENT_MODEL_SMOKE_REVIEW_TIMEOUT_SECONDS", "180"))
 
 
 def merge_pythonpath(src_path: str, current: str | None) -> str:

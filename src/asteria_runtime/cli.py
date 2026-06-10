@@ -448,8 +448,6 @@ def build_parser() -> argparse.ArgumentParser:
     real_model_smoke_parser.add_argument("--matrix-case", action="append", default=[])
     real_model_smoke_parser.add_argument("--matrix-output-dir", type=Path, default=None)
     real_model_smoke_parser.add_argument("--allow-fake", action="store_true")
-    real_model_smoke_parser.add_argument("--no-recovery", action="store_true")
-    real_model_smoke_parser.add_argument("--recovery-rounds", type=int, default=2)
     real_model_smoke_parser.add_argument("--cleanup", action="store_true")
     real_model_smoke_parser.add_argument("--no-research", action="store_true")
 

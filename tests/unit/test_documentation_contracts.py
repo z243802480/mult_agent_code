@@ -249,13 +249,9 @@ def test_master_plan_exists_and_is_execution_entry() -> None:
     assert "docs/zh/研发总计划.md" in agents
     assert "ACTIVE_SLICE" in agents
     assert "研发总计划" in current_state
-    assert "项目驾驶舱" in current_state
     assert "研发总计划" in navigation
-    assert "项目驾驶舱.md" in navigation
     assert Path("benchmarks/vibe_slices.json").exists()
     assert Path("benchmarks/reference_briefs/README.md").exists()
-    assert Path("docs/zh/项目驾驶舱.md").exists()
-    assert Path("scripts/write_project_cockpit.py").exists()
     assert Path("benchmarks/phase2_mvp_gate.json").exists()
     assert Path("benchmarks/phase3_rolling_gate.json").exists()
     assert Path("benchmarks/phase2_stability_gate.json").exists()

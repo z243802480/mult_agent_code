@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -224,7 +224,9 @@ def test_p0_matrix_writes_durable_summary(tmp_path: Path, monkeypatch) -> None:
     assert all(case["context_strategy"]["slim_model_calls"] == 2 for case in summary["cases"])
     assert all(case["context_strategy"]["strong_model_calls"] == 0 for case in summary["cases"])
     assert all(case["context_strategy"]["run_review_model_calls"] == 1 for case in summary["cases"])
-    assert all(case["context_strategy"]["task_execution_model_calls"] == 1 for case in summary["cases"])
+    assert all(
+        case["context_strategy"]["task_execution_model_calls"] == 1 for case in summary["cases"]
+    )
     SchemaValidator(Path("schemas")).validate("real_provider_matrix_summary", summary)
 
 
@@ -426,20 +428,3 @@ def test_context_maintenance_matrix_case_seeds_local_context(tmp_path: Path) -> 
     assert case.expected_file == "docs/context_maintenance_summary.md"
     capability_notes = (tmp_path / "docs" / "capability_notes.md").read_text(encoding="utf-8")
     assert "real provider subsets" in capability_notes.lower()
-
-
-def test_run_already_completed_successfully_detects_finished_run(tmp_path: Path) -> None:
-    from asteria_runtime.real_model_smoke import run_already_completed_successfully
-
-    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
-    run_dir.mkdir(parents=True)
-    run_dir.joinpath("run.json").write_text(
-        json.dumps({"status": "completed"}),
-        encoding="utf-8",
-    )
-    run_dir.joinpath("task_plan.json").write_text(
-        json.dumps({"tasks": [{"task_id": "task-0001", "status": "done"}]}),
-        encoding="utf-8",
-    )
-
-    assert run_already_completed_successfully(tmp_path, "run-1") is True

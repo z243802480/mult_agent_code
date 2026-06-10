@@ -1,7 +1,7 @@
-"""Collect S74 Beta task matrix evidence with unified result fields (S74-C / W1-D).
+"""Summarize or explicitly run S74 Beta matrix evidence (S74-C / W1-D).
 
-Not a maintainer pulse — produces product evidence for Post-S73 convergence and
-Week-1 DecisionPoint. Config: benchmarks/s74_beta_matrix_gate.json
+The default path is evidence-only and never starts a provider or scenario. Pass
+``--live`` explicitly to run missing slots. Config: benchmarks/s74_beta_matrix_gate.json
 """
 
 from __future__ import annotations
@@ -45,9 +45,9 @@ def main() -> None:
         help="Run only these slot ids (default: all in gate config)",
     )
     parser.add_argument(
-        "--skip-real-provider",
+        "--live",
         action="store_true",
-        help="Skip slots that require a live model provider",
+        help="Explicitly run slots without imported evidence, including real providers",
     )
     parser.add_argument(
         "--import-summary",
@@ -78,12 +78,6 @@ def main() -> None:
         slot_id = str(slot.get("id") or "")
         if selected_ids is not None and slot_id not in selected_ids:
             continue
-        requires_real = bool(slot.get("requires_real_provider"))
-        if requires_real and args.skip_real_provider:
-            slot_results.append(
-                _skipped_slot(slot, reason="requires_real_provider", result_fields=result_fields)
-            )
-            continue
         scenario_name = str(slot.get("scenario") or "")
         imported = imports.get(scenario_name)
         if imported is not None:
@@ -94,6 +88,15 @@ def main() -> None:
                     result_fields=result_fields,
                     root=root,
                     audit_policy=audit_policy,
+                )
+            )
+            continue
+        if not args.live:
+            slot_results.append(
+                _skipped_slot(
+                    slot,
+                    reason="no_imported_evidence; pass --live to run",
+                    result_fields=result_fields,
                 )
             )
             continue
@@ -120,8 +123,9 @@ def main() -> None:
             )
         )
 
-    complete = all(item.get("status") == "recorded" for item in slot_results)
-    ok = all(item.get("unified", {}).get("goal_completed") for item in slot_results if item.get("status") == "recorded")
+    recorded = [item for item in slot_results if item.get("status") == "recorded"]
+    complete = bool(slot_results) and len(recorded) == len(slot_results)
+    ok = bool(recorded) and all(item.get("unified", {}).get("goal_completed") for item in recorded)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     output = args.output or (
         root / ".asteria" / "verification" / f"s74_beta_matrix_{stamp}.json"
@@ -134,6 +138,7 @@ def main() -> None:
         "plan": gate.get("plan"),
         "brief": gate.get("brief"),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "live" if args.live else "evidence_only",
         "result_fields": result_fields,
         "audit_policy": audit_policy,
         "slots": slot_results,

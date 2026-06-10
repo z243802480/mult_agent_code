@@ -26,4 +26,5 @@
 
 ## 签字
 
-Agent 受限模拟足以代表 Beta 真人路径（见 [`phase7-beta-close-signoff-20260606.md`](./phase7-beta-close-signoff-20260606.md)）。
+> 2026-06-10 当前校正：本记录只证明受限模拟机制可运行，不能代表真人 Beta 路径，也不能驱动产品 Slice。
+> 外部 Beta 签字必须来自明确标记为非维护者的真实试跑。

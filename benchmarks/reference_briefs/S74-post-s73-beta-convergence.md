@@ -118,3 +118,20 @@ python scripts/beta_friction_aggregate.py --root .
   not the dominant latency; provider streaming/fallback and explicit review recovery were.
 - Delegation/L3/parallel writes therefore remain opt-in. The default path stays the continuous
   Session Agent Loop, and no new completeness gate or orchestration wave is justified.
+
+## 2026-06-10 reproducible evidence correction
+
+- Project status must not be inferred from a generated cockpit or one maintainer's local
+  `.asteria` directory. The master plan sets direction; current state cites reproducible evidence.
+- `s74_beta_matrix_evidence.py` summarizes explicit imports by default. Starting providers or
+  scenarios requires `--live`, so an evidence read cannot unexpectedly become a long-running task.
+- A Slice closes only from reproducible commands plus a reviewable, sanitized matrix summary.
+
+## 2026-06-10 Golden Beta decision
+
+- Nine current-source default Session samples across small CLI, doc update, and context maintenance
+  passed with two medium calls each and zero repairs.
+- Context pressure stayed near four percent. The remaining elapsed-time variance is provider wait,
+  not evidence that another Runtime recovery or orchestration layer is needed.
+- Freeze the proven default path; move the next product slice to external Beta friction and Studio
+  user flow while keeping orchestration opt-in.

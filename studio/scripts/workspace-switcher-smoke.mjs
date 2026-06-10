@@ -11,6 +11,7 @@ const python = process.env.ASTERIA_PYTHON || "python";
 
 const workspaceA = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-ws-a-"));
 const workspaceB = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-ws-b-"));
+let initTarget = null;
 await fs.writeFile(path.join(workspaceA, "marker-a.txt"), "A", "utf8");
 await fs.writeFile(path.join(workspaceB, "marker-b.txt"), "B", "utf8");
 
@@ -33,7 +34,7 @@ const server = spawn(process.execPath, [
 try {
   await waitForHealth();
   const initial = await fetchJson("http://127.0.0.1:" + port + "/api/studio/settings");
-  if (initial.settings.workspace !== path.resolve(workspaceA)) {
+  if (!await samePath(initial.settings.workspace, workspaceA)) {
     throw new Error(`expected initial workspace A, got ${initial.settings.workspace}`);
   }
 
@@ -42,22 +43,22 @@ try {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ path: workspaceB }),
   });
-  if (!opened.ok || opened.workspace !== path.resolve(workspaceB)) {
+  if (!opened.ok || !await samePath(opened.workspace, workspaceB)) {
     throw new Error(`workspace open failed: ${JSON.stringify(opened)}`);
   }
 
   const after = await fetchJson("http://127.0.0.1:" + port + "/api/studio/settings");
-  if (after.settings.workspace !== path.resolve(workspaceB)) {
+  if (!await samePath(after.settings.workspace, workspaceB)) {
     throw new Error(`settings workspace did not switch: ${after.settings.workspace}`);
   }
 
   const registry = await fetchJson("http://127.0.0.1:" + port + "/api/studio/workspaces");
   const recentRoots = (registry.recent_workspaces ?? []).map((item) => item.workspace_root);
-  if (!recentRoots.includes(path.resolve(workspaceB))) {
+  if (!await includesPath(recentRoots, workspaceB)) {
     throw new Error(`recent workspaces missing B: ${JSON.stringify(recentRoots)}`);
   }
 
-  const initTarget = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-ws-init-"));
+  initTarget = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-ws-init-"));
   const initialized = await fetchJson("http://127.0.0.1:" + port + "/api/studio/workspace/open", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -82,6 +83,19 @@ try {
   server.kill("SIGTERM");
   await fs.rm(workspaceA, { recursive: true, force: true });
   await fs.rm(workspaceB, { recursive: true, force: true });
+  if (initTarget) await fs.rm(initTarget, { recursive: true, force: true });
+}
+
+async function samePath(left, right) {
+  const [resolvedLeft, resolvedRight] = await Promise.all([fs.realpath(left), fs.realpath(right)]);
+  return resolvedLeft.toLowerCase() === resolvedRight.toLowerCase();
+}
+
+async function includesPath(candidates, expected) {
+  for (const candidate of candidates) {
+    if (await samePath(candidate, expected)) return true;
+  }
+  return false;
 }
 
 async function waitForHealth() {

@@ -4,7 +4,8 @@
   "brief": "benchmarks/reference_briefs/S74-post-s73-beta-convergence.md",
   "plan": "docs/zh/plans/S74_POST_S73_BETA_CONVERGENCE_PLAN.md",
   "maintainer_real_provider_command": "python scripts/real_model_acceptance.py --repo . --scenario <scenario> --fresh",
-  "matrix_evidence_command": "python scripts/s74_beta_matrix_evidence.py --root .",
+  "matrix_evidence_command": "python scripts/s74_beta_matrix_evidence.py --root . --import-summary <summary.json>",
+  "matrix_live_command": "python scripts/s74_beta_matrix_evidence.py --root . --live",
   "audit_policy": {
     "mode": "audit_only",
     "matrix_blocking": false,

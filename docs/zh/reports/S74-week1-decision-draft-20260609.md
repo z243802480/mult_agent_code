@@ -1,7 +1,7 @@
 # S74 Week-1 DecisionPoint（正式）
 
 **日期**：2026-06-09  
-**状态**：正式 — 选项 1  
+**状态**：正式复签 — 选项 1
 **依据**：[`S74_POST_S73_BETA_CONVERGENCE_PLAN.md`](../plans/S74_POST_S73_BETA_CONVERGENCE_PLAN.md) §S74-D · [`S74_WEEK1_CC_CODEX_EXECUTION_PLAN.md`](../plans/S74_WEEK1_CC_CODEX_EXECUTION_PLAN.md) W1-E · ADR-0010  
 **证据**：`.asteria/verification/s74_beta_matrix_20260609.json` · `steady_iteration_check` 全绿 · CL-010 已落地 · run-scoped 一致审计
 
@@ -59,4 +59,4 @@ Week-1 是 S74 的执行节奏，不是并行产品线
 
 ## 5. 签字状态
 
-**正式** — Week-1 完成定义已闭合：基线绿、4 槽矩阵、CL-010、run-scoped 一致审计、DecisionPoint 选项 1。
+**正式复签** — `benchmarks/s74_golden_beta_summary.json` 已记录当前源码三类默认 Session 任务 9/9 通过。默认 Session 保持唯一主路径；subagent/L3/parallel writes 继续 opt-in 默认关闭。S74 整体仍等待外部非维护者 Beta friction，不因 Week-1 复签自动关闭。

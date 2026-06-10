@@ -1,0 +1,56 @@
+{
+  "schema_version": "0.1.0",
+  "created_at": "2026-06-10",
+  "purpose": "Sanitized reproducible Golden Beta summary for S74 default Session convergence",
+  "source": "Explicit live runs from current source checkout; raw evidence remains local under .asteria",
+  "decision_boundary": {
+    "default_path": "continuous Session Agent Loop",
+    "orchestration": "opt-in only",
+    "runtime_changes": "freeze unless repeated Golden Beta evidence shows a product-path defect"
+  },
+  "cases": [
+    {
+      "id": "session_small_cli",
+      "samples": 3,
+      "passed": 3,
+      "elapsed_seconds": [26.807, 52.839, 116.229],
+      "median_elapsed_seconds": 52.839,
+      "model_calls_each": 2,
+      "tool_calls": [4, 3, 3],
+      "repair_count_each": 0,
+      "studio_runtime_consistent_each": true
+    },
+    {
+      "id": "session_doc_update",
+      "samples": 3,
+      "passed": 3,
+      "elapsed_seconds": [108.63, 50.319, 51.914],
+      "median_elapsed_seconds": 51.914,
+      "model_calls_each": 2,
+      "tool_calls": [3, 2, 3],
+      "repair_count_each": 0,
+      "studio_runtime_consistent_each": true
+    },
+    {
+      "id": "context_maintenance",
+      "samples": 3,
+      "passed": 3,
+      "elapsed_seconds": [42.338, 95.414, 36.078],
+      "median_elapsed_seconds": 42.338,
+      "model_calls_each": 2,
+      "tool_calls_each": 2,
+      "repair_count_each": 0,
+      "context_compactions_each": 1,
+      "max_context_estimated_tokens": [8800, 8600, 8511],
+      "context_window_ratio": [0.044, 0.043, 0.042555]
+    }
+  ],
+  "aggregate": {
+    "samples": 9,
+    "passed": 9,
+    "pass_rate": 1.0,
+    "repair_count": 0,
+    "strong_model_calls": 0,
+    "dominant_remaining_variance": "provider response latency"
+  }
+}

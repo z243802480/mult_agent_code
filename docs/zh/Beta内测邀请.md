@@ -69,7 +69,8 @@ python scripts/beta_friction_aggregate.py --root . --markdown
 python scripts/beta_friction_aggregate.py --root . --write-md docs/zh/reports/beta-friction-aggregate-latest.md
 ```
 
-**过门**：至少 1 名非维护者独立完成 A/B/C，或维护者确认 Agent 受限模拟已签字（Phase 7 已关闭）。
+**过门**：至少 3 名明确标记为非维护者的测试者完成独立试跑，且至少 1 名独立完成 A/B/C。
+维护者 smoke、Agent 受限模拟和未填写测试者身份的记录只作为诊断，不构成用户价值签字。
 
 ## 6. 相关签字
 

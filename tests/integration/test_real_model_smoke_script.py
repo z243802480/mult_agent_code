@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -14,8 +15,6 @@ from scripts.real_model_smoke import (
     SmokeResult,
     _accept_budget_paused_success,
     is_transient_provider_failure,
-    pending_decision_ids,
-    recovery_option_id,
     validate_artifacts,
 )
 from asteria_runtime.real_model_gate import (
@@ -109,61 +108,67 @@ def test_real_model_smoke_script_rejects_fake_provider_by_default(tmp_path: Path
     assert "Use --allow-fake only for script tests" in completed.stderr
 
 
-def test_real_model_smoke_finds_pending_decisions_for_recovery(tmp_path: Path) -> None:
-    run_dir = tmp_path / ".asteria" / "runs" / "run-1"
+def test_real_model_smoke_observes_blocked_run_without_recovery_control(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "workspace"
+    run_dir = workspace / ".asteria" / "runs" / "run-1"
     run_dir.mkdir(parents=True)
-    (run_dir / "decisions.jsonl").write_text(
-        "\n".join(
-            [
-                json.dumps({"decision_id": "decision-0001", "status": "pending"}),
-                json.dumps({"decision_id": "decision-0002", "status": "resolved"}),
-                json.dumps({"decision_id": "decision-0003", "status": "pending"}),
-            ]
-        )
-        + "\n",
+    (run_dir / "run.json").write_text(
+        json.dumps({"run_id": "run-1", "status": "blocked"}) + "\n",
         encoding="utf-8",
     )
+    (run_dir / "goal_spec.json").write_text("{}\n", encoding="utf-8")
+    result = smoke_runtime.SmokeResult(
+        workspace=workspace,
+        run_id=None,
+        expected_file=workspace / "artifact.txt",
+        final_report=None,
+        transcript=workspace / "transcript.json",
+    )
+    command_names: list[str] = []
 
-    assert pending_decision_ids(tmp_path, "run-1") == ["decision-0001", "decision-0003"]
+    def record_command(*args: object, name: str, **kwargs: object) -> smoke_runtime.CommandRecord:
+        del args, kwargs
+        command_names.append(name)
+        return smoke_runtime.CommandRecord(name=name, command=[], returncode=0, stdout="", stderr="")
 
+    monkeypatch.setattr(smoke_runtime, "run_command", record_command)
+    monkeypatch.setattr(
+        smoke_runtime,
+        "run_agent_run_with_retries",
+        lambda args, active_result: smoke_runtime.CommandRecord(
+            name="run",
+            command=[],
+            returncode=0,
+            stdout="Status: blocked",
+            stderr="",
+        ),
+    )
+    monkeypatch.setattr(smoke_runtime, "current_run_id", lambda active_workspace: "run-1")
+    monkeypatch.setattr(
+        smoke_runtime,
+        "validate_artifacts",
+        lambda *args, **kwargs: (_ for _ in ()).throw(smoke_runtime.SmokeFailure("blocked")),
+    )
 
-def test_real_model_smoke_continues_budget_guard_during_bounded_recovery() -> None:
-    decision = {
-        "decision_id": "decision-0001",
-        "metadata": {"kind": "budget_guard"},
-        "options": [
-            {"option_id": "continue_once"},
-            {"option_id": "stop_and_review"},
-        ],
-    }
+    with pytest.raises(smoke_runtime.SmokeFailure, match="blocked"):
+        smoke_runtime.run_smoke(
+            argparse.Namespace(
+                python=sys.executable,
+                goal="create artifact",
+                max_iterations=1,
+                max_tasks_per_iteration=1,
+                no_research=True,
+                run_attempts=1,
+                expected_text="artifact",
+            ),
+            result,
+        )
 
-    assert recovery_option_id(decision) == "continue_once"
-
-
-def test_real_model_smoke_defaults_non_budget_recovery_decisions() -> None:
-    decision = {
-        "decision_id": "decision-0001",
-        "metadata": {"kind": "runtime_request"},
-        "options": [
-            {"option_id": "review_contract"},
-            {"option_id": "reject_request"},
-        ],
-    }
-
-    assert recovery_option_id(decision) is None
-
-
-def test_real_model_smoke_approves_one_time_policy_recovery() -> None:
-    decision = {
-        "decision_id": "decision-0001",
-        "metadata": {"kind": "execution_policy_approval"},
-        "options": [
-            {"option_id": "approve_once"},
-            {"option_id": "skip"},
-        ],
-    }
-
-    assert recovery_option_id(decision) == "approve_once"
+    assert command_names == ["init", "model-check"]
+    assert not (run_dir / "agent_loop_decisions.jsonl").exists()
 
 
 def test_real_model_smoke_accepts_review_pass_with_pending_budget_guard(tmp_path: Path) -> None:
