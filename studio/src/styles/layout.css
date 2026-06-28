@@ -194,7 +194,7 @@ h2 {
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
   display: inline-flex;
   font-size: 12px;
@@ -210,7 +210,7 @@ h2 {
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   color: var(--text-primary);
   display: inline-flex;
   height: 34px;

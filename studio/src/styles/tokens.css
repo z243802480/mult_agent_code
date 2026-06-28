@@ -57,19 +57,12 @@
   --chat-text: #d4eaf2;
   --chat-accent: #7dd8f0;
 
-  /* ── Brand avatar gradient ───────────────────────────────────── */
-  --brand-gradient-from: #0d7a8a;
-  --brand-gradient-to: #4a58c8;
-
   /* ── Solid (high-contrast) action button ─────────────────────── */
   --action-solid-bg: #dce9ef;
   --action-solid-fg: #101417;
   --action-solid-bg-hover: #ffffff;
 
-  /* ── Composer mode tints + user bubble ───────────────────────── */
-  --composer-auto-from: #11161b;
-  --composer-tint-to: #111518;
-  --composer-sideask-from: #101820;
+  /* ── User bubble ─────────────────────────────────────────────── */
   --user-bubble-bg: #1b3138;
 
   /* ── Scrollbar ───────────────────────────────────────────────── */
@@ -77,9 +70,10 @@
 
   /* ── Radii ───────────────────────────────────────────────────── */
   --radius-sm: 6px;
+  --radius-control: 6px; /* functional controls (buttons/toggles/tabs/selects) — de-pilled */
   --radius-md: 9px;
-  --radius-lg: 14px;
-  --radius-pill: 999px;
+  --radius-lg: 10px;
+  --radius-pill: 999px; /* true dots / live badges only */
 
   /* ── Type scale ──────────────────────────────────────────────── */
   --text-xs: 11px;
@@ -88,6 +82,14 @@
   --text-md: 15px;
   --text-lg: 18px;
   --leading: 1.6;
+
+  /* ── Monospace (machine text: code, paths, commands, IDs) ────── */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ── Microlabel voice (one canonical uppercase tracked label) ── */
+  --label-size: 11px;
+  --label-tracking: 0.04em;
+  --label-weight: 700;
 
   /* ── Elevation ───────────────────────────────────────────────── */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
@@ -125,6 +127,11 @@ input {
 
 button {
   cursor: pointer;
+}
+
+/* Tabular figures for metrics / counts / deltas — no width jitter. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* App-wide focus ring — a single product-grade keyboard affordance.

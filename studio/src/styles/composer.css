@@ -55,7 +55,7 @@
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-primary);
   cursor: pointer;
   display: inline-flex;
@@ -106,7 +106,7 @@
 .composerModeGroup select {
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-primary);
   font-size: 11px;
   min-height: 28px;
@@ -149,12 +149,12 @@
 }
 
 .composer.autoMode {
-  background: linear-gradient(180deg, var(--composer-auto-from) 0%, var(--composer-tint-to) 100%);
+  background: var(--surface-1);
   border-top-color: var(--accent-border);
 }
 
 .composer.sideAskMode {
-  background: linear-gradient(180deg, var(--composer-sideask-from) 0%, var(--composer-tint-to) 100%);
+  background: var(--surface-1);
   border-top-color: var(--chat-border);
 }
 
@@ -162,7 +162,7 @@
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
@@ -361,7 +361,7 @@
 
 .advancedModeDetails summary {
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   cursor: pointer;
   list-style: none;
   padding: 6px 10px;

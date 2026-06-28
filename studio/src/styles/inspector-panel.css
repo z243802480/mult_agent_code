@@ -72,7 +72,7 @@
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
   display: inline-flex;
   font-size: 11px;
@@ -203,7 +203,7 @@
 .debugAgentHints button {
   background: var(--surface-0);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
   font-size: 11px;
   padding: 5px 8px;

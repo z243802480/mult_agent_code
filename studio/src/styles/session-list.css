@@ -45,9 +45,9 @@
 
 .sessionGroupLabel {
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
   margin: var(--space-1) 0 4px;
   text-transform: uppercase;
 }

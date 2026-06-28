@@ -1,6 +1,6 @@
 # Studio IDE-shell 重设计方案
 
-状态：`plan`（已定稿 · 用户决策已锁定 · 待实现启动）
+状态：`in-progress`（Phase A 已落地于工作树 · Phase B 待启动）
 
 更新时间：2026-06-28
 
@@ -60,6 +60,40 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 | A9 | "New task" Sparkles→Plus；空状态改左对齐紧凑 ghost 行 | `Sidebar.tsx`、`EmptyState.tsx` | S / low |
 
 > **状态左缘**（审计 Top #4）：把 `.signalCard`/`.narrativeStep`/`.eventCard`/`.metric`/`.runReport` 的整圈彩色边框→中性边框 + 2px `border-left` 着色（复用已存在的 `.vmRow` 模式）。归到 Phase A 尾（A10），干掉"红绿灯仪表盘"观感。
+
+### Phase A — 实现前校准（audit 2026-06-29 · verdict: ready_with_corrections）
+
+5 路并行 audit 对照真实代码逐条核验，结论：方案成立、可实现，下列校准已并入（实现以此为准）：
+
+- **A1**：`--font-mono` 插在 `--leading`（tokens.css）之后，值与现有栈逐字一致：`ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`；收编的两处硬编码 mono 栈在 inspector-diff.css **136 / 385**（精确行，非「约」），子单元格继承、无需另改。
+- **A2 纠偏**：命令行真源是 `.toolCardLabel`（thread-turn.css:464），`.commandLine` 是**死选择器**（零 TSX 引用），不动它。"evidence dump"实为 **6+ 个 `<pre>`**（evidenceBlock/detail/refList/preview/studioCrash/workerTopology/workflowMonitor/promotionPreview）。git 路径选择器：`.gitChangePath/.diffPreviewPath/.gitBranchLine`。**Prose 陷阱**：mono 只加到 `.turnFinalText code/pre` 后代，**绝不**加到 `.turnFinalText` 本体（否则模型 prose 也变 mono）；`.liveModelText/.chatStreamPreview/.deltaText/.messageText` 保持 Inter。`.toolCardStatus` 不做 mono（大写字距状态徽章，归 A8）。
+- **A3 纠偏**：渐变在 **CSS thread-turn.css:804**（非 TurnFinal.tsx:21），全仓唯一消费者（3 次命中=2 定义+1 使用）。`Sidebar.tsx:66` 是折叠态品牌按钮、**不用**该 token、无需改。顺序：**先改头像（thread-turn）再删 token**，免悬空 var()。替换：`background → var(--surface-3)`、`border-radius 50% → var(--radius-sm)`、保留字形与 20px。
+- **A4 纠偏 + 决策**：实为 **~13 个功能控件**（非 7）用 `--radius-pill`：composerModeSummary/modeGroup select/sideAskToggle/advancedModeDetails summary、turnDiffButton/turnRewindButton/suggestedActionChip、examplePrompts button、routePill、viewModeButton/debugAgentHints button、diffScopeTab。**保持 pill**（真圆点/live 徽章）：stepIcon(24px 真圆)、contextHealth/contextUsageBar、runtimeStatus、vmStatus、sessionLiveBadge、status、workerProgressTrack；borderline（workspaceChip/aggregateDiffChip/eventFacts span/**composerPermissionPill**）**默认保持 pill**。**token 决策**（避免三 token 撞 6px + ~50 callsite 涟漪）：新增 `--radius-control: 6px`；`--radius-lg 14→10`（收紧气泡，独立值）；**`--radius-md` 保持 9**（不降到 6）。
+- **A5 纠偏**：直接在已知数字选择器的 CSS 规则上加 `font-variant-numeric: tabular-nums`（.liveFileDelta/.deltaAdd/.deltaDel/.diffScopeCount/.gitChangeDelta/.metric strong），并提供 `.tabular-nums` util；**不**改 TSX className（纯 CSS 落地）。
+- **A6 纠偏**：context 条**只做扁平化**（thread-turn.css:211 渐变→`var(--accent)`）；阈值变色需 JS（ContextPanel 不发 health 类、那段 CSS 已死），不在纯 CSS Phase A 内。composer mode 渐变→`var(--surface-1)`+顶边色；扁平后 grep `--composer-auto-from/-tint-to/-sideask-from` 若 orphan 则删。
+- **A7 决策（已签字）**：移除 `.turnUserBubble`/`.turnFinal` 的 in-flow `box-shadow`——**有意覆盖** 2 个 commit 前的 DS-3（`34825da`「depth polish」）：IDE 外壳原则是"抬升只给浮层"，in-flow 内容靠边框定义即可。**保留**浮层阴影（composer/contextWindowPanel/contextWindowTrigger/side-chat）。
+- **A8 纠偏**：size→11px 只作用于 **5 个真·大写微标签**（toolCardStatus/sideTitle/sessionGroupLabel/permissionScopeGroup>small/vmStatus），用 `--label-size/-tracking/-weight`（canonical weight=700, tracking=0.04em）；**不**动数字 delta/计数/头像首字母/compact override。已是 11–12px 的标签（turnFinalLabel/livePhaseLabel）顺手 tokenize 以统一权重。
+- **A9 纠偏**：`Plus` 未 import（须新增），`Sparkles` 出现 3 次：74 + 119 是 New task（换 Plus），**131 是健康卡图标（保留）**——不可盲目 find/replace。空状态真源是 thread-narrative.css:112（components.css 的同名块是死代码）。
+- **A10 纠偏**：`.narrativeStep/.runReport` 基础边框在 **thread-shell.css:558**（非 thread-narrative）；镜像 `.vmRow`（inspector-evidence.css:698）的 `border + border-left:2px`。`.eventCard` **无 ok 态**：状态态(running/failed)与 model_delta 改 border-left，**`.selected` 保留整圈**（选中是 affordance，不是状态）。
+
+> **气泡几何统一（A6 延伸决策）**：把所有会话面（turnUserBubble/turnWaiting/liveStream/chatStreamPreview/turnFinal）的「带尾巴」非对称圆角统一为对称 `var(--radius-lg)`，整体去掉聊天气泡观感（只改半径，低风险）。
+
+### Phase A — 落地记录（2026-06-29 · 已实现于工作树，待提交）
+
+按上述校准全量实现，纯 token + CSS + 2 处图标，未碰后端/runtime/schema：
+
+- **tokens.css**：+`--font-mono`、+`--radius-control:6`、`--radius-lg 14→10`、+`--label-size/-tracking/-weight`、+`.tabular-nums` util；删 `--brand-gradient-*` 与已 orphan 的 `--composer-auto-from/-tint-to/-sideask-from`（`--user-bubble-bg` 仍被引用，保留）。
+- **A1/A2 mono**：收编 inspector-diff 两处硬编码 mono 栈；mono 落到 toolCardLabel、tool `<pre>`、git 路径、permissionScopeTags code、6+ evidence/shell `<pre>`、workspaceChip、turnFinalText **code/pre 后代**（prose 本体保持 Inter）。
+- **A3**：头像 → `surface-3` 方块（`radius-sm`），全仓 0 处 brand-gradient。
+- **A4 de-pill**：13 功能控件 + 广义 `.topActions button`（原 `radius-md` 以更高特指度覆盖了 `.viewModeButton`，一并收成 `radius-control`，工具条半径统一 6px）→ `radius-control`；真圆点 / live 徽章 / track 保持 pill。
+- **A5**：liveFileDelta / diffScopeCount / gitChangeDelta / metric strong 加 `tabular-nums`（纯 CSS，未改 TSX）。
+- **A6**：context 条与 composer mode 渐变扁平化（顶边色保留）。
+- **A7（签字覆盖 DS-3 `34825da`）**：移除 turnUserBubble / turnFinal in-flow 阴影；浮层阴影保留。会话面圆角统一对称 `radius-lg`。
+- **A8**：5 微标签 + turnFinalLabel / livePhaseLabel / sideTitle / sessionGroupLabel 统一到 `--label-*`（11px / 700 / 0.04em）。
+- **A9**：New task 图标 Sparkles→Plus（健康卡 Sparkles 保留）；空状态左对齐 ghost 列。
+- **A10**：signalCard / metric / narrativeStep / runReport / eventCard 整圈彩边 → 中性边 + 2px 左缘着色（镜像 `.vmRow`）；eventCard `.selected` 保留整圈选中环（affordance 非状态）。
+
+**验证**：`tsc --noEmit` + `vite build` 干净（1766 模块）；`session-main-path-contract` 绿；`styles/*.css`（除 tokens.css 定义）raw-hex 归零；无 orphan token；预览 reload 后计算样式核验（头像 6px 方块无渐变、工具条统一 6px、sideTitle 11/700、in-flow 无阴影、`--brand/-composer` token 已删）、console 0 错误。（`preview_screenshot` 因 Studio `setInterval` 重渲染挂起 → 既有现象，非回归；改用计算样式+console 取证。）
 
 ### Phase B — IDE 骨架（结构，中风险；已按 Q1/Q3 定型）
 

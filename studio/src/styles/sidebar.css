@@ -116,15 +116,16 @@
 }
 
 .sideTitle {
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: 0.04em;
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
   margin: 2px 8px 0;
   text-transform: uppercase;
 }
 
 .metric {
   border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--border-strong);
   border-radius: var(--radius-sm);
   display: grid;
   gap: 3px;
@@ -133,21 +134,22 @@
 
 .metric strong {
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .metric.good {
-  border-color: var(--ok);
+  border-left-color: var(--ok);
 }
 
 .metric.warn {
-  border-color: var(--warn);
+  border-left-color: var(--warn);
 }
 
 .metric.bad {
-  border-color: var(--bad);
+  border-left-color: var(--bad);
 }
 
 .session {

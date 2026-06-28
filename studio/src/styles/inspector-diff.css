@@ -23,6 +23,7 @@
   align-items: center;
   color: var(--text-secondary);
   display: flex;
+  font-family: var(--font-mono);
   font-size: 12px;
   gap: 6px;
   margin: 4px 0 0;
@@ -69,6 +70,7 @@
 .gitChangeBadge.status-untracked { color: var(--accent); }
 
 .gitChangePath {
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -84,7 +86,7 @@
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
@@ -102,6 +104,7 @@
 .diffScopeCount {
   color: var(--text-muted);
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .diffScopeHint {
@@ -113,6 +116,7 @@
 .gitChangeDelta {
   display: inline-flex;
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
   gap: 4px;
   margin-left: auto;
 }
@@ -128,12 +132,13 @@
   background: var(--surface-2);
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 6px 10px;
 }
 
 .diffPreviewTable {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   max-height: 420px;
   overflow: auto;
@@ -382,7 +387,7 @@ button.aggregateDiffChip {
 }
 
 .diffSplitTable {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   max-height: 420px;
   overflow: auto;

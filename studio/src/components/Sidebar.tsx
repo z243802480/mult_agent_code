@@ -4,6 +4,7 @@ import {
   ChevronRight,
   FolderOpen,
   PanelLeftClose,
+  Plus,
   Sparkles,
 } from "lucide-react";
 import type { StudioSession, OverviewPayload, SettingsPayload } from "../types";
@@ -71,7 +72,7 @@ export function Sidebar({
           A
         </button>
         <button type="button" className="sidebarRailButton" title="New task" onClick={onNew}>
-          <Sparkles size={16} />
+          <Plus size={16} />
         </button>
         <SessionRail
           sessions={sessions}
@@ -116,7 +117,7 @@ export function Sidebar({
         </button>
       </div>
       <button className="newButton" onClick={onNew}>
-        <Sparkles size={15} /> New task
+        <Plus size={15} /> New task
       </button>
 
       {viewMode !== "focus" && (

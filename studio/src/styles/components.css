@@ -232,6 +232,7 @@
 .signalCard {
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--border-strong);
   border-radius: var(--radius-sm);
   display: grid;
   gap: 4px;
@@ -240,15 +241,15 @@
 }
 
 .signalCard.good {
-  border-color: var(--ok);
+  border-left-color: var(--ok);
 }
 
 .signalCard.warn {
-  border-color: var(--warn);
+  border-left-color: var(--warn);
 }
 
 .signalCard.bad {
-  border-color: var(--bad);
+  border-left-color: var(--bad);
 }
 
 .signalHead {
@@ -307,8 +308,8 @@
 
 .permissionScopeGroup > small {
   color: var(--text-muted);
-  font-size: 10px;
-  letter-spacing: 0.04em;
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
   text-transform: uppercase;
 }
 
@@ -323,6 +324,7 @@
   border: 1px solid var(--permission-border-alpha);
   border-radius: var(--radius-sm);
   color: var(--permission-text);
+  font-family: var(--font-mono);
   font-size: 11px;
   padding: 1px 6px;
 }

@@ -302,6 +302,7 @@
 .workerTopologyItem pre {
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.35;
   margin: 0;
@@ -358,6 +359,7 @@
 .workflowMonitorItem pre {
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.35;
   margin: 0;
@@ -495,6 +497,7 @@
 .promotionPreviewItem pre {
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.35;
   margin: 0;
@@ -558,25 +561,26 @@
 .narrativeStep,
 .runReport {
   background: var(--surface-1);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--border-strong);
   border-radius: var(--radius-md);
   display: grid;
   max-width: 920px;
 }
 
 .narrativeStep.running {
-  border-color: var(--warn);
+  border-left-color: var(--warn);
 }
 
 .narrativeStep.failed,
 .narrativeStep.error,
 .runReport.failed {
-  border-color: var(--bad);
+  border-left-color: var(--bad);
 }
 
 .narrativeStep.final,
 .runReport.completed {
-  border-color: var(--ok);
+  border-left-color: var(--ok);
 }
 
 .stepChrome,

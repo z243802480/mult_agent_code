@@ -111,15 +111,16 @@
 
 .emptyThread .examplePrompts {
   display: flex;
+  flex-direction: column;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .emptyThread .examplePrompts button {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-control);
   color: var(--text-secondary);
   font-size: 12px;
   padding: 6px 12px;
@@ -153,6 +154,7 @@
 .eventCard {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--border-strong);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   display: grid;
@@ -198,7 +200,7 @@
 }
 
 .eventCard.model_delta {
-  border-color: var(--accent);
+  border-left-color: var(--accent);
 }
 
 .eventCard.selected {
@@ -206,12 +208,12 @@
 }
 
 .eventCard.running {
-  border-color: var(--warn);
+  border-left-color: var(--warn);
 }
 
 .eventCard.failed,
 .eventCard.error {
-  border-color: var(--bad);
+  border-left-color: var(--bad);
 }
 
 .phaseRail {
