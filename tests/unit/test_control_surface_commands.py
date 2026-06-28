@@ -1305,7 +1305,7 @@ def test_gate_status_uses_latest_validation_acceptance_summary(tmp_path: Path, m
                 "ok": False,
                 "suite": "validation",
                 "validation_ready": False,
-                "aggregate": {"total": 7, "passed": 3, "failed": 4},
+                "aggregate": {"total": 8, "passed": 4, "failed": 4},
             }
         ),
         encoding="utf-8",
@@ -1317,8 +1317,8 @@ def test_gate_status_uses_latest_validation_acceptance_summary(tmp_path: Path, m
                 "suite": "validation",
                 "validation_ready": True,
                 "aggregate": {
-                    "total": 7,
-                    "passed": 7,
+                    "total": 8,
+                    "passed": 8,
                     "failed": 0,
                     "route_evidence": {"strong_used": True, "medium_used": True},
                 },
@@ -1334,7 +1334,7 @@ def test_gate_status_uses_latest_validation_acceptance_summary(tmp_path: Path, m
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
     assert payload["stage"] == "ready_for_small_real_task_validation"
-    assert payload["gates"]["validation_suite"]["passed"] == 7
+    assert payload["gates"]["validation_suite"]["passed"] == 8
     assert payload["evidence_sources"]["validation_suite"].endswith(
         "real_model_acceptance_validation_after_fix.json"
     )
@@ -1368,6 +1368,7 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
                     {"scenario": "validation_debug_repair"},
                     {"scenario": "validation_doc_update"},
                     {"scenario": "validation_small_cli"},
+                    {"scenario": "validation_subagent_delegation"},
                     {"scenario": "validation_refactor"},
                     {"scenario": "runtime_request_resume"},
                 ],
@@ -1377,12 +1378,13 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
                     {"scenario": "validation_debug_repair", "ok": True},
                     {"scenario": "validation_doc_update", "ok": True},
                     {"scenario": "validation_small_cli", "ok": True},
+                    {"scenario": "validation_subagent_delegation", "ok": True},
                     {"scenario": "validation_refactor", "ok": True},
                     {"scenario": "runtime_request_resume", "ok": True},
                 ],
                 "aggregate": {
-                    "total": 7,
-                    "passed": 6,
+                    "total": 8,
+                    "passed": 7,
                     "failed": 1,
                     "route_evidence": {"strong_used": True, "medium_used": True},
                 },
@@ -1416,7 +1418,7 @@ def test_gate_status_closes_failed_validation_scenario_with_newer_targeted_rerun
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
     assert payload["stage"] == "ready_for_small_real_task_validation"
-    assert payload["gates"]["validation_suite"]["passed"] == 7
+    assert payload["gates"]["validation_suite"]["passed"] == 8
     assert payload["validation_report"]["repair_closure"]["closed_failures"] == [
         "validation_multi_file_scope"
     ]
@@ -1441,8 +1443,8 @@ def test_gate_status_prefers_passing_canonical_validation_summary(
                 "suite": "validation",
                 "validation_ready": True,
                 "aggregate": {
-                    "total": 7,
-                    "passed": 7,
+                    "total": 8,
+                    "passed": 8,
                     "failed": 0,
                     "route_evidence": {"strong_used": True, "medium_used": True},
                 },
@@ -1473,7 +1475,7 @@ def test_gate_status_prefers_passing_canonical_validation_summary(
 
     payload = GateStatusCommand(tmp_path).run().to_dict()
 
-    assert payload["gates"]["validation_suite"]["total"] == 7
+    assert payload["gates"]["validation_suite"]["total"] == 8
     assert payload["evidence_sources"]["validation_suite"].endswith(
         "real_model_acceptance_validation.json"
     )
@@ -1591,7 +1593,7 @@ def test_gate_status_maps_validation_failure_loop_decision_to_command(
                 "ok": False,
                 "suite": "validation",
                 "validation_ready": False,
-                "aggregate": {"total": 7, "passed": 6, "failed": 1},
+                "aggregate": {"total": 8, "passed": 7, "failed": 1},
                 "scenarios": [
                     {
                         "scenario": "validation_small_cli",
