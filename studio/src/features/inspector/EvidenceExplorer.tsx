@@ -3,6 +3,7 @@ import { FileText } from "lucide-react";
 import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { Metric, formatMs, percent, Status } from "../../components/Shared";
 import { WorkflowMonitorPanel } from "../../components/WorkflowMonitorPanel";
+import { VerificationMatrix, LoopQualityMatrix } from "./VerificationMatrix";
 import { firstText } from "../../narrative";
 import { asArray, asRecord, contextSectionLabel, formatUsage, latestRoute, metricTone, rollingValidationFromOverview, runtimeProgressFromDetail, workerCountFromTree } from "./inspectorUtils";
 
@@ -369,14 +370,10 @@ source=${String(mainAction.source ?? "unknown")}
 evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre></div>
         <div><small>Run loop summary</small><pre>{`exit=${loopExit}
 rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre></div>
-        <div><small>Loop quality (SLO · observe_then_warn)</small><pre>{hasLoopQuality
-          ? `mode=${String(loopQuality.mode ?? "n/a")}  warn=${String(loopQuality.warn ?? false)}  severity=${loopSeverity}
-identical=${String(loopQuality.repeated_identical_observations ?? 0)}/${String(loopQuality.repeated_identical_window ?? "n/a")}  failed_verify=${String(loopQuality.repeated_failed_verifications ?? 0)}/${String(loopQuality.repeated_failed_window ?? "n/a")}  hard_block=${String(loopQuality.hard_block ?? false)}
-reason=${String(loopQuality.reason ?? "none")}`
-          : "not recorded (run predates loop_quality_guard)"}</pre></div>
         <div><small>Model route rationale</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
 reason=${String(latestRoute.reason ?? "No route reason recorded.")}`}</pre></div>
       </div>
+      <LoopQualityMatrix loopQuality={loopQuality} />
     </div>
   );
 }
@@ -543,7 +540,13 @@ export function EvidenceExplorer({
           <EvidenceBlock title="Model route timeline" items={routeTimeline.slice(-8)} kind="route" />
           <EvidenceBlock title="User progress" items={userProgress.slice(-8)} kind="progress" />
           <EvidenceBlock title="Model calls" items={modelCalls.slice(-5)} kind="model" />
-          <EvidenceBlock title="Validation" items={validations.slice(-5)} kind="validation" />
+          <VerificationMatrix
+            validations={validations.slice(-8)}
+            selectedKey={selectedKey}
+            onSelect={(item, label) =>
+              selectEvidence({ title: label, kind: "validation", summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), label), item })
+            }
+          />
           <EvidenceBlock title="Worker results" items={workers.slice(-4)} kind="worker" />
           <EvidenceBlock title="Task evidence" items={evidence.slice(-4)} kind="evidence" />
           {files.length > 0 && (

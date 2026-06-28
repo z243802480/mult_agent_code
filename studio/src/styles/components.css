@@ -273,3 +273,56 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ── Permission scope detail (slice #8) — runtime-provided read/write/tool scope ── */
+.permissionScope {
+  margin-top: var(--space-2);
+}
+
+.permissionScope > summary {
+  color: var(--permission-accent);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  list-style: none;
+  padding: 2px 0;
+  user-select: none;
+}
+
+.permissionScope > summary::-webkit-details-marker { display: none; }
+.permissionScope > summary::before { content: "▸ "; }
+.permissionScope[open] > summary::before { content: "▾ "; }
+
+.permissionScopeGroups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.permissionScopeGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.permissionScopeGroup > small {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.permissionScopeTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.permissionScopeTags > code {
+  background: var(--surface-2);
+  border: 1px solid var(--permission-border-alpha);
+  border-radius: var(--radius-sm);
+  color: var(--permission-text);
+  font-size: 11px;
+  padding: 1px 6px;
+}

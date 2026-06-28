@@ -871,3 +871,33 @@
   font-size: 13px;
   padding-left: 18px;
 }
+
+/* ── Suggested action chips (slice #6) — inline next steps after the final answer ── */
+.suggestedActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding-left: 34px;
+}
+
+.suggestedActionChip {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  display: inline-flex;
+  font-size: var(--text-xs);
+  gap: 5px;
+  padding: 4px 11px;
+  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+}
+
+.suggestedActionChip:hover:not(:disabled) {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+}
+
+.suggestedActionChip:disabled { cursor: default; opacity: 0.6; }
+.suggestedActionChip svg { color: var(--accent); }

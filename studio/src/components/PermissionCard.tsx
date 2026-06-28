@@ -64,6 +64,7 @@ export function PermissionCard({
               icon={<RotateCcw size={13} />}
             />
           )}
+          <PermissionScopeDetail detail={preview.scope_detail} />
         </div>
       )}
       <div className="permissionActions">
@@ -81,6 +82,40 @@ export function PermissionCard({
 function permissionPreview(event: StudioEvent): PermissionPreview | null {
   const value = event.data?.permission_preview;
   return value && typeof value === "object" ? value as PermissionPreview : null;
+}
+
+/**
+ * Approve-gate fidelity (slice #8): surface the runtime-provided scope_detail (exactly what the
+ * step will read, write, and which tools it may use) before allow/deny. Read straight from
+ * permission_preview.scope_detail — never inferred on the client. Renders nothing when the
+ * runtime recorded no scope detail, so we never fabricate a scope the user didn't actually grant.
+ */
+function PermissionScopeDetail({ detail }: { detail?: PermissionPreview["scope_detail"] }) {
+  if (!detail) return null;
+  const groups: Array<{ label: string; items: string[] }> = [
+    { label: "Reads", items: (detail.read_scope ?? []).map(String) },
+    { label: "Writes", items: (detail.write_scope ?? []).map(String) },
+    { label: "Tools", items: (detail.tools ?? []).map(String) },
+    { label: "Requests", items: (detail.request_types ?? []).map(String) },
+  ].filter((group) => group.items.length > 0);
+  if (!groups.length) return null;
+  return (
+    <details className="permissionScope">
+      <summary>Review what this touches</summary>
+      <div className="permissionScopeGroups">
+        {groups.map((group) => (
+          <div key={group.label} className="permissionScopeGroup">
+            <small>{group.label}</small>
+            <div className="permissionScopeTags">
+              {group.items.map((item, index) => (
+                <code key={`${group.label}-${index}`}>{item}</code>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 function PermissionFact({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {

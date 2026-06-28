@@ -651,3 +651,14 @@
   gap: 6px;
   padding: 8px 10px 10px 10px;
 }
+
+/* ── Diff-review gate (slice #5) — Accept disabled until changes are reviewed ── */
+.runtimeActionButton:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.runtimeActionButton.reviewChanges.gateActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-border);
+}

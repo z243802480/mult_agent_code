@@ -99,6 +99,11 @@ export function RuntimeSnapshot({
   const progress = runtimeProgress(runDetail);
   if (!Object.keys(progress).length && !runDetail?.ok && !canReview && !canAccept) return null;
   const activeEvent = latestActiveEvent(events);
+  // Diff-review gate (slice #5): when an Accept is offered and the workspace has changes, require
+  // the user to open the read-only diff review at least once before Accept is enabled. The key is
+  // (runId, changeCount) so a new run or a changed diff re-arms the gate. No fabricated state —
+  // this only enforces "look before you accept" against the same Inspector diff scope.
+  const [reviewedKey, setReviewedKey] = useState<string | null>(null);
   const loop = asRecord(progress.loop);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
@@ -110,6 +115,8 @@ export function RuntimeSnapshot({
     : null;
   const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
   const acceptReady = canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue);
+  const reviewGateKey = `${runId}:${workspaceChangeCount}`;
+  const needsDiffReview = acceptReady && workspaceChangeCount > 0 && reviewedKey !== reviewGateKey;
   const nextStep = runtimeNextStepSummary({
     decisions,
     nextActionValue,
@@ -140,10 +147,20 @@ export function RuntimeSnapshot({
             ) : null}
             {acceptReady ? (
               <>
-                <button className="runtimeActionButton reviewChanges" type="button" onClick={() => void onOpenReview()}>
+                <button
+                  className={`runtimeActionButton reviewChanges${needsDiffReview ? " gateActive" : ""}`}
+                  type="button"
+                  onClick={() => { setReviewedKey(reviewGateKey); void onOpenReview(); }}
+                >
                   {workspaceChangeCount > 0 ? `Review ${workspaceChangeCount} changes` : "Review changes"}
                 </button>
-                <button className="runtimeActionButton primary accept" type="button" onClick={() => void onRuntimeAction(nextActionValue || "accept")}>
+                <button
+                  className="runtimeActionButton primary accept"
+                  type="button"
+                  disabled={needsDiffReview}
+                  title={needsDiffReview ? `Review the ${workspaceChangeCount} change(s) before accepting` : undefined}
+                  onClick={() => void onRuntimeAction(nextActionValue || "accept")}
+                >
                   Accept
                 </button>
               </>

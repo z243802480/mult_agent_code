@@ -117,6 +117,7 @@ export function Thread({
           runDetail={runDetail}
           viewMode={viewMode}
           onTurnRewind={onTurnRewind}
+          onSuggestedAction={onRuntimeAction}
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
