@@ -591,9 +591,7 @@ class StatusResult:
                 else {}
             ),
         )
-        lines.append(
-            "Workflow: " f"{workflow_state}"
-        )
+        lines.append(f"Workflow: {workflow_state}")
         lines.extend(main_path_text_lines(main_path))
         lines.extend(todo_view_text_lines(main_path.get("todo_view") or {}))
         lines.append(f"Current phase: {self._current_phase()}")
@@ -767,6 +765,9 @@ class StatusResult:
                     f"{loop_summary.get('max_rounds', 0)} - "
                     f"{loop_summary.get('recommended_command') or 'no command'}"
                 )
+                loop_quality = loop_summary.get("loop_quality") or {}
+                if loop_quality.get("warn"):
+                    lines.append(f"Loop quality: warn - {loop_quality.get('reason', '')}")
             evidence_chain = self._evidence_chain()
             if evidence_chain:
                 lines.append("Evidence chain:")

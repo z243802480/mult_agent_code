@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.loop_progress_guard import evaluate_loop_quality
 from asteria_runtime.storage.json_store import JsonStore
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
@@ -40,6 +42,7 @@ def build_agent_loop_run_summary(
     evidence_refs: list[str] | None = None,
     budget: dict[str, Any] | None = None,
     context_pressure: dict[str, Any] | None = None,
+    loop_quality: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     decision = latest_decision if isinstance(latest_decision, dict) else {}
     execution = latest_execution if isinstance(latest_execution, dict) else {}
@@ -81,6 +84,7 @@ def build_agent_loop_run_summary(
         "context_pressure": _clean_optional_dict(context_pressure),
         "recovery_chain": recovery_chain,
         "evidence_refs": list(dict.fromkeys(refs)),
+        **({"loop_quality": loop_quality} if isinstance(loop_quality, dict) else {}),
     }
 
 
@@ -111,7 +115,9 @@ def _recovery_chain(
         }
         or observation_status in {"failed", "blocked", "waiting_user", "stopped"}
     )
-    satisfied = not required or latest_action in RECOVERY_ACTIONS or observation_next in RECOVERY_ACTIONS
+    satisfied = (
+        not required or latest_action in RECOVERY_ACTIONS or observation_next in RECOVERY_ACTIONS
+    )
     if not required:
         reason = "No recovery chain is required for this completed loop state."
     elif satisfied:
@@ -130,20 +136,61 @@ def _recovery_chain(
     }
 
 
+def loop_quality_for_task(
+    *,
+    run_dir: Path | None,
+    validator: SchemaValidator,
+    task_id: str,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Evaluate the loop_quality_guard over a task's persisted agent-loop observations.
+
+    Pure-IO wrapper around :func:`evaluate_loop_quality`: it loads
+    ``agent_loop_observations.jsonl``, narrows to the task in question (the observation
+    stream is per-run, spanning every task), and returns the auditable signal.
+    """
+
+    if run_dir is None:
+        return None
+    path = run_dir / "agent_loop_observations.jsonl"
+    if not path.exists():
+        return None
+    observations = JsonlStore(validator).read_all(path, "agent_loop_observation")
+    if task_id:
+        observations = [
+            item
+            for item in observations
+            if str(item.get("task_id") or "") == task_id
+            or str(item.get("target_task_id") or "") == task_id
+        ]
+    return evaluate_loop_quality(observations, config=config)
+
+
 def persist_agent_loop_run_summary(
     *,
     run_dir: Path | None,
     validator: SchemaValidator,
     summary: dict[str, Any],
+    loop_quality_guard: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if run_dir is None:
         return None
+    record = dict(summary)
+    if "loop_quality" not in record:
+        signal = loop_quality_for_task(
+            run_dir=run_dir,
+            validator=validator,
+            task_id=str(record.get("task_id") or ""),
+            config=loop_quality_guard,
+        )
+        if signal is not None:
+            record["loop_quality"] = signal
     JsonStore(validator).write(
         run_dir / "agent_loop_run_summary.json",
-        summary,
+        record,
         "agent_loop_run_summary",
     )
-    return summary
+    return record
 
 
 def latest_agent_loop_run_summary(

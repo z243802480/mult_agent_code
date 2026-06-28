@@ -73,8 +73,8 @@ AgentLoopDecision
 
 当前规则：
 
-- 默认每个 task 最多 2 轮。
-- policy `agent_loop.max_rounds_per_task` 可调整，上限 8。
+- 默认每个 task 最多 5 轮（CC 式单会话 tool→verify→repair 收敛，给模型足够回合自愈）。
+- policy `agent_loop.max_rounds_per_task` 可调整，clamp 1–8。
 - 每轮 observation 会回灌给下一轮模型。
 - 只有模型显式声明继续条件时才自动进入下一轮。
 
@@ -90,6 +90,23 @@ AgentLoopDecision
 - tool 失败后进入 repair。
 - 需要用户判断时进入 ask。
 - 需要分派时进入 subagent。
+
+### Loop quality 信号（loop_quality_guard）
+
+`max_rounds_per_task` 和预算 hard-stop 是循环的两道**硬保险**。在它们之上，
+`agent_loop.loop_quality_guard`（默认 `mode: observe_then_warn`）是一个**可审计的 SLO 信号**，
+不是 kill-switch（遵 ADR-0010：调用/repair 次数是 SLO，不是统一硬停止）。
+
+`core/loop_progress_guard.py` 在每个 task 收尾时基于该 task 的 agent-loop observations 计算：
+
+- `repeated_failed_verifications`：尾部连续 `failed` observation 数（默认 window 3）。
+- `repeated_identical_observations`：尾部连续指纹相同的无进展 observation 数（默认 window 8）。
+  指纹剔除每轮易变的 execution/decision id，只要出现**新 artifact / validation ref** 就视为有进展、
+  打断连续计数——正是 ADR-0010 对"可证明无进展循环"的定义（连续重复同类失败且无新 observation/artifact/verification）。
+
+命中窗口时写入 `agent_loop_run_summary.json` 的 `loop_quality.warn=true`，由 `status` / Studio Inspector
+呈现，并作为放量 DecisionPoint 的回归证据。默认只观察告警、不改写模型的恢复决定（遵 ADR-0014）；
+更强的硬停止模式留作后续按真实 Beta friction 证据再开。
 
 ## 4. Runtime 护栏与验证分层
 

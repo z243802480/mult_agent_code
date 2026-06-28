@@ -46,6 +46,13 @@ deterministic verify -> medium semantic review -> strong review
 
 只有 deterministic verify 不足、模型输出和证据冲突、风险等级升高、或用户/发布要求时，才进入更强审查。文档/简单文件任务可用 artifact readback 作为确定性证据；代码修复仍必须保留 command-level verification。
 
+**注意：风险升级顺序（deterministic→medium→strong）与 provider 故障回退顺序是两条正交的轴。**
+当某一档 review 的 provider 调用失败（超时/异常）时，`ReviewAgent` 走的是**可用性回退梯**
+`strong → medium → cheap`（实现见 `review_agent.py:_fallback_tiers`，可被 review_context
+的 `review_model_fallback_tiers` 覆盖），并受 `review_fallback_total_seconds` 总时长封顶；
+全部 tier 失败时落到 deterministic runtime checks 作为可审计兜底。这里的 `cheap` 档语义见
+`docs/zh/开发指南.md`（分类/摘要/低风险只读），它是回退梯的末档，不是风险升级链的一员。
+
 默认 `/run` 不应因为共享 plan/execute model client 而强制模型 review；只有显式传入 `review_model_client` 的维护者、测试或发布复验路径才绕过 deterministic-first。
 
 ### 3. Context Slimming

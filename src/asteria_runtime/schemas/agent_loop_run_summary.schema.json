@@ -88,6 +88,23 @@
         "reason": { "type": "string" }
       }
     },
+    "loop_quality": {
+      "type": "object",
+      "description": "loop_quality_guard signal (observe_then_warn): auditable agent-loop SLO, not a hard stop.",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "mode": { "type": "string" },
+        "observations_evaluated": { "type": "integer" },
+        "repeated_identical_observations": { "type": "integer" },
+        "repeated_identical_window": { "type": "integer" },
+        "repeated_failed_verifications": { "type": "integer" },
+        "repeated_failed_window": { "type": "integer" },
+        "warn": { "type": "boolean" },
+        "severity": { "type": "string" },
+        "hard_block": { "type": "boolean" },
+        "reason": { "type": "string" }
+      }
+    },
     "evidence_refs": { "type": "array", "items": { "type": "string" } }
   }
 }
