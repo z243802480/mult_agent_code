@@ -64,11 +64,7 @@ class CoderAgent:
         ]
         last_error: Exception | None = None
         for attempt in range(2):
-            # Escalate the retry attempt to the strong tier: the medium model
-            # intermittently returns an ungrounded stop or a non-executable action
-            # on trivial tasks, and re-prompting the same tier reproduces it. The
-            # retry only runs after a first-attempt failure, so cost stays bounded.
-            model_tier = "medium" if attempt == 0 else "strong"
+            model_tier = self._execution_tier(base_runtime_context, task, attempt)
             request = ChatRequest(
                 purpose="task_execution",
                 model_tier=model_tier,
@@ -121,6 +117,23 @@ class CoderAgent:
         raise CoderAgentError(
             str(last_error) if last_error else "ExecutionAction generation failed"
         )
+
+    def _execution_tier(self, runtime_context: dict, task: dict, attempt: int) -> str:
+        """Delegate the execution model tier (strong/medium/cheap).
+
+        Strong and weak models are a delegation mechanism: capable authoring
+        work defaults to the strong tier, and only an explicit, deliberate
+        downgrade — a planner-set ``task.execution_tier`` marking basic grunt
+        work — drops to a lower tier. A corrective retry always runs on the
+        strong tier so a weak-tier stumble converges.
+        """
+        _ = runtime_context
+        if attempt > 0:
+            return "strong"
+        explicit = task.get("execution_tier") if isinstance(task, dict) else None
+        if explicit in {"medium", "cheap"}:
+            return explicit
+        return "strong"
 
     def _retry_prompt(
         self,

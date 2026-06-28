@@ -404,7 +404,7 @@ def test_coder_agent_retries_premature_first_round_stop_for_work_bearing_task() 
     assert "stop is not grounded" in client.requests[1].messages[-1].content
 
 
-def test_coder_agent_escalates_to_strong_tier_and_names_target_on_retry() -> None:
+def test_coder_agent_defaults_to_strong_tier_and_names_target_on_retry() -> None:
     client = PrematureStopThenToolClient()
     agent = CoderAgent(client, SchemaValidator(Path("schemas")))
 
@@ -421,10 +421,35 @@ def test_coder_agent_escalates_to_strong_tier_and_names_target_on_retry() -> Non
         run_id="run-1",
     )
 
-    # First attempt stays on the cost-efficient medium tier; the corrective retry
-    # escalates to the strong tier and names the unwritten target file.
-    assert client.requests[0].model_tier == "medium"
+    # Capable authoring work delegates to the strong tier by default; the
+    # corrective retry stays on strong and names the unwritten target file.
+    assert client.requests[0].model_tier == "strong"
     assert client.requests[1].model_tier == "strong"
     retry_prompt = client.requests[1].messages[-1].content
     assert "result.txt" in retry_prompt
     assert "Do not stop, ask, or replan" in retry_prompt
+
+
+def test_coder_agent_honors_explicit_grunt_downgrade_then_escalates_on_retry() -> None:
+    client = PrematureStopThenToolClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.txt"],
+            "expected_artifacts": ["result.txt"],
+            # Planner flags this as basic grunt work -> medium tier.
+            "execution_tier": "medium",
+        },
+        goal_spec={"goal_id": "goal-1", "original_goal": "Create result.txt"},
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+    )
+
+    # Explicit grunt downgrade is honored on the first attempt; a corrective
+    # retry still escalates to strong so the task converges.
+    assert client.requests[0].model_tier == "medium"
+    assert client.requests[1].model_tier == "strong"

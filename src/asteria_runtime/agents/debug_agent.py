@@ -46,7 +46,7 @@ class DebugAgent:
         for attempt in range(2):
             request = ChatRequest(
                 purpose="task_repair",
-                model_tier="medium",
+                model_tier="strong",
                 messages=messages,
                 response_format="json",
                 temperature=0.15,
