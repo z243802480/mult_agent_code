@@ -4,7 +4,7 @@
 
 当后端主路径已具备执行、验证、恢复和审计闭环时，产品收敛优先于继续扩展后端能力：用户在一个本地 workspace 中输入目标，看到可理解的进展、权限请求、文件变化、验证结果和最终交付；runtime 继续负责权限、预算、schema、证据、恢复和 gate。
 
-Studio 的 session、context、主会话过程展示和 Inspector 诊断层必须遵守 [Studio 会话与上下文设计准则.md](./Studio%20会话与上下文设计准则.md)。新增 UI 前先判断它属于主会话叙事、用户动作入口，还是 Inspector 证据层；不得把 Studio 重新做成固定 runtime dashboard。
+Studio 的 session、context、主会话过程展示和 Inspector 诊断层必须遵守 [Studio 会话与上下文设计准则.md](./Studio%20会话与上下文设计准则.md)。新增 UI 前先判断它属于主会话叙事、用户动作入口，还是 Inspector 证据层；不得把 Studio 重新做成固定 runtime dashboard。前端如何搭建（技术栈、进程、数据流、构建、测试、诚实不变量）见工程真源 [Studio 交互界面工程设计.md](./Studio%20交互界面工程设计.md)。
 
 ## 1. 产品定位
 
