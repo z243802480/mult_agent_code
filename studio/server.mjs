@@ -1664,6 +1664,11 @@ ${stderr}` : stdout.slice(-4000)
         job_id: jobId,
       });
     } else {
+      // ADR-0012: when the runtime emitted no main-thread conversational final, do NOT synthesize the
+      // diagnostic report as the reply. Show an honest short line and point to the Inspector for detail.
+      const honest = code === 0
+        ? "Finished. Open the Inspector to review what changed and the verification details."
+        : (friendlyErrorText(stderr || stdout) || "The task needs attention — open the Inspector for the reason and next step.");
       void appendEvent(sessionId, {
         type: code === 0 ? "final_answer" : "error",
         status: code === 0 ? "completed" : "failed",
@@ -1671,7 +1676,7 @@ ${stderr}` : stdout.slice(-4000)
         summary: code === 0 ? "Result prepared." : "The task needs attention; here is the reason and suggestion.",
         phase: code === 0 ? "result" : "review",
         display_level: "main",
-        content_delta: await finalTextFor(mode, code, stdout, stderr),
+        content_delta: honest,
         evidence_refs: [sessionPath(sessionId, "events.jsonl")],
         artifact_refs: runArtifactRefs(completedRunId),
         run_id: completedRunId || undefined,
@@ -2290,18 +2295,10 @@ async function readSessionEvents(sessionId) {
     const runId = extractRunId(event.content_delta) || extractRunId((event.artifact_refs || []).join("\n"));
     if (!runId) continue;
     runIds.add(runId);
-    const runDir = path.join(workspace, ".asteria", "runs", runId);
-    const hasFinalReport = existsSync(path.join(runDir, "final_report.md"));
-    const hasEvalReport = existsSync(path.join(runDir, "eval_report.json"));
-    const hasGoalSpec = existsSync(path.join(runDir, "goal_spec.json"));
-    if (hasFinalReport) {
-      event.content_delta = await runFinalTextForRun(runId, event.content_delta);
-    } else if (hasEvalReport && !hasGoalSpec) {
-      event.content_delta = await reviewFinalTextForRun(runId, event.content_delta);
-    } else {
-      event.content_delta = await planFinalTextForRun(runId, event.content_delta);
-    }
-    event.summary = "已从 runtime 产物提炼为用户可读结论。";
+    // ADR-0012: the main-thread final is the runtime's own conversational transcript text. Do NOT
+    // overwrite it with the synthesized diagnostic report (final_report.md / eval_report.json) — that
+    // content is diagnostics and belongs in the Inspector. Only attach artifact_refs so the Inspector
+    // can resolve the run's evidence.
     event.artifact_refs = [...(event.artifact_refs || []), ...runArtifactRefs(runId)];
   }
   for (const runId of await activeRuntimeRunIdsForSession(sessionId)) {
@@ -2380,18 +2377,8 @@ async function readRuntimeUserProgressEvents(runId, sessionId) {
 }
 
 async function enrichFinalAnswerEvent(event, runId) {
-  const runDir = path.join(workspace, ".asteria", "runs", runId);
-  const hasFinalReport = existsSync(path.join(runDir, "final_report.md"));
-  const hasEvalReport = existsSync(path.join(runDir, "eval_report.json"));
-  const hasGoalSpec = existsSync(path.join(runDir, "goal_spec.json"));
-  if (hasFinalReport) {
-    event.content_delta = await runFinalTextForRun(runId, event.content_delta);
-  } else if (hasEvalReport && !hasGoalSpec) {
-    event.content_delta = await reviewFinalTextForRun(runId, event.content_delta);
-  } else {
-    event.content_delta = await planFinalTextForRun(runId, event.content_delta);
-  }
-  event.summary = "已从 runtime 产物提炼为用户可读结论。";
+  // ADR-0012: keep the runtime's conversational final text verbatim; only attach artifact_refs so the
+  // Inspector can resolve the run's diagnostics. Never rewrite the main-thread answer into the report.
   event.artifact_refs = [...(event.artifact_refs || []), ...runArtifactRefs(runId)];
 }
 
