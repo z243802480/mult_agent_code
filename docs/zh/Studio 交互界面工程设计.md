@@ -185,6 +185,8 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 
 冻结合规：三轨全是**去噪/删重构 + 扩既有面板 + 设计一致性 + 对真实 friction 的根治**，不是独立新功能 Slice，故不触 Studio freeze。**无**新编排 Wave / 全局 parallel_writes / maintainer 命令。CV-C 触内核但仅 append user_progress、不重构既有逻辑，且由用户 2026-06-28「把诊断的未实现都做了」明确裁决授权。需真实 Beta friction 才解锁的 defer 项（Plan/Todo 卡、成本仪表盘、流式 stop/interrupt、逐 token 传输改造）见路线图 §「显式 defer」。
 
+**下一层（已立项 · 待实现）**：对话流对标完成后，外壳/布局/视觉语言的 IDE 化改造已立项——方案见 [plans/Studio-IDE-shell-重设计方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)（全幅 IDE 工作区 + 全局头部 · 会话栏保持 · 改动文件进评审面 · Phase A 表层快赢 → B 骨架 → C 打磨）。同样纯 token/CSS、不碰后端与对话流诚实工作。本文 §6 分层表与 §5.1 在该方案落地后同步更新。
+
 ## 10. 约束真源
 
 - ADR：[0012 Session Transcript 主路径](./adr/0012-session-transcript-as-studio-main-path.md) · [0015 会话循环即产品架构](./adr/0015-session-loop-is-product-architecture.md) · [0014 单会话恢复与显式 Review](./adr/0014-single-session-recovery-and-explicit-review.md)
@@ -192,3 +194,4 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 - 后端对偶：[Asteria 模型主导运行时设计](./Asteria%20模型主导运行时设计.md)
 - 协议：[用户进展与证据协议](./用户进展与证据协议.md)
 - 路线：[plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)
+- 重设计：[plans/Studio-IDE-shell-重设计方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)（外壳/布局 IDE 化，已立项待实现）
