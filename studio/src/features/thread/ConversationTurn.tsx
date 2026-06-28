@@ -118,33 +118,11 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   );
 }
 
-function useSmoothText(text: string): string {
-  const [visible, setVisible] = useState(text);
-  useEffect(() => {
-    let cancelled = false;
-    setVisible((current) => (text.startsWith(current) ? current : ""));
-    const timer = window.setInterval(() => {
-      if (cancelled) return;
-      setVisible((current) => {
-        if (current.length >= text.length) {
-          window.clearInterval(timer);
-          return text;
-        }
-        return text.slice(0, Math.min(text.length, current.length + 28));
-      });
-    }, 28);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [text]);
-  return visible;
-}
-
 function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
   const event = step.events.at(-1) || step.events[0];
+  // Honest streaming: render the real content_delta exactly as events land. No client-side
+  // typewriter — perceived latency tracks the runtime transport, not an artificial timer.
   const text = step.events.map((item) => item.content_delta || "").join("");
-  const smoothText = useSmoothText(text);
   const modelId = event?.model_name
     ? `${event.model_provider || "model"}/${event.model_name}`
     : event?.model_provider || "model";
@@ -155,8 +133,8 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
         <strong>Thinking</strong>
         {modelId && <span>{modelId}</span>}
       </div>
-      {smoothText ? (
-        <ClampedOutput text={smoothText} maxLines={8} />
+      {text ? (
+        <ClampedOutput text={text} maxLines={8} />
       ) : (
         <p>Waiting for the first response...</p>
       )}
