@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrchestrationChoice",
+  "type": "object",
+  "required": ["schema_version", "capability_id", "reason"],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "capability_id": { "type": "string" },
+    "reason": { "type": "string" },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "follow_up_notes": { "type": "string" }
+  }
+}

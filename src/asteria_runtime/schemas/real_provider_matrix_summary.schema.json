@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RealProviderMatrixSummary",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "matrix",
+    "created_at",
+    "ok",
+    "output_dir",
+    "case_count",
+    "passed",
+    "failed",
+    "duration_seconds",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "matrix": { "type": "string" },
+    "matrix_preset": { "type": ["string", "null"] },
+    "provider_mode": { "type": "string" },
+    "created_at": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "output_dir": { "type": "string" },
+    "case_count": { "type": "integer" },
+    "passed": { "type": "integer" },
+    "failed": { "type": "integer" },
+    "duration_seconds": { "type": "number" },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "task_kind",
+          "route",
+          "reason",
+          "ok",
+          "workspace",
+          "summary_json",
+          "expected_file",
+          "expected_text",
+          "run_id",
+          "final_report",
+          "diagnostics",
+          "failure_type",
+          "failure_summary",
+          "evidence_refs"
+        ],
+        "properties": {
+          "name": { "type": "string" },
+          "task_kind": { "type": "string" },
+          "route": { "type": "string" },
+          "reason": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "workspace": { "type": ["string", "null"] },
+          "summary_json": { "type": "string" },
+          "expected_file": { "type": "string" },
+          "expected_text": { "type": "string" },
+          "run_id": { "type": ["string", "null"] },
+          "final_report": { "type": ["string", "null"] },
+          "diagnostics": { "type": "object" },
+          "agent_loop": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "summary_path": { "type": "string" },
+              "failure_summary": { "type": "string" },
+              "exit_reason": { "type": ["string", "null"] },
+              "recommended_command": { "type": ["string", "null"] },
+              "latest_action": { "type": ["string", "null"] },
+              "rounds_completed": { "type": ["integer", "null"] },
+              "max_rounds": { "type": ["integer", "null"] },
+              "budget_status": { "type": ["string", "null"] },
+              "budget_highest_label": { "type": ["string", "null"] },
+              "budget_model_calls": { "type": ["integer", "null"] },
+              "budget_tool_calls": { "type": ["integer", "null"] },
+              "budget_repair_attempts": { "type": ["integer", "null"] },
+              "context_pressure_status": { "type": ["string", "null"] },
+              "context_window_ratio": { "type": ["number", "null"] },
+              "recovery_required": { "type": ["boolean", "null"] },
+              "recovery_satisfied": { "type": ["boolean", "null"] }
+            }
+          },
+          "context_strategy": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" },
+              "model_calls_path": { "type": "string" },
+              "failure_summary": { "type": "string" },
+              "model_call_count": { "type": "integer" },
+              "context_modes": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "fast_path_task_kinds": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "model_tiers": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "purposes": {
+                "type": "object",
+                "additionalProperties": { "type": "integer" }
+              },
+              "purpose_context_modes": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": { "type": "integer" }
+                }
+              },
+              "context_mode_recorded": { "type": "integer" },
+              "slim_model_calls": { "type": "integer" },
+              "strong_model_calls": { "type": "integer" },
+              "failed_model_calls": { "type": "integer" },
+              "task_execution_model_calls": { "type": "integer" },
+              "task_repair_model_calls": { "type": "integer" },
+              "run_review_model_calls": { "type": "integer" },
+              "average_context_estimated_tokens": { "type": ["number", "null"] },
+              "max_context_estimated_tokens": { "type": ["integer", "null"] }
+            }
+          },
+          "failure_type": { "type": ["string", "null"] },
+          "failure_summary": { "type": ["string", "null"] },
+          "evidence_refs": { "type": "array", "items": { "type": "string" } },
+          "provider": { "type": "string" },
+          "model": { "type": "string" },
+          "purpose": { "type": "string" },
+          "model_tier": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -15,16 +15,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Verify asteria-runtime wheel install path (S15 C2).")
     parser.add_argument("--root", type=Path, default=Path("."), help="Repository root")
     parser.add_argument("--keep", action="store_true", help="Keep temp venv/workspace for inspection")
+    parser.add_argument(
+        "--rebuild",
+        action="store_true",
+        help="Force a clean wheel rebuild before the smoke (required for release sign-off; "
+        "otherwise a stale wheel left in dist/ would be reused).",
+    )
     args = parser.parse_args()
 
     root = args.root.resolve()
     dist_dir = root / "dist"
     wheels = sorted(dist_dir.glob("asteria_runtime-*.whl"))
-    if not wheels:
-        subprocess.run(
-            [sys.executable, str(root / "scripts" / "build_package.py"), "--root", str(root), "--no-deps"],
-            check=True,
-        )
+    if args.rebuild or not wheels:
+        build_command = [sys.executable, str(root / "scripts" / "build_package.py"), "--root", str(root), "--no-deps"]
+        if args.rebuild:
+            build_command.append("--clean")
+        subprocess.run(build_command, check=True)
         wheels = sorted(dist_dir.glob("asteria_runtime-*.whl"))
     wheel = max(wheels, key=lambda item: item.stat().st_mtime)
 

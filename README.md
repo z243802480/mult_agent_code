@@ -14,11 +14,32 @@ The active product direction is a harness-first general long-task agent runtime
 
 ## Quick Start
 
+Install (editable for development, or the built wheel for a release check):
+
 ```powershell
-python -m pip install -e ".[dev]"
-asteria --help
+python -m pip install -e ".[dev]"                    # development
+# python -m pip install dist\asteria_runtime-*.whl   # released wheel
+```
+
+Configure a real model provider (local-first, multi-provider — keys stay in your env):
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "minimax"        # default / medium tier
+$env:MINIMAX_API_KEY = "<your-minimax-key>"
+$env:AGENT_MODEL_STRONG_PROVIDER = "glm"     # strong tier (capable authoring/repair, the default for execution)
+$env:AGENT_MODEL_STRONG_NAME = "glm-5"
+$env:GLM_API_KEY = "<your-glm-key>"
+asteria doctor --root .                       # verify config + provider reachability
+```
+
+Run the happy path — goal in, verified artifact out:
+
+```powershell
 asteria init --root .
-asteria status --root .
+asteria goal "Create greet.py: a CLI that prints 'Hello, <name>!' for its argument" --root .
+asteria status --root .     # see the run result and produced files
+asteria review --root .     # verify the change
+asteria accept --root .     # finalize the reviewed run
 ```
 
 The default user workflow is `init -> goal -> status -> resume -> review -> accept`.
