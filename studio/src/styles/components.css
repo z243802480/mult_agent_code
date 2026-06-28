@@ -48,7 +48,7 @@
 /* Thread running indicator */
 .runningIndicator {
   align-items: center;
-  color: #f0cf8a;
+  color: var(--warn);
   display: flex;
   font-size: 12px;
   gap: 8px;
@@ -57,7 +57,7 @@
 
 .runningDot {
   animation: pulse 1.5s ease-in-out infinite;
-  background: #f0cf8a;
+  background: var(--warn);
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
@@ -87,20 +87,20 @@
 }
 
 .examplePrompts button {
-  background: #1e252b;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #c0c8ce;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   font-size: 13px;
-  padding: 9px 12px;
+  padding: 10px 13px;
   text-align: left;
-  transition: background 0.15s;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
 }
 
 .examplePrompts button:hover {
-  background: #273139;
-  border-color: #3d5060;
-  color: #eef2f4;
+  background: var(--surface-3);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
 }
 
 /* Permission card */
@@ -207,12 +207,12 @@
 }
 
 .permissionAllow {
-  background: #2e7bb8;
-  color: #f2f7fb;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 .permissionAllow:hover:not(:disabled) {
-  background: #3a8fce;
+  background: var(--accent-hover);
 }
 
 .permissionDeny {
@@ -230,9 +230,9 @@
 }
 
 .signalCard {
-  background: #171b1f;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   display: grid;
   gap: 4px;
   min-height: unset;
@@ -240,15 +240,15 @@
 }
 
 .signalCard.good {
-  border-color: #2f6b4d;
+  border-color: var(--ok);
 }
 
 .signalCard.warn {
-  border-color: #806a34;
+  border-color: var(--warn);
 }
 
 .signalCard.bad {
-  border-color: #8b403a;
+  border-color: var(--bad);
 }
 
 .signalHead {

@@ -3,7 +3,7 @@
 .conversationTurn {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
   max-width: var(--thread-max);
   width: 100%;
 }
@@ -38,11 +38,11 @@
 }
 
 .turnUserBubble {
-  background: #1b3a50;
-  border: 1px solid #2a5572;
-  border-radius: 14px 14px 3px 14px;
-  max-width: 76%;
-  padding: 9px 13px 6px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+  max-width: 80%;
+  padding: 10px 14px 7px;
 }
 
 .turnUserBubble.optimistic {
@@ -50,17 +50,17 @@
 }
 
 .turnUserBubble p {
-  color: #d4eaf5;
-  font-size: 14px;
-  line-height: 1.5;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: 1.55;
   margin: 0;
 }
 
 .turnUserTime {
-  color: #4d7a94;
+  color: var(--text-muted);
   display: block;
-  font-size: 10px;
-  margin-top: 4px;
+  font-size: var(--text-xs);
+  margin-top: var(--space-1);
   text-align: right;
 }
 
@@ -259,10 +259,10 @@
 
 .turnWaiting {
   align-items: center;
-  background: #0d1419;
-  border: 1px solid #1a3348;
-  border-radius: 4px 12px 12px 12px;
-  color: #9fb4c4;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  color: var(--text-secondary);
   display: inline-flex;
   gap: 8px;
   max-width: fit-content;
@@ -307,9 +307,9 @@
 /* ── LiveStream: real-time output while turn is running ─────────────────── */
 
 .liveStream {
-  background: #0d1419;
-  border: 1px solid #1a3348;
-  border-radius: 4px 12px 12px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 10px;

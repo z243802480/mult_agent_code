@@ -1,28 +1,79 @@
 :root {
+  /* ── Spacing scale ───────────────────────────────────────────── */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
-  --sidebar-width: 220px;
-  --panel-width: 300px;
-  --header-height: 44px;
-  --thread-max: 860px;
-  --surface-0: #0e1012;
-  --surface-1: #14181c;
-  --surface-2: #1a1f24;
-  --border-subtle: #252b30;
-  --border-strong: #364149;
-  --text-primary: #eceff1;
-  --text-secondary: #9aa6af;
-  --text-muted: #6e7d88;
-  --accent: #4a8fd4;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* ── Layout ──────────────────────────────────────────────────── */
+  --sidebar-width: 240px;
+  --panel-width: 320px;
+  --header-height: 48px;
+  --thread-max: 768px;
+
+  /* ── Surface ramp (clear elevation steps) ────────────────────── */
+  --surface-0: #0c0e10; /* app background, deepest */
+  --surface-1: #131619; /* panels, assistant surfaces */
+  --surface-2: #191d22; /* cards, inputs */
+  --surface-3: #20262c; /* raised / hover */
+
+  /* ── Borders ─────────────────────────────────────────────────── */
+  --border-subtle: #222a30;
+  --border-strong: #333d45;
+
+  /* ── Text ────────────────────────────────────────────────────── */
+  --text-primary: #e8ecef;
+  --text-secondary: #98a4ad;
+  --text-muted: #69747e;
+
+  /* ── Accent (one coherent ramp — replaces 5 drifting blues) ──── */
+  --accent: #4d9be6;
+  --accent-hover: #63a9ea;
+  --accent-active: #3d86cc;
+  --accent-fg: #ffffff;
+  --accent-subtle: rgba(77, 155, 230, 0.13);
+  --accent-border: rgba(77, 155, 230, 0.34);
+
+  /* ── Status ──────────────────────────────────────────────────── */
+  --ok: #5fcf8e;
+  --warn: #e6b364;
+  --bad: #ef7a73;
+  --ok-subtle: rgba(95, 207, 142, 0.13);
+  --warn-subtle: rgba(230, 179, 100, 0.13);
+  --bad-subtle: rgba(239, 122, 115, 0.13);
+
+  /* ── Radii ───────────────────────────────────────────────────── */
   --radius-sm: 6px;
-  --radius-md: 8px;
+  --radius-md: 9px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ── Type scale ──────────────────────────────────────────────── */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --leading: 1.6;
+
+  /* ── Elevation ───────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.40);
+
+  /* ── Focus & motion ──────────────────────────────────────────── */
+  --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent-border);
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
   background: var(--surface-0);
   color: var(--text-primary);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -36,10 +87,53 @@ body {
 
 button,
 textarea,
-select {
+select,
+input {
   font: inherit;
 }
 
 button {
   cursor: pointer;
+}
+
+/* App-wide focus ring — a single product-grade keyboard affordance.
+   box-shadow follows each element's own border-radius, so it fits any shape. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* Refined text selection */
+::selection {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+
+/* Quiet, modern scrollbars (Firefox + WebKit) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #45515b;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
 }

@@ -1,7 +1,7 @@
 .sidebar {
-  background: #181c1f;
-  border-right: 1px solid #30363d;
-  color: #f0f3f5;
+  background: var(--surface-1);
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -23,7 +23,7 @@
 .session small,
 .settingsLink,
 .muted {
-  color: #8f9ba5;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -32,8 +32,8 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 7px;
-  color: #eef2f4;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   display: flex;
   gap: 8px;
   min-height: 30px;
@@ -48,14 +48,17 @@
 }
 
 .newButton,
-.sessionRow.active,
 .sessionRow:hover {
-  background: #283139;
+  background: var(--surface-3);
+}
+
+.sessionRow.active {
+  background: var(--accent-subtle);
 }
 
 .sessionRow {
   align-items: center;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   display: flex;
   gap: 4px;
 }
@@ -97,8 +100,8 @@
 }
 
 .sessionDelete:hover {
-  background: #3a2528;
-  color: #ff9aa8;
+  background: var(--bad-subtle);
+  color: var(--bad);
 }
 
 .sideSection,
@@ -121,8 +124,8 @@
 }
 
 .metric {
-  border: 1px solid #303b43;
-  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   display: grid;
   gap: 3px;
   padding: 8px 10px;
@@ -136,15 +139,15 @@
 }
 
 .metric.good {
-  border-color: #2f6b4d;
+  border-color: var(--ok);
 }
 
 .metric.warn {
-  border-color: #8a7135;
+  border-color: var(--warn);
 }
 
 .metric.bad {
-  border-color: #8b403a;
+  border-color: var(--bad);
 }
 
 .session {

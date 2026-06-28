@@ -120,21 +120,27 @@
 
 .composerSend {
   align-items: center;
-  background: #2e7bb8;
-  border: 1px solid #2e7bb8;
-  border-radius: 8px;
-  color: #eef8ff;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  color: var(--accent-fg);
   display: inline-flex;
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 650;
   gap: 6px;
   min-height: 32px;
-  padding: 0 12px;
+  padding: 0 14px;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.composerSend:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .composerSend:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 .composer.chatMode {
@@ -183,15 +189,26 @@
 }
 
 .composer textarea {
-  background: #171b1f;
-  border: 1px solid #364149;
-  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   box-sizing: border-box;
-  color: #eef2f4;
+  color: var(--text-primary);
   min-height: 54px;
-  padding: 9px 12px;
+  padding: 10px 13px;
   resize: vertical;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
   width: 100%;
+}
+
+.composer textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.composer textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+  outline: none;
 }
 
 .composerInputWrap {
@@ -382,8 +399,8 @@
 }
 
 .segmented button.active {
-  background: #2a5f86;
-  color: #f2f7fb;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 /* chat 模式的 active 按钮用不同色区分 */
@@ -393,25 +410,31 @@
 }
 
 .composer.autoMode .segmented button.active {
-  background: #2e7bb8;
-  color: #f2f7fb;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 .composerBar select,
 .composerBar > button {
-  background: #1e252b;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #eef2f4;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   min-height: 34px;
   padding: 0 10px;
 }
 
 .composerBar > button {
   align-items: center;
-  background: #2e7bb8;
-  border-color: #2e7bb8;
+  background: var(--accent);
+  border-color: var(--accent);
   display: inline-flex;
   gap: 7px;
   font-weight: 720;
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+
+.composerBar > button:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }

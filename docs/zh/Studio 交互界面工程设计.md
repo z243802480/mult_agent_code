@@ -40,6 +40,7 @@ Studio = Runtime 证据的本地客户端（ADR-0015），不是第二个 Runtim
 | 服务端 | 纯 Node `http`（无框架），`studio/server.mjs` |
 | 传输 | SSE 主推 + 轮询回退 |
 | 持久化 | 无独立 DB；一切以 `.asteria/` 文件证据为真源 |
+| 设计系统 | `styles/tokens.css` 单一真源（调色板/间距/圆角/字阶/阴影/焦点/滚动条/焦点环）；组件**消费 token，禁止硬编码颜色**——产品级一致性的前提 |
 
 仓库布局（`studio/`）：
 
