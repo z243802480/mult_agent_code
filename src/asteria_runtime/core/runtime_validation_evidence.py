@@ -111,7 +111,11 @@ def record_runtime_validation_matrix_evidence(
         mcp_servers=[{"name": "runtime_matrix", "tools": ["echo"]}],
         allow_shell=True,
     )
-    JsonStore(validator).write(run_dir / "agent_loop_dispatch.json", dispatch, schema_name=None)
+    # agent_loop_dispatch is also written raw by plan/run; no JSON-schema contract exists for
+    # it yet, so this validation-evidence seeding writes it as an explicit unvalidated object.
+    JsonStore(validator).write(
+        run_dir / "agent_loop_dispatch.json", dispatch, allow_unvalidated=True
+    )
     SkillAdapter({"documents": RuntimeMatrixSkill()}, actor="RuntimeValidationEvidence").invoke(
         context=context,
         task=tasks[1],
@@ -174,10 +178,11 @@ def record_runtime_validation_matrix_evidence(
             str(production_gray.evidence_path),
         ],
     }
+    # Validation-matrix evidence summary has no JSON-schema contract; explicit opt-out.
     JsonStore(validator).write(
         run_dir / "runtime_validation_matrix_evidence.json",
         summary,
-        schema_name=None,
+        allow_unvalidated=True,
     )
     return summary
 

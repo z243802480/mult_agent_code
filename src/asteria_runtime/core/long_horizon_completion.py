@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.north_star import NorthStarStore
-from asteria_runtime.core.slice_completion_judge import apply_model_judge, run_slice_completion_judge
+from asteria_runtime.core.slice_completion_judge import (
+    apply_model_judge,
+    run_slice_completion_judge,
+)
 from asteria_runtime.models.base import ModelClient
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -134,9 +137,7 @@ def evaluate_slice_completion(
     elif not review_pass:
         summary = f"本 slice 未达成：评审状态为 {review_status}。"
     elif min_review_score is not None and not review_score_pass:
-        summary = (
-            f"本 slice 未达成：评审分数 {review_score} 低于阈值 {min_review_score}。"
-        )
+        summary = f"本 slice 未达成：评审分数 {review_score} 低于阈值 {min_review_score}。"
     elif policy["requires_all_tasks_done"] and not tasks_done:
         summary = "本 slice 未达成：仍有未完成任务。"
     else:
@@ -171,7 +172,9 @@ def persist_slice_completion_eval(
     validator: SchemaValidator,
 ) -> Path:
     path = run_dir / SLICE_COMPLETION_EVAL_FILENAME
-    JsonStore(validator).write(path, evaluation, schema_name=None)
+    # No schema contract for the slice-completion eval (HIDE_NOT_DELETE north-star feature);
+    # explicit opt-out keeps the skip auditable.
+    JsonStore(validator).write(path, evaluation, allow_unvalidated=True)
     return path
 
 

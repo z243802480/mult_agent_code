@@ -83,7 +83,9 @@ def budget_hard_stop_reached(
 def persist_loop_state(root: Path, payload: dict[str, Any], validator: SchemaValidator) -> Path:
     path = loop_state_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
-    JsonStore(validator).write(path, payload, schema_name=None)
+    # No schema contract for the supervised-loop state object (HIDE_NOT_DELETE feature);
+    # explicit opt-out keeps the skip auditable rather than silent.
+    JsonStore(validator).write(path, payload, allow_unvalidated=True)
     return path
 
 
@@ -106,7 +108,8 @@ def write_slice_evidence(
         "supervised_loop_evidence": True,
     }
     path = run_dir / SUPERVISED_LOOP_EVIDENCE_FILE
-    JsonStore(validator).write(path, payload, schema_name=None)
+    # No schema contract for this evidence object (HIDE_NOT_DELETE feature); explicit opt-out.
+    JsonStore(validator).write(path, payload, allow_unvalidated=True)
     return path
 
 

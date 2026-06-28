@@ -316,12 +316,15 @@ def run_design_intel_research_band(
         "plan_research_type": plan_research_type,
         "research_profile_dispatched": research_profile_dispatched,
         "profile_research_evidence": "design_intel_research_band",
-        "summary": "Design Intel research bridge passed." if ok else "Design Intel research bridge blocked.",
+        "summary": "Design Intel research bridge passed."
+        if ok
+        else "Design Intel research bridge blocked.",
     }
+    # Design-intel research evidence has no JSON-schema contract; explicit opt-out.
     JsonStore(validator).write(
         run_dir / DESIGN_INTEL_RESEARCH_EVIDENCE_FILE,
         evidence,
-        schema_name=None,
+        allow_unvalidated=True,
     )
     return DesignIntelResearchBandResult(
         ok=ok,

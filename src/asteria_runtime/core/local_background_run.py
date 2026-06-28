@@ -229,11 +229,14 @@ def _write_run_background_evidence(
         "recorded_at": now_iso(),
     }
     path = run_dir / BACKGROUND_RUN_EVIDENCE_FILE
-    JsonStore(validator).write(path, payload, schema_name=None)
+    # No schema contract for the background-run evidence object; explicit opt-out.
+    JsonStore(validator).write(path, payload, allow_unvalidated=True)
     return path
 
 
-def background_run_projection(root: Path, validator: SchemaValidator | None = None) -> dict[str, Any]:
+def background_run_projection(
+    root: Path, validator: SchemaValidator | None = None
+) -> dict[str, Any]:
     registry = BackgroundRunRegistry(root, validator)
     data = registry.refresh_statuses()
     runs = [item for item in (data.get("runs") or []) if isinstance(item, dict)]
@@ -245,7 +248,9 @@ def background_run_projection(root: Path, validator: SchemaValidator | None = No
         "cloud_vm": False,
         "running_count": len(running),
         "total_count": len(runs),
-        "badge_status": "running" if running else ("idle" if not runs else str(latest.get("status") or "idle")),
+        "badge_status": "running"
+        if running
+        else ("idle" if not runs else str(latest.get("status") or "idle")),
         "badge_summary": (
             f"{len(running)} local background run(s) active."
             if running
