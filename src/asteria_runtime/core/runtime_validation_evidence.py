@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from asteria_runtime.core.agent_loop_executor import (
@@ -12,7 +13,6 @@ from asteria_runtime.core.agent_loop_decision import persist_agent_loop_decision
 from asteria_runtime.core.mcp_adapter import McpAdapter
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.skill_adapter import SkillAdapter
-from asteria_runtime.core.swarm_production_gray import run_production_gray_band
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 from asteria_runtime.utils.time import now_iso
@@ -151,7 +151,12 @@ def record_runtime_validation_matrix_evidence(
         ],
     )
     _record_swarm_matrix_probe_evidence(run_dir=run_dir, run_id=run_id, validator=validator)
-    production_gray = run_production_gray_band(root, validator)
+    # Swarm production-gray band is frozen/removed; report disabled evidence.
+    production_gray = SimpleNamespace(
+        ok=False,
+        execute=SimpleNamespace(run_id=""),
+        evidence_path=run_dir / "production_gray_band_disabled.json",
+    )
     summary = {
         "schema_version": "0.1.0",
         "run_id": run_id,

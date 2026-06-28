@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from asteria_runtime.core.disjoint_write_gate import DisjointWriteGate
 from asteria_runtime.core.task_contract import parallel_safety
 
 
@@ -16,7 +15,6 @@ class ReadySelection:
 class TaskGraphScheduler:
     def __init__(self, tasks: list[dict]) -> None:
         self.tasks = tasks
-        self.disjoint_write_gate = DisjointWriteGate()
 
     def ready_nodes(self) -> list[dict]:
         done = {task["task_id"] for task in self.tasks if task.get("status") == "done"}
@@ -52,30 +50,6 @@ class TaskGraphScheduler:
         )
 
     def select_parallel_safe_batch(self, max_tasks: int) -> ReadySelection:
-        selected: list[dict] = []
-        blocked: list[dict] = []
-        for task in self.ready_nodes():
-            if len(selected) >= max_tasks:
-                break
-            safety = parallel_safety(task)
-            if safety == "readonly":
-                selected.append(task)
-                continue
-            write_batch = [
-                existing for existing in selected if parallel_safety(existing) == "disjoint_writes"
-            ]
-            if (
-                safety == "disjoint_writes"
-                and self.disjoint_write_gate.allows([*write_batch, task])
-            ):
-                selected.append(task)
-                continue
-            blocked.append(task)
-        return ReadySelection(
-            selected=selected,
-            blocked=blocked,
-            reason="parallel_safe_batch_selection",
-        )
-
-    def has_write_conflict(self, left: dict, right: dict) -> bool:
-        return self.disjoint_write_gate.has_write_conflict(left, right)
+        # Parallel disjoint writes are frozen (opt-in removed); fall back to the
+        # default readonly batch so the only parallelism is readonly fanout.
+        return self.select_readonly_batch(max_tasks)

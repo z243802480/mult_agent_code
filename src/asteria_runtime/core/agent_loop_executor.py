@@ -8,7 +8,6 @@ from asteria_runtime.core.agent_loop_decision import (
     validate_agent_loop_decision,
 )
 from asteria_runtime.core.subagent_planner import persist_subagent_child_plan
-from asteria_runtime.core.swarm_orchestrator import persist_swarm_execution_plan
 from asteria_runtime.core.worker import WorkerCost, WorkerInvocation, WorkerResult
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -119,12 +118,6 @@ def persist_subagent_child_plan_for_execution(
             validator,
             worker_id=str(execution_result.get("worker_invocation_id") or ""),
             child_plan_id=str(plan.get("subagent_child_plan_id") or ""),
-        )
-        persist_swarm_execution_plan(
-            run_dir=run_dir,
-            validator=validator,
-            child_plan=plan,
-            policy=policy,
         )
     return plan
 

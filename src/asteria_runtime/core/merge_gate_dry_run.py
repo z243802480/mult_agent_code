@@ -3,10 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from asteria_runtime.core.disjoint_write_gate import DisjointWriteGate
 from asteria_runtime.core.merge_gate import MergeGate
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.task_contract import parallel_safety
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
@@ -157,17 +155,16 @@ class MergeGateDryRunner:
 
 
 def _disjoint_write_gate_result(tasks: list[dict]) -> dict[str, Any]:
-    if len(tasks) <= 1 and not any(parallel_safety(task) == "disjoint_writes" for task in tasks):
-        task_id = str(tasks[0].get("task_id") or "unknown") if tasks else "unknown"
-        return {
-            "ok": True,
-            "allowed_task_ids": [task_id] if tasks else [],
-            "blocked_task_ids": [],
-            "violations": [],
-            "skipped": True,
-            "reason": "Single serial worker; disjoint write gate not required.",
-        }
-    return DisjointWriteGate().evaluate(tasks).to_dict()
+    # Disjoint parallel writes are frozen; the only worker concurrency is readonly
+    # fanout, so the dry-run gate is always skipped as not required.
+    return {
+        "ok": True,
+        "allowed_task_ids": [str(task.get("task_id") or "unknown") for task in tasks],
+        "blocked_task_ids": [],
+        "violations": [],
+        "skipped": True,
+        "reason": "Disjoint write gate disabled; only readonly fanout is supported.",
+    }
 
 
 def _cross_task_file_conflicts(task_results: list[dict[str, Any]]) -> list[str]:

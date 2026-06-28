@@ -46,29 +46,6 @@ def test_catalog_guidance_cc_spawn_policy(tmp_path: Path) -> None:
     assert spawn.available is False
 
 
-def test_catalog_gray_enables_spawn_parallel_workers(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    validator = SchemaValidator(Path.cwd() / "schemas")
-    catalog = build_runtime_orchestration_catalog(tmp_path, validator=validator)
-    spawn = catalog.get("spawn_parallel_workers")
-    assert spawn is not None
-    assert spawn.available is False
-
-    from asteria_runtime.core.orchestration_parallel_gray import (
-        set_spawn_parallel_workers_catalog_gray,
-    )
-
-    set_spawn_parallel_workers_catalog_gray(
-        agent_dir=tmp_path / ".asteria",
-        validator=validator,
-        enabled=True,
-    )
-    catalog = build_runtime_orchestration_catalog(tmp_path, validator=validator)
-    spawn = catalog.get("spawn_parallel_workers")
-    assert spawn is not None
-    assert spawn.available is True
-
-
 def test_warm_workspace_prefers_session_continue_capability(tmp_path: Path) -> None:
     InitCommand(tmp_path).run()
     validator = SchemaValidator(SCHEMA_DIR)

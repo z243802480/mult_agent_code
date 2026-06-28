@@ -104,8 +104,6 @@ def test_runtime_validation_matrix_covers_fixed_real_task_cases(tmp_path: Path) 
         "profile_multi_agent",
         "permission_reason",
         "runtime_progress",
-        "swarm_disjoint_evidence",
-        "dual_disjoint_files",
     ):
         assert by_id[case_id]["ok"] is True, case_id
 
