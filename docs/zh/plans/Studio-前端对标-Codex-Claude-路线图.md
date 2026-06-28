@@ -32,7 +32,7 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 | --- | --- | --- | --- | --- |
 | 1 | **诚实流式**：删打字机，真实 content_delta 到即渲染 | `ConversationTurn.tsx` | CC 实时 delta | ✅ 已落地 |
 | 2 | 干净终答卡：渲染真实 Runtime 内容，停止编造 Result/Verification/Risk 占位 | `TurnFinal.tsx` | CC 终答卡 | ✅ 已落地 |
-| 3 | 内联折叠工具卡（tool_use↔tool_result，展开进 Inspector） | `LiveStream.tsx` + 新 ToolCallCard | CC/Codex 工具披露 | 排队 |
+| 3 | 内联折叠工具卡（tool_use↔tool_result，默认折叠，原始全量留 Inspector） | `LiveStream.tsx` + `ToolCallCard.tsx` | CC/Codex 工具披露 | ✅ 已落地（live 视图）|
 | 4 | **loop-health 面板**：在 Inspector RunStatusPanel 露出 `loop_quality` SLO（warn/severity/窗口/reason） | `EvidenceExplorer.tsx` | Codex/CC 按需深证据 | ✅ 已落地 |
 | 5 | 工作区 diff 评审作为主线 gate（chip→同 Inspector diff scope，Accept 前只读评审） | `ConversationTurn.tsx` ↔ `DiffReviewPane.tsx` | Codex diff/approve | 排队 |
 | 6 | 跟随相关 turn 的逐事件建议动作 chip（非顶部固定） | `ConversationTurn.tsx` / `RuntimeSnapshot.tsx` | CC 内联建议 | 排队 |

@@ -1,11 +1,12 @@
 import React from "react";
-import { Loader2, Terminal } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
 import { AggregateDiffChip } from "../../components/AggregateDiffChip";
 import { FileChangeChips } from "../../components/FileChangeChips";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
+import { ToolCallCard } from "./ToolCallCard";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 
 const PHASE_LABELS: Record<string, string> = {
@@ -60,11 +61,6 @@ export function LiveStream({
   const toolSteps = steps.filter((step) => step.kind === "tool" || step.kind === "repair");
   const fileChanges = extractFileChangesFromSteps(steps);
   const fileStats = aggregateFileChangeStats(fileChanges);
-  const toolOutputs = showToolStreams
-    ? toolSteps
-      .flatMap((step) => step.events.map((event) => ({ id: step.id, text: event.content_delta, cmd: event.command })))
-      .filter((output) => output.text)
-    : [];
   const permEvent = steps
     .flatMap((step) => step.events)
     .find((event) => event.type === "permission_request" && event.status === "waiting_user" && event.job_id);
@@ -80,31 +76,9 @@ export function LiveStream({
       </div>
 
       {toolSteps.length > 0 && (
-        <div className="liveToolRow">
-          {toolSteps.map((step) => {
-            const cmd = step.events[0]?.command;
-            const cmdStr = Array.isArray(cmd) ? cmd.slice(0, 4).join(" ") : "";
-            const label = step.title || (cmdStr ? cmdStr.slice(0, 48) : step.label);
-            return (
-              <span key={step.id} className={`liveToolChip ${step.status}`} title={cmdStr || undefined}>
-                <Terminal size={10} />
-                {label}
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      {showToolStreams && toolOutputs.length > 0 && (
-        <div className="liveToolOutputs">
-          {toolOutputs.map((output, index) => (
-            <ClampedOutput
-              key={index}
-              text={String(output.text ?? "")}
-              className="liveToolOutput"
-              maxLines={8}
-              defaultExpanded={expandOutput}
-            />
+        <div className="liveToolCards">
+          {toolSteps.map((step) => (
+            <ToolCallCard key={step.id} step={step} showOutput={showToolStreams} />
           ))}
         </div>
       )}

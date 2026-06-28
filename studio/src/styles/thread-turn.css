@@ -420,6 +420,78 @@
   word-break: break-all;
 }
 
+/* Inline collapsible tool cards (slice #3 — Codex/CC tool_use<->tool_result disclosure) */
+.liveToolCards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolCard {
+  border: 1px solid #16314a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.toolCard.failed { border-color: #5a2020; }
+.toolCard.completed { border-color: #1e4a2e; }
+.toolCard.waiting_user { border-color: #4a3a70; }
+.toolCard.running { border-color: #2a5070; }
+
+.toolCardHeader {
+  align-items: center;
+  background: #0c161d;
+  border: none;
+  color: #7ab8d8;
+  cursor: pointer;
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+  padding: 5px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.toolCardHeader[data-static="true"] { cursor: default; }
+.toolCardHeader:hover:not([data-static="true"]) { background: #102230; }
+
+.toolCardChevronSpacer {
+  display: inline-block;
+  width: 12px;
+}
+
+.toolCardLabel {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolCardStatus {
+  color: #5a7484;
+  flex-shrink: 0;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.toolCardStatus.completed { color: #6ec882; }
+.toolCardStatus.failed { color: #f87878; }
+.toolCardStatus.waiting_user { color: #c4a8ff; }
+.toolCard.running .toolCardStatus { color: #7ab8d8; }
+
+.toolCardOutput.clampedOutput pre {
+  background: #080d10;
+  border-top: 1px solid #122230;
+  color: #8abcca;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 5px 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .liveModelText.clampedOutput pre {
   border-top: 1px solid #1a2a38;
   color: #c0cdd6;
