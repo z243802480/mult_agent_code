@@ -10,7 +10,7 @@
 .goalBubble {
   background: #1b3a45;
   border: 1px solid #2a5566;
-  border-radius: 12px 12px 2px 12px;
+  border-radius: var(--radius-lg) var(--radius-lg) 2px var(--radius-lg);
   padding: 8px 12px;
 }
 
@@ -39,7 +39,7 @@
 }
 
 .reportBody {
-  border-top: 1px solid #273039;
+  border-top: 1px solid var(--border-subtle);
   display: grid;
   gap: 10px;
   padding: 12px 14px 0 50px;
@@ -47,7 +47,7 @@
 
 .reportBody p,
 .reportBody li {
-  color: #c0c8ce;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.5;
   margin: 0;
@@ -55,25 +55,25 @@
 
 .reportLead,
 .reportSection {
-  background: #111518;
-  border: 1px solid #2c353d;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: grid;
   gap: 7px;
   padding: 10px;
 }
 
 .reportSection.outcome {
-  border-color: #2f6b4d;
+  border-color: var(--ok);
 }
 
 .reportSection.next {
-  border-color: #36647d;
+  border-color: var(--accent);
 }
 
 .reportLead span,
 .reportSection span {
-  color: #8f9ba5;
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 780;
   text-transform: uppercase;
@@ -89,14 +89,14 @@
 
 .emptyThread {
   align-items: center;
-  color: #9aa6af;
+  color: var(--text-secondary);
   justify-content: center;
   padding-top: 12vh;
   text-align: center;
 }
 
 .emptyThread h2 {
-  color: #eef2f4;
+  color: var(--text-primary);
   font-size: 18px;
   font-weight: 650;
   margin: 0 0 6px;
@@ -117,23 +117,23 @@
 }
 
 .emptyThread .examplePrompts button {
-  background: #171b1f;
-  border: 1px solid #303a42;
-  border-radius: 999px;
-  color: #c8d0d6;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   font-size: 12px;
   padding: 6px 12px;
 }
 
 .emptyThread .examplePrompts button:hover {
-  background: #1e2830;
-  border-color: #3a4a56;
-  color: #eef2f4;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .emptyPanel {
-  border: 1px solid #2d363e;
-  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: grid;
   gap: 10px;
   max-width: 520px;
@@ -141,7 +141,7 @@
 }
 
 .emptyPanel h2 {
-  color: #eef2f4;
+  color: var(--text-primary);
   font-size: 20px;
 }
 
@@ -151,17 +151,17 @@
 }
 
 .eventCard {
-  background: #171b1f;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #eef2f4;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: grid;
   grid-template-columns: 92px minmax(0, 1fr);
   max-width: 920px;
 }
 
 .eventCard.compact {
-  background: #111518;
+  background: var(--surface-1);
   grid-template-columns: 60px minmax(0, 1fr);
   max-width: none;
 }
@@ -198,25 +198,25 @@
 }
 
 .eventCard.model_delta {
-  border-color: #36647d;
+  border-color: var(--accent);
 }
 
 .eventCard.selected {
-  border-color: #66a9e8;
+  border-color: var(--accent);
 }
 
 .eventCard.running {
-  border-color: #8a7135;
+  border-color: var(--warn);
 }
 
 .eventCard.failed,
 .eventCard.error {
-  border-color: #8b403a;
+  border-color: var(--bad);
 }
 
 .phaseRail {
-  border-right: 1px solid #2b343b;
-  color: #87939d;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 760;
   padding: 14px 10px;
@@ -248,25 +248,25 @@
 
 .eventIcon {
   align-items: center;
-  color: #a4adb5;
+  color: var(--text-secondary);
   display: inline-flex;
 }
 
 .status {
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 11px;
   padding: 4px 7px;
 }
 
 .status.completed {
-  background: #173724;
-  color: #a8e7c0;
+  background: var(--ok-subtle);
+  color: var(--ok);
 }
 
 .status.running,
 .status.queued {
-  background: #3d321d;
-  color: #f0cf8a;
+  background: var(--warn-subtle);
+  color: var(--warn);
 }
 
 .status.waiting_user {
@@ -275,24 +275,24 @@
 }
 
 .status.failed {
-  background: #3d211f;
-  color: #ffb9b1;
+  background: var(--bad-subtle);
+  color: var(--bad);
 }
 
 .status.blocked {
-  background: #3d211f;
-  color: #ffb9b1;
+  background: var(--bad-subtle);
+  color: var(--bad);
 }
 
 .eventSummary {
-  color: #c0c8ce;
+  color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
 }
 
 .eventFacts {
-  color: #87939d;
+  color: var(--text-secondary);
   display: flex;
   flex-wrap: wrap;
   font-size: 12px;
@@ -300,15 +300,15 @@
 }
 
 .eventFacts span {
-  background: #20272d;
-  border-radius: 999px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
   padding: 4px 7px;
 }
 
 .deltaText,
 .messageText,
 .commandLine {
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   display: block;
   font-size: 13px;
   line-height: 1.5;
@@ -319,8 +319,8 @@
 }
 
 .deltaText {
-  background: #0e1012;
-  color: #d9dee2;
+  background: var(--surface-0);
+  color: var(--text-primary);
 }
 
 .messageText {
@@ -329,14 +329,14 @@
 }
 
 .commandLine {
-  background: #0e1012;
-  color: #a8e7c0;
+  background: var(--surface-0);
+  color: var(--ok);
 }
 
 .foldButton {
   align-items: center;
   background: transparent;
   border: 0;
-  color: #a4adb5;
+  color: var(--text-secondary);
   display: inline-flex;
 }

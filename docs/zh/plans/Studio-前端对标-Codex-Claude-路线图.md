@@ -39,6 +39,27 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 | 7 | 校验结果矩阵（结构化 pass/fail，替换 `<pre>` dump） | `EvidenceExplorer.tsx` | 信任可扫读 | 排队 |
 | 8 | Runtime 背书的 approve/accept gate（提升权限预览保真，绝不伪造完成） | `RuntimeSnapshot.tsx` / `PermissionCard.tsx` | Codex approve | 排队 |
 
+## 设计系统对标轨（产品级一致性 · 用户 2026-06-28 friction：「前端跟产品级对标差很远」）
+
+功能 slice（上表 1–8）让主线**诚实**；但产品级观感的真正短板是**设计不一致**：组件绕过
+`tokens.css` 硬编码颜色（accent 蓝出现过 5 种）、圆角漂移、间距局促——这才是「不像成熟产品」。
+故新增一条与功能 slice 并行的**设计系统轨**：把 `styles/tokens.css` 做成被真正消费的单一真源，
+再把所有表面迁移上来。原则：**组件消费 token，禁止硬编码颜色**（见 [工程设计](../Studio%20交互界面工程设计.md) §2）。
+
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| DS-0 | tokens v2 基线：accent 单链 + surface 阶梯 + 间距/字阶/圆角/阴影 + 全局焦点环/滚动条/选区 | ✅ 已落地（`a76ad4a`）|
+| DS-1 | 高频表面迁移：thread-turn / composer / sidebar / components | ✅ 已落地（`a76ad4a`）|
+| DS-2 | 剩余表面迁移（消除全部漂移）：thread-shell / thread-narrative / layout / session-list / side-chat / shell / inspector-panel / inspector-evidence / inspector-diff / inspector-diff-review | 进行中 |
+| DS-3 | 深度打磨（择一表面做到 Codex 级）：会话线排版/节奏/留白/过渡 | 排队 |
+
+迁移规则（每个表面照此，**不改布局/行为/选择器**，仅把颜色/圆角值换 token）：
+- 背景：最深→`--surface-0`；面板→`--surface-1`；卡片/输入→`--surface-2`；抬升/hover→`--surface-3`
+- 边框：`--border-subtle`/`--border-strong`；文本：`--text-primary/secondary/muted`
+- accent（任何作主色/选中/active 的蓝）→`--accent` 系；状态绿/黄/红→`--ok`/`--warn`/`--bad`(+`-subtle`)
+- 圆角 6→sm、7–9→md、12–14→lg、999→pill
+- 语义独色（如 permission 紫）暂留色相，但邻近中性也 token 化，并登记为"待补语义 token"
+
 ## 冻结合规
 
 active 集（1–8）全部是**去噪/删重构 + 扩既有 Inspector 面板**，不是独立新功能 Slice，故不触 freeze；

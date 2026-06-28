@@ -1,7 +1,7 @@
 .gitChangesPanel {
-  background: #14181b;
-  border: 1px solid #2d343b;
-  border-radius: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -21,7 +21,7 @@
 
 .gitBranchLine {
   align-items: center;
-  color: #b8c4ce;
+  color: var(--text-secondary);
   display: flex;
   font-size: 12px;
   gap: 6px;
@@ -37,10 +37,10 @@
 
 .gitChangeRow {
   align-items: center;
-  background: #101214;
-  border: 1px solid #2a3138;
-  border-radius: 6px;
-  color: #eef2f4;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   display: flex;
   gap: 8px;
   padding: 6px 8px;
@@ -50,8 +50,8 @@
 
 .gitChangeRow.active,
 .gitChangeRow:hover {
-  background: #283139;
-  border-color: #3f4d57;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .gitChangeBadge {
@@ -63,10 +63,10 @@
   text-align: center;
 }
 
-.gitChangeBadge.status-modified { color: #f0c674; }
-.gitChangeBadge.status-added { color: #8fd19e; }
-.gitChangeBadge.status-deleted { color: #ff9aa8; }
-.gitChangeBadge.status-untracked { color: #9db4ff; }
+.gitChangeBadge.status-modified { color: var(--warn); }
+.gitChangeBadge.status-added { color: var(--ok); }
+.gitChangeBadge.status-deleted { color: var(--bad); }
+.gitChangeBadge.status-untracked { color: var(--accent); }
 
 .gitChangePath {
   overflow: hidden;
@@ -82,10 +82,10 @@
 
 .diffScopeTab {
   align-items: center;
-  background: #1b2228;
-  border: 1px solid #2d343b;
-  border-radius: 999px;
-  color: #9aa8b3;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -94,18 +94,18 @@
 }
 
 .diffScopeTab.active {
-  background: #1a2a22;
-  border-color: #3f8762;
-  color: #d7f2e0;
+  background: var(--ok-subtle);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .diffScopeCount {
-  color: #7d8b96;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
 .diffScopeHint {
-  color: #8a98a3;
+  color: var(--text-muted);
   font-size: 11px;
   margin: 0;
 }
@@ -118,16 +118,16 @@
 }
 
 .diffPreview {
-  border: 1px solid #243038;
-  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   margin-top: 8px;
   overflow: hidden;
 }
 
 .diffPreviewPath {
-  background: #1a2228;
-  border-bottom: 1px solid #243038;
-  color: #9aa8b3;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 11px;
   padding: 6px 10px;
 }
@@ -146,18 +146,18 @@
 }
 
 .diffGutter {
-  color: #5f6d78;
+  color: var(--text-muted);
   padding: 0 6px;
   text-align: right;
   user-select: none;
 }
 
 .diffGutter.old {
-  border-right: 1px solid #1e262d;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .diffGutter.new {
-  border-right: 1px solid #1e262d;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .diffLineText {
@@ -168,24 +168,24 @@
 }
 
 .diffPreviewRow.kind-add {
-  background: rgba(46, 160, 67, 0.12);
+  background: var(--ok-subtle);
 }
 
 .diffPreviewRow.kind-add .diffLineText {
-  color: #8fd19e;
+  color: var(--ok);
 }
 
 .diffPreviewRow.kind-del {
-  background: rgba(248, 81, 73, 0.12);
+  background: var(--bad-subtle);
 }
 
 .diffPreviewRow.kind-del .diffLineText {
-  color: #ff9aa8;
+  color: var(--bad);
 }
 
 .diffPreviewRow.kind-hunk {
-  background: #1a2430;
-  color: #7eb8ff;
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 .diffPreviewRow.kind-hunk .diffGutter,
@@ -194,12 +194,12 @@
 }
 
 .diffPreviewRow.kind-meta .diffLineText {
-  color: #7d8b96;
+  color: var(--text-muted);
 }
 
 .diffPreviewTruncated,
 .diffPreviewError {
-  color: #9aa8b3;
+  color: var(--text-secondary);
   font-size: 11px;
   margin: 8px 10px;
 }
@@ -208,10 +208,10 @@
 .secondaryButton,
 .iconButton {
   align-items: center;
-  background: #283139;
-  border: 1px solid #3f4d57;
-  border-radius: 8px;
-  color: #eef2f4;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: inline-flex;
   gap: 6px;
   min-height: 36px;
@@ -219,8 +219,8 @@
 }
 
 .primaryButton {
-  background: #2f6b4d;
-  border-color: #3f8762;
+  background: var(--ok-subtle);
+  border-color: var(--ok);
 }
 
 .iconButton {
@@ -230,10 +230,10 @@
 
 .aggregateDiffChip {
   align-items: center;
-  background: #15242c;
-  border: 1px solid #2f6b4d;
-  border-radius: 999px;
-  color: #b8e6c8;
+  background: var(--ok-subtle);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius-pill);
+  color: var(--ok);
   display: inline-flex;
   font-size: 11px;
   gap: 6px;
@@ -249,7 +249,7 @@ button.aggregateDiffChip {
 }
 
 .contextPanel {
-  border-top: 1px solid #1e262d;
+  border-top: 1px solid var(--border-subtle);
   margin-top: 8px;
   padding: 8px 12px 12px;
 }
@@ -265,40 +265,40 @@ button.aggregateDiffChip {
 }
 
 .contextPressureBar.health-warn {
-  background: #2a2418;
-  border: 1px solid #7a6230;
-  color: #f0d48a;
+  background: var(--warn-subtle);
+  border: 1px solid var(--warn);
+  color: var(--warn);
 }
 
 .contextPressureBar.health-bad {
-  background: #2a1818;
-  border: 1px solid #7a3030;
-  color: #ffb0b0;
+  background: var(--bad-subtle);
+  border: 1px solid var(--bad);
+  color: var(--bad);
 }
 
 .contextCompactButton,
 .diffActionButton,
 .diffStageTab,
 .diffLayoutTabs button {
-  background: #1b2228;
-  border: 1px solid #2d343b;
-  border-radius: 6px;
-  color: #d7e0e7;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 11px;
   padding: 4px 8px;
 }
 
 .diffActionButton.danger {
-  border-color: #7a3030;
-  color: #ffb0b0;
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .contextPanelToggle {
   align-items: center;
   background: transparent;
   border: none;
-  color: #b8c4ce;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   font-size: 12px;
@@ -317,11 +317,11 @@ button.aggregateDiffChip {
 }
 
 .contextUsageBar.large span.health-warn {
-  background: #d4a017;
+  background: var(--warn);
 }
 
 .contextUsageBar.large span.health-bad {
-  background: #e5534b;
+  background: var(--bad);
 }
 
 .contextBreakdown.full {
@@ -331,10 +331,10 @@ button.aggregateDiffChip {
 
 .contextBreakdownRow {
   align-items: center;
-  background: #14181b;
-  border: 1px solid #243038;
-  border-radius: 8px;
-  color: #c7d2db;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   cursor: pointer;
   display: grid;
   gap: 8px;
@@ -344,7 +344,7 @@ button.aggregateDiffChip {
 }
 
 .contextBreakdownRow.active {
-  border-color: #3f8762;
+  border-color: var(--ok);
 }
 
 .contextBreakdownRow:disabled {
@@ -376,9 +376,9 @@ button.aggregateDiffChip {
 
 .diffStageTab.active,
 .diffLayoutTabs button.active {
-  background: #1a2a22;
-  border-color: #3f8762;
-  color: #d7f2e0;
+  background: var(--ok-subtle);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .diffSplitTable {
@@ -395,14 +395,14 @@ button.aggregateDiffChip {
 }
 
 .diffSplitHeader {
-  background: #1a2228;
-  color: #8a98a3;
+  background: var(--surface-2);
+  color: var(--text-muted);
   font-size: 10px;
   padding: 4px 8px;
 }
 
 .diffSplitCell {
-  border-right: 1px solid #1e262d;
+  border-right: 1px solid var(--border-subtle);
   display: grid;
   grid-template-columns: 42px 1fr;
 }
@@ -415,16 +415,16 @@ button.aggregateDiffChip {
 }
 
 .diffSplitRow.kind-add .diffSplitCell:last-child {
-  background: rgba(46, 160, 67, 0.12);
+  background: var(--ok-subtle);
 }
 
 .diffSplitRow.kind-del .diffSplitCell:first-child {
-  background: rgba(248, 81, 73, 0.12);
+  background: var(--bad-subtle);
 }
 
 .turnFinalDetails {
-  border-top: 1px solid #252d35;
-  color: #8a9aa6;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 12px;
   margin-top: 8px;
   padding-top: 6px;
@@ -451,7 +451,7 @@ button.aggregateDiffChip {
 }
 
 .turnFinalMeta {
-  color: #8a98a3;
+  color: var(--text-muted);
   font-size: 11px;
   margin-left: auto;
 }
@@ -462,9 +462,9 @@ button.aggregateDiffChip {
 }
 
 .markdownCode {
-  background: #10161b;
-  border: 1px solid #243038;
-  border-radius: 8px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   overflow: auto;
   padding: 10px;
 }
@@ -486,19 +486,19 @@ button.aggregateDiffChip {
 }
 
 .sessionLiveDot {
-  background: #6ec8a0;
+  background: var(--ok);
   border-radius: 50%;
-  box-shadow: 0 0 0 2px rgba(110, 200, 160, 0.25);
+  box-shadow: 0 0 0 2px var(--ok-subtle);
   flex-shrink: 0;
   height: 7px;
   width: 7px;
 }
 
 .sessionLiveBadge {
-  background: #1a2a22;
-  border: 1px solid #3f8762;
-  border-radius: 999px;
-  color: #8fd19e;
+  background: var(--ok-subtle);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius-pill);
+  color: var(--ok);
   font-size: 10px;
   font-style: normal;
   padding: 1px 6px;

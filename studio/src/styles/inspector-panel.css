@@ -72,7 +72,7 @@
   align-items: center;
   background: var(--surface-2);
   border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--text-secondary);
   display: inline-flex;
   font-size: 11px;
@@ -82,13 +82,13 @@
 }
 
 .viewModeButton.view-focus {
-  border-color: #2d5e47;
-  color: #a8e7c0;
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .viewModeButton.view-verbose {
-  border-color: #806a34;
-  color: #f0cf8a;
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .view-focus .gitChangesPanel,
@@ -110,9 +110,9 @@
 }
 
 .diffFocusButton.active {
-  background: rgba(45, 94, 71, 0.2);
-  border-color: #2d5e47;
-  color: #a8e7c0;
+  background: var(--ok-subtle);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .appShell.diffFocus.panelOpen .missionPane {
@@ -140,8 +140,8 @@
 }
 
 .opsIntro {
-  background: linear-gradient(180deg, #17202a, #15191d) !important;
-  border-color: #31506b !important;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-1)) !important;
+  border-color: var(--accent-border) !important;
 }
 
 .opsIntro h2,
@@ -152,17 +152,17 @@
 .opsIntro p:not(.eyebrow),
 .debugAgentHeader p,
 .debugAgentNote {
-  color: #9aa6af;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
   margin: 0;
 }
 
 .debugAgentAnswer {
-  background: #101418;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #cdd6dd;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   font-size: 12px;
   line-height: 1.45;
   margin: 0;
@@ -172,7 +172,7 @@
 }
 
 .debugAgentCard {
-  border-color: #3d4d5c !important;
+  border-color: var(--border-strong) !important;
 }
 
 .debugAgentHeader {
@@ -183,10 +183,10 @@
 
 .debugAgentIcon {
   align-items: center;
-  background: #17314a;
-  border: 1px solid #2e7bb8;
-  border-radius: 7px;
-  color: #d9efff;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  color: var(--accent);
   display: inline-flex;
   flex-shrink: 0;
   height: 30px;
@@ -201,17 +201,17 @@
 }
 
 .debugAgentHints button {
-  background: #111820;
-  border: 1px solid #303a42;
-  border-radius: 999px;
-  color: #c8d0d6;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   font-size: 11px;
   padding: 5px 8px;
 }
 
 .debugAgentHints button:hover {
-  border-color: #2e7bb8;
-  color: #eef8ff;
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
 .debugAgentComposer {
@@ -221,10 +221,10 @@
 }
 
 .debugAgentComposer textarea {
-  background: #101417;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #eef2f4;
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   min-height: 56px;
   padding: 9px 10px;
   resize: vertical;
@@ -233,17 +233,17 @@
 .debugAgentComposer button {
   align-items: center;
   align-self: stretch;
-  background: #1e252b;
-  border: 1px solid #313b44;
-  border-radius: 7px;
-  color: #9aa6af;
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   display: inline-flex;
   justify-content: center;
 }
 
 .debugAgentComposer button:hover {
-  background: #244d68;
-  color: #f2f7fb;
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 
 .detail,

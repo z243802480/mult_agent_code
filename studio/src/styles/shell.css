@@ -23,7 +23,7 @@
 }
 
 .paneSplitter::after {
-  background: #30363d;
+  background: var(--border-subtle);
   bottom: 0;
   content: "";
   left: 50%;
@@ -36,7 +36,7 @@
 
 .paneSplitter:hover::after,
 body.paneDragging .paneSplitter::after {
-  background: #4a8fd4;
+  background: var(--accent);
   width: 3px;
 }
 

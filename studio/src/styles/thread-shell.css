@@ -18,9 +18,9 @@
 
 .runtimeSnapshot.compact {
   align-items: center;
-  background: #14181c;
-  border: 1px solid #2a3239;
-  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -30,7 +30,7 @@
 }
 
 .runtimeSnapshot.compact .runtimeSnapshotText {
-  color: #b8c4ce;
+  color: var(--text-secondary);
   flex: 1;
   font-size: 12px;
   line-height: 1.35;
@@ -68,9 +68,9 @@
 }
 
 .runtimeStatus {
-  border: 1px solid #303a42;
-  border-radius: 999px;
-  color: #c8d0d6;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 760;
   padding: 5px 8px;
@@ -78,23 +78,23 @@
 }
 
 .runtimeStatus.good {
-  border-color: #2f6b4d;
-  color: #a8e7c0;
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .runtimeStatus.warn {
-  border-color: #8a7135;
-  color: #f0cf8a;
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .runtimeStatus.bad {
-  border-color: #8b403a;
-  color: #ffb9b1;
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .runtimeNextAction,
 .runtimeWorkerHint {
-  color: #9aa6af;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
@@ -123,7 +123,7 @@
   align-items: center;
   background: #dce9ef;
   border: 1px solid #dce9ef;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: #101417;
   cursor: pointer;
   display: inline-flex;
@@ -146,15 +146,15 @@
 }
 
 .runtimeActionButton.primary {
-  background: #3d7ea6;
-  border-color: #3d7ea6;
-  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
   font-weight: 760;
 }
 
 .runtimeActionButton.primary.accept {
-  background: #3d9a72;
-  border-color: #3d9a72;
+  background: var(--ok);
+  border-color: var(--ok);
 }
 
 .runtimeActionButton.primary:hover {
@@ -163,16 +163,16 @@
 
 .runtimeActionButton:disabled,
 .runtimeActionButton.done {
-  background: #192025;
-  border-color: #303a42;
-  color: #8f9aa3;
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text-muted);
   cursor: default;
 }
 
 .decisionCard {
-  background: #12171b;
-  border: 1px solid #34414a;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   display: grid;
   gap: 9px;
   padding: 10px;
@@ -180,7 +180,7 @@
 
 .decisionHeader {
   align-items: center;
-  color: #eef2f4;
+  color: var(--text-primary);
   display: flex;
   gap: 8px;
 }
@@ -191,7 +191,7 @@
 }
 
 .decisionMeta {
-  color: #91a0aa;
+  color: var(--text-secondary);
   display: flex;
   flex-wrap: wrap;
   font-size: 11px;
@@ -199,7 +199,7 @@
 }
 
 .decisionMeta .decisionHint {
-  color: #c8d4dc;
+  color: var(--text-secondary);
   flex: 1 1 100%;
   line-height: 1.45;
 }
@@ -212,10 +212,10 @@
 
 .decisionOptions button {
   align-items: flex-start;
-  background: #171d22;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #dbe4e9;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   cursor: pointer;
   display: grid;
   gap: 4px;
@@ -225,11 +225,11 @@
 }
 
 .decisionOptions button.recommended {
-  border-color: #5f8349;
+  border-color: var(--ok);
 }
 
 .decisionOptions button:hover:not(:disabled) {
-  background: #1c252b;
+  background: var(--surface-3);
 }
 
 .decisionOptions button:disabled {
@@ -243,7 +243,7 @@
 }
 
 .decisionOptions small {
-  color: #91a0aa;
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -260,9 +260,9 @@
 }
 
 .workerTopologyItem {
-  background: #11161a;
-  border: 1px solid #293139;
-  border-radius: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   color: inherit;
   cursor: pointer;
   display: grid;
@@ -275,8 +275,8 @@
 
 .workerTopologyItem.active,
 .workerTopologyItem:hover {
-  background: #182128;
-  border-color: #3c7ea8;
+  background: var(--surface-3);
+  border-color: var(--accent);
 }
 
 .workerTopologySummary {
@@ -288,15 +288,15 @@
 }
 
 .workerTopologySummary span:first-child {
-  color: #dbe4e9;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 720;
   overflow-wrap: anywhere;
 }
 
 .workerTopologyItem pre {
-  border-top: 1px solid #1f262c;
-  color: #91a0aa;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.35;
   margin: 0;
@@ -316,9 +316,9 @@
 }
 
 .workflowMonitorItem {
-  background: #11161a;
-  border: 1px solid #293139;
-  border-radius: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   color: inherit;
   cursor: pointer;
   display: grid;
@@ -331,8 +331,8 @@
 
 .workflowMonitorItem.active,
 .workflowMonitorItem:hover {
-  background: #182128;
-  border-color: #3c7ea8;
+  background: var(--surface-3);
+  border-color: var(--accent);
 }
 
 .workflowMonitorSummary {
@@ -344,15 +344,15 @@
 }
 
 .workflowMonitorSummary span:first-child {
-  color: #dbe4e9;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 720;
   overflow-wrap: anywhere;
 }
 
 .workflowMonitorItem pre {
-  border-top: 1px solid #1f262c;
-  color: #91a0aa;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.35;
   margin: 0;
@@ -367,22 +367,22 @@
 }
 
 .workerSchedulingBadge {
-  color: #9eb0c4;
+  color: var(--text-secondary);
   font-size: 12px;
   letter-spacing: 0.02em;
 }
 
 .workerSchedulingBadge[data-fake-path="true"] {
-  color: #c4a86a;
+  color: var(--warn);
 }
 
 .workerSchedulingBadge[data-fake-path="false"] {
-  color: #6ab88a;
+  color: var(--ok);
 }
 
 .workerProgressTrack {
-  background: #1a2128;
-  border-radius: 999px;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
   display: flex;
   height: 8px;
   overflow: hidden;
@@ -396,19 +396,19 @@
 }
 
 .workerProgressFill.success {
-  background: #3d8b63;
+  background: var(--ok);
 }
 
 .workerProgressFill.failed {
-  background: #b85c5c;
+  background: var(--bad);
 }
 
 .workerProgressFill.running {
-  background: #3c7ea8;
+  background: var(--accent);
 }
 
 .workerProgressMeta {
-  color: #91a0aa;
+  color: var(--text-secondary);
   display: flex;
   font-size: 11px;
   gap: 10px;
@@ -416,11 +416,11 @@
 }
 
 .workerProgressWarn {
-  color: #d4a15a;
+  color: var(--warn);
 }
 
 .workerProgressList {
-  color: #91a0aa;
+  color: var(--text-secondary);
   display: grid;
   font-size: 11px;
   gap: 4px;
@@ -436,7 +436,7 @@
 }
 
 .workerPromotionHint {
-  color: #c7d2db;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
   margin: 0;
@@ -447,7 +447,7 @@
 }
 
 .promotionPreviewSummary {
-  color: #c7d2db;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
   margin: 0 0 8px;
@@ -459,9 +459,9 @@
 }
 
 .promotionPreviewItem {
-  background: #11161a;
-  border: 1px solid #293139;
-  border-radius: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   color: inherit;
   cursor: pointer;
   display: grid;
@@ -474,8 +474,8 @@
 
 .promotionPreviewItem.active,
 .promotionPreviewItem:hover {
-  background: #182128;
-  border-color: #3c7ea8;
+  background: var(--surface-3);
+  border-color: var(--accent);
 }
 
 .promotionPreviewItemHead {
@@ -488,8 +488,8 @@
 }
 
 .promotionPreviewItem pre {
-  border-top: 1px solid #1f262c;
-  color: #91a0aa;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.35;
   margin: 0;
@@ -499,7 +499,7 @@
 
 .emptyThread {
   align-items: center;
-  color: #9aa6af;
+  color: var(--text-secondary);
   gap: 0;
   justify-content: center;
   text-align: center;
@@ -507,9 +507,9 @@
 
 .narrativeHeader {
   align-items: center;
-  background: #13181c;
-  border: 1px solid #252d34;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: flex;
   gap: 12px;
   justify-content: space-between;
@@ -522,11 +522,11 @@
 }
 
 .narrativeHeader.completed {
-  border-color: #2f6b4d;
+  border-color: var(--ok);
 }
 
 .narrativeHeader.failed {
-  border-color: #8b403a;
+  border-color: var(--bad);
 }
 
 .narrativeHeader h2 {
@@ -536,7 +536,7 @@
 }
 
 .narrativeHeader > div > p {
-  color: #7a8994;
+  color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
   margin: 2px 0 0;
@@ -552,26 +552,26 @@
 
 .narrativeStep,
 .runReport {
-  background: #15191d;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   display: grid;
   max-width: 920px;
 }
 
 .narrativeStep.running {
-  border-color: #806a34;
+  border-color: var(--warn);
 }
 
 .narrativeStep.failed,
 .narrativeStep.error,
 .runReport.failed {
-  border-color: #8b403a;
+  border-color: var(--bad);
 }
 
 .narrativeStep.final,
 .runReport.completed {
-  border-color: #2f6b4d;
+  border-color: var(--ok);
 }
 
 .stepChrome,
@@ -579,7 +579,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  color: #eef2f4;
+  color: var(--text-primary);
   cursor: pointer;
   display: grid;
   gap: 8px;
@@ -592,7 +592,7 @@
 
 .stepChrome small,
 .reportHeader small {
-  color: #8f9ba5;
+  color: var(--text-secondary);
   display: block;
   font-size: 11px;
   overflow: hidden;
@@ -602,9 +602,9 @@
 
 .stepIcon {
   align-items: center;
-  background: #20272d;
-  border-radius: 999px;
-  color: #aeb8bf;
+  background: var(--surface-3);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   display: inline-flex;
   height: 24px;
   justify-content: center;
@@ -626,20 +626,20 @@
 }
 
 .stepInlineFacts span {
-  background: #1e262d;
-  border-radius: 4px;
-  color: #7a8994;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   font-size: 10px;
   padding: 1px 5px;
   white-space: nowrap;
 }
 
 .stepExpanded {
-  border-top: 1px solid #1e272f;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .stepSummaryText {
-  color: #9aa6af;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.4;
   margin: 0;

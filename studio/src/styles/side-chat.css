@@ -13,7 +13,7 @@
 
 .sideChatHeaderButton:hover,
 .sideChatHeaderButton.active {
-  background: var(--surface-raised);
+  background: var(--surface-3);
   border-color: var(--border-strong);
   color: var(--text-primary);
 }
@@ -36,10 +36,10 @@
 }
 
 .sideChatPanel {
-  background: var(--surface-panel, #191f23);
-  border: 1px solid var(--border-subtle, #2c343a);
-  border-radius: var(--radius-md, 10px);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   display: grid;
   grid-template-rows: auto minmax(120px, 1fr) auto;
   max-height: min(420px, calc(100vh - 160px));
@@ -49,7 +49,7 @@
 
 .sideChatHeader {
   align-items: flex-start;
-  border-bottom: 1px solid var(--border-subtle, #2c343a);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   gap: var(--space-2);
   justify-content: space-between;
@@ -80,7 +80,7 @@
 }
 
 .sideChatBubble {
-  border-radius: var(--radius-sm, 8px);
+  border-radius: var(--radius-sm);
   font-size: 13px;
   line-height: 1.45;
   max-width: 100%;
@@ -93,37 +93,37 @@
 }
 
 .sideChatBubble-user {
-  background: #243040;
+  background: var(--accent-subtle);
   justify-self: end;
   max-width: 92%;
 }
 
 .sideChatBubble-assistant,
 .sideChatBubble-pending {
-  background: #171b1f;
-  border: 1px solid var(--border-subtle, #2c343a);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
   justify-self: start;
   max-width: 96%;
 }
 
 .sideChatBubble-error {
-  background: rgba(180, 60, 60, 0.12);
-  border: 1px solid rgba(220, 90, 90, 0.35);
-  color: #f0b0b0;
+  background: var(--bad-subtle);
+  border: 1px solid var(--bad);
+  color: var(--bad);
 }
 
 .sideChatComposer {
-  border-top: 1px solid var(--border-subtle, #2c343a);
+  border-top: 1px solid var(--border-subtle);
   display: grid;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
 .sideChatComposer textarea {
-  background: #121619;
-  border: 1px solid var(--border-subtle, #2c343a);
-  border-radius: var(--radius-sm, 8px);
-  color: var(--text-primary, #d8e2e7);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   font: inherit;
   min-height: 56px;
   padding: 8px 10px;

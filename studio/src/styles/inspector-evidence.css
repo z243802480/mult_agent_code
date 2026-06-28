@@ -1,9 +1,9 @@
 .refList button {
   align-items: center;
-  background: #111820;
-  border: 1px solid #303a42;
-  border-radius: 6px;
-  color: #c8d0d6;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -14,8 +14,8 @@
 }
 
 .refList button:hover {
-  border-color: #2e7bb8;
-  color: #eef8ff;
+  border-color: var(--accent-border);
+  color: var(--text-primary);
 }
 
 .refList button span {
@@ -30,9 +30,9 @@
 }
 
 .inspectorTabList {
-  background: #111518;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   overflow: hidden;
@@ -42,8 +42,8 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-right: 1px solid #303a42;
-  color: #aeb8bf;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   display: flex;
   font-size: 12px;
   gap: 5px;
@@ -58,13 +58,13 @@
 }
 
 .inspectorTabList button.active {
-  background: #244d68;
-  color: #f2f7fb;
+  background: var(--accent-subtle);
+  color: var(--text-primary);
 }
 
 .inspectorTabList span {
-  background: #0e1012;
-  border-radius: 999px;
+  background: var(--surface-0);
+  border-radius: var(--radius-pill);
   font-size: 11px;
   min-width: 18px;
   padding: 2px 5px;
@@ -78,7 +78,7 @@
 }
 
 .keyValueList small {
-  color: #9aa6af;
+  color: var(--text-secondary);
   display: block;
   margin-bottom: 5px;
 }
@@ -96,14 +96,14 @@
 }
 
 .recordList details {
-  background: #111518;
-  border: 1px solid #2c353d;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .recordList summary {
-  color: #d9dee2;
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 12px;
   line-height: 1.35;
@@ -121,9 +121,9 @@
 .refList code,
 .preview pre,
 .detail pre {
-  background: #0e1012;
-  border-radius: 7px;
-  color: #d9dee2;
+  background: var(--surface-0);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: block;
   font-size: 12px;
   line-height: 1.45;
@@ -136,13 +136,13 @@
 .detail small,
 .refList small,
 .routeItem small {
-  color: #9aa6af;
+  color: var(--text-secondary);
   overflow-wrap: anywhere;
 }
 
 .routeItem {
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: grid;
   gap: 4px;
   padding: 9px;
@@ -161,10 +161,10 @@
 .runPicker button,
 .runFiles button {
   align-items: center;
-  background: #20272d;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #eef2f4;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: inline-flex;
   gap: 6px;
   min-height: 30px;
@@ -177,8 +177,8 @@
 }
 
 .runPicker button.active {
-  background: #244d68;
-  border-color: #3c7ea8;
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
 }
 
 .evidenceStats {
@@ -188,15 +188,15 @@
 }
 
 .evidenceBlock {
-  border-top: 1px solid #293139;
+  border-top: 1px solid var(--border-subtle);
   padding-top: 9px;
 }
 
 .evidenceBlock details {
-  background: #111518;
-  border: 1px solid #2c353d;
-  border-radius: 7px;
-  color: #d9dee2;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   font-size: 12px;
   overflow: hidden;
 }
@@ -209,9 +209,9 @@
 }
 
 .evidenceBlock pre {
-  background: #0e1012;
-  border-top: 1px solid #2c353d;
-  color: #d9dee2;
+  background: var(--surface-0);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   font-size: 11px;
   line-height: 1.45;
   margin: 0;
@@ -227,10 +227,10 @@
 }
 
 .evidenceSelectableList button {
-  background: #111518;
-  border: 1px solid #2c353d;
-  border-radius: 7px;
-  color: #d9dee2;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 12px;
   line-height: 1.35;
@@ -241,8 +241,8 @@
 
 .evidenceSelectableList button:hover,
 .evidenceSelectableList button.active {
-  background: #182128;
-  border-color: #3c7ea8;
+  background: var(--surface-3);
+  border-color: var(--accent-border);
 }
 
 .evidenceSelectableList span {
@@ -250,9 +250,9 @@
 }
 
 .evidenceDetailPanel {
-  background: #101418;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: grid;
   gap: 8px;
   padding: 9px;
@@ -266,21 +266,21 @@
 }
 
 .evidenceDetailHeader strong {
-  color: #eef2f4;
+  color: var(--text-primary);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
 
 .evidenceDetailHeader span {
-  border: 1px solid #3a464f;
-  border-radius: 999px;
-  color: #9aa6af;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   font-size: 11px;
   padding: 3px 7px;
 }
 
 .evidenceDetailPanel p {
-  color: #9aa6af;
+  color: var(--text-secondary);
   font-size: 12px;
   margin: 0;
   overflow-wrap: anywhere;
@@ -293,10 +293,10 @@
 
 .contextInspectorRow {
   align-items: center;
-  background: #111820;
-  border: 1px solid #28323a;
-  border-radius: 6px;
-  color: #9aa6af;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   display: grid;
   font-size: 11px;
   gap: 8px;
@@ -305,17 +305,17 @@
 }
 
 .contextInspectorRow strong {
-  color: #d6e0e6;
+  color: var(--text-primary);
   font-weight: 700;
 }
 
 .contextInspectorRow em {
-  color: #6d7c86;
+  color: var(--text-muted);
   font-style: normal;
 }
 
 .runFiles {
-  border-top: 1px solid #293139;
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
@@ -340,10 +340,10 @@
 
 .fileList button {
   align-items: center;
-  background: #20272d;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #eef2f4;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: grid;
   gap: 8px;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -360,8 +360,8 @@
 
 .studioCrash {
   align-items: center;
-  background: #101315;
-  color: #edf3f5;
+  background: var(--surface-0);
+  color: var(--text-primary);
   display: flex;
   min-height: 100vh;
   padding: 24px;
@@ -378,15 +378,15 @@
 }
 
 .studioCrash p {
-  color: #aeb8bd;
+  color: var(--text-secondary);
   margin: 0;
 }
 
 .studioCrash pre {
-  background: #171c20;
-  border: 1px solid #303a42;
-  border-radius: 7px;
-  color: #f6d7d7;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--bad);
   max-height: 45vh;
   overflow: auto;
   padding: 14px;
@@ -394,10 +394,10 @@
 }
 
 .studioCrash button {
-  background: #d8eef3;
+  background: var(--accent);
   border: 0;
-  border-radius: 7px;
-  color: #111719;
+  border-radius: var(--radius-md);
+  color: var(--accent-fg);
   cursor: pointer;
   font-weight: 700;
   justify-self: start;
@@ -435,7 +435,7 @@
   }
 
   .phaseRail {
-    border-bottom: 1px solid #2b343b;
+    border-bottom: 1px solid var(--border-subtle);
     border-right: 0;
     padding: 9px 12px;
   }
@@ -515,7 +515,7 @@
 .workspaceButton {
   background: transparent;
   border: 0;
-  color: #eef2f4;
+  color: var(--text-primary);
   margin-top: auto;
   width: 100%;
 }
@@ -538,9 +538,9 @@
 }
 
 .workspaceModal {
-  background: #181c1f;
-  border: 1px solid #30363d;
-  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
   display: grid;
   gap: 16px;
   max-height: min(80vh, 720px);
@@ -568,9 +568,9 @@
 }
 
 .workspaceCurrent {
-  background: #111518;
-  border: 1px solid #2d343b;
-  border-radius: 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   display: grid;
   gap: 4px;
   padding: 10px 12px;
@@ -592,10 +592,10 @@
 }
 
 .workspacePathRow input {
-  background: #101214;
-  border: 1px solid #30363d;
-  border-radius: 8px;
-  color: #eceff1;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   min-height: 38px;
   padding: 8px 10px;
 }
@@ -606,10 +606,10 @@
 }
 
 .workspaceRecentItem {
-  background: #111518;
-  border: 1px solid #2d343b;
-  border-radius: 8px;
-  color: #eef2f4;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: grid;
   gap: 2px;
   padding: 10px 12px;
@@ -619,27 +619,27 @@
 
 .workspaceRecentItem.active,
 .workspaceRecentItem:hover:not(:disabled) {
-  background: #283139;
-  border-color: #3f4d57;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .workspaceRecentItem small {
-  color: #8f9ba5;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .workspaceError {
-  color: #ff9aa8;
+  color: var(--bad);
   margin: 0;
 }
 
 .workspaceBadge {
-  background: #1f2830;
-  border: 1px solid #33414b;
-  border-radius: 999px;
-  color: #b8c4ce;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   font-size: 11px;
   padding: 2px 8px;
 }
@@ -652,10 +652,10 @@
 
 .workspaceChip {
   align-items: center;
-  background: #1a2026;
-  border: 1px solid #33414b;
-  border-radius: 999px;
-  color: #dce3ea;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
   display: inline-flex;
   font-size: 12px;
   gap: 6px;

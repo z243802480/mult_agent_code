@@ -34,9 +34,9 @@
 .sidebarCollapseButton {
   align-items: center;
   background: transparent;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #8f9ba5;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
   display: inline-flex;
   flex-shrink: 0;
   height: 28px;
@@ -45,8 +45,8 @@
 }
 
 .sidebarCollapseButton:hover {
-  background: #283139;
-  color: #eef2f4;
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
 
 .sidebarRail {
@@ -59,8 +59,8 @@
   align-items: center;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
-  color: #c8d0d6;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   display: inline-flex;
   height: 36px;
   justify-content: center;
@@ -69,9 +69,9 @@
 
 .sidebarRailButton:hover,
 .sidebarRailButton.brandMark:hover {
-  background: #283139;
-  border-color: #364149;
-  color: #eef2f4;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .sidebarRailButton.brandMark {
@@ -97,8 +97,8 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 8px;
-  color: #d7e0e7;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   display: inline-flex;
   font-size: 12px;
   font-weight: 650;
@@ -110,7 +110,7 @@
 
 .sessionRailItem:hover,
 .sessionRailItem.active {
-  background: #283139;
+  background: var(--surface-3);
 }
 
 .sessionLiveDotRail {
@@ -149,7 +149,7 @@
 }
 
 .eyebrow {
-  color: #7d8994;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 780;
   letter-spacing: 0;
@@ -164,7 +164,7 @@ h2 {
 
 .topBar {
   align-items: flex-start;
-  border-bottom: 1px solid #252b30;
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   justify-content: space-between;
   padding: 18px 22px 14px;
@@ -179,7 +179,7 @@ h2 {
 }
 
 .topBar p {
-  color: #9aa6af;
+  color: var(--text-secondary);
   font-size: 12px;
   margin: 6px 0 0;
 }
@@ -192,10 +192,10 @@ h2 {
 
 .topActions .routePill {
   align-items: center;
-  background: #1e252b;
-  border: 1px solid #313b44;
-  border-radius: 999px;
-  color: #c8d0d6;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   display: inline-flex;
   font-size: 12px;
   gap: 6px;
@@ -208,10 +208,10 @@ h2 {
 
 .topActions button {
   align-items: center;
-  background: #1e252b;
-  border: 1px solid #313b44;
-  border-radius: 7px;
-  color: #eef2f4;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
   display: inline-flex;
   height: 34px;
   justify-content: center;
@@ -227,11 +227,11 @@ h2 {
 }
 
 .banner.bad {
-  background: #3d211f;
-  color: #ffb9b1;
+  background: var(--bad-subtle);
+  color: var(--bad);
 }
 
 .banner.good {
-  background: #173726;
-  color: #a8e7c0;
+  background: var(--ok-subtle);
+  color: var(--ok);
 }
