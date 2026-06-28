@@ -440,3 +440,40 @@ def test_openai_compatible_client_budget_denies_before_http_call(tmp_path: Path)
         client.chat(request())
 
     assert transport.calls == []
+
+
+class EmptyContentTransport(FakeTransport):
+    def __init__(self) -> None:
+        super().__init__(
+            HttpResponse(
+                200,
+                {
+                    "model": "test-model",
+                    "choices": [{"message": {"content": "   "}, "finish_reason": "stop"}],
+                    "usage": {},
+                },
+            )
+        )
+
+
+def test_openai_compatible_client_retries_and_raises_on_empty_content(tmp_path: Path) -> None:
+    transport = EmptyContentTransport()
+    client = OpenAICompatibleClient(
+        OpenAICompatibleSettings(
+            api_key="test-key",
+            base_url="https://example.test/v1",
+            model_name="test-model",
+            streaming_enabled=False,
+            max_retries=1,
+        ),
+        transport=transport,
+        logger=ModelCallLogger(tmp_path, SchemaValidator(Path("schemas"))),
+        budget=BudgetController(policy(), run_id="run-empty"),
+    )
+
+    with pytest.raises(OpenAICompatibleProviderError, match="empty response content"):
+        client.chat(request())
+
+    # Empty/whitespace bodies (e.g. a stream that yielded only metadata deltas) are a
+    # retryable provider failure, not a silent success.
+    assert len(transport.calls) == 2

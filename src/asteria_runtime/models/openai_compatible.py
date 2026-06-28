@@ -267,6 +267,11 @@ class OpenAICompatibleClient:
         content = message.get("content")
         if content is None:
             raise OpenAICompatibleProviderError("response did not include message.content")
+        # A streamed response that yields only metadata deltas joins to "" and would
+        # otherwise be accepted silently, then fail confusingly in downstream parsing.
+        # Treat an empty/whitespace body without tool_calls as a retryable provider error.
+        if isinstance(content, str) and not content.strip() and not message.get("tool_calls"):
+            raise OpenAICompatibleProviderError("provider returned empty response content")
         usage = response.body.get("usage") or {}
         return ChatResponse(
             content=content,
@@ -289,7 +294,12 @@ class OpenAICompatibleClient:
         if isinstance(exc, HttpTransportError):
             return True
         message = str(exc)
-        return "429" in message or "timeout" in message.lower() or "HTTP 5" in message
+        return (
+            "429" in message
+            or "timeout" in message.lower()
+            or "HTTP 5" in message
+            or "empty response content" in message
+        )
 
 
 def _env(env_prefix: str, key: str, default: str | None = None) -> str:

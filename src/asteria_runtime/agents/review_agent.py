@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 
 from asteria_runtime.core.agent_role_policy import role_contract_for
@@ -28,7 +29,29 @@ class ReviewAgent:
         )
         response_content: str | None = None
         selected_tier = "strong"
-        for tier in self._fallback_tiers(review_context):
+        review_started = time.monotonic()
+        total_budget = self._fallback_total_budget_seconds(review_context)
+        for index, tier in enumerate(self._fallback_tiers(review_context)):
+            # Each tier is an independent full-deadline provider call; without a total
+            # budget a 3-tier timeout chain (strong->medium->cheap) can dominate the task
+            # budget. Once the cumulative budget is spent, stop and fall back to
+            # deterministic checks instead of chasing more timeouts.
+            if (
+                index > 0
+                and total_budget is not None
+                and time.monotonic() - review_started >= total_budget
+            ):
+                model_call_errors.append(
+                    {
+                        "model_tier": tier,
+                        "error_type": "ReviewFallbackBudgetExceeded",
+                        "summary": (
+                            f"review fallback total budget {total_budget:.0f}s exceeded; "
+                            "skipped remaining tiers"
+                        ),
+                    }
+                )
+                break
             selected_tier = tier
             request = self._request(review_context, run_id, tier, role_contract.to_dict())
             try:
@@ -112,6 +135,16 @@ class ReviewAgent:
         else:
             tiers = ["strong", "medium", "cheap"]
         return [tier for tier in dict.fromkeys(tiers) if tier in {"strong", "medium", "cheap"}]
+
+    def _fallback_total_budget_seconds(self, review_context: dict) -> float | None:
+        # Wall-clock cap across all review fallback tiers. `<= 0` disables the cap;
+        # default keeps review from dominating the task budget under provider timeouts.
+        value = review_context.get("review_fallback_total_seconds")
+        if isinstance(value, bool):
+            return 120.0
+        if isinstance(value, (int, float)):
+            return float(value) if value > 0 else None
+        return 120.0
 
     def _prompt_envelope_metadata(self, review_context: dict) -> dict:
         metadata: dict = {}
