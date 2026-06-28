@@ -1,7 +1,7 @@
 # 编排与 Spawn 决策政策
 
 **版本**：1.0.0  
-**状态**：current — S63 真源  
+**状态**：冻结期架构参考 · 非当前工作（S63）— 编排能力已 opt-in 冻结，删/改编排代码前必读；不是 S74 工作。当前主线见 [`当前状态与路线.md`](../当前状态与路线.md) §4  
 **日期**：2026-06-07  
 **关联**：[CC_ORCHESTRATION_ALIGNMENT.md](./CC_ORCHESTRATION_ALIGNMENT.md) · [RUNTIME_MULTI_DISPATCH_MODEL.md](./RUNTIME_MULTI_DISPATCH_MODEL.md) §8.6 · 代码 [`orchestration_spawn_policy.py`](../../src/asteria_runtime/core/orchestration_spawn_policy.py)
 

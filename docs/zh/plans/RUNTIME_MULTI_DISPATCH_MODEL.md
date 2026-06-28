@@ -1,7 +1,7 @@
 # Runtime 多对多调度模型（Orchestrator · Coordinator · Worker）
 
 **版本**：1.0.0  
-**状态**：current — S61 R0–R5 哲学真源  
+**状态**：冻结期架构参考 · 非当前工作（S61 R0–R5）— 编排能力已 opt-in 冻结，删/改编排代码前必读；不是 S74 工作。当前主线见 [`当前状态与路线.md`](../当前状态与路线.md) §4  
 **日期**：2026-06-07  
 **关联**：[RUNTIME_SESSION_AGENT_RFC.md](./RUNTIME_SESSION_AGENT_RFC.md) · [SWARM_SANDBOX_RFC.md](../deferred/SWARM_SANDBOX_RFC.md) · [大模型循环与动态上下文设计.md](../大模型循环与动态上下文设计.md) §3.1
 

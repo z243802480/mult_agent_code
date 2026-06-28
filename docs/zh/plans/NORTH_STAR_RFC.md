@@ -1,6 +1,6 @@
 # North Star 长目标 RFC
 
-> **状态：已实现**（S12 North Star v1 + Phase 6 S37–S40 Long Horizon）。  
+> **状态：已实现 · 非当前工作**（S12 North Star v1 + Phase 6 S37–S40 Long Horizon）。当前主线见 [`当前状态与路线.md`](../当前状态与路线.md) §4（S74）。  
 > **非阻塞**：观察窗与「禁止写 north_star.json」条款已废止。  
 > **现行框架**：[`LONG_TASK_GOAL_FRAMEWORK.md`](./LONG_TASK_GOAL_FRAMEWORK.md)
 

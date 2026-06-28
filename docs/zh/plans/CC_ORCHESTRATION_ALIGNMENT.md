@@ -1,7 +1,7 @@
 # Claude Code 编排对齐（调研 · 方向）
 
 **版本**：0.1.0  
-**状态**：research-first — 编码前必读  
+**状态**：冻结期架构参考 · 非当前工作 — 编排能力已 opt-in 冻结；只在删/改编排代码时读，不是 S74 工作。当前主线见 [`当前状态与路线.md`](../当前状态与路线.md) §4  
 **日期**：2026-06-07  
 **关联**：[ORCHESTRATION_DECISION_POLICY.md](./ORCHESTRATION_DECISION_POLICY.md) · [`RUNTIME_MULTI_DISPATCH_MODEL.md`](./RUNTIME_MULTI_DISPATCH_MODEL.md) §8 · [`S63-cc-loop-convergence.md`](../../benchmarks/reference_briefs/S63-cc-loop-convergence.md) · 报告 [`S63-spawn-decision-research-20260607.md`](../reports/S63-spawn-decision-research-20260607.md)
 

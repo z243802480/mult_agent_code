@@ -1,6 +1,6 @@
 # Runtime Session Agent RFC
 
-**状态**：accepted — 2026-06-06  
+**状态**：accepted · 非当前工作 — 已落 [ADR-0015 Session Loop 即产品架构](../adr/0015-session-loop-is-product-architecture.md)；当前主线见 [`当前状态与路线.md`](../当前状态与路线.md) §4（S74）  
 **Slice**：S17  
 **相关 ADR**：[0008 Fast Path](../adr/0008-fast-path-tiered-review-and-context-slimming.md)
 

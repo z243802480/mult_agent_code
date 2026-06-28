@@ -1,7 +1,7 @@
 # 长任务目标框架（Long Task Goal Framework）
 
 **版本**：1.0.0  
-**状态**：current — 与 Phase 6–8 实现对齐  
+**状态**：已闭合 · 非当前工作（Phase 6–8 已签字）— 历史框架参考；当前主线见 [`当前状态与路线.md`](../当前状态与路线.md) §4（S74）  
 **日期**：2026-06-06
 
 本文定义 Asteria **长任务 / North Star** 的产品目标与工程映射，对标 Claude Code `/goal`、OpenCode utw、行业「planner / worker / judge」分层，**不复制专有 UI 或实现**。
