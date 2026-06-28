@@ -52,11 +52,11 @@ dist/                # 构建产物（gitignore，按需 build）
 scripts/             # smoke / contract / Playwright 测试
 src/
   features/
-    thread/          # 主会话：ConversationTurn / TurnFinal / LiveStream / ToolCallCard / Thread / RuntimeSnapshot
-    inspector/       # 诊断：EvidenceExplorer / DiffReviewPane / SelectedStepPanel
+    thread/          # 主会话：ConversationTurn / TurnFinal / SuggestedActions / LiveStream / ToolCallCard / Thread / RuntimeSnapshot
+    inspector/       # 诊断：EvidenceExplorer / VerificationMatrix / DiffReviewPane / SelectedStepPanel
     sidebar/         # SessionRail / SessionList（会话与 workspace）
     sidechat/        # SideChatPanel（display_level=side 旁路问答）
-  components/        # 共享 UI：NarrativeStep / PermissionCard / Composer / Clamped/Diff chips
+  components/        # 共享 UI：NarrativeStep / PermissionCard（含 scope_detail 披露）/ Composer / Clamped/Diff chips
   hooks/             # useViewMode / usePaneLayout / useDiffFocus / useStudioKeyboard …
   session/           # 取数与合并：useSessionEvents / useRunEvidence / useStudioBootstrap
   layout/ styles/    # 顶层布局与样式
@@ -120,18 +120,23 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 关键转换文件：
 
 - `narrative.ts` — `toNarrativeEvents()`（折叠流式三段）、`narrativeKind()`（事件 → step 类型：goal/thinking/plan/tool/final…）。
+  - **终答选择（CV-C）**：run 模式收尾会发两个 `transcript_kind=final` 事件——`conclusion`（event_type=`message`，承载模型撰写的复盘 `content_delta`）与 `final_report`（event_type=`final_report`，仅是产物指针）。`narrativeKind()` 把 `runtime_event_type==='final_report'` 降级为流程内 `result` step（标签「Final report」），于是带复盘的 `conclusion` 成为 `ConversationTurn` 渲染的终答（`TurnFinal`）。产物指针属诊断（ADR-0012），artifact_refs 仍进 Inspector。
 - `turnDiff.ts` — `splitIntoTurns()`（回合切分）。
 - `turnHelpers.ts` — `middleRepresentativeEvent()` / `middleSummary()`（折叠回合的代表事件与摘要标签）。
-- `runtimeNarrative.ts` — `runtimeSessionEvents()`：`.asteria/runs/{id}/user_progress.jsonl` → 带 `display_level=main` 的 `StudioEvent[]`。
+- `runtimeNarrative.ts` — `runtimeSessionEvents()`：`.asteria/runs/{id}/user_progress.jsonl` → 带 `display_level=main` 的 `StudioEvent[]`；保留事件真实 `content_delta`（如 CV-C 复盘），仅在无对话文本时回退到 summary 投影。
 
 `StudioEvent` / `NarrativeStep` 的类型定义在 `src/types.ts`，是前端与服务端事件契约的单一形状真源。
+
+### 5.1 模型撰写的对话式复盘（CV-C，后端对偶）
+
+主线读什么取决于 Runtime 发什么。为让终答像「一句话回复」而非状态行，后端 `core/run_recap.py` 在 `run_command.continue_run` 收尾用一次**尽力而为**的模型调用撰写 1–3 句第一人称复盘（上下文 = goal + 状态 + 校验结论 + 改动文件 + loop steps），写入既有 `conclusion` 事件的 `content_delta`。失败或无模型时返回 `""`，回退原结构化 summary，运行链不依赖它。前端不做任何合成——只把这段真实文本原样渲染（ADR-0012）。`run_command.py` 属 DO_NOT_TOUCH（仅 append user_progress），故只**新增**辅助方法、不重构既有发射。
 
 ## 6. 主线 vs Inspector 分层（ADR-0012 / 0015 落到组件）
 
 | 层 | 数据 | 组件 |
 | --- | --- | --- |
-| **主会话**（只 `display_level=main`） | 用户消息、模型思考、工具过程、权限卡、文件变化、终答 | `Thread` · `ConversationTurn` · `TurnFinal` · `LiveStream` · `ChatStreamPreview` · `RuntimeSnapshot` |
-| **Inspector**（全量、诊断） | 原始 JSON、cost、route、worker graph、agent_loop_run_summary、逐步遥测、diff | `EvidenceExplorer` · `SelectedStepPanel` · `DiffReviewPane` |
+| **主会话**（只 `display_level=main`） | 用户消息、模型思考、工具过程、权限卡（含 scope_detail）、文件变化、终答、内联建议 chip | `Thread` · `ConversationTurn` · `TurnFinal` · `SuggestedActions` · `LiveStream` · `ChatStreamPreview` · `RuntimeSnapshot`（diff 评审 gate）|
+| **Inspector**（全量、诊断） | 原始 JSON、cost、route、worker graph、agent_loop_run_summary、校验矩阵、loop_quality、逐步遥测、diff | `EvidenceExplorer` · `VerificationMatrix` · `SelectedStepPanel` · `DiffReviewPane` |
 | **旁路**（`display_level=side`） | 不打断主线的问答 | `SideChatPanel` |
 
 不对称是有意的：主线为用户给**干净叙事**（在 `runtimeNarrative` 过滤），Inspector 为工程师给**全量证据**。两者消费同一套 Runtime 证据，但默认不混进一个主线程。
@@ -142,11 +147,12 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 
 1. **不伪造流式**：模型输出按 `content_delta` 到达即渲染，禁止客户端打字机/人工定时逐字。
    - 现状：`ConversationTurn.tsx` 的 `useSmoothText` 打字机**已删除**（slice #1，commit `80477c5`），`ChatStreamPreview` 直接渲染真实 delta。
-2. **不编造终答**：缺 `final`/`stop` 事件时显示「未记录 / not recorded」，**不得**静默丢节、**不得**用模板把一句话回答硬塞成 Result/Verification/Risk 结构。
-   - 现状：`TurnFinal.tsx` 的 `finalSections` **只在 Runtime 真有 verification/next-step 时**才挂这两节，缺失即不渲染（answer-first，对标 CC/Codex）；终答内容为空时显示「No answer content was recorded」而非编造 `"Done."`。原先的编造占位（`"No verification summary was recorded…"` / `"No immediate next action is required."`）与依赖措辞正则隐藏它们的脆弱过滤已删除（slice #2）。
+2. **不编造终答**：终答只能是 Runtime 真实 transcript 文本。
+   - 现状链路：server **不再**把终答重写成 `final_report.md` 诊断报告（CV-A，三处 clobber 已删）；`TurnFinal.tsx` 渲染 lead 散文 + 把结构化尾部折叠进默认收起的「运行详情」disclosure（CV-B），缺文本时给诚实短句而非编造 `"Done."`；终答的对话语气由后端**模型撰写**的复盘提供（CV-C，见 §5.1），前端原样显示、零合成。slice #2 的 `finalSections`/Result/Verification/Risk 脚手架已删除。
 3. **不重建叙事**：`task_plan.json` / `runtime_progress.todo.counts` 已进 payload 很诱人，但据其在前端渲染清单 = 复活被否决的 WorkflowPhaseStrip，**禁止**。要展示计划只能源自 `transcript_kind=plan` 的 main 事件。
-4. **不前端推断权限/完成**：文件范围以 `permission_preview.scope_detail` 为准、不靠关键词猜；Accept 只走 runtime_policy，绝不伪造完成。
+4. **不前端推断权限/完成**：文件范围以 `permission_preview.scope_detail` 为准、不靠关键词猜（slice #8：`PermissionCard` 在 allow/deny 前用「Review what this touches」披露 runtime 提供的 read/write/tools/requests，仅在真有该字段时渲染）；Accept 只走 runtime_policy，绝不伪造完成（slice #5：有改动时 Accept 在打开过 diff 评审前禁用）。
 5. **工具输出折叠**：工具卡默认折叠，原始 stdout/traceback 选中联动 Inspector，不在主线内联全量输出。
+6. **不 dump，给结构**：校验结果以 `VerificationMatrix` 结构化 pass/fail 行 + loop_quality 徽章呈现（slice #7），替换 `<pre>` JSON dump；缺数据显示 not recorded，不编造。
 
 > 经验法则：**当 Runtime 没给某个字段时，正确答案永远是「如实显示缺失」，而不是「编一个合理的占位」。** 删假本身是去噪（不是新功能 Slice），不受 freeze 限制。
 
@@ -171,15 +177,13 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 
 ## 9. 演进与冻结合规
 
-落地顺序见 [plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)（8 个 slice，源自 design workflow 评分）。当前进度：
+落地顺序见 [plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)（8 个 slice + DS 设计系统轨 + CV 对话流轨，源自 design/understand workflow）。**三轨已全部落地**：
 
-- **#1 诚实流式**：✅ 已落地（删打字机）。
-- **#2 干净终答卡**：✅ 已落地（删 §7.2 的编造占位与脆弱过滤）。
-- **#3 内联工具卡**：✅ 已落地（live 视图 `LiveStream` 用 `ToolCallCard` 折叠 tool_use↔tool_result，默认折叠、输出 clamped，全量留 Inspector）。
-- **#4 loop-health 面板**：✅ 已落地（Inspector `RunStatusPanel` 露出 `loop_quality` SLO；schema 无 `recovery_chain`，缺失显示 not recorded，不编造）。
-- #5 diff 评审 gate / #6 逐事件建议 chip / #7 校验矩阵 / #8 approve gate：排队。
+- **诚实化 #1–#8**：✅ #1 诚实流式 · #2 干净终卡 · #3 内联工具卡 · #4 loop-health 面板 · #5 diff 评审 gate（`RuntimeSnapshot` Accept 前置评审）· #6 内联建议 chip（`SuggestedActions`）· #7 校验矩阵（`VerificationMatrix` + loop_quality 徽章）· #8 权限 scope 保真（`PermissionCard` scope_detail）。
+- **设计系统 DS-0…DS-3**：✅ token 基线 + 全表面迁移 + 语义色归一（raw hex 归零）+ 会话线深度打磨（节奏/抬升/70ch/markdown 排版）。
+- **对话流 CV-A…CV-C**：✅ server 停止 clobber · `TurnFinal` lead/折叠 · runtime 模型撰写对话式复盘（§5.1，根治）。
 
-冻结合规：active 集全是**去噪/删重构 + 扩既有 Inspector 面板**，不是独立新功能 Slice，故不触 Studio freeze。**无**新编排 Wave / 全局 parallel_writes / maintainer 命令。需真实 Beta friction 才解锁的 defer 项（Plan/Todo 卡、成本仪表盘、流式 stop/interrupt、逐 token 传输改造）见路线图 §「显式 defer」。
+冻结合规：三轨全是**去噪/删重构 + 扩既有面板 + 设计一致性 + 对真实 friction 的根治**，不是独立新功能 Slice，故不触 Studio freeze。**无**新编排 Wave / 全局 parallel_writes / maintainer 命令。CV-C 触内核但仅 append user_progress、不重构既有逻辑，且由用户 2026-06-28「把诊断的未实现都做了」明确裁决授权。需真实 Beta friction 才解锁的 defer 项（Plan/Todo 卡、成本仪表盘、流式 stop/interrupt、逐 token 传输改造）见路线图 §「显式 defer」。
 
 ## 10. 约束真源
 

@@ -5,6 +5,17 @@
 > 大众，命令行适合专业开发者；接轨市场是常见做法。前端要**对标当前最火的 Codex 与 Claude Code**
 > ——它们是行业最优秀的产品设计者。
 
+## 落地状态（2026-06-28 · 全部完成）
+
+本路线图三条轨已全部落地并合并 main：
+
+- **诚实化功能 slice #1–#8**：✅ #1 诚实流式 · #2 干净终卡 · #3 内联工具卡 · #4 loop-health 面板 ·
+  #5 diff 评审 gate · #6 内联建议 chip · #7 校验矩阵 · #8 权限 scope 保真。
+- **设计系统轨 DS-0…DS-3**：✅ token 基线 + 全表面迁移 + 语义色归一（raw hex 归零）+ 会话线深度打磨。
+- **主线对话流 CV-A…CV-C**：✅ server 停止 clobber · 终卡 lead/折叠 · runtime 模型撰写对话式复盘（根治）。
+
+下一步以**真实 Beta friction 证据**驱动（见末尾 defer 集）；无新 friction 不再加 Studio 新功能。
+
 ## 核心洞察（为什么这条路同时合规又对标市场）
 
 Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在造假**：
@@ -34,10 +45,10 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 | 2 | 干净终答卡：渲染真实 Runtime 内容，停止编造 Result/Verification/Risk 占位 | `TurnFinal.tsx` | CC 终答卡 | ✅ 已落地 |
 | 3 | 内联折叠工具卡（tool_use↔tool_result，默认折叠，原始全量留 Inspector） | `LiveStream.tsx` + `ToolCallCard.tsx` | CC/Codex 工具披露 | ✅ 已落地（live 视图）|
 | 4 | **loop-health 面板**：在 Inspector RunStatusPanel 露出 `loop_quality` SLO（warn/severity/窗口/reason） | `EvidenceExplorer.tsx` | Codex/CC 按需深证据 | ✅ 已落地 |
-| 5 | 工作区 diff 评审作为主线 gate（chip→同 Inspector diff scope，Accept 前只读评审） | `ConversationTurn.tsx` ↔ `DiffReviewPane.tsx` | Codex diff/approve | 排队 |
-| 6 | 跟随相关 turn 的逐事件建议动作 chip（非顶部固定） | `ConversationTurn.tsx` / `RuntimeSnapshot.tsx` | CC 内联建议 | 排队 |
-| 7 | 校验结果矩阵（结构化 pass/fail，替换 `<pre>` dump） | `EvidenceExplorer.tsx` | 信任可扫读 | 排队 |
-| 8 | Runtime 背书的 approve/accept gate（提升权限预览保真，绝不伪造完成） | `RuntimeSnapshot.tsx` / `PermissionCard.tsx` | Codex approve | 排队 |
+| 5 | 工作区 diff 评审作为主线 gate（chip→同 Inspector diff scope，Accept 前只读评审） | `RuntimeSnapshot.tsx` | Codex diff/approve | ✅ 已落地（`c9adf28`）|
+| 6 | 跟随相关 turn 的逐事件建议动作 chip（非顶部固定） | `SuggestedActions.tsx` + `ConversationTurn.tsx` | CC 内联建议 | ✅ 已落地（`c9adf28`）|
+| 7 | 校验结果矩阵（结构化 pass/fail，替换 `<pre>` dump） | `VerificationMatrix.tsx` + `EvidenceExplorer.tsx` | 信任可扫读 | ✅ 已落地（`c9adf28`）|
+| 8 | Runtime 背书的 approve/accept gate（提升权限预览保真，绝不伪造完成） | `PermissionCard.tsx`（scope_detail） | Codex approve | ✅ 已落地（`c9adf28`）|
 
 ## 设计系统对标轨（产品级一致性 · 用户 2026-06-28 friction：「前端跟产品级对标差很远」）
 
@@ -51,11 +62,12 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 | DS-0 | tokens v2 基线：accent 单链 + surface 阶梯 + 间距/字阶/圆角/阴影 + 全局焦点环/滚动条/选区 | ✅ 已落地（`a76ad4a`）|
 | DS-1 | 高频表面迁移：thread-turn / composer / sidebar / components | ✅ 已落地（`a76ad4a`）|
 | DS-2 | 剩余表面迁移（消除全部漂移）：inspector ×4 / layout / shell / side-chat / thread-shell / thread-narrative / session-list + 补齐 DS-1 残留（thread-turn / composer / components） | ✅ 已落地（`2cf8971` + 本提交）|
-| DS-2c | 语义独色升级为 token（chat-teal 4 种、permission 紫、brand 渐变）→ 收掉最后 ~36 处 raw hex | 排队（小） |
-| DS-3 | 深度打磨（择一表面做到 Codex 级）：会话线排版/节奏/留白/过渡 | 排队 |
+| DS-2c | 语义独色升级为 token（permission 紫 / chat-teal / brand 渐变 / solid action / composer mode 微染 / scrollbar）→ raw hex 归零 | ✅ 已落地（`058eeab`）|
+| DS-3 | 深度打磨（会话线做到 Codex 级）：turn 节奏 + 终卡抬升阴影 + 70ch 阅读宽度 + markdown 排版节奏 + 减动效友好 | ✅ 已落地（`34825da`）|
 
-> 迁移后全仓 raw hex 仅剩 `tokens.css` 的 17 处定义 + 3 类**故意保留语义**（permission 紫 / chat-teal / brand 渐变）；
-> 其余颜色/圆角/阴影全部走 token。DS-2c 把语义色也升级为命名 token 即可归零。
+> DS-2c 完成后**全仓 raw hex 已归零**：`styles/*.css`（除 `tokens.css` 定义外）独立 grep `#[0-9a-fA-F]{3,8}` 无命中。
+> 语义独色（permission / chat-teal / brand 渐变 / solid action / composer mode 微染）全部升级为命名 token；
+> 一次 fan-out 迁移还顺带收掉了原审计漏掉的漂移（composer mode 渐变、sideAsk 边框、user-message 气泡、scrollbar、sidebar 图标）。
 
 迁移规则（每个表面照此，**不改布局/行为/选择器**，仅把颜色/圆角值换 token）：
 - 背景：最深→`--surface-0`；面板→`--surface-1`；卡片/输入→`--surface-2`；抬升/hover→`--surface-3`
@@ -77,10 +89,16 @@ ADR-0012（诊断进 Inspector），也是「像报告不像对话」的根因�
 | --- | --- | --- |
 | CV-A | server 停止三处 clobber：终答保留 runtime 真实 `display_level=main` transcript，诊断只留 `artifact_refs` 供 Inspector；无终答时给诚实短句 | ✅ 已落地（`0b2296a`）|
 | CV-B | `TurnFinal` 渲染 lead 散文 + 把结构化尾部折叠进默认收起的「运行详情」disclosure；删 slice#2 的 section 脚手架。对存量会话即时生效 | ✅ 已落地 |
-| CV-C | **（后端轨/内核）** runtime 由**模型撰写**一段对话式复盘结论作为 `final` transcript，Studio 原样显示——最优解、最贴 CC/Codex，但触内核，按研发总计划裁决 | 排队（DecisionPoint）|
+| CV-C | **（后端轨/内核）** runtime 由**模型撰写**一段对话式复盘结论作为 `final` transcript，Studio 原样显示——最优解、最贴 CC/Codex | ✅ 已落地（`fe70fec`）|
 
-> 关键发现：runtime 目前只发**短/结构化** final 片段（如「task-0001 completed with verified evidence」+「Run review or acceptance」+ 指针），
-> 没有模型撰写的对话式复盘——所以 CV-B 是用真实 main transcript 折叠呈现，CV-C 才是让模型真正"说一句话"的根治。
+> 关键发现（已解决）：runtime 原本只发**短/结构化** final 片段（如「task-0001 completed with verified evidence」+ 指针），
+> 没有模型撰写的对话式复盘。CV-C 落地方式（见下）：在 `run_command.continue_run` 收尾、写 final 报告之后，由 `core/run_recap.py`
+> 用一次**尽力而为**的模型调用撰写 1–3 句第一人称复盘，写入既有 `conclusion` 事件的 `content_delta`；前端把 `final_report`
+> 指针事件从「final」step 降级为流程内「Final report」步骤，于是带复盘的 conclusion 成为渲染的终答。
+>
+> 合规要点：`run_command.py` 属 DO_NOT_TOUCH（仅允许 append user_progress），本次仅**新增** `_closing_recap_text` 辅助 +
+> 给既有 conclusion 事件补 `content_delta`，未重构任何既有发射逻辑；recap 失败时返回 ""，回退到原结构化 summary，运行链不依赖它。
+> 用户 2026-06-28「把诊断的未实现都做了」即为本内核改动的裁决授权。
 
 ## 冻结合规
 
