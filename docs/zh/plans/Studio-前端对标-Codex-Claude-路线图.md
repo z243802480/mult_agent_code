@@ -33,7 +33,7 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 | 1 | **诚实流式**：删打字机，真实 content_delta 到即渲染 | `ConversationTurn.tsx` | CC 实时 delta | ✅ 已落地 |
 | 2 | 干净终答卡：渲染真实 Runtime 内容，停止编造 Result/Verification/Risk 占位 | `TurnFinal.tsx` | CC 终答卡 | ✅ 已落地 |
 | 3 | 内联折叠工具卡（tool_use↔tool_result，展开进 Inspector） | `LiveStream.tsx` + 新 ToolCallCard | CC/Codex 工具披露 | 排队 |
-| 4 | **loop-health 面板**：在 Inspector RunStatusPanel 露出 `loop_quality` SLO + recovery_chain | `EvidenceExplorer.tsx` | Codex/CC 按需深证据 | 排队（接本会话 loop_quality）|
+| 4 | **loop-health 面板**：在 Inspector RunStatusPanel 露出 `loop_quality` SLO（warn/severity/窗口/reason） | `EvidenceExplorer.tsx` | Codex/CC 按需深证据 | ✅ 已落地 |
 | 5 | 工作区 diff 评审作为主线 gate（chip→同 Inspector diff scope，Accept 前只读评审） | `ConversationTurn.tsx` ↔ `DiffReviewPane.tsx` | Codex diff/approve | 排队 |
 | 6 | 跟随相关 turn 的逐事件建议动作 chip（非顶部固定） | `ConversationTurn.tsx` / `RuntimeSnapshot.tsx` | CC 内联建议 | 排队 |
 | 7 | 校验结果矩阵（结构化 pass/fail，替换 `<pre>` dump） | `EvidenceExplorer.tsx` | 信任可扫读 | 排队 |
@@ -53,6 +53,7 @@ D3 的成本面板（近新块，只上一个可展开块、注明 friction，�
 ## 风险（workflow 提示，落地每个 slice 时核）
 
 - **ADR-0012 重构陷阱**：`task_plan.json`/`runtime_progress.todo.counts` 已进 payload 很诱人，但据其渲染清单 = 复活 WorkflowPhaseStrip，禁止。
+- **#4 实现校正**：`agent_loop_run_summary` schema **无 `recovery_chain` 字段**，故 #4 只露出真实存在的 `loop_quality`（缺失时显示 not recorded），不编造 recovery 链；如需 recovery 视图须先在 runtime 落 schema 字段。
 - 工具卡（#3）保持默认折叠，原始 stdout/traceback 选中联动 Inspector，不内联全量输出。
 - 终卡（#2）缺数据时渲染"未记录/not recorded"，**不得**静默丢节、**不得**在无 final|stop 事件时编造终答；改后过 wording smoke。
 - 传输仍是 8s 轮询 + best-effort SSE；诚实流式改善观感但不超过轮询节奏；真·逐 token 需 server.mjs 传输改造（更大、friction-gated，不在 #1）。

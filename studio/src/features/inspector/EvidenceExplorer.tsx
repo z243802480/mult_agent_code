@@ -341,6 +341,13 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
     : /^asteria\b/i.test(nextCommand) ? nextCommand : `asteria ${nextCommand}`;
   const blocker = firstText(String(finalSummary.current_blocker ?? ""), String(runLoopSummary.current_blocker ?? ""), "none");
   const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(runLoopSummary.stop_reason ?? ""), "n/a");
+  // loop_quality_guard SLO (observe_then_warn): an auditable no-progress signal, NOT a hard stop
+  // (ADR-0010). Surface it honestly — real values when recorded, "not recorded" for older runs.
+  const loopQuality = asRecord(agentLoopSummary.loop_quality);
+  const hasLoopQuality = Object.keys(loopQuality).length > 0;
+  const loopWarn = Boolean(loopQuality.warn);
+  const loopSeverity = firstText(String(loopQuality.severity ?? ""), loopWarn ? "warn" : "ok");
+  const loopHealth = hasLoopQuality ? (loopWarn ? `warn (${loopSeverity})` : "ok") : "not recorded";
 
   return (
     <div className="evidenceBlock runStatusPanel">
@@ -349,6 +356,7 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
         <Metric label="State" value={workflowState} tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"} />
         <Metric label="Next" value={nextLabel} tone={nextCommand === "none" ? "good" : "warn"} />
         <Metric label="Loop exit" value={loopExit} tone={/blocked|fail|limit/i.test(loopExit) ? "warn" : "good"} />
+        <Metric label="Loop health" value={loopHealth} tone={loopWarn ? "bad" : hasLoopQuality ? "good" : "warn"} />
       </div>
       <div className="keyValueList">
         <div><small>Current status</small><pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre></div>
@@ -361,6 +369,11 @@ source=${String(mainAction.source ?? "unknown")}
 evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre></div>
         <div><small>Run loop summary</small><pre>{`exit=${loopExit}
 rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre></div>
+        <div><small>Loop quality (SLO · observe_then_warn)</small><pre>{hasLoopQuality
+          ? `mode=${String(loopQuality.mode ?? "n/a")}  warn=${String(loopQuality.warn ?? false)}  severity=${loopSeverity}
+identical=${String(loopQuality.repeated_identical_observations ?? 0)}/${String(loopQuality.repeated_identical_window ?? "n/a")}  failed_verify=${String(loopQuality.repeated_failed_verifications ?? 0)}/${String(loopQuality.repeated_failed_window ?? "n/a")}  hard_block=${String(loopQuality.hard_block ?? false)}
+reason=${String(loopQuality.reason ?? "none")}`
+          : "not recorded (run predates loop_quality_guard)"}</pre></div>
         <div><small>Model route rationale</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
 reason=${String(latestRoute.reason ?? "No route reason recorded.")}`}</pre></div>
       </div>

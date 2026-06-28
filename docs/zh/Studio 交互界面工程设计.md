@@ -174,7 +174,8 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 
 - **#1 诚实流式**：✅ 已落地（删打字机）。
 - **#2 干净终答卡**：✅ 已落地（删 §7.2 的编造占位与脆弱过滤）。
-- #3 内联工具卡 / #4 loop-health 面板（露出 `loop_quality`）/ #5 diff 评审 gate / #6 逐事件建议 chip / #7 校验矩阵 / #8 approve gate：排队。
+- **#4 loop-health 面板**：✅ 已落地（Inspector `RunStatusPanel` 露出 `loop_quality` SLO；schema 无 `recovery_chain`，缺失显示 not recorded，不编造）。
+- #3 内联工具卡 / #5 diff 评审 gate / #6 逐事件建议 chip / #7 校验矩阵 / #8 approve gate：排队。
 
 冻结合规：active 集全是**去噪/删重构 + 扩既有 Inspector 面板**，不是独立新功能 Slice，故不触 Studio freeze。**无**新编排 Wave / 全局 parallel_writes / maintainer 命令。需真实 Beta friction 才解锁的 defer 项（Plan/Todo 卡、成本仪表盘、流式 stop/interrupt、逐 token 传输改造）见路线图 §「显式 defer」。
 
