@@ -27,6 +27,7 @@ from asteria_runtime.core.main_path import (
 from asteria_runtime.core.execution_profile import execution_profile_from_run_config
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.run_config import load_run_config
+from asteria_runtime.core.run_recap import author_run_recap
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
@@ -377,11 +378,13 @@ class RunCommand:
         review_status = self._latest_review_status(run_id)
         final_report_path = self._write_final_report(run_id, review_status, steps)
         run_status = self._run_status(run_id)
+        recap_text = self._closing_recap_text(run_id, steps, run_status)
         _progress.conclusion(
             run_id=run_id,
             phase="result",
             title="运行完成" if run_status == "completed" else "运行结束",
             summary=(f"Run {run_id} 已完成，状态：{run_status}。共 {len(steps)} 个执行步骤。"),
+            content_delta=recap_text,
             artifact_refs=[str(final_report_path)],
         )
         status_payload = self._status_payload(run_id)
@@ -1007,6 +1010,38 @@ class RunCommand:
             validation=validation,
             model_selection=self._latest_model_selection(run_dir),
             file_changes=file_changes,
+        )
+
+    def _closing_recap_text(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+        run_status: str,
+    ) -> str:
+        """Author a 1–3 sentence conversational recap for the final transcript event.
+
+        Best-effort (CV-C): returns "" when no model client is configured or the call
+        fails, in which case the conclusion falls back to its structured summary. The
+        text is the agent's own prose; Studio renders it verbatim as the closing reply.
+        """
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        goal_text = ""
+        goal_path = run_dir / "goal_spec.json"
+        if goal_path.exists():
+            try:
+                goal_spec = self.store.read(goal_path, "goal_spec")
+                goal_text = str(
+                    goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""
+                )
+            except Exception:  # noqa: BLE001 — recap is best-effort.
+                goal_text = ""
+        return author_run_recap(
+            model_client=self.model_client or self.execute_model_client,
+            goal=goal_text,
+            run_status=run_status,
+            steps=[(step.name, step.status, step.summary) for step in steps],
+            file_changes=self._file_change_summary(run_dir),
+            validation=self._validation_conclusion(run_dir),
         )
 
     def _model_selection_summary(self, model_selection: dict) -> str:

@@ -53,6 +53,10 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
   if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
   if (transcriptKind === "verification") return "verification";
+  // The final-report event is a diagnostic artifact pointer, not the conversational closing
+  // reply (ADR-0012). Keep it in the process stream so the conclusion message — which now
+  // carries the agent's authored recap (CV-C) — is the step rendered as the final answer.
+  if (event.runtime_event_type === "final_report") return "result";
   if (transcriptKind === "final" || transcriptKind === "stop") return "final";
   if (transcriptKind === "file_change") return "result";
   if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") return "tool";
@@ -81,7 +85,7 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "thinking") return "Thinking";
   if (kind === "plan") return "Plan";
   if (kind === "tool") return event.command?.length ? "Tool call" : "Action";
-  if (kind === "result") return "File change";
+  if (kind === "result") return event.runtime_event_type === "final_report" ? "Final report" : "File change";
   if (kind === "repair") return "Repair";
   if (kind === "verification") return "Verification";
   if (kind === "final") return "Final answer";

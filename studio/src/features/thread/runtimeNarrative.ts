@@ -76,7 +76,9 @@ export function runtimeSessionEvents(runDetail: RunDetailPayload | null): Studio
         status: eventStatus(event.status),
         title: userProgressTitle(event),
         summary: userProgressSummary(event),
-        content_delta: userProgressSummary(event),
+        // Preserve the runtime's real content_delta (e.g. the CV-C authored recap) when present;
+        // fall back to the summary projection only when there is no distinct conversational text.
+        content_delta: String(event.content_delta ?? "") || userProgressSummary(event),
         command: Array.isArray(event.command) ? event.command.map(String) : undefined,
         data: asRecord(event.data),
         actions: asArray(event.actions) as StudioEvent["actions"],
