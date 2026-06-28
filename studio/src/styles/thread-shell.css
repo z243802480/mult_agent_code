@@ -121,10 +121,10 @@
 
 .runtimeActionButton {
   align-items: center;
-  background: #dce9ef;
-  border: 1px solid #dce9ef;
+  background: var(--action-solid-bg);
+  border: 1px solid var(--action-solid-bg);
   border-radius: var(--radius-sm);
-  color: #101417;
+  color: var(--action-solid-fg);
   cursor: pointer;
   display: inline-flex;
   font-size: 12px;
@@ -135,8 +135,8 @@
 }
 
 .runtimeActionButton:hover {
-  background: #ffffff;
-  border-color: #ffffff;
+  background: var(--action-solid-bg-hover);
+  border-color: var(--action-solid-bg-hover);
 }
 
 .runtimeWorkflowActions {

@@ -338,7 +338,7 @@
 
 .livePhaseDot.waiting {
   animation: pulse 1.5s ease-in-out infinite;
-  background: #a78bfa;
+  background: var(--permission-accent);
 }
 
 .livePhaseLabel {
@@ -389,9 +389,9 @@
 }
 
 .liveToolChip.waiting_user {
-  background: #160f28;
-  border-color: #4a3a70;
-  color: #c4a8ff;
+  background: var(--permission-bg);
+  border-color: var(--permission-border);
+  color: var(--permission-accent);
 }
 
 .liveToolChip.running {
@@ -435,7 +435,7 @@
 
 .toolCard.failed { border-color: var(--bad); }
 .toolCard.completed { border-color: var(--ok); }
-.toolCard.waiting_user { border-color: #4a3a70; }
+.toolCard.waiting_user { border-color: var(--permission-border); }
 .toolCard.running { border-color: var(--accent-border); }
 
 .toolCardHeader {
@@ -477,7 +477,7 @@
 
 .toolCardStatus.completed { color: var(--ok); }
 .toolCardStatus.failed { color: var(--bad); }
-.toolCardStatus.waiting_user { color: #c4a8ff; }
+.toolCardStatus.waiting_user { color: var(--permission-accent); }
 .toolCard.running .toolCardStatus { color: var(--accent); }
 
 .toolCardOutput.clampedOutput pre {
@@ -698,8 +698,8 @@
 }
 
 .turnRewindConfirmActions button.primary {
-  background: #1e3a48;
-  border-color: #3d6a7a;
+  background: var(--chat-bg);
+  border-color: var(--chat-border);
 }
 
 .liveFileChip.muted {
@@ -799,7 +799,7 @@
 
 .turnFinalAvatar {
   align-items: center;
-  background: linear-gradient(135deg, #0d7a8a, #4a58c8);
+  background: linear-gradient(135deg, var(--brand-gradient-from), var(--brand-gradient-to));
   border-radius: 50%;
   color: var(--accent-fg);
   display: inline-flex;

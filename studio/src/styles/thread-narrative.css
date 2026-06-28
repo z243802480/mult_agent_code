@@ -8,21 +8,21 @@
 }
 
 .goalBubble {
-  background: #1b3a45;
-  border: 1px solid #2a5566;
+  background: var(--chat-bg);
+  border: 1px solid var(--chat-border);
   border-radius: var(--radius-lg) var(--radius-lg) 2px var(--radius-lg);
   padding: 8px 12px;
 }
 
 .goalBubble p {
-  color: #d4eaf2;
+  color: var(--chat-text);
   font-size: 14px;
   line-height: 1.45;
   margin: 0;
 }
 
 .goalMeta {
-  color: #5a7a87;
+  color: var(--chat-border);
   display: block;
   font-size: 10px;
   margin-top: 4px;
@@ -194,7 +194,7 @@
 
 .eventCard.user_message {
   align-self: flex-end;
-  background: #1b3138;
+  background: var(--user-bubble-bg);
 }
 
 .eventCard.model_delta {
@@ -270,8 +270,8 @@
 }
 
 .status.waiting_user {
-  background: #2f2948;
-  color: #d7c7ff;
+  background: var(--permission-bg);
+  color: var(--permission-text);
 }
 
 .status.failed {

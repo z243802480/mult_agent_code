@@ -145,17 +145,17 @@
 
 .composer.chatMode {
   background: var(--surface-1);
-  border-top-color: #1e3a48;
+  border-top-color: var(--chat-bg);
 }
 
 .composer.autoMode {
-  background: linear-gradient(180deg, #11161b 0%, #111518 100%);
+  background: linear-gradient(180deg, var(--composer-auto-from) 0%, var(--composer-tint-to) 100%);
   border-top-color: var(--accent-border);
 }
 
 .composer.sideAskMode {
-  background: linear-gradient(180deg, #101820 0%, #111518 100%);
-  border-top-color: #2a4a58;
+  background: linear-gradient(180deg, var(--composer-sideask-from) 0%, var(--composer-tint-to) 100%);
+  border-top-color: var(--chat-border);
 }
 
 .composerSideAskToggle {
@@ -174,8 +174,8 @@
 
 .composerSideAskToggle:hover,
 .composerSideAskToggle.active {
-  background: #1e3a48;
-  border-color: #3d6a7a;
+  background: var(--chat-bg);
+  border-color: var(--chat-border);
   color: var(--text-primary);
 }
 
@@ -185,7 +185,7 @@
 }
 
 .composer.sideAskMode textarea {
-  border-color: #3d6a7a;
+  border-color: var(--chat-border);
 }
 
 .composer textarea {
@@ -266,7 +266,7 @@
 }
 
 .composer.chatMode textarea {
-  border-color: #1e4a5c;
+  border-color: var(--chat-bg);
   min-height: 52px;
 }
 
@@ -405,8 +405,8 @@
 
 /* chat 模式的 active 按钮用不同色区分 */
 .composer.chatMode .segmented button.active {
-  background: #1b4a5a;
-  color: #7dd8f0;
+  background: var(--chat-bg);
+  color: var(--chat-accent);
 }
 
 .composer.autoMode .segmented button.active {

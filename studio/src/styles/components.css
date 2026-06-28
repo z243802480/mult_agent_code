@@ -105,8 +105,8 @@
 
 /* Permission card */
 .permissionCard {
-  background: #1e1a2e;
-  border: 1px solid #5a3ea0;
+  background: var(--permission-bg);
+  border: 1px solid var(--permission-border);
   border-radius: var(--radius-md);
   display: grid;
   gap: 10px;
@@ -134,7 +134,7 @@
 
 .permissionHeader {
   align-items: center;
-  color: #d7c7ff;
+  color: var(--permission-text);
   display: flex;
   gap: 9px;
 }
@@ -157,7 +157,7 @@
 }
 
 .permissionPreview {
-  border-top: 1px solid rgba(215, 199, 255, 0.16);
+  border-top: 1px solid var(--permission-border-alpha);
   display: grid;
   gap: 7px;
   padding-top: 10px;
@@ -171,7 +171,7 @@
 }
 
 .permissionFact > span {
-  color: #bca8ef;
+  color: var(--permission-accent);
   line-height: 1;
   padding-top: 2px;
 }

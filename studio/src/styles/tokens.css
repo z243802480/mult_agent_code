@@ -44,6 +44,37 @@
   --warn-subtle: rgba(230, 179, 100, 0.13);
   --bad-subtle: rgba(239, 122, 115, 0.13);
 
+  /* ── Permission (waiting_user / approval gate) ───────────────── */
+  --permission-bg: #1e1a2e;
+  --permission-border: #5a3ea0;
+  --permission-text: #d7c7ff;
+  --permission-accent: #c4a8ff;
+  --permission-border-alpha: rgba(90, 62, 160, 0.34);
+
+  /* ── Chat / side-ask teal accent ─────────────────────────────── */
+  --chat-bg: #1e3a48;
+  --chat-border: #3d6a7a;
+  --chat-text: #d4eaf2;
+  --chat-accent: #7dd8f0;
+
+  /* ── Brand avatar gradient ───────────────────────────────────── */
+  --brand-gradient-from: #0d7a8a;
+  --brand-gradient-to: #4a58c8;
+
+  /* ── Solid (high-contrast) action button ─────────────────────── */
+  --action-solid-bg: #dce9ef;
+  --action-solid-fg: #101417;
+  --action-solid-bg-hover: #ffffff;
+
+  /* ── Composer mode tints + user bubble ───────────────────────── */
+  --composer-auto-from: #11161b;
+  --composer-tint-to: #111518;
+  --composer-sideask-from: #101820;
+  --user-bubble-bg: #1b3138;
+
+  /* ── Scrollbar ───────────────────────────────────────────────── */
+  --scrollbar-thumb-hover: #45515b;
+
   /* ── Radii ───────────────────────────────────────────────────── */
   --radius-sm: 6px;
   --radius-md: 9px;
@@ -128,7 +159,7 @@ button {
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #45515b;
+  background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
   border: 2px solid transparent;
   border-radius: var(--radius-pill);
