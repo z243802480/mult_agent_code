@@ -41,6 +41,7 @@
   background: var(--accent-subtle);
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   max-width: 80%;
   padding: 10px 14px 7px;
 }
@@ -781,8 +782,9 @@
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   max-width: min(92%, 860px);
-  padding: 12px 14px;
+  padding: 13px 16px;
 }
 
 .turnFinal.failed {
@@ -901,3 +903,48 @@
 
 .suggestedActionChip:disabled { cursor: default; opacity: 0.6; }
 .suggestedActionChip svg { color: var(--accent); }
+
+/* ── DS-3: conversation prose rhythm — Codex-grade reading surface ──────── */
+.turnFinalHeader { margin-bottom: 9px; }
+
+.turnFinalText { max-width: 70ch; }
+
+/* Markdown paragraph & list rhythm so multi-paragraph recaps read like prose. */
+.turnFinalText > p { margin: 0; }
+.turnFinalText > p + p { margin-top: 0.65em; }
+.turnFinalText ul,
+.turnFinalText ol { margin: 0.5em 0; padding-left: 1.35em; }
+.turnFinalText li { margin: 0.2em 0; }
+.turnFinalText li::marker { color: var(--text-muted); }
+.turnFinalText a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+}
+.turnFinalText a:hover { border-bottom-color: var(--accent); }
+.turnFinalText code {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  font-size: 0.92em;
+  padding: 0.5px 5px;
+}
+.turnFinalText pre {
+  background: var(--surface-0);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin: 0.6em 0 0;
+  overflow: auto;
+  padding: 10px 12px;
+}
+.turnFinalText pre code { background: none; border: 0; padding: 0; }
+
+/* The collapsed run-detail disclosure: gentle affordance, smooth open. */
+.turnFinalDetails > summary { transition: color 0.15s var(--ease); }
+.turnFinalDetails[open] > summary { margin-bottom: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .suggestedActionChip,
+  .turnMiddleBadge,
+  .turnFinalDetails > summary { transition: none; }
+}

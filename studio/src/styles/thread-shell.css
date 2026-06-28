@@ -4,10 +4,15 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: var(--space-3);
+  gap: var(--space-4);
   min-height: 0;
   overflow: auto;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-5);
+}
+
+/* DS-3: clear turn-to-turn rhythm — more air between exchanges than within one turn. */
+.thread > .conversationTurn + .conversationTurn {
+  margin-top: var(--space-2);
 }
 
 .thread > *:not(.threadProcessControls),
