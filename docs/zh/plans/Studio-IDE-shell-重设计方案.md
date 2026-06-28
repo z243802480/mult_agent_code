@@ -1,6 +1,6 @@
 # Studio IDE-shell 重设计方案
 
-状态：`in-progress`（Phase A 已落地于工作树 · Phase B 待启动）
+状态：`in-progress`（Phase A + B1/B2 已落地于工作树 · B3/B4/B5 待启动）
 
 更新时间：2026-06-28
 
@@ -106,6 +106,22 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 | B5 | composer 的 `<details>` 弹层 + 原生 `<select>` 换成**已存在但未用的 `.segmented`** 控件（mode）+ 小 segmented/ghost（permission）| `composer.css`（`.segmented` 已有）、`Composer.tsx` |
 
 > 注：原"左栏文件树"(旧 B4) 已按 Q3 取消；项目切换并入 B1，改动文件并入 B3。
+
+### Phase B — 增量 1（B1+B2）落地记录（2026-06-29 · 已实现于工作树）
+
+按 recon synthesis（`ready_with_notes`，4 路架构 map + 综合）实现「全局头部 + 全幅工作面」增量，纯 IA+token+CSS+轻组件组合，未碰后端/runtime/schema：
+
+- **B1a 壳网格**：`.appShell` 加 `grid-template-rows: var(--header-height) 1fr`；`.appShell > *` 钉到 row 2、`.appShell > .globalHeader` 占 row 1 全宽（`grid-column:1/-1`）——按 universal/class 钉而非 nth-child，条件渲染的 splitter 不漏入头部行。
+- **B1b 全局头部**：`MissionPaneHeader` 从 `.missionPane` 内提升为 `.appShell` 首个子节点；root class `topBar compact`→`globalHeader`，去掉 `align-self:center`+`max-width:var(--thread-max)`，改为全宽 flex + 底边发丝线 + `surface-0`；`--header-height` 从 min-height 升为精确行高（48px 容纳 title+chip+status+5 控件，已核）。退役全部 `.topBar*` 死规则。
+- **B1c 运行状态**：头部加 `isRunning` pill（复用 `sessionEvents.isRunning`，无新 fetch/schema）。
+- **B2 全幅工作面**：`.thread` 改 `align-items:stretch`（`.emptyThread` 仍 center 保留 hero）；拆分 `.thread>*` 与 `.emptyThread>*` 的 cap——thread 项 `max-width:none`，empty 项保留 cap；清掉 5 处 `--thread-max` cap（conversationTurn / threadProcessControls / runtimeSnapshot.compact / composer.compact / `.thread>*`）；删 JS 宽度驱动 `useThreadColumnWidth`（+ missionPaneRef + `--thread-max` 内联样式，hook 文件已删）；prose 可读性改由静态 70ch（turnFinalText 已有 + liveModelText + chatStream prose，`min(70ch,100%)` 无 margin auto → 左对齐）；contextWindowDock `right:356px`→`calc(var(--panel-width,320px)+var(--space-4))`。
+- **响应式收口（recon Top 风险 #1/#5）**：@820 的 `grid-template-columns:1fr` 是死规则（被 @1240 的 `.appShell.panelOpen{…!important}` 以更高特指度压过），窄屏工作列被挤成 4px——改为匹配特指度的 `.appShell,.appShell.panelOpen,.appShell.panelCollapsed{1fr !important}` + 隐藏 sidebarSplitter，窄屏单列全幅修正。
+
+**决策（已采纳推荐，尊重 freeze）**：①头部只放 session title + workspace chip + 运行状态，**不**引入持久 goal 句（goal 留在 thread）；②**branch 切换移出 Phase B**（payload 无 branch 字段，接它要动后端）。
+
+**待 B3/B4/B5 决策**（不阻塞本增量）：③头部 view 控件 = Chat|Diff 真分栏 vs 现有 verbosity cycle；④评审面对等比例（~50vw + 工作列 min 360px 地板）；⑤composer 7 模式是否全做成 segmented 段（还是精简主集）。
+
+**验证**：`tsc --noEmit`+`vite build` 干净（1765 模块）；`session-main-path-contract` 绿；预览计算样式核验——globalHeader 跨 1280 全宽 48px、grid-rows `48px 1fr`、工作列全幅（conversationTurn 710、maxW none）、prose 70ch（575px）、status pill "Running"、窄屏 768 单列全幅修正、console 0 错误。
 
 ### Phase C — 收口打磨（一致性/密度/去死代码）
 

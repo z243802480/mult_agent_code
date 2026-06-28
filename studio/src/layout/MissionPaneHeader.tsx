@@ -12,6 +12,7 @@ type MissionPaneHeaderProps = {
   diffFocus: boolean;
   sideChatOpen: boolean;
   loading: boolean;
+  isRunning: boolean;
   onOpenWorkspace: () => void;
   onCycleViewMode: () => void;
   onTogglePanel: () => void;
@@ -28,6 +29,7 @@ export function MissionPaneHeader({
   diffFocus,
   sideChatOpen,
   loading,
+  isRunning,
   onOpenWorkspace,
   onCycleViewMode,
   onTogglePanel,
@@ -36,7 +38,7 @@ export function MissionPaneHeader({
   onRefresh,
 }: MissionPaneHeaderProps) {
   return (
-    <header className="topBar compact">
+    <header className="globalHeader">
       <div className="topBarMain">
         <h1>{title}</h1>
         <button
@@ -48,6 +50,13 @@ export function MissionPaneHeader({
           <FolderOpen size={13} />
           <span>{settings?.workspaceName ?? "Workspace"}</span>
         </button>
+        <span
+          className={isRunning ? "headerStatus running" : "headerStatus"}
+          title={isRunning ? "Agent is running" : "Idle"}
+        >
+          <span className="headerStatusDot" />
+          {isRunning ? "Running" : "Idle"}
+        </span>
       </div>
       <div className="topActions">
         <button

@@ -1,6 +1,6 @@
 .thread,
 .emptyThread {
-  align-items: center;
+  align-items: stretch;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -10,12 +10,20 @@
   padding: var(--space-4) var(--space-4) var(--space-5);
 }
 
+/* B2: the empty hero stays centered; the active thread fills the work column. */
+.emptyThread {
+  align-items: center;
+}
+
 /* DS-3: clear turn-to-turn rhythm — more air between exchanges than within one turn. */
 .thread > .conversationTurn + .conversationTurn {
   margin-top: var(--space-2);
 }
 
-.thread > *:not(.threadProcessControls),
+.thread > *:not(.threadProcessControls) {
+  width: 100%;
+}
+
 .emptyThread > * {
   max-width: var(--thread-max);
   width: 100%;
@@ -29,7 +37,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  max-width: var(--thread-max);
+  max-width: none;
   padding: 6px 10px;
   width: 100%;
 }

@@ -1,8 +1,22 @@
 .appShell {
   display: grid;
   grid-template-columns: var(--sidebar-width) 4px minmax(0, 1fr);
+  grid-template-rows: var(--header-height) 1fr;
   height: 100vh;
   overflow: hidden;
+}
+
+/* B1: a persistent global header occupies row 1 full-width; every other
+   shell child (sidebar / splitters / work column / inspector) sits in the
+   body row. Pin by universal child + a more-specific header override so
+   conditionally-rendered splitters never leak into the header row. */
+.appShell > * {
+  grid-row: 2;
+}
+
+.appShell > .globalHeader {
+  grid-column: 1 / -1;
+  grid-row: 1;
 }
 
 .appShell.panelOpen {

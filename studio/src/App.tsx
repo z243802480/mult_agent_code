@@ -7,7 +7,6 @@ import { SidePanel } from "./components/SidePanel";
 import { Composer } from "./components/Composer";
 import { MissionPaneHeader } from "./layout/MissionPaneHeader";
 import { usePaneLayout } from "./hooks/usePaneLayout";
-import { useThreadColumnWidth } from "./hooks/useThreadColumnWidth";
 import { useViewMode } from "./hooks/useViewMode";
 import { useDiffFocus } from "./hooks/useDiffFocus";
 import { useStudioKeyboard } from "./hooks/useStudioKeyboard";
@@ -22,8 +21,6 @@ import type { StudioSession } from "./types";
 export function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const paneLayout = usePaneLayout();
-  const missionPaneRef = useRef<HTMLElement | null>(null);
-  const threadMax = useThreadColumnWidth(missionPaneRef);
   const { viewMode, cycleViewMode } = useViewMode();
   const { diffFocus, toggleDiffFocus } = useDiffFocus();
   const { sideChatOpen, setSideChatOpen, toggleSideChat, closeSideChat, composerSideAsk, toggleComposerSideAsk } = useSideChat();
@@ -157,9 +154,24 @@ export function App() {
       style={{
         ["--sidebar-width" as string]: `${effectiveSidebarWidth}px`,
         ["--panel-width" as string]: `${panelWidth}px`,
-        ["--thread-max" as string]: `${threadMax}px`,
       }}
     >
+      <MissionPaneHeader
+        title={bootstrap.activeSession?.title ?? "New task"}
+        settings={bootstrap.settings}
+        viewMode={viewMode}
+        panelOpen={panelOpen}
+        diffFocus={diffFocus}
+        loading={bootstrap.loading}
+        isRunning={sessionEvents.isRunning}
+        onOpenWorkspace={() => bootstrap.setWorkspaceOpen(true)}
+        onCycleViewMode={cycleViewMode}
+        onTogglePanel={() => setPanelOpen((open) => !open)}
+        onToggleDiffFocus={toggleDiffFocus}
+        onToggleSideChat={toggleSideChat}
+        sideChatOpen={sideChatOpen || composerSideAsk}
+        onRefresh={() => void bootstrap.bootstrap()}
+      />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={toggleSidebarCollapsed}
@@ -202,22 +214,7 @@ export function App() {
           onDoubleClick={resetSidebar}
         />
       )}
-      <main className="missionPane" ref={missionPaneRef}>
-        <MissionPaneHeader
-          title={bootstrap.activeSession?.title ?? "New task"}
-          settings={bootstrap.settings}
-          viewMode={viewMode}
-          panelOpen={panelOpen}
-          diffFocus={diffFocus}
-          loading={bootstrap.loading}
-          onOpenWorkspace={() => bootstrap.setWorkspaceOpen(true)}
-          onCycleViewMode={cycleViewMode}
-          onTogglePanel={() => setPanelOpen((open) => !open)}
-          onToggleDiffFocus={toggleDiffFocus}
-          onToggleSideChat={toggleSideChat}
-          sideChatOpen={sideChatOpen || composerSideAsk}
-          onRefresh={() => void bootstrap.bootstrap()}
-        />
+      <main className="missionPane">
         {bootstrap.error && <Banner tone="bad" text={bootstrap.error} />}
         <Thread
           events={sessionEvents.events}

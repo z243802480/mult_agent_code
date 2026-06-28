@@ -425,11 +425,17 @@
 }
 
 @media (max-width: 820px) {
-  .appShell {
-    grid-template-columns: 1fr;
+  /* Single full-bleed column. Must match the @1240 rule's selector specificity
+     (.appShell.panelOpen) so its !important 3-col override doesn't win here.
+     Hide the now-pointless sidebar splitter too. */
+  .appShell,
+  .appShell.panelOpen,
+  .appShell.panelCollapsed {
+    grid-template-columns: 1fr !important;
   }
 
-  .sidebar {
+  .sidebar,
+  .paneSplitter.sidebarSplitter {
     display: none;
   }
 

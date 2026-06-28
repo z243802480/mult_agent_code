@@ -6,15 +6,14 @@
   min-height: 0;
 }
 
-.topBar.compact {
+.globalHeader {
   align-items: center;
-  align-self: center;
+  background: var(--surface-0);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
+  height: var(--header-height);
   justify-content: space-between;
-  max-width: var(--thread-max);
-  min-height: var(--header-height);
   padding: 0 var(--space-4);
-  width: 100%;
 }
 
 .sidebarHead {
@@ -119,7 +118,7 @@
   top: 5px;
 }
 
-.topBar.compact h1 {
+.globalHeader h1 {
   font-size: 14px;
   font-weight: 650;
   max-width: 280px;
@@ -136,16 +135,42 @@
   min-width: 0;
 }
 
-.topBar.compact .workspaceChip {
+.globalHeader .workspaceChip {
   flex-shrink: 0;
   font-size: 11px;
   max-width: 180px;
   padding: 3px 8px;
 }
 
-.topBar.compact .topActions button {
+.globalHeader .topActions button {
   height: 30px;
   width: 30px;
+}
+
+/* B1c: run/agent status — a quiet pill in the global header. */
+.headerStatus {
+  align-items: center;
+  color: var(--text-muted);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 5px;
+}
+
+.headerStatusDot {
+  background: currentColor;
+  border-radius: var(--radius-pill);
+  height: 6px;
+  width: 6px;
+}
+
+.headerStatus.running {
+  color: var(--accent);
+}
+
+.headerStatus.running .headerStatusDot {
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
 .eyebrow {
@@ -162,26 +187,8 @@ h2 {
   margin: 0;
 }
 
-.topBar {
-  align-items: flex-start;
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  justify-content: space-between;
-  padding: 18px 22px 14px;
-}
-
-.topBar:not(.compact) h1 {
-  font-size: 20px;
-}
-
 h2 {
   font-size: 14px;
-}
-
-.topBar p {
-  color: var(--text-secondary);
-  font-size: 12px;
-  margin: 6px 0 0;
 }
 
 .topActions {

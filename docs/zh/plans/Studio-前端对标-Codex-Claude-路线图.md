@@ -14,11 +14,12 @@
 - **设计系统轨 DS-0…DS-3**：✅ token 基线 + 全表面迁移 + 语义色归一（raw hex 归零）+ 会话线深度打磨。
 - **主线对话流 CV-A…CV-C**：✅ server 停止 clobber · 终卡 lead/折叠 · runtime 模型撰写对话式复盘（根治）。
 
-**下一层（Phase A 已落地 · B/C 待启动）**：对话流对标完成后，下一层是承载对话的**外壳/布局/视觉语言**——
+**下一层（Phase A + B1/B2 已落地 · B3/B4/B5/C 待启动）**：对话流对标完成后，下一层是承载对话的**外壳/布局/视觉语言**——
 用户 friction（2026-06-28）「风格和布局跟 codex/claude code 的 IDE 差距太大」。经 design-review workflow
 （4 路审计 + 综合）+ 用户决策锁定 + 5 路实现前 audit 校准，方案见 [Studio-IDE-shell-重设计方案](./Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)
 （全幅 IDE 工作区 + 全局头部；会话栏保持；改动文件进评审面；纯 token/CSS，不碰后端与对话流诚实工作）。
-**Phase A（表层快赢）已实现于工作树**：mono 机器文本、头像扁平化、去药丸（`--radius-control`）、去装饰渐变、抬升仅留浮层（覆盖 DS-3 in-flow 阴影）、微标签归一、状态左缘、New task 图标——`tsc`+`vite build` 干净、main-path 契约绿、raw-hex 归零。Phase B（IDE 骨架）/ C（收口）待启动。
+**Phase A（表层快赢）已实现于工作树**：mono 机器文本、头像扁平化、去药丸（`--radius-control`）、去装饰渐变、抬升仅留浮层（覆盖 DS-3 in-flow 阴影）、微标签归一、状态左缘、New task 图标——`tsc`+`vite build` 干净、main-path 契约绿、raw-hex 归零。
+**Phase B 增量 1（B1+B2）已实现于工作树**：经 4 路架构 recon，全局头部行（`grid-template-rows`，`MissionPaneHeader` 提升为壳首子、跨全宽、带运行状态 pill）+ 全幅工作面（清 5 处 `--thread-max` cap、删 `useThreadColumnWidth` JS 驱动、prose 改静态 70ch、dock 偏移改 `calc(--panel-width)`）+ 窄屏单列全幅（修 @820 被 @1240 `!important` 压过的死规则）——`tsc`+`vite build` 干净、契约绿、桌面/窄屏预览核验、console 0 错误。B3（评审面对等）/ B4·B5（控件分组+composer segmented）/ C（收口）待启动，含 3 个已记录待决项。
 
 其余 Studio 改动仍以**真实 Beta friction 证据**驱动（见末尾 defer 集）；无新 friction 不再加 Studio 新功能。
 
