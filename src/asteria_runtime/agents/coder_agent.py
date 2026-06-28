@@ -64,9 +64,14 @@ class CoderAgent:
         ]
         last_error: Exception | None = None
         for attempt in range(2):
+            # Escalate the retry attempt to the strong tier: the medium model
+            # intermittently returns an ungrounded stop or a non-executable action
+            # on trivial tasks, and re-prompting the same tier reproduces it. The
+            # retry only runs after a first-attempt failure, so cost stays bounded.
+            model_tier = "medium" if attempt == 0 else "strong"
             request = ChatRequest(
                 purpose="task_execution",
-                model_tier="medium",
+                model_tier=model_tier,
                 messages=messages,
                 response_format="json" if transport == "json" else None,
                 temperature=0.2,
@@ -104,7 +109,7 @@ class CoderAgent:
                     )
             except CoderAgentError as exc:
                 last_error = exc
-                retry_prompt = self._retry_prompt(exc, transport, available_tools)
+                retry_prompt = self._retry_prompt(exc, transport, available_tools, task)
                 messages.extend(
                     [
                         ChatMessage(role="assistant", content=response.content[:4000]),
@@ -122,14 +127,39 @@ class CoderAgent:
         exc: Exception,
         transport: str,
         available_tools: list[str],
+        task: dict | None = None,
     ) -> str:
         tools_text = ", ".join(available_tools) or "the available tools"
+        ungrounded_stop = "stop is not grounded" in str(exc)
+        work_scope = [
+            str(item)
+            for key in ("write_scope", "expected_artifacts", "validation_commands")
+            for item in (task or {}).get(key) or []
+            if item
+        ]
+        targets = ", ".join(dict.fromkeys(work_scope)) or "the expected artifact"
         if transport == "tool_use":
+            if ungrounded_stop:
+                return (
+                    "Your previous response could not be used: "
+                    f"{exc}. The task is NOT complete: {targets} has not been produced yet. "
+                    "Return native tool calls that create or modify the expected artifact now "
+                    f"(prefer write_file/edit_file from {tools_text}). Do not stop, ask, or "
+                    "replan on this round; include verification if useful."
+                )
             return (
                 "Your previous response could not be used: "
                 f"{exc}. Return one assistant message with native tool calls only. "
                 "Do not return plain JSON or markdown. Use the available tools "
                 f"({tools_text}) to complete the task, and include verification if needed."
+            )
+        if ungrounded_stop:
+            return (
+                "Your previous response could not be used: "
+                f"{exc}. The task is NOT complete: {targets} has not been produced yet. "
+                "Return only one valid JSON object whose agent_loop_decision.next_action.action "
+                "is 'tool', producing or modifying the expected artifact now "
+                "(use write_file/edit_file). Do not stop, ask, or replan on this round."
             )
         return (
             "Your previous response could not be used: "

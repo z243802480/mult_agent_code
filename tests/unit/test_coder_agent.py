@@ -402,3 +402,29 @@ def test_coder_agent_retries_premature_first_round_stop_for_work_bearing_task() 
     assert action["agent_loop_decision"]["next_action"]["action"] == "tool"
     assert len(client.requests) == 2
     assert "stop is not grounded" in client.requests[1].messages[-1].content
+
+
+def test_coder_agent_escalates_to_strong_tier_and_names_target_on_retry() -> None:
+    client = PrematureStopThenToolClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.txt"],
+            "expected_artifacts": ["result.txt"],
+        },
+        goal_spec={"goal_id": "goal-1", "original_goal": "Create result.txt"},
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+    )
+
+    # First attempt stays on the cost-efficient medium tier; the corrective retry
+    # escalates to the strong tier and names the unwritten target file.
+    assert client.requests[0].model_tier == "medium"
+    assert client.requests[1].model_tier == "strong"
+    retry_prompt = client.requests[1].messages[-1].content
+    assert "result.txt" in retry_prompt
+    assert "Do not stop, ask, or replan" in retry_prompt
