@@ -5,7 +5,6 @@ from pathlib import Path
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.route_command import RouteCommand
 from asteria_runtime.core.orchestration_route_recorder import orchestration_routes_path
-from asteria_runtime.storage.schema_validator import SchemaValidator
 
 
 SCHEMA_DIR = Path(__file__).resolve().parents[2] / "schemas"

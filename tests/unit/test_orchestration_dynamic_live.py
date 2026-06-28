@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from asteria_runtime.commands.init_command import InitCommand

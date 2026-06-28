@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
-from asteria_runtime.core.candidate_export import CandidateExporter
 from asteria_runtime.core.candidate_workspace import CandidateWorkspace
 from asteria_runtime.core.merge_gate_dry_run import MergeGateDryRunner
 from asteria_runtime.core.runtime_context import RuntimeContext

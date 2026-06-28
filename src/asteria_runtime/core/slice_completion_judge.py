@@ -137,7 +137,6 @@ def _model_judge(
 
 
 def _deterministic_judge(context: dict[str, Any]) -> dict[str, Any]:
-    signals = context.get("signals") if isinstance(context.get("signals"), dict) else {}
     open_tasks = context.get("open_tasks") if isinstance(context.get("open_tasks"), list) else []
     review_score = context.get("review_score")
     complete = bool(context.get("rule_slice_complete"))

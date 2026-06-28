@@ -9,7 +9,7 @@ from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
-from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from asteria_runtime.models.base import ChatRequest, ChatResponse
 
 from tests.integration.test_plan_command import FakePlanClient
 from tests.integration.test_user_command_smoke import FakeChatClient

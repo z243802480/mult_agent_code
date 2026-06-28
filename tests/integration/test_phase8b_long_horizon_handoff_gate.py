@@ -6,7 +6,6 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.commands.accept_command import AcceptCommand
-from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.core.phase2_stability_window import long_horizon_projection
 from asteria_runtime.core.long_horizon_handoff import handoff_path, read_long_horizon_handoff
 from asteria_runtime.core.north_star import NorthStarStore

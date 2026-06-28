@@ -117,7 +117,7 @@ def test_handoff_includes_north_star_ref_when_configured(tmp_path: Path) -> None
         north_star_title="Long horizon goal",
         north_star_statement="Cross-run milestones",
     ).run()
-    plan = PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
+    PlanCommand(tmp_path, "build a password test tool", model_client=FakePlanClient()).run()
 
     handoff = HandoffCommand(tmp_path, to_role="ReviewerAgent").run()
     package = json.loads(handoff.handoff_path.read_text(encoding="utf-8"))

@@ -9,7 +9,6 @@ from asteria_runtime.core.local_background_run import (
     background_run_projection,
     start_local_background_run,
 )
-from asteria_runtime.resources import schema_dir
 from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.utils.time import now_iso
 
@@ -95,7 +94,6 @@ def run_remote_background_stub_band(
     validator: SchemaValidator,
 ) -> RemoteBackgroundStubBandResult:
     from asteria_runtime.commands.init_command import InitCommand
-    from asteria_runtime.core.local_background_run import background_run_projection
 
     root.mkdir(parents=True, exist_ok=True)
     InitCommand(root).run()

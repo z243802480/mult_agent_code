@@ -5,7 +5,6 @@ from pathlib import Path
 
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.status_command import StatusCommand
-from asteria_runtime.core.north_star import NorthStarStore
 
 
 def test_status_json_includes_long_horizon_projection(tmp_path: Path) -> None:

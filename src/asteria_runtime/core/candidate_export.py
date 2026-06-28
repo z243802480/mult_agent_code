@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import filecmp
 from dataclasses import dataclass
-from pathlib import Path
 
 from asteria_runtime.core.candidate_workspace import EXCLUDED_NAMES, CandidateWorkspace
 from asteria_runtime.core.execution_profile import resolve_worker_execution_profile
