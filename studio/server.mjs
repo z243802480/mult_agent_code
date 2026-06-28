@@ -239,7 +239,12 @@ async function submitUserGoal(sessionId, body) {
   const routeMessage = buildRouteMessageWithChatContext(sessionEvents, goal);
   const chatHandoff = routeMessage !== goal;
   const orchestrated = await resolveStudioOrchestrationRoute(routeMessage, requestedMode);
-  if (orchestrated) {
+  // Orchestration only refines execution routing (resume in-progress / continue a
+  // warm session / a real runtime-router capability). Its cold "rules_fallback"
+  // default carries no signal, so it must NOT override the base intent — otherwise
+  // every conversational (chat) or plan-first message in a fresh workspace gets
+  // clobbered into a runtime run. Honor orchestration only when it brings a signal.
+  if (orchestrated && orchestrationHasRouteSignal(orchestrated)) {
     mode = orchestrated.mode;
     executionRoute = orchestrated;
     route.mode = mode;
@@ -685,6 +690,17 @@ function orchestrationCommandFor(studioMode, goal, options = {}) {
   }
   if (studioMode === "chat") return null;
   return runtimeCommand(studioMode, goal);
+}
+
+function orchestrationHasRouteSignal(orchestrated) {
+  // The no-signal cold fallback from resolveStudioExecutionRouteFallback
+  // (source "rules_fallback" + route "cold") means "no in-progress/warm
+  // continuation applies", so the base intent from routeUserIntent (chat /
+  // plan / run) must stand unchanged. Every other orchestration result —
+  // warm_session, resume_in_progress, or a real runtime-router decision —
+  // carries a genuine signal and should be honored.
+  if (!orchestrated || !orchestrated.mode) return false;
+  return !(String(orchestrated.source) === "rules_fallback" && String(orchestrated.route) === "cold");
 }
 
 async function resolveStudioExecutionRouteFallback(goal, requestedMode) {
