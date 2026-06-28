@@ -1,5 +1,5 @@
 .composer {
-  border-top: 1px solid #252b30;
+  border-top: 1px solid var(--border-subtle);
   display: grid;
   gap: 10px;
   padding: 10px 16px 12px;
@@ -53,10 +53,10 @@
 
 .composerModeSummary {
   align-items: center;
-  background: #171b1f;
-  border: 1px solid #364149;
-  border-radius: 999px;
-  color: #c8d0d6;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -65,19 +65,19 @@
 }
 
 .composerModeSummary.tone-good {
-  border-color: #2d5e47;
+  border-color: var(--ok);
 }
 
 .composerModeSummary.tone-warn {
-  border-color: #806a34;
+  border-color: var(--warn);
 }
 
 .composerModeMenu {
-  background: #101418;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   bottom: calc(100% + 6px);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-md);
   display: grid;
   gap: 2px;
   left: 0;
@@ -89,8 +89,8 @@
 .composerModeMenu button {
   background: transparent;
   border: 0;
-  border-radius: 5px;
-  color: #cfd8de;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 11px;
   padding: 6px 10px;
@@ -99,22 +99,22 @@
 
 .composerModeMenu button:hover,
 .composerModeMenu button.active {
-  background: #1e2830;
-  color: #eef2f4;
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
 
 .composerModeGroup select {
-  background: #171b1f;
-  border: 1px solid #364149;
-  border-radius: 999px;
-  color: #c8d0d6;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
   font-size: 11px;
   min-height: 28px;
   padding: 0 8px;
 }
 
 .composerPermissionHint {
-  color: #6e7d88;
+  color: var(--text-muted);
   font-size: 10px;
 }
 
@@ -144,13 +144,13 @@
 }
 
 .composer.chatMode {
-  background: #111518;
+  background: var(--surface-1);
   border-top-color: #1e3a48;
 }
 
 .composer.autoMode {
   background: linear-gradient(180deg, #11161b 0%, #111518 100%);
-  border-top-color: #2f4c6a;
+  border-top-color: var(--accent-border);
 }
 
 .composer.sideAskMode {
@@ -160,10 +160,10 @@
 
 .composerSideAskToggle {
   align-items: center;
-  background: #171b1f;
-  border: 1px solid #364149;
-  border-radius: 999px;
-  color: #9aa6af;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 12px;
@@ -176,7 +176,7 @@
 .composerSideAskToggle.active {
   background: #1e3a48;
   border-color: #3d6a7a;
-  color: #d8e2e7;
+  color: var(--text-primary);
 }
 
 .composerSideAskHint {
@@ -218,11 +218,11 @@
 }
 
 .slashMenu {
-  background: #101418;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   bottom: calc(100% + 6px);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--shadow-lg);
   display: grid;
   gap: 3px;
   left: 0;
@@ -236,8 +236,8 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 5px;
-  color: #cfd8de;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   cursor: pointer;
   display: flex;
   gap: 12px;
@@ -248,7 +248,7 @@
 }
 
 .slashMenu button:hover {
-  background: #1e2830;
+  background: var(--surface-3);
 }
 
 .slashMenu strong {
@@ -256,7 +256,7 @@
 }
 
 .slashMenu span {
-  color: #71808b;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
@@ -271,15 +271,15 @@
 }
 
 .composer.autoMode textarea {
-  border-color: #2e5b83;
+  border-color: var(--accent-border);
 }
 
 .composerActionBar {
   align-items: center;
-  background: #12171b;
-  border: 1px solid #2b353d;
-  border-radius: 7px;
-  color: #a9b4bc;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
   display: flex;
   gap: 10px;
   justify-content: space-between;
@@ -288,11 +288,11 @@
 }
 
 .composerActionBar.good {
-  border-color: #2d5e47;
+  border-color: var(--ok);
 }
 
 .composerActionBar.warn {
-  border-color: #766431;
+  border-color: var(--warn);
 }
 
 .composerActionMain,
@@ -304,7 +304,7 @@
 }
 
 .composerActionMain strong {
-  color: #edf3f6;
+  color: var(--text-primary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -317,9 +317,9 @@
 }
 
 .composerPermissionPill {
-  border: 1px solid #303a42;
-  border-radius: 999px;
-  color: #c4ced6;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
   flex: 0 0 auto;
   font-size: 11px;
   padding: 4px 8px;
@@ -343,7 +343,7 @@
 }
 
 .modeHint {
-  color: #8fa3b3;
+  color: var(--text-secondary);
   font-size: 12px;
   white-space: nowrap;
 }
@@ -354,14 +354,14 @@
 
 
 .advancedModeDetails {
-  color: #8fa3b3;
+  color: var(--text-secondary);
   font-size: 12px;
   position: relative;
 }
 
 .advancedModeDetails summary {
-  border: 1px solid #303a42;
-  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
   cursor: pointer;
   list-style: none;
   padding: 6px 10px;
@@ -373,8 +373,8 @@
 }
 
 .advancedModeDetails[open] summary {
-  background: #1e252b;
-  color: #eaf2f7;
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
 
 .advancedModeDetails .segmented {
@@ -382,9 +382,9 @@
 }
 
 .segmented {
-  background: #171b1f;
-  border: 1px solid #303a42;
-  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   display: flex;
   overflow: hidden;
 }
@@ -392,7 +392,7 @@
 .segmented button {
   background: transparent;
   border: 0;
-  color: #aeb8bf;
+  color: var(--text-secondary);
   min-height: 34px;
   font-size: 12px;
   padding: 0 9px;

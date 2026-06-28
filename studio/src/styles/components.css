@@ -3,7 +3,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  color: #8f9ba5;
+  color: var(--text-secondary);
   display: flex;
   gap: 6px;
   justify-content: space-between;
@@ -107,7 +107,7 @@
 .permissionCard {
   background: #1e1a2e;
   border: 1px solid #5a3ea0;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   display: grid;
   gap: 10px;
   max-width: 920px;
@@ -123,13 +123,13 @@
 }
 
 .permissionCard.resolved.allow {
-  border-color: #2f6b4d;
-  color: #a8e7c0;
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .permissionCard.resolved.deny {
-  border-color: #8b403a;
-  color: #ffb9b1;
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .permissionHeader {
@@ -144,14 +144,14 @@
 }
 
 .permissionSummary {
-  color: #c0c8ce;
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 1.45;
   margin: 0;
 }
 
 .permissionDetail {
-  color: #9aa6af;
+  color: var(--text-secondary);
   font-size: 12px;
   margin: 0;
 }
@@ -177,12 +177,12 @@
 }
 
 .permissionFact small {
-  color: #8f9aa3;
+  color: var(--text-muted);
   font-size: 11px;
 }
 
 .permissionFact strong {
-  color: #d6dde2;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 560;
   line-height: 1.35;
@@ -197,7 +197,7 @@
 .permissionDeny {
   align-items: center;
   border: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   display: inline-flex;
   font-size: 13px;
   font-weight: 720;
@@ -216,12 +216,12 @@
 }
 
 .permissionDeny {
-  background: #3d2020;
-  color: #ffb9b1;
+  background: var(--bad-subtle);
+  color: var(--bad);
 }
 
 .permissionDeny:hover:not(:disabled) {
-  background: #502828;
+  background: var(--bad-subtle);
 }
 
 .permissionAllow:disabled,
@@ -253,7 +253,7 @@
 
 .signalHead {
   align-items: center;
-  color: #99a6af;
+  color: var(--text-secondary);
   display: flex;
   font-size: 12px;
   gap: 7px;
@@ -268,7 +268,7 @@
 }
 
 .signalCard small {
-  color: #9aa6af;
+  color: var(--text-secondary);
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;

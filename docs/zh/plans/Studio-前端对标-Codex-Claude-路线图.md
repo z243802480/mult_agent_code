@@ -50,8 +50,12 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 | --- | --- | --- |
 | DS-0 | tokens v2 基线：accent 单链 + surface 阶梯 + 间距/字阶/圆角/阴影 + 全局焦点环/滚动条/选区 | ✅ 已落地（`a76ad4a`）|
 | DS-1 | 高频表面迁移：thread-turn / composer / sidebar / components | ✅ 已落地（`a76ad4a`）|
-| DS-2 | 剩余表面迁移（消除全部漂移）：thread-shell / thread-narrative / layout / session-list / side-chat / shell / inspector-panel / inspector-evidence / inspector-diff / inspector-diff-review | 进行中 |
+| DS-2 | 剩余表面迁移（消除全部漂移）：inspector ×4 / layout / shell / side-chat / thread-shell / thread-narrative / session-list + 补齐 DS-1 残留（thread-turn / composer / components） | ✅ 已落地（`2cf8971` + 本提交）|
+| DS-2c | 语义独色升级为 token（chat-teal 4 种、permission 紫、brand 渐变）→ 收掉最后 ~36 处 raw hex | 排队（小） |
 | DS-3 | 深度打磨（择一表面做到 Codex 级）：会话线排版/节奏/留白/过渡 | 排队 |
+
+> 迁移后全仓 raw hex 仅剩 `tokens.css` 的 17 处定义 + 3 类**故意保留语义**（permission 紫 / chat-teal / brand 渐变）；
+> 其余颜色/圆角/阴影全部走 token。DS-2c 把语义色也升级为命名 token 即可归零。
 
 迁移规则（每个表面照此，**不改布局/行为/选择器**，仅把颜色/圆角值换 token）：
 - 背景：最深→`--surface-0`；面板→`--surface-1`；卡片/输入→`--surface-2`；抬升/hover→`--surface-3`

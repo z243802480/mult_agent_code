@@ -18,17 +18,17 @@
 
 .threadProcessControls button {
   background: transparent;
-  border: 1px solid #27313a;
-  border-radius: 6px;
-  color: #748491;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 4px 8px;
 }
 
 .threadProcessControls button:hover {
-  background: #141c24;
-  color: #b8c6cf;
+  background: var(--surface-1);
+  color: var(--text-secondary);
 }
 
 /* User bubble (right-aligned) */
@@ -85,8 +85,8 @@
   align-items: center;
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  color: #4a6070;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -98,17 +98,17 @@
 
 .turnMiddleBadge:hover,
 .turnMiddleBadge.open {
-  background: #141c24;
-  color: #7a9aaa;
+  background: var(--surface-1);
+  color: var(--text-secondary);
 }
 
 .turnMiddleBadge.selected {
-  background: #172630;
-  color: #b9d6e5;
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 .turnMiddleSteps {
-  border-left: 2px solid #253039;
+  border-left: 2px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -125,11 +125,11 @@
 
 .contextWindowTrigger {
   align-items: center;
-  background: #191f23;
-  border: 1px solid #2c343a;
-  border-radius: 7px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
-  color: #9aa6af;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 12px;
@@ -140,21 +140,21 @@
 
 .contextWindowTrigger:hover,
 .contextWindowDock.open .contextWindowTrigger {
-  background: #20272c;
-  color: #cbd5dc;
+  background: var(--surface-3);
+  color: var(--text-primary);
 }
 
 .contextWindowTrigger strong {
-  color: #d8e2e7;
+  color: var(--text-primary);
   font-size: 12px;
 }
 
 .contextWindowPanel {
-  background: #191f23;
-  border: 1px solid #2c343a;
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   bottom: 42px;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--shadow-lg);
   display: grid;
   gap: 10px;
   min-width: 280px;
@@ -171,14 +171,14 @@
 }
 
 .contextWindowHeader strong {
-  color: #d8e2e7;
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 720;
 }
 
 .contextHealth {
-  border-radius: 999px;
-  color: #9aa6af;
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 760;
   padding: 3px 7px;
@@ -186,29 +186,29 @@
 }
 
 .contextHealth.good {
-  background: #123020;
-  color: #9fe0b6;
+  background: var(--ok-subtle);
+  color: var(--ok);
 }
 
 .contextHealth.warn {
-  background: #312914;
-  color: #f1ce83;
+  background: var(--warn-subtle);
+  color: var(--warn);
 }
 
 .contextHealth.bad {
-  background: #351a18;
-  color: #ffb8af;
+  background: var(--bad-subtle);
+  color: var(--bad);
 }
 
 .contextUsageBar {
-  background: #0f1418;
-  border-radius: 999px;
+  background: var(--surface-0);
+  border-radius: var(--radius-pill);
   height: 7px;
   overflow: hidden;
 }
 
 .contextUsageBar span {
-  background: linear-gradient(90deg, #57a8d2, #f35f7a);
+  background: linear-gradient(90deg, var(--accent), var(--bad));
   display: block;
   height: 100%;
   max-width: 100%;
@@ -227,30 +227,30 @@
 }
 
 .contextBreakdownRow span {
-  color: #a9b4bc;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 .contextBreakdownRow strong,
 .contextBreakdownRow em {
-  color: #d8e2e7;
+  color: var(--text-primary);
   font-size: 11px;
   font-style: normal;
 }
 
 .contextBreakdownRow em {
-  color: #87939c;
+  color: var(--text-muted);
 }
 
 .contextBreakdownRow.free span,
 .contextBreakdownRow.free strong {
-  color: #7f8a92;
+  color: var(--text-muted);
 }
 
 /* Running indicator (before first event) */
 .turnRunning {
   align-items: center;
-  color: #7a8e9a;
+  color: var(--text-secondary);
   display: flex;
   font-size: 13px;
   gap: 8px;
@@ -271,12 +271,12 @@
 }
 
 .turnWaiting strong {
-  color: #d5e8f2;
+  color: var(--text-primary);
   font-size: 13px;
 }
 
 .turnWaiting small {
-  color: #6f8491;
+  color: var(--text-muted);
   font-size: 12px;
   min-width: 24px;
 }
@@ -289,7 +289,7 @@
 
 .waitingDots i {
   animation: pulse 1.2s ease-in-out infinite;
-  background: #3a9ec8;
+  background: var(--accent);
   border-radius: 50%;
   display: block;
   height: 4px;
@@ -325,7 +325,7 @@
 }
 
 .liveSpinner {
-  color: #3a9ec8;
+  color: var(--accent);
   flex-shrink: 0;
 }
 
@@ -342,7 +342,7 @@
 }
 
 .livePhaseLabel {
-  color: #4a9ec8;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -350,7 +350,7 @@
 }
 
 .livePhaseTitle {
-  color: #6a8a9a;
+  color: var(--text-secondary);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -366,26 +366,26 @@
 
 .liveToolChip {
   align-items: center;
-  border-radius: 4px;
-  border: 1px solid #1e3a52;
-  color: #7ab8d8;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
   display: inline-flex;
   font-size: 11px;
   gap: 4px;
   padding: 2px 7px;
-  background: #111d28;
+  background: var(--accent-subtle);
 }
 
 .liveToolChip.completed {
-  background: #0e1e16;
-  border-color: #1e4a2e;
-  color: #6ec882;
+  background: var(--ok-subtle);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .liveToolChip.failed {
-  background: #1a0e0e;
-  border-color: #5a2020;
-  color: #f87878;
+  background: var(--bad-subtle);
+  border-color: var(--bad);
+  color: var(--bad);
 }
 
 .liveToolChip.waiting_user {
@@ -396,8 +396,8 @@
 
 .liveToolChip.running {
   animation: pulse 2s ease-in-out infinite;
-  border-color: #2a5070;
-  color: #7ab8d8;
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 /* Tool stdout output block */
@@ -409,9 +409,9 @@
 
 .liveToolOutput.clampedOutput pre,
 .liveToolOutput.clampedOutput:not(.expanded) pre {
-  background: #080d10;
-  border-left: 2px solid #1a4060;
-  color: #8abcca;
+  background: var(--surface-0);
+  border-left: 2px solid var(--accent-border);
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.5;
   margin: 0;
@@ -428,21 +428,21 @@
 }
 
 .toolCard {
-  border: 1px solid #16314a;
-  border-radius: 5px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-.toolCard.failed { border-color: #5a2020; }
-.toolCard.completed { border-color: #1e4a2e; }
+.toolCard.failed { border-color: var(--bad); }
+.toolCard.completed { border-color: var(--ok); }
 .toolCard.waiting_user { border-color: #4a3a70; }
-.toolCard.running { border-color: #2a5070; }
+.toolCard.running { border-color: var(--accent-border); }
 
 .toolCardHeader {
   align-items: center;
-  background: #0c161d;
+  background: var(--surface-0);
   border: none;
-  color: #7ab8d8;
+  color: var(--accent);
   cursor: pointer;
   display: flex;
   font-size: 11px;
@@ -453,7 +453,7 @@
 }
 
 .toolCardHeader[data-static="true"] { cursor: default; }
-.toolCardHeader:hover:not([data-static="true"]) { background: #102230; }
+.toolCardHeader:hover:not([data-static="true"]) { background: var(--surface-1); }
 
 .toolCardChevronSpacer {
   display: inline-block;
@@ -468,22 +468,22 @@
 }
 
 .toolCardStatus {
-  color: #5a7484;
+  color: var(--text-muted);
   flex-shrink: 0;
   font-size: 10px;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
-.toolCardStatus.completed { color: #6ec882; }
-.toolCardStatus.failed { color: #f87878; }
+.toolCardStatus.completed { color: var(--ok); }
+.toolCardStatus.failed { color: var(--bad); }
 .toolCardStatus.waiting_user { color: #c4a8ff; }
-.toolCard.running .toolCardStatus { color: #7ab8d8; }
+.toolCard.running .toolCardStatus { color: var(--accent); }
 
 .toolCardOutput.clampedOutput pre {
-  background: #080d10;
-  border-top: 1px solid #122230;
-  color: #8abcca;
+  background: var(--surface-0);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.5;
   margin: 0;
@@ -493,8 +493,8 @@
 }
 
 .liveModelText.clampedOutput pre {
-  border-top: 1px solid #1a2a38;
-  color: #c0cdd6;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.65;
@@ -517,7 +517,7 @@
 }
 
 .clampedOutput.clamped:not(.expanded) pre::after {
-  background: linear-gradient(180deg, transparent, #101214 88%);
+  background: linear-gradient(180deg, transparent, var(--surface-1) 88%);
   bottom: 0;
   content: "";
   height: 1.6em;
@@ -530,7 +530,7 @@
 .clampedOutputToggle {
   background: transparent;
   border: 0;
-  color: #6a8fa8;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 2px 0;
@@ -548,7 +548,7 @@
   align-items: center;
   background: transparent;
   border: 0;
-  color: #6a8fa8;
+  color: var(--text-muted);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -558,11 +558,11 @@
 
 .clampedOutputCopy:hover,
 .clampedOutputToggle:hover {
-  color: #9ec4dc;
+  color: var(--text-secondary);
 }
 
 .chatStreamPreview .clampedOutput pre {
-  color: #c8d6df;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.65;
@@ -577,10 +577,10 @@
 
 .liveFileChip {
   align-items: center;
-  background: #0e1a22;
-  border: 1px solid #1e3a30;
-  border-radius: 4px;
-  color: #6ec8a0;
+  background: var(--ok-subtle);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius-sm);
+  color: var(--ok);
   display: inline-flex;
   font-size: 11px;
   gap: 4px;
@@ -594,8 +594,8 @@
 
 .liveFileChip.interactive:hover,
 .liveFileChip.interactive:focus-visible {
-  background: #15242c;
-  border-color: #2f6b4d;
+  background: var(--ok-subtle);
+  border-color: var(--ok);
   outline: none;
 }
 
@@ -622,10 +622,10 @@
 }
 
 .turnDiffButton {
-  background: #15242c;
-  border: 1px solid #2f6b4d;
-  border-radius: 999px;
-  color: #b8e6c8;
+  background: var(--ok-subtle);
+  border: 1px solid var(--ok);
+  border-radius: var(--radius-pill);
+  color: var(--ok);
   cursor: pointer;
   font-size: 11px;
   padding: 3px 10px;
@@ -633,7 +633,7 @@
 
 .turnDiffButton:hover,
 .turnDiffButton:focus-visible {
-  background: #1a2f28;
+  background: var(--ok-subtle);
   outline: none;
 }
 
@@ -644,9 +644,9 @@
 .turnRewindButton {
   align-items: center;
   background: transparent;
-  border: 1px solid #364149;
-  border-radius: 999px;
-  color: #9aa6af;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
   cursor: pointer;
   display: inline-flex;
   font-size: 11px;
@@ -656,8 +656,8 @@
 
 .turnRewindButton:hover:not(:disabled),
 .turnRewindButton:focus-visible:not(:disabled) {
-  background: #1a2228;
-  color: #d8e2e7;
+  background: var(--surface-3);
+  color: var(--text-primary);
   outline: none;
 }
 
@@ -667,15 +667,15 @@
 }
 
 .turnRewindConfirm {
-  background: #171b1f;
-  border: 1px solid #364149;
-  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
   max-width: 420px;
   padding: 10px 12px;
 }
 
 .turnRewindConfirm p {
-  color: #b8c4cc;
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
   margin: 0 0 10px;
@@ -688,10 +688,10 @@
 }
 
 .turnRewindConfirmActions button {
-  background: #22282d;
-  border: 1px solid #364149;
-  border-radius: 6px;
-  color: #d8e2e7;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
   cursor: pointer;
   font-size: 12px;
   padding: 6px 10px;
@@ -703,8 +703,8 @@
 }
 
 .liveFileChip.muted {
-  border-color: #252d35;
-  color: #5a7080;
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
 }
 
 .liveFileDelta {
@@ -715,17 +715,17 @@
 }
 
 .deltaAdd {
-  color: #6ec8a0;
+  color: var(--ok);
 }
 
 .deltaDel {
-  color: #ff9aa8;
+  color: var(--bad);
 }
 
 /* Streaming LLM text — the actual words from the model as they arrive */
 .liveModelText {
-  border-top: 1px solid #1a2a38;
-  color: #c0cdd6;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.65;
@@ -736,9 +736,9 @@
 }
 
 .chatStreamPreview {
-  background: #10171d;
-  border: 1px solid #1d3a52;
-  border-radius: 4px 14px 14px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
   display: grid;
   gap: 8px;
   max-width: min(92%, 860px);
@@ -747,25 +747,25 @@
 
 .chatStreamHeader {
   align-items: center;
-  color: #8bc8e8;
+  color: var(--accent);
   display: flex;
   font-size: 12px;
   gap: 8px;
 }
 
 .chatStreamHeader strong {
-  color: #d8eef6;
+  color: var(--text-primary);
 }
 
 .chatStreamHeader span {
-  color: #6e8391;
+  color: var(--text-muted);
   font-size: 11px;
   margin-left: auto;
 }
 
 .chatStreamPreview pre,
 .chatStreamPreview p {
-  color: #c8d6df;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
   line-height: 1.65;
@@ -778,16 +778,16 @@
 
 /* ── Asteria response card */
 .turnFinal {
-  background: #141a20;
-  border: 1px solid #2a3a46;
-  border-radius: 4px 14px 14px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
   max-width: min(92%, 860px);
   padding: 12px 14px;
 }
 
 .turnFinal.failed {
-  background: #160e0e;
-  border-color: #6b2f2c;
+  background: var(--bad-subtle);
+  border-color: var(--bad);
 }
 
 .turnFinalHeader {
@@ -801,7 +801,7 @@
   align-items: center;
   background: linear-gradient(135deg, #0d7a8a, #4a58c8);
   border-radius: 50%;
-  color: #fff;
+  color: var(--accent-fg);
   display: inline-flex;
   font-size: 10px;
   font-weight: 800;
@@ -811,7 +811,7 @@
 }
 
 .turnFinalLabel {
-  color: #6a9ab0;
+  color: var(--text-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -819,7 +819,7 @@
 }
 
 .turnFinalText {
-  color: #d4dde3;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 14px;
   line-height: 1.65;
@@ -828,7 +828,7 @@
 }
 
 .turnFinalText section {
-  border-top: 1px solid #22313c;
+  border-top: 1px solid var(--border-subtle);
   display: grid;
   gap: 6px;
   padding: 10px 0;
@@ -840,7 +840,7 @@
 }
 
 .turnFinalText h3 {
-  color: #eef6f8;
+  color: var(--text-primary);
   font-size: 14px;
   margin: 0 0 2px;
 }
@@ -850,7 +850,7 @@
 }
 
 .primaryFinalSection {
-  color: #eef6f8;
+  color: var(--text-primary);
   font-size: 15px;
 }
 
@@ -860,14 +860,14 @@
 }
 
 .finalBullet::before {
-  color: #5fc6d4;
+  color: var(--accent);
   content: "•";
   left: 4px;
   position: absolute;
 }
 
 .finalDetail {
-  color: #aebbc4;
+  color: var(--text-secondary);
   font-size: 13px;
   padding-left: 18px;
 }
