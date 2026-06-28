@@ -64,6 +64,24 @@ Studio 现状最伤体验的几处，恰恰不是"缺功能"，而是**前端在
 - 圆角 6→sm、7–9→md、12–14→lg、999→pill
 - 语义独色（如 permission 紫）暂留色相，但邻近中性也 token 化，并登记为"待补语义 token"
 
+## 主线对话流改造（用户 2026-06-28 friction：「主窗口不是对话流」）
+
+**根因（research workflow `w02hco3zz` 证实）**：`server.mjs` 把助手终答**重写成 `final_report.md` 诊断报告**
+（Current State / Todo / Workspace 路径 / Model Selection / Promotion Queue / Verification Evidence / 过程摘要），
+三处 clobber：run close-path fallback + 每次 re-read 的 `readSessionEvents` + `enrichFinalAnswerEvent`。这既违反
+ADR-0012（诊断进 Inspector），也是「像报告不像对话」的根因。前端骨架本就正确（user→折叠过程→内联终答；文件卡→Inspector 已接好）。
+
+对标依据：Codex = 流式过程→折叠→综合结论；Claude Code = 完整过程流→末尾内联复盘、不折叠；两者工具调用默认折叠、可实时展开。
+
+| 阶段 | 内容 | 状态 |
+| --- | --- | --- |
+| CV-A | server 停止三处 clobber：终答保留 runtime 真实 `display_level=main` transcript，诊断只留 `artifact_refs` 供 Inspector；无终答时给诚实短句 | ✅ 已落地（`0b2296a`）|
+| CV-B | `TurnFinal` 渲染 lead 散文 + 把结构化尾部折叠进默认收起的「运行详情」disclosure；删 slice#2 的 section 脚手架。对存量会话即时生效 | ✅ 已落地 |
+| CV-C | **（后端轨/内核）** runtime 由**模型撰写**一段对话式复盘结论作为 `final` transcript，Studio 原样显示——最优解、最贴 CC/Codex，但触内核，按研发总计划裁决 | 排队（DecisionPoint）|
+
+> 关键发现：runtime 目前只发**短/结构化** final 片段（如「task-0001 completed with verified evidence」+「Run review or acceptance」+ 指针），
+> 没有模型撰写的对话式复盘——所以 CV-B 是用真实 main transcript 折叠呈现，CV-C 才是让模型真正"说一句话"的根治。
+
 ## 冻结合规
 
 active 集（1–8）全部是**去噪/删重构 + 扩既有 Inspector 面板**，不是独立新功能 Slice，故不触 freeze；
