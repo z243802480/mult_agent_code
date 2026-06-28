@@ -13,9 +13,9 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const modelMeta = turnModelMetadata(middleSteps, step);
   const useMarkdown = visibleText.includes("## ") || visibleText.includes("```") || visibleText.includes("\n- ");
   const primarySection = sections[0];
-  const secondarySections = sections.slice(1).filter((section) =>
-    section.lines.some((line) => line.trim() && !/no (verification|immediate next)/i.test(line))
-  );
+  // No placeholder filtering needed: finalSections only emits verification / next-step sections
+  // when the runtime actually produced them, so every secondary section here is real content.
+  const secondarySections = sections.slice(1);
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
@@ -64,6 +64,10 @@ function stripContextNoise(text: string): string {
 
 type FinalSection = { title: string; lines: string[] };
 
+// Honest final card (ADR-0012): render only what the runtime actually produced. Never invent a
+// final answer, never pad missing verification / next-step with fabricated filler. Absent extras
+// are simply not shown (answer-first, like Codex / Claude Code) rather than scaffolded with
+// "nothing was recorded" placeholders that a downstream filter then has to hide.
 function finalSections(text: string, isError: boolean, middleSteps: NarrativeStepType[]): FinalSection[] {
   const sections = splitFinalSections(text);
   const byTitle = new Map(
@@ -72,22 +76,20 @@ function finalSections(text: string, isError: boolean, middleSteps: NarrativeSte
       .map((section) => [canonicalFinalTitle(section.title), section.lines.filter((line) => line.trim())])
   );
   const rawLines = sections.flatMap((section) => section.lines).filter((line) => line.trim());
+  const resultLines = byTitle.get("Result") ?? byTitle.get("Issue") ?? rawLines;
   const verificationLines = byTitle.get("Verification") ?? inferredVerificationLines(middleSteps);
   const risksLines = byTitle.get("Risks / Next step") ?? byTitle.get("Next step") ?? inferredRiskLines(middleSteps, isError);
-  return [
+
+  const out: FinalSection[] = [
     {
       title: isError ? "Issue" : "Result",
-      lines: byTitle.get("Result") ?? byTitle.get("Issue") ?? (rawLines.length ? rawLines : [isError ? "The run needs attention." : "Done."]),
-    },
-    {
-      title: "Verification",
-      lines: verificationLines.length ? verificationLines : ["No verification summary was recorded for this turn."],
-    },
-    {
-      title: "Risks / Next step",
-      lines: risksLines.length ? risksLines : ["No immediate next action is required."],
+      // Never fabricate a success/status line when the runtime recorded no answer content.
+      lines: resultLines.length ? resultLines : ["No answer content was recorded for this turn."],
     },
   ];
+  if (verificationLines.length) out.push({ title: "Verification", lines: verificationLines });
+  if (risksLines.length) out.push({ title: "Risks / Next step", lines: risksLines });
+  return out;
 }
 
 function canonicalFinalTitle(value: string): string {

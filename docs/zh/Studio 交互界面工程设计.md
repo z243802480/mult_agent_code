@@ -142,7 +142,7 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 1. **不伪造流式**：模型输出按 `content_delta` 到达即渲染，禁止客户端打字机/人工定时逐字。
    - 现状：`ConversationTurn.tsx` 的 `useSmoothText` 打字机**已删除**（slice #1，commit `80477c5`），`ChatStreamPreview` 直接渲染真实 delta。
 2. **不编造终答**：缺 `final`/`stop` 事件时显示「未记录 / not recorded」，**不得**静默丢节、**不得**用模板把一句话回答硬塞成 Result/Verification/Risk 结构。
-   - 现状（**已知缺口，路线图 #2**）：`TurnFinal.tsx` 在缺数据时仍编造 `"No verification summary was recorded for this turn."` 与 `"No immediate next action is required."` 两条占位——属待删的造假，不是设计。
+   - 现状：`TurnFinal.tsx` 的 `finalSections` **只在 Runtime 真有 verification/next-step 时**才挂这两节，缺失即不渲染（answer-first，对标 CC/Codex）；终答内容为空时显示「No answer content was recorded」而非编造 `"Done."`。原先的编造占位（`"No verification summary was recorded…"` / `"No immediate next action is required."`）与依赖措辞正则隐藏它们的脆弱过滤已删除（slice #2）。
 3. **不重建叙事**：`task_plan.json` / `runtime_progress.todo.counts` 已进 payload 很诱人，但据其在前端渲染清单 = 复活被否决的 WorkflowPhaseStrip，**禁止**。要展示计划只能源自 `transcript_kind=plan` 的 main 事件。
 4. **不前端推断权限/完成**：文件范围以 `permission_preview.scope_detail` 为准、不靠关键词猜；Accept 只走 runtime_policy，绝不伪造完成。
 5. **工具输出折叠**：工具卡默认折叠，原始 stdout/traceback 选中联动 Inspector，不在主线内联全量输出。
@@ -173,7 +173,7 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 落地顺序见 [plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)（8 个 slice，源自 design workflow 评分）。当前进度：
 
 - **#1 诚实流式**：✅ 已落地（删打字机）。
-- **#2 干净终答卡**：进行中（删 §7.2 的编造占位）。
+- **#2 干净终答卡**：✅ 已落地（删 §7.2 的编造占位与脆弱过滤）。
 - #3 内联工具卡 / #4 loop-health 面板（露出 `loop_quality`）/ #5 diff 评审 gate / #6 逐事件建议 chip / #7 校验矩阵 / #8 approve gate：排队。
 
 冻结合规：active 集全是**去噪/删重构 + 扩既有 Inspector 面板**，不是独立新功能 Slice，故不触 Studio freeze。**无**新编排 Wave / 全局 parallel_writes / maintainer 命令。需真实 Beta friction 才解锁的 defer 项（Plan/Todo 卡、成本仪表盘、流式 stop/interrupt、逐 token 传输改造）见路线图 §「显式 defer」。
