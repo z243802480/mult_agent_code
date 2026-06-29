@@ -806,6 +806,7 @@ def test_capability_report_merges_real_provider_matrix_signals(tmp_path: Path) -
                 }
             ],
         },
+        "real_provider_matrix_summary",
     )
 
     result = CapabilityReportCommand(tmp_path).run()
