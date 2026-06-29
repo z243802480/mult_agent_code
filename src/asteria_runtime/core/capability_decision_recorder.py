@@ -92,7 +92,7 @@ class CapabilityDecisionRecorder:
             "decision": decision,
             "created_at": now_iso(),
         }
-        JsonlStore(context.validator).append(path, payload, schema_name=None)
+        JsonlStore(context.validator).append(path, payload, schema_name="capability_decision")
         logger = UserProgressLogger(path.with_name("user_progress.jsonl"), context.validator)
         event = logger.record(
             run_id=context.run_id,

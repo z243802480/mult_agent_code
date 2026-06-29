@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SkillInvocation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "skill_invocation_id",
+    "run_id",
+    "task_id",
+    "skill_name",
+    "status",
+    "ok",
+    "summary",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "skill_invocation_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "skill_name": { "type": "string" },
+    "arguments": { "type": "object" },
+    "capability_decision": { "type": "object" },
+    "status": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "summary": { "type": "string" },
+    "error": { "type": ["string", "null"] },
+    "data": { "type": "object" },
+    "artifacts": { "type": "array" },
+    "artifact_refs": { "type": "array", "items": { "type": "string" } },
+    "created_at": { "type": "string" }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CapabilityDecision",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run_id",
+    "task_id",
+    "capability",
+    "capability_type",
+    "decision",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "decision_id": { "type": "string" },
+    "capability_decision_id": { "type": "string" },
+    "invocation_id": { "type": "string" },
+    "tool_call_id": { "type": ["string", "null"] },
+    "mcp_invocation_id": { "type": "string" },
+    "skill_invocation_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "capability": { "type": "string" },
+    "capability_type": { "type": "string", "enum": ["tool", "mcp", "skill"] },
+    "decision": { "type": "object" },
+    "created_at": { "type": "string" }
+  }
+}

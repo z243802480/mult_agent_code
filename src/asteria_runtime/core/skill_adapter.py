@@ -330,7 +330,7 @@ class SkillAdapter:
             "artifact_refs": artifact_refs,
             "created_at": now_iso(),
         }
-        JsonlStore(context.validator).append(path, record, schema_name=None)
+        JsonlStore(context.validator).append(path, record, schema_name="skill_invocation")
         UserProgressLogger(path.with_name("user_progress.jsonl"), context.validator).record(
             run_id=context.run_id,
             channel="tool",

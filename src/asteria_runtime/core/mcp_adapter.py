@@ -429,7 +429,7 @@ class McpAdapter:
             "retry_attempts": self.retry_attempts,
             "created_at": now_iso(),
         }
-        JsonlStore(context.validator).append(path, record, schema_name=None)
+        JsonlStore(context.validator).append(path, record, schema_name="mcp_invocation")
         UserProgressLogger(path.with_name("user_progress.jsonl"), context.validator).record(
             run_id=context.run_id,
             channel="tool",

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "McpInvocation",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "mcp_invocation_id",
+    "run_id",
+    "task_id",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "mcp_invocation_id": { "type": "string" },
+    "run_id": { "type": ["string", "null"] },
+    "task_id": { "type": "string" },
+    "server_name": { "type": "string" },
+    "tool_name": { "type": "string" },
+    "server": { "type": "string" },
+    "tool": { "type": "string" },
+    "arguments": { "type": "object" },
+    "capability_decision": { "type": ["object", "string"] },
+    "status": { "type": "string" },
+    "error_class": { "type": ["string", "null"] },
+    "ok": { "type": "boolean" },
+    "summary": { "type": "string" },
+    "error": { "type": ["string", "null"] },
+    "data": { "type": "object" },
+    "retry_attempts": { "type": "integer" },
+    "created_at": { "type": "string" }
+  }
+}
