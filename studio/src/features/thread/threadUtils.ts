@@ -8,9 +8,8 @@ export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-export function firstText(...items: string[]): string {
-  return items.find((item) => item.trim()) ?? "";
-}
+// Single source for first-non-empty-text; re-exported so existing thread imports keep working.
+export { firstText } from "../../narrative";
 
 export function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));

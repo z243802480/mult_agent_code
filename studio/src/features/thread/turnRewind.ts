@@ -1,4 +1,5 @@
 import type { RunDetailPayload } from "../../types";
+import { firstText } from "../../narrative";
 
 export type TurnRewindPlan = {
   action: string;
@@ -7,14 +8,6 @@ export type TurnRewindPlan = {
   disabled: boolean;
   disabledReason?: string;
 };
-
-function firstText(...values: unknown[]): string {
-  for (const value of values) {
-    const text = String(value ?? "").trim();
-    if (text) return text;
-  }
-  return "";
-}
 
 export function planTurnRewind(runDetail: RunDetailPayload | null | undefined, isRunning: boolean): TurnRewindPlan {
   if (!runDetail?.ok || !runDetail.run_id) {
