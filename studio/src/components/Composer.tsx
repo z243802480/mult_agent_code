@@ -14,6 +14,12 @@ const MODE_LABELS: Record<Mode, string> = {
   accept: "Accept",
 };
 
+// Intent modes ride an inline segmented control; lifecycle/maintainer actions
+// (review/resume/accept) live behind an overflow menu — same string set, no
+// backend change. (reference-first B5: mainstream main-modes are 2-3, never a flat 7-row.)
+const PRIMARY_MODES = ["auto", "chat", "plan", "run"] as const;
+const OVERFLOW_MODES = ["review", "resume", "accept"] as const;
+
 const MODE_PLACEHOLDERS: Record<Mode, string> = {
   auto: "Message Asteria… (Enter send, Shift+Enter newline)",
   chat: "Ask a question…",
@@ -128,6 +134,7 @@ export function Composer({
   const isAuto = mode === "auto" && !sideAsk;
   const isChat = mode === "chat" || sideAsk;
   const showPermission = !sideAsk && (mode === "auto" || mode === "run" || mode === "resume");
+  const isOverflowMode = (OVERFLOW_MODES as readonly string[]).includes(mode);
   const profile = sideAsk
     ? { icon: <MessageCircle size={13} />, label: "Quick ask", permission: "Off-thread", tone: "good" as const }
     : actionProfile(mode, permission);
@@ -187,24 +194,46 @@ export function Composer({
             </button>
           )}
           {!sideAsk && (
-          <details className="composerModeDetails">
-            <summary className={`composerModeSummary tone-${profile.tone}`}>
-              {profile.icon}
-              <span>{profile.label}</span>
-            </summary>
-            <div className="composerModeMenu">
-              {MODES.map((item) => (
-                <button
-                  type="button"
-                  className={mode === item ? "active" : ""}
-                  key={item}
-                  onClick={() => setMode(item)}
+            <>
+              <div className="segmented composerModeSegmented" role="radiogroup" aria-label="Mode">
+                {PRIMARY_MODES.map((item) => (
+                  <button
+                    type="button"
+                    key={item}
+                    role="radio"
+                    aria-checked={mode === item}
+                    className={mode === item ? "active" : ""}
+                    onClick={() => setMode(item)}
+                  >
+                    {MODE_LABELS[item]}
+                  </button>
+                ))}
+              </div>
+              <details className="composerModeDetails composerModeOverflow">
+                <summary
+                  className={isOverflowMode ? "composerModeSummary active" : "composerModeSummary"}
+                  title="More modes"
+                  aria-label="More modes"
                 >
-                  {MODE_LABELS[item]}
-                </button>
-              ))}
-            </div>
-          </details>
+                  <span>{isOverflowMode ? MODE_LABELS[mode] : "⋯"}</span>
+                </summary>
+                <div className="composerModeMenu">
+                  {OVERFLOW_MODES.map((item) => (
+                    <button
+                      type="button"
+                      key={item}
+                      className={mode === item ? "active" : ""}
+                      onClick={(event) => {
+                        setMode(item);
+                        (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
+                      }}
+                    >
+                      {MODE_LABELS[item]}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            </>
           )}
           {showPermission && (
             <select value={permission} onChange={(event) => setPermission(event.target.value)} aria-label="Permission mode">

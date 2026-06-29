@@ -413,6 +413,16 @@
   color: var(--accent-fg);
 }
 
+/* B5: composer mode control — inline segmented (intent) + overflow (lifecycle). */
+.composerModeSegmented button {
+  min-height: 28px;
+}
+
+.composerModeSummary.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .composerBar select,
 .composerBar > button {
   background: var(--surface-2);
