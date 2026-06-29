@@ -49,7 +49,10 @@ def _transport_hint_from_mapping(value: object) -> str | None:
     return None
 
 
-def tool_definitions_for(available_tools: list[str]) -> list[dict[str, Any]]:
+def tool_definitions_for(
+    available_tools: list[str],
+    extra_specs: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
     specs = {
         "write_file": {
             "type": "function",
@@ -116,7 +119,50 @@ def tool_definitions_for(available_tools: list[str]) -> list[dict[str, Any]]:
             },
         },
     }
-    return [specs[name] for name in available_tools if name in specs]
+    native = [specs[name] for name in available_tools if name in specs]
+    if extra_specs:
+        native.extend(extra_specs)
+    return native
+
+
+def native_tool_specs_from_surface(
+    model_tool_surface: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """OpenAI-style native function specs for task-allowed mcp__/skill__ surface tools.
+
+    Returns [] when the surface is missing or carries no external/skill tools, so the
+    default json path and the no-MCP/no-skill path stay byte-for-byte unchanged. This is
+    pure exposure under the tool_use transport — execution still routes through the gateway
+    by tool name (ADR-0014/0015), and allow/ask/deny stays at the call boundary.
+    """
+    if not isinstance(model_tool_surface, dict):
+        return []
+    specs: list[dict[str, Any]] = []
+    for tool in model_tool_surface.get("tools") or []:
+        if not isinstance(tool, dict):
+            continue
+        name = str(tool.get("name") or "")
+        if not name.startswith(("mcp__", "skill__")):
+            continue
+        if not tool.get("task_allowed"):
+            continue
+        contract = tool.get("parameter_contract")
+        parameters = (
+            contract
+            if isinstance(contract, dict) and contract
+            else {"type": "object", "properties": {}}
+        )
+        specs.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": str(tool.get("description") or ""),
+                    "parameters": parameters,
+                },
+            }
+        )
+    return specs
 
 
 def extract_tool_calls(raw_response: dict[str, Any]) -> list[dict[str, Any]]:

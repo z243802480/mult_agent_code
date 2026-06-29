@@ -453,3 +453,209 @@ def test_coder_agent_honors_explicit_grunt_downgrade_then_escalates_on_retry() -
     # retry still escalates to strong so the task converges.
     assert client.requests[0].model_tier == "medium"
     assert client.requests[1].model_tier == "strong"
+
+
+# --- transport parity: discovered mcp__/skill__ tools reach the model on the
+# tool_use transport and survive slim context, at parity with the json/full path ---
+
+
+class ToolUseSurfaceClient:
+    """Captures the request and returns one native write_file tool call (single round)."""
+
+    def __init__(self) -> None:
+        self.requests: list[ChatRequest] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.requests.append(request)
+        raw = {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [
+                            {
+                                "id": "call-1",
+                                "type": "function",
+                                "function": {
+                                    "name": "write_file",
+                                    "arguments": json.dumps(
+                                        {
+                                            "path": "result.txt",
+                                            "content": "done",
+                                            "overwrite": True,
+                                        }
+                                    ),
+                                },
+                            }
+                        ],
+                    }
+                }
+            ]
+        }
+        return ChatResponse(
+            content="",
+            finish_reason="tool_calls",
+            usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+            model_provider="fake",
+            model_name="fake",
+            raw_response=raw,
+        )
+
+
+def _mcp_tool(name: str = "mcp__files__read", *, allowed: bool = True) -> dict:
+    return {
+        "name": name,
+        "kind": "external",
+        "permission": "ask" if allowed else "deny",
+        "task_allowed": allowed,
+        "description": "Read a file via MCP",
+        "parameter_contract": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
+        },
+    }
+
+
+def _skill_tool(name: str = "skill__verify", *, allowed: bool = True) -> dict:
+    return {
+        "name": name,
+        "kind": "skill",
+        "permission": "ask" if allowed else "deny",
+        "task_allowed": allowed,
+        "description": "Load the verify skill",
+        "parameter_contract": {},
+    }
+
+
+def _surface_with(*tools: dict) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "adapter": "model_tool_surface",
+        "tools": list(tools),
+        "task_allowed_model_tools": [
+            t["name"] for t in tools if t.get("task_allowed")
+        ],
+    }
+
+
+def _slim_task() -> dict:
+    return {
+        "task_id": "task-0001",
+        "allowed_tools": ["write_file"],
+        "write_scope": ["result.json"],
+        "read_scope": [],
+        "expected_artifacts": ["result.json"],
+    }
+
+
+def _slim_goal() -> dict:
+    return {
+        "goal_id": "goal-1",
+        "original_goal": "Create a local file",
+        "target_outputs": ["result.json"],
+    }
+
+
+def test_coder_agent_tool_use_exposes_mcp_skill_native_defs() -> None:
+    client = ToolUseSurfaceClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.txt"],
+            "expected_artifacts": ["result.txt"],
+        },
+        goal_spec={"goal_id": "goal-1", "original_goal": "Create a local file"},
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context={
+            "agent_role_contract": {"worker_transport": "tool_use"},
+            "model_tool_surface": _surface_with(_mcp_tool(), _skill_tool()),
+        },
+    )
+
+    specs = client.requests[0].tools
+    by_name = {s["function"]["name"]: s for s in specs}
+    assert "write_file" in by_name  # native local tool preserved
+    assert "mcp__files__read" in by_name  # MCP tool now a native def under tool_use
+    assert "skill__verify" in by_name
+    assert by_name["mcp__files__read"]["function"]["parameters"]["required"] == ["path"]
+    assert by_name["skill__verify"]["function"]["parameters"] == {
+        "type": "object",
+        "properties": {},
+    }
+
+
+def test_coder_agent_tool_use_no_mcp_skill_is_noop() -> None:
+    client = ToolUseSurfaceClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task={
+            "task_id": "task-0001",
+            "allowed_tools": ["write_file"],
+            "write_scope": ["result.txt"],
+            "expected_artifacts": ["result.txt"],
+        },
+        goal_spec={"goal_id": "goal-1", "original_goal": "Create a local file"},
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context={"agent_role_contract": {"worker_transport": "tool_use"}},
+    )
+
+    names = [s["function"]["name"] for s in client.requests[0].tools]
+    assert names == ["write_file"]  # byte-for-byte the prior native-only behavior
+
+
+def test_coder_agent_slim_json_keeps_mcp_skill_surface() -> None:
+    client = CaptureActionClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task=_slim_task(),
+        goal_spec=_slim_goal(),
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context={
+            "model_tool_surface": _surface_with(
+                _mcp_tool(),
+                {"name": "write_file", "kind": "internal", "task_allowed": True},
+            ),
+        },
+    )
+
+    payload = json.loads(client.requests[0].messages[-1].content)
+    assert payload["runtime_context"]["context_policy"]["mode"] == "slim"
+    surface = payload["model_tool_surface"]
+    names = {t["name"] for t in surface["tools"]}
+    assert "mcp__files__read" in names  # external tool survives slim
+    assert "write_file" not in names  # local registry tool dropped (slim token win)
+
+
+def test_coder_agent_slim_json_blank_when_no_mcp_skill() -> None:
+    client = CaptureActionClient()
+    agent = CoderAgent(client, SchemaValidator(Path("schemas")))
+
+    agent.propose_action(
+        task=_slim_task(),
+        goal_spec=_slim_goal(),
+        project_config={"name": "demo"},
+        available_tools=["write_file"],
+        run_id="run-1",
+        runtime_context={
+            "model_tool_surface": _surface_with(
+                {"name": "write_file", "kind": "internal", "task_allowed": True},
+            ),
+        },
+    )
+
+    payload = json.loads(client.requests[0].messages[-1].content)
+    assert payload["runtime_context"]["context_policy"]["mode"] == "slim"
+    assert payload["model_tool_surface"] == {}  # parity with prior slim behavior

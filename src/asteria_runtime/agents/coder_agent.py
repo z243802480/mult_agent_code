@@ -14,6 +14,7 @@ from asteria_runtime.core.context_slimming import slim_execution_context
 from asteria_runtime.core.worker_transport import (
     execution_action_from_tool_calls,
     extract_tool_calls,
+    native_tool_specs_from_surface,
     resolve_worker_transport,
     tool_definitions_for,
 )
@@ -59,6 +60,7 @@ class CoderAgent:
                     available_tools,
                     prompt_runtime_context,
                     transport,
+                    base_runtime_context.get("model_tool_surface"),
                 ),
             ),
         ]
@@ -73,7 +75,16 @@ class CoderAgent:
                 temperature=0.2,
                 max_output_tokens=5000,
                 worker_transport=transport,
-                tools=tool_definitions_for(available_tools) if transport == "tool_use" else None,
+                tools=(
+                    tool_definitions_for(
+                        available_tools,
+                        native_tool_specs_from_surface(
+                            base_runtime_context.get("model_tool_surface")
+                        ),
+                    )
+                    if transport == "tool_use"
+                    else None
+                ),
                 metadata={
                     "run_id": run_id,
                     "agent_id": "CoderAgent",
@@ -370,6 +381,35 @@ You must:
 - For documentation/text-only verification, prefer a simple Python existence-and-nonempty check for the expected file. Do not generate complex Python one-liners that inspect unrelated files.
 """
 
+    @staticmethod
+    def _slim_model_tool_surface(surface: dict) -> dict:
+        """Under slim mode keep only the mcp__/skill__ subset of the tool surface.
+
+        Local registry tools are already enumerated in available_tools, so the bulky full
+        surface is dropped to save tokens; external mcp/skill tools are NOT in
+        available_tools and would otherwise vanish from a slim run, so their (few) entries
+        are retained. Returns {} when no external tools are configured — byte-for-byte the
+        same as the prior slim behavior.
+        """
+        if not isinstance(surface, dict):
+            return {}
+        external = [
+            tool
+            for tool in surface.get("tools") or []
+            if isinstance(tool, dict)
+            and str(tool.get("name") or "").startswith(("mcp__", "skill__"))
+        ]
+        if not external:
+            return {}
+        return {
+            "schema_version": surface.get("schema_version", "0.1.0"),
+            "adapter": surface.get("adapter"),
+            "tools": external,
+            "task_allowed_model_tools": [
+                str(tool["name"]) for tool in external if tool.get("task_allowed")
+            ],
+        }
+
     def _user_prompt(
         self,
         task: dict,
@@ -378,6 +418,7 @@ You must:
         available_tools: list[str],
         runtime_context: dict,
         transport: str,
+        model_tool_surface: dict | None = None,
     ) -> str:
         slim = ((runtime_context.get("context_policy") or {}).get("mode")) == "slim"
         payload = {
@@ -398,7 +439,9 @@ You must:
             "available_tools": available_tools,
             "allowed_tools": task["allowed_tools"],
             "model_tool_surface": (
-                {} if slim else runtime_context.get("model_tool_surface", {})
+                self._slim_model_tool_surface(model_tool_surface or {})
+                if slim
+                else (model_tool_surface or {})
             ),
         }
         if transport == "tool_use":

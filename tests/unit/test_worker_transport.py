@@ -7,7 +7,9 @@ from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.worker_transport import (
     execution_action_from_tool_calls,
     extract_tool_calls,
+    native_tool_specs_from_surface,
     resolve_worker_transport,
+    tool_definitions_for,
 )
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -177,3 +179,68 @@ def test_runtime_profile_builder_keeps_policy_transport_for_single_file_fast_pat
     )
 
     assert mount.runtime_context["agent_role_contract"]["worker_transport"] == "json"
+
+
+def test_tool_definitions_for_no_extra_is_unchanged() -> None:
+    # No-op parity: existing single-arg callers behave exactly as before.
+    specs = tool_definitions_for(["write_file", "run_tests"])
+    assert [s["function"]["name"] for s in specs] == ["write_file", "run_tests"]
+    assert tool_definitions_for(["write_file"], None) == tool_definitions_for(["write_file"])
+
+
+def test_tool_definitions_for_appends_extra_specs() -> None:
+    extra = [{"type": "function", "function": {"name": "mcp__x__y", "parameters": {}}}]
+    specs = tool_definitions_for(["write_file"], extra)
+    names = [s["function"]["name"] for s in specs]
+    assert names == ["write_file", "mcp__x__y"]  # native first, extras appended
+
+
+def test_native_tool_specs_from_surface_emits_mcp_and_skill() -> None:
+    surface = {
+        "tools": [
+            {
+                "name": "mcp__files__read",
+                "task_allowed": True,
+                "description": "Read a file via MCP",
+                "parameter_contract": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+            {
+                "name": "skill__verify",
+                "task_allowed": True,
+                "description": "Load the verify skill",
+                "parameter_contract": {},
+            },
+            {"name": "write_file", "task_allowed": True, "description": "local"},
+        ]
+    }
+    specs = native_tool_specs_from_surface(surface)
+    by_name = {s["function"]["name"]: s for s in specs}
+    assert set(by_name) == {"mcp__files__read", "skill__verify"}  # local tool excluded
+    assert by_name["mcp__files__read"]["function"]["parameters"]["required"] == ["path"]
+    # empty contract -> permissive object so the provider accepts the def
+    assert by_name["skill__verify"]["function"]["parameters"] == {
+        "type": "object",
+        "properties": {},
+    }
+
+
+def test_native_tool_specs_from_surface_skips_not_allowed() -> None:
+    surface = {
+        "tools": [
+            {"name": "mcp__x__y", "task_allowed": False, "parameter_contract": {}},
+            {"name": "skill__ok", "task_allowed": True, "parameter_contract": {}},
+        ]
+    }
+    names = [s["function"]["name"] for s in native_tool_specs_from_surface(surface)]
+    assert names == ["skill__ok"]  # gating preserved: denied tool not exposed
+
+
+def test_native_tool_specs_from_surface_empty_when_none() -> None:
+    assert native_tool_specs_from_surface(None) == []
+    assert native_tool_specs_from_surface({}) == []
+    # surface with only local registry tools -> no native specs (no-op proof)
+    assert native_tool_specs_from_surface({"tools": [{"name": "write_file"}]}) == []
