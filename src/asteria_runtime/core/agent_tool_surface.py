@@ -93,9 +93,11 @@ class ModelToolSurfaceAdapter:
                 "allow",
                 "search_text",
                 {
-                    "pattern": "literal text pattern",
+                    "pattern": "text to find — literal substring by default, "
+                    "or a regular expression when regex=true",
                     "path": "workspace-relative file or directory path",
                     "case_sensitive": "boolean",
+                    "regex": "boolean — treat pattern as a regular expression (re.search)",
                 },
                 ["Use grep/search before shell pipelines for source inspection."],
             ),

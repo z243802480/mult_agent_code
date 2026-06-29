@@ -1,3 +1,14 @@
+"""DebugAgent — DEFERRED PLACEHOLDER (triage: KEEP_PLACEHOLDER "deferred Agent classes").
+
+NOT wired into the default agent loop. Per ADR-0014 there is no automatic Gate->Repair
+DebugAgent in the runtime path: ``repair`` / ``replan`` are explicit model actions handled
+inside the single CoderAgent loop (see ``commands/execute_command.py`` and
+``core/agent_harness.py``). This class is retained as a deferred placeholder for a possible
+future dedicated repair agent and is currently exercised only by its own unit tests.
+
+Do not delete (triage lock keeps deferred Agent classes) and do not expand it back into the
+live loop without an explicit master-plan decision.
+"""
 from __future__ import annotations
 
 import json

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.security.path_guard import PathGuard, PathPolicyError
 from asteria_runtime.tools.base import ToolResult
@@ -18,12 +20,23 @@ class SearchTextTool:
         pattern: str,
         path: str = ".",
         case_sensitive: bool = False,
+        regex: bool = False,
     ) -> ToolResult:
         guard = PathGuard(context.root, context.policy["protected_paths"])
         root = guard.resolve_for_read(path)
         if not root.exists():
             return ToolResult(ok=False, summary=f"Path not found: {path}", error="path_not_found")
 
+        compiled: re.Pattern[str] | None = None
+        if regex:
+            try:
+                compiled = re.compile(pattern, 0 if case_sensitive else re.IGNORECASE)
+            except re.error as exc:
+                return ToolResult(
+                    ok=False,
+                    summary=f"Invalid regular expression: {pattern!r} ({exc})",
+                    error="invalid_regex",
+                )
         needle = pattern if case_sensitive else pattern.lower()
         results: list[dict[str, object]] = []
         scanned = 0
@@ -46,8 +59,12 @@ class SearchTextTool:
             except UnicodeDecodeError:
                 continue
             for line_number, line in enumerate(lines, start=1):
-                haystack = line if case_sensitive else line.lower()
-                if needle in haystack:
+                if compiled is not None:
+                    matched = compiled.search(line) is not None
+                else:
+                    haystack = line if case_sensitive else line.lower()
+                    matched = needle in haystack
+                if matched:
                     results.append(
                         {
                             "path": rel,
