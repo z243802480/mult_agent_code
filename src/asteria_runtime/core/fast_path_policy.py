@@ -339,6 +339,8 @@ def _protected_path_hint(path: str) -> bool:
         path == ".env"
         or path.startswith(".env.")
         or path.startswith("secrets/")
+        or path == ".git"
+        or path.startswith(".git/")
         or path.endswith(".pem")
         or path.endswith(".key")
         or path.endswith("/id_rsa")
