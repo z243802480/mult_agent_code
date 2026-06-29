@@ -240,6 +240,7 @@ export function App() {
           onAggregateDiffClick={openTurnReview}
           viewMode={viewMode}
           onTurnRewind={onTurnRewind}
+          loading={bootstrap.loading}
         />
         <Composer
           onSend={sessionEvents.sendGoal}

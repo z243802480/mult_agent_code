@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Loader2 } from "lucide-react";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
 import { splitIntoTurns } from "../../turnDiff";
@@ -28,10 +29,12 @@ export function Thread({
   onAggregateDiffClick,
   viewMode,
   onTurnRewind,
+  loading,
 }: {
   events: StudioEvent[];
   selected: StudioEvent | null;
   isRunning: boolean;
+  loading?: boolean;
   onSelect: (event: StudioEvent) => void;
   onPrompt: (text: string) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
@@ -89,7 +92,14 @@ export function Thread({
           onOpenReview={onOpenReview}
           onResolveDecision={onResolveDecision}
         />
-        <EmptyState onPrompt={onPrompt} />
+        {/* During bootstrap, sessions/runs are still loading — show a quiet placeholder instead of
+            the "What would you like to do?" prompt, which would otherwise flash before the
+            transcript populates. Once loading settles and there is genuinely nothing, the prompt shows. */}
+        {loading ? (
+          <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>Loading session…</span></div>
+        ) : (
+          <EmptyState onPrompt={onPrompt} />
+        )}
       </section>
     );
   }
