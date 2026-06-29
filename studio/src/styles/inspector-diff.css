@@ -215,7 +215,7 @@
   align-items: center;
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   color: var(--text-primary);
   display: inline-flex;
   gap: 6px;

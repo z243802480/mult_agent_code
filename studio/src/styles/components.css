@@ -197,7 +197,7 @@
 .permissionDeny {
   align-items: center;
   border: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   display: inline-flex;
   font-size: 13px;
   font-weight: 720;
