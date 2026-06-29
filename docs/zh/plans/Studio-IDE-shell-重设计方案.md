@@ -123,6 +123,24 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 
 **验证**：`tsc --noEmit`+`vite build` 干净（1765 模块）；`session-main-path-contract` 绿；预览计算样式核验——globalHeader 跨 1280 全宽 48px、grid-rows `48px 1fr`、工作列全幅（conversationTurn 710、maxW none）、prose 70ch（575px）、status pill "Running"、窄屏 768 单列全幅修正、console 0 错误。
 
+### B3/B4/B5 决策（reference-first · 2026-06-29）
+
+来源：3 路主流产品对标调研（header/view-switch · diff/review pane · composer modes，覆盖 Cursor / VS Code+Copilot / Claude Code / Codex / Windsurf / Zed / Cline）+ 综合。原则「学机制不抄形态」，严守 §4 冻结（纯 IA+token+CSS+轻组件，不碰后端/runtime/schema，复用 App scope 的 `gitStatus / files / isRunning / diffFocus`，左栏保持会话列表）。
+
+**B4 头部视图控件 → 选 A（语义分两组），否决 Chat|Diff 二态 segmented。**
+主流收敛：顶栏不是视图切换器——Cursor 已移除标题栏 agents/editor toggle，Copilot/Codex 把 mode 放在输入框旁；评审是「进入再离开的目的地」（Zed Review Changes、Codex/Cursor diffs view），不是常驻二态半屏；verbosity 控件极罕见且几乎不在头部（Claude Code 用 Ctrl+O 键盘切换）。**零产品**在顶栏放常驻 Chat|Diff segmented 或 3 态段按钮。
+落地：头部 `.topActions` 分两组——左「面」组 = 单个 `Diff` 评审面 toggle（panel-toggle 语义 + 改动计数 badge，镜像 Zed/Cursor）；右「工具」组 = panel 显隐 / refresh / 保留的 verbosity cycle（+ Ask）。对话常驻，评审叠加进来。
+
+**B3 评审/diff 面 → 选 A（聚焦评审时升为对等 ~50vw），抽屉降为静息态。**
+主流收敛：改动文件列表贴近对话，但 diff 在「进入评审」时升为对等/主导面占主画布——Cursor/Copilot/Codex/Zed/JetBrains 一致；inline-in-chat 仅小改动 fallback，被诟病窄而无上下文（Cursor「panes I can't even see」）。
+落地：静息 ~520px（预览 + 小改动 inline fallback）；聚焦评审（`diffFocus`）升为对等 `clamp(520px, 50vw, 960px)`，会话列保 360px 地板（可继续 steering）。改动文件列表落评审面 header（复用 App scope 的 files/gitStatus，无新 fetch）。
+
+**B5 composer 模式 → 选 B（少量主模式 inline + overflow）+ 归类精简 7 模式。**
+主流收敛：主模式只 2–3 个（Cursor/Copilot/Claude Code/Codex/Windsurf/Zed/Cline 全在此区间），控件是 dropdown/二态 toggle/键盘 cycle，**从不是全部模式的扁平多段行**；超 ~3 一律收进 overflow dropdown；autonomy/permission 是独立轴（Codex `/approvals`）。
+落地：inline `.segmented` 只放 3 个意图主模式 **Chat / Plan / Run**（不换行）；`review / accept / resume` 是生命周期动作进 overflow `…` 菜单（同时满足「主线不暴露 maintainer 词汇」）；`permission`（auto-approve）作独立 footer 控件，不并入 mode。`onSend(message, mode, permission)` 字符串集合与签名零改动。
+
+> 实施顺序：B4（头部分组+badge，最小）→ B3（对等评审面+改动文件入面）→ B5（composer 三段+overflow+permission 分离）；每项一组提交，过 tsc/build/契约/预览。
+
 ### Phase C — 收口打磨（一致性/密度/去死代码）
 
 | ID | 改动 |

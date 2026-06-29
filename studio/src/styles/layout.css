@@ -144,7 +144,35 @@
 
 .globalHeader .topActions button {
   height: 30px;
-  width: 30px;
+  min-width: 30px;
+  width: auto;
+}
+
+/* B4: header actions split into a pane group (review) + a tools group,
+   separated by a hairline. Labeled buttons size to content; icon buttons stay square. */
+.headerPaneGroup,
+.headerToolGroup {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.headerToolGroup {
+  border-left: 1px solid var(--border-subtle);
+  padding-left: 10px;
+}
+
+.headerBadge {
+  background: var(--accent-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--accent);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  margin-left: 6px;
+  min-width: 16px;
+  padding: 1px 5px;
+  text-align: center;
 }
 
 /* B1c: run/agent status — a quiet pill in the global header. */

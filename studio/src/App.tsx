@@ -164,6 +164,7 @@ export function App() {
         diffFocus={diffFocus}
         loading={bootstrap.loading}
         isRunning={sessionEvents.isRunning}
+        changeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
         onOpenWorkspace={() => bootstrap.setWorkspaceOpen(true)}
         onCycleViewMode={cycleViewMode}
         onTogglePanel={() => setPanelOpen((open) => !open)}

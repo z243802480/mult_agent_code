@@ -13,6 +13,7 @@ type MissionPaneHeaderProps = {
   sideChatOpen: boolean;
   loading: boolean;
   isRunning: boolean;
+  changeCount: number;
   onOpenWorkspace: () => void;
   onCycleViewMode: () => void;
   onTogglePanel: () => void;
@@ -30,6 +31,7 @@ export function MissionPaneHeader({
   sideChatOpen,
   loading,
   isRunning,
+  changeCount,
   onOpenWorkspace,
   onCycleViewMode,
   onTogglePanel,
@@ -59,34 +61,39 @@ export function MissionPaneHeader({
         </span>
       </div>
       <div className="topActions">
-        <button
-          type="button"
-          className={`viewModeButton view-${viewMode}`}
-          title={`View: ${viewModeLabel(viewMode)} (click to cycle)`}
-          onClick={onCycleViewMode}
-        >
-          <LayoutList size={15} />
-          <span>{viewModeLabel(viewMode)}</span>
-        </button>
-        <SideChatToggle open={sideChatOpen} onToggle={onToggleSideChat} />
-        <button
-          type="button"
-          className={diffFocus ? "diffFocusButton active" : "diffFocusButton"}
-          title="Focus diff pane (Ctrl+Shift+D)"
-          onClick={onToggleDiffFocus}
-        >
-          Diff
-        </button>
-        <button
-          type="button"
-          title={panelOpen ? "Hide side panel (Ctrl+\\)" : "Show side panel (Ctrl+\\)"}
-          onClick={onTogglePanel}
-        >
-          {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-        </button>
-        <button title="Refresh" onClick={onRefresh} disabled={loading}>
-          <RefreshCw size={16} className={loading ? "spinning" : ""} />
-        </button>
+        <div className="headerPaneGroup">
+          <button
+            type="button"
+            className={diffFocus ? "diffFocusButton active" : "diffFocusButton"}
+            title="Review changes (Ctrl+Shift+D)"
+            onClick={onToggleDiffFocus}
+          >
+            Diff
+            {changeCount > 0 && <span className="headerBadge">{changeCount}</span>}
+          </button>
+        </div>
+        <div className="headerToolGroup">
+          <button
+            type="button"
+            className={`viewModeButton view-${viewMode}`}
+            title={`View: ${viewModeLabel(viewMode)} (click to cycle)`}
+            onClick={onCycleViewMode}
+          >
+            <LayoutList size={15} />
+            <span>{viewModeLabel(viewMode)}</span>
+          </button>
+          <SideChatToggle open={sideChatOpen} onToggle={onToggleSideChat} />
+          <button
+            type="button"
+            title={panelOpen ? "Hide side panel (Ctrl+\\)" : "Show side panel (Ctrl+\\)"}
+            onClick={onTogglePanel}
+          >
+            {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          </button>
+          <button title="Refresh" onClick={onRefresh} disabled={loading}>
+            <RefreshCw size={16} className={loading ? "spinning" : ""} />
+          </button>
+        </div>
       </div>
     </header>
   );
