@@ -124,6 +124,34 @@ class SkillManifestHandler:
         }
 
 
+class SkillBodyHandler:
+    """Production skill handler: loads the full SKILL.md *procedure*, not just its frontmatter.
+
+    A skill is instruction/context (matching Claude Code / OpenCode skills): invoking it returns
+    the full SKILL.md body plus a manifest of bundled sibling files, so the model can follow the
+    procedure using its existing read/write/test/shell tools. This is the honest "skills execute"
+    — a real step up from SkillManifestHandler, which only echoes name/description.
+    """
+
+    def __init__(self, definition: SkillDefinition) -> None:
+        self.definition = definition
+
+    def invoke(self, request: dict[str, Any]) -> dict[str, Any]:
+        body, files = _load_skill_body_and_manifest(self.definition.path)
+        return {
+            "ok": True,
+            "summary": f"Loaded skill procedure: {self.definition.name}",
+            "data": {
+                "skill_definition": self.definition.to_dict(),
+                "instructions": body,
+                "bundled_files": files,
+                "arguments": request.get("arguments") or {},
+            },
+            "artifacts": [],
+            "status": "success",
+        }
+
+
 @dataclass(frozen=True)
 class SkillArtifact:
     path: str
@@ -172,12 +200,39 @@ class SkillAdapter:
         roots: list[Path | SkillRoot],
         *,
         actor: str = "SkillAdapter",
+        handler: str = "manifest",
     ) -> SkillAdapter:
+        """Build an adapter from skill roots.
+
+        handler="manifest" (default) keeps the discovery-only SkillManifestHandler (back-compat);
+        handler="body" uses SkillBodyHandler, which loads the full SKILL.md procedure — this is
+        what the live run path uses to actually execute skills.
+        """
         definitions = SkillDiscovery(roots).discover()
+        handler_cls = SkillBodyHandler if handler == "body" else SkillManifestHandler
         return cls(
-            {definition.name: SkillManifestHandler(definition) for definition in definitions},
+            {definition.name: handler_cls(definition) for definition in definitions},
             actor=actor,
         )
+
+    def discover_skills(self) -> list[dict[str, Any]]:
+        """Skills as model-facing entries named ``skill__<name>`` for the tool surface."""
+        items: list[dict[str, Any]] = []
+        for name, handler in sorted(self.handlers.items()):
+            definition = getattr(handler, "definition", None)
+            description = definition.description if isinstance(definition, SkillDefinition) else ""
+            contract = (
+                definition.parameter_contract if isinstance(definition, SkillDefinition) else {}
+            )
+            items.append(
+                {
+                    "name": name,
+                    "model_name": f"skill__{name}",
+                    "description": description,
+                    "parameter_contract": contract,
+                }
+            )
+        return items
 
     def catalog(self) -> list[dict[str, Any]]:
         items = []
@@ -456,6 +511,24 @@ def _first_paragraph(text: str) -> str:
         if block and not block.startswith("#"):
             return " ".join(line.strip() for line in block.splitlines())
     return ""
+
+
+def _load_skill_body_and_manifest(path: Path) -> tuple[str, list[str]]:
+    """Return the SKILL.md body (frontmatter stripped) and a manifest of bundled sibling files."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return "", []
+    body = re.sub(r"^\s*---.*?---", "", text, flags=re.DOTALL).strip() or text.strip()
+    files: list[str] = []
+    parent = path.parent
+    if parent.exists():
+        files = sorted(
+            item.relative_to(parent).as_posix()
+            for item in parent.rglob("*")
+            if item.is_file() and item.name != "SKILL.md"
+        )
+    return body, files
 
 
 def _parameter_contract(text: str) -> dict[str, Any]:

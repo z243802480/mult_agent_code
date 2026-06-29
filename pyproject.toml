@@ -37,7 +37,8 @@ where = ["src"]
 [tool.setuptools.package-data]
 asteria_runtime = [
   "schemas/*.json",
-  "templates/*"
+  "templates/*",
+  "skills/bundled/**/*"
 ]
 
 [tool.pytest.ini_options]

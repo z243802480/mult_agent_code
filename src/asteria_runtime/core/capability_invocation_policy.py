@@ -167,8 +167,13 @@ class CapabilityInvocationPolicy:
                 mcp_permission=self._mcp_permission(permission_mode, normalized_risk),
                 reason="research may read local context and request external MCP sources through policy",
             )
-        skill = self._ARTIFACT_SKILLS.get(normalized_kind)
-        skill_permissions = {skill: self._skill_permission(permission_mode, normalized_risk)} if skill else {}
+        artifact_skill = self._ARTIFACT_SKILLS.get(normalized_kind)
+        skill_perm = self._skill_permission(permission_mode, normalized_risk)
+        # Skills are loadable procedure/instruction capabilities, gated by the task's allowed_skills
+        # contract + permission mode (mirroring MCP) — not restricted to the artifact-skill map.
+        # Loading a skill returns its SKILL.md procedure; the model then acts through already-gated
+        # tools, so skill loading itself is low-risk.
+        skill_permissions = {artifact_skill: skill_perm} if artifact_skill else {}
         return self._profile(
             normalized_intent,
             task_kind=normalized_kind,
@@ -176,15 +181,17 @@ class CapabilityInvocationPolicy:
             permission_mode=permission_mode,
             allow_tools=True,
             allow_mcp=normalized_risk != "low",
-            allow_skills=bool(skill_permissions),
+            allow_skills=True,
             groups=[
                 "runtime_context",
                 "direct_tools",
                 "verification",
+                "skill",
                 *(["artifact_skill"] if skill_permissions else []),
             ],
             tool_permissions=self._tool_permissions(permission_mode, normalized_risk),
             skill_permissions=skill_permissions,
+            skill_permission=skill_perm,
             mcp_permission=self._mcp_permission(permission_mode, normalized_risk),
             reason="goal execution may use controlled tools; writes, shell, MCP, and skills follow risk and permission mode",
         )
@@ -211,7 +218,11 @@ class CapabilityInvocationPolicy:
             decision = profile["mcp_permission"] if profile["allow_mcp"] else "deny"
             return self._decision(name, capability, decision, profile)
         if capability == "skill":
-            decision = profile["skill_permissions"].get(name, "deny")
+            if not profile["allow_skills"]:
+                return self._decision(name, capability, "deny", profile)
+            # The task's allowed_skills contract gates WHICH skills; this policy gates the
+            # mode/risk permission. A name-specific artifact-skill permission still wins if present.
+            decision = profile["skill_permissions"].get(name) or profile.get("skill_permission", "deny")
             return self._decision(name, capability, decision, profile)
         kind = self._TOOL_KINDS.get(name, "unknown")
         decision = profile["tool_permissions"].get(kind, "deny") if profile["allow_tools"] else "deny"
@@ -251,6 +262,7 @@ class CapabilityInvocationPolicy:
         skill_permissions: dict[str, str],
         mcp_permission: str,
         reason: str,
+        skill_permission: str = "deny",
     ) -> dict[str, Any]:
         return {
             "schema_version": "0.1.0",
@@ -265,6 +277,7 @@ class CapabilityInvocationPolicy:
             "tool_permissions": tool_permissions,
             "mcp_permission": mcp_permission,
             "skill_permissions": skill_permissions,
+            "skill_permission": skill_permission,
             "decision_required_when": [
                 "permission is ask",
                 "requested capability is denied",

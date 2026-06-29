@@ -32,11 +32,13 @@ from asteria_runtime.core.agent_tool_surface import (
     mcp_model_tools,
     model_tool_surface_for_task,
     model_tools_available_for_task,
+    skill_model_tools,
 )
 from asteria_runtime.core.mcp_adapter import (
     McpAdapter,
     mcp_adapter_config_from_policy,
 )
+from asteria_runtime.core.skill_adapter import SkillAdapter, SkillRoot
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
@@ -177,6 +179,44 @@ class ExecuteCommand:
         # MCP adapter is built lazily once policy is known (see _wire_mcp_adapter in run()).
         self.mcp_adapter: McpAdapter | None = None
         self.mcp_discovered_tools: list[dict] = []
+        # Skill adapter (instruction/procedure capabilities) is likewise built lazily in run().
+        self.skill_adapter: SkillAdapter | None = None
+        self.skill_discovered: list[dict] = []
+
+    def _wire_skill_adapter(self, policy: dict) -> None:
+        """Discover skills (bundled + global ~/.asteria + workspace) and inject the body handler.
+
+        No-op when no skill root exists. Skills are filesystem-only (no sessions to close);
+        _reset_skill_adapter just drops the gateway reference at finalize. Workspace skills win
+        over global/bundled on name collision (SkillDiscovery scope precedence).
+        """
+        self._reset_skill_adapter()
+        roots: list[SkillRoot] = []
+        bundled = Path(__file__).resolve().parents[1] / "skills" / "bundled"
+        if bundled.exists():
+            roots.append(SkillRoot(path=bundled, scope="global"))
+        global_skills = Path.home() / ".asteria" / "skills"
+        if global_skills.exists():
+            roots.append(SkillRoot(path=global_skills, scope="global"))
+        workspace_skills = self.root / ".asteria" / "skills"
+        if workspace_skills.exists():
+            roots.append(SkillRoot(path=workspace_skills, scope="workspace"))
+        if not roots:
+            return
+        adapter = SkillAdapter.from_skill_roots(roots, handler="body")
+        if not adapter.handlers:
+            return
+        self.skill_adapter = adapter
+        self.tool_gateway = replace(self.tool_gateway, skill_adapter=adapter)
+        try:
+            self.skill_discovered = adapter.discover_skills()
+        except Exception:  # noqa: BLE001 - discovery must never abort the run
+            self.skill_discovered = []
+
+    def _reset_skill_adapter(self) -> None:
+        self.skill_adapter = None
+        self.skill_discovered = []
+        self.tool_gateway = replace(self.tool_gateway, skill_adapter=None)
 
     def _wire_mcp_adapter(self, policy: dict) -> None:
         """Build the MCP adapter from policy and inject it into the tool gateway.
@@ -328,6 +368,7 @@ class ExecuteCommand:
             )
 
         self._wire_mcp_adapter(policy)
+        self._wire_skill_adapter(policy)
         executed = coordinator.execute_selection(
             selection=selection,
             task_board=task_board,
@@ -349,6 +390,7 @@ class ExecuteCommand:
             event_logger=event_logger,
         )
         self._close_mcp_adapter()
+        self._reset_skill_adapter()
 
         return ExecuteResult(
             run_id=run_id,
@@ -2258,6 +2300,12 @@ class ExecuteCommand:
                 task_model_surface["tools"].extend(mcp_tools)
                 task_model_surface["task_allowed_model_tools"].extend(
                     str(tool["name"]) for tool in mcp_tools if tool.get("task_allowed")
+                )
+            if self.skill_discovered:
+                skill_tools = skill_model_tools(self.skill_discovered, task)
+                task_model_surface["tools"].extend(skill_tools)
+                task_model_surface["task_allowed_model_tools"].extend(
+                    str(tool["name"]) for tool in skill_tools if tool.get("task_allowed")
                 )
             runtime_context["model_tool_surface"] = task_model_surface
             available_tools = model_tools_available_for_task(

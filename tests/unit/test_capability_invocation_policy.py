@@ -76,26 +76,32 @@ def test_capability_invocation_policy_allows_readonly_research_commands_with_dec
     assert write_decision["decision"] == "deny"
 
 
-def test_capability_invocation_policy_enables_matching_artifact_skill_only() -> None:
-    documents = CapabilityInvocationPolicy().for_tool(
-        "documents",
-        intent="document_goal",
-        task_kind="document",
-        permission_mode="reviewed_auto",
-        risk="medium",
-        capability_type="skill",
-    )
-    spreadsheets = CapabilityInvocationPolicy().for_tool(
-        "spreadsheets",
-        intent="document_goal",
-        task_kind="document",
-        permission_mode="reviewed_auto",
-        risk="medium",
-        capability_type="skill",
-    )
+def test_capability_invocation_policy_permits_goal_skills_by_mode_not_artifact_only() -> None:
+    # Skills are now gated by the task's allowed_skills contract + permission mode (mirroring MCP),
+    # not restricted to the _ARTIFACT_SKILLS map. At the policy level a goal may load any skill by
+    # mode/risk; the per-skill restriction is the allowed_skills contract (see the
+    # capability_decision_recorder tests). This makes user-shipped SKILL.md skills usable.
+    policy = CapabilityInvocationPolicy()
 
-    assert documents["decision"] == "allow"
-    assert spreadsheets["decision"] == "deny"
+    def skill(name: str, *, task_kind: str = "implementation", intent: str = "implementation_goal", risk: str = "medium"):
+        return policy.for_tool(
+            name,
+            intent=intent,
+            task_kind=task_kind,
+            permission_mode="reviewed_auto",
+            risk=risk,
+            capability_type="skill",
+        )
+
+    # an artifact skill and an arbitrary user skill are both policy-permitted for a goal
+    assert skill("documents", task_kind="document", intent="document_goal")["decision"] == "allow"
+    assert skill("spreadsheets", task_kind="document", intent="document_goal")["decision"] == "allow"
+    assert skill("greet")["decision"] == "allow"
+    # high risk / ask_everything still forces a decision at the call boundary
+    assert skill("greet", risk="high")["decision"] == "ask"
+    # chat / brainstorm still deny skills entirely (no "doing" capability on lightweight intents)
+    assert skill("greet", task_kind="chat", intent="ordinary_chat", risk="low")["decision"] == "deny"
+    assert skill("greet", task_kind="brainstorm", intent="brainstorm_goal", risk="low")["decision"] == "deny"
 
 
 def test_capability_invocation_policy_high_risk_mcp_requires_decision() -> None:

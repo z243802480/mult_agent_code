@@ -27,6 +27,7 @@ class ToolExecutionGateway:
     hook_manager: RuntimeHookManager | None = None
     actor: str = "ToolExecutionGateway"
     mcp_adapter: Any = None
+    skill_adapter: Any = None
 
     def run_tool_calls(
         self,
@@ -56,6 +57,20 @@ class ToolExecutionGateway:
                 if stop_on_failure and not getattr(mcp_result, "ok", False):
                     raise RuntimeError(
                         f"Tool failed: {tool_name}: {getattr(mcp_result, 'summary', '')}"
+                    )
+                continue
+            if self.skill_adapter is not None and tool_name.startswith("skill__"):
+                # Skills route to the skill workflow/artifact adapter, not the local registry.
+                # SkillAdapter.invoke runs its OWN capability gate (decide_skill), budget, and
+                # evidence (skill_invocations.jsonl + artifacts + user_progress), so we skip the
+                # local-tool machinery and only attach the observation for loop feedback.
+                skill_result = self._run_skill_call(
+                    tool_name, args, task, context, tool_call_id, started
+                )
+                results.append(skill_result)
+                if stop_on_failure and not getattr(skill_result, "ok", False):
+                    raise RuntimeError(
+                        f"Tool failed: {tool_name}: {getattr(skill_result, 'summary', '')}"
                     )
                 continue
             start_event: dict[str, Any] | None = None
@@ -375,6 +390,39 @@ class ToolExecutionGateway:
         # non-field attribute via object.__setattr__ (the same harness_observation the loop reads).
         object.__setattr__(mcp_result, "harness_observation", observation)
         return mcp_result
+
+    def _run_skill_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        task: dict,
+        context: RuntimeContext,
+        tool_call_id: str,
+        started: float,
+    ) -> Any:
+        """Route a ``skill__<name>`` call to the skill adapter and attach an observation.
+
+        SkillAdapter.invoke performs the capability decision, budget, schema-validated
+        skill_invocations.jsonl evidence (+ artifacts + user_progress), and loads the skill's
+        full procedure. We convert the (frozen) SkillInvocationResult into the same
+        ToolObservation the agent loop consumes for local tools, so a skill call feeds back
+        identically and the model can follow the loaded procedure with its existing tools.
+        """
+        skill_name = tool_name[len("skill__") :]
+        skill_result = self.skill_adapter.invoke(
+            context=context,
+            task=task,
+            skill_name=skill_name,
+            arguments=args or {},
+        )
+        duration_ms = int((perf_counter() - started) * 1000)
+        observation = observation_from_tool_result(
+            tool_name=tool_name,
+            result=skill_result,
+            telemetry={"duration_ms": duration_ms},
+        )
+        object.__setattr__(skill_result, "harness_observation", observation)
+        return skill_result
 
     def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
         if tool_name not in {"run_command", "run_tests"}:

@@ -286,6 +286,49 @@ def mcp_model_tools(
     return tools
 
 
+def skill_model_tools(
+    discovered_skills: list[dict[str, Any]],
+    task: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Model-facing entries for discovered skills, filtered by the task's skill contract.
+
+    ``discovered_skills`` come from ``SkillAdapter.discover_skills()`` ({name, model_name,
+    description, parameter_contract}). The contract mirrors ``CapabilityDecisionRecorder`` for
+    skills: an empty ``allowed_skills`` allows every discovered skill; otherwise the skill name
+    must be listed. Permission stays ``ask`` — the real allow/ask/deny happens at the call
+    boundary inside ``SkillAdapter.invoke`` (``decide_skill``). Invoking a skill loads its full
+    procedure into context; the model then follows it with its existing tools.
+    """
+    allowed = {str(item) for item in (task.get("allowed_skills") or []) if item}
+    tools: list[dict[str, Any]] = []
+    for entry in discovered_skills:
+        name = str(entry.get("name") or "")
+        if not name:
+            continue
+        model_name = str(entry.get("model_name") or f"skill__{name}")
+        task_allowed = (not allowed) or (name in allowed)
+        contract = entry.get("parameter_contract")
+        tools.append(
+            {
+                "name": model_name,
+                "kind": "skill",
+                "permission": "ask" if task_allowed else "deny",
+                "adapter": "skill_workflow_artifact",
+                "internal_tool": None,
+                "parameter_contract": contract if isinstance(contract, dict) else {},
+                "safety_notes": [
+                    f"Skill {name}; invoking loads its full procedure into context. allow/ask/deny "
+                    "is decided at the call boundary via the skill capability decision."
+                ],
+                "status": "available" if task_allowed else "denied",
+                "task_allowed": task_allowed,
+                "skill": name,
+                "description": str(entry.get("description") or ""),
+            }
+        )
+    return tools
+
+
 def adapt_model_tool_call(
     call: dict[str, Any],
     runtime_tool_names: list[str],
