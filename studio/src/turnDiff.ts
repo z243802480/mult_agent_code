@@ -15,14 +15,23 @@ export type TurnDiffScope = {
 export function splitIntoTurns(steps: NarrativeStepType[]): NarrativeStepType[][] {
   const turns: NarrativeStepType[][] = [];
   let current: NarrativeStepType[] | null = null;
+  // Steps that arrive before the first user_message (e.g. an assistant greeting or a
+  // diagnostic at session start) used to be silently dropped — neither branch caught them.
+  // Keep them in an implicit leading turn (rendered goal-less by ConversationTurn) so no
+  // transcript content is lost.
+  let leading: NarrativeStepType[] | null = null;
   for (const step of steps) {
     if (step.kind === "goal") {
+      if (leading) { turns.push(leading); leading = null; }
       if (current) turns.push(current);
       current = [step];
     } else if (current) {
       current.push(step);
+    } else {
+      (leading ??= []).push(step);
     }
   }
+  if (leading) turns.push(leading);
   if (current) turns.push(current);
   return turns;
 }

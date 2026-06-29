@@ -44,7 +44,7 @@ export function SignalCard({
         <span>{label}</span>
       </div>
       <strong>{value}</strong>
-      <small>{detail || "暂无证据"}</small>
+      <small>{detail || "No evidence yet"}</small>
     </div>
   );
 }

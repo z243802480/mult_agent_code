@@ -197,7 +197,10 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   suppressSuggested?: boolean;
 }) {
   const goalStep = steps[0];
-  const restSteps = steps.slice(1);
+  // A leading turn that has no user_message (steps before the first goal) renders goal-less:
+  // no user bubble, and every step is body. Normal turns keep steps[0] as the user message.
+  const isGoalTurn = goalStep?.kind === "goal";
+  const restSteps = isGoalTurn ? steps.slice(1) : steps;
   const responseIndex = (() => {
     for (let index = restSteps.length - 1; index >= 0; index -= 1) {
       if (restSteps[index].kind === "final" || restSteps[index].kind === "error") return index;
@@ -211,19 +214,21 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   const middleSteps = hideCompletedModelStream
     ? rawMiddleSteps.filter((step) => !isModelThinkingStep(step, responsePhase))
     : rawMiddleSteps;
-  const goalEvent = goalStep.events[0];
-  const userText = goalEvent?.content_delta || goalStep.summary || goalStep.title || "";
+  const goalEvent = goalStep?.events[0];
+  const userText = goalEvent?.content_delta || goalStep?.summary || goalStep?.title || "";
   const time = goalEvent ? formatEventTime(goalEvent.created_at) : "";
   const turnRunning = isLast && isRunning && !responseStep;
 
   return (
     <div className="conversationTurn">
-      <div className="turnUser">
-        <div className="turnUserBubble">
-          <p>{userText}</p>
-          <span className="turnUserTime">{time}</span>
+      {isGoalTurn && (
+        <div className="turnUser">
+          <div className="turnUserBubble">
+            <p>{userText}</p>
+            <span className="turnUserTime">{time}</span>
+          </div>
         </div>
-      </div>
+      )}
       {turnRunning ? (
         middleSteps.length === 0 ? (
           <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>Starting...</span></div>

@@ -53,6 +53,7 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
   if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
   if (transcriptKind === "verification") return "verification";
+  if (transcriptKind === "repair") return "repair";
   // The final-report event is a diagnostic artifact pointer, not the conversational closing
   // reply (ADR-0012). Keep it in the process stream so the conclusion message — which now
   // carries the agent's authored recap (CV-C) — is the step rendered as the final answer.
@@ -189,30 +190,6 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
   };
 }
 
-export function parseReportSections(text: string): Record<string, string> {
-  const sections: Record<string, string> = {};
-  let current = "Result";
-  for (const rawLine of String(text || "").split(/\r?\n/)) {
-    const heading = rawLine.match(/^##\s+(.+?)\s*$/);
-    if (heading) { current = heading[1].trim(); sections[current] = ""; continue; }
-    sections[current] = [sections[current], rawLine].filter(Boolean).join("\n").trim();
-  }
-  return sections;
-}
-
-export function summarizeProcess(steps: NarrativeStep[]): string[] {
-  const labels = new Set(steps.map((s) => s.label));
-  const items: string[] = [];
-  if (labels.has("User message")) items.push("Received the user message and attached it to this turn.");
-  if (labels.has("Thinking") || labels.has("Structured generation")) items.push("Collected model output and folded it into the visible reasoning flow.");
-  if (labels.has("Plan")) items.push("Generated a read-only task plan with boundaries and validation criteria.");
-  if (labels.has("Tool call") || labels.has("Action")) items.push("Used local tools and recorded what changed.");
-  if (labels.has("Agent step")) items.push("Connected tool results to the next step.");
-  if (labels.has("Verification")) items.push("Collected verification or review signals to judge whether the result is trustworthy.");
-  if (labels.has("Final answer")) items.push("Collapsed the process into a final answer with outcome, evidence, risks, and next steps.");
-  if (labels.has("Observation")) items.push("Read tool observations and fed them back into the next agent decision.");
-  return items.length ? items : steps.map((s) => `${s.label}: ${s.summary}`).slice(0, 6);
-}
 
 export function firstText(...items: unknown[]): string {
   for (const item of items) {

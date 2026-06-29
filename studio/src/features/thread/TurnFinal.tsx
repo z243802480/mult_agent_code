@@ -26,7 +26,7 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
         <MarkdownBody text={leadText} />
         {details && (
           <details className="turnFinalDetails">
-            <summary>运行详情</summary>
+            <summary>Run details</summary>
             <MarkdownBody text={details} />
           </details>
         )}
