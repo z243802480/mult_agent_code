@@ -1,5 +1,5 @@
 import React from "react";
-import { FolderOpen, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw } from "lucide-react";
+import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw } from "lucide-react";
 import type { SettingsPayload } from "../types";
 import { SideChatToggle } from "../features/sidechat/SideChatPanel";
 import { viewModeLabel, type StudioViewMode } from "../hooks/useViewMode";
@@ -14,6 +14,7 @@ type MissionPaneHeaderProps = {
   loading: boolean;
   isRunning: boolean;
   changeCount: number;
+  branch?: string;
   onOpenWorkspace: () => void;
   onCycleViewMode: () => void;
   onTogglePanel: () => void;
@@ -32,6 +33,7 @@ export function MissionPaneHeader({
   loading,
   isRunning,
   changeCount,
+  branch,
   onOpenWorkspace,
   onCycleViewMode,
   onTogglePanel,
@@ -52,6 +54,12 @@ export function MissionPaneHeader({
           <FolderOpen size={13} />
           <span>{settings?.workspaceName ?? "Workspace"}</span>
         </button>
+        {branch && (
+          <span className="headerBranch" title={`Branch: ${branch}`}>
+            <GitBranch size={12} />
+            <span>{branch}</span>
+          </span>
+        )}
         <span
           className={isRunning ? "headerStatus running" : "headerStatus"}
           title={isRunning ? "Agent is running" : "Idle"}

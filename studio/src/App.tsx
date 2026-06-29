@@ -165,6 +165,7 @@ export function App() {
         loading={bootstrap.loading}
         isRunning={sessionEvents.isRunning}
         changeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
+        branch={review.gitStatus?.branch}
         onOpenWorkspace={() => bootstrap.setWorkspaceOpen(true)}
         onCycleViewMode={cycleViewMode}
         onTogglePanel={() => setPanelOpen((open) => !open)}

@@ -117,7 +117,7 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 - **B2 全幅工作面**：`.thread` 改 `align-items:stretch`（`.emptyThread` 仍 center 保留 hero）；拆分 `.thread>*` 与 `.emptyThread>*` 的 cap——thread 项 `max-width:none`，empty 项保留 cap；清掉 5 处 `--thread-max` cap（conversationTurn / threadProcessControls / runtimeSnapshot.compact / composer.compact / `.thread>*`）；删 JS 宽度驱动 `useThreadColumnWidth`（+ missionPaneRef + `--thread-max` 内联样式，hook 文件已删）；prose 可读性改由静态 70ch（turnFinalText 已有 + liveModelText + chatStream prose，`min(70ch,100%)` 无 margin auto → 左对齐）；contextWindowDock `right:356px`→`calc(var(--panel-width,320px)+var(--space-4))`。
 - **响应式收口（recon Top 风险 #1/#5）**：@820 的 `grid-template-columns:1fr` 是死规则（被 @1240 的 `.appShell.panelOpen{…!important}` 以更高特指度压过），窄屏工作列被挤成 4px——改为匹配特指度的 `.appShell,.appShell.panelOpen,.appShell.panelCollapsed{1fr !important}` + 隐藏 sidebarSplitter，窄屏单列全幅修正。
 
-**决策（已采纳推荐，尊重 freeze）**：①头部只放 session title + workspace chip + 运行状态，**不**引入持久 goal 句（goal 留在 thread）；②**branch 切换移出 Phase B**（payload 无 branch 字段，接它要动后端）。
+**决策（已采纳推荐，尊重 freeze）**：①头部只放 session title + workspace chip + 运行状态，**不**引入持久 goal 句（goal 留在 thread）；②**branch 切换器**移出 Phase B（改 branch 要动后端）。〔后续修正：branch **只读展示**已加入头部——`gitStatus.branch`（diff 工具条已在用）在 App scope 可得，故头部补「project ▸ branch · status」只读指示，纯前端无后端改动；可切换的 switcher 仍 deferred。〕
 
 **待 B3/B4/B5 决策**（不阻塞本增量）：③头部 view 控件 = Chat|Diff 真分栏 vs 现有 verbosity cycle；④评审面对等比例（~50vw + 工作列 min 360px 地板）；⑤composer 7 模式是否全做成 segmented 段（还是精简主集）。
 
