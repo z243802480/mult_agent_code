@@ -95,8 +95,7 @@
       ]
     },
     "ui_intent": {
-      "type": "string",
-      "enum": ["inform", "work_progress", "needs_input", "needs_attention", "result"]
+      "type": "string"
     },
     "actions": {
       "type": "array",

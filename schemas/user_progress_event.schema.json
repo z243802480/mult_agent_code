@@ -71,6 +71,36 @@
       "type": "string",
       "enum": ["main", "inspector"]
     },
+    "transcript_kind": {
+      "type": "string",
+      "enum": [
+        "user_message",
+        "assistant_message",
+        "plan",
+        "todo_update",
+        "tool_use",
+        "tool_result",
+        "file_change",
+        "verification",
+        "permission_request",
+        "decision_request",
+        "repair",
+        "ask",
+        "stop",
+        "final",
+        "context_status",
+        "subagent_summary",
+        "progress",
+        "diagnostic"
+      ]
+    },
+    "ui_intent": {
+      "type": "string"
+    },
+    "actions": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
     "model_provider": { "type": ["string", "null"] },
     "model_name": { "type": ["string", "null"] },
     "command": {
