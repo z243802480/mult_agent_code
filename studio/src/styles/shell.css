@@ -27,6 +27,12 @@
   grid-template-columns: var(--sidebar-width) 4px minmax(0, 1fr);
 }
 
+/* B3: review focus promotes the pane to a co-equal column (~50vw, clamped);
+   the work column keeps a 360px floor so chat stays usable for steering. */
+.appShell.diffFocus.panelOpen {
+  grid-template-columns: var(--sidebar-width) 4px minmax(360px, 1fr) 4px var(--panel-width-wide);
+}
+
 .paneSplitter {
   background: transparent;
   cursor: col-resize;

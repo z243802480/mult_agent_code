@@ -10,6 +10,7 @@
   /* ── Layout ──────────────────────────────────────────────────── */
   --sidebar-width: 240px;
   --panel-width: 320px;
+  --panel-width-wide: clamp(520px, 50vw, 960px); /* review-focus co-equal pane */
   --header-height: 48px;
   --thread-max: 768px;
 

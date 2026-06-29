@@ -115,16 +115,8 @@
   color: var(--ok);
 }
 
-.appShell.diffFocus.panelOpen .missionPane {
-  flex: 0 1 520px;
-  max-width: 560px;
-}
-
-.appShell.diffFocus.panelOpen .inspector {
-  flex: 1 1 auto;
-  min-width: 320px;
-}
-
+/* B3: the diffFocus pane width is driven by the .appShell.diffFocus.panelOpen grid
+   override in shell.css. The old flex rules here were inert under the grid shell. */
 .appShell.diffFocus .thread,
 .appShell.diffFocus .composer {
   opacity: 0.92;
