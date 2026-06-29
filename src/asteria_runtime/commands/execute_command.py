@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from asteria_runtime.agents.coder_agent import CoderAgent
@@ -29,8 +29,13 @@ from asteria_runtime.core.agent_loop_run_summary import (
     persist_agent_loop_run_summary,
 )
 from asteria_runtime.core.agent_tool_surface import (
+    mcp_model_tools,
     model_tool_surface_for_task,
     model_tools_available_for_task,
+)
+from asteria_runtime.core.mcp_adapter import (
+    McpAdapter,
+    mcp_adapter_config_from_policy,
 )
 from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
@@ -169,6 +174,41 @@ class ExecuteCommand:
             hook_manager=self.hook_manager,
             actor="ExecuteCommand",
         )
+        # MCP adapter is built lazily once policy is known (see _wire_mcp_adapter in run()).
+        self.mcp_adapter: McpAdapter | None = None
+        self.mcp_discovered_tools: list[dict] = []
+
+    def _wire_mcp_adapter(self, policy: dict) -> None:
+        """Build the MCP adapter from policy and inject it into the tool gateway.
+
+        No-op when no MCP servers are configured (the default), so a run without MCP is
+        unchanged. When servers are configured, the adapter's stdio sessions are opened here,
+        tools are discovered for the model surface, and the adapter is injected into the
+        (frozen) gateway via dataclasses.replace. Closing any prior adapter first bounds the
+        leak if a previous run raised before _close_mcp_adapter ran.
+        """
+        self._close_mcp_adapter()
+        self.mcp_discovered_tools = []
+        config = mcp_adapter_config_from_policy(policy, root=self.root)
+        if not config.servers:
+            return
+        adapter = McpAdapter.from_adapter_config(config)
+        self.mcp_adapter = adapter
+        self.tool_gateway = replace(self.tool_gateway, mcp_adapter=adapter)
+        try:
+            self.mcp_discovered_tools = adapter.discover_tools()
+        except Exception:  # noqa: BLE001 - discovery must never abort the run
+            self.mcp_discovered_tools = []
+
+    def _close_mcp_adapter(self) -> None:
+        adapter = getattr(self, "mcp_adapter", None)
+        if adapter is not None:
+            try:
+                adapter.close()
+            except Exception:  # noqa: BLE001 - best-effort cleanup
+                pass
+        self.mcp_adapter = None
+        self.tool_gateway = replace(self.tool_gateway, mcp_adapter=None)
 
     def run(self) -> ExecuteResult:
         agent_dir = self.root / ".asteria"
@@ -287,6 +327,7 @@ class ExecuteCommand:
                 worker_slot=worker_slot,
             )
 
+        self._wire_mcp_adapter(policy)
         executed = coordinator.execute_selection(
             selection=selection,
             task_board=task_board,
@@ -307,6 +348,7 @@ class ExecuteCommand:
             cost_report_path=cost_report_path,
             event_logger=event_logger,
         )
+        self._close_mcp_adapter()
 
         return ExecuteResult(
             run_id=run_id,
@@ -2211,6 +2253,12 @@ class ExecuteCommand:
                 task,
                 allow_shell=self._shell_allowed(context.policy),
             )
+            if self.mcp_discovered_tools:
+                mcp_tools = mcp_model_tools(self.mcp_discovered_tools, task)
+                task_model_surface["tools"].extend(mcp_tools)
+                task_model_surface["task_allowed_model_tools"].extend(
+                    str(tool["name"]) for tool in mcp_tools if tool.get("task_allowed")
+                )
             runtime_context["model_tool_surface"] = task_model_surface
             available_tools = model_tools_available_for_task(
                 self.registry.names(),
