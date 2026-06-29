@@ -58,7 +58,7 @@ export function LiveStream({
     })
     .filter(Boolean)
     .join("\n\n");
-  const toolSteps = steps.filter((step) => step.kind === "tool" || step.kind === "repair");
+  const toolSteps = steps.filter((step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent");
   const fileChanges = extractFileChangesFromSteps(steps);
   const fileStats = aggregateFileChangeStats(fileChanges);
   const permEvent = steps

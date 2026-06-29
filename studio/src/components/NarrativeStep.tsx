@@ -11,6 +11,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Terminal,
+  Users,
   XCircle,
 } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../types";
@@ -34,6 +35,7 @@ function stepIcon(kind: NarrativeStepType["kind"]) {
   if (kind === "repair") return <RefreshCw size={14} />;
   if (kind === "verification") return <ShieldAlert size={14} />;
   if (kind === "final") return <CheckCircle2 size={14} />;
+  if (kind === "subagent") return <Users size={14} />;
   return <XCircle size={14} />;
 }
 

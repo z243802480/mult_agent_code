@@ -258,7 +258,7 @@ export type NarrativeStep = {
   title: string;
   summary: string;
   status: StudioEvent["status"];
-  kind: "goal" | "thinking" | "plan" | "turn" | "tool" | "observation" | "result" | "repair" | "verification" | "final" | "error";
+  kind: "goal" | "thinking" | "plan" | "turn" | "tool" | "observation" | "result" | "repair" | "verification" | "final" | "error" | "subagent";
   events: StudioEvent[];
   defaultOpen: boolean;
 };

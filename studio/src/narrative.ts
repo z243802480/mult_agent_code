@@ -61,7 +61,7 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (transcriptKind === "final" || transcriptKind === "stop") return "final";
   if (transcriptKind === "file_change") return "result";
   if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") return "tool";
-  if (transcriptKind === "subagent_summary") return "tool";
+  if (transcriptKind === "subagent_summary") return "subagent";
   if (event.type === "user_message") return "goal";
   if (event.type === "agent_turn" || event.runtime_event_type === "turn_start" || event.runtime_event_type === "turn_end") return "turn";
   if (event.type === "intent_route") return "thinking";
@@ -90,6 +90,7 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "repair") return "Repair";
   if (kind === "verification") return "Verification";
   if (kind === "final") return "Final answer";
+  if (kind === "subagent") return "Subagent";
   return "Issue";
 }
 
