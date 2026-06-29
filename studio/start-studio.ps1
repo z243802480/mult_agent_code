@@ -1,6 +1,6 @@
 param(
-  [string]$Workspace = "F:\mult_agent_code",
-  [string]$RuntimeRoot = "F:\mult_agent_code",
+  [string]$Workspace = (Split-Path -Parent $PSScriptRoot),
+  [string]$RuntimeRoot = (Split-Path -Parent $PSScriptRoot),
   [int]$ApiPort = 8787,
   [int]$UiPort = 5174,
   [string]$Python = "python",
