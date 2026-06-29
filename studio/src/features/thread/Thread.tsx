@@ -3,7 +3,7 @@ import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
 import { splitIntoTurns } from "../../turnDiff";
 import type { StudioViewMode } from "../../hooks/useViewMode";
-import { RuntimeSnapshot } from "./RuntimeSnapshot";
+import { RuntimeSnapshot, runtimeSnapshotActionable } from "./RuntimeSnapshot";
 import { runtimeSessionEvents } from "./runtimeNarrative";
 import { EmptyState } from "./EmptyState";
 import { ConversationTurn, PendingTurn, type ProcessExpandSignal } from "./ConversationTurn";
@@ -65,6 +65,10 @@ export function Thread({
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
   const hasProcessBlocks = turns.some((turn) => turn.length > 2 || (turn.length > 1 && turn.at(-1)?.kind !== "final" && turn.at(-1)?.kind !== "error"));
   const showProcessControls = viewMode === "verbose" && hasProcessBlocks;
+  // The bottom Next-action bar is the authoritative next-step surface. When it owns a next step,
+  // suppress the last turn's inline SuggestedActions so the thread shows one prompt, not two that
+  // can disagree (stale "Decide" chip vs. a run that already passed review and is ready to Accept).
+  const snapshotOwnsNextStep = runtimeSnapshotActionable(overview ?? null, runDetail ?? null, events);
 
   useEffect(() => {
     const el = threadRef.current;
@@ -118,6 +122,7 @@ export function Thread({
           viewMode={viewMode}
           onTurnRewind={onTurnRewind}
           onSuggestedAction={onRuntimeAction}
+          suppressSuggested={snapshotOwnsNextStep}
         />
       ))}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}

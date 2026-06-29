@@ -176,7 +176,7 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction }: {
+export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -194,6 +194,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   viewMode?: import("../../hooks/useViewMode").StudioViewMode;
   onTurnRewind?: (turnIndex: number, action: string) => Promise<void>;
   onSuggestedAction?: (command: string) => Promise<void>;
+  suppressSuggested?: boolean;
 }) {
   const goalStep = steps[0];
   const restSteps = steps.slice(1);
@@ -258,7 +259,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
         )
       )}
       {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
-      {responseStep && isLast && onSuggestedAction && (
+      {responseStep && isLast && onSuggestedAction && !suppressSuggested && (
         <SuggestedActions steps={restSteps} onAction={onSuggestedAction} />
       )}
       {turnIndex && onTurnRewind && viewMode && (

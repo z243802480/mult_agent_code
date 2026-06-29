@@ -224,9 +224,17 @@ export function firstText(...items: unknown[]): string {
 
 /**
  * Returns true only if the LATEST conversation turn is still active.
- * "Active" means: after the last final_answer/error event, there are events
- * with running/queued/waiting_user status.  This avoids treating stale
- * "running" events from old completed runs as "currently running".
+ * "Active" means: after the last final_answer/error event, there is a running/queued/waiting_user
+ * event that has NOT been closed by a later terminal event.
+ *
+ * Why the terminal-reconciliation: the event log is append-only and never mutated in place
+ * (see mergeEventLists). A tool/model fragment emitted with status "running" keeps that status
+ * forever; its completion arrives as a SEPARATE later event (a tool_end, or a completed/failed
+ * status). So a bare `.some(status === "running")` treats an already-finished streaming fragment
+ * as live indefinitely — the classic stuck-"Running" badge. Instead we find the latest terminal
+ * event and require an active signal strictly after it, so a running fragment followed by its
+ * close reads as done. (Assumes the harness runs tools sequentially, which it does by default —
+ * parallel writes are frozen; interleaved parallel tools could otherwise hide a still-open one.)
  */
 export function isSessionLive(events: StudioEvent[]): boolean {
   const lastFinal = [...events].reverse().find(
@@ -236,7 +244,15 @@ export function isSessionLive(events: StudioEvent[]): boolean {
   const liveEvents = cutoff
     ? events.filter((e) => eventTime(e) > cutoff)
     : events;
-  return liveEvents.some(
-    (e) => e.status === "running" || e.status === "queued" || e.status === "waiting_user"
-  );
+  if (!liveEvents.length) return false;
+  const isActive = (e: StudioEvent) =>
+    e.status === "running" || e.status === "queued" || e.status === "waiting_user";
+  const isTerminal = (e: StudioEvent) =>
+    e.status === "completed" || e.status === "failed"
+    || e.type === "tool_end" || e.type === "final_answer" || e.type === "error";
+  let lastTerminalTime = -Infinity;
+  for (const event of liveEvents) {
+    if (isTerminal(event)) lastTerminalTime = Math.max(lastTerminalTime, eventTime(event));
+  }
+  return liveEvents.some((event) => isActive(event) && eventTime(event) > lastTerminalTime);
 }

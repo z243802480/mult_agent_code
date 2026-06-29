@@ -76,6 +76,36 @@ function DecisionCard({
 }
 
 
+/**
+ * Single source of truth for "does this run have an actionable next step?" The bottom Next-action
+ * bar (this component) and the per-turn SuggestedActions chips both key off this so the thread never
+ * shows two competing next-step prompts — e.g. a stale inline "Decide" chip while the run has
+ * actually passed review and the bar is offering Accept. When this is true the bar owns the next
+ * step and the inline chips defer; when it is false (no lifecycle state) the inline chips are the
+ * only hint and still render.
+ */
+export function runtimeSnapshotActionable(
+  overview: OverviewPayload | null,
+  runDetail: RunDetailPayload | null,
+  events: StudioEvent[],
+): boolean {
+  const workflow = asRecord(overview?.workflow);
+  const canReview = Boolean(workflow.can_review);
+  const canAccept = Boolean(workflow.can_accept);
+  const progress = runtimeProgress(runDetail);
+  if (!Object.keys(progress).length && !runDetail?.ok && !canReview && !canAccept) return false;
+  const activeEvent = latestActiveEvent(events);
+  const loop = asRecord(progress.loop);
+  const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
+  const mainAction = asRecord(runDetail?.main_action);
+  const nextActionValue = firstText(String(mainAction.next_command ?? ""), String(progress.next_command ?? ""));
+  const pendingPermission = Boolean(
+    activeEvent?.type === "permission_request" && activeEvent.status === "waiting_user" && activeEvent.job_id,
+  );
+  if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason && !canReview && !canAccept) return false;
+  return true;
+}
+
 export function RuntimeSnapshot({
   overview,
   runDetail,
@@ -93,17 +123,18 @@ export function RuntimeSnapshot({
   onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
 }) {
+  // Hooks must run unconditionally and before any early return (rules of hooks). Diff-review gate
+  // (slice #5): when an Accept is offered and the workspace has changes, require the user to open
+  // the read-only diff review at least once before Accept is enabled. The key is (runId, changeCount)
+  // so a new run or a changed diff re-arms the gate — "look before you accept" against the same scope.
+  const [reviewedKey, setReviewedKey] = useState<string | null>(null);
+  if (!runtimeSnapshotActionable(overview, runDetail, events)) return null;
+
   const workflow = asRecord(overview?.workflow);
   const canReview = Boolean(workflow.can_review);
   const canAccept = Boolean(workflow.can_accept);
   const progress = runtimeProgress(runDetail);
-  if (!Object.keys(progress).length && !runDetail?.ok && !canReview && !canAccept) return null;
   const activeEvent = latestActiveEvent(events);
-  // Diff-review gate (slice #5): when an Accept is offered and the workspace has changes, require
-  // the user to open the read-only diff review at least once before Accept is enabled. The key is
-  // (runId, changeCount) so a new run or a changed diff re-arms the gate. No fabricated state —
-  // this only enforces "look before you accept" against the same Inspector diff scope.
-  const [reviewedKey, setReviewedKey] = useState<string | null>(null);
   const loop = asRecord(progress.loop);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
@@ -129,7 +160,6 @@ export function RuntimeSnapshot({
     loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
     "No action needed right now",
   );
-  if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason && !canReview && !canAccept) return null;
 
   return (
     <section className="runtimeSnapshot compact" aria-label="Next action">
