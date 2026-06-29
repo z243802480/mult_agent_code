@@ -26,6 +26,7 @@ class ToolExecutionGateway:
     permission_policy: ToolPermissionPolicy
     hook_manager: RuntimeHookManager | None = None
     actor: str = "ToolExecutionGateway"
+    mcp_adapter: Any = None
 
     def run_tool_calls(
         self,
@@ -44,6 +45,19 @@ class ToolExecutionGateway:
             args = call.get("args", {}) or {}
             tool_call_id = self._next_tool_call_id(context)
             started = perf_counter()
+            if self.mcp_adapter is not None and tool_name.startswith("mcp__"):
+                # MCP tools route to the external protocol adapter, not the local registry.
+                # invoke_tool runs its OWN capability gate (decide_mcp), budget, and evidence
+                # (mcp_invocations.jsonl + user_progress), so we deliberately skip the local-tool
+                # decide_tool / allowed-set / permission machinery here and only attach the
+                # observation so the agent loop feeds the result back like any other tool result.
+                mcp_result = self._run_mcp_call(tool_name, args, task, context, tool_call_id, started)
+                results.append(mcp_result)
+                if stop_on_failure and not getattr(mcp_result, "ok", False):
+                    raise RuntimeError(
+                        f"Tool failed: {tool_name}: {getattr(mcp_result, 'summary', '')}"
+                    )
+                continue
             start_event: dict[str, Any] | None = None
             model_telemetry = self._last_model_telemetry(context)
             capability_decision = CapabilityDecisionRecorder(self.actor).decide_tool(
@@ -326,6 +340,41 @@ class ToolExecutionGateway:
                 )
                 raise
         return results
+
+    def _run_mcp_call(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        task: dict,
+        context: RuntimeContext,
+        tool_call_id: str,
+        started: float,
+    ) -> Any:
+        """Route an ``mcp__<server>__<tool>`` call to the MCP adapter and attach an observation.
+
+        The adapter (McpAdapter.invoke_tool) already performs the capability decision, budget
+        accounting, schema-validated mcp_invocations.jsonl evidence, and a user_progress tool
+        result event. Here we only convert the McpInvocationResult into the same ToolObservation
+        the agent loop consumes for local tools, so an MCP call feeds back identically.
+        """
+        server, _, tool = tool_name[len("mcp__") :].partition("__")
+        mcp_result = self.mcp_adapter.invoke_tool(
+            context=context,
+            task=task,
+            server_name=server,
+            tool_name=tool,
+            arguments=args or {},
+        )
+        duration_ms = int((perf_counter() - started) * 1000)
+        observation = observation_from_tool_result(
+            tool_name=tool_name,
+            result=mcp_result,
+            telemetry={"duration_ms": duration_ms},
+        )
+        # McpInvocationResult is a frozen dataclass; attach the loop-feedback observation as a
+        # non-field attribute via object.__setattr__ (the same harness_observation the loop reads).
+        object.__setattr__(mcp_result, "harness_observation", observation)
+        return mcp_result
 
     def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
         if tool_name not in {"run_command", "run_tests"}:
