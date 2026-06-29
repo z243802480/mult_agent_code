@@ -17,7 +17,7 @@ Asteria 的核心方向是：
 状态字段只服务于持久化、恢复和查证，不是产品架构，也不替模型写死完整流程。Runtime 的职责是：
 
 - 组织用户目标、项目规则、上下文、能力目录、预算和历史证据。
-- 向模型暴露可理解的能力：tools、MCP、skills、subagents、candidate workspace、validation、promotion。
+- 向模型暴露可理解的能力：tools、subagents、candidate workspace、validation、promotion。（MCP 适配器与 skill 发现已实现，但**尚未接入模型循环**，当前不在模型可直接调用的能力面，见 §9。）
 - 校验模型输出，执行权限、预算、sandbox、schema、gate。
 - 记录可审计 evidence，并把 observation 回灌给模型。
 
@@ -209,7 +209,7 @@ subagent_pending | repair_dispatch | replan_dispatch | no_action
 
 ## 9. 下一步设计目标
 
-下一步不是继续扩大命令数量，而是把 subagent 从 dispatch evidence 升级为真实子 agent 执行器：
+下一步不是继续扩大命令数量。subagent 已是真实子 agent 执行器：模型 action==`subagent` 在多轮 loop 中触发 `_execute_subagent_child_loop`（execute_command.py:2305），递归运行 CoderAgent（注意：单步非循环路径目前对 `subagent` 仍标记 blocked，见 :1345，待定夺是否一致化）。在此基线上进一步增强：
 
 1. 为 subagent worker 增加独立 planner/decomposer，支持 child task graph。
 2. 将 child candidate workspace 与父 task merge/promotion 关系纳入 graph/status。
