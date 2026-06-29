@@ -17,7 +17,7 @@ Asteria 的核心方向是：
 状态字段只服务于持久化、恢复和查证，不是产品架构，也不替模型写死完整流程。Runtime 的职责是：
 
 - 组织用户目标、项目规则、上下文、能力目录、预算和历史证据。
-- 向模型暴露可理解的能力：tools、subagents、candidate workspace、validation、promotion。（MCP 适配器与 skill 发现已实现，但**尚未接入模型循环**，当前不在模型可直接调用的能力面，见 §9。）
+- 向模型暴露可理解的能力：tools、subagents、（已配置的）MCP 工具、candidate workspace、validation、promotion。（MCP 现已接入模型循环——配置 server 后其工具以 `mcp__server__tool` 进入模型工具面并经 gateway 路由调用；**skill 仍仅发现、未接入执行**，见 §9。）
 - 校验模型输出，执行权限、预算、sandbox、schema、gate。
 - 记录可审计 evidence，并把 observation 回灌给模型。
 
