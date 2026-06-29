@@ -1,6 +1,6 @@
 # Studio IDE-shell 重设计方案
 
-状态：`in-progress`（Phase A + B1/B2 已落地于工作树 · B3/B4/B5 待启动）
+状态：`in-progress`（Phase A + Phase B 全量已落地并推送 · Phase C 收口待启动）
 
 更新时间：2026-06-28
 
@@ -140,6 +140,16 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 落地：inline `.segmented` 只放 3 个意图主模式 **Chat / Plan / Run**（不换行）；`review / accept / resume` 是生命周期动作进 overflow `…` 菜单（同时满足「主线不暴露 maintainer 词汇」）；`permission`（auto-approve）作独立 footer 控件，不并入 mode。`onSend(message, mode, permission)` 字符串集合与签名零改动。
 
 > 实施顺序：B4（头部分组+badge，最小）→ B3（对等评审面+改动文件入面）→ B5（composer 三段+overflow+permission 分离）；每项一组提交，过 tsc/build/契约/预览。
+
+### Phase B — 增量 2/3（B3/B4/B5）落地记录（2026-06-29 · 已实现并推送）
+
+按上述 reference-first 决策实现，纯前端、`onSend`/MODES/schema 零改动：
+
+- **B4**（`3e4bde1`）：头部 `.topActions` 分两组——左 = 单 `Diff` 评审 toggle（带改动计数 badge），右 = 工具组（verbosity cycle + Ask + panel + refresh），发丝线分隔；放宽 `.globalHeader .topActions button`（`width:30px`→`min-width:30px;width:auto`）让带标签/badge 的按钮不被裁成方块。
+- **B3**（`e3bc625`）：新增 `--panel-width-wide: clamp(520px,50vw,960px)`；`.appShell.diffFocus.panelOpen` grid 覆盖把评审面升为对等（实测 1440 视口下 720px = 50vw，会话列 492 > 360 地板），静息仍 ~520 抽屉；删除 grid 下本就 inert 的 `.missionPane/.inspector` flex 规则，保留 `.thread/.composer` opacity:0.92 评审弱化。
+- **B5**（`e3e3c45`）：composer 模式从 7 项 `<details>` 弹层改为 inline `.segmented`（Auto/Chat/Plan/Goal 四意图）+ overflow `…`（Review/Resume/Accept 生命周期，同时把 maintainer 味动作移出主行）；permission 仍为独立 footer `<select>`；overflow summary 回显当前生命周期模式、选后自动收起。
+
+验证：每项 `tsc`+`vite build` 干净、`session-main-path-contract` 绿、预览计算样式/交互核验、console 0 错误。**Phase B（IDE 骨架）全量完成**；剩 Phase C（原语统一 / 去卡片 / 密度收口）。
 
 ### Phase C — 收口打磨（一致性/密度/去死代码）
 
