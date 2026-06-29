@@ -237,6 +237,55 @@ def model_tool_surface_for_task(
     }
 
 
+def mcp_model_tools(
+    discovered_tools: list[dict[str, Any]],
+    task: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Model-facing entries for discovered MCP tools, filtered by the task's MCP contract.
+
+    ``discovered_tools`` come from ``McpAdapter.discover_tools()`` ({server, tool, model_name,
+    description, input_schema}). The contract mirrors ``CapabilityDecisionRecorder`` for MCP:
+    an empty ``allowed_mcp`` allows every configured tool; otherwise the server name OR the
+    ``server/tool`` capability must be listed. Permission stays ``ask`` — the real allow/ask/deny
+    happens at the call boundary inside ``McpAdapter.invoke_tool`` (``decide_mcp``).
+    """
+    allowed = {
+        str(item)
+        for item in (task.get("allowed_mcp") or task.get("allowed_mcp_tools") or [])
+        if item
+    }
+    tools: list[dict[str, Any]] = []
+    for entry in discovered_tools:
+        server = str(entry.get("server") or "")
+        tool = str(entry.get("tool") or "")
+        if not server or not tool:
+            continue
+        model_name = str(entry.get("model_name") or f"mcp__{server}__{tool}")
+        capability = f"{server}/{tool}"
+        task_allowed = (not allowed) or (capability in allowed) or (server in allowed)
+        schema = entry.get("input_schema")
+        tools.append(
+            {
+                "name": model_name,
+                "kind": "external",
+                "permission": "ask" if task_allowed else "deny",
+                "adapter": "mcp_protocol_session",
+                "internal_tool": None,
+                "parameter_contract": schema if isinstance(schema, dict) else {},
+                "safety_notes": [
+                    f"External MCP tool {capability}; allow/ask/deny is decided at the call "
+                    "boundary via the MCP capability decision, and every call is audited."
+                ],
+                "status": "available" if task_allowed else "denied",
+                "task_allowed": task_allowed,
+                "server": server,
+                "tool": tool,
+                "description": str(entry.get("description") or ""),
+            }
+        )
+    return tools
+
+
 def adapt_model_tool_call(
     call: dict[str, Any],
     runtime_tool_names: list[str],

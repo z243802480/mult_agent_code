@@ -358,6 +358,55 @@ class McpAdapter:
         )
         return result
 
+    def list_tools(self, server_name: str) -> list[dict[str, Any]]:
+        """Discover one server's tools via MCP ``tools/list``.
+
+        Degrades to ``[]`` on any failure (unconfigured server, transport error, malformed
+        payload) so tool discovery never aborts a run — a dead server simply contributes no
+        model-facing tools.
+        """
+        session = self.sessions.get(server_name)
+        if session is None:
+            return []
+        try:
+            payload, _ = self._call_session_with_retries(session, "tools/list", {})
+        except Exception:  # noqa: BLE001 - discovery must never abort the run
+            return []
+        raw = payload.get("tools") if isinstance(payload, dict) else None
+        tools: list[dict[str, Any]] = []
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    continue
+                schema = item.get("inputSchema")
+                tools.append(
+                    {
+                        "name": name,
+                        "description": str(item.get("description") or ""),
+                        "input_schema": schema if isinstance(schema, dict) else {},
+                    }
+                )
+        return tools
+
+    def discover_tools(self) -> list[dict[str, Any]]:
+        """All configured servers' tools, named ``mcp__<server>__<tool>`` for the model surface."""
+        discovered: list[dict[str, Any]] = []
+        for server_name in self.sessions:
+            for tool in self.list_tools(server_name):
+                discovered.append(
+                    {
+                        "server": server_name,
+                        "tool": tool["name"],
+                        "model_name": f"mcp__{server_name}__{tool['name']}",
+                        "description": tool["description"],
+                        "input_schema": tool["input_schema"],
+                    }
+                )
+        return discovered
+
     def close(self) -> None:
         for session in self.sessions.values():
             session.close()
