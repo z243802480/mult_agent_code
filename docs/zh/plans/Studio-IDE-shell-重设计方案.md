@@ -1,6 +1,6 @@
 # Studio IDE-shell 重设计方案
 
-状态：`in-progress`（Phase A + Phase B 全量已落地并推送 · Phase C 收口待启动）
+状态：`in-progress`（Phase A + Phase B 全量 + Phase C 安全收口增量已落地 · Phase C 余项待专门 slice）
 
 更新时间：2026-06-28
 
@@ -163,6 +163,20 @@ Studio 当前是**按居中聊天产品布局+装饰的**，再把代码界面�
 | C6 | 一个 `.badge` 状态原语（dot+label+tone）：tool 状态、runtime 状态、`<Status>`、`SignalCard` 头共用 |
 | C7 | Permission/Decision 改成行内 notice：`surface-1` + 2px 左缘 accent（替代饱和填充）、收紧 padding、`--radius-control`、scope/code 用 mono |
 | C8 | 编辑器级控件密度 token（~28px）替换头/栏里的 34px 药丸按钮 |
+
+### Phase C — 增量 1（安全收口）落地记录（2026-06-29 · 已实现）
+
+经 3 路 recon（cards/density · primitives · dead-code）出 safe-first 计划。本增量只做「零消费者删除 + 零渲染变化的去卡片 + 密度收紧」，纯 CSS：
+
+- **去死代码**：删 `.composerModeSummary.tone-good/.tone-warn`（B5 后无 tone 消费者）、`.commandLine`（孤儿选择器，全仓 0 引用）——grep 确认 0 残留，CSS 体积下降。
+- **C-3 去重卡片**：`.inspectorDiffPreview`/`.inspectorEventPeek` 的 `background/border/border-radius` 与 `.inspector section` 完全重复，删之只留各自独有 padding/grid（零渲染变化）。
+- **C-6 密度**：`.thread` gap `space-4→space-3`、padding 收紧（16/16/24 → 12/12/16）；prose 70ch 测宽独立未动。
+
+验证：`tsc`+`vite build` 干净、grep 删除项 0 残留、预览 thread 密度收紧、console 0 错误。
+
+> **有意保留**：6 个零消费者 token（`--text-md/-lg`、`--space-6`、`--shadow-sm`、`--leading`、`--accent-active`）作为 type/space/elevation/accent **scale 完整性**保留，非误留死码。
+>
+> **deferRisky（按 recon，留作专门 slice + before/after 评审）**：① `.btn`/`.badge` 原语（含 composerSend/permission 从 `radius-md→control` 的可见角度改动）；② ~10 个次级按钮簇的 TSX className 改造（高 churn 低收益）；③ 带状态边的去卡片（vmRow/gitChangeRow/reportLead 把状态/选中信号挪到左缘或填充）；④ 删 `DiffScopePanel.tsx`/`GitChangesPanel.tsx`（importers=0，需 git-history 闸）；⑤ Composer `profile.icon/label/tone` 行为死码（DecisionPoint）。
 
 ## 4. 冻结 / 边界（必须遵守）
 

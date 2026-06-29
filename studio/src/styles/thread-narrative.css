@@ -308,8 +308,7 @@
 }
 
 .deltaText,
-.messageText,
-.commandLine {
+.messageText {
   border-radius: var(--radius-md);
   display: block;
   font-size: 13px;
@@ -328,11 +327,6 @@
 .messageText {
   background: transparent;
   padding: 0;
-}
-
-.commandLine {
-  background: var(--surface-0);
-  color: var(--ok);
 }
 
 .foldButton {

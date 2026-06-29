@@ -13,10 +13,8 @@
   gap: var(--space-2);
 }
 
+/* C-3: frame comes from `.inspector section`; only unique props kept here. */
 .inspectorDiffPreview {
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
   display: grid;
   gap: var(--space-2);
   padding: var(--space-2);
@@ -30,9 +28,6 @@
 }
 
 .inspectorEventPeek {
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
 }
 

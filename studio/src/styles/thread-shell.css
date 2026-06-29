@@ -4,10 +4,10 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  gap: var(--space-4);
+  gap: var(--space-3);
   min-height: 0;
   overflow: auto;
-  padding: var(--space-4) var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-3) var(--space-4);
 }
 
 /* B2: the empty hero stays centered; the active thread fills the work column. */
