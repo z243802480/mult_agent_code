@@ -713,16 +713,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start the goal in a local background subprocess (durable registry; cloud defer)",
     )
+    # North Star supervised multi-slice loop is frozen (master plan); these remain functional
+    # for maintainers but are hidden from the default `run`/`goal` help (argparse.SUPPRESS),
+    # matching how other maintainer-only surface is kept out of the ordinary user journey.
     run_parser.add_argument(
         "--toward-north-star",
         action="store_true",
-        help="Run a bounded supervised multi-slice loop toward the configured North Star",
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument(
         "--max-slices",
         type=int,
         default=3,
-        help="Maximum North Star slices per supervised loop invocation (default: 3)",
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
 
