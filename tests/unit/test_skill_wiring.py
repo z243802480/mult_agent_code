@@ -1,6 +1,5 @@
 """S-Skill-1/2/3: real skill handler (loads body), gateway routing, model surface filter."""
 from pathlib import Path
-from typing import Any
 
 from asteria_runtime.core.agent_tool_surface import skill_model_tools
 from asteria_runtime.core.runtime_context import RuntimeContext

@@ -88,12 +88,12 @@ The runtime still stores the execution record as a run under `.agent/runs/<run_i
 
 `/runs`, `/history`, and `--run-id` remain compatibility aliases. New documentation and user
 flows should use `/sessions` and `--session-id`.
-`asteria acceptance-history` / `asteria acceptance-trend` shows persisted acceptance history and trend
+`asteria acceptance-history` shows persisted acceptance history and trend
 deltas from `.agent/acceptance/history.jsonl`.
 Use `--fail-on-warning` to turn trend warnings into a non-zero exit code for local gates.
 Use `asteria acceptance --fail-on-trend-warning` when the acceptance run itself should fail on
 trend regressions.
-`asteria acceptance-gate` / `asteria release-gate` also enforces capability and tier coverage, not just
+`asteria acceptance-gate` also enforces capability and tier coverage, not just
 raw scenario count.
 `asteria capability-report` summarizes acceptance trends, capability coverage, failure types, repair
 rounds, cost signals, common blockers, and recommended next actions.

@@ -103,8 +103,6 @@ def test_gateway_mcp_denied_when_not_in_task_contract(tmp_path: Path) -> None:
 
 
 def test_gateway_without_mcp_adapter_ignores_mcp_prefix(tmp_path: Path) -> None:
-    # No adapter configured -> the mcp__ branch is skipped; falls through to the local path.
-    # With registry=None this raises (unknown tool), proving the branch is adapter-gated.
-    context = _context(tmp_path)
+    # No adapter configured -> the mcp__ branch is adapter-gated and never taken.
     gateway = ToolExecutionGateway(registry=None, permission_policy=None)
     assert gateway.mcp_adapter is None
