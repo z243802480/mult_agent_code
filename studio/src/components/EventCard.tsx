@@ -101,9 +101,11 @@ export function EventCard({
       className={`eventCard ${event.type} ${event.status} ${selected ? "selected" : ""} ${compact ? "compact" : ""}`}
       onClick={onSelect}
     >
-      <div className="phaseRail">
-        <span>{phaseLabel(event.phase, event.title)}</span>
-      </div>
+      {!compact && (
+        <div className="phaseRail">
+          <span>{phaseLabel(event.phase, event.title)}</span>
+        </div>
+      )}
       <div className="eventBody">
         <div className="eventHeader">
           <div>
@@ -125,21 +127,21 @@ export function EventCard({
         </div>
         <p className="eventSummary">{event.summary}</p>
         {asRecord(event.data).kind === "worker_summary" && (
-          <WorkerProgressBar data={asRecord(event.data)} />
+          <WorkerProgressBar data={asRecord(event.data)} compact={compact} />
         )}
         <div className="eventFacts">
-          {event.model_provider && (
+          {!compact && event.model_provider && (
             <span>
               {event.model_provider}/{event.model_name ?? "unknown"}{event.model_tier ? ` ? ${event.model_tier}` : ""}
             </span>
           )}
-          {event.model_route && !event.model_provider && (
+          {!compact && event.model_route && !event.model_provider && (
             <span>
               {String((event.model_route as AnyRecord).provider ?? "model")}/{String((event.model_route as AnyRecord).model ?? "unknown")}
             </span>
           )}
-          {(event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} evidence</span>}
-          {(event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} artifacts</span>}
+          {!compact && (event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} evidence</span>}
+          {!compact && (event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} artifacts</span>}
           {fileChanges.length > 0 && <span>{fileChanges.length} file{fileChanges.length === 1 ? "" : "s"}</span>}
           <span>{formatEventTime(event.created_at)}</span>
         </div>

@@ -50,13 +50,10 @@ export function middleRepresentativeEvent(steps: NarrativeStepType[]): StudioEve
     ?? null;
 }
 
-export function turnModelMetadata(middleSteps: NarrativeStepType[], responseStep: NarrativeStepType | null): string {
-  const events = [...middleSteps.flatMap((step) => step.events), ...(responseStep?.events ?? [])];
-  const modelEvent = [...events].reverse().find((item) => item.model_provider || item.model_name);
-  if (!modelEvent) return "";
-  const provider = String(modelEvent.model_provider ?? "").trim();
-  const model = String(modelEvent.model_name ?? "").trim();
-  const parts = [provider && model ? `${provider}/${model}` : provider || model];
-  return parts.filter(Boolean).join(" · ");
+export function turnModelMetadata(_middleSteps: NarrativeStepType[], _responseStep: NarrativeStepType | null): string {
+  // Main thread no longer surfaces provider/model in the TurnFinal header (de-internalization).
+  // Returning an empty string keeps the call site and types intact; the header meta span is hidden
+  // because TurnFinal only renders it when this is non-empty. Raw model info still lives in the Inspector.
+  return "";
 }
 

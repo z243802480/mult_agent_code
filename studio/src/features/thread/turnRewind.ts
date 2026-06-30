@@ -13,19 +13,19 @@ export function planTurnRewind(runDetail: RunDetailPayload | null | undefined, i
   if (!runDetail?.ok || !runDetail.run_id) {
     return {
       action: "",
-      label: "Rewind",
-      reason: "Continue from this turn using the active run.",
+      label: "Pick up from here",
+      reason: "Pick up from this turn.",
       disabled: true,
-      disabledReason: "No active run to rewind.",
+      disabledReason: "Nothing to pick up from yet.",
     };
   }
   if (isRunning) {
     return {
       action: "",
-      label: "Rewind",
-      reason: "Wait for the current turn to finish before rewinding.",
+      label: "Pick up from here",
+      reason: "Wait for the current turn to finish first.",
       disabled: true,
-      disabledReason: "A turn is still running.",
+      disabledReason: "A turn is still in progress.",
     };
   }
 
@@ -50,15 +50,15 @@ export function planTurnRewind(runDetail: RunDetailPayload | null | undefined, i
   }
 
   const label = /^review\b/i.test(action)
-    ? "Rewind → Review"
+    ? "Redo from here"
     : /^resume\b/i.test(action) || /^continue\b/i.test(action)
-      ? "Rewind → Continue"
-      : "Rewind → Continue";
+      ? "Continue from here"
+      : "Continue from here";
 
   return {
     action,
     label,
-    reason: "Request runtime to continue from this point. Workspace files are not rolled back automatically.",
+    reason: "Pick up from here. Workspace files are not rolled back automatically.",
     disabled: false,
   };
 }

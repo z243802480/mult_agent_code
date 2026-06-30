@@ -12,8 +12,8 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const { lead, details } = splitLeadAndDetails(visibleText);
   const leadText = lead
     || (isError
-      ? "The task needs attention — open the Inspector for the reason and next step."
-      : "Finished — open the Inspector to review what changed.");
+      ? "Something went wrong while finishing up."
+      : "Done.");
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>

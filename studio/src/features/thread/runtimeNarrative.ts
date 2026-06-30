@@ -131,19 +131,47 @@ export function userProgressType(event: AnyRecord): StudioEvent["type"] {
   return "assistant_delta";
 }
 
+// Human-readable action titles projected from the runtime's transcript_kind.
+// We project both the transcript_kind fallback AND any internal/legacy title
+// literals the runtime may emit, so the main thread never shows process jargon
+// like "Tool Use"/"Tool Result"/"Verify"/"Background work".
+const TRANSCRIPT_KIND_TITLES: Record<string, string> = {
+  plan: "Planning",
+  todo_update: "Planning",
+  tool_use: "Working",
+  tool_result: "Result",
+  file_change: "File Change",
+  verification: "Checking the work",
+  permission_request: "Next step",
+  decision_request: "Next step",
+  ask: "Next step",
+  subagent_summary: "Working in the background",
+  final: "Result",
+  stop: "Result",
+};
+
+// Legacy/internal title literals → human action titles. Any title not listed
+// here is treated as genuine human-authored text and passes through unchanged.
+const INTERNAL_TITLE_PROJECTION: Record<string, string> = {
+  "Plan/Todo": "Planning",
+  "Tool Use": "Working",
+  "Tool Result": "Result",
+  Verify: "Checking the work",
+  "Background work": "Working in the background",
+  "Next step": "Next step",
+};
+
 export function userProgressTitle(event: AnyRecord): string {
   const title = String(event.title ?? "").trim();
   const transcriptKind = String(event.transcript_kind ?? "");
-  if (title) return title;
-  if (transcriptKind === "plan" || transcriptKind === "todo_update") return "Plan/Todo";
-  if (transcriptKind === "tool_use") return "Tool Use";
-  if (transcriptKind === "tool_result") return "Tool Result";
-  if (transcriptKind === "file_change") return "File Change";
-  if (transcriptKind === "verification") return "Verify";
-  if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") return "Next step";
-  if (transcriptKind === "subagent_summary") return "Background work";
-  if (transcriptKind === "final" || transcriptKind === "stop") return "Result";
-  return "Progress";
+  const phase = String(event.phase ?? "").trim();
+  // Review-phase steps read as "Checking the work" regardless of kind.
+  if (phase === "review") return "Checking the work";
+  if (title) {
+    // Project known internal/legacy literals; unknown titles pass through.
+    return INTERNAL_TITLE_PROJECTION[title] ?? title;
+  }
+  return TRANSCRIPT_KIND_TITLES[transcriptKind] ?? "Progress";
 }
 
 export function userProgressSummary(event: AnyRecord): string {

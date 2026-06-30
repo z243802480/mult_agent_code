@@ -9,7 +9,7 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-export function WorkerProgressBar({ data }: { data: AnyRecord }) {
+export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; compact?: boolean }) {
   const total = Number(data.total ?? 0);
   if (!total) return null;
   const successful = Number(data.successful ?? 0);
@@ -26,6 +26,25 @@ export function WorkerProgressBar({ data }: { data: AnyRecord }) {
       ? `${schedulingMode} (preview)`
       : schedulingMode
     : "";
+
+  // Main thread (compact): show only a friendly aggregate, hide orchestration
+  // internals (scheduling_mode/(preview)/fake_path, worker_invocation_id list,
+  // promotion_hint). Inspector (non-compact) keeps the raw detail below.
+  if (compact) {
+    return (
+      <div className="workerProgressBar" aria-label="Background worker progress">
+        <div className="workerProgressTrack">
+          <span className="workerProgressFill success" style={{ width: `${(successful / total) * 100}%` }} />
+          <span className="workerProgressFill failed" style={{ width: `${(failed / total) * 100}%` }} />
+          <span className="workerProgressFill running" style={{ width: `${(running / total) * 100}%` }} />
+        </div>
+        <div className="workerProgressMeta">
+          <span>Working on {total} thing{total === 1 ? "" : "s"}… {successful} done</span>
+          {failed > 0 && <span className="workerProgressWarn">{failed} need attention</span>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="workerProgressBar" aria-label="Background worker progress">

@@ -152,11 +152,10 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
     return () => window.clearInterval(timer);
   }, [startedAt]);
 
-  const phase = mode === "auto"
-    ? "Intent routing"
-    : mode === "chat"
-    ? "Thinking"
-    : "Starting run";
+  // Main thread shows one calm loading phrase regardless of internal routing mode.
+  // (mode is retained for callers; the user-facing copy is uniform.)
+  void mode;
+  const phase = "Thinking…";
 
   return (
     <div className="conversationTurn pendingTurn">

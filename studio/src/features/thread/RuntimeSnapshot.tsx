@@ -165,13 +165,13 @@ export function RuntimeSnapshot({
   // workspace by the time Finalize is offered, so say so (change count is a real signal) rather
   // than implying a pre-write approval gate. Finalize records the run as done; it doesn't apply.
   const acceptStep = acceptReady && workspaceChangeCount > 0
-    ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — review the diff (keep or revert per file), then finalize.`
+    ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — review the diff (keep or revert per file), then mark it done.`
     : null;
 
   return (
     <section className="runtimeSnapshot compact" aria-label="Next action">
       <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
-        {decisions.length || pendingPermission ? "needs input" : acceptReady ? (workspaceChangeCount > 0 ? "applied" : "ready") : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
+        {decisions.length || pendingPermission ? "needs you" : acceptReady ? (workspaceChangeCount > 0 ? "applied" : "ready") : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
       </span>
       <span className="runtimeSnapshotText">{acceptStep ?? nextStep}</span>
       <div className="runtimeSnapshotActions">
@@ -198,7 +198,7 @@ export function RuntimeSnapshot({
                   title={needsDiffReview ? `Review the ${workspaceChangeCount} change(s) before accepting` : undefined}
                   onClick={() => void onRuntimeAction(nextActionValue || "accept")}
                 >
-                  Finalize
+                  Mark done
                 </button>
               </>
             ) : null}
@@ -229,10 +229,10 @@ export function userFacingStateLabel(value: string): string {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "";
   if (normalized.includes("provider") || normalized.includes("model-check")) return "model connection issue";
-  if (normalized.includes("tool_failed")) return "tool step failed";
+  if (normalized.includes("tool_failed")) return "a step failed";
   if (normalized.includes("max_rounds")) return "needs a decision";
-  if (normalized.includes("repair_limit") || normalized.includes("repair")) return "repair step needed — use Debug or resolve the decision card";
-  if (normalized.includes("budget_hard_stop")) return "budget limit reached";
+  if (normalized.includes("repair_limit") || normalized.includes("repair")) return "a step failed — want me to keep trying or take a different approach?";
+  if (normalized.includes("budget_hard_stop")) return "paused — needs your input";
   return stripBackendWording(value.replace(/_/g, " "));
 }
 

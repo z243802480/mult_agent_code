@@ -9,13 +9,15 @@ import { ClampedOutput } from "../../components/ClampedOutput";
 import { ToolCallCard } from "./ToolCallCard";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 
+// Main-thread, user-facing phase copy. Keys are step kinds; unknown kinds fall back
+// to the step's own label. Keep this plain and human — no internal phase vocabulary.
 const PHASE_LABELS: Record<string, string> = {
   thinking: "Thinking",
   plan: "Planning",
-  tool: "Using tools",
-  result: "Preparing result",
-  verification: "Verifying",
-  repair: "Repairing",
+  tool: "Working",
+  result: "Result",
+  verification: "Checking the work",
+  repair: "Working",
   error: "Error",
 };
 
@@ -51,8 +53,8 @@ export function LiveStream({
       const event = step.events[0];
       if (event?.type?.startsWith("model_") && event.phase !== "chat") {
         return event.status === "running"
-          ? "Model is drafting structured output. The readable plan will appear when validation finishes."
-          : "Model output captured; preparing a readable result.";
+          ? "Putting together a plan…"
+          : "Putting the result together…";
       }
       return event?.content_delta || step.summary || "";
     })

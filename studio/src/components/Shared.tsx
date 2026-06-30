@@ -11,8 +11,17 @@ export function Metric({ label, value, tone }: { label: string; value: string; t
   );
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  running: "Working",
+  queued: "Queued",
+  completed: "Done",
+  failed: "Failed",
+  blocked: "Blocked",
+  waiting_user: "Your turn",
+};
+
 export function Status({ status }: { status: StudioEvent["status"] }) {
-  return <span className={`status ${status}`}>{status}</span>;
+  return <span className={`status ${status}`}>{STATUS_LABELS[status] ?? status}</span>;
 }
 
 export function Banner({ text, tone }: { text: string; tone: "good" | "bad" }) {

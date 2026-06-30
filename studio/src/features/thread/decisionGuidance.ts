@@ -42,8 +42,8 @@ export function decisionHint(decision: AnyRecord): string {
 
   if (kind === "runtime_request") {
     return preferred === "review_contract"
-      ? "Allow the expanded scope — execution continues automatically after you confirm."
-      : "Confirm how the agent should handle this runtime request.";
+      ? "Allow the expanded scope — work continues automatically after you confirm."
+      : "Confirm how the agent should handle this.";
   }
   if (kind === "execution_policy_approval") {
     return preferred === "approve_once"
@@ -51,7 +51,7 @@ export function decisionHint(decision: AnyRecord): string {
       : "Approve the pending operation so the agent can continue.";
   }
   if (kind === "replan_decision" || asRecord(decision.metadata).reason === "repair_limit") {
-    return "Create a repair task to retry the failed step.";
+    return "A step failed — want me to keep trying or take a different approach?";
   }
   return "";
 }
@@ -88,7 +88,7 @@ export function runtimeNextStepSummary(params: {
   // Honest affordance, not a verdict: the frontend only knows the run reached an accept/review-able
   // state from a capability flag — it must not assert "Review passed" / "Task complete" (a verdict it
   // doesn't hold). State + next action only; any "passed" wording must come from a real runtime event.
-  if (canAccept) return "Changes are applied to your workspace — review the diff, then finalize.";
+  if (canAccept) return "Changes are applied to your workspace — review the diff, then mark it done.";
   if (canReview) return "Ready for review — open the changes to verify.";
 
   const normalized = nextActionValue.trim().toLowerCase();
@@ -100,9 +100,7 @@ export function runtimeNextStepSummary(params: {
     || normalized.includes("repair")
     || exitReason.includes("repair")
   ) {
-    const rounds = Number(loop.rounds ?? loop.rounds_completed ?? 0);
-    const roundHint = rounds > 0 ? ` (attempt ${rounds})` : "";
-    return `A step failed${roundHint} — tap Debug to let Asteria retry automatically.`;
+    return "A step failed — want me to keep trying or take a different approach?";
   }
   if (normalized.includes("decide")) {
     return "Resolve the decision card below to continue.";
@@ -111,7 +109,7 @@ export function runtimeNextStepSummary(params: {
     return `Ready to continue — tap ${nextLabel || "Continue"}.`;
   }
   if (exitReason.includes("max_rounds") || exitReason.includes("budget")) {
-    return "The run paused — check the decision card or next action below.";
+    return "Paused — check the decision card or next action below.";
   }
   if (nextActionValue) return `Ready for ${nextLabel || "the next step"}.`;
   return "";
