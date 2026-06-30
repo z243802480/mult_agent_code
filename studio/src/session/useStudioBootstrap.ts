@@ -99,6 +99,7 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
     activeSession,
     setActiveSession,
     settings,
+    setSettings,
     overview,
     files,
     error,

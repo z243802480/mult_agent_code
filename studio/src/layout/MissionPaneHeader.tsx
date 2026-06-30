@@ -1,5 +1,5 @@
 import React from "react";
-import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw } from "lucide-react";
+import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw, Settings } from "lucide-react";
 import type { SettingsPayload } from "../types";
 import { SideChatToggle } from "../features/sidechat/SideChatPanel";
 import { viewModeLabel, type StudioViewMode } from "../hooks/useViewMode";
@@ -20,6 +20,7 @@ type MissionPaneHeaderProps = {
   onTogglePanel: () => void;
   onToggleDiffFocus: () => void;
   onToggleSideChat: () => void;
+  onOpenSettings: () => void;
   onRefresh: () => void;
 };
 
@@ -39,6 +40,7 @@ export function MissionPaneHeader({
   onTogglePanel,
   onToggleDiffFocus,
   onToggleSideChat,
+  onOpenSettings,
   onRefresh,
 }: MissionPaneHeaderProps) {
   return (
@@ -100,6 +102,9 @@ export function MissionPaneHeader({
           </button>
           <button title="Refresh" onClick={onRefresh} disabled={loading}>
             <RefreshCw size={16} className={loading ? "spinning" : ""} />
+          </button>
+          <button type="button" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+            <Settings size={16} />
           </button>
         </div>
       </div>

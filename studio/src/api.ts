@@ -48,6 +48,12 @@ export const api = {
       body: JSON.stringify({ path }),
     }),
   settings: () => requestJson<{ ok: boolean; settings: SettingsPayload }>("/api/studio/settings"),
+  updateSettings: (body: Partial<SettingsPayload>) =>
+    requestJson<{ ok: boolean; settings: SettingsPayload; error?: string }>("/api/studio/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   workspaces: () => requestJson<WorkspacesPayload>("/api/studio/workspaces"),
   openWorkspace: (pathValue: string) =>
     requestJson<OpenWorkspacePayload>("/api/studio/workspace/open", {

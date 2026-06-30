@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck } from "lucide-react";
+import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, legacyPermission, type PermissionTierId } from "../permissionTiers";
 
 const MODES = ["auto", "chat", "plan", "run"] as const;
 type Mode = typeof MODES[number];
@@ -16,24 +17,10 @@ const MODE_LABELS: Record<Mode, string> = {
 // appropriate, so the user never has to "switch into accept mode" to drive the workflow engine.
 const PRIMARY_MODES = ["auto", "chat", "plan", "run"] as const;
 
-// Permission tier cycle (Claude-Code style): a visible, first-class control that actually reaches
-// the runtime's --permission-level (server.mjs). ask_everything gates edits up-front; the other two
-// auto-apply edits — shell commands still prompt inline in every tier.
-const PERMISSION_MODES = ["ask_everything", "reviewed_auto", "auto"] as const;
-type PermissionMode = typeof PERMISSION_MODES[number];
-const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
-  ask_everything: "Ask first",
-  reviewed_auto: "Auto-edit",
-  auto: "Full auto",
-};
-const PERMISSION_MODE_HINTS: Record<PermissionMode, string> = {
-  ask_everything: "Asks before each edit and command",
-  reviewed_auto: "Edits apply directly; asks before commands",
-  auto: "Edits and tools apply; still asks before commands",
-};
-function legacyPermission(mode: PermissionMode): string {
-  return mode === "ask_everything" ? "ask" : "allow";
-}
+// Permission tiers are defined once in ../permissionTiers (shared with the Settings panel and the
+// server's PERMISSION_TIER_IDS). This first-class control reaches the runtime's --permission-level
+// (server.mjs); ask_everything gates edits up-front, the other two auto-apply edits — shell commands
+// still prompt inline in every tier.
 
 const MODE_PLACEHOLDERS: Record<Mode, string> = {
   auto: "Message Asteria… (Enter send, Shift+Enter newline)",
@@ -81,6 +68,7 @@ export function Composer({
   onSideAskToggle,
   promptSignal,
   viewMode = "focus",
+  initialPermissionMode,
 }: {
   onSend: (message: string, mode: string, permission: string, permissionMode?: string) => Promise<void>;
   onSideAsk?: (message: string) => Promise<void>;
@@ -88,12 +76,20 @@ export function Composer({
   onSideAskToggle?: () => void;
   promptSignal?: PromptSignal;
   viewMode?: import("../hooks/useViewMode").StudioViewMode;
+  initialPermissionMode?: PermissionTierId;
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>("reviewed_auto");
+  const [permissionMode, setPermissionMode] = useState<PermissionTierId>(initialPermissionMode ?? DEFAULT_PERMISSION_TIER);
   const permission = legacyPermission(permissionMode);
   const [sending, setSending] = useState(false);
+
+  // Reflect a newly-saved default tier (Settings panel) in the composer control immediately. Fires
+  // only when the persisted default value actually changes, so a per-message override picked this
+  // session survives unrelated re-renders.
+  React.useEffect(() => {
+    if (initialPermissionMode) setPermissionMode(initialPermissionMode);
+  }, [initialPermissionMode]);
 
   React.useEffect(() => {
     if (promptSignal?.text) {
@@ -207,17 +203,17 @@ export function Composer({
           )}
           {showPermission && (
             <div className="segmented composerPermissionSegmented" role="radiogroup" aria-label="Permission tier">
-              {PERMISSION_MODES.map((pm) => (
+              {PERMISSION_TIERS.map((tier) => (
                 <button
                   type="button"
-                  key={pm}
+                  key={tier.id}
                   role="radio"
-                  aria-checked={permissionMode === pm}
-                  className={permissionMode === pm ? "active" : ""}
-                  title={PERMISSION_MODE_HINTS[pm]}
-                  onClick={() => setPermissionMode(pm)}
+                  aria-checked={permissionMode === tier.id}
+                  className={permissionMode === tier.id ? "active" : ""}
+                  title={tier.hint}
+                  onClick={() => setPermissionMode(tier.id)}
                 >
-                  {PERMISSION_MODE_LABELS[pm]}
+                  {tier.label}
                 </button>
               ))}
             </div>

@@ -179,19 +179,18 @@ async function handleApi(request, response, url) {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/settings") {
-    sendJson(response, 200, {
-      ok: true,
-      settings: {
-        workMode: "engineering",
-        permissionMode: "ask-for-write",
-        shell: "PowerShell",
-        streamMode: "runtime-model-events",
-        workspace,
-        workspaceName: workspaceBasename(workspace),
-        runtimeRoot,
-        workspaceProfile: await describeWorkspaceProfile(workspace)
-      }
-    });
+    sendJson(response, 200, { ok: true, settings: await buildSettingsPayload() });
+    return;
+  }
+  if (request.method === "POST" && url.pathname === "/api/studio/settings") {
+    const body = await readRequestJson(request);
+    const mode = String(body?.permissionMode || "");
+    if (!PERMISSION_TIER_IDS.includes(mode)) {
+      sendJson(response, 400, { ok: false, error: "invalid permissionMode" });
+      return;
+    }
+    await saveStudioSettings({ permissionMode: mode });
+    sendJson(response, 200, { ok: true, settings: await buildSettingsPayload() });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/overview") {
@@ -2470,6 +2469,51 @@ function userProgressToStudioEvent(event, sessionId, runId) {
 
 function sessionPath(sessionId, file = "") {
   return path.join(workspace, ".asteria", "studio", "sessions", sessionId, file);
+}
+
+// Single canonical permission tier vocabulary (mirrors studio/src/permissionTiers.ts and the
+// runtime --permission-level contract via lib/permission-level.mjs). The persisted default seeds
+// the Composer; the dead legacy display string "ask-for-write" has been removed.
+const PERMISSION_TIER_IDS = ["ask_everything", "reviewed_auto", "auto"];
+
+function studioSettingsPath() {
+  return path.join(workspace, ".asteria", "studio", "settings.json");
+}
+
+async function loadStudioSettings() {
+  try {
+    const parsed = JSON.parse(await fs.readFile(studioSettingsPath(), "utf8"));
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveStudioSettings(patch) {
+  const next = { ...(await loadStudioSettings()), ...patch };
+  await fs.mkdir(path.dirname(studioSettingsPath()), { recursive: true });
+  await fs.writeFile(studioSettingsPath(), JSON.stringify(next, null, 2), "utf8");
+  return next;
+}
+
+// One source of truth for the settings payload — GET and POST both return this so the displayed
+// value is always the one actually in effect. permissionMode is the only persisted/writable field
+// in this slice; everything else stays server-derived.
+async function buildSettingsPayload() {
+  const persisted = await loadStudioSettings();
+  const permissionMode = PERMISSION_TIER_IDS.includes(persisted.permissionMode)
+    ? persisted.permissionMode
+    : "reviewed_auto";
+  return {
+    workMode: "engineering",
+    permissionMode,
+    shell: "PowerShell",
+    streamMode: "runtime-model-events",
+    workspace,
+    workspaceName: workspaceBasename(workspace),
+    runtimeRoot,
+    workspaceProfile: await describeWorkspaceProfile(workspace),
+  };
 }
 
 function isSafeId(value) {

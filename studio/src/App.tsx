@@ -18,7 +18,9 @@ import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { useWorkspaceReview } from "./session/useWorkspaceReview";
 import { ToastViewport } from "./components/ToastViewport";
 import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
+import { SettingsPanel } from "./components/SettingsPanel";
 import { toast } from "./components/toast";
+import { isPermissionTierId } from "./permissionTiers";
 import type { StudioSession } from "./types";
 
 export function App() {
@@ -28,6 +30,7 @@ export function App() {
   const { diffFocus, toggleDiffFocus } = useDiffFocus();
   const { sideChatOpen, setSideChatOpen, toggleSideChat, closeSideChat, composerSideAsk, toggleComposerSideAsk } = useSideChat();
   const [sideChatSending, setSideChatSending] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const reviewRef = useRef<ReturnType<typeof useWorkspaceReview> | null>(null);
   const runEvidenceRef = useRef<ReturnType<typeof useRunEvidence> | null>(null);
@@ -186,6 +189,7 @@ export function App() {
         onTogglePanel={() => setPanelOpen((open) => !open)}
         onToggleDiffFocus={toggleDiffFocus}
         onToggleSideChat={toggleSideChat}
+        onOpenSettings={() => setSettingsOpen(true)}
         sideChatOpen={sideChatOpen || composerSideAsk}
         onRefresh={() => void bootstrap.bootstrap()}
       />
@@ -261,6 +265,7 @@ export function App() {
           onSideAskToggle={toggleComposerSideAsk}
           promptSignal={bootstrap.promptSignal}
           viewMode={viewMode}
+          initialPermissionMode={isPermissionTierId(bootstrap.settings?.permissionMode) ? bootstrap.settings?.permissionMode : undefined}
         />
       </main>
       {panelOpen && (
@@ -323,6 +328,14 @@ export function App() {
         currentWorkspace={bootstrap.settings?.workspace ?? ""}
         onClose={() => bootstrap.setWorkspaceOpen(false)}
         onOpened={() => void bootstrap.bootstrap()}
+      />
+      <SettingsPanel
+        open={settingsOpen}
+        settings={bootstrap.settings}
+        overview={bootstrap.overview}
+        onClose={() => setSettingsOpen(false)}
+        onChangeWorkspace={() => { setSettingsOpen(false); bootstrap.setWorkspaceOpen(true); }}
+        onSaved={(next) => bootstrap.setSettings(next)}
       />
     </div>
   );
