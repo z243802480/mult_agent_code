@@ -5,6 +5,13 @@
 方法：按设计资产 §4 拆 6 个域，逐域并行只读审计，每条结论带 `file:line`。
 依据：`研发总计划.md`、`S74_SYSTEM_AUDIT_VERDICT.md`、`S74_REFERENCE_PRODUCT_BASELINE.md`、ADR 0005–0015、AGENTS.md §4/§10/§12。
 
+> **2026-06-30 裁决落地（用户逐项拍板）**：§3 行为/默认与 §1 边界项已决并实现——
+> **D-1** 已隐藏（north-star flags → maintainer，`b14edd3`）；**D-2** ask/chat 默认权限改只读 `ask`；
+> **D-3** 保留 cheap=fake 但混配真 provider 时发运行时告警；**C-6** 确认 base2/profile3 分层并文档化；
+> **P0-3** smoke 瞬时救活记 `recovered`；**P0-4** gate reconcile 记 `degraded`。详见 `研发总计划.md` §15 v1.2.6。
+> P0-1（user_progress 根 schema 漂移）/P0-2（capability_decision schema）已于 2026-06-29 修复；
+> **残留待办**：18 对同名 schema 逐字节一致性测试（P0-1 建议）尚未落地。
+
 ---
 
 ## 0. 总评

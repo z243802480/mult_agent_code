@@ -129,7 +129,8 @@
           "provider": { "type": "string" },
           "model": { "type": "string" },
           "purpose": { "type": "string" },
-          "model_tier": { "type": "string" }
+          "model_tier": { "type": "string" },
+          "recovered": { "type": "boolean" }
         },
         "additionalProperties": false
       }

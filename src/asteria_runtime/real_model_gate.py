@@ -64,10 +64,15 @@ class GateResult:
     def to_dict(self) -> dict[str, Any]:
         ended_at = self.ended_at if self.ended_at is not None else time.monotonic()
         ok = not self.failures and all(self.checks.values())
+        degraded = bool(self.model_call_summary.get("model_checks_reconciled_by_smoke"))
         return {
             "schema_version": "0.1.0",
             "ok": ok,
             "status": "passed" if ok else "failed",
+            # Honesty marker (P0-4): when a model-check passed only because it was reconciled against
+            # the smoke's recorded model_calls (the probe itself did not directly pass), the gate is
+            # recorded as degraded so a reconciled pass is not signed off as a clean green model-check.
+            "degraded": degraded,
             "workspace": str(self.workspace),
             "duration_seconds": round(ended_at - self.started_at, 3),
             "routes": self.routes,
@@ -111,7 +116,14 @@ def run_from_args(args: argparse.Namespace) -> None:
         report = result.to_dict()
         if not report["ok"]:
             raise GateFailure("; ".join(report["failures"]) or "real model gate failed")
-        print("Real model gate passed")
+        if report.get("degraded"):
+            reconciled = result.model_call_summary.get("model_checks_reconciled_by_smoke") or []
+            print(
+                f"Real model gate passed (degraded: model-check(s) {reconciled} reconciled from "
+                "smoke; probe did not directly pass)"
+            )
+        else:
+            print("Real model gate passed")
         print(f"Workspace: {workspace}")
         print(f"Report: {report_path(args, workspace)}")
     except Exception as exc:  # noqa: BLE001 - diagnostic script boundary

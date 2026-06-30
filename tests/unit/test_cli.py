@@ -116,6 +116,16 @@ def test_start_workflow_commands_keep_plain_and_slash_forms() -> None:
         assert parser.parse_args(slash_args).command == f"/{command}"
 
 
+def test_chat_ask_default_permission_is_read_only() -> None:
+    # D-2: Ask/chat is the read-only Q&A surface, so its default permission tier must be the
+    # read-only `ask` (matching `plan` and the documented Ask contract), not a writable tier.
+    parser = build_parser()
+    for command in ("chat", "ask"):
+        args = parser.parse_args([command, "what is this project?"])
+        assert args.permission_level == "ask", f"{command} should default to read-only ask"
+    assert parser.parse_args(["plan", "build a tool"]).permission_level == "ask"
+
+
 def test_slash_command_aliases_parse_like_regular_commands() -> None:
     parser = build_parser()
 

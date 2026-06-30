@@ -267,7 +267,10 @@ def build_parser() -> argparse.ArgumentParser:
     chat_parser.add_argument(
         "--permission-level",
         choices=["ask", "balanced", "auto", "ask_everything", "reviewed_auto"],
-        default="balanced",
+        # Ask/chat is the read-only Q&A surface (no state-changing project work), so it defaults to
+        # the read-only `ask` tier — matching `plan` and the documented Ask contract. Users can still
+        # opt into balanced/auto explicitly; only the default is read-only.
+        default="ask",
         help=PERMISSION_LEVEL_HELP,
     )
     chat_parser.add_argument(

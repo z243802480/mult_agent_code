@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 
 from asteria_runtime.core.budget import BudgetController
@@ -25,6 +26,7 @@ def create_model_client(
 ) -> ModelClient:
     logger = ModelCallLogger(run_dir, validator)
     routes = _routes_from_env()
+    _warn_if_tier_silently_offline(routes)
     default_route = _default_route(routes)
     default_client = _create_provider_client(
         default_route.provider,
@@ -39,6 +41,29 @@ def create_model_client(
         for tier, route in routes.items()
     }
     return RoutedModelClient(default_client, tier_clients, routes)
+
+
+def _warn_if_tier_silently_offline(routes: dict[str, ModelRoute]) -> list[str]:
+    """Warn when a tier resolves to the fake/offline provider while real providers are configured.
+
+    The default route policy points `cheap` at the fake/offline provider, and docs show
+    `AGENT_MODEL_CHEAP_PROVIDER=fake` as an offline default. A fully-offline run is intentional and
+    stays quiet; but when an offline tier is *mixed* with real providers, any call routed to it
+    (summaries, classification, some model-checks) silently returns canned output. Surface that once
+    so the canned output is never silent (D-3 decision: keep the fake default, but warn).
+    """
+    offline = {"fake", "offline"}
+    offline_tiers = sorted(tier for tier, route in routes.items() if route.provider in offline)
+    real_tiers = sorted(tier for tier, route in routes.items() if route.provider not in offline)
+    if offline_tiers and real_tiers:
+        warnings.warn(
+            f"model tier(s) {offline_tiers} use the fake/offline provider while real providers are "
+            f"configured for {real_tiers}; calls routed to {offline_tiers} return canned output. "
+            "Set the corresponding AGENT_MODEL_<TIER>_PROVIDER to a real provider to avoid silent "
+            "canned output.",
+            stacklevel=3,
+        )
+    return offline_tiers
 
 
 def _default_route(routes: dict[str, ModelRoute]) -> ModelRoute:

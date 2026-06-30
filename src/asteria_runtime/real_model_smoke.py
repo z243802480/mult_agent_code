@@ -64,6 +64,7 @@ class SmokeResult:
 
     def summary(self) -> dict[str, Any]:
         ended_at = self.ended_at if self.ended_at is not None else time.monotonic()
+        recovered = bool(self.diagnostics.get("accepted_transient_run_failure"))
         return {
             "workspace": str(self.workspace),
             "run_id": self.run_id,
@@ -71,6 +72,11 @@ class SmokeResult:
             "final_report": str(self.final_report) if self.final_report else None,
             "transcript": str(self.transcript),
             "duration_seconds": round(ended_at - self.started_at, 3),
+            # Honesty marker (P0-3): a run salvaged from a transient provider failure still has its
+            # artifacts really validated, but it is recorded as "recovered" — never a plain "passed" —
+            # so a degraded run is not indistinguishable from a clean one.
+            "outcome": "recovered" if recovered else "passed",
+            "recovered": recovered,
             "diagnostics": self.diagnostics,
             "commands": [record.to_dict() for record in self.commands],
         }
@@ -606,6 +612,9 @@ def matrix_case_summary(
         "route": case.route,
         "reason": case.reason,
         "ok": failure is None,
+        # Honesty marker (P0-3): surface salvaged-from-transient runs as "recovered" at the matrix
+        # level too, so a reviewer reading the signoff sees a degraded pass, not a clean one.
+        "recovered": bool(result.diagnostics.get("accepted_transient_run_failure")) if result else False,
         "workspace": str(case_workspace) if case_workspace else None,
         "summary_json": str(summary_json),
         "expected_file": case.expected_file,
@@ -1219,7 +1228,7 @@ def print_matrix_summary(summary: dict[str, Any], matrix_summary_path: Path) -> 
     print(f"Cases: {summary['passed']}/{summary['case_count']} passed")
     print(f"Summary: {matrix_summary_path}")
     for case in summary["cases"]:
-        marker = "PASS" if case["ok"] else "FAIL"
+        marker = "RECOVERED" if case.get("recovered") else "PASS" if case["ok"] else "FAIL"
         print(f"- {marker} {case['name']} [{case['route']}]: {case['reason']}")
 
 
