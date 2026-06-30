@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
+from asteria_runtime.core.candidate_execution_gateway import (
+    CandidateExecutionGateway,
+    _deletes_existing_tracked_file,
+    _risk_requires_manual_approval,
+)
 from asteria_runtime.core.candidate_promotion_queue import PromotionPendingManualApproval
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.task_board import TaskBoard
@@ -144,6 +148,45 @@ def test_auto_mode_auto_promotes_risky_change(tmp_path: Path) -> None:
     # Full autopilot does not hold for risk — edits land directly.
     assert promoted == ["tool.py"]
     assert (source / "tool.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+
+
+def test_reviewed_auto_holds_delete_of_tracked_file(tmp_path: Path) -> None:
+    gateway, context, candidate, source, run_dir = _risk_routing_context(
+        tmp_path, {"protected_paths": [], "permission_mode": "reviewed_auto"}
+    )
+    # The candidate removes a file that exists in the source tree (a delete, no risky_files flag).
+    (candidate.root / "tool.py").unlink()
+
+    with pytest.raises(PromotionPendingManualApproval):
+        gateway.promote_changes(
+            context,
+            candidate,
+            ["tool.py"],
+            task_id="task-0001",
+            merge_gate={"ok": True},
+        )
+
+    # The deletion is held, not applied to the real workspace.
+    assert (source / "tool.py").exists()
+    rows = [
+        json.loads(line)
+        for line in (run_dir / "candidate_promotions.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert "pending" in rows[-1]["status"]
+
+
+def test_delete_detection_respects_permission_mode(tmp_path: Path) -> None:
+    _gateway, _context, candidate, _source, _ = _risk_routing_context(
+        tmp_path, {"protected_paths": [], "permission_mode": "auto"}
+    )
+    (candidate.root / "tool.py").unlink()  # a delete relative to the source tree
+
+    # The structural delete check fires for a removed tracked file, not for an absent path.
+    assert _deletes_existing_tracked_file(candidate, ["tool.py"]) is True
+    assert _deletes_existing_tracked_file(candidate, ["absent.py"]) is False
+    # ...but only reviewed_auto/balanced actually hold it; auto (full autopilot) proceeds.
+    assert _risk_requires_manual_approval({"permission_mode": "reviewed_auto"}, {}, candidate, ["tool.py"]) is True
+    assert _risk_requires_manual_approval({"permission_mode": "auto"}, {}, candidate, ["tool.py"]) is False
 
 
 def test_manual_approval_default_holds_even_non_risky(tmp_path: Path) -> None:

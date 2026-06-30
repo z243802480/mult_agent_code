@@ -83,7 +83,7 @@ class CandidateExecutionGateway:
         promotion_queue = self.promotion_queue or CandidatePromotionQueue(context.validator)
         with _PROMOTION_APPLY_LOCK:
             if _manual_approval_default(context.policy) or _risk_requires_manual_approval(
-                context.policy, merge_gate or {}
+                context.policy, merge_gate or {}, candidate, changed_files
             ):
                 promotion = promotion_queue.enqueue_pending_manual_approval(
                     context,
@@ -141,14 +141,40 @@ def _manual_approval_default(policy: dict) -> bool:
     return bool(promotion.get("manual_approval_default"))
 
 
-def _risk_requires_manual_approval(policy: dict, merge_gate: dict) -> bool:
+def _risk_requires_manual_approval(
+    policy: dict,
+    merge_gate: dict,
+    candidate=None,
+    changed_files=None,
+) -> bool:
     # Only the supervised 'reviewed_auto' (a.k.a. balanced) tier holds risky changes for approval:
     # 'ask_everything' already gates edits up-front, and 'auto' is full autopilot. The merge gate
-    # annotates risky_files (it never blocks on them) and we route those to the existing pending
-    # rail instead of auto-promoting — no new control plane (ADR-0014/0015).
+    # annotates risky_files (it never blocks on them); we also treat deleting an existing tracked
+    # file as risky. Either routes to the existing pending rail — no new control plane (ADR-0014/0015).
     mode = "reviewed_auto"
     if isinstance(policy, dict):
         mode = str(policy.get("permission_mode") or "reviewed_auto").lower()
     if mode not in {"reviewed_auto", "balanced"}:
         return False
-    return bool(isinstance(merge_gate, dict) and merge_gate.get("risky_files"))
+    if isinstance(merge_gate, dict) and merge_gate.get("risky_files"):
+        return True
+    return _deletes_existing_tracked_file(candidate, changed_files or [])
+
+
+def _deletes_existing_tracked_file(candidate, changed_files) -> bool:
+    # A delete = present in the source tree but removed in the candidate. The merge gate only sees
+    # paths (no change-type), so this structural check lives here where both trees are available.
+    source_root = getattr(candidate, "source_root", None)
+    candidate_root = getattr(candidate, "root", None)
+    if source_root is None or candidate_root is None:
+        return False
+    for relative in changed_files:
+        rel = str(relative).replace("\\", "/").strip().lstrip("/")
+        if not rel:
+            continue
+        try:
+            if (source_root / rel).exists() and not (candidate_root / rel).exists():
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
