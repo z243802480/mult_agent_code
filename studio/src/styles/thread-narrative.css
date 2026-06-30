@@ -69,6 +69,25 @@
   margin: 0;
 }
 
+/* Warm resume: an informational one-liner (not an action), lighter than the hold card. */
+.resumeLine {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 6px 4px;
+}
+
+.resumeText {
+  color: var(--text-secondary);
+}
+
+.resumeTime {
+  font-size: 10px;
+  margin-left: auto;
+}
+
 .runReport {
   padding-bottom: 12px;
 }

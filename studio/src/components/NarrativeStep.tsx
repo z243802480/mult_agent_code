@@ -9,6 +9,7 @@ import {
   ListChecks,
   Plug,
   RefreshCw,
+  RotateCcw,
   ShieldAlert,
   Sparkles,
   Terminal,
@@ -92,6 +93,30 @@ export function NarrativeStep({
               : "Holding this change until you approve."}
             {risky.length > 0 && <> Flagged as sensitive: {risky.join(", ")}.</>}
           </p>
+        </div>
+      </article>
+    );
+  }
+
+  // Warm resume: a compact, plain-language line — the agent re-applied prior decisions and continued
+  // the same session. Counts come from the decision payload; no CLI/maintainer text is shown.
+  if (step.kind === "resume") {
+    const data = (primary?.data ?? {}) as Record<string, unknown>;
+    const decision = (data.decision ?? {}) as Record<string, unknown>;
+    const applied = typeof decision.applied_decisions === "number" ? decision.applied_decisions : 0;
+    const created = typeof decision.created_tasks === "number" ? decision.created_tasks : 0;
+    return (
+      <article className="narrativeStep resume completed">
+        <div className="resumeLine">
+          <RotateCcw size={14} />
+          <span className="resumeText">
+            {applied > 0
+              ? `Resumed — reused ${applied} prior decision${applied === 1 ? "" : "s"}`
+              : "Resumed the session"}
+            {created > 0 && ` and queued ${created} follow-up task${created === 1 ? "" : "s"}`}
+            .
+          </span>
+          {time && <span className="resumeTime">{time}</span>}
         </div>
       </article>
     );

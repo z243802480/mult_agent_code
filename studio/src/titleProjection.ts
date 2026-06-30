@@ -16,6 +16,11 @@ export const INTERNAL_TITLE_PROJECTION: Record<string, string> = {
   "Merge gate evaluated": "Checking the change is safe",
   "Candidate promoted": "Changes applied to your workspace",
   "Promotion waiting for approval": "Waiting for your approval",
+  // Resume lifecycle → plain language. The "applied decisions" moment renders from its own decision
+  // payload (kind=resume); these cover the surrounding start/no-op titles the runtime emits in Chinese.
+  "准备恢复运行": "Resuming the session",
+  "已应用恢复决策": "Resumed",
+  "无需恢复": "Nothing to resume",
 };
 
 export function projectTitle(title: string): string {

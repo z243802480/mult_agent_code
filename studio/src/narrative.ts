@@ -52,13 +52,20 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
 
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   const transcriptKind = String(event.transcript_kind ?? "");
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  // Warm resume: the runtime re-applied prior decisions and continued the same session. Detect by
+  // the stable decision payload (next_action="continue_run" is set only by ResumeCommand), never a
+  // localized title. This must precede the hold check, which keys on the same progress/decision shape.
+  const decisionData = (data.decision ?? {}) as Record<string, unknown>;
+  if (decisionData.next_action === "continue_run") return "resume";
   // A held promotion ("changed sensitive files, waiting for your approval"). ADR-0012 prefers a
   // real Session Transcript event, so detect by transcript_kind=decision_request carrying a
-  // promotion_id; the channel/event shape is kept only as a legacy fallback for older emits.
-  const holdData = (event.data ?? {}) as Record<string, unknown>;
+  // promotion_id; the channel/event shape is kept only as a legacy fallback for older emits, and is
+  // narrowed to a promotion signal so it does not swallow other progress/decision events (e.g. resume).
   if (
-    (transcriptKind === "decision_request" && Boolean(holdData.promotion_id))
-    || (event.runtime_channel === "progress" && event.runtime_event_type === "decision")
+    (transcriptKind === "decision_request" && Boolean(data.promotion_id))
+    || (event.runtime_channel === "progress" && event.runtime_event_type === "decision"
+        && (Boolean(data.promotable_files) || Boolean(data.promotion_id)))
   ) {
     return "hold";
   }
@@ -108,12 +115,13 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "final") return "Final answer";
   if (kind === "subagent") return "Subagent";
   if (kind === "hold") return "Held for your review";
+  if (kind === "resume") return "Resumed";
   return "Issue";
 }
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   const first = step.events[0];
-  if (step.kind === "goal" || step.kind === "final" || step.kind === "error" || step.kind === "hold") return false;
+  if (step.kind === "goal" || step.kind === "final" || step.kind === "error" || step.kind === "hold" || step.kind === "resume") return false;
   if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
   if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {
