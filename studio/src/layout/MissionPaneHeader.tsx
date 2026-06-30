@@ -76,7 +76,7 @@ export function MissionPaneHeader({
             title="Review changes (Ctrl+Shift+D)"
             onClick={onToggleDiffFocus}
           >
-            Diff
+            Review
             {changeCount > 0 && <span className="headerBadge">{changeCount}</span>}
           </button>
         </div>

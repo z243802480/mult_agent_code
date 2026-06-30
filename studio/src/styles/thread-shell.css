@@ -383,9 +383,15 @@
 }
 
 .workerSchedulingBadge {
+  align-self: start;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 12px;
+  display: inline-flex;
+  font-size: 11px;
   letter-spacing: 0.02em;
+  padding: 1px 7px;
 }
 
 .workerSchedulingBadge[data-fake-path="true"] {

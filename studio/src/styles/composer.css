@@ -119,9 +119,9 @@
   display: inline-flex;
   flex-shrink: 0;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
   gap: 6px;
-  min-height: 32px;
+  min-height: var(--control-h);
   padding: 0 14px;
   transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform var(--dur-fast) var(--ease);
 }
@@ -391,7 +391,7 @@
   background: transparent;
   border: 0;
   color: var(--text-secondary);
-  min-height: 34px;
+  min-height: var(--control-h);
   font-size: 12px;
   padding: 0 9px;
 }
@@ -428,7 +428,7 @@
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   color: var(--text-primary);
-  min-height: 34px;
+  min-height: var(--control-h);
   padding: 0 10px;
 }
 
@@ -438,8 +438,8 @@
   border-color: var(--accent);
   display: inline-flex;
   gap: 7px;
-  font-weight: 720;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+  font-weight: var(--weight-semibold);
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform var(--dur-fast) var(--ease);
 }
 
 .composerBar > button:hover:not(:disabled) {

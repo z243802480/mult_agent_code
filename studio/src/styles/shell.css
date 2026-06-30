@@ -4,6 +4,13 @@
   grid-template-rows: var(--header-height) 1fr;
   height: 100vh;
   overflow: hidden;
+  transition: grid-template-columns var(--dur-base) var(--ease);
+}
+
+/* But never animate the columns while the user is dragging a splitter — that would
+   lag the live resize. Discrete toggles (collapse / panel / review focus) still ease. */
+body.paneDragging .appShell {
+  transition: none;
 }
 
 /* B1: a persistent global header occupies row 1 full-width; every other
