@@ -8,7 +8,9 @@ import {
   FolderOpen,
   ListChecks,
   Play,
+  Plug,
   ShieldAlert,
+  Sparkles,
   Terminal,
   XCircle,
 } from "lucide-react";
@@ -16,6 +18,7 @@ import type { StudioEvent, AnyRecord } from "../types";
 import { Status } from "./Shared";
 import { WorkerProgressBar } from "./WorkerProgressBar";
 import { ClampedOutput } from "./ClampedOutput";
+import { capabilityInfo } from "../capability";
 
 function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
@@ -75,7 +78,8 @@ export function EventCard({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const icon = iconFor(event.type);
+  const cap = capabilityInfo(event);
+  const icon = cap ? (cap.type === "mcp" ? <Plug size={15} /> : <Sparkles size={15} />) : iconFor(event.type);
   const isUser = event.type === "user_message";
   const isModel = ["model_start", "model_delta", "model_end", "model_error"].includes(event.type);
   const showBody =
@@ -130,6 +134,11 @@ export function EventCard({
           <WorkerProgressBar data={asRecord(event.data)} compact={compact} />
         )}
         <div className="eventFacts">
+          {cap?.denied && <span className="capabilityChip denied">blocked by permission</span>}
+          {cap && !cap.denied && cap.retries > 0 && <span>retried {cap.retries}×</span>}
+          {cap && !cap.denied && cap.artifacts > 0 && (
+            <span>{cap.artifacts} file{cap.artifacts === 1 ? "" : "s"} produced</span>
+          )}
           {!compact && event.model_provider && (
             <span>
               {event.model_provider}/{event.model_name ?? "unknown"}{event.model_tier ? ` ? ${event.model_tier}` : ""}

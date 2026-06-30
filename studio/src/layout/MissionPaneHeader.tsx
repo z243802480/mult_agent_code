@@ -1,6 +1,7 @@
 import React from "react";
-import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw, Settings } from "lucide-react";
+import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw, Settings, ShieldCheck } from "lucide-react";
 import type { SettingsPayload } from "../types";
+import { permissionTier } from "../permissionTiers";
 import { SideChatToggle } from "../features/sidechat/SideChatPanel";
 import { viewModeLabel, type StudioViewMode } from "../hooks/useViewMode";
 
@@ -69,6 +70,15 @@ export function MissionPaneHeader({
           <span className="headerStatusDot" />
           {isRunning ? "Running" : "Idle"}
         </span>
+        {settings?.permissionMode && (
+          <span
+            className="headerPermission"
+            title={`Default permission: ${permissionTier(settings.permissionMode).hint}. Change in Settings.`}
+          >
+            <ShieldCheck size={12} />
+            <span>{permissionTier(settings.permissionMode).label}</span>
+          </span>
+        )}
       </div>
       <div className="topActions">
         <div className="headerPaneGroup">

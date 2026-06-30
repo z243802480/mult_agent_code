@@ -666,6 +666,29 @@
   white-space: nowrap;
 }
 
+/* 阶段③: MCP/Skill capability chips — allow/deny + retries/artifacts on the identified tool step. */
+.stepCapabilityChips {
+  align-items: center;
+  display: flex;
+  gap: 4px;
+}
+
+.capabilityChip {
+  background: var(--surface-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-size: 10px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.capabilityChip.denied {
+  background: var(--bad-subtle);
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
 .stepExpandedWrap {
   display: grid;
   grid-template-rows: 0fr;

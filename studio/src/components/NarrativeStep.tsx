@@ -7,8 +7,10 @@ import {
   FileText,
   GitBranch,
   ListChecks,
+  Plug,
   RefreshCw,
   ShieldAlert,
+  Sparkles,
   Terminal,
   Users,
   XCircle,
@@ -16,6 +18,7 @@ import {
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../types";
 import { Status } from "./Shared";
 import { EventCard } from "./EventCard";
+import { capabilityInfo } from "../capability";
 
 function formatEventTime(value: unknown): string {
   const date = new Date(String(value ?? ""));
@@ -50,6 +53,7 @@ export function NarrativeStep({
   const [open, setOpen] = useState(step.defaultOpen && step.kind !== "tool" && step.kind !== "repair");
   const primary = step.events[0];
   const time = primary ? formatEventTime(primary.created_at) : "";
+  const cap = capabilityInfo(primary);
 
   // Goal step stays as a compact user-message bubble.
   if (step.kind === "goal") {
@@ -69,11 +73,24 @@ export function NarrativeStep({
   return (
     <article className={`narrativeStep ${step.kind} ${step.status}`}>
       <button className="stepChrome" onClick={() => setOpen((o) => !o)}>
-        <span className="stepIcon">{stepIcon(step.kind)}</span>
+        <span className="stepIcon">
+          {cap ? (cap.type === "mcp" ? <Plug size={14} /> : <Sparkles size={14} />) : stepIcon(step.kind)}
+        </span>
         <span className="stepLabels">
           <strong>{step.label}</strong>
-          <small>{step.title}</small>
+          <small>{cap ? cap.title : step.title}</small>
         </span>
+        {cap && (
+          <span className="stepCapabilityChips">
+            {cap.denied && <span className="capabilityChip denied">blocked</span>}
+            {!cap.denied && cap.retries > 0 && (
+              <span className="capabilityChip">retried {cap.retries}×</span>
+            )}
+            {!cap.denied && cap.artifacts > 0 && (
+              <span className="capabilityChip">{cap.artifacts} file{cap.artifacts === 1 ? "" : "s"}</span>
+            )}
+          </span>
+        )}
         <span className="stepInlineFacts">
           <span>{step.events.length} update{step.events.length === 1 ? "" : "s"}</span>
           <span>{time}</span>

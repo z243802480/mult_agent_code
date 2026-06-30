@@ -220,6 +220,20 @@
   text-overflow: ellipsis;
 }
 
+/* 阶段③: active default-permission tier, read-only — what the agent does on its own by default. */
+.headerPermission {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  gap: 4px;
+  padding: 2px 8px;
+}
+
 .eyebrow {
   color: var(--text-muted);
   font-size: 11px;

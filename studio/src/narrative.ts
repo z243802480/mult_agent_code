@@ -1,4 +1,5 @@
 import type { StudioEvent, NarrativeStep, RunNarrative } from "./types";
+import { capabilityInfo } from "./capability";
 
 function eventTime(event: StudioEvent): number {
   const value = Date.parse(String(event.created_at ?? ""));
@@ -85,7 +86,11 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "Structured generation";
   if (kind === "thinking") return "Thinking";
   if (kind === "plan") return "Plan";
-  if (kind === "tool") return event.command?.length ? "Tool call" : "Action";
+  if (kind === "tool") {
+    const cap = capabilityInfo(event);
+    if (cap) return cap.label;
+    return event.command?.length ? "Tool call" : "Action";
+  }
   if (kind === "result") return event.runtime_event_type === "final_report" ? "Final report" : "File change";
   if (kind === "repair") return "Repair";
   if (kind === "verification") return "Verification";
