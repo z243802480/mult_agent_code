@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
-  FolderOpen,
   PanelLeftClose,
   Plus,
   Sparkles,
@@ -11,14 +10,8 @@ import type { StudioSession, OverviewPayload, SettingsPayload } from "../types";
 import { SignalCard, gateStage, validationTone } from "./Shared";
 import type { StudioViewMode } from "../hooks/useViewMode";
 import { useSessionListFilter } from "../hooks/useSessionListFilter";
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { SessionList } from "../features/sidebar/SessionList";
 import { SessionRail } from "../features/sidebar/SessionRail";
-
-function workspaceLabel(settings: SettingsPayload | null): string {
-  if (!settings?.workspace) return "Workspace";
-  return settings.workspaceName || settings.workspace.split(/[\\/]/).pop() || "Workspace";
-}
 
 export function Sidebar({
   sessions,
@@ -32,9 +25,6 @@ export function Sidebar({
   onNew,
   onDelete,
   onRename,
-  onWorkspaceChanged,
-  workspaceOpen,
-  onWorkspaceOpenChange,
   viewMode,
 }: {
   sessions: StudioSession[];
@@ -48,9 +38,6 @@ export function Sidebar({
   onNew: () => void;
   onDelete: (session: StudioSession) => void;
   onRename: (session: StudioSession, title: string) => Promise<void>;
-  onWorkspaceChanged: () => void;
-  workspaceOpen: boolean;
-  onWorkspaceOpenChange: (open: boolean) => void;
   viewMode: StudioViewMode;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
@@ -80,21 +67,6 @@ export function Sidebar({
           isRunning={isRunning}
           filter={filter}
           onSelect={onSelect}
-        />
-        <button
-          type="button"
-          className="sidebarRailButton sidebarRailFooter"
-          title={settings?.workspace ?? workspaceLabel(settings)}
-          aria-label="Switch workspace"
-          onClick={() => onWorkspaceOpenChange(true)}
-        >
-          <FolderOpen size={16} />
-        </button>
-        <WorkspaceSwitcher
-          open={workspaceOpen}
-          currentWorkspace={settings?.workspace ?? ""}
-          onClose={() => onWorkspaceOpenChange(false)}
-          onOpened={onWorkspaceChanged}
         />
       </aside>
     );
@@ -154,17 +126,6 @@ export function Sidebar({
         onDelete={onDelete}
         onRename={onRename}
         compact={compactSessions}
-      />
-
-      <button className="settingsLink workspaceButton" type="button" onClick={() => onWorkspaceOpenChange(true)}>
-        <FolderOpen size={15} />
-        <span title={settings?.workspace ?? ""}>{workspaceLabel(settings)}</span>
-      </button>
-      <WorkspaceSwitcher
-        open={workspaceOpen}
-        currentWorkspace={settings?.workspace ?? ""}
-        onClose={() => onWorkspaceOpenChange(false)}
-        onOpened={onWorkspaceChanged}
       />
     </aside>
   );

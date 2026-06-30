@@ -17,6 +17,7 @@ import { useSideChat } from "./hooks/useSideChat";
 import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { useWorkspaceReview } from "./session/useWorkspaceReview";
 import { ToastViewport } from "./components/ToastViewport";
+import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { toast } from "./components/toast";
 import type { StudioSession } from "./types";
 
@@ -214,9 +215,6 @@ export function App() {
             bootstrap.setActiveSession(result.session);
           }
         }}
-        onWorkspaceChanged={() => void bootstrap.bootstrap()}
-        workspaceOpen={bootstrap.workspaceOpen}
-        onWorkspaceOpenChange={bootstrap.setWorkspaceOpen}
         viewMode={viewMode}
       />
       {!sidebarCollapsed && (
@@ -320,6 +318,12 @@ export function App() {
         onSend={sendSideAsk}
       />
       <ToastViewport />
+      <WorkspaceSwitcher
+        open={bootstrap.workspaceOpen}
+        currentWorkspace={bootstrap.settings?.workspace ?? ""}
+        onClose={() => bootstrap.setWorkspaceOpen(false)}
+        onOpened={() => void bootstrap.bootstrap()}
+      />
     </div>
   );
 }

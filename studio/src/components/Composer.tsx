@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { ClipboardList, Eye, Loader2, MessageCircle, PlayCircle, RotateCw, Send, ShieldCheck } from "lucide-react";
+import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck } from "lucide-react";
 
-const MODES = ["auto", "chat", "plan", "run", "review", "resume", "accept"] as const;
+const MODES = ["auto", "chat", "plan", "run"] as const;
 type Mode = typeof MODES[number];
 
 const MODE_LABELS: Record<Mode, string> = {
@@ -9,16 +9,12 @@ const MODE_LABELS: Record<Mode, string> = {
   chat: "Chat",
   plan: "Plan",
   run: "Goal",
-  review: "Review",
-  resume: "Resume",
-  accept: "Accept",
 };
 
-// Intent modes ride an inline segmented control; lifecycle/maintainer actions
-// (review/resume/accept) live behind an overflow menu — same string set, no
-// backend change. (reference-first B5: mainstream main-modes are 2-3, never a flat 7-row.)
+// User-facing intent modes only. Lifecycle/maintainer actions (review/resume/accept/finalize) are
+// NOT user input modes — they surface as contextual buttons (RuntimeSnapshot / rewind) when
+// appropriate, so the user never has to "switch into accept mode" to drive the workflow engine.
 const PRIMARY_MODES = ["auto", "chat", "plan", "run"] as const;
-const OVERFLOW_MODES = ["review", "resume", "accept"] as const;
 
 // Permission tier cycle (Claude-Code style): a visible, first-class control that actually reaches
 // the runtime's --permission-level (server.mjs). ask_everything gates edits up-front; the other two
@@ -44,9 +40,6 @@ const MODE_PLACEHOLDERS: Record<Mode, string> = {
   chat: "Ask a question…",
   plan: "Describe what to plan…",
   run: "Describe a goal…",
-  review: "Ask to review the result…",
-  resume: "Continue or add constraints…",
-  accept: "Accept the reviewed result…",
 };
 
 export type PromptSignal = { text: string; id: number };
@@ -55,10 +48,6 @@ const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string; s
   { key: "/ask", label: "Quick ask", mode: "auto", prompt: "", sideAsk: true },
   { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
   { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
-  { key: "/review", label: "Review", mode: "review", prompt: "Review the current result." },
-  { key: "/accept", label: "Finalize", mode: "accept", prompt: "Finalize the reviewed result." },
-  { key: "/debug", label: "Debug", mode: "resume", prompt: "Debug the current blocker." },
-  { key: "/continue", label: "Continue", mode: "resume", prompt: "Continue the current task." },
 ];
 
 function actionProfile(mode: Mode, permission: string) {
@@ -68,20 +57,6 @@ function actionProfile(mode: Mode, permission: string) {
   }
   if (effective === "plan") {
     return { icon: <ClipboardList size={13} />, label: "Plan", permission: "Read-only", tone: "good" as const };
-  }
-  if (effective === "review") {
-    return { icon: <Eye size={13} />, label: "Review", permission: "Read-only", tone: "good" as const };
-  }
-  if (effective === "accept") {
-    return { icon: <ShieldCheck size={13} />, label: "Finalize", permission: "Applied", tone: "warn" as const };
-  }
-  if (effective === "resume") {
-    return {
-      icon: <RotateCw size={13} />,
-      label: "Resume",
-      permission: permission === "allow" ? "Safe actions" : "Ask first",
-      tone: (permission === "allow" ? "warn" : "neutral") as "warn" | "neutral",
-    };
   }
   if (effective === "run") {
     return {
@@ -153,8 +128,7 @@ export function Composer({
 
   const isAuto = mode === "auto" && !sideAsk;
   const isChat = mode === "chat" || sideAsk;
-  const showPermission = !sideAsk && (mode === "auto" || mode === "run" || mode === "resume");
-  const isOverflowMode = (OVERFLOW_MODES as readonly string[]).includes(mode);
+  const showPermission = !sideAsk && (mode === "auto" || mode === "run");
   const profile = sideAsk
     ? { icon: <MessageCircle size={13} />, label: "Quick ask", permission: "Off-thread", tone: "good" as const }
     : actionProfile(mode, permission);
@@ -229,30 +203,6 @@ export function Composer({
                   </button>
                 ))}
               </div>
-              <details className="composerModeDetails composerModeOverflow">
-                <summary
-                  className={isOverflowMode ? "composerModeSummary active" : "composerModeSummary"}
-                  title="More modes"
-                  aria-label="More modes"
-                >
-                  <span>{isOverflowMode ? MODE_LABELS[mode] : "⋯"}</span>
-                </summary>
-                <div className="composerModeMenu">
-                  {OVERFLOW_MODES.map((item) => (
-                    <button
-                      type="button"
-                      key={item}
-                      className={mode === item ? "active" : ""}
-                      onClick={(event) => {
-                        setMode(item);
-                        (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open");
-                      }}
-                    >
-                      {MODE_LABELS[item]}
-                    </button>
-                  ))}
-                </div>
-              </details>
             </>
           )}
           {showPermission && (
