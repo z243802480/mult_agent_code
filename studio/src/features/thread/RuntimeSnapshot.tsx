@@ -161,12 +161,19 @@ export function RuntimeSnapshot({
     "No action needed right now",
   );
 
+  // Honest framing: under the default auto-promote config the edits are already in the real
+  // workspace by the time Finalize is offered, so say so (change count is a real signal) rather
+  // than implying a pre-write approval gate. Finalize records the run as done; it doesn't apply.
+  const acceptStep = acceptReady && workspaceChangeCount > 0
+    ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — review the diff (keep or revert per file), then finalize.`
+    : null;
+
   return (
     <section className="runtimeSnapshot compact" aria-label="Next action">
       <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
-        {decisions.length || pendingPermission ? "needs input" : acceptReady ? "accept" : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
+        {decisions.length || pendingPermission ? "needs input" : acceptReady ? (workspaceChangeCount > 0 ? "applied" : "ready") : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
       </span>
-      <span className="runtimeSnapshotText">{nextStep}</span>
+      <span className="runtimeSnapshotText">{acceptStep ?? nextStep}</span>
       <div className="runtimeSnapshotActions">
         {(canReview || acceptReady) && !decisions.length && !pendingPermission ? (
           <>
@@ -191,7 +198,7 @@ export function RuntimeSnapshot({
                   title={needsDiffReview ? `Review the ${workspaceChangeCount} change(s) before accepting` : undefined}
                   onClick={() => void onRuntimeAction(nextActionValue || "accept")}
                 >
-                  Accept
+                  Finalize
                 </button>
               </>
             ) : null}

@@ -156,7 +156,7 @@ export function App() {
     }
     // Confirm the terminal action — its button often disappears on success, so a
     // toast is the only post-click acknowledgement the user gets.
-    if (/^accept\b/i.test(trimmed)) toast.success("Accepted — changes finalized.");
+    if (/^accept\b/i.test(trimmed)) toast.success("Run finalized — changes are in your workspace.");
   }, [openCurrentReview, sessionEvents]);
 
   return (

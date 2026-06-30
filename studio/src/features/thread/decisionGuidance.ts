@@ -88,7 +88,7 @@ export function runtimeNextStepSummary(params: {
   // Honest affordance, not a verdict: the frontend only knows the run reached an accept/review-able
   // state from a capability flag — it must not assert "Review passed" / "Task complete" (a verdict it
   // doesn't hold). State + next action only; any "passed" wording must come from a real runtime event.
-  if (canAccept) return "Changes are ready — review them, then accept to finalize.";
+  if (canAccept) return "Changes are applied to your workspace — review the diff, then finalize.";
   if (canReview) return "Ready for review — open the changes to verify.";
 
   const normalized = nextActionValue.trim().toLowerCase();

@@ -37,7 +37,7 @@ const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string; s
   { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
   { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
   { key: "/review", label: "Review", mode: "review", prompt: "Review the current result." },
-  { key: "/accept", label: "Accept", mode: "accept", prompt: "Accept the reviewed result." },
+  { key: "/accept", label: "Finalize", mode: "accept", prompt: "Finalize the reviewed result." },
   { key: "/debug", label: "Debug", mode: "resume", prompt: "Debug the current blocker." },
   { key: "/continue", label: "Continue", mode: "resume", prompt: "Continue the current task." },
 ];
@@ -54,7 +54,7 @@ function actionProfile(mode: Mode, permission: string) {
     return { icon: <Eye size={13} />, label: "Review", permission: "Read-only", tone: "good" as const };
   }
   if (effective === "accept") {
-    return { icon: <ShieldCheck size={13} />, label: "Accept", permission: "Writes", tone: "warn" as const };
+    return { icon: <ShieldCheck size={13} />, label: "Finalize", permission: "Applied", tone: "warn" as const };
   }
   if (effective === "resume") {
     return {
