@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from asteria_runtime.core.merge_gate import MergeGate
+from asteria_runtime.core.merge_gate import MergeGate, classify_change_risk
 
 pytestmark = pytest.mark.contract
 
@@ -66,3 +66,35 @@ def test_merge_gate_allows_readonly_verified_noop() -> None:
 
     assert result.ok
     assert result.promotable_files == []
+
+
+def test_merge_gate_flags_sensitive_path_without_blocking() -> None:
+    task = {"write_scope": ["package.json"]}
+
+    result = MergeGate().evaluate(task, ["package.json"], [Result(ok=True)])
+
+    assert result.ok  # risk annotates, it never blocks the gate
+    assert result.promotable_files == ["package.json"]
+    assert result.risky_files == ["package.json"]
+    assert result.risk_level == "high"
+
+
+def test_merge_gate_ordinary_change_is_not_risky() -> None:
+    task = {"write_scope": ["src/tool.py"]}
+
+    result = MergeGate().evaluate(task, ["src/tool.py"], [Result(ok=True)])
+
+    assert result.ok
+    assert result.risky_files == []
+    assert result.risk_level == "low"
+
+
+def test_classify_change_risk_high_risk_task_and_sensitive_paths() -> None:
+    assert classify_change_risk({"risk": "high"}, "src/tool.py") is True
+    assert classify_change_risk({}, ".github/workflows/ci.yml") is True
+    assert classify_change_risk({}, "package-lock.json") is True
+    assert classify_change_risk({}, "deploy/main.tf") is True
+    assert classify_change_risk({}, "config/secret-keys.json") is True
+    assert classify_change_risk({}, "requirements.txt") is True
+    assert classify_change_risk({}, "src/feature.py") is False
+    assert classify_change_risk({"risk": "low"}, "docs/readme.md") is False

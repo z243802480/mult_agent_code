@@ -82,7 +82,9 @@ class CandidateExecutionGateway:
             return []
         promotion_queue = self.promotion_queue or CandidatePromotionQueue(context.validator)
         with _PROMOTION_APPLY_LOCK:
-            if _manual_approval_default(context.policy):
+            if _manual_approval_default(context.policy) or _risk_requires_manual_approval(
+                context.policy, merge_gate or {}
+            ):
                 promotion = promotion_queue.enqueue_pending_manual_approval(
                     context,
                     task_id=task_id or "unknown",
@@ -137,3 +139,16 @@ def _manual_approval_default(policy: dict) -> bool:
     if not isinstance(promotion, dict):
         return False
     return bool(promotion.get("manual_approval_default"))
+
+
+def _risk_requires_manual_approval(policy: dict, merge_gate: dict) -> bool:
+    # Only the supervised 'reviewed_auto' (a.k.a. balanced) tier holds risky changes for approval:
+    # 'ask_everything' already gates edits up-front, and 'auto' is full autopilot. The merge gate
+    # annotates risky_files (it never blocks on them) and we route those to the existing pending
+    # rail instead of auto-promoting — no new control plane (ADR-0014/0015).
+    mode = "reviewed_auto"
+    if isinstance(policy, dict):
+        mode = str(policy.get("permission_mode") or "reviewed_auto").lower()
+    if mode not in {"reviewed_auto", "balanced"}:
+        return False
+    return bool(isinstance(merge_gate, dict) and merge_gate.get("risky_files"))
