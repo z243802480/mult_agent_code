@@ -520,6 +520,24 @@
   white-space: pre-wrap;
 }
 
+/* 阶段③ C3: held-promotion risk reason — which sensitive files were flagged (annotation, not a block). */
+.promotionPreviewItemRisk {
+  align-items: flex-start;
+  background: var(--warn-subtle);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--warn);
+  display: flex;
+  font-size: 11px;
+  gap: 6px;
+  line-height: 1.35;
+  padding: 6px 8px;
+}
+
+.promotionPreviewItemRisk svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 .emptyThread {
   align-items: center;
   color: var(--text-secondary);

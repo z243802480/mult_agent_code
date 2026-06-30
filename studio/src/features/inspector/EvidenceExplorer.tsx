@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FileText } from "lucide-react";
+import { FileText, ShieldAlert } from "lucide-react";
 import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { Metric, formatMs, percent, Status } from "../../components/Shared";
 import { WorkflowMonitorPanel } from "../../components/WorkflowMonitorPanel";
@@ -231,6 +231,10 @@ function PromotionPreviewPanel({
           const id = String(item.id ?? `item-${index + 1}`);
           const key = `${kind}:${id}`;
           const files = asArray(item.files).map(String).join(", ");
+          // Honest: only when THIS held promotion's own merge_gate flagged files. No risk list for
+          // empty risky_files (cause may be a deletion, which isn't recorded here).
+          const riskyFiles = asArray(item.risky_files).map(String);
+          const heldForReview = String(item.status ?? "") === "pending_manual_approval" && riskyFiles.length > 0;
           return (
             <button
               key={key}
@@ -251,6 +255,12 @@ function PromotionPreviewPanel({
                 files ? `files=${files}` : "",
                 item.execution_profile_id ? `profile=${String(item.execution_profile_id)}` : "",
               ].filter(Boolean).join("\n")}</pre>
+              {heldForReview && (
+                <span className="promotionPreviewItemRisk">
+                  <ShieldAlert size={12} />
+                  <span>Held for your review — flagged as sensitive: {riskyFiles.join(", ")}</span>
+                </span>
+              )}
             </button>
           );
         })}

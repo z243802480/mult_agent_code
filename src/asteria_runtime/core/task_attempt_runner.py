@@ -421,6 +421,11 @@ class TaskAttemptRunner:
                 f"{task_id} pending {promotion_id}",
                 {"promotion_id": promotion_id, "candidate_id": candidate.candidate_id},
             )
+        # Additive: surface WHY this promotion is held so Studio can name it on the main thread
+        # in plain language. risky_files/risk_level are read from this task's own evaluated merge
+        # gate (annotation only — the gate never blocks on risk); an empty risky_files means the
+        # hold has another cause (e.g. a tracked-file deletion) and Studio must not claim risk.
+        merge_gate_info = contract_with_merge.get("merge_gate", {}) if isinstance(contract_with_merge, dict) else {}
         self._record_progress(
             context,
             task,
@@ -436,6 +441,8 @@ class TaskAttemptRunner:
                 "promotion_id": promotion_id,
                 "promotable_files": promotion.get("promotable_files", []),
                 "candidate_id": candidate.candidate_id,
+                "risky_files": list(merge_gate_info.get("risky_files", []) or []),
+                "risk_level": str(merge_gate_info.get("risk_level", "low")),
             },
         )
         return TaskAttemptSummary(

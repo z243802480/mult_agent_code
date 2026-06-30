@@ -51,6 +51,9 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
 
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   const transcriptKind = String(event.transcript_kind ?? "");
+  // A held promotion ("changed sensitive files, waiting for your approval") is emitted by the
+  // runtime as a progress/decision event. Surface it as its own prominent step, not a thinking blip.
+  if (event.runtime_channel === "progress" && event.runtime_event_type === "decision") return "hold";
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
   if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
   if (transcriptKind === "verification") return "verification";
@@ -96,12 +99,13 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "verification") return "Verification";
   if (kind === "final") return "Final answer";
   if (kind === "subagent") return "Subagent";
+  if (kind === "hold") return "Held for your review";
   return "Issue";
 }
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   const first = step.events[0];
-  if (step.kind === "goal" || step.kind === "final" || step.kind === "error") return false;
+  if (step.kind === "goal" || step.kind === "final" || step.kind === "error" || step.kind === "hold") return false;
   if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
   if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {

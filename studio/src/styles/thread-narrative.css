@@ -29,6 +29,46 @@
   text-align: right;
 }
 
+/* 阶段③ B: held promotion — prominent plain-language card; agent applied changes in an isolated
+   copy and is waiting for your approval. */
+.narrativeStep.hold {
+  background: transparent;
+  border: none;
+}
+
+.holdCard {
+  background: var(--warn-subtle);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.holdHead {
+  align-items: center;
+  color: var(--warn);
+  display: flex;
+  gap: 8px;
+}
+
+.holdHead strong {
+  font-size: 14px;
+}
+
+.holdTime {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.holdBody {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 .runReport {
   padding-bottom: 12px;
 }

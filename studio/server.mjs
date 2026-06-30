@@ -2942,6 +2942,11 @@ function buildPromotionPreview(payload) {
         task_id: item.task_id,
         status: item.status,
         files: item.promotable_files,
+        // Risk is read ONLY from this same promotion record's own merge_gate (1:1, no cross-record
+        // join). risk_level annotates; it never blocks. Empty risky_files => render no risk claim
+        // (a hold can also be deletion-driven, a cause not recorded here).
+        risky_files: Array.isArray(item.merge_gate?.risky_files) ? item.merge_gate.risky_files : [],
+        risk_level: String(item.merge_gate?.risk_level || "low"),
       })),
     ],
     evidence_refs: [

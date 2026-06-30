@@ -70,6 +70,33 @@ export function NarrativeStep({
     );
   }
 
+  // Held promotion: a prominent, plain-language card — the agent applied changes in an isolated copy
+  // and is waiting for your approval before merging. Copy is composed from the event data; the raw
+  // runtime summary (which carries CLI/maintainer text) is intentionally not shown here.
+  if (step.kind === "hold") {
+    const data = (primary?.data ?? {}) as Record<string, unknown>;
+    const promotable = Array.isArray(data.promotable_files) ? data.promotable_files.map(String) : [];
+    const risky = Array.isArray(data.risky_files) ? data.risky_files.map(String) : [];
+    const count = promotable.length;
+    return (
+      <article className="narrativeStep hold waiting_user">
+        <div className="holdCard">
+          <div className="holdHead">
+            <ShieldAlert size={15} />
+            <strong>Held for your review</strong>
+            {time && <span className="holdTime">{time}</span>}
+          </div>
+          <p className="holdBody">
+            {count > 0
+              ? `Holding ${count} change${count === 1 ? "" : "s"} in an isolated copy until you approve.`
+              : "Holding this change until you approve."}
+            {risky.length > 0 && <> Flagged as sensitive: {risky.join(", ")}.</>}
+          </p>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <article className={`narrativeStep ${step.kind} ${step.status}`}>
       <button className="stepChrome" onClick={() => setOpen((o) => !o)}>
