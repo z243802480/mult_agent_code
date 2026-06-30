@@ -17,11 +17,11 @@ export const api = {
       body: JSON.stringify(body),
     }),
   events: (id: string) => requestJson<{ ok: boolean; events: StudioEvent[] }>(`/api/studio/sessions/${encodeURIComponent(id)}/events`),
-  send: (id: string, message: string, mode: string, permission: string, channel?: string) =>
+  send: (id: string, message: string, mode: string, permission: string, channel?: string, permissionMode?: string) =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message, mode, permission, channel }),
+      body: JSON.stringify({ message, mode, permission, channel, permissionMode }),
     }),
   runtimeAction: (id: string, nextAction: string, permission = "ask") =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/runtime-actions`, {

@@ -9,6 +9,7 @@ import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, rou
 import { buildRouteMessageWithChatContext, shouldAugmentRouteWithChatContext } from "./lib/chat-route-context.mjs";
 import { buildOrchestrationWorkflowMonitor } from "./lib/orchestration-workflow-monitor.mjs";
 import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
+import { mapPermissionLevel, withPermissionLevel } from "./lib/permission-level.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -216,6 +217,7 @@ async function submitUserGoal(sessionId, body) {
   const channel = String(body?.channel || "").toLowerCase();
   const requestedMode = String(body?.mode || "auto");
   const permission = String(body?.permission || "ask");
+  const permissionMode = String(body?.permissionMode || "reviewed_auto");
   if (!goal) return { ok: false, error: "message is required" };
 
   if (channel === "side") {
@@ -297,8 +299,14 @@ async function submitUserGoal(sessionId, body) {
   });
   await appendEvent(activeSessionId, progressEventForMode(mode, goal));
 
+  // Thread the user's chosen tier through to the runtime (it otherwise runs at the CLI default).
+  // The same command is used for both the confirm-card (pending) and direct-start paths below.
+  const command = withPermissionLevel(
+    executionRoute?.command || runtimeCommand(mode, goal),
+    mapPermissionLevel(permissionMode),
+  );
+
   if (mode !== "plan" && permission !== "allow") {
-    const command = executionRoute?.command || runtimeCommand(mode, goal);
     const permissionPreview = permissionPreviewForMode(mode);
     const pendingJobId = `pending-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     pendingJobs.set(pendingJobId, { sessionId: activeSessionId, mode, goal, command });
@@ -315,7 +323,7 @@ async function submitUserGoal(sessionId, body) {
     return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId };
   }
 
-  startRuntimeJob(activeSessionId, mode, goal, executionRoute?.command || null);
+  startRuntimeJob(activeSessionId, mode, goal, command);
   return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, execution_route: executionRoute?.route || "direct" };
 }
 

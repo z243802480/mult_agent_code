@@ -20,6 +20,25 @@ const MODE_LABELS: Record<Mode, string> = {
 const PRIMARY_MODES = ["auto", "chat", "plan", "run"] as const;
 const OVERFLOW_MODES = ["review", "resume", "accept"] as const;
 
+// Permission tier cycle (Claude-Code style): a visible, first-class control that actually reaches
+// the runtime's --permission-level (server.mjs). ask_everything gates edits up-front; the other two
+// auto-apply edits — shell commands still prompt inline in every tier.
+const PERMISSION_MODES = ["ask_everything", "reviewed_auto", "auto"] as const;
+type PermissionMode = typeof PERMISSION_MODES[number];
+const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
+  ask_everything: "Ask first",
+  reviewed_auto: "Auto-edit",
+  auto: "Full auto",
+};
+const PERMISSION_MODE_HINTS: Record<PermissionMode, string> = {
+  ask_everything: "Asks before each edit and command",
+  reviewed_auto: "Edits apply directly; asks before commands",
+  auto: "Edits and tools apply; still asks before commands",
+};
+function legacyPermission(mode: PermissionMode): string {
+  return mode === "ask_everything" ? "ask" : "allow";
+}
+
 const MODE_PLACEHOLDERS: Record<Mode, string> = {
   auto: "Message Asteria… (Enter send, Shift+Enter newline)",
   chat: "Ask a question…",
@@ -88,7 +107,7 @@ export function Composer({
   promptSignal,
   viewMode = "focus",
 }: {
-  onSend: (message: string, mode: string, permission: string) => Promise<void>;
+  onSend: (message: string, mode: string, permission: string, permissionMode?: string) => Promise<void>;
   onSideAsk?: (message: string) => Promise<void>;
   sideAsk?: boolean;
   onSideAskToggle?: () => void;
@@ -97,7 +116,8 @@ export function Composer({
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
-  const [permission, setPermission] = useState("ask");
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>("reviewed_auto");
+  const permission = legacyPermission(permissionMode);
   const [sending, setSending] = useState(false);
 
   React.useEffect(() => {
@@ -117,7 +137,7 @@ export function Composer({
       if (sideAsk && onSideAsk) {
         await onSideAsk(text);
       } else {
-        await onSend(text, mode, permission);
+        await onSend(text, mode, permission, permissionMode);
       }
     } finally {
       setSending(false);
@@ -236,10 +256,21 @@ export function Composer({
             </>
           )}
           {showPermission && (
-            <select value={permission} onChange={(event) => setPermission(event.target.value)} aria-label="Permission mode">
-              <option value="ask">Ask first</option>
-              <option value="allow">Allow safe</option>
-            </select>
+            <div className="segmented composerPermissionSegmented" role="radiogroup" aria-label="Permission tier">
+              {PERMISSION_MODES.map((pm) => (
+                <button
+                  type="button"
+                  key={pm}
+                  role="radio"
+                  aria-checked={permissionMode === pm}
+                  className={permissionMode === pm ? "active" : ""}
+                  title={PERMISSION_MODE_HINTS[pm]}
+                  onClick={() => setPermissionMode(pm)}
+                >
+                  {PERMISSION_MODE_LABELS[pm]}
+                </button>
+              ))}
+            </div>
           )}
           <span className="composerPermissionHint">{viewMode !== "focus" ? profile.permission : ""}</span>
         </div>

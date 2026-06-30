@@ -27,11 +27,11 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
 
   const isRunning = useMemo(() => isSessionLive(events), [events]);
 
-  async function sendGoal(message: string, mode: string, permission: string) {
+  async function sendGoal(message: string, mode: string, permission: string, permissionMode?: string) {
     if (!activeSession) return;
     setPendingTurn({ message, mode, startedAt: Date.now() });
     try {
-      await api.send(activeSession.session_id, message, mode, permission);
+      await api.send(activeSession.session_id, message, mode, permission, undefined, permissionMode);
       const refreshed = await api.sessions();
       setSessions(refreshed.sessions ?? []);
     } finally {
