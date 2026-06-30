@@ -1,0 +1,51 @@
+/* Thread loading skeleton — shimmer rows that mimic a couple of exchanges.
+   Shimmer animation is collapsed to static by the global prefers-reduced-motion rule. */
+.threadSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 8px 0;
+}
+
+.skelTurn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skel {
+  animation: skelShimmer 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  height: 12px;
+}
+
+.skelUser {
+  align-self: flex-end;
+  border-radius: var(--radius-md);
+  height: 32px;
+  width: 45%;
+}
+
+.skelUser.narrow {
+  width: 30%;
+}
+
+.skelLabel {
+  height: 9px;
+  width: 64px;
+}
+
+.skelLine {
+  width: 100%;
+}
+
+.skelLine.short {
+  width: 60%;
+}
+
+@keyframes skelShimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}

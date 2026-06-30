@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ThreadSkeleton } from "../../components/Skeleton";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
 import { splitIntoTurns } from "../../turnDiff";
@@ -101,7 +101,7 @@ export function Thread({
             the "What would you like to do?" prompt, which would otherwise flash before the
             transcript populates. Once loading settles and there is genuinely nothing, the prompt shows. */}
         {loading ? (
-          <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>Loading session…</span></div>
+          <ThreadSkeleton />
         ) : (
           <EmptyState onPrompt={onPrompt} />
         )}

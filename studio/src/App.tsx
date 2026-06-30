@@ -16,6 +16,8 @@ import { useRunEvidence } from "./session/useRunEvidence";
 import { useSideChat } from "./hooks/useSideChat";
 import { SideChatPanel } from "./features/sidechat/SideChatPanel";
 import { useWorkspaceReview } from "./session/useWorkspaceReview";
+import { ToastViewport } from "./components/ToastViewport";
+import { toast } from "./components/toast";
 import type { StudioSession } from "./types";
 
 export function App() {
@@ -142,10 +144,19 @@ export function App() {
   }, [review]);
 
   const runRuntimeAction = useCallback(async (action: string) => {
-    if (/^(review|accept)\b/i.test(action.trim())) {
+    const trimmed = action.trim();
+    if (/^(review|accept)\b/i.test(trimmed)) {
       await openCurrentReview();
     }
-    await sessionEvents.runRuntimeAction(action);
+    try {
+      await sessionEvents.runRuntimeAction(action);
+    } catch (err) {
+      toast.error("That action didn't go through. Try again.");
+      throw err; // preserve the existing rejection propagation
+    }
+    // Confirm the terminal action — its button often disappears on success, so a
+    // toast is the only post-click acknowledgement the user gets.
+    if (/^accept\b/i.test(trimmed)) toast.success("Accepted — changes finalized.");
   }, [openCurrentReview, sessionEvents]);
 
   return (
@@ -305,6 +316,7 @@ export function App() {
         onClose={closeSideChat}
         onSend={sendSideAsk}
       />
+      <ToastViewport />
     </div>
   );
 }
