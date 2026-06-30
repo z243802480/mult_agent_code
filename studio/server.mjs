@@ -2911,6 +2911,37 @@ function buildPromotionPreview(payload) {
   const mergePreviewSummary = rawSummary
     .replace(/Merge gate/gi, "Merge preview")
     .replace(/merge gate/gi, "merge preview");
+  // isolate→verify→merge lineage, grouped by task_id (candidate_export + candidate_promotion both
+  // carry task_id; the dry-run is batch-level, so "verified" is a batch signal, not per-task — the
+  // UI labels it as such). Tasks without a task_id are skipped; the flat items[] stays as fallback.
+  const byTask = new Map();
+  for (const ex of exports) {
+    const taskId = String(ex.task_id || "");
+    if (!taskId) continue;
+    const entry = byTask.get(taskId) || { task_id: taskId };
+    entry.candidate_id = entry.candidate_id || ex.candidate_id;
+    entry.isolated = {
+      status: ex.export_status,
+      files: Array.isArray(ex.changed_files) ? ex.changed_files.length : 0,
+    };
+    byTask.set(taskId, entry);
+  }
+  for (const pr of promotions) {
+    const taskId = String(pr.task_id || "");
+    if (!taskId) continue;
+    const entry = byTask.get(taskId) || { task_id: taskId };
+    entry.candidate_id = entry.candidate_id || pr.candidate_id;
+    entry.merged = {
+      status: pr.status,
+      files: Array.isArray(pr.promoted_files) && pr.promoted_files.length
+        ? pr.promoted_files.length
+        : (Array.isArray(pr.promotable_files) ? pr.promotable_files.length : 0),
+      risky_files: Array.isArray(pr.merge_gate?.risky_files) ? pr.merge_gate.risky_files : [],
+    };
+    byTask.set(taskId, entry);
+  }
+  const batchVerified = latestDryRun ? { ok: Boolean(latestDryRun.ok), batch: true } : null;
+  const lineages = [...byTask.values()].slice(-8).map((entry) => ({ ...entry, verified: batchVerified }));
   return {
     export_count: exports.length,
     dry_run_count: dryRuns.length,
@@ -2920,6 +2951,7 @@ function buildPromotionPreview(payload) {
     merge_preview_summary: mergePreviewSummary || (exports.length ? "Candidate exports recorded; open Inspector for details." : ""),
     latest_export: latestExport,
     latest_dry_run: latestDryRun,
+    lineages,
     items: [
       ...exports.slice(-6).map((item) => ({
         kind: "candidate_export",

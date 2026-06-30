@@ -225,6 +225,46 @@ function PromotionPreviewPanel({
       {preview.merge_preview_summary ? (
         <p className="promotionPreviewSummary">{String(preview.merge_preview_summary)}</p>
       ) : null}
+      {asArray(preview.lineages).length > 0 && (
+        <div className="lineageList">
+          <p className="sideTitle">Isolated → verified → merged</p>
+          {(asArray(preview.lineages) as AnyRecord[]).map((lin, i) => {
+            const isolated = asRecord(lin.isolated);
+            const verified = asRecord(lin.verified);
+            const merged = asRecord(lin.merged);
+            const riskyFiles = asArray(merged.risky_files).map(String);
+            const mergedStatus = String(merged.status ?? "");
+            const mergeLabel = mergedStatus === "promoted" ? "Merged"
+              : mergedStatus === "pending_manual_approval" ? "Held for review"
+              : mergedStatus ? mergedStatus.replace(/_/g, " ") : "—";
+            const isoFiles = Number(isolated.files ?? 0);
+            const mergedFiles = Number(merged.files ?? 0);
+            return (
+              <div className="lineageRow" key={String(lin.task_id ?? i)}>
+                <span className="lineageStage">
+                  <small>Isolated</small>
+                  <strong>{isoFiles ? `${isoFiles} file${isoFiles === 1 ? "" : "s"}` : String(isolated.status ?? "—")}</strong>
+                </span>
+                <span className="lineageArrow">→</span>
+                <span className="lineageStage">
+                  <small>Verified{verified.batch ? " (batch)" : ""}</small>
+                  <strong>{verified.ok === true ? "passed" : verified.ok === false ? "needs review" : "—"}</strong>
+                </span>
+                <span className="lineageArrow">→</span>
+                <span className={mergedStatus === "pending_manual_approval" ? "lineageStage held" : "lineageStage"}>
+                  <small>Merged</small>
+                  <strong>{mergeLabel}{mergedFiles ? ` · ${mergedFiles}` : ""}</strong>
+                </span>
+                {riskyFiles.length > 0 && (
+                  <span className="lineageRisk" title={riskyFiles.join(", ")}>
+                    <ShieldAlert size={11} /> {riskyFiles.length}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="promotionPreviewList">
         {items.slice(0, 8).map((item, index) => {
           const kind = String(item.kind ?? "item");

@@ -1,5 +1,6 @@
 import type { AnyRecord, RunDetailPayload, StudioEvent } from "../../types";
 import { asArray, asRecord, firstText, textOrFallback } from "./threadUtils";
+import { INTERNAL_TITLE_PROJECTION } from "../../titleProjection";
 
 export function runtimeProgress(runDetail: RunDetailPayload | null): AnyRecord {
   const direct = asRecord(runDetail?.runtime_progress);
@@ -150,16 +151,8 @@ const TRANSCRIPT_KIND_TITLES: Record<string, string> = {
   stop: "Result",
 };
 
-// Legacy/internal title literals → human action titles. Any title not listed
-// here is treated as genuine human-authored text and passes through unchanged.
-const INTERNAL_TITLE_PROJECTION: Record<string, string> = {
-  "Plan/Todo": "Planning",
-  "Tool Use": "Working",
-  "Tool Result": "Result",
-  Verify: "Checking the work",
-  "Background work": "Working in the background",
-  "Next step": "Next step",
-};
+// Internal/legacy title literals → human action titles live in the shared title-projection module
+// (single source, also used by buildRunNarrative for NarrativeStep titles).
 
 export function userProgressTitle(event: AnyRecord): string {
   const title = String(event.title ?? "").trim();
