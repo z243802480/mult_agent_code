@@ -237,7 +237,7 @@
   align-items: center;
   background: var(--ok-subtle);
   border: 1px solid var(--ok);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-sm);
   color: var(--ok);
   display: inline-flex;
   font-size: 11px;

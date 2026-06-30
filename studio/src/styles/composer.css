@@ -123,12 +123,18 @@
   gap: 6px;
   min-height: 32px;
   padding: 0 14px;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease);
+  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform var(--dur-fast) var(--ease);
 }
 
 .composerSend:hover:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+.composerSend:active:not(:disabled) {
+  background: var(--accent-active);
+  border-color: var(--accent-active);
+  transform: scale(var(--press-scale));
 }
 
 .composerSend:disabled {
@@ -197,9 +203,9 @@
   color: var(--text-muted);
 }
 
-.composer textarea:focus {
+.composer textarea:focus-visible {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  box-shadow: var(--focus-ring);
   outline: none;
 }
 

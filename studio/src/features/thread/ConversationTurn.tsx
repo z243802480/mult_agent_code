@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, Wrench } from "lucide-react";
+import { ChevronRight, Loader2, Wrench } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../../types";
 import { NarrativeStep } from "../../components/NarrativeStep";
 import { PermissionCard } from "../../components/PermissionCard";
@@ -79,7 +79,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
           if (representative) onSelect(representative);
         }}
       >
-        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+        <ChevronRight size={13} className={`chevron ${open ? "open" : ""}`} />
         <Wrench size={11} />
         <span>{middleSummary(steps)}</span>
       </button>
@@ -97,7 +97,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
           </button>
         )}
       </div>
-      {open && (
+      <div className={`turnMiddleStepsWrap ${open ? "open" : ""}`}>
         <div className="turnMiddleSteps">
           {steps.map((step) => {
             const permStep = step.events.find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
@@ -114,7 +114,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
             return <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />;
           })}
         </div>
-      )}
+      </div>
     </div>
   );
 }

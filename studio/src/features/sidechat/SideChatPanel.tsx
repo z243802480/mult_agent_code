@@ -25,7 +25,8 @@ export function SideChatPanel({
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !open) return;
-    el.scrollTop = el.scrollHeight;
+    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, [items.length, waiting, open]);
 
   async function submit(event: React.FormEvent) {

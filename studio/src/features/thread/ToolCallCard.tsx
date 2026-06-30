@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ChevronDown, ChevronRight, Terminal } from "lucide-react";
+import { ChevronRight, Terminal } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { ClampedOutput } from "../../components/ClampedOutput";
 
@@ -41,7 +41,7 @@ export function ToolCallCard({ step, showOutput = true }: {
         title={cmdStr || undefined}
       >
         {hasOutput
-          ? (open ? <ChevronDown size={12} /> : <ChevronRight size={12} />)
+          ? <ChevronRight size={12} className={`chevron ${open ? "open" : ""}`} />
           : <span className="toolCardChevronSpacer" aria-hidden="true" />}
         <Terminal size={11} />
         <span className="toolCardLabel">{label}</span>

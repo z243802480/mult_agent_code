@@ -221,7 +221,8 @@
 }
 
 .permissionDeny:hover:not(:disabled) {
-  background: var(--bad-subtle);
+  background: var(--bad);
+  color: var(--accent-fg);
 }
 
 .permissionAllow:disabled,

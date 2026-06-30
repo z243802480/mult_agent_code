@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ClipboardList, Eye, MessageCircle, PlayCircle, RotateCw, Send, ShieldCheck } from "lucide-react";
+import { ClipboardList, Eye, Loader2, MessageCircle, PlayCircle, RotateCw, Send, ShieldCheck } from "lucide-react";
 
 const MODES = ["auto", "chat", "plan", "run", "review", "resume", "accept"] as const;
 type Mode = typeof MODES[number];
@@ -244,7 +244,7 @@ export function Composer({
           <span className="composerPermissionHint">{viewMode !== "focus" ? profile.permission : ""}</span>
         </div>
         <button className="composerSend" disabled={sending} type="submit">
-          <Send size={15} />
+          {sending ? <Loader2 size={15} className="spinning" /> : <Send size={15} />}
           <span>{isChat ? "Ask" : "Send"}</span>
         </button>
       </div>

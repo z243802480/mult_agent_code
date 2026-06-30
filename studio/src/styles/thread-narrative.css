@@ -163,12 +163,16 @@
 }
 
 .eventCard.compact {
-  background: var(--surface-1);
+  background: transparent;
+  border: 0;
+  border-left: 2px solid var(--border-subtle);
+  border-radius: 0;
   grid-template-columns: 60px minmax(0, 1fr);
   max-width: none;
 }
 
 .eventCard.compact .phaseRail {
+  border-right: 0;
   padding: 6px 6px;
 }
 
@@ -255,9 +259,13 @@
 }
 
 .status {
+  border: 1px solid currentColor;
   border-radius: var(--radius-pill);
-  font-size: 11px;
-  padding: 4px 7px;
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  padding: 3px 8px;
+  text-transform: uppercase;
 }
 
 .status.completed {

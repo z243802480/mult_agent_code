@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import {
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   CircleDot,
   Clock3,
@@ -80,9 +79,9 @@ export function NarrativeStep({
           <span>{time}</span>
         </span>
         <Status status={step.status} />
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <ChevronRight size={14} className={`chevron ${open ? "open" : ""}`} />
       </button>
-      {open && (
+      <div className={`stepExpandedWrap ${open ? "open" : ""}`}>
         <div className="stepExpanded">
           {step.summary && step.summary !== step.title && (
             <p className="stepSummaryText">{step.summary}</p>
@@ -99,7 +98,7 @@ export function NarrativeStep({
             ))}
           </div>
         </div>
-      )}
+      </div>
     </article>
   );
 }

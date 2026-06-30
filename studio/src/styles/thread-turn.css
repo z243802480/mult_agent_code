@@ -3,7 +3,7 @@
 .conversationTurn {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   max-width: none;
   width: 100%;
 }
@@ -38,11 +38,10 @@
 }
 
 .turnUserBubble {
-  background: var(--accent-subtle);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-lg);
+  background: var(--user-bubble-bg);
+  border-radius: var(--radius-md);
   max-width: 80%;
-  padding: 10px 14px 7px;
+  padding: 7px 12px;
 }
 
 .turnUserBubble.optimistic {
@@ -108,12 +107,38 @@
 }
 
 .turnMiddleSteps {
-  border-left: 2px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-left: 6px;
-  padding: 6px 0 4px 10px;
+  gap: 2px;
+  margin-left: 4px;
+  padding: 2px 0 2px 8px;
+}
+
+/* Animated process disclosure: grid-rows 0fr->1fr eases the height instead of an
+   instant DOM jump. The steps stay mounted; the inner wrapper clips while collapsed. */
+.turnMiddleStepsWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-reveal) var(--ease);
+}
+
+.turnMiddleStepsWrap.open {
+  grid-template-rows: 1fr;
+}
+
+.turnMiddleStepsWrap > .turnMiddleSteps {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Rotating disclosure chevron — a single glyph that turns, not a hard icon swap. */
+.chevron {
+  flex-shrink: 0;
+  transition: transform var(--dur-reveal) var(--ease);
+}
+
+.chevron.open {
+  transform: rotate(90deg);
 }
 
 .contextWindowDock {
@@ -307,14 +332,11 @@
 /* ── LiveStream: real-time output while turn is running ─────────────────── */
 
 .liveStream {
-  background: var(--surface-1);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   gap: 10px;
   max-width: 92%;
-  padding: 12px 14px;
+  padding: 2px 0;
 }
 
 .livePhaseRow {
@@ -429,8 +451,9 @@
 }
 
 .toolCard {
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-sm);
+  border: 0;
+  border-left: 2px solid var(--accent-border);
+  border-radius: 0;
   overflow: hidden;
 }
 
@@ -742,13 +765,10 @@
 }
 
 .chatStreamPreview {
-  background: var(--surface-1);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-lg);
   display: grid;
   gap: 8px;
   max-width: min(92%, 860px);
-  padding: 11px 13px;
+  padding: 2px 0;
 }
 
 .chatStreamHeader {
@@ -785,16 +805,15 @@
 
 /* ── Asteria response card */
 .turnFinal {
-  background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  max-width: min(92%, 860px);
-  padding: 13px 16px;
+  max-width: none;
+  padding: 2px 0 0;
 }
 
 .turnFinal.failed {
   background: var(--bad-subtle);
-  border-color: var(--bad);
+  border-left: 2px solid var(--bad);
+  border-radius: 0;
+  padding: 10px 0 10px 12px;
 }
 
 .turnFinalHeader {
@@ -805,16 +824,7 @@
 }
 
 .turnFinalAvatar {
-  align-items: center;
-  background: var(--surface-3);
-  border-radius: var(--radius-sm);
-  color: var(--accent-fg);
-  display: inline-flex;
-  font-size: 10px;
-  font-weight: 800;
-  height: 20px;
-  justify-content: center;
-  width: 20px;
+  display: none;
 }
 
 .turnFinalLabel {

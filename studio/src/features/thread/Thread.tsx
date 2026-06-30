@@ -77,7 +77,12 @@ export function Thread({
     const el = threadRef.current;
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 220;
-    if (nearBottom || isRunning) requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
+    if (nearBottom || isRunning) {
+      const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      requestAnimationFrame(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+      });
+    }
   }, [mainEvents.length, isRunning]);
 
   if (!turns.length && !shouldShowPending) {

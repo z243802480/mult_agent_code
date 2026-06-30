@@ -1,8 +1,8 @@
 import React from "react";
 
 const EXAMPLE_PROMPTS = [
-  "Plan a 3-day Qingdao trip",
-  "Add a --version test to this project",
+  "Find and fix the failing CI check",
+  "Add a --version flag and a test for it",
   "Analyze the latest failure log and identify the root cause",
   "Turn these notes into a one-page PRD",
 ];
