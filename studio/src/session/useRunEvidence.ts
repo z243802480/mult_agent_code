@@ -57,7 +57,15 @@ export function useRunEvidence(events: StudioEvent[], onGitRefresh?: () => void)
   }
 
   function clearSelection() {
+    // Clear the whole run selection, not just the highlighted event: on a session
+    // switch a stale runDetail/selectedRunId would keep driving the Thread's
+    // runtimeEvents fallback, so the previous session's content would persist.
     setSelectedEvent(null);
+    setSelectedRunId(null);
+    setRunDetail(null);
+    // Let the auto-open effect re-open the new session's latest run (it short-circuits
+    // on the last-opened event id, which must be forgotten across a session switch).
+    refreshedRunEventRef.current = "";
   }
 
   return {
