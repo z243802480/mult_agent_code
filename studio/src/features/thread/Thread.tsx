@@ -62,7 +62,14 @@ export function Thread({
   const runtimeEvents = useMemo(() => runtimeSessionEvents(runDetail ?? null), [runDetail]);
   const selectedRunId = String(runDetail?.run_id ?? "");
   const hasSelectedRunEvents = Boolean(selectedRunId) && mainEvents.some((event) => String(event.run_id ?? "") === selectedRunId);
-  const sessionEvents = hasSelectedRunEvents || !runtimeEvents.length ? mainEvents : runtimeEvents;
+  // Never fall back to the runDetail-derived runtimeEvents when this session has no events of its
+  // own: that run belongs to another session / the workspace, and rendering it would drop a stray
+  // process/diff turn + review bar into an empty conversation. Empty session => empty thread.
+  const sessionEvents = mainEvents.length === 0
+    ? mainEvents
+    : hasSelectedRunEvents || !runtimeEvents.length
+      ? mainEvents
+      : runtimeEvents;
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
@@ -88,15 +95,11 @@ export function Thread({
   if (!turns.length && !shouldShowPending) {
     return (
       <section className="thread" ref={threadRef}>
-        <RuntimeSnapshot
-          overview={overview ?? null}
-          runDetail={runDetail ?? null}
-          workspaceChangeCount={workspaceChangeCount}
-          events={events}
-          onRuntimeAction={onRuntimeAction}
-          onOpenReview={onOpenReview}
-          onResolveDecision={onResolveDecision}
-        />
+        {/* A brand-new / empty session shows only the welcome prompt — never the workspace-level
+            RuntimeSnapshot. That "next action / review" bar belongs to a session that has actually
+            run something; surfacing another task's leftover review/finalize state (and runtime
+            vocabulary) at the top of an empty conversation is confusing and violates AGENTS.md §9.
+            The header "Review N" chip already signals unhandled workspace changes. */}
         {/* During bootstrap, sessions/runs are still loading — show a quiet placeholder instead of
             the "What would you like to do?" prompt, which would otherwise flash before the
             transcript populates. Once loading settles and there is genuinely nothing, the prompt shows. */}

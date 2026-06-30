@@ -2171,13 +2171,10 @@ async function createSession() {
   };
   await fs.mkdir(sessionPath(sessionId), { recursive: true });
   await fs.writeFile(sessionPath(sessionId, "session.json"), JSON.stringify(session, null, 2), "utf8");
-  await appendEvent(sessionId, {
-    type: "assistant_delta",
-    status: "completed",
-    title: "Asteria Ready",
-    summary: "Tell me what you want to do.",
-    content_delta: "\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u60f3\u505a\u4ec0\u4e48\u3002\u6211\u4f1a\u5148\u7ed9\u51fa\u81ea\u7136\u56de\u7b54\uff1b\u5982\u679c\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u5185\u5bb9\uff0c\u4f1a\u5728\u884c\u52a8\u524d\u8bf7\u4f60\u786e\u8ba4\u3002"
-  });
+  // No seed/welcome event: a brand-new session must stay empty so the thread renders the EmptyState
+  // ("What would you like to do?" + example prompts). A main-level greeting event here made every new
+  // conversation non-empty, which rendered a stray assistant turn AND dragged in the workspace-level
+  // review/next-action bar \u2014 the confusing "review line at the top of a new chat".
   return session;
 }
 

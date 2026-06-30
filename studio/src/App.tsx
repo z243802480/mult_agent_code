@@ -32,8 +32,11 @@ export function App() {
   const runEvidenceRef = useRef<ReturnType<typeof useRunEvidence> | null>(null);
 
   const bootstrap = useStudioBootstrap({
-    onOverviewReady: async (overview) => {
-      await runEvidenceRef.current?.openLatestRun(overview);
+    // Do NOT auto-open the workspace's latest run here: it pulls ANOTHER session's run into
+    // runDetail, so an empty/new conversation would render that run's steps + review bar — the
+    // "mystery review line at the top of a new chat". The per-session auto-open effect inside
+    // useRunEvidence already opens the run that belongs to the active session's own events.
+    onOverviewReady: async () => {
       await reviewRef.current?.refreshGitStatus();
     },
   });
