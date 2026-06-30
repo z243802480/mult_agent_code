@@ -201,7 +201,9 @@ python -m asteria_runtime studio-benchmark --root . --run-id run-xxx --json
 
 ## 9. 下一步实现
 
-1. 用五个基准任务跑真实会话，补齐 capability、权限、文件预览和继续迭代证据。
-2. 将实时订阅从轮询升级为 SSE/WebSocket。
-3. 在基准报告中增加 Workspace switcher、权限模式、Inspector 分区和文件/Git 视图覆盖检查。
-4. 保持 Product Workspace 与 Ops / Debug Console 分离，避免默认首页退回后台 dashboard。
+> **现状（2026-06-30，收敛重构①②③(部分) 已上 main）**：统一 **Settings 面板**（顶栏齿轮入口，权限默认档持久化）、**capability 卡**（MCP/Skill 主线程实名化，显示服务器/工具/技能名 + allow·deny + retries/artifacts）、**权限档头部常驻徽章**、**风险扣留主线程卡**（按 `transcript_kind=decision_request` 识别，符合 ADR-0012）均已落地；实时订阅已是 SSE。诚实暂缓：B7 强模型降级卡 / C8 promotion 转人工原因 / D9 内建工具能力徽章——均无落盘证据，需运行时 additive 补发后再做。
+
+剩余：
+1. 用五个基准任务跑真实会话，补齐文件预览和继续迭代证据。
+2. 后端可见化剩余前端切片：C4 隔离→验证→合并三段 lineage、D5 上下文压缩主线程标记、D6 热续作标注。
+3. 保持 Product Workspace 与 Ops / Debug Console 分离，避免默认首页退回后台 dashboard。

@@ -51,9 +51,16 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
 
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   const transcriptKind = String(event.transcript_kind ?? "");
-  // A held promotion ("changed sensitive files, waiting for your approval") is emitted by the
-  // runtime as a progress/decision event. Surface it as its own prominent step, not a thinking blip.
-  if (event.runtime_channel === "progress" && event.runtime_event_type === "decision") return "hold";
+  // A held promotion ("changed sensitive files, waiting for your approval"). ADR-0012 prefers a
+  // real Session Transcript event, so detect by transcript_kind=decision_request carrying a
+  // promotion_id; the channel/event shape is kept only as a legacy fallback for older emits.
+  const holdData = (event.data ?? {}) as Record<string, unknown>;
+  if (
+    (transcriptKind === "decision_request" && Boolean(holdData.promotion_id))
+    || (event.runtime_channel === "progress" && event.runtime_event_type === "decision")
+  ) {
+    return "hold";
+  }
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
   if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
   if (transcriptKind === "verification") return "verification";

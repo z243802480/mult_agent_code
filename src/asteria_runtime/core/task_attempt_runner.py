@@ -431,6 +431,9 @@ class TaskAttemptRunner:
             task,
             channel="progress",
             event_type="decision",
+            # transcript_kind makes this a first-class Session Transcript event (ADR-0012), so the
+            # frontend renders the hold by transcript_kind rather than sniffing channel/event wording.
+            transcript_kind="decision_request",
             phase="blocked",
             status="waiting_user",
             title="Promotion waiting for approval",
@@ -678,6 +681,7 @@ class TaskAttemptRunner:
         evidence_refs: list[str] | None = None,
         file_changes: list[dict[str, Any]] | None = None,
         data: dict[str, Any] | None = None,
+        transcript_kind: str | None = None,
     ) -> None:
         logger = self._progress_logger(context)
         if logger is None:
@@ -696,6 +700,7 @@ class TaskAttemptRunner:
             call_chain=[self.actor],
             execution_chain=[str(task.get("task_id", "")), phase],
             data=data,
+            transcript_kind=transcript_kind,
         )
 
     def _append_harness_observations(
