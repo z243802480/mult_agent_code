@@ -125,7 +125,13 @@ class DoctorResult:
             marker = "ok" if check.ok else check.severity
             lines.append(f"  - {check.name}: {marker} - {check.summary}")
         if not self.ok:
-            lines.append("Next: fix error checks before running validation.")
+            failed = [check.name for check in self.checks if not check.ok]
+            actions = self._next_actions(failed)
+            if actions:
+                lines.append("Next actions:")
+                lines.extend(f"  - {item}" for item in actions)
+            else:
+                lines.append("Next: fix error checks before running validation.")
         return "\n".join(lines)
 
 

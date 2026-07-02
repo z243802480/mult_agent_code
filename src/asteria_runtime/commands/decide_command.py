@@ -31,8 +31,22 @@ class DecideResult:
             lines.append(
                 f"- {decision['decision_id']} [{decision['status']}]: {decision['question']}"
             )
+            options = decision.get("options")
+            if isinstance(options, list):
+                for option in options:
+                    if not isinstance(option, dict):
+                        continue
+                    oid = str(option.get("option_id") or "")
+                    label = str(option.get("label") or option.get("summary") or "")
+                    mark = " (default)" if oid and oid == decision.get("default_option_id") else ""
+                    lines.append(f"    [{oid}]{mark} {label}".rstrip())
             selected = decision.get("selected_option_id") or decision.get("default_option_id")
             lines.append(f"  selected/default: {selected}")
+            if str(decision.get("status") or "").lower() in {"pending", "open", "waiting", "waiting_user"}:
+                lines.append(
+                    f"  Next: asteria decide --decision-id {decision['decision_id']} "
+                    "--select-option-id <option_id>   (or --use-default)"
+                )
         return "\n".join(lines)
 
 
