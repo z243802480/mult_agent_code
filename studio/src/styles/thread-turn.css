@@ -1137,6 +1137,32 @@
   50.01%, 100% { opacity: 0; }
 }
 
+/* ── Edit & resend affordance on the last user message (hover-revealed, keyboard-focusable) */
+.turnUserEdit {
+  align-items: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  margin-top: 6px;
+  opacity: 0;
+  padding: 2px 9px;
+  transition: opacity var(--dur-fast, 120ms) var(--ease), color var(--dur-fast, 120ms) var(--ease);
+}
+
+.turnUser:hover .turnUserEdit,
+.turnUserEdit:focus-visible {
+  opacity: 1;
+}
+
+.turnUserEdit:hover {
+  color: var(--text-secondary);
+}
+
 /* ── Long-thread windowing controls (I7) */
 .loadEarlierTurns {
   background: var(--surface-1);

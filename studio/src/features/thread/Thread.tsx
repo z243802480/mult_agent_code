@@ -227,6 +227,7 @@ export function Thread({
             onTurnRewind={onTurnRewind}
             onSuggestedAction={onRuntimeAction}
             suppressSuggested={snapshotOwnsNextStep}
+            onEditMessage={onPrompt}
           />
         );
       })}

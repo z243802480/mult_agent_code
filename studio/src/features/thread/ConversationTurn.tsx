@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Brain, ChevronRight, Loader2, Wrench } from "lucide-react";
+import { Brain, ChevronRight, Loader2, Pencil, Wrench } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../../types";
 import { NarrativeStep } from "../../components/NarrativeStep";
 import { PermissionCard } from "../../components/PermissionCard";
@@ -266,7 +266,7 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested }: {
+export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -285,6 +285,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   onTurnRewind?: (turnIndex: number, action: string) => Promise<void>;
   onSuggestedAction?: (command: string) => Promise<void>;
   suppressSuggested?: boolean;
+  onEditMessage?: (text: string) => void;
 }) {
   const goalStep = steps[0];
   // A leading turn that has no user_message (steps before the first goal) renders goal-less:
@@ -324,6 +325,17 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
           <div className="turnUserBubble">
             <p>{userText}</p>
             <span className="turnUserTime">{time}</span>
+            {isLast && !isRunning && onEditMessage && userText && (
+              <button
+                type="button"
+                className="turnUserEdit"
+                title="Edit & resend — puts this message back in the composer as a new turn"
+                onClick={() => onEditMessage(userText)}
+              >
+                <Pencil size={11} />
+                <span>Edit</span>
+              </button>
+            )}
           </div>
         </div>
       )}
