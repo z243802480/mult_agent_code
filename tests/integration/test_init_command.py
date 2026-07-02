@@ -78,3 +78,10 @@ def test_init_force_regenerates_managed_files(tmp_path: Path) -> None:
     reloaded = json.loads(policies_path.read_text(encoding="utf-8"))
     assert "_user_marker" not in reloaded
     assert any("policies.json" in rel for rel in result.updated)
+
+
+def test_init_to_text_shows_next_steps(tmp_path: Path) -> None:
+    text = InitCommand(tmp_path).run().to_text()
+    assert "Next steps:" in text
+    assert "asteria goal" in text
+    assert "AGENT_MODEL_PROVIDER" in text

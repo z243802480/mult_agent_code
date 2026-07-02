@@ -33,8 +33,9 @@ def test_top_level_help_groups_command_surface() -> None:
     assert "review  Inspect result quality" in help_text
     assert "accept  Accept reviewed results" in help_text
     assert "debug   Continue failed work in the current session." in help_text
-    assert "init        Initialize a local-first Asteria workspace." in help_text
-    assert "resume      Continue after approvals" in help_text
+    assert "init         Initialize a local-first Asteria workspace." in help_text
+    assert "resume       Continue after approvals" in help_text
+    assert "model-check  Verify a configured model provider is reachable." in help_text
     assert "chat      Lightweight" not in help_text
     assert help_text.index("goal    Long-task") < help_text.index("ask     Lightweight")
     assert help_text.index("ask     Lightweight") < help_text.index("status  Show user-level")
@@ -679,3 +680,24 @@ def test_plan_and_run_parse_workspace_selection_options() -> None:
     )
     assert run_args.input_root == ["service-a"]
     assert run_args.output_root == "deliverables"
+
+
+def test_cli_error_formatter_gives_provider_guidance() -> None:
+    from asteria_runtime.cli import _format_cli_error
+
+    class ModelProviderError(RuntimeError):
+        pass
+
+    text = _format_cli_error(ModelProviderError("strong route provider is not configured"))
+    assert "AGENT_MODEL_PROVIDER" in text
+    assert "asteria doctor" in text
+    assert "ASTERIA_DEBUG=1" in text
+
+
+def test_cli_error_formatter_generic_gives_next_step() -> None:
+    from asteria_runtime.cli import _format_cli_error
+
+    text = _format_cli_error(RuntimeError("Run still has pending decisions."))
+    assert "Run still has pending decisions." in text
+    assert "asteria status" in text
+    assert "ASTERIA_DEBUG=1" in text

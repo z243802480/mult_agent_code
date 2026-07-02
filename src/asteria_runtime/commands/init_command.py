@@ -39,6 +39,15 @@ class InitResult:
         if self.warnings:
             lines.append("Warnings:")
             lines.extend(f"  - {item}" for item in self.warnings)
+        lines.append("")
+        lines.append("Next steps:")
+        lines.append(
+            "  1. Configure a model provider: set AGENT_MODEL_PROVIDER + <PROVIDER>_API_KEY "
+            "(or AGENT_MODEL_PROVIDER=fake to try offline),"
+        )
+        lines.append(f"     then check it: asteria doctor --root {self.root}")
+        lines.append(f'  2. Start a goal: asteria goal "<what you want done>" --root {self.root}')
+        lines.append(f"  3. Track progress: asteria status --root {self.root}")
         return "\n".join(lines)
 
 

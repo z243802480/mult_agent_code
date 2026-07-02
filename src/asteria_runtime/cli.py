@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,15 @@ class AsteriaArgumentParser(argparse.ArgumentParser):
 
     def set_command_groups(self, groups: list[CommandGroup]) -> None:
         self._command_groups = groups
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        # For the top-level `asteria` parser, replace argparse's usage wall + raw error (which dumps
+        # ~40 subcommands and their /slash aliases) with a short line that points at the curated help.
+        if self.prog == "asteria" and self._command_groups:
+            hint = message.split(" (choose from")[0] if "invalid choice" in message else message
+            sys.stderr.write(f"asteria: {hint}\nRun `asteria --help` to see available commands.\n")
+            raise SystemExit(2)
+        super().error(message)
 
     def format_help(self) -> str:
         if self.prog != "asteria" or not self._command_groups:
@@ -1483,6 +1493,7 @@ def build_parser() -> argparse.ArgumentParser:
                     ("resume", "Continue after approvals, pauses, or repair checkpoints."),
                     ("sessions", "List, inspect, or select session contexts."),
                     ("doctor", "Diagnose local runtime setup and model route health."),
+                    ("model-check", "Verify a configured model provider is reachable."),
                 ],
             ),
         ]
@@ -1490,8 +1501,54 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _format_cli_error(exc: Exception) -> str:
+    """Turn an uncaught business exception into a human line + an actionable next step.
+
+    Keeps the raw traceback out of a user's terminal (set ASTERIA_DEBUG=1 to restore it).
+    """
+    name = exc.__class__.__name__
+    message = str(exc).strip() or name
+    lines = [f"asteria: {message}"]
+    lowered = message.lower()
+    if name == "ModelProviderError" or "provider" in lowered or "api key" in lowered or "route" in lowered:
+        lines.append(
+            "Next: configure a model provider (set AGENT_MODEL_PROVIDER + <PROVIDER>_API_KEY), then"
+        )
+        lines.append(
+            '      run `asteria doctor --root .` to check config, or try offline with '
+            '`AGENT_MODEL_PROVIDER=fake asteria goal "..." --root .`.'
+        )
+    else:
+        lines.append(
+            "Next: run `asteria status --root .` for the current state, "
+            "or `asteria doctor --root .` to check setup."
+        )
+    lines.append("(set ASTERIA_DEBUG=1 for the full traceback)")
+    return "\n".join(lines) + "\n"
+
+
 def main() -> None:
+    """CLI entry point with a top-level guard so users get guidance, not a raw traceback."""
+    try:
+        _run_cli()
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        sys.stderr.write("\nasteria: interrupted.\n")
+        raise SystemExit(130)
+    except Exception as exc:  # noqa: BLE001 - deliberate top-level CLI guard
+        if os.environ.get("ASTERIA_DEBUG") == "1":
+            raise
+        sys.stderr.write(_format_cli_error(exc))
+        raise SystemExit(1)
+
+
+def _run_cli() -> None:
     parser = build_parser()
+    if len(sys.argv) <= 1:
+        # Bare `asteria`: show the curated grouped help, not argparse's required-argument usage wall.
+        sys.stdout.write(parser.format_help())
+        raise SystemExit(0)
     args = parser.parse_args()
     command = args.command.lstrip("/")
 
