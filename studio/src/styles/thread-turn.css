@@ -834,6 +834,69 @@
   margin-bottom: 8px;
 }
 
+/* ── Persistent reasoning block (collapsed chip after completion, live during a run) */
+.thinkingBlock {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.thinkingChip {
+  align-items: center;
+  align-self: flex-start;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 6px;
+  padding: 3px 8px;
+  width: fit-content;
+}
+
+.thinkingChip:hover,
+.thinkingBlock.open .thinkingChip {
+  background: var(--surface-1);
+  color: var(--text-secondary);
+}
+
+.thinkingChip .chevron {
+  transition: transform 0.15s ease;
+}
+
+.thinkingChip .chevron.open {
+  transform: rotate(90deg);
+}
+
+.thinkingChipLabel {
+  font-variant-numeric: tabular-nums;
+}
+
+.thinkingBody {
+  border-left: 2px solid var(--border, rgba(128, 128, 128, 0.25));
+  margin-left: 8px;
+  padding-left: 10px;
+}
+
+.thinkingBody .thinkingText,
+.thinkingBody .thinkingText pre {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Persistent process tool cards in a completed turn (not hidden behind the badge) */
+.turnToolCards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0 28px;
+}
+
 .turnFinalAvatar {
   display: none;
 }

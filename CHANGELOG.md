@@ -5,6 +5,37 @@ version (v0.2-alpha); entries are distilled from git history, not narrated.
 
 ## [Unreleased]
 
+### Studio — main content-area liveness (S76 · iteration 1 of the front-end productization plan)
+
+Fixes the "thought for a long time, not a single word, then a review popped up —
+feels like a state machine" report. The backend was genuinely streaming (96 real
+model deltas incl. reasoning); the main thread was silently dropping them.
+
+- **Prefer the session's own streamed events.** The thread fell back to coarse
+  runtime phase-labels (which drop every token delta lacking a `transcript_kind`)
+  whenever the session's `run_id` didn't match the run detail. Now it renders the
+  session's own model/tool/file/final events whenever they exist, so the real token
+  stream shows instead of "Thinking / Checking the work" placeholders. This also
+  fixes the mojibake goal title (it came from that coarse path).
+- **Reasoning persists after completion.** Thinking was surgically deleted the
+  instant a final answer arrived. It now collapses into a re-openable "Thought for
+  Xs" chip (real elapsed; token count only from real telemetry; raw `<think>`
+  cleaned; no chip when empty).
+- **Process cards persist.** Tool-call and permission cards render inline after a
+  turn completes instead of hiding behind a closed "Ran N actions" badge; softer
+  plan/verification detail stays foldable; diffs unchanged.
+- **Workspace switch no longer wedges.** Completed jobs were never removed from the
+  live-job map, so `liveJobs.size > 0` blocked every workspace switch after the
+  first run; the guard now checks for genuinely running jobs.
+
+Verified: tsc + vite build, server.mjs syntax, 4 thread smokes, and a real captured
+run (the reported snake-game session) now rendering its streamed reasoning + correct
+Chinese with no console errors. Front-end only + one server guard; no DO_NOT_TOUCH
+file touched. Long-task virtualization, SSE reconnection, and session backup/restore
+follow in later iterations of the plan.
+
+### Beta-safety prerequisite + verification-gate honesty
+
 Research-driven (Codex / Claude Code / OpenCode / Aider) Beta-safety prerequisite
 plus verification-gate honesty. All in-bounds — no changes to the frozen core
 command layer (execute/run/gate/acceptance).

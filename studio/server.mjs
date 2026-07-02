@@ -3531,7 +3531,11 @@ async function openWorkspace(body) {
   if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
     return { ok: false, error: `not a directory: ${resolved}` };
   }
-  if (liveJobs.size > 0) {
+  // Only a genuinely RUNNING job should block a workspace switch. liveJobs retains completed/failed
+  // jobs (they hold the child handle + run_id for the jobs/stop routes), so `size > 0` was true after
+  // any past run and permanently wedged workspace switching. Check live status instead.
+  const activeJobs = [...liveJobs.values()].filter((job) => job.status === "running" && !job.cancelled);
+  if (activeJobs.length > 0) {
     return { ok: false, error: "cannot switch workspace while a turn is still running" };
   }
 

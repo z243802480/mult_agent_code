@@ -9,6 +9,16 @@ import { runtimeSessionEvents } from "./runtimeNarrative";
 import { EmptyState } from "./EmptyState";
 import { ConversationTurn, PendingTurn, type ProcessExpandSignal } from "./ConversationTurn";
 
+// Event types that mean the session carries its OWN granular run output (a real token/tool/file
+// stream), as opposed to just a user message or an intent acknowledgement. Used to decide whether
+// to render the session's own rich events vs. the coarse runDetail-derived fallback.
+const RUN_OUTPUT_TYPES = new Set<StudioEvent["type"]>([
+  "model_start", "model_delta", "model_end", "model_error",
+  "reasoning_delta", "assistant_delta",
+  "tool_start", "tool_delta", "tool_end", "tool_observation",
+  "file_changed", "final_answer", "error",
+]);
+
 export function Thread({
   events,
   selected,
@@ -62,12 +72,25 @@ export function Thread({
   const runtimeEvents = useMemo(() => runtimeSessionEvents(runDetail ?? null), [runDetail]);
   const selectedRunId = String(runDetail?.run_id ?? "");
   const hasSelectedRunEvents = Boolean(selectedRunId) && mainEvents.some((event) => String(event.run_id ?? "") === selectedRunId);
-  // Never fall back to the runDetail-derived runtimeEvents when this session has no events of its
-  // own: that run belongs to another session / the workspace, and rendering it would drop a stray
-  // process/diff turn + review bar into an empty conversation. Empty session => empty thread.
+  // Whether the session already carries its OWN granular run output (streamed model/tool/file/final
+  // events, or projected transcript steps). This is the key liveness signal: those events hold the
+  // real token stream. runtimeSessionEvents (the coarse fallback) drops every event without a
+  // transcript_kind, so it can only ever show phase labels ("Thinking"/"Checking the work") + the
+  // final — never the streamed text. So whenever the session owns run output we MUST prefer it.
+  const hasOwnRunOutput = useMemo(
+    () => mainEvents.some((event) => RUN_OUTPUT_TYPES.has(event.type) || Boolean(event.transcript_kind)),
+    [mainEvents]
+  );
+  // Selection order:
+  //  - empty session => empty thread (never render another session's / the workspace's run).
+  //  - session owns run output (matching run_id, OR its own streamed/tool/final events) => render it,
+  //    so the real token stream shows instead of decaying to coarse phase labels. This fixes the
+  //    "thought for a long time, not a single word, then a review" report: run_id linkage can be
+  //    absent/mismatched, but the session's own events.jsonl still holds the deltas.
+  //  - otherwise (thin session shell + a runDetail run that lives elsewhere) => coarse runtimeEvents.
   const sessionEvents = mainEvents.length === 0
     ? mainEvents
-    : hasSelectedRunEvents || !runtimeEvents.length
+    : hasSelectedRunEvents || hasOwnRunOutput || !runtimeEvents.length
       ? mainEvents
       : runtimeEvents;
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);

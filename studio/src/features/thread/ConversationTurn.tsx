@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ChevronRight, Loader2, Wrench } from "lucide-react";
+import { Brain, ChevronRight, Loader2, Wrench } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../../types";
 import { NarrativeStep } from "../../components/NarrativeStep";
 import { PermissionCard } from "../../components/PermissionCard";
@@ -8,6 +8,7 @@ import { AggregateDiffChip } from "../../components/AggregateDiffChip";
 import { FileChangeChips } from "../../components/FileChangeChips";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
 import { LiveStream } from "./LiveStream";
+import { ToolCallCard } from "./ToolCallCard";
 import { TurnFinal } from "./TurnFinal";
 import { runVerificationHint } from "./runtimeNarrative";
 import { SuggestedActions } from "./SuggestedActions";
@@ -71,19 +72,22 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
     );
   }
 
+  // Surface the concrete process after completion instead of burying everything behind a closed
+  // "Ran N actions" badge. Tool/repair/subagent cards render persistently (compact, output foldable),
+  // pending permissions stay visible, and only the softer detail (plan / verification / observation)
+  // folds into the disclosure. Diffs + summary keep reading from ALL steps so nothing is lost.
+  const permissionSteps = steps.filter((step) =>
+    step.events.some((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id)
+  );
+  const permIds = new Set(permissionSteps.map((step) => step.id));
+  const toolSteps = steps.filter(
+    (step) => !permIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
+  );
+  const toolIds = new Set(toolSteps.map((step) => step.id));
+  const detailSteps = steps.filter((step) => !permIds.has(step.id) && !toolIds.has(step.id));
+
   return (
     <div className="turnMiddle">
-      <button
-        className={`turnMiddleBadge ${open ? "open" : ""} ${selectedInMiddle ? "selected" : ""}`}
-        onClick={() => {
-          setOpen((o) => !o);
-          if (representative) onSelect(representative);
-        }}
-      >
-        <ChevronRight size={13} className={`chevron ${open ? "open" : ""}`} />
-        <Wrench size={11} />
-        <span>{middleSummary(steps)}</span>
-      </button>
       <div className="turnFileRowWrap">
         <AggregateDiffChip
           files={fileStats.files}
@@ -98,24 +102,47 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
           </button>
         )}
       </div>
-      <div className={`turnMiddleStepsWrap ${open ? "open" : ""}`}>
-        <div className="turnMiddleSteps">
-          {steps.map((step) => {
-            const permStep = step.events.find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
-            if (permStep) {
-              return (
-                <PermissionCard
-                  key={permStep.event_id}
-                  event={permStep}
-                  onAllow={() => onPermit(permStep.job_id!, "allow")}
-                  onDeny={() => onPermit(permStep.job_id!, "deny")}
-                />
-              );
-            }
-            return <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />;
-          })}
+      {toolSteps.length > 0 && (
+        <div className="turnToolCards">
+          {toolSteps.map((step) => (
+            <ToolCallCard key={step.id} step={step} showOutput={!compactDiff} />
+          ))}
         </div>
-      </div>
+      )}
+      {permissionSteps.map((step) => {
+        const permStep = step.events.find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
+        if (!permStep) return null;
+        return (
+          <PermissionCard
+            key={permStep.event_id}
+            event={permStep}
+            onAllow={() => onPermit(permStep.job_id!, "allow")}
+            onDeny={() => onPermit(permStep.job_id!, "deny")}
+          />
+        );
+      })}
+      {detailSteps.length > 0 && (
+        <>
+          <button
+            className={`turnMiddleBadge ${open ? "open" : ""} ${selectedInMiddle ? "selected" : ""}`}
+            onClick={() => {
+              setOpen((o) => !o);
+              if (representative) onSelect(representative);
+            }}
+          >
+            <ChevronRight size={13} className={`chevron ${open ? "open" : ""}`} />
+            <Wrench size={11} />
+            <span>{middleSummary(detailSteps)}</span>
+          </button>
+          <div className={`turnMiddleStepsWrap ${open ? "open" : ""}`}>
+            <div className="turnMiddleSteps">
+              {detailSteps.map((step) => (
+                <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -139,6 +166,73 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
         <ClampedOutput text={text} maxLines={8} />
       ) : (
         <p>Waiting for the first response...</p>
+      )}
+    </div>
+  );
+}
+
+// Strip the raw <think>/<thinking> markers a provider may leave in the stream; keep the inner
+// reasoning text (that IS the content we surface in the labeled block, never shown raw with tags).
+function cleanThinkingText(text: string): string {
+  return String(text || "")
+    .replace(/<\/?think(?:ing)?>/gi, "")
+    .trim();
+}
+
+// Real elapsed seconds across the thinking events (from event timestamps — never fabricated).
+function thinkingDurationSeconds(steps: NarrativeStepType[]): number {
+  const times = steps
+    .flatMap((step) => step.events)
+    .map((event) => Date.parse(String(event.created_at ?? "")))
+    .filter((value) => Number.isFinite(value));
+  if (times.length < 2) return 0;
+  return Math.max(0, Math.round((Math.max(...times) - Math.min(...times)) / 1000));
+}
+
+// Token count ONLY when real telemetry carries it — otherwise we show nothing rather than a guess.
+function thinkingTokens(steps: NarrativeStepType[]): number {
+  let total = 0;
+  let found = false;
+  for (const step of steps) {
+    for (const event of step.events) {
+      const telemetry = event.telemetry as Record<string, unknown> | undefined;
+      if (!telemetry) continue;
+      const raw = telemetry.output_tokens ?? telemetry.completion_tokens ?? telemetry.tokens ?? telemetry.total_tokens;
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) { total += value; found = true; }
+    }
+  }
+  return found ? total : 0;
+}
+
+// Persistent, honest reasoning block. Replaces the old "delete the thinking stream once a final
+// answer lands" behavior: after completion the reasoning collapses into a re-openable chip instead
+// of vanishing into the process badge. Renders nothing when there is no real reasoning text (no
+// empty chip). Default-collapsed while completed; auto-open while still streaming.
+function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; live?: boolean }) {
+  const text = cleanThinkingText(steps.map((step) => step.events.map((event) => event.content_delta || "").join("")).join("\n\n"));
+  const [open, setOpen] = useState(live);
+  useEffect(() => { if (live) setOpen(true); }, [live]);
+  if (!text) return null;
+  const duration = thinkingDurationSeconds(steps);
+  const tokens = thinkingTokens(steps);
+  const label = live
+    ? "Thinking…"
+    : duration > 0
+      ? `Thought for ${duration}s${tokens > 0 ? ` · ${tokens} tokens` : ""}`
+      : "Reasoning";
+
+  return (
+    <div className={`thinkingBlock ${open ? "open" : ""}`}>
+      <button type="button" className="thinkingChip" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        {live ? <Loader2 size={12} className="spinning" /> : <Brain size={12} />}
+        <span className="thinkingChipLabel">{label}</span>
+        <ChevronRight size={12} className={`chevron ${open ? "open" : ""}`} />
+      </button>
+      {open && (
+        <div className="thinkingBody">
+          <ClampedOutput text={text} className="thinkingText" maxLines={live ? 8 : 14} defaultExpanded={live} />
+        </div>
       )}
     </div>
   );
@@ -210,10 +304,15 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   const responseStep = responseIndex >= 0 ? restSteps[responseIndex] : null;
   const rawMiddleSteps = responseIndex >= 0 ? restSteps.filter((_, index) => index !== responseIndex) : restSteps;
   const responsePhase = responseStep?.events[0]?.phase;
-  const hideCompletedModelStream = responseStep ? hasFinalAnswerForPhase([responseStep], responsePhase) : false;
-  const middleSteps = hideCompletedModelStream
-    ? rawMiddleSteps.filter((step) => !isModelThinkingStep(step, responsePhase))
-    : rawMiddleSteps;
+  // The same-phase thinking behind a final answer is just the streamed version of that answer —
+  // drop only that duplicate (chat turns) so it isn't shown twice. Reasoning in OTHER phases is
+  // genuine intermediate work and is preserved into the ThinkingBlock, NOT surgically deleted on
+  // completion (deleting it is what made a real run look like "thought a while, then a review").
+  const hideResponseDuplicate = responseStep ? hasFinalAnswerForPhase([responseStep], responsePhase) : false;
+  const thinkingSteps = rawMiddleSteps.filter(
+    (step) => step.kind === "thinking" && !(hideResponseDuplicate && isModelThinkingStep(step, responsePhase))
+  );
+  const processSteps = rawMiddleSteps.filter((step) => step.kind !== "thinking");
   const goalEvent = goalStep?.events[0];
   const userText = goalEvent?.content_delta || goalStep?.summary || goalStep?.title || "";
   const time = goalEvent ? formatEventTime(goalEvent.created_at) : "";
@@ -233,13 +332,13 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
         </div>
       )}
       {turnRunning ? (
-        middleSteps.length === 0 ? (
+        rawMiddleSteps.length === 0 ? (
           <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>Starting...</span></div>
-        ) : middleSteps.length === 1 && isModelThinkingStep(middleSteps[0], "chat") ? (
-          <ChatStreamPreview step={middleSteps[0]} />
+        ) : rawMiddleSteps.length === 1 && isModelThinkingStep(rawMiddleSteps[0], "chat") ? (
+          <ChatStreamPreview step={rawMiddleSteps[0]} />
         ) : (
           <LiveStream
-            steps={middleSteps}
+            steps={rawMiddleSteps}
             onPermit={onPermit}
             onFileChangeClick={onFileChangeClick}
             showToolStreams={!compactDiff}
@@ -250,23 +349,26 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
           />
         )
       ) : (
-        middleSteps.length > 0 && (
-          <TurnMiddle
-            steps={middleSteps}
-            selected={selected}
-            onSelect={onSelect}
-            onPermit={onPermit}
-            expandSignal={expandSignal}
-            onFileChangeClick={onFileChangeClick}
-            turnIndex={turnIndex}
-            turnDiffLabel={turnDiffLabel}
-            onTurnDiffSelect={onTurnDiffSelect}
-            onAggregateDiffClick={onAggregateDiffClick}
-            compactDiff={compactDiff}
-          />
-        )
+        <>
+          {thinkingSteps.length > 0 && <ThinkingBlock steps={thinkingSteps} />}
+          {processSteps.length > 0 && (
+            <TurnMiddle
+              steps={processSteps}
+              selected={selected}
+              onSelect={onSelect}
+              onPermit={onPermit}
+              expandSignal={expandSignal}
+              onFileChangeClick={onFileChangeClick}
+              turnIndex={turnIndex}
+              turnDiffLabel={turnDiffLabel}
+              onTurnDiffSelect={onTurnDiffSelect}
+              onAggregateDiffClick={onAggregateDiffClick}
+              compactDiff={compactDiff}
+            />
+          )}
+        </>
       )}
-      {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
+      {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
       {unverifiedHint && (
         <div className="turnUnverifiedNote" role="note">{unverifiedHint}</div>
       )}
