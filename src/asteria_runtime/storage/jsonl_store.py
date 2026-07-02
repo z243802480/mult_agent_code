@@ -23,6 +23,26 @@ class JsonlStore:
             with path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(data, ensure_ascii=False) + "\n")
 
+    def rewrite_all(
+        self, path: Path, rows: list[dict[str, Any]], schema_name: str | None = None
+    ) -> None:
+        """Atomically replace a JSONL file, validating every row first (fail closed).
+
+        Callers that rewrite an existing row (status transitions, redaction) must not fall back
+        to a raw write_text that bypasses validation — that let ``status='auto_applied'`` (an
+        enum value only the repo-root schema knew) poison runtime_requests.jsonl and crash every
+        later validated read on an installed wheel.
+        """
+        if schema_name and self.validator:
+            for row in rows:
+                self.validator.validate(schema_name, row)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows)
+        with _JSONL_APPEND_LOCK:
+            tmp_path = path.with_name(f"{path.name}.tmp")
+            tmp_path.write_text(payload, encoding="utf-8")
+            tmp_path.replace(path)
+
     def read_all(self, path: Path, schema_name: str | None = None) -> list[dict[str, Any]]:
         if not path.exists():
             return []

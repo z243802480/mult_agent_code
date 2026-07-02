@@ -39,7 +39,6 @@ KNOWN_SCHEMA_CONTENT_DRIFT = {
     "model_capability_profile.schema.json",
     "model_route_check.schema.json",
     "runtime_profile.schema.json",
-    "runtime_request.schema.json",
     "task.schema.json",
     "tool_observation.schema.json",
     "usage_signal_analysis.schema.json",

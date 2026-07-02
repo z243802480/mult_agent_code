@@ -25,9 +25,10 @@ class RunCommandTool:
         timeout_seconds: int | None = None,
         expected_returncodes: int | list[int] | None = None,
     ) -> ToolResult:
-        ShellGuard(context.policy["permissions"]).validate(command)
+        protected_paths = context.policy.get("protected_paths")
+        ShellGuard(context.policy["permissions"], protected_paths).validate(command)
         normalized_command = self._normalize_command(command)
-        ShellGuard(context.policy["permissions"]).validate(normalized_command)
+        ShellGuard(context.policy["permissions"], protected_paths).validate(normalized_command)
         timeout = timeout_seconds or self.default_timeout_seconds
         try:
             completed = subprocess.run(

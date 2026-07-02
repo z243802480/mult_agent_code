@@ -177,6 +177,7 @@ class InitCommand:
                 ".env.*",
                 "secrets/",
                 ".git/",
+                ".asteria/",
                 "*.pem",
                 "*.key",
                 "id_rsa",

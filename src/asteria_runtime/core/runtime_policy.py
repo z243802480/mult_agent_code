@@ -142,7 +142,7 @@ class ToolPermissionPolicy:
 
     def shell_denial(self, policy: dict, command: str) -> str | None:
         try:
-            ShellGuard(policy["permissions"]).validate(command)
+            ShellGuard(policy["permissions"], policy.get("protected_paths")).validate(command)
         except ShellPolicyError as exc:
             return str(exc)
         return None
@@ -523,10 +523,9 @@ class RuntimeRequestPolicy:
             updated if item["runtime_request_id"] == updated["runtime_request_id"] else item
             for item in requests
         ]
-        path.write_text(
-            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in rewritten),
-            encoding="utf-8",
-        )
+        # Validate + atomic replace instead of a raw write_text; keeps the fail-closed guarantee
+        # on the rewrite path so an out-of-enum status can never be persisted.
+        store.rewrite_all(path, rewritten, "runtime_request")
 
     def _create_runtime_request_decision(
         self,
