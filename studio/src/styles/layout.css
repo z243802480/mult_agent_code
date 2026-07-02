@@ -223,6 +223,81 @@
   color: var(--bad, #dc3c3c);
 }
 
+/* ── Command palette (I13) */
+.cmdkOverlay {
+  align-items: flex-start;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding-top: 12vh;
+  position: fixed;
+  z-index: 100;
+}
+
+.cmdkPanel {
+  background: var(--surface-1);
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.2));
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  max-height: 60vh;
+  overflow: hidden;
+  width: min(560px, 92vw);
+}
+
+.cmdkInput {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 15px;
+  outline: none;
+  padding: 14px 16px;
+}
+
+.cmdkList {
+  list-style: none;
+  margin: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.cmdkItem {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+}
+
+.cmdkItem.active {
+  background: var(--accent-subtle, rgba(120, 120, 255, 0.14));
+  color: var(--text-primary);
+}
+
+.cmdkItemLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cmdkItemHint {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.cmdkEmpty {
+  color: var(--text-muted);
+  padding: 12px;
+  text-align: center;
+}
+
 /* B-polish: project ▸ branch — branch is machine text (mono), quietly muted. */
 .headerBranch {
   align-items: center;

@@ -10,6 +10,7 @@ import { usePaneLayout } from "./hooks/usePaneLayout";
 import { useViewMode } from "./hooks/useViewMode";
 import { useDiffFocus } from "./hooks/useDiffFocus";
 import { useStudioKeyboard } from "./hooks/useStudioKeyboard";
+import { CommandPalette, type Command } from "./components/CommandPalette";
 import { useStudioBootstrap } from "./session/useStudioBootstrap";
 import { useSessionEvents } from "./session/useSessionEvents";
 import { useRunEvidence } from "./session/useRunEvidence";
@@ -91,6 +92,25 @@ export function App() {
     review.applySessionUiState(session);
   }, [bootstrap, runEvidence, sessionEvents, review]);
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteCommands = useMemo<Command[]>(() => {
+    const list: Command[] = [];
+    for (const session of bootstrap.sessions) {
+      if (session.session_id === bootstrap.activeSession?.session_id) continue;
+      list.push({ id: `session:${session.session_id}`, label: session.title || "Untitled session", hint: "Switch session", run: () => selectSession(session) });
+    }
+    if (sessionEvents.isRunning) list.push({ id: "stop", label: "Stop the running task", hint: "Esc", run: () => void sessionEvents.stopRun() });
+    list.push(
+      { id: "review", label: "Review changes", hint: "Ctrl+Shift+D", run: () => toggleDiffFocus() },
+      { id: "panel", label: "Toggle side panel", hint: "Ctrl+\\", run: () => setPanelOpen((open) => !open) },
+      { id: "sidebar", label: "Toggle sessions sidebar", hint: "Ctrl+B", run: () => toggleSidebarCollapsed() },
+      { id: "sidechat", label: "Toggle Quick ask", hint: "Ctrl+;", run: () => toggleSideChat() },
+      { id: "settings", label: "Open Settings", run: () => setSettingsOpen(true) },
+      { id: "refresh", label: "Refresh", run: () => void bootstrap.bootstrap() },
+    );
+    return list;
+  }, [bootstrap.sessions, bootstrap.activeSession?.session_id, sessionEvents.isRunning, sessionEvents.stopRun, selectSession, toggleDiffFocus, toggleSidebarCollapsed, toggleSideChat, bootstrap]);
+
   useStudioKeyboard({
     sessions: bootstrap.sessions,
     activeSessionId: bootstrap.activeSession?.session_id,
@@ -99,6 +119,7 @@ export function App() {
     onToggleDiffFocus: toggleDiffFocus,
     onToggleSideChat: toggleSideChat,
     onSelectSession: selectSession,
+    onOpenPalette: () => setPaletteOpen(true),
   });
 
   const shellClassName = useMemo(() => [
@@ -340,6 +361,7 @@ export function App() {
         onChangeWorkspace={() => { setSettingsOpen(false); bootstrap.setWorkspaceOpen(true); }}
         onSaved={(next) => bootstrap.setSettings(next)}
       />
+      <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

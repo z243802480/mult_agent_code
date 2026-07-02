@@ -9,6 +9,7 @@ type StudioKeyboardOptions = {
   onToggleDiffFocus: () => void;
   onToggleSideChat: () => void;
   onSelectSession: (session: StudioSession) => void;
+  onOpenPalette: () => void;
 };
 
 export function useStudioKeyboard({
@@ -19,9 +20,15 @@ export function useStudioKeyboard({
   onToggleDiffFocus,
   onToggleSideChat,
   onSelectSession,
+  onOpenPalette,
 }: StudioKeyboardOptions) {
   React.useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) {
+        event.preventDefault();
+        onOpenPalette();
+        return;
+      }
       if (event.ctrlKey && event.shiftKey && (event.key === "d" || event.key === "D")) {
         event.preventDefault();
         onToggleDiffFocus();
@@ -53,5 +60,5 @@ export function useStudioKeyboard({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sessions, activeSessionId, onTogglePanel, onToggleSidebar, onToggleDiffFocus, onToggleSideChat, onSelectSession]);
+  }, [sessions, activeSessionId, onTogglePanel, onToggleSidebar, onToggleDiffFocus, onToggleSideChat, onSelectSession, onOpenPalette]);
 }
