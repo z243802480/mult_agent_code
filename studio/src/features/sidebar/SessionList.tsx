@@ -69,16 +69,14 @@ export function SessionList({
             </button>
           ))}
         </div>
-        {!compact && (
-          <input
-            type="search"
-            className="sessionSearchInput"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search tasks…"
-            aria-label="Search sessions"
-          />
-        )}
+        <input
+          type="search"
+          className="sessionSearchInput"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search tasks…"
+          aria-label="Search sessions"
+        />
       </div>
       {groups.length === 0 && (
         <p className="sessionListEmpty muted">

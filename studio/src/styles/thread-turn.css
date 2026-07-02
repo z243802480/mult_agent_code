@@ -809,6 +809,17 @@
   padding: 2px 0 0;
 }
 
+.turnUnverifiedNote {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+  padding: 4px 8px;
+  border-left: 2px solid var(--warn, #b8860b);
+  background: var(--warn-subtle, rgba(184, 134, 11, 0.09));
+  border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
+}
+
 .turnFinal.failed {
   background: var(--bad-subtle);
   border-left: 2px solid var(--bad);

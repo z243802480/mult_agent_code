@@ -836,7 +836,7 @@ function startChatJob(sessionId, goal, route = null, audit = null, displayLevel 
       await appendEvent(sessionId, {
         type: "error",
         status: "failed",
-        title: friendly ? "???????" : "Chat failed",
+        title: friendlyErrorTitle(rawError) || "Chat failed",
         summary: friendlyErrorSummary(rawError) || String(error?.message || error),
         phase: "chat",
         display_level: displayLevel,
@@ -1774,7 +1774,7 @@ ${stderr}` : stdout.slice(-4000)
     void appendEvent(sessionId, {
       type: "error",
       status: "failed",
-      title: friendly ? "???????" : "Task failed to start",
+      title: friendlyErrorTitle(rawError) || "Task failed to start",
       summary: friendlyErrorSummary(rawError) || rawError,
       content_delta: friendly || redactText(rawError),
       command,
@@ -1809,13 +1809,60 @@ function friendlyErrorText(text) {
       "- If it keeps failing, try again later or switch models.",
     ].join("\n");
   }
+  if (/\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)) {
+    return [
+      "## Authentication failed",
+      "The model provider rejected the credentials (401/403) — the API key is likely missing, wrong, or lacks access to this model.",
+      "",
+      "## What you can do",
+      "- Check the provider API key environment variable is set correctly.",
+      "- Run `asteria model-check` to verify the configured provider.",
+    ].join("\n");
+  }
+  if (/\b(429|rate limit|quota|insufficient_quota|too many requests)\b/.test(lower)) {
+    return [
+      "## Rate limited or quota exhausted",
+      "The provider is throttling requests or the account quota is used up (429).",
+      "",
+      "## What you can do",
+      "- Wait a moment and retry.",
+      "- Check billing/quota, or switch to another model route.",
+    ].join("\n");
+  }
+  if (/model[^\n]*(not found|does not exist|unknown|not available)|no such model|invalid model|model_not_found/.test(lower)) {
+    return [
+      "## Model not available",
+      "The requested model name was not found by the provider.",
+      "",
+      "## What you can do",
+      "- Check the model name configured for this tier.",
+      "- Run `asteria model-check` to confirm the route.",
+    ].join("\n");
+  }
+  if (/econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy/.test(lower)) {
+    return [
+      "## Cannot reach the model service",
+      "The service address could not be reached (connection refused / DNS). The base URL, port, proxy, or a local model server may be down.",
+      "",
+      "## What you can do",
+      "- Check the provider base URL and that any local model server is running.",
+      "- Check proxy/VPN settings, then retry.",
+    ].join("\n");
+  }
   return "";
+}
+
+function friendlyErrorTitle(text) {
+  const friendly = friendlyErrorText(text);
+  if (!friendly) return "";
+  const heading = friendly.split("\n").find((line) => line.startsWith("## "));
+  return heading ? heading.slice(3).trim() : "";
 }
 
 function friendlyErrorSummary(text) {
   const friendly = friendlyErrorText(text);
-  if (/HTTPS|Connection timed out|Request timed out/.test(friendly)) return friendly.split("\n").find((line) => line && !line.startsWith("##")) || "The connection is temporarily unavailable.";
-  return "";
+  if (!friendly) return "";
+  return friendly.split("\n").find((line) => line && !line.startsWith("##")) || "The request could not be completed.";
 }
 
 function summarizeRuntimeChunk(text) {

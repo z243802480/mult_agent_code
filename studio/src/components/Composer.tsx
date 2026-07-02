@@ -222,7 +222,7 @@ export function Composer({
               ))}
             </div>
           )}
-          <span className="composerPermissionHint">{viewMode !== "focus" ? profile.permission : ""}</span>
+          <span className="composerPermissionHint">{profile.permission}</span>
         </div>
         {isRunning && onStop && !sideAsk ? (
           <button className="composerSend composerStop" type="button" onClick={() => void onStop()} title="Stop the running task">

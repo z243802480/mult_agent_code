@@ -9,6 +9,7 @@ import { FileChangeChips } from "../../components/FileChangeChips";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
 import { LiveStream } from "./LiveStream";
 import { TurnFinal } from "./TurnFinal";
+import { runVerificationHint } from "./runtimeNarrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
 import { middleRepresentativeEvent, middleSummary, hasFinalAnswerForPhase, isModelThinkingStep } from "./turnHelpers";
@@ -217,6 +218,9 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   const userText = goalEvent?.content_delta || goalStep?.summary || goalStep?.title || "";
   const time = goalEvent ? formatEventTime(goalEvent.created_at) : "";
   const turnRunning = isLast && isRunning && !responseStep;
+  // Honesty: /run reports lifecycle "completed" but does not inline-run review, so qualify the
+  // conclusion with a plain "done but not yet verified" note when the run is unverified.
+  const unverifiedHint = responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null) : "";
 
   return (
     <div className="conversationTurn">
@@ -263,6 +267,9 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
         )
       )}
       {responseStep && <TurnFinal step={responseStep} middleSteps={middleSteps} />}
+      {unverifiedHint && (
+        <div className="turnUnverifiedNote" role="note">{unverifiedHint}</div>
+      )}
       {responseStep && isLast && onSuggestedAction && !suppressSuggested && (
         <SuggestedActions steps={restSteps} onAction={onSuggestedAction} />
       )}

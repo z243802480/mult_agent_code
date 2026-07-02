@@ -51,6 +51,28 @@ export function actionLabel(value: string): string {
   return "Continue";
 }
 
+/**
+ * Honest completion qualifier for the thread conclusion. `/run` reports a lifecycle status of
+ * "completed" but does NOT inline-run review, so review_status is typically "unknown" and small
+ * changes record no verification. Rather than let "completed" read as "verified", surface a plain
+ * "done but not yet verified" line so the user knows to run Review. Pure projection of data already
+ * in runDetail (final_report_summary) — no runtime change.
+ */
+export function runVerificationHint(runDetail: RunDetailPayload | null): string {
+  const finalSummary = asRecord(runDetail?.final_report_summary);
+  if (!Object.keys(finalSummary).length) return "";
+  const run = asRecord(runDetail?.run);
+  const runStatus = String(run.status ?? finalSummary.run_status ?? "").toLowerCase();
+  if (runStatus && /fail|block|error|running|paused/.test(runStatus)) return "";
+  const reviewStatus = String(finalSummary.review_status ?? "").toLowerCase();
+  const completion = String(finalSummary.completion ?? finalSummary.completion_state ?? "").toLowerCase();
+  if (reviewStatus === "pass" || /verified|accepted/.test(completion)) return "";
+  if (reviewStatus === "unknown" || reviewStatus === "" || /needs_review|unverified|implemented/.test(completion)) {
+    return "Changes are done but not yet verified. Run Review to check them.";
+  }
+  return "";
+}
+
 export function latestActiveEvent(events: StudioEvent[]): StudioEvent | null {
   return [...events]
     .reverse()
