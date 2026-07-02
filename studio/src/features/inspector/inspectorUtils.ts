@@ -8,6 +8,40 @@ export function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+export type ContextUsage = {
+  usedTokens: number | null;
+  windowTokens: number | null;
+  ratio: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  pressure: string | null;
+};
+
+// Shared, honest read of context-window usage from the run's cost_report. All values are ESTIMATES
+// the runtime records (there is no billing/pricing data), so callers must label them "est." and never
+// render a monetary cost. Returns null when the run carries no usable usage numbers → render nothing.
+export function readContextUsage(runDetail: RunDetailPayload | null | undefined): ContextUsage | null {
+  const cost = asRecord(runDetail?.cost_report);
+  if (!Object.keys(cost).length) return null;
+  const num = (value: unknown): number | null => {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const usedTokens = num(cost.latest_context_estimated_tokens);
+  const windowTokens = num(cost.context_window_tokens);
+  let ratio = num(cost.context_window_ratio);
+  if (ratio === null && usedTokens !== null && windowTokens) ratio = usedTokens / windowTokens;
+  const inputTokens = num(cost.estimated_input_tokens);
+  const outputTokens = num(cost.estimated_output_tokens);
+  const pressure = cost.context_pressure_status ? String(cost.context_pressure_status) : null;
+  // The server may redact raw token counts (they come back non-numeric); the ratio is enough to render
+  // an honest pressure meter on its own. Only bail when we have neither a ratio nor any token number.
+  if (ratio === null && usedTokens === null && windowTokens === null && inputTokens === null && outputTokens === null) {
+    return null;
+  }
+  return { usedTokens, windowTokens, ratio, inputTokens, outputTokens, pressure };
+}
+
 export function runtimeProgressFromDetail(runDetail: RunDetailPayload | null): AnyRecord {
   const direct = asRecord(runDetail?.runtime_progress);
   if (Object.keys(direct).length) return direct;

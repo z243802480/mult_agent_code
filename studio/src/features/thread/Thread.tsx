@@ -11,6 +11,8 @@ import { ConversationTurn, PendingTurn, type ProcessExpandSignal } from "./Conve
 import { PhaseStrip } from "./PhaseStrip";
 import { PlanChecklist } from "./PlanChecklist";
 import { derivePlan } from "./planModel";
+import { ContextMeter } from "../../components/ContextMeter";
+import { readContextUsage } from "../inspector/inspectorUtils";
 
 // Event types that mean the session carries its OWN granular run output (a real token/tool/file
 // stream), as opposed to just a user message or an intent acknowledgement. Used to decide whether
@@ -100,6 +102,7 @@ export function Thread({
   // event phase; only shown when the session actually owns this run's output (never a foreign run).
   const ownsRun = hasSelectedRunEvents || hasOwnRunOutput;
   const plan = useMemo(() => (ownsRun ? derivePlan(runDetail ?? null) : null), [ownsRun, runDetail]);
+  const contextUsage = useMemo(() => (ownsRun ? readContextUsage(runDetail ?? null) : null), [ownsRun, runDetail]);
   const currentPhase = useMemo(() => {
     for (let i = sessionEvents.length - 1; i >= 0; i -= 1) {
       const p = sessionEvents[i]?.phase;
@@ -151,10 +154,11 @@ export function Thread({
 
   return (
     <section className="thread" ref={threadRef}>
-      {plan && (
+      {(plan || contextUsage) && (
         <div className="threadPlanBar">
-          <PhaseStrip phase={currentPhase} running={isRunning} />
-          <PlanChecklist plan={plan} defaultOpen={isRunning} />
+          {plan && <PhaseStrip phase={currentPhase} running={isRunning} />}
+          {plan && <PlanChecklist plan={plan} defaultOpen={isRunning} />}
+          {contextUsage && <ContextMeter usage={contextUsage} />}
         </div>
       )}
       {showProcessControls && (

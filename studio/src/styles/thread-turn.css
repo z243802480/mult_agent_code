@@ -1061,6 +1061,49 @@
   white-space: nowrap;
 }
 
+/* ── Context meter (I4): thin estimated context-window fill bar; amber near the compaction threshold */
+.contextMeter {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 11px;
+  gap: 7px;
+}
+
+.contextMeterIcon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.contextMeterBar {
+  background: var(--surface-2, rgba(128, 128, 128, 0.18));
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+  height: 4px;
+  overflow: hidden;
+  width: 84px;
+}
+
+.contextMeterFill {
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  display: block;
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.contextMeter.warn {
+  color: var(--warn, #b8860b);
+}
+
+.contextMeter.warn .contextMeterFill {
+  background: var(--warn, #b8860b);
+}
+
+.contextMeterText {
+  font-variant-numeric: tabular-nums;
+}
+
 .turnFinalAvatar {
   display: none;
 }
