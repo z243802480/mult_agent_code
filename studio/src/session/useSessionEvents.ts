@@ -79,7 +79,12 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
 
   async function stopRun() {
     if (!activeSession) return;
-    await api.stopSession(activeSession.session_id).catch(() => {});
+    try {
+      await api.stopSession(activeSession.session_id);
+    } catch {
+      // Never let Stop fail in silence — the run may still be going and the user needs to know.
+      toast.error("Couldn't stop the run — try again.");
+    }
     const eventData = await api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] }));
     mergeEvents(eventData.events ?? []);
   }

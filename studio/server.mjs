@@ -317,12 +317,12 @@ async function submitUserGoal(sessionId, body) {
     await appendEvent(activeSessionId, {
       type: "permission_request",
       status: "waiting_user",
-      title: "\u9700\u8981\u4f60\u786e\u8ba4",
-      summary: "\u8fd9\u4e2a\u8bf7\u6c42\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      title: "Approval needed",
+      summary: "This may modify files or run local operations. Confirm to continue; cancel makes no changes.",
       command,
       data: { permission_preview: permissionPreview },
       job_id: pendingJobId,
-      content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002"
+      content_delta: "Confirm to start. Cancel and nothing runs."
     });
     return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId };
   }
@@ -360,12 +360,12 @@ async function handleRuntimeAction(sessionId, body) {
     await appendEvent(activeSessionId, {
       type: "permission_request",
       status: "waiting_user",
-      title: "\u9700\u8981\u4f60\u786e\u8ba4",
+      title: "Approval needed",
       summary: action.permissionSummary,
       command: action.command,
       data: { permission_preview: action.permissionPreview },
       job_id: pendingJobId,
-      content_delta: "\u786e\u8ba4\u540e\u6211\u4f1a\u5f00\u59cb\u5904\u7406\uff1b\u53d6\u6d88\u5219\u4e0d\u4f1a\u6267\u884c\u4efb\u4f55\u66f4\u6539\u3002",
+      content_delta: "Confirm to start. Cancel and nothing runs.",
     });
     return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId, action: action.kind };
   }
@@ -1469,8 +1469,8 @@ async function handlePermission(sessionId, jobId, body) {
     await appendEvent(sessionId, {
       type: "assistant_delta",
       status: "completed",
-      title: "\u5df2\u786e\u8ba4",
-      summary: "\u5df2\u786e\u8ba4\uff0c\u6b63\u5728\u5f00\u59cb\u5904\u7406...",
+      title: "Approved",
+      summary: "Approved \u2014 starting the task\u2026",
       phase: "execute",
       display_level: "main"
     });
@@ -1482,8 +1482,8 @@ async function handlePermission(sessionId, jobId, body) {
     await appendEvent(sessionId, {
       type: "assistant_delta",
       status: "completed",
-      title: "\u5df2\u53d6\u6d88",
-      summary: "\u5df2\u53d6\u6d88\u3002\u672c\u6b21\u4e0d\u4f1a\u7ee7\u7eed\u6267\u884c\u3002",
+      title: "Canceled",
+      summary: "Canceled \u2014 nothing was run.",
       phase: "next",
       display_level: "main"
     });

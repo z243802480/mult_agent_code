@@ -128,6 +128,7 @@ export function RuntimeSnapshot({
   // the read-only diff review at least once before Accept is enabled. The key is (runId, changeCount)
   // so a new run or a changed diff re-arms the gate — "look before you accept" against the same scope.
   const [reviewedKey, setReviewedKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   if (!runtimeSnapshotActionable(overview, runDetail, events)) return null;
 
   const workflow = asRecord(overview?.workflow);
@@ -168,6 +169,19 @@ export function RuntimeSnapshot({
     ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — review the diff (keep or revert per file), then mark it done.`
     : null;
 
+  // Gate the primary workflow actions so a double-click can't fire duplicate review/accept/decide
+  // API calls (the sibling DecisionCard/PermissionCard already do this; this bar did not).
+  // (busy state is declared with the other hooks above, before the early return.)
+  const runAction = async (fn: () => Promise<void> | void) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section className="runtimeSnapshot compact" aria-label="Next action">
       <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
@@ -178,8 +192,8 @@ export function RuntimeSnapshot({
         {(canReview || acceptReady) && !decisions.length && !pendingPermission ? (
           <>
             {canReview ? (
-              <button className="runtimeActionButton primary" type="button" onClick={() => void onRuntimeAction("review")}>
-                Review
+              <button className="runtimeActionButton primary" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction("review"))}>
+                {busy ? <Loader2 size={13} className="spinning" /> : "Review"}
               </button>
             ) : null}
             {acceptReady ? (
@@ -187,28 +201,29 @@ export function RuntimeSnapshot({
                 <button
                   className={`runtimeActionButton reviewChanges${needsDiffReview ? " gateActive" : ""}`}
                   type="button"
-                  onClick={() => { setReviewedKey(reviewGateKey); void onOpenReview(); }}
+                  disabled={busy}
+                  onClick={() => { setReviewedKey(reviewGateKey); void runAction(() => onOpenReview()); }}
                 >
                   {workspaceChangeCount > 0 ? `Review ${workspaceChangeCount} changes` : "Review changes"}
                 </button>
                 <button
                   className="runtimeActionButton primary accept"
                   type="button"
-                  disabled={needsDiffReview}
+                  disabled={needsDiffReview || busy}
                   title={needsDiffReview ? `Review the ${workspaceChangeCount} change(s) before accepting` : undefined}
-                  onClick={() => void onRuntimeAction(nextActionValue || "accept")}
+                  onClick={() => void runAction(() => onRuntimeAction(nextActionValue || "accept"))}
                 >
-                  Mark done
+                  {busy ? <Loader2 size={13} className="spinning" /> : "Mark done"}
                 </button>
               </>
             ) : null}
           </>
         ) : decisions.length ? (
-          <button className="runtimeActionButton" type="button" onClick={() => void onRuntimeAction("decide --list-pending")}>
+          <button className="runtimeActionButton" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction("decide --list-pending"))}>
             Decide
           </button>
         ) : nextActionValue ? (
-          <button className="runtimeActionButton" type="button" onClick={() => void onRuntimeAction(nextActionValue)}>
+          <button className="runtimeActionButton" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction(nextActionValue))}>
             {nextLabel}
           </button>
         ) : null}
