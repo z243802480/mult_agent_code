@@ -846,6 +846,18 @@
   color: var(--ok);
 }
 
+.settingsRowMeta.warn {
+  color: var(--warn, #b8860b);
+  white-space: normal;
+  text-align: right;
+}
+
+.settingsProviderReadiness {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
 .settingsStatusBlock {
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);

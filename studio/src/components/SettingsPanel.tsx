@@ -128,10 +128,40 @@ function WorkspaceSection({
 
 function ModelSection({ overview }: { overview: OverviewPayload | null }) {
   const routes = (overview?.modelRoutes ?? []) as AnyRecord[];
+  const doctor = (overview?.doctor ?? {}) as AnyRecord;
+  const routeHealth = (doctor.routes ?? {}) as AnyRecord;
+  const routeReqs = (doctor.route_requirements ?? {}) as AnyRecord;
+  const tiers = Object.keys(routeHealth);
   return (
     <div className="settingsSection">
       <h3 className="settingsSectionTitle">Model &amp; provider</h3>
-      <p className="muted">Decided by the runtime — these are the models it has actually used on recent tasks.</p>
+      {tiers.length > 0 && (
+        <div className="settingsProviderReadiness">
+          <p className="muted">Provider readiness — set the environment variables below, then reopen Studio.</p>
+          <div className="settingsRowList">
+            {tiers.map((tier) => {
+              const route = (routeHealth[tier] ?? {}) as AnyRecord;
+              const missing = (Array.isArray(route.missing) ? route.missing : []) as string[];
+              const configured = route.configured !== false && missing.length === 0;
+              const provider = String(route.provider ?? "");
+              const reqs = (Array.isArray(routeReqs[tier]) ? routeReqs[tier] : []) as string[];
+              const need = (missing.length ? missing : reqs).join(", ");
+              return (
+                <div className="settingsRow" key={tier}>
+                  <div className="settingsRowMain">
+                    <strong>{tier}</strong>
+                    <span className="muted">{provider || (configured ? "configured" : "not configured")}</span>
+                  </div>
+                  <span className={configured ? "settingsRowMeta good" : "settingsRowMeta warn"}>
+                    {configured ? "ready" : `set ${need || "provider env vars"}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <p className="muted">Recent activity — the models the runtime actually used on recent tasks.</p>
       {routes.length === 0 ? (
         <p className="settingsStatusBlock muted">No model activity yet. Run a task and the routes the runtime chose will show here.</p>
       ) : (

@@ -2218,11 +2218,15 @@ async function readBackgroundRuns() {
 }
 
 async function overview() {
-  const [runs, modelRoutes, v0_2_rolling_validation, background_runs] = await Promise.all([
+  const [runs, modelRoutes, v0_2_rolling_validation, background_runs, doctor] = await Promise.all([
     readRuns(),
     modelRouteSummary(),
     latestV02RollingValidation(),
     readBackgroundRuns(),
+    // Provider readiness at first load (tier configured/missing env-vars/next actions) so the
+    // Settings "Model & provider" panel is not a dead-end before any task has run. doctor is a
+    // local env-var check (no network), and we tolerate failure rather than block the bootstrap.
+    commandJson(["doctor", "--root", workspace, "--json"]).catch(() => ({})),
   ]);
   return {
     ok: true,
@@ -2231,7 +2235,7 @@ async function overview() {
     diagnostics_loaded: false,
     gateStatus: {},
     v0_2_rolling_validation,
-    doctor: {},
+    doctor,
     packageCheck: {},
     runs: runs.slice(0, 10),
     modelRoutes,
