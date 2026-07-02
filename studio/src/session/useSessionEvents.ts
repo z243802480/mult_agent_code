@@ -10,6 +10,12 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
   const [pendingTurn, setPendingTurn] = useState<{ message: string; mode: string; startedAt: number } | null>(null);
   const [connectivity, setConnectivity] = useState<ConnectivityStatus>("live");
   const unsubRef = useRef<(() => void) | null>(null);
+  // Per-session event cache (I6): switching back to a session restores its events instantly instead
+  // of flashing to [] and re-reading the whole transcript. The on-disk JSONL stays the source of
+  // truth — this is a UI accelerator; a background refresh + the live subscription reconcile drift.
+  const cacheRef = useRef<Map<string, StudioEvent[]>>(new Map());
+  const latestEventsRef = useRef<StudioEvent[]>([]);
+  latestEventsRef.current = events;
 
   const mergeEvents = useCallback((incoming: StudioEvent[]) => {
     setEvents((prev) => mergeEventLists(prev, incoming));
@@ -17,12 +23,15 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
 
   useEffect(() => {
     if (!activeSession) return;
-    setEvents([]);
+    const sid = activeSession.session_id;
+    setEvents(cacheRef.current.get(sid) ?? []);
     setConnectivity("live");
-    void api.events(activeSession.session_id).then((data) => mergeEvents(data.events ?? [])).catch(() => {});
+    void api.events(sid).then((data) => mergeEvents(data.events ?? [])).catch(() => {});
     unsubRef.current?.();
-    unsubRef.current = subscribeToEvents(activeSession.session_id, mergeEvents, setConnectivity);
+    unsubRef.current = subscribeToEvents(sid, mergeEvents, setConnectivity);
     return () => {
+      // Persist the latest events for the session being left so returning to it is instant.
+      cacheRef.current.set(sid, latestEventsRef.current);
       unsubRef.current?.();
       unsubRef.current = null;
     };
