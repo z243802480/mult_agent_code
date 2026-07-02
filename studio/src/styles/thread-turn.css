@@ -1161,12 +1161,12 @@
   border: 0;
   border-radius: var(--radius-pill);
   bottom: 14px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
-  color: #fff;
+  box-shadow: var(--shadow-md);
+  color: var(--accent-fg);
   cursor: pointer;
   display: block;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
   margin: -32px auto 6px;
   padding: 6px 14px;
   position: sticky;
@@ -1175,7 +1175,7 @@
 }
 
 .jumpToLatest:hover {
-  filter: brightness(1.08);
+  background: var(--accent-hover);
 }
 
 .turnFinalAvatar {

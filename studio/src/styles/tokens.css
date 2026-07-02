@@ -138,7 +138,7 @@
 
     --text-primary: #14181c;
     --text-secondary: #4c5762;
-    --text-muted: #7a848e;
+    --text-muted: #5c6773; /* darkened from #7a848e to clear WCAG AA 4.5:1 on light surfaces */
 
     --accent: #1f74c9;
     --accent-hover: #1a67b4;

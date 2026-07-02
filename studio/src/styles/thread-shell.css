@@ -171,8 +171,13 @@
   border-color: var(--ok);
 }
 
-.runtimeActionButton.primary:hover {
-  filter: brightness(1.08);
+.runtimeActionButton.primary:not(.accept):hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.runtimeActionButton.primary.accept:hover {
+  filter: brightness(1.06);
 }
 
 .runtimeActionButton:disabled,
