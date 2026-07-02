@@ -24,6 +24,16 @@ export function filterSessions(sessions: StudioSession[], filter: SessionListFil
   return sorted.filter((session) => sessionTimestamp(session) >= cutoff);
 }
 
+export function searchSessions(sessions: StudioSession[], query: string): StudioSession[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return sessions;
+  return sessions.filter((session) => {
+    const title = cleanSessionTitle(String(session.title || "")).toLowerCase();
+    const preview = sessionPreview(session).toLowerCase();
+    return title.includes(q) || preview.includes(q);
+  });
+}
+
 function startOfLocalDay(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }

@@ -52,6 +52,36 @@
   事件/流式 studio smoke **6/6**（run-detail / session-main-path-contract / chat-lifecycle / plan-output / chat-stream-final / intent-routing，其中 run-detail 直验事件合并去重）。
 - 零后端 Python 代码改动；零 DO_NOT_TOUCH。
 
-## 第二批：new_feature（用户绿灯，另见本报告后续追加 / 后续提交）
-- P3-1 Stop/中断、P3-2 会话搜索框、P3-4 token 用量面板（仅 token，后端无 USD/单价，货币费用另立数据能力）、
-  P3-5 part 3 capability_decisions 面板。用户拍板「合理的常见功能都要加上」→ 4 项均实现（token 面板诚实标注不含货币）。
+## 第二批：new_feature（用户绿灯「合理的常见功能都要加上」，4 项均实现）
+
+第一批诚实批已推送（commit `8e07b3a`）。本批为用户绿灯的 4 个 table-stakes 新功能，纯 studio、零 DO_NOT_TOUCH、零后端 Python 代码。
+
+### P3-1 Stop/中断运行中的 run（`studio/server.mjs` + `Composer.tsx` + `api.ts` + `useSessionEvents.ts` + `App.tsx`）
+- server：`startRuntimeJob` spawn 后把 `child`/`pid` 存到 job（供停止可达）；新增会话级 `POST /api/studio/sessions/:id/stop`
+  → `stopSessionJobs` 找该会话所有 running job，置 `cancelled` + 清 `follow_up_mode`（防自动重启），**Windows 用
+  `taskkill /pid <pid> /T /F` 树杀**（child.kill 只杀直接进程、Python 子树会继续跑）、POSIX 用 `SIGTERM`；`close` 处理器
+  对 `cancelled` job 报诚实「Stopped by user」而非伪装失败。
+- 前端：`api.stopSession` + `useSessionEvents.stopRun`（停后刷事件）；Composer 在 `isRunning && onStop` 时把主按钮渲染成
+  红色 **Stop**（否则 Send）；App 传 `isRunning`/`onStop`。
+- 诚实/风险：硬杀留半写状态，resume/accept 须容忍截断（已知限制，写入报告风险段）；停止事件如实标注、不伪装成功。
+- 验证：stop 路由 live 核验（无 running job → `{ok:false,"no running job"}`；非法 session id → 拦截）；smoke 7/7 无回归。
+
+### P3-2 会话搜索框（`sessionListUtils.ts` + `SessionList.tsx` + `session-list.css`）
+- `searchSessions(sessions, query)`：对 `cleanSessionTitle(title)` + `goal_preview` 做大小写不敏感包含匹配（数据已全量在前端，无后端）。
+- SessionList 加受控 `<input type="search">`（`!compact` 时显示）+ query state，接入 `visibleSessions` useMemo；空态区分「无匹配」与「无任务」。
+
+### P3-4 token 用量面板（`EvidenceExplorer.tsx`）
+- 新增 `RunUsagePanel`：从 `runDetail.cost_report` 渲染 model_calls / tool_calls / estimated_input_tokens / estimated_output_tokens /
+  strong·cheap_model_calls / repair_attempts（复用 `Metric`/`formatUsage`）。**只做 token/调用维度**——后端 cost_report 无 USD、
+  全仓无单价，标题为「Run usage」不叫 cost；无 usage 时诚实降级为「unknown」。货币费用留作另立数据能力（未做）。
+
+### P3-5 part 3 capability_decisions 面板（`studio/server.mjs` + `types.ts` + `EvidenceExplorer.tsx`）
+- server `readRunDetail` 加读 `capability_decisions.jsonl`（此前有写无读）；types 补 `capability_decisions?`；
+  EvidenceExplorer 加「Capability decisions」EvidenceBlock（renderLine 显 `type:capability -> decision` + reason）。
+
+### 第二批验证
+- studio `tsc --noEmit` clean；`vite build` ok（1772 modules）；事件/流式 smoke **7/7**
+  （run-detail / session-main-path-contract / chat-lifecycle / plan-output / chat-stream-final / intent-routing / chat-fallback）；
+  Stop 路由 live 冒烟通过。零后端 Python 代码、零 DO_NOT_TOUCH。
+- 未做/明确边界：Stop 的硬杀 e2e 树杀行为需真实长 run 才能端到端验证（已按 taskkill /T /F 实现 + 风险标注）；
+  货币费用（USD）需引入单价数据，属另立数据能力，本批不做。

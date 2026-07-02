@@ -40,6 +40,8 @@ export const api = {
       `/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs/${encodeURIComponent(jobId)}/permission`,
       { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }
     ),
+  stopSession: (sessionId: string) =>
+    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/stop`, { method: "POST" }),
   files: () => requestJson<{ ok: boolean; files: WorkspaceFile[] }>("/api/studio/files"),
   previewFile: (path: string) =>
     requestJson<FilePreview>("/api/studio/files/preview", {

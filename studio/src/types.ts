@@ -244,6 +244,7 @@ export type RunDetailPayload = {
   validation_results?: AnyRecord[];
   mcp_invocations?: AnyRecord[];
   skill_invocations?: AnyRecord[];
+  capability_decisions?: AnyRecord[];
   events?: AnyRecord[];
   legacy_events?: AnyRecord[];
   raw_evidence?: AnyRecord;

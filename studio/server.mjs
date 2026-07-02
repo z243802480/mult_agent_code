@@ -112,6 +112,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, sessionJobsPayload(sessionId));
     return;
   }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/stop$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    sendJson(response, 200, stopSessionJobs(sessionId));
+    return;
+  }
   if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/messages$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, await submitUserGoal(sessionId, await readRequestJson(request)));
@@ -1588,6 +1593,33 @@ function sessionJobsPayload(sessionId) {
   };
 }
 
+function stopSessionJobs(sessionId) {
+  if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
+  const running = [...liveJobs.values()].filter(
+    (job) => job.session_id === sessionId && job.status === "running",
+  );
+  if (!running.length) return { ok: false, error: "no running job" };
+  let stopped = 0;
+  for (const job of running) {
+    job.cancelled = true;
+    job.follow_up_mode = null; // suppress the queued follow-up so a stop does not auto-restart
+    liveJobs.set(job.job_id, job);
+    try {
+      const child = job.child;
+      if (!child) continue;
+      if (process.platform === "win32" && job.pid) {
+        // child.kill() signals only the immediate process; the Python runtime spawns its own
+        // subtree, so tree-kill (taskkill /T /F) is required to actually stop the work on Windows.
+        spawn("taskkill", ["/pid", String(job.pid), "/T", "/F"], { windowsHide: true });
+      } else {
+        child.kill("SIGTERM");
+      }
+      stopped += 1;
+    } catch {}
+  }
+  return { ok: true, stopped };
+}
+
 function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
   const command = Array.isArray(commandOverride) && commandOverride.length ? commandOverride : runtimeCommand(mode, goal);
   const jobId = `job-${Date.now()}`;
@@ -1625,6 +1657,10 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
     },
     windowsHide: true
   });
+  // Keep the child handle + pid reachable by job so a stop route can terminate a running run.
+  job.child = child;
+  job.pid = child.pid;
+  liveJobs.set(jobId, job);
 
   let stdout = "";
   let stderr = "";
@@ -1658,6 +1694,24 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
   });
   child.on("close", async (code) => {
     stopTail();
+    job.child = null;
+    // User stop: report an honest "stopped" outcome and suppress the "needs attention" final +
+    // the queued follow-up (already cleared on stop). Do not dress a user cancel up as a failure.
+    if (job.cancelled) {
+      job.status = "cancelled";
+      liveJobs.set(jobId, job);
+      void appendEvent(sessionId, {
+        type: "tool_end",
+        status: "failed",
+        title: "Stopped",
+        summary: "Stopped by user.",
+        command,
+        display_level: "main",
+        content_delta: "Stopped by user before completion. Open the Inspector to review any partial work.",
+        job_id: jobId,
+      });
+      return;
+    }
     rememberJobRunId(jobId, extractRunId(stdout) || extractRunId(stderr));
     job.status = code === 0 ? "completed" : "failed";
     liveJobs.set(jobId, job);
@@ -2634,6 +2688,9 @@ async function readRunDetail(runId) {
   payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
   payload.mcp_invocations = redact(await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80));
   payload.skill_invocations = redact(await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80));
+  // capability_decisions.jsonl was written by the runtime but never read here (have-write-no-read);
+  // surface it so the Inspector can show why each tool/MCP/skill capability was allowed or denied.
+  payload.capability_decisions = redact(await readJsonlTail(path.join(runDir, "capability_decisions.jsonl"), 80));
   const runtimeRequests = await readJsonlTail(path.join(runDir, "runtime_requests.jsonl"), 120);
   const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 120);
   const currentDecisions = latestDecisions(decisions).map((decision) =>

@@ -6,6 +6,7 @@ import {
   cleanSessionTitle,
   filterSessions,
   groupSessionsByDate,
+  searchSessions,
   sessionHint,
   sessionPreview,
 } from "./sessionListUtils";
@@ -35,8 +36,12 @@ export function SessionList({
 }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
+  const [query, setQuery] = useState("");
 
-  const visibleSessions = useMemo(() => filterSessions(sessions, filter), [sessions, filter]);
+  const visibleSessions = useMemo(
+    () => searchSessions(filterSessions(sessions, filter), query),
+    [sessions, filter, query],
+  );
   const groups = useMemo(() => groupSessionsByDate(visibleSessions), [visibleSessions]);
 
   async function commitRename(session: StudioSession) {
@@ -64,10 +69,24 @@ export function SessionList({
             </button>
           ))}
         </div>
+        {!compact && (
+          <input
+            type="search"
+            className="sessionSearchInput"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search tasks…"
+            aria-label="Search sessions"
+          />
+        )}
       </div>
       {groups.length === 0 && (
         <p className="sessionListEmpty muted">
-          {filter === "recent" ? "No tasks in the last 7 days." : "No tasks yet."}
+          {query.trim()
+            ? `No tasks match “${query.trim()}”.`
+            : filter === "recent"
+              ? "No tasks in the last 7 days."
+              : "No tasks yet."}
         </p>
       )}
       {groups.map((group) => (

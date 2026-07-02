@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck } from "lucide-react";
+import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck, Square } from "lucide-react";
 import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, legacyPermission, type PermissionTierId } from "../permissionTiers";
 
 const MODES = ["auto", "chat", "plan", "run"] as const;
@@ -69,6 +69,8 @@ export function Composer({
   promptSignal,
   viewMode = "focus",
   initialPermissionMode,
+  isRunning = false,
+  onStop,
 }: {
   onSend: (message: string, mode: string, permission: string, permissionMode?: string) => Promise<void>;
   onSideAsk?: (message: string) => Promise<void>;
@@ -77,6 +79,8 @@ export function Composer({
   promptSignal?: PromptSignal;
   viewMode?: import("../hooks/useViewMode").StudioViewMode;
   initialPermissionMode?: PermissionTierId;
+  isRunning?: boolean;
+  onStop?: () => Promise<void> | void;
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
@@ -220,10 +224,17 @@ export function Composer({
           )}
           <span className="composerPermissionHint">{viewMode !== "focus" ? profile.permission : ""}</span>
         </div>
-        <button className="composerSend" disabled={sending} type="submit">
-          {sending ? <Loader2 size={15} className="spinning" /> : <Send size={15} />}
-          <span>{isChat ? "Ask" : "Send"}</span>
-        </button>
+        {isRunning && onStop && !sideAsk ? (
+          <button className="composerSend composerStop" type="button" onClick={() => void onStop()} title="Stop the running task">
+            <Square size={14} />
+            <span>Stop</span>
+          </button>
+        ) : (
+          <button className="composerSend" disabled={sending} type="submit">
+            {sending ? <Loader2 size={15} className="spinning" /> : <Send size={15} />}
+            <span>{isChat ? "Ask" : "Send"}</span>
+          </button>
+        )}
       </div>
     </form>
   );

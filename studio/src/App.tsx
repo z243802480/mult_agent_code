@@ -266,6 +266,8 @@ export function App() {
           promptSignal={bootstrap.promptSignal}
           viewMode={viewMode}
           initialPermissionMode={isPermissionTierId(bootstrap.settings?.permissionMode) ? bootstrap.settings?.permissionMode : undefined}
+          isRunning={sessionEvents.isRunning}
+          onStop={sessionEvents.stopRun}
         />
       </main>
       {panelOpen && (

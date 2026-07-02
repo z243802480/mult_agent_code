@@ -46,6 +46,38 @@ function ContextBreakdownPanel({ runDetail }: { runDetail: RunDetailPayload | nu
   );
 }
 
+function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
+  const cost = asRecord(runDetail?.cost_report);
+  if (!cost || Object.keys(cost).length === 0) return null;
+  // Token/call aggregates only. There is no monetary cost in cost_report (no per-model pricing in
+  // the runtime), so this panel deliberately reports usage, not USD — do not label it "cost".
+  const inputTokens = cost.estimated_input_tokens;
+  const outputTokens = cost.estimated_output_tokens;
+  const strong = Number(cost.strong_model_calls ?? 0);
+  const cheap = Number(cost.cheap_model_calls ?? 0);
+  const repairs = Number(cost.repair_attempts ?? 0);
+  const tokenValue = (value: unknown) => (value == null ? "unknown" : formatUsage(Number(value)));
+  return (
+    <div className="evidenceBlock runUsagePanel">
+      <small>Run usage</small>
+      <div className="evidenceStats">
+        <Metric label="Model calls" value={String(Number(cost.model_calls ?? 0))} tone="good" />
+        <Metric label="Tool calls" value={String(Number(cost.tool_calls ?? 0))} tone="good" />
+        <Metric label="Input tokens" value={tokenValue(inputTokens)} tone="warn" />
+        <Metric label="Output tokens" value={tokenValue(outputTokens)} tone="warn" />
+      </div>
+      <div className="evidenceStats">
+        <Metric label="Strong calls" value={String(strong)} tone={strong ? "warn" : "good"} />
+        <Metric label="Cheap calls" value={String(cheap)} tone="good" />
+        <Metric label="Repairs" value={String(repairs)} tone={repairs ? "warn" : "good"} />
+      </div>
+      {inputTokens == null && outputTokens == null && (
+        <p className="muted">Token usage is unknown for this run (the provider did not report usage).</p>
+      )}
+    </div>
+  );
+}
+
 export function BackgroundRunPanel({ overview }: { overview: OverviewPayload | null }) {
   const background = asRecord(overview?.background_runs);
   if (!background || background.enabled === false) return null;
@@ -489,6 +521,7 @@ export function EvidenceExplorer({
   // rendered nowhere despite inspector_raw_evidence_source promising raw evidence.
   const mcpInvocations = (runDetail?.mcp_invocations ?? []) as AnyRecord[];
   const skillInvocations = (runDetail?.skill_invocations ?? []) as AnyRecord[];
+  const capabilityDecisions = (runDetail?.capability_decisions ?? []) as AnyRecord[];
   const files = runDetail?.files ?? [];
   const selectedKey = selectedEvidence ? `${selectedEvidence.kind}:${selectedEvidence.title}` : "";
 
@@ -519,6 +552,10 @@ export function EvidenceExplorer({
     if (kind === "route") return firstText(`${String(item.task_id ?? item.purpose ?? "route")} ${String(item.purpose ?? "")} -> ${String(item.selected_tier ?? "unknown")}`, String(item.reason ?? ""));
     if (kind === "mcp") return firstText(`${String(item.server_name ?? "mcp")}/${String(item.tool_name ?? "")} ${String(item.status ?? "")}`, String(item.summary ?? ""));
     if (kind === "skill") return firstText(`${String(item.skill_name ?? item.name ?? "skill")} ${String(item.status ?? "")}`, String(item.summary ?? ""));
+    if (kind === "capability") {
+      const decision = asRecord(item.decision);
+      return firstText(`${String(item.capability_type ?? "cap")}:${String(item.capability ?? "")} -> ${String(decision.decision ?? decision.effect ?? "")}`, String(decision.reason ?? ""));
+    }
     return JSON.stringify(item).slice(0, 80);
   }
 
@@ -571,6 +608,7 @@ export function EvidenceExplorer({
         <>
           <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
+          <RunUsagePanel runDetail={runDetail} />
           <ContextBreakdownPanel runDetail={runDetail} />
           <PromotionPreviewPanel
             runDetail={runDetail}
@@ -607,6 +645,7 @@ export function EvidenceExplorer({
           <EvidenceBlock title="Task evidence" items={evidence.slice(-4)} kind="evidence" />
           <EvidenceBlock title="MCP invocations" items={mcpInvocations.slice(-8)} kind="mcp" />
           <EvidenceBlock title="Skill invocations" items={skillInvocations.slice(-8)} kind="skill" />
+          <EvidenceBlock title="Capability decisions" items={capabilityDecisions.slice(-8)} kind="capability" />
           {files.length > 0 && (
             <div className="runFiles">
               <small>Run files ({files.length})</small>

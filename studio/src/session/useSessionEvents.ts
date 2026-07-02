@@ -49,6 +49,13 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     await api.permitJob(activeSession.session_id, jobId, action);
   }
 
+  async function stopRun() {
+    if (!activeSession) return;
+    await api.stopSession(activeSession.session_id).catch(() => {});
+    const eventData = await api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] }));
+    mergeEvents(eventData.events ?? []);
+  }
+
   async function runRuntimeAction(nextAction: string) {
     if (!activeSession) return;
     await api.runtimeAction(activeSession.session_id, nextAction, "ask");
@@ -88,6 +95,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     sendGoal,
     sendSideAsk,
     permitJob,
+    stopRun,
     runRuntimeAction,
     resolveDecision,
     clearEvents,

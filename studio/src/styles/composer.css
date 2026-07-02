@@ -131,6 +131,17 @@
   border-color: var(--accent-hover);
 }
 
+.composerStop {
+  background: var(--danger, #c0392b);
+  border-color: var(--danger, #c0392b);
+  color: #fff;
+}
+
+.composerStop:hover:not(:disabled) {
+  background: var(--danger-hover, #a93226);
+  border-color: var(--danger-hover, #a93226);
+}
+
 .composerSend:active:not(:disabled) {
   background: var(--accent-active);
   border-color: var(--accent-active);
