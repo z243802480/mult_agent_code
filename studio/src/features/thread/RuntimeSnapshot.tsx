@@ -170,7 +170,7 @@ export function RuntimeSnapshot({
     : null;
 
   // Gate the primary workflow actions so a double-click can't fire duplicate review/accept/decide
-  // API calls (the sibling DecisionCard/PermissionCard already do this; this bar did not).
+  // API calls (the sibling decision + permission cards already gate on busy; this bar did not).
   // (busy state is declared with the other hooks above, before the early return.)
   const runAction = async (fn: () => Promise<void> | void) => {
     if (busy) return;
