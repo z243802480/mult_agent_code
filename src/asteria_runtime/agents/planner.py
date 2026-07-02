@@ -904,7 +904,19 @@ class RequirementPlanner:
         )
 
     def _allowed_tools(self, kind: str) -> list[str]:
-        readonly = ["list_files", "read_file", "search_text", "run_command", "run_tests"]
+        # find_files (glob) and todo_read are read-only and belong wherever the other read tools
+        # are granted; todo_write mutates only run-local planning state (not workspace files) so it
+        # rides with the implementation/report tool sets. All four are already advertised on the
+        # agent tool surface — including them here closes the "advertised but contract-denied" gap.
+        readonly = [
+            "list_files",
+            "read_file",
+            "search_text",
+            "find_files",
+            "todo_read",
+            "run_command",
+            "run_tests",
+        ]
         if kind in {"diagnostic", "verification", "research", "decision"}:
             return readonly
         if kind == "report":
@@ -912,22 +924,28 @@ class RequirementPlanner:
                 "list_files",
                 "read_file",
                 "search_text",
+                "find_files",
                 "diff_workspace",
                 "write_file",
                 "apply_patch",
                 "restore_backup",
                 "run_command",
+                "todo_read",
+                "todo_write",
             ]
         return [
             "list_files",
             "read_file",
             "search_text",
+            "find_files",
             "diff_workspace",
             "write_file",
             "apply_patch",
             "restore_backup",
             "run_command",
             "run_tests",
+            "todo_read",
+            "todo_write",
         ]
 
     def _verification_policy(self, task: dict, goal_spec: dict) -> dict:

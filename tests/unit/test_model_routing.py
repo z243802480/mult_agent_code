@@ -162,6 +162,39 @@ def test_tier_specific_openai_settings_do_not_leak_to_default(
     assert isinstance(client.client_for_tier("medium"), FakeModelClient)
 
 
+def test_model_call_logger_persists_route_fallback(tmp_path: Path) -> None:
+    from asteria_runtime.models.model_call_logger import ModelCallLogger
+    from asteria_runtime.storage.jsonl_store import JsonlStore
+
+    logger = ModelCallLogger(tmp_path, SchemaValidator(Path("schemas")))
+    fallback = {
+        "used": True,
+        "from_tier": "strong",
+        "to_tier": "medium",
+        "reason": "deadline exceeded",
+        "policy": "strong_timeout_to_medium",
+    }
+    call = ChatRequest(
+        purpose="chat",
+        model_tier="medium",
+        messages=[ChatMessage(role="user", content="hello")],
+        metadata={"run_id": "run-1", "route_fallback": fallback},
+    )
+    response = ChatResponse(
+        content="ok",
+        finish_reason="stop",
+        usage=TokenUsage(input_tokens=1, output_tokens=1, total_tokens=2),
+        model_provider="minimax",
+        model_name="abab",
+        raw_response={},
+    )
+    record = logger.record_success(call, response)
+
+    assert record is not None and record["route_fallback"]["from_tier"] == "strong"
+    rows = JsonlStore().read_all(tmp_path / "model_calls.jsonl")
+    assert rows and rows[0]["route_fallback"]["policy"] == "strong_timeout_to_medium"
+
+
 def test_factory_routes_glm_as_strong_and_minimax_as_worker_medium(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

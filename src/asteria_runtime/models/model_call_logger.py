@@ -127,6 +127,12 @@ class ModelCallLogger:
             record["deadline_profile"] = role_contract.get("deadline_profile")
         if request.metadata.get("model_route") is not None:
             record["model_route"] = request.metadata.get("model_route")
+        # Persist a route fallback (e.g. strong->medium on timeout) as durable evidence. The
+        # RoutedModelClient stamps this onto the retried request's metadata (models/routing.py);
+        # without this the medium retry was logged as an ordinary medium call with no attribution.
+        route_fallback = request.metadata.get("route_fallback")
+        if isinstance(route_fallback, dict):
+            record["route_fallback"] = route_fallback
         deadline_ms = self._deadline_ms(request, role_contract)
         if deadline_ms is not None:
             record["deadline_ms"] = deadline_ms

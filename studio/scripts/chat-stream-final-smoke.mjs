@@ -21,9 +21,10 @@ class ChatResult:
         return {"schema_version":"0.1.0","answer":"## Wrong fallback\nThis non-stream answer must not replace streamed content."}
 
 class ChatCommand:
-    def __init__(self, root, question):
+    def __init__(self, root, question, history=None):
         self.root = root
         self.question = question
+        self.history = history
 
     def run(self):
         sink = os.environ.get("ASTERIA_STUDIO_EVENT_SINK")

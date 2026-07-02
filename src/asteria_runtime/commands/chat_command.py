@@ -105,6 +105,10 @@ class ChatResult:
 
 
 class ChatCommand:
+    # Bounded conversation history keeps chat multi-turn without unbounded context/cost growth.
+    _MAX_HISTORY_TURNS = 6  # most-recent user/assistant messages injected before the question
+    _MAX_HISTORY_CHARS = 800  # per-message clip
+
     def __init__(
         self,
         root: Path,
@@ -113,13 +117,35 @@ class ChatCommand:
         permission_level: str = "balanced",
         model_strategy: str = "auto",
         model_client: ModelClient | None = None,
+        history: list[dict[str, str]] | None = None,
     ) -> None:
         self.root = root.resolve()
         self.question = question
         self.permission_level = permission_level
         self.model_strategy = model_strategy
         self.model_client = model_client
+        # Optional prior turns (role in {user, assistant}). CLI stays single-shot (no history);
+        # Studio passes the recent turns it already persists so chat is no longer single-turn amnesiac.
+        self.history = self._normalize_history(history)
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
+
+    def _normalize_history(self, history: list[dict[str, str]] | None) -> list[ChatMessage]:
+        if not isinstance(history, list):
+            return []
+        normalized: list[ChatMessage] = []
+        for item in history:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role") or "").strip()
+            content = str(item.get("content") or "").strip()
+            if role not in {"user", "assistant"} or not content:
+                continue
+            if len(content) > self._MAX_HISTORY_CHARS:
+                content = content[: self._MAX_HISTORY_CHARS] + "…"
+            normalized.append(ChatMessage(role=role, content=content))
+        if len(normalized) > self._MAX_HISTORY_TURNS:
+            normalized = normalized[-self._MAX_HISTORY_TURNS :]
+        return normalized
 
     def run(self) -> ChatResult:
         agent_dir = self.root / ".asteria"
@@ -176,6 +202,7 @@ class ChatCommand:
                 model_tier=self._model_tier(role_contract.default_model_tier),
                 messages=[
                     ChatMessage(role="system", content=self._system_prompt()),
+                    *self.history,
                     ChatMessage(
                         role="user",
                         content=json.dumps(

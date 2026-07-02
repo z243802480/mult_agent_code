@@ -36,6 +36,22 @@ def test_capability_invocation_policy_allows_controlled_implementation_tools() -
     assert policy["mcp_permission"] == "allow"
 
 
+def test_capability_invocation_policy_maps_newer_read_tools_not_denied() -> None:
+    # These four are registered and advertised on the agent tool surface, but were absent from
+    # _TOOL_KINDS -> kind "unknown" -> hard "deny" at the gateway. They must now resolve to the
+    # read bucket (allow under reviewed_auto) so advertised tools are not silently hard-rejected.
+    policy = CapabilityInvocationPolicy()
+    for name in ("find_files", "diff_workspace", "todo_read", "todo_write"):
+        decision = policy.for_tool(
+            name,
+            task_kind="implementation",
+            permission_mode="reviewed_auto",
+            risk="medium",
+        )
+        assert decision["tool_kind"] == "read", name
+        assert decision["decision"] != "deny", name
+
+
 def test_capability_invocation_policy_limits_brainstorm_to_read_only_tools() -> None:
     read_decision = CapabilityInvocationPolicy().for_tool(
         "search_text",

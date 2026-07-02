@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { outcomeAnswerContract } from "./prompt-contract.mjs";
 import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, routeUserIntent } from "./intent-router.mjs";
-import { buildRouteMessageWithChatContext, shouldAugmentRouteWithChatContext } from "./lib/chat-route-context.mjs";
+import { buildRouteMessageWithChatContext, shouldAugmentRouteWithChatContext, recentChatHistoryMessages } from "./lib/chat-route-context.mjs";
 import { buildOrchestrationWorkflowMonitor } from "./lib/orchestration-workflow-monitor.mjs";
 import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
 import { mapPermissionLevel, withPermissionLevel } from "./lib/permission-level.mjs";
@@ -1057,20 +1057,35 @@ function routeLabel(route) {
   return `${firstRuntimeText(route.provider, "unknown")}/${firstRuntimeText(route.model, "unknown")} - ${firstRuntimeText(route.tier, "unknown")} - ${firstRuntimeText(route.purpose, "chat")}`;
 }
 
+function chatHistoryForSession(sessionId) {
+  if (!isSafeId(sessionId)) return [];
+  const file = sessionPath(sessionId, "events.jsonl");
+  if (!existsSync(file)) return [];
+  try {
+    return recentChatHistoryMessages(fsSyncReadJsonl(file));
+  } catch {
+    return [];
+  }
+}
+
 async function chatModelAnswer(systemPrompt, message, sessionId) {
   if (process.env.ASTERIA_STUDIO_FAKE_CHAT_ERROR) {
     throw new Error(process.env.ASTERIA_STUDIO_FAKE_CHAT_ERROR);
   }
   try {
+    // Feed the recent completed chat turns (already persisted in this session's events.jsonl) into
+    // ChatCommand so the reply is no longer single-turn amnesiac. ChatCommand bounds/clips further.
+    const history = chatHistoryForSession(sessionId);
     const payload = Buffer.from(JSON.stringify({
       question: `System instruction:\n${systemPrompt}\n\nUser question:\n${message}`,
+      history,
     }), "utf8").toString("base64");
     const script = [
       "import base64, json, os",
       "from pathlib import Path",
       "from asteria_runtime.commands.chat_command import ChatCommand",
       "data = json.loads(base64.b64decode(os.environ['ASTERIA_STUDIO_CHAT_PAYLOAD']).decode('utf-8'))",
-      "result = ChatCommand(root=Path(os.environ['ASTERIA_STUDIO_ROOT']), question=data['question']).run()",
+      "result = ChatCommand(root=Path(os.environ['ASTERIA_STUDIO_ROOT']), question=data['question'], history=data.get('history')).run()",
       "print(json.dumps(result.to_dict(), ensure_ascii=False))",
     ].join("; ");
     const completed = await runCommand([

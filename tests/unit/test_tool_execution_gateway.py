@@ -299,3 +299,48 @@ def _gateway(tmp_path: Path) -> tuple[ToolExecutionGateway, RuntimeContext]:
         run_dir_override=tmp_path,
     )
     return ToolExecutionGateway(FakeRegistry(), ToolPermissionPolicy(tmp_path, validator)), context
+
+
+class _StubSkillAdapter:
+    def invoke(self, *, context: object, task: object, skill_name: str, arguments: object) -> FakeResult:
+        return FakeResult(ok=True, summary=f"loaded skill {skill_name}: follow step 1")
+
+
+def test_tool_gateway_skill_observation_survives_next_round(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = RuntimeContext(
+        root=tmp_path,
+        run_id="run-1",
+        policy={"protected_paths": []},
+        validator=validator,
+        run_dir_override=tmp_path,
+    )
+    gateway = ToolExecutionGateway(
+        FakeRegistry(),
+        ToolPermissionPolicy(tmp_path, validator),
+        skill_adapter=_StubSkillAdapter(),
+    )
+
+    results = gateway.run_tool_calls(
+        [{"tool_name": "skill__demo", "args": {}}],
+        {"task_id": "task-0001", "allowed_tools": []},
+        context,
+    )
+    assert results and getattr(results[0], "ok", False)
+
+    rows = JsonlStore().read_all(tmp_path / "user_progress.jsonl")
+    chain = [
+        row
+        for row in rows
+        if row.get("channel") == "execution_chain" and row.get("event_type") == "tool_observation"
+    ]
+    assert any(
+        str(((row.get("data") or {}).get("observation") or {}).get("tool_name", "")).startswith("skill__")
+        for row in chain
+    ), "skill call must emit an execution_chain observation event (not only channel='tool')"
+
+    # The per-round reload that overwrites harness_observations must now surface the skill result,
+    # i.e. no cross-round amnesia — this is the actual P2-1 defect being closed.
+    reloaded = load_harness_observations(tmp_path)
+    assert reloaded, "skill observation must reload across the round boundary"
+    assert any("skill__" in str(item) for item in reloaded)

@@ -25,6 +25,16 @@
     "deadline_profile": { "type": ["string", "null"] },
     "deadline_ms": { "type": ["integer", "null"] },
     "model_route": { "type": ["object", "null"] },
+    "route_fallback": {
+      "type": ["object", "null"],
+      "properties": {
+        "used": { "type": "boolean" },
+        "from_tier": { "type": "string" },
+        "to_tier": { "type": "string" },
+        "reason": { "type": "string" },
+        "policy": { "type": "string" }
+      }
+    },
     "prompt_envelope_hash": { "type": ["string", "null"] },
     "prompt_envelope_path": { "type": ["string", "null"] },
     "context_envelope_hash": { "type": ["string", "null"] },

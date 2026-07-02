@@ -48,6 +48,33 @@ export function recentChatContextForRoute(events) {
 }
 
 /**
+ * Recent chat turns as [{role, content}] messages for injecting into ChatCommand history, so the
+ * Studio chat is no longer single-turn amnesiac. Reuses the same turn extraction + execute-boundary
+ * logic as routing, and keeps only COMPLETED (user+assistant) turns — the in-flight current question
+ * (a trailing user-only turn) is dropped because the caller passes it separately as `question`.
+ * @param {Array<Record<string, unknown>>} events
+ * @param {number} maxTurns
+ * @returns {Array<{ role: 'user' | 'assistant', content: string }>}
+ */
+export function recentChatHistoryMessages(events, maxTurns = 6) {
+  const mainEvents = (events || []).filter((event) => {
+    const level = String(event?.display_level || "main");
+    return level === "main" || !event?.display_level;
+  });
+  if (!mainEvents.length) return [];
+
+  const lastExecuteIdx = findLastExecuteBoundaryIndex(mainEvents);
+  const slice = mainEvents.slice(Math.max(0, lastExecuteIdx + 1));
+  const turns = extractChatTurns(slice).filter((turn) => turn.user && turn.assistant);
+  const messages = [];
+  for (const turn of turns.slice(-Math.max(0, maxTurns))) {
+    messages.push({ role: "user", content: turn.user });
+    messages.push({ role: "assistant", content: turn.assistant });
+  }
+  return messages;
+}
+
+/**
  * @param {Array<Record<string, unknown>>} events
  */
 function findLastExecuteBoundaryIndex(events) {

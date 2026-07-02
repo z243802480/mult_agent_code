@@ -389,6 +389,20 @@ class ToolExecutionGateway:
         # McpInvocationResult is a frozen dataclass; attach the loop-feedback observation as a
         # non-field attribute via object.__setattr__ (the same harness_observation the loop reads).
         object.__setattr__(mcp_result, "harness_observation", observation)
+        # Emit the same execution_chain observation event local tools emit (see the local-tool path
+        # above), so the MCP result survives the next-round _refresh_harness_observations reload.
+        # Without this, the MCP response fed back only in-memory within the same attempt and was
+        # dropped at the round boundary (load_harness_observations only reloads execution_chain
+        # events carrying data.observation). Capability decision lives in the adapter's own
+        # mcp_invocations.jsonl evidence; pass {} here rather than fabricate one.
+        self._record_harness_observation(
+            context,
+            task,
+            tool_call_id,
+            observation,
+            parent_event_id=None,
+            capability_decision={},
+        )
         return mcp_result
 
     def _run_skill_call(
@@ -422,6 +436,18 @@ class ToolExecutionGateway:
             telemetry={"duration_ms": duration_ms},
         )
         object.__setattr__(skill_result, "harness_observation", observation)
+        # Mirror the local-tool path: emit the execution_chain observation event so the loaded skill
+        # procedure survives the next-round _refresh_harness_observations reload instead of being
+        # dropped at the round boundary. Capability decision is recorded in skill_invocations.jsonl
+        # by the adapter; pass {} here rather than fabricate one.
+        self._record_harness_observation(
+            context,
+            task,
+            tool_call_id,
+            observation,
+            parent_event_id=None,
+            capability_decision={},
+        )
         return skill_result
 
     def _accepts_diagnostic_failure(self, task: dict, tool_name: str, result: object) -> bool:
