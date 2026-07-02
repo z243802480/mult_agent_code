@@ -3,6 +3,31 @@
 All notable changes to asteria-runtime. This project targets a first releasable
 version (v0.2-alpha); entries are distilled from git history, not narrated.
 
+## [Unreleased]
+
+Research-driven (Codex / Claude Code / OpenCode / Aider) Beta-safety prerequisite
+plus verification-gate honesty. All in-bounds — no changes to the frozen core
+command layer (execute/run/gate/acceptance).
+
+### Added
+- **Beta-safe access profile** — a named capability profile (`beta_safe`) that
+  hard-disables shell execution and network egress at the policy layer, mirroring
+  Codex `read-only` / Claude Code `default`. Pin a shared/external Beta deployment
+  by setting `"active_access_profile": "beta_safe"` in `.asteria/policies.json`
+  (one line; profile defined in code). Resolved at the single `load_policy_config`
+  load point, so every command sees the restricted permissions with no run/execute
+  path changes. `asteria doctor` shows the active profile and the effective
+  shell/network state so an operator can verify the deployment is locked down.
+
+### Changed (honesty)
+- `/run` docs no longer draw review inside the auto flow — verification is an
+  explicit step (`review` / `accept`), surfaced in Studio via the
+  "done ≠ verified" hint. Mainstream tools verify via opt-in/hooks rather than
+  baking it into the core loop.
+- Repair bounding: documented that the effective bound is the derived inner-cycle
+  cap + no-progress detection (the mainstream shape). The unused cross-run
+  `max_repair_attempts_total` ledger is intentionally not wired, not a pending gap.
+
 ## [0.2.0a2] — 2026-07-02
 
 Honesty + security convergence after a full-system "docs claim vs code reality"

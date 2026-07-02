@@ -2,6 +2,7 @@
   "schema_version": "0.1.0",
   "decision_granularity": "balanced",
   "active_budget_profile": "autonomous_long_task",
+  "active_access_profile": null,
   "budgets": {
     "max_model_calls_per_goal": 200,
     "max_tool_calls_per_goal": 1000,

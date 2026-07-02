@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
+from asteria_runtime.core.access_profile import (
+    BUILTIN_ACCESS_PROFILES,
+    access_profile_summary,
+    apply_access_profile,
+)
 from asteria_runtime.core.error_taxonomy import classify_check, taxonomy_summary
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
+from asteria_runtime.core.policy_config import merge_policy_defaults
 from asteria_runtime.models.route_diagnostics import (
     route_diagnostic_for_tier,
     route_requirement_names,
@@ -41,6 +48,7 @@ class DoctorResult:
     route_requirements: dict[str, list[str]] = field(default_factory=dict)
     validation_task_limits: dict[str, object] = field(default_factory=dict)
     plugin_control: dict[str, object] = field(default_factory=dict)
+    access_profile: dict[str, object] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -64,6 +72,7 @@ class DoctorResult:
                     "routes",
                     "route_requirements",
                     "sandbox",
+                    "access_profile",
                     "validation_task_limits",
                     "plugin_control",
                     "error_taxonomy",
@@ -79,6 +88,7 @@ class DoctorResult:
             "routes": self.routes,
             "route_requirements": self.route_requirements,
             "sandbox": self.sandbox,
+            "access_profile": self.access_profile,
             "validation_task_limits": self.validation_task_limits,
             "plugin_control": self.plugin_control,
             "error_taxonomy": taxonomy_summary(),
@@ -114,11 +124,26 @@ class DoctorResult:
         )
         return actions
 
+    def _access_profile_text(self) -> str:
+        profile = self.access_profile or {}
+        if profile.get("initialized") is False:
+            return "unknown (workspace not initialized)"
+        active = profile.get("active")
+        shell = "on" if profile.get("shell_enabled") else "off"
+        network = "on" if profile.get("network_enabled") else "off"
+        if active:
+            return f"{active} (shell {shell}, network {network})"
+        return (
+            f"none (shell {shell}, network {network}); "
+            "set active_access_profile in .asteria/policies.json to restrict"
+        )
+
     def to_text(self) -> str:
         lines = [
             "Agent doctor",
             f"Root: {self.root}",
             f"Status: {'pass' if self.ok else 'fail'}",
+            f"Access profile: {self._access_profile_text()}",
             "Checks:",
         ]
         for check in self.checks:
@@ -159,9 +184,31 @@ class DoctorCommand:
                 tier: self._route_requirement_names(tier) for tier in ["strong", "medium", "cheap"]
             },
             sandbox=self._sandbox_summary(),
+            access_profile=self._access_profile_summary(),
             validation_task_limits=_validation_task_limits(),
             plugin_control=plugin_control,
         )
+
+    def _access_profile_summary(self) -> dict[str, object]:
+        path = self.root / ".asteria" / "policies.json"
+        if not path.exists():
+            return {
+                "active": None,
+                "available": sorted(BUILTIN_ACCESS_PROFILES),
+                "shell_enabled": None,
+                "network_enabled": None,
+                "initialized": False,
+            }
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            raw = {}
+        # Resolve without side effects: merge defaults + overlay the active profile
+        # in memory only (never write back from a read-only diagnostic).
+        resolved = apply_access_profile(merge_policy_defaults(raw))
+        summary = access_profile_summary(resolved)
+        summary["initialized"] = True
+        return summary
 
     def _agent_dir_check(self) -> DoctorCheck:
         path = self.root / ".asteria"

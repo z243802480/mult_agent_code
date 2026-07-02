@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.access_profile import apply_access_profile
 from asteria_runtime.core.schema_migration import SchemaMigrationRegistry, build_default_registry
 from asteria_runtime.resources import template_path
 from asteria_runtime.storage.json_store import JsonStore
@@ -21,12 +22,14 @@ def load_policy_config(
     registry = migration_registry or build_default_registry()
     try:
         data = store.read(path, "policy_config")
-        return registry.migrate("policy_config", data)
+        return apply_access_profile(registry.migrate("policy_config", data))
     except SchemaValidationError:
         current = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         migrated = registry.migrate("policy_config", merge_policy_defaults(current))
+        # Persist the on-disk file with its access-profile *switch* intact; overlay
+        # the profile's permissions only on the returned (consumed) copy.
         store.write(path, migrated, "policy_config")
-        return migrated
+        return apply_access_profile(migrated)
 
 
 def merge_policy_defaults(current: dict[str, Any]) -> dict:

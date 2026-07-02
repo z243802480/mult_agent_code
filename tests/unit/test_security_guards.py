@@ -2,6 +2,8 @@ from pathlib import Path
 
 import pytest
 
+from asteria_runtime.core.access_profile import apply_access_profile
+from asteria_runtime.core.policy_config import merge_policy_defaults
 from asteria_runtime.security.path_guard import PathGuard, PathPolicyError
 from asteria_runtime.security.shell_guard import ShellGuard, ShellPolicyError
 
@@ -359,3 +361,20 @@ def test_shell_guard_no_false_positive_on_urls_in_messages_and_dev_tools() -> No
     guard.validate("node build/dd-bundle.js")
     guard.validate("python nc_helper.py")
     guard.validate("echo done > out.txt")
+
+
+def test_beta_safe_access_profile_hard_disables_shell_and_network() -> None:
+    """Red-team the Beta-safe pin: once active, ShellGuard denies any shell command
+    and network egress is off, proving a shared/Beta deployment is actually locked."""
+    policy = merge_policy_defaults({})
+    policy["active_access_profile"] = "beta_safe"
+    apply_access_profile(policy)
+    permissions = policy["permissions"]
+
+    assert permissions["allow_shell"] is False
+    assert permissions["allow_network"] is False
+
+    guard = ShellGuard(permissions, _REDTEAM_PROTECTED)
+    for command in ("ls -la", "python --version", "curl http://example.test/api"):
+        with pytest.raises(ShellPolicyError):
+            guard.validate(command)

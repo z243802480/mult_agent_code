@@ -183,6 +183,14 @@ class BudgetController:
             )
 
     def record_repair_attempt(self) -> None:
+        # Intentionally unwired: the effective repair bound is run_command's derived
+        # inner-cycle cap plus no-progress detection, which matches the mainstream
+        # shape (Codex max-turns; Claude Code consecutive/total block counters). A
+        # separate cross-run repair-budget ledger is deliberately not adopted -- the
+        # market bounds repair loops with a simple counter, and Codex even deprecated
+        # its conditional "on-failure" policy. Kept for callers that opt into an
+        # explicit total; wiring it into the default loop would need the DO_NOT_TOUCH
+        # execute path. See docs/zh/质量与评估.md §7.
         with self._lock:
             self.usage.repair_attempts += 1
             self._check_limit(

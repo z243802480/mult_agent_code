@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from asteria_runtime.core.policy_config import load_policy_config
+from asteria_runtime.core.access_profile import apply_access_profile
+from asteria_runtime.core.policy_config import load_policy_config, merge_policy_defaults
 from asteria_runtime.storage.schema_validator import SchemaValidator
 
 pytestmark = pytest.mark.contract
@@ -79,3 +80,38 @@ def test_load_policy_config_migrates_missing_default_keys(tmp_path: Path) -> Non
     assert persisted["budget_profiles"]["balanced"]["max_tool_calls_per_goal"] == 500
     assert persisted["agent_loop"]["loop_quality_guard"]["enabled"] is True
     assert persisted["provider_route_strategy"]["strong_goal_spec"]["cost_saver_model"] == "glm-4.7"
+
+
+def test_apply_access_profile_beta_safe_overlays_permissions() -> None:
+    policy = merge_policy_defaults({})
+    assert policy["permissions"]["allow_shell"] is True  # default posture unchanged
+    policy["active_access_profile"] = "beta_safe"
+
+    apply_access_profile(policy)
+
+    assert policy["permissions"]["allow_shell"] is False
+    assert policy["permissions"]["allow_network"] is False
+    assert policy["permissions"]["allow_deploy"] is False
+    # A profile the resolver does not know is a no-op, never a crash.
+    policy["active_access_profile"] = "does_not_exist"
+    apply_access_profile(policy)
+    assert policy["permissions"]["allow_shell"] is False
+
+
+def test_load_policy_config_resolves_access_profile_without_rewriting_switch(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".asteria"
+    agent_dir.mkdir()
+    policy_path = agent_dir / "policies.json"
+    on_disk = merge_policy_defaults({})
+    on_disk["active_access_profile"] = "beta_safe"
+    policy_path.write_text(json.dumps(on_disk), encoding="utf-8")
+
+    policy = load_policy_config(agent_dir, SchemaValidator(Path.cwd() / "schemas"))
+
+    # Consumers see the restricted posture.
+    assert policy["permissions"]["allow_shell"] is False
+    assert policy["permissions"]["allow_network"] is False
+    # The on-disk file keeps the *switch*; base permissions are not silently rewritten.
+    persisted = json.loads(policy_path.read_text(encoding="utf-8"))
+    assert persisted["active_access_profile"] == "beta_safe"
+    assert persisted["permissions"]["allow_shell"] is True

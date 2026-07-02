@@ -186,6 +186,7 @@
           "routes",
           "route_requirements",
           "sandbox",
+          "access_profile",
           "validation_task_limits",
           "plugin_control",
           "error_taxonomy",
@@ -324,6 +325,15 @@
         "preferred_backend": "temp_workspace",
         "fallback_backend": "temp_workspace",
         "reason": "git unavailable or tracked files are dirty; use copied temp workspace"
+      },
+      "access_profile": {
+        "active": null,
+        "available": [
+          "beta_safe"
+        ],
+        "shell_enabled": true,
+        "network_enabled": false,
+        "initialized": true
       },
       "validation_task_limits": {
         "max_iterations": 3,

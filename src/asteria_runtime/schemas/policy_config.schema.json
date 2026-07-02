@@ -21,6 +21,7 @@
       "enum": ["autopilot", "balanced", "collaborative", "manual"]
     },
     "active_budget_profile": { "type": "string" },
+    "active_access_profile": { "type": ["string", "null"] },
     "budgets": {
       "type": "object",
       "required": [
@@ -63,6 +64,16 @@
           "max_replans_per_task": { "type": "integer" },
           "max_research_calls": { "type": "integer" },
           "max_user_decisions": { "type": "integer" }
+        }
+      }
+    },
+    "access_profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "permissions": { "type": "object" }
         }
       }
     },
