@@ -6,6 +6,54 @@
   transition: background 0.15s;
 }
 
+/* Queued follow-ups while a run is in flight (I9) */
+.composerQueue {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 2px;
+}
+
+.composerQueueLabel {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.composerQueueChip {
+  align-items: center;
+  background: var(--surface-2, rgba(128, 128, 128, 0.14));
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  display: inline-flex;
+  font-size: 11.5px;
+  gap: 5px;
+  max-width: 260px;
+  padding: 2px 4px 2px 9px;
+}
+
+.composerQueueText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composerQueueChip button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  padding: 2px;
+}
+
+.composerQueueChip button:hover {
+  background: var(--surface-1);
+  color: var(--text-primary);
+}
+
 .composer:not(.compact) {
   gap: 10px;
 }

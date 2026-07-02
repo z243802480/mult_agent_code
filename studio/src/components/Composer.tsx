@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck, Square } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck, Square, X } from "lucide-react";
 import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, legacyPermission, type PermissionTierId } from "../permissionTiers";
 
 const MODES = ["auto", "chat", "plan", "run"] as const;
@@ -87,6 +87,10 @@ export function Composer({
   const [permissionMode, setPermissionMode] = useState<PermissionTierId>(initialPermissionMode ?? DEFAULT_PERMISSION_TIER);
   const permission = legacyPermission(permissionMode);
   const [sending, setSending] = useState(false);
+  // Messages typed while a run is in flight (I9). They wait honestly for the run to finish, then
+  // auto-send at the turn boundary — we never claim to inject mid-step, which the runtime can't honor.
+  const [queue, setQueue] = useState<string[]>([]);
+  const wasRunning = useRef(false);
 
   // Reflect a newly-saved default tier (Settings panel) in the composer control immediately. Fires
   // only when the persisted default value actually changes, so a per-message override picked this
@@ -106,6 +110,13 @@ export function Composer({
     event.preventDefault();
     const text = message.trim();
     if (!text) return;
+    // Run in flight (main thread): enqueue instead of sending, so the user can line up the next
+    // instruction without waiting. Side-ask questions are off-thread and send immediately.
+    if (isRunning && !sideAsk) {
+      setQueue((q) => [...q, text]);
+      setMessage("");
+      return;
+    }
     setMessage("");
     setSending(true);
     try {
@@ -119,7 +130,25 @@ export function Composer({
     }
   }
 
+  // Flush the head of the queue when the current run finishes (isRunning true→false). One at a time
+  // at the turn boundary; each queued item's own run then unblocks the next.
+  useEffect(() => {
+    if (wasRunning.current && !isRunning && queue.length > 0 && !sending) {
+      const [head, ...rest] = queue;
+      setQueue(rest);
+      setSending(true);
+      Promise.resolve(onSend(head, mode, permission, permissionMode)).finally(() => setSending(false));
+    }
+    wasRunning.current = isRunning;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning, queue.length]);
+
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Escape" && isRunning && onStop && !sideAsk) {
+      e.preventDefault();
+      void onStop();
+      return;
+    }
     if (e.key !== "Enter") return;
     if (e.shiftKey) return;
     e.preventDefault();
@@ -134,7 +163,9 @@ export function Composer({
     : actionProfile(mode, permission);
   const placeholder = sideAsk
     ? "Quick ask — off-thread, with session context (Enter send)…"
-    : MODE_PLACEHOLDERS[mode];
+    : isRunning
+      ? "Queue a follow-up… (sends when the run finishes · Esc to stop)"
+      : MODE_PLACEHOLDERS[mode];
   const slashOpen = message.trim() === "/" || /^\/[a-z]*$/i.test(message.trim());
   const slashQuery = message.trim().toLowerCase();
   const slashActions = slashOpen
@@ -143,6 +174,19 @@ export function Composer({
 
   return (
     <form className={`composer compact ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}${sideAsk ? " sideAskMode" : ""}`} onSubmit={(event) => void submit(event)}>
+      {queue.length > 0 && (
+        <div className="composerQueue">
+          <span className="composerQueueLabel">Queued · sends when the run finishes</span>
+          {queue.map((q, i) => (
+            <span key={i} className="composerQueueChip" title={q}>
+              <span className="composerQueueText">{q}</span>
+              <button type="button" onClick={() => setQueue((qs) => qs.filter((_, j) => j !== i))} aria-label="Remove queued message">
+                <X size={11} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div className="composerInputWrap">
         <textarea
           value={message}
