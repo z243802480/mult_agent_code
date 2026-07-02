@@ -182,6 +182,7 @@ export function App() {
         diffFocus={diffFocus}
         loading={bootstrap.loading}
         isRunning={sessionEvents.isRunning}
+        connectivity={sessionEvents.connectivity}
         changeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
         branch={review.gitStatus?.branch}
         onOpenWorkspace={() => bootstrap.setWorkspaceOpen(true)}

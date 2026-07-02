@@ -91,14 +91,37 @@ export const api = {
   runDetail: (runId: string) => requestJson<RunDetailPayload>(`/api/runs/${encodeURIComponent(runId)}`),
 };
 
+export type ConnectivityStatus = "live" | "reconnecting" | "offline";
+
 export function subscribeToEvents(
   sessionId: string,
-  onEvents: (events: StudioEvent[]) => void
+  onEvents: (events: StudioEvent[]) => void,
+  onStatus?: (status: ConnectivityStatus) => void,
 ): () => void {
   let stopped = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let es: EventSource | null = null;
+  let sseOk = false;
+  let pollFailures = 0;
+  let reconnectAttempts = 0;
+  let lastStatus: ConnectivityStatus | null = null;
   const seen = new Set<string>();
+
+  function setStatus(next: ConnectivityStatus) {
+    if (stopped || next === lastStatus) return;
+    lastStatus = next;
+    onStatus?.(next);
+  }
+
+  // Honest status: "live" while SSE is healthy; "reconnecting" when SSE is down but the
+  // fallback poll may still be delivering (degraded, not dead); "offline" only when polling
+  // also fails repeatedly (server likely down). Never claim "live" on a dead stream.
+  function computeStatus() {
+    if (sseOk) return setStatus("live");
+    if (pollFailures >= 2) return setStatus("offline");
+    setStatus("reconnecting");
+  }
 
   function addFresh(evts: StudioEvent[]) {
     const fresh = evts.filter((e) => !seen.has(e.event_id));
@@ -106,36 +129,63 @@ export function subscribeToEvents(
     if (fresh.length) onEvents(fresh);
   }
 
-  function startPoll(interval = 1200) {
+  function startPoll(interval = 8000) {
+    if (pollTimer) return;
     pollTimer = setInterval(async () => {
-      if (stopped) { if (pollTimer) clearInterval(pollTimer); return; }
+      if (stopped) { if (pollTimer) clearInterval(pollTimer); pollTimer = null; return; }
       try {
         const data = await api.events(sessionId);
         addFresh(data.events ?? []);
-      } catch {}
+        pollFailures = 0;
+        computeStatus();
+      } catch {
+        pollFailures += 1;
+        computeStatus();
+      }
     }, interval);
   }
 
-  if (typeof EventSource !== "undefined") {
+  function openStream() {
+    if (stopped || typeof EventSource === "undefined") return;
     es = new EventSource(`/api/studio/sessions/${encodeURIComponent(sessionId)}/events/stream`);
+    es.onopen = () => { sseOk = true; reconnectAttempts = 0; computeStatus(); };
     es.onmessage = (e) => {
       if (!e.data || e.data.startsWith(":")) return;
+      sseOk = true;
       try { addFresh([JSON.parse(e.data) as StudioEvent]); } catch {}
+      computeStatus();
     };
     es.onerror = () => {
-      es?.close();
-      es = null;
-      if (!stopped) startPoll(1500);
+      sseOk = false;
+      computeStatus();
+      // Native EventSource auto-retries while readyState===CONNECTING. Only when it gives up
+      // (CLOSED) do we reconnect manually with capped exponential backoff (1s→2s→…→30s), so we
+      // neither hammer a down server nor abandon SSE forever (the old code polled at 1.5s and
+      // never re-opened the stream). The baseline poll keeps data flowing meanwhile.
+      if (es && es.readyState === EventSource.CLOSED) {
+        es.close();
+        es = null;
+        if (stopped || reconnectTimer) return;
+        const delay = Math.min(30000, 1000 * 2 ** reconnectAttempts);
+        reconnectAttempts += 1;
+        reconnectTimer = setTimeout(() => { reconnectTimer = null; openStream(); }, delay);
+      }
     };
-    // Also poll every 8s for runtime events from user_progress.jsonl that bypass SSE
+  }
+
+  if (typeof EventSource !== "undefined") {
+    openStream();
+    // Baseline poll: runtime events from user_progress.jsonl bypass SSE, and this doubles as the
+    // fallback delivery path while SSE is reconnecting.
     startPoll(8000);
   } else {
-    startPoll(900);
+    startPoll(1500);
   }
 
   return () => {
     stopped = true;
     es?.close();
     if (pollTimer) clearInterval(pollTimer);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
   };
 }

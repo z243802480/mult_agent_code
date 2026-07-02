@@ -1,6 +1,7 @@
 import React from "react";
-import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw, Settings, ShieldCheck } from "lucide-react";
+import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw, Settings, ShieldCheck, WifiOff } from "lucide-react";
 import type { SettingsPayload } from "../types";
+import type { ConnectivityStatus } from "../api";
 import { permissionTier } from "../permissionTiers";
 import { SideChatToggle } from "../features/sidechat/SideChatPanel";
 import { viewModeLabel, type StudioViewMode } from "../hooks/useViewMode";
@@ -14,6 +15,7 @@ type MissionPaneHeaderProps = {
   sideChatOpen: boolean;
   loading: boolean;
   isRunning: boolean;
+  connectivity?: ConnectivityStatus;
   changeCount: number;
   branch?: string;
   onOpenWorkspace: () => void;
@@ -34,6 +36,7 @@ export function MissionPaneHeader({
   sideChatOpen,
   loading,
   isRunning,
+  connectivity,
   changeCount,
   branch,
   onOpenWorkspace,
@@ -70,6 +73,19 @@ export function MissionPaneHeader({
           <span className="headerStatusDot" />
           {isRunning ? "Running" : "Idle"}
         </span>
+        {connectivity && connectivity !== "live" && (
+          <span
+            className={`headerConnectivity ${connectivity}`}
+            title={
+              connectivity === "offline"
+                ? "Can't reach the Studio server — retrying automatically."
+                : "Live stream dropped — reconnecting; updates are arriving via fallback polling."
+            }
+          >
+            <WifiOff size={12} />
+            <span>{connectivity === "offline" ? "Offline — retrying" : "Reconnecting…"}</span>
+          </span>
+        )}
         {settings?.permissionMode && (
           <span
             className="headerPermission"

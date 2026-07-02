@@ -201,6 +201,28 @@
   animation: pulse 1.6s ease-in-out infinite;
 }
 
+/* Connectivity pill — shown only when the event stream is not live (I2). Quiet warn/bad tokens. */
+.headerConnectivity {
+  align-items: center;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 4px;
+  padding: 2px 8px;
+}
+
+.headerConnectivity.reconnecting {
+  background: var(--warn-subtle, rgba(184, 134, 11, 0.12));
+  color: var(--warn, #b8860b);
+}
+
+.headerConnectivity.offline {
+  background: var(--bad-subtle, rgba(220, 60, 60, 0.12));
+  color: var(--bad, #dc3c3c);
+}
+
 /* B-polish: project ▸ branch — branch is machine text (mono), quietly muted. */
 .headerBranch {
   align-items: center;
