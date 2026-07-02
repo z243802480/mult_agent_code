@@ -18,7 +18,9 @@ assert.ok(permissionCard.includes("permission_preview"), "permission card must c
 assert.ok(!permissionCard.includes("event.command"), "permission card must not expose raw commands");
 assert.ok(!eventCard.includes("event.command"), "main-session event cards must not expose raw commands");
 
-const turnPosition = thread.indexOf("{turns.map");
+// Match the per-turn map by its stable callback arg, not the array identifier (the rendered list may
+// be a windowed slice, e.g. visibleTurns.map, without changing that turns render before the snapshot).
+const turnPosition = thread.indexOf(".map((turnSteps");
 const actionPosition = thread.lastIndexOf("<RuntimeSnapshot");
 assert.ok(turnPosition >= 0, "main session must render conversation turns");
 assert.ok(actionPosition > turnPosition, "next action must follow the conversation instead of leading it");

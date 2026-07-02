@@ -5,7 +5,44 @@ version (v0.2-alpha); entries are distilled from git history, not narrated.
 
 ## [Unreleased]
 
-### Studio — main content-area liveness (S76 · iteration 1 of the front-end productization plan)
+### Studio — front-end productization (S76 · iterations I1–I14 across 5 goal-driven rounds)
+
+A competitor-benchmarked (Claude Code / Cursor / Cline / Zed / Windsurf / Codex /
+Aider) redesign of the Studio main content area and long-task robustness. Plan:
+`docs/zh/前端产品化路线.md`. Highlights beyond the iteration-1 liveness fix below:
+
+- **Rich, honest main content area.** A sticky "spine" per run — phase strip
+  (understand→plan→execute→review→done, lit only to the phase actually reached) +
+  a live plan/todo checklist derived from the real `task_plan` (○◐✓⚠, "N of M",
+  nothing when there is no plan) + a context/token meter from `cost_report`
+  ("N% context · used/window · in/out (est.)", amber past 0.75, never a `$`).
+- **Reasoning cleanup** centralized (`cleanReasoning` strips stray `<think>` on every
+  render path) + a live streaming caret.
+- **Honest transport + errors.** Send/decision failures now toast with Retry instead
+  of failing silent; a `live/reconnecting/offline` connectivity pill with SSE
+  exponential-backoff reconnection; unknown errors surface their real first line (not
+  a blank "could not be completed") with an auth/rate-limit/timeout/network/model
+  category badge.
+- **Long-task robustness.** Per-session event cache (switching no longer flashes/
+  refetches); turn-list windowing to the last 60 (bounds the DOM on huge runs) with
+  "load earlier"; auto-follow respects manual scroll-up + a "Jump to latest" pill.
+- **Interaction.** Queue-while-running (type a follow-up mid-run; it sends at the
+  next turn boundary — never a fake mid-step injection) + Esc-to-stop; a Ctrl/Cmd+K
+  command palette (fuzzy session switch + actions, full keyboard control).
+- **Light theme** that follows the OS (`prefers-color-scheme`), a clean remap of the
+  existing token system; verified defect-free across the main surfaces.
+- **Defects fixed:** `redact()` was scrubbing token *counts* (`*_tokens`) as if they
+  were credentials → the meter is now real; workspace-switch was permanently wedged by
+  never-cleared completed jobs (`liveJobs.size > 0`) → gated on genuinely-running jobs;
+  session↔run coarse-fallback + mojibake goal title.
+
+All front-end + `studio/server.mjs`; no DO_NOT_TOUCH Python touched. Verified per
+iteration: tsc + vite build, Studio smokes/contracts, and live preview on a real
+captured run. Deferred (tracked in the plan): finalized-turn memoization + true
+virtualization, seq-cursor SSE backfill, edit-and-resend, inline diff accept/reject,
+session backup/branch/restore, a manual theme toggle.
+
+### Studio — main content-area liveness (S76 · iteration 1)
 
 Fixes the "thought for a long time, not a single word, then a review popped up —
 feels like a state machine" report. The backend was genuinely streaming (96 real
