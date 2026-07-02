@@ -1755,6 +1755,7 @@ ${stderr}` : stdout.slice(-4000)
         artifact_refs: runArtifactRefs(completedRunId),
         run_id: completedRunId || undefined,
         job_id: jobId,
+        data: code === 0 ? undefined : { error_category: friendlyErrorCategory(stderr || stdout) },
       });
     }
     const followUpMode = job.follow_up_mode;
@@ -1849,7 +1850,34 @@ function friendlyErrorText(text) {
       "- Check proxy/VPN settings, then retry.",
     ].join("\n");
   }
-  return "";
+  // Unknown shape: never go blank (which read as a vague "could not be completed"). Surface the first
+  // meaningful, redacted line of the REAL error so the user sees WHAT failed, plus generic next steps.
+  const firstLine = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !/^(traceback|file ")/i.test(line) && !/^\s*at\s/i.test(line));
+  if (!firstLine) return "";
+  return [
+    "## The task hit an error",
+    redactText(firstLine).slice(0, 300),
+    "",
+    "## What you can do",
+    "- Retry the step.",
+    "- Open the Inspector for the full diagnostics.",
+    "- If it repeats, reduce the scope or switch the model route.",
+  ].join("\n");
+}
+
+// Coarse error category for UI badging (auth/rate_limit/timeout/network/model/unknown). Honest: only
+// returns a category actually detected in the text; never invents a code.
+function friendlyErrorCategory(text) {
+  const lower = String(text || "").toLowerCase();
+  if (/\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)) return "auth";
+  if (/\b(429|rate limit|quota|insufficient_quota|too many requests)\b/.test(lower)) return "rate_limit";
+  if (/timed out|timeout|deadline|handshake/.test(lower)) return "timeout";
+  if (/econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy|ssl|tls/.test(lower)) return "network";
+  if (/model[^\n]*(not found|does not exist|unknown|not available)|no such model|invalid model|model_not_found/.test(lower)) return "model";
+  return "unknown";
 }
 
 function friendlyErrorTitle(text) {

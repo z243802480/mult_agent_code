@@ -834,6 +834,18 @@
   margin-bottom: 8px;
 }
 
+/* Error category badge on a failed final (I12) */
+.turnFinalErrorTag {
+  background: var(--bad-subtle, rgba(220, 60, 60, 0.12));
+  border-radius: var(--radius-sm, 4px);
+  color: var(--bad, #dc3c3c);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  text-transform: uppercase;
+}
+
 /* ── Persistent reasoning block (collapsed chip after completion, live during a run) */
 .thinkingBlock {
   display: grid;

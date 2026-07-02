@@ -4,6 +4,14 @@ import { MarkdownBody } from "../../components/MarkdownBody";
 import { cleanReasoning } from "../../narrative";
 import { turnModelMetadata } from "./turnHelpers";
 
+const ERROR_CATEGORY_LABELS: Record<string, string> = {
+  auth: "Auth",
+  rate_limit: "Rate limited",
+  timeout: "Timeout",
+  network: "Network",
+  model: "Model",
+};
+
 export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
   const event = step.events[0];
   const text = event?.content_delta || step.summary || step.title || "";
@@ -14,12 +22,17 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   // Honesty: never fabricate a "Done." success for a content-less non-error final. Show the real
   // final text when present; otherwise render nothing (or a neutral note), never a fake outcome.
   const leadText = lead || (isError ? "Something went wrong while finishing up." : "");
+  // Coarse error category (auth/rate_limit/timeout/network/model) badged from the real error, when
+  // the runtime actually detected one — never invented (I12).
+  const category = isError ? String((event?.data as Record<string, unknown> | undefined)?.error_category ?? "") : "";
+  const categoryLabel = ERROR_CATEGORY_LABELS[category] ?? "";
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
       <div className="turnFinalHeader">
         <span className="turnFinalAvatar">A</span>
         <span className="turnFinalLabel">Asteria</span>
+        {categoryLabel && <span className="turnFinalErrorTag">{categoryLabel}</span>}
         {modelMeta && <span className="turnFinalMeta">{modelMeta}</span>}
       </div>
       <div className="turnFinalText">
