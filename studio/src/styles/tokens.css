@@ -123,6 +123,62 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Light theme (I14): follows the OS by default. Every value is a remap of a token already used
+   app-wide, so components that respect the design tokens flip cleanly. Opt back to dark explicitly
+   with <html data-theme="dark">. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --surface-0: #ffffff;
+    --surface-1: #f5f7f9;
+    --surface-2: #eef1f4;
+    --surface-3: #e4e8ec;
+
+    --border-subtle: #e4e8ec;
+    --border-strong: #cdd4db;
+
+    --text-primary: #14181c;
+    --text-secondary: #4c5762;
+    --text-muted: #7a848e;
+
+    --accent: #1f74c9;
+    --accent-hover: #1a67b4;
+    --accent-active: #185ea3;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(31, 116, 201, 0.10);
+    --accent-border: rgba(31, 116, 201, 0.28);
+
+    --ok: #1f9d57;
+    --warn: #b3781d;
+    --bad: #d0473f;
+    --ok-subtle: rgba(31, 157, 87, 0.11);
+    --warn-subtle: rgba(179, 120, 29, 0.12);
+    --bad-subtle: rgba(208, 71, 63, 0.11);
+
+    --permission-bg: #f1ecfb;
+    --permission-border: #b9a6ec;
+    --permission-text: #4a3a86;
+    --permission-accent: #6b4fd0;
+    --permission-border-alpha: rgba(107, 79, 208, 0.30);
+
+    --chat-bg: #e6f3fa;
+    --chat-border: #b3d6e5;
+    --chat-text: #1c4655;
+    --chat-accent: #1f8fb8;
+
+    --action-solid-bg: #14181c;
+    --action-solid-fg: #ffffff;
+    --action-solid-bg-hover: #26303a;
+
+    --user-bubble-bg: #e4f0f5;
+
+    --scrollbar-thumb-hover: #b3bcc4;
+
+    --shadow-sm: 0 1px 2px rgba(20, 24, 28, 0.10);
+    --shadow-md: 0 8px 24px rgba(20, 24, 28, 0.12);
+    --shadow-lg: 0 18px 44px rgba(20, 24, 28, 0.16);
+  }
+}
+
 * {
   box-sizing: border-box;
 }
