@@ -34,6 +34,24 @@ def test_user_progress_logger_writes_schema_validated_events(tmp_path: Path) -> 
     assert logger.read_all()[0]["phase"] == "plan"
 
 
+def test_user_progress_logger_falls_back_session_id_to_run_id(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path(__file__).resolve().parents[2] / "src" / "asteria_runtime" / "schemas")
+    logger = UserProgressLogger(tmp_path / "user_progress.jsonl", validator)  # no session bound
+
+    event = logger.record(
+        run_id="run-42",
+        channel="model",
+        event_type="delta",
+        phase="plan",
+        status="running",
+        title="t",
+        summary="s",
+    )
+
+    # session==run in the runtime; falling back to run_id is honest, not a null "no session".
+    assert event["session_id"] == "run-42"
+
+
 def test_user_progress_logger_has_convenience_event_channels(tmp_path: Path) -> None:
     validator = SchemaValidator(Path(__file__).resolve().parents[2] / "src" / "asteria_runtime" / "schemas")
     logger = UserProgressLogger(tmp_path / "user_progress.jsonl", validator)

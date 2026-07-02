@@ -93,17 +93,22 @@ class InitCommand:
         backlog = self._build_backlog()
 
         self._write_json(
-            agent_dir / "project.json", "project_config", project_config, created, updated
+            agent_dir / "project.json", "project_config", project_config, created, updated, preserved
         )
-        self._write_json(agent_dir / "policies.json", "policy_config", policies, created, updated)
+        self._write_json(
+            agent_dir / "policies.json", "policy_config", policies, created, updated, preserved
+        )
         self._write_json(
             context_dir / "root_snapshot.json",
             "context_snapshot",
             root_snapshot,
             created,
             updated,
+            preserved,
         )
-        self._write_json(tasks_dir / "backlog.json", "task_board", backlog, created, updated)
+        self._write_json(
+            tasks_dir / "backlog.json", "task_board", backlog, created, updated, preserved
+        )
         self._record_global_workspace(project_config, warnings)
 
         agents_path = self.root / "AGENTS.md"
@@ -148,10 +153,20 @@ class InitCommand:
         data: dict,
         created: list[str],
         updated: list[str],
+        preserved: list[str],
     ) -> None:
-        existed = path.exists()
+        if path.exists():
+            if not self.force:
+                # Idempotent re-init: never clobber managed metadata the user may have edited
+                # (e.g. policies.json). Only `--force` regenerates it — which is what --force now
+                # actually does, instead of being a no-op that silently overwrote either way.
+                preserved.append(self._rel(path))
+                return
+            self.store.write(path, data, schema_name=schema_name)
+            updated.append(self._rel(path))
+            return
         self.store.write(path, data, schema_name=schema_name)
-        (updated if existed else created).append(self._rel(path))
+        created.append(self._rel(path))
 
     def _build_project_config(self) -> dict:
         now = self._now()

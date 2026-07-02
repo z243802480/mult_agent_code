@@ -68,7 +68,9 @@ PERMISSION_LEVEL_HELP = (
 )
 MODEL_STRATEGY_HELP = (
     "User-facing model strategy: auto routes by task, quality favors stronger models, "
-    "economy favors cheaper models, local is reserved for privacy-first local routes."
+    "economy favors cheaper models. local is currently a routing-preference placeholder "
+    "(no dedicated local route is wired; it falls back to the configured default tier until "
+    "a local provider route is configured)."
 )
 SLASH_ALIAS_HELP = (
     "Compatibility: slash-prefixed command forms such as `asteria /run` remain aliases "
@@ -204,7 +206,10 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--force",
         action="store_true",
-        help="Regenerate managed metadata; never overwrites user-authored AGENTS.md",
+        help=(
+            "Regenerate managed metadata (project.json/policies.json/root_snapshot.json/backlog.json), "
+            "overwriting existing files. Without --force, re-init preserves them; AGENTS.md is never overwritten."
+        ),
     )
     init_parser.add_argument(
         "--north-star-title",

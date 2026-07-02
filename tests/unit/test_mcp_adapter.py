@@ -353,3 +353,16 @@ def test_mcp_invocation_summary_groups_statuses(tmp_path: Path) -> None:
     assert summary["failed"] == 1
     assert summary["by_status"] == {"success": 1, "timeout": 1}
     assert "failures by status" in summary["consumer_summary"]
+
+
+def test_from_configs_degrades_on_unspawnable_server() -> None:
+    from asteria_runtime.core.mcp_adapter import McpServerConfig
+
+    # A server whose command does not exist must not abort adapter construction / the run — it
+    # should degrade to "no tools" (documented behavior), not raise FileNotFoundError.
+    adapter = McpAdapter.from_configs(
+        [McpServerConfig(name="dead", command=["definitely-no-such-cmd-xyz-123"])]
+    )
+
+    assert "dead" not in adapter.sessions
+    assert adapter.discover_tools() == []

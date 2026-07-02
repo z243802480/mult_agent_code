@@ -50,3 +50,31 @@ def test_init_migrates_legacy_agent_state_to_asteria(tmp_path: Path) -> None:
 
     assert (tmp_path / ".asteria" / "context" / "root_snapshot.json").exists()
     assert any("Migrated legacy .agent/" in warning for warning in result.warnings)
+
+
+def test_init_reinit_preserves_user_edited_managed_files(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    policies_path = tmp_path / ".asteria" / "policies.json"
+    edited = json.loads(policies_path.read_text(encoding="utf-8"))
+    edited["_user_marker"] = "keep-me"
+    policies_path.write_text(json.dumps(edited), encoding="utf-8")
+
+    result = InitCommand(tmp_path).run()
+
+    reloaded = json.loads(policies_path.read_text(encoding="utf-8"))
+    assert reloaded.get("_user_marker") == "keep-me"
+    assert any("policies.json" in rel for rel in result.preserved)
+
+
+def test_init_force_regenerates_managed_files(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    policies_path = tmp_path / ".asteria" / "policies.json"
+    edited = json.loads(policies_path.read_text(encoding="utf-8"))
+    edited["_user_marker"] = "overwrite-me"
+    policies_path.write_text(json.dumps(edited), encoding="utf-8")
+
+    result = InitCommand(tmp_path, force=True).run()
+
+    reloaded = json.loads(policies_path.read_text(encoding="utf-8"))
+    assert "_user_marker" not in reloaded
+    assert any("policies.json" in rel for rel in result.updated)

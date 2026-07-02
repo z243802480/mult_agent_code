@@ -112,7 +112,10 @@ class UserProgressLogger:
                 "schema_version": "0.1.0",
                 "event_id": f"upe-{self._counter:04d}",
                 "run_id": run_id,
-                "session_id": self.session_id,
+                # Fall back to the run's own id as its session identity when no session was bound:
+                # the runtime models session==run (run_dir==session_dir), so writing null here was a
+                # dishonest "no session" on every event. An explicitly-bound session_id still wins.
+                "session_id": self.session_id or run_id,
                 "created_at": now_iso(),
                 "sequence": self._counter,
                 "channel": channel,

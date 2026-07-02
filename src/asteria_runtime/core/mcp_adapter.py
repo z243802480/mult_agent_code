@@ -237,7 +237,18 @@ class McpAdapter:
 
     @classmethod
     def from_configs(cls, configs: list[McpServerConfig]) -> McpAdapter:
-        return cls({config.name: StdioMcpSession(config) for config in configs})
+        sessions: dict[str, StdioMcpSession] = {}
+        for config in configs:
+            try:
+                sessions[config.name] = StdioMcpSession(config)
+            except OSError:
+                # A server whose command cannot be spawned (missing binary, no such command) must
+                # NOT abort the whole run — degrade to "that server contributes no tools", matching
+                # the documented behavior. invoke_tool already returns a structured
+                # mcp_server_not_configured result for an absent session, and discover_tools only
+                # iterates live sessions. (ValueError from an empty command stays a loud config error.)
+                continue
+        return cls(sessions)
 
     @classmethod
     def from_adapter_config(cls, config: McpAdapterConfig) -> McpAdapter:
