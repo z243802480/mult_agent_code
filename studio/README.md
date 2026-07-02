@@ -114,7 +114,10 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | Stage / Discard single file (git) | ✅ |
 | Token / cost limits display | 🔲 defer |
 | Terminal output panel | 🔲 defer |
-| Global settings UI | 🔲 defer |
+| Global settings panel（权限档持久化 `.asteria/studio/settings.json`） | ✅ S74 收敛② |
+| Toast confirmation system | ✅ S74 收敛 |
+| Loading skeleton（首屏 bootstrap） | ✅ S74 |
+| MCP/Skill capability surface（`capability.ts`） | ✅ S74 收敛③ |
 | Git worktree 并行 session | 🔲 defer RFC |
 
 **产品设计真源**：[`Asteria Studio 产品设计.md`](../docs/zh/Asteria%20Studio%20产品设计.md) · [`Studio 会话与上下文设计准则.md`](../docs/zh/Studio%20会话与上下文设计准则.md) · **历史签字**：[`S45-S50-studio-parity-signoff-20260606.md`](../docs/zh/reports/S45-S50-studio-parity-signoff-20260606.md)
@@ -227,17 +230,29 @@ studio/
     ├── App.tsx                 # Root: session state, event subscription
     ├── api.ts                  # Typed API client + SSE subscription
     ├── narrative.ts            # Event → NarrativeStep → RunNarrative
+    ├── capability.ts           # MCP/Skill capability surface (mcp__server__tool, skill__name)
+    ├── permissionTiers.ts      # 3-mode permission tier vocabulary (ask/reviewed_auto/auto)
     ├── types.ts                # Shared types (StudioEvent, NarrativeStep…)
-    └── components/
-        ├── Thread.tsx          # Conversation turns (LiveStream + TurnFinal)
-        ├── NarrativeStep.tsx   # Individual step card (for process archive)
-        ├── EventCard.tsx       # Raw event card (Inspector)
-        ├── Composer.tsx        # Message input + mode selector
-        ├── Inspector.tsx       # Right panel: event detail, evidence, files
-        ├── PermissionCard.tsx  # Allow / Deny inline card
-        ├── Sidebar.tsx         # Session list + system status
-        └── Shared.tsx          # Status badge, Metric tile, Banner
+    ├── components/              # Thin re-export shims + still-flat leaf components
+    │   ├── Thread.tsx           # -> re-exports features/thread/Thread.tsx
+    │   ├── Inspector.tsx        # -> re-exports features/inspector
+    │   ├── Sidebar.tsx          # -> re-exports features/sidebar
+    │   ├── NarrativeStep.tsx    # Individual step card (for process archive)
+    │   ├── EventCard.tsx        # Raw event card (Inspector)
+    │   ├── Composer.tsx         # Message input + mode selector
+    │   ├── PermissionCard.tsx   # Allow / Deny inline card
+    │   ├── SettingsPanel.tsx    # Unified Settings entry (permission tier persistence)
+    │   ├── ToastViewport.tsx    # Toast confirmation surface (+ toast.ts)
+    │   ├── Skeleton.tsx         # Bootstrap loading skeleton
+    │   └── Shared.tsx           # Status badge, Metric tile, Banner
+    └── features/                 # Real implementations, split by surface
+        ├── thread/               # ConversationTurn, LiveStream, TurnFinal, ToolCallCard, SuggestedActions…
+        ├── inspector/            # EvidenceExplorer, VerificationMatrix…
+        ├── sidebar/
+        └── sidechat/             # SideChatPanel
 ```
+
+Studio 交互界面工程设计.md §2 是前端仓库结构真源；上表是维护者速查，改结构以前者为准。
 
 ### Event flow
 

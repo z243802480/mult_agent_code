@@ -2,7 +2,7 @@
 
 状态：`design`
 
-更新时间：2026-06-28
+更新时间：2026-07-02
 
 本文是 Asteria 交互界面（Studio 前端）的**工程设计真源**，与后端的 [Asteria 模型主导运行时设计](./Asteria%20模型主导运行时设计.md) 互为对偶：一篇讲 Runtime 内核怎么实现，本篇讲交互面怎么实现。
 
@@ -56,7 +56,10 @@ src/
     inspector/       # 诊断：EvidenceExplorer / VerificationMatrix / DiffReviewPane / SelectedStepPanel
     sidebar/         # SessionRail / SessionList（会话与 workspace）
     sidechat/        # SideChatPanel（display_level=side 旁路问答）
-  components/        # 共享 UI：NarrativeStep / PermissionCard（含 scope_detail 披露）/ Composer / Clamped/Diff chips
+  components/        # 共享 UI：NarrativeStep / PermissionCard（含 scope_detail 披露）/ Composer / Clamped/Diff chips /
+                     # SettingsPanel（统一 Settings 入口）/ ToastViewport+toast.ts（确认系统）/ Skeleton（首屏加载态）
+  capability.ts      # MCP/Skill 能力面（mcp__server__tool / skill__name 主线程实名化）
+  permissionTiers.ts # 权限档词表归一（ask/reviewed_auto/auto）
   hooks/             # useViewMode / usePaneLayout / useDiffFocus / useStudioKeyboard …
   session/           # 取数与合并：useSessionEvents / useRunEvidence / useStudioBootstrap
   layout/ styles/    # 顶层布局与样式

@@ -1,5 +1,12 @@
 # Multi-Agent Autonomous Development System - Runtime Commands
 
+> **Partial mirror, not the source of truth.** This file only covers the early command set and
+> lags behind [`docs/zh/运行命令.md`](../zh/运行命令.md), which documents the full current command
+> list (`init`, `plan`, `sessions`, `run`, `execute`, `review`, `accept`, `debug`, `resume`,
+> `status`, `gate*`, `validation-run`, `capability-report`, and more) and the current
+> `.asteria/` state directory naming (renamed from `.agent/` on 2026-05-17). If this file and the
+> zh doc disagree, the zh doc wins.
+
 ## Initial Commands
 
 - `/init`: initialize an agent-ready workspace.
@@ -65,7 +72,7 @@ The command writes:
 
 - `task_plan.json`
 - `task_plan_eval.json`
-- `.agent/tasks/backlog.json`
+- `.asteria/tasks/backlog.json`
 - `events.jsonl`
 - `tool_calls.jsonl`
 - `model_calls.jsonl`
@@ -76,9 +83,9 @@ Execution is constrained by both the task `allowed_tools` field and the runtime 
 ## `/new` And `/sessions` Context Isolation
 
 `Session` is the user-facing unit: one goal, one recoverable context, and one current pointer.
-The runtime still stores the execution record as a run under `.agent/runs/<run_id>/`.
+The runtime still stores the execution record as a run under `.asteria/runs/<run_id>/`.
 
-`/new` creates a fresh planning run for a new goal and writes `.agent/current_session.json`.
+`/new` creates a fresh planning run for a new goal and writes `.asteria/current_session.json`.
 
 `/sessions` helps recover or switch context:
 
@@ -86,10 +93,10 @@ The runtime still stores the execution record as a run under `.agent/runs/<run_i
 - `asteria sessions --session-id <id>`: show one session.
 - `asteria sessions --session-id <id> --set-current`: make a session current.
 
-`/runs`, `/history`, and `--run-id` remain compatibility aliases. New documentation and user
+`--run-id` remains a compatibility alias for `--session-id`. New documentation and user
 flows should use `/sessions` and `--session-id`.
 `asteria acceptance-history` shows persisted acceptance history and trend
-deltas from `.agent/acceptance/history.jsonl`.
+deltas from `.asteria/acceptance/history.jsonl`.
 Use `--fail-on-warning` to turn trend warnings into a non-zero exit code for local gates.
 Use `asteria acceptance --fail-on-trend-warning` when the acceptance run itself should fail on
 trend regressions.
@@ -122,7 +129,7 @@ init if needed
   -> final_report.md
 ```
 
-It writes `final_report.md` under `.agent/runs/<run_id>/` with task completion, blocked-task notes, cost counters, artifact summaries, and recommended next actions.
+It writes `final_report.md` under `.asteria/runs/<run_id>/` with task completion, blocked-task notes, cost counters, artifact summaries, and recommended next actions.
 
 When review creates a high-impact decision point, `/run` pauses the run instead of silently expanding scope. The final report lists `Pending Decisions`.
 
