@@ -3,6 +3,57 @@
 All notable changes to asteria-runtime. This project targets a first releasable
 version (v0.2-alpha); entries are distilled from git history, not narrated.
 
+## [0.2.0a2] — 2026-07-02
+
+Honesty + security convergence after a full-system "docs claim vs code reality"
+audit. Principle: never emit an outcome/label/evidence that claims a capability
+ran when it did not; close real closure-breakpoints; add mainstream coding-agent
+table stakes — without modifying the frozen core command layer (DO_NOT_TOUCH).
+
+### Security (P0)
+- ShellGuard: protected-path/secret pre-scan (`cat .env` blocked), `allow_network`
+  gate (curl/wget/nc/ssh/git-clone), destructive-command deep scan (find -delete,
+  interpreter rmtree, quoted Remove-Item), `.asteria/` added to protected paths
+  (policy self-escalation), plus a two-round red-team pass.
+- runtime_request packaged-schema enum sync + validated rewrite (poisoning fix).
+- Honest scope: a static shell denylist is a speed-bump, not a boundary — an
+  external Beta should constrain/close shell or run a sandbox.
+
+### Trust (P1)
+- Remove the dead `approve_similar_for_session` option and the fake
+  `execution_approval_applied` effect it recorded.
+- MCP/Skill `ask` was a no-op (nothing consumed `requires_decision`) → report the
+  honest `allow` (contract-gated); docs downgraded.
+- Studio: drop the chat keyword short-circuit that returned a canned template;
+  disclose built-in template answers; "AI Debug Agent" → "Run Diagnostics"; stop
+  fabricating "Done." for content-less finals; fix the plan opening step mislabeled
+  as the run result; offline-warning now covers the default route.
+
+### Closure breakpoints (P2)
+- MCP/Skill tool observations re-loop into the next round (were dropped at the
+  round boundary); glob/diff_workspace/todo_read/todo_write unblocked (stale
+  capability-kind map + planner contract); route fallback persisted to
+  model_calls.jsonl; bounded chat history so Studio chat is no longer single-turn.
+
+### Desktop table stakes (P3)
+- Stop/interrupt a running run (session stop route + tree-kill + Composer Stop);
+  session search; run token-usage panel (no fabricated USD cost); Inspector renders
+  MCP/Skill invocations + capability decisions and stops truncating the file list;
+  live streaming shows real model deltas instead of a placeholder; event-id
+  namespace unified + replay de-duplicated.
+
+### Debt / honesty (P4)
+- `init` is idempotent (never overwrites user-edited managed files; `--force` now
+  actually regenerates); a dead MCP server degrades to "no tools" instead of
+  crashing the run; user_progress `session_id` is no longer written null; doc
+  over-claims (fork / auto-compaction / `--model-strategy local` / max_total_minutes)
+  downgraded to reality.
+
+Verification: unit 902 + integration + ruff + doc-contracts 22 + Studio build/smoke,
+all green; no DO_NOT_TOUCH file modified. Items needing the frozen core (real /run
+review gate, repair-budget enforcement, schema-drift sync, Studio session-id
+plumbing, acceptance scoring) remain flagged DecisionPoints.
+
 ## [0.2.0a1] — 2026-06-28
 
 First releasable alpha. Focus: make the core Goal→Plan→Execute→Verify loop
