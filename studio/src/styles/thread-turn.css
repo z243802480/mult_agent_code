@@ -1137,6 +1137,47 @@
   50.01%, 100% { opacity: 0; }
 }
 
+/* ── Long-thread windowing controls (I7) */
+.loadEarlierTurns {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.16));
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: block;
+  font-size: 12px;
+  margin: 4px auto 12px;
+  padding: 4px 12px;
+  width: fit-content;
+}
+
+.loadEarlierTurns:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.jumpToLatest {
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--radius-pill);
+  bottom: 14px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  cursor: pointer;
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin: -32px auto 6px;
+  padding: 6px 14px;
+  position: sticky;
+  width: fit-content;
+  z-index: 4;
+}
+
+.jumpToLatest:hover {
+  filter: brightness(1.08);
+}
+
 .turnFinalAvatar {
   display: none;
 }

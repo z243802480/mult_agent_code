@@ -24,6 +24,11 @@ const RUN_OUTPUT_TYPES = new Set<StudioEvent["type"]>([
   "file_changed", "final_answer", "error",
 ]);
 
+// Cap the number of fully-rendered turns so a very long run bounds the DOM node count and stays at
+// 60fps (I7). Older turns render nothing until the user asks for them; the on-disk transcript keeps
+// everything. This is what keeps opening a long-running session from freezing the tab.
+const MAX_RENDERED_TURNS = 60;
+
 export function Thread({
   events,
   selected,
@@ -69,6 +74,9 @@ export function Thread({
 }) {
   const threadRef = useRef<HTMLElement>(null);
   const [expandSignal, setExpandSignal] = useState<ProcessExpandSignal>(null);
+  const [showEarlier, setShowEarlier] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
   const compactDiff = viewMode === "focus";
   const mainEvents = useMemo(() => events.filter((event) => !event.display_level || event.display_level === "main"), [events]);
   const shouldShowPending = Boolean(pendingTurn) && !mainEvents.some((event) =>
@@ -120,17 +128,41 @@ export function Thread({
   // can disagree (stale "Decide" chip vs. a run that already passed review and is ready to Accept).
   const snapshotOwnsNextStep = runtimeSnapshotActionable(overview ?? null, runDetail ?? null, events);
 
+  // Track whether the viewport is pinned to the live edge, so we (a) never yank a user who scrolled
+  // up back to the bottom, and (b) can show a "Jump to latest" affordance (I7).
   useEffect(() => {
     const el = threadRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 220;
-    if (nearBottom || isRunning) {
-      const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      requestAnimationFrame(() => {
-        el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-      });
-    }
+    const onScroll = () => {
+      const near = el.scrollHeight - el.scrollTop - el.clientHeight < 220;
+      atBottomRef.current = near;
+      setAtBottom(near);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  // Auto-follow only while pinned to the bottom (read via ref to avoid a scroll↔state feedback loop).
+  useEffect(() => {
+    const el = threadRef.current;
+    if (!el || !atBottomRef.current) return;
+    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    });
   }, [mainEvents.length, isRunning]);
+
+  // Reset the "load earlier" reveal when switching to a different run/session.
+  useEffect(() => { setShowEarlier(false); }, [selectedRunId]);
+
+  const hiddenTurnCount = showEarlier ? 0 : Math.max(0, turns.length - MAX_RENDERED_TURNS);
+  const visibleTurns = hiddenTurnCount > 0 ? turns.slice(-MAX_RENDERED_TURNS) : turns;
+  const turnIndexOffset = turns.length - visibleTurns.length;
+  const scrollToLatest = () => {
+    const el = threadRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
 
   if (!turns.length && !shouldShowPending) {
     return (
@@ -167,29 +199,42 @@ export function Thread({
           <button type="button" onClick={() => setExpandSignal({ mode: "collapse", id: Date.now() })}>Collapse process</button>
         </div>
       )}
-      {turns.map((turnSteps, i) => (
-        <ConversationTurn
-          key={turnSteps[0].id}
-          steps={turnSteps}
-          selected={selected}
-          onSelect={onSelect}
-          onPermit={onPermit}
-          isLast={i === turns.length - 1}
-          isRunning={isRunning}
-          expandSignal={expandSignal}
-          onFileChangeClick={onFileChangeClick}
-          turnIndex={i + 1}
-          turnDiffLabel={turnDiffLabel?.(i + 1)}
-          onTurnDiffSelect={onTurnDiffSelect}
-          onAggregateDiffClick={onAggregateDiffClick}
-          compactDiff={compactDiff}
-          runDetail={runDetail}
-          viewMode={viewMode}
-          onTurnRewind={onTurnRewind}
-          onSuggestedAction={onRuntimeAction}
-          suppressSuggested={snapshotOwnsNextStep}
-        />
-      ))}
+      {hiddenTurnCount > 0 && (
+        <button type="button" className="loadEarlierTurns" onClick={() => setShowEarlier(true)}>
+          Load {hiddenTurnCount} earlier turn{hiddenTurnCount === 1 ? "" : "s"}
+        </button>
+      )}
+      {visibleTurns.map((turnSteps, i) => {
+        const globalIndex = turnIndexOffset + i;
+        return (
+          <ConversationTurn
+            key={turnSteps[0].id}
+            steps={turnSteps}
+            selected={selected}
+            onSelect={onSelect}
+            onPermit={onPermit}
+            isLast={globalIndex === turns.length - 1}
+            isRunning={isRunning}
+            expandSignal={expandSignal}
+            onFileChangeClick={onFileChangeClick}
+            turnIndex={globalIndex + 1}
+            turnDiffLabel={turnDiffLabel?.(globalIndex + 1)}
+            onTurnDiffSelect={onTurnDiffSelect}
+            onAggregateDiffClick={onAggregateDiffClick}
+            compactDiff={compactDiff}
+            runDetail={runDetail}
+            viewMode={viewMode}
+            onTurnRewind={onTurnRewind}
+            onSuggestedAction={onRuntimeAction}
+            suppressSuggested={snapshotOwnsNextStep}
+          />
+        );
+      })}
+      {!atBottom && (
+        <button type="button" className="jumpToLatest" onClick={scrollToLatest} aria-label="Jump to latest">
+          Jump to latest ↓
+        </button>
+      )}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}
       <RuntimeSnapshot
         overview={overview ?? null}
