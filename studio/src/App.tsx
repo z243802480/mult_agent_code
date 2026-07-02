@@ -281,6 +281,7 @@ export function App() {
           loading={bootstrap.loading}
         />
         <Composer
+          key={bootstrap.activeSession?.session_id ?? "no-session"}
           onSend={sessionEvents.sendGoal}
           onSideAsk={sendSideAsk}
           sideAsk={composerSideAsk}

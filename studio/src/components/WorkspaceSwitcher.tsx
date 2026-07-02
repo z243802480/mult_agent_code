@@ -51,6 +51,14 @@ export function WorkspaceSwitcher({
       .catch(() => setRecent([]));
   }, [open, currentWorkspace]);
 
+  // Escape closes the switcher (was only dismissable via the backdrop / cancel button).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   useEffect(() => {
     if (!open) return;
     const trimmed = pathValue.trim();

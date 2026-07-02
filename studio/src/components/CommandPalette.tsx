@@ -8,13 +8,19 @@ export function CommandPalette({ open, commands, onClose }: { open: boolean; com
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const prevFocus = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    // Remember what was focused so we can restore it on close (don't strand keyboard focus).
+    prevFocus.current = document.activeElement as HTMLElement | null;
     setQuery("");
     setActive(0);
     const id = requestAnimationFrame(() => inputRef.current?.focus());
-    return () => cancelAnimationFrame(id);
+    return () => {
+      cancelAnimationFrame(id);
+      prevFocus.current?.focus?.();
+    };
   }, [open]);
 
   const filtered = useMemo(() => {
@@ -46,7 +52,7 @@ export function CommandPalette({ open, commands, onClose }: { open: boolean; com
 
   return (
     <div className="cmdkOverlay" onClick={onClose}>
-      <div className="cmdkPanel" role="dialog" aria-label="Command palette" onClick={(e) => e.stopPropagation()}>
+      <div className="cmdkPanel" role="dialog" aria-modal="true" aria-label="Command palette" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           className="cmdkInput"

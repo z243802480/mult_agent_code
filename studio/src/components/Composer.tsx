@@ -204,6 +204,7 @@ export function Composer({
               <button
                 type="button"
                 key={action.key}
+                disabled={sending}
                 onClick={() => {
                   setMode(action.mode);
                   setMessage(action.prompt);

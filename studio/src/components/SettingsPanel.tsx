@@ -289,6 +289,14 @@ export function SettingsPanel({
     if (open) setSection("permission");
   }, [open]);
 
+  // Escape closes the modal (was only dismissable by clicking the backdrop).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   const body = useMemo(() => {
     switch (section) {
       case "workspace":
