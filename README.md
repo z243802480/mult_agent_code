@@ -21,16 +21,34 @@ python -m pip install -e ".[dev]"                    # development
 # python -m pip install dist\asteria_runtime-*.whl   # released wheel
 ```
 
-Configure a real model provider (local-first, multi-provider — keys stay in your env):
+Configure a model provider (local-first, multi-provider — keys stay in your env). Minimal setup is
+one provider + one key; tiers you do not set fall back to the built-in default route:
 
 ```powershell
-$env:AGENT_MODEL_PROVIDER = "minimax"        # default / medium tier
-$env:MINIMAX_API_KEY = "<your-minimax-key>"
-$env:AGENT_MODEL_STRONG_PROVIDER = "glm"     # strong tier (capable authoring/repair, the default for execution)
-$env:AGENT_MODEL_STRONG_NAME = "glm-5"
+$env:AGENT_MODEL_PROVIDER = "glm"             # one provider for every tier
 $env:GLM_API_KEY = "<your-glm-key>"
-asteria doctor --root .                       # verify config + provider reachability
+asteria doctor --root .                        # check config (which env vars each tier needs)
+asteria model-check --root . --tier medium     # test the provider is actually reachable
 ```
+
+No key yet? Try it fully offline first (canned model output, no network, no key):
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "fake"
+asteria goal "Create greet.py: a CLI that prints 'Hello, <name>!'" --root .
+```
+
+For tiered routing, set a stronger model on the strong tier (used for authoring/repair):
+
+```powershell
+$env:AGENT_MODEL_PROVIDER = "minimax"         # default / medium tier
+$env:MINIMAX_API_KEY = "<your-minimax-key>"
+$env:AGENT_MODEL_STRONG_PROVIDER = "glm"      # strong tier
+$env:AGENT_MODEL_STRONG_NAME = "glm-4.7"      # or leave unset for the provider default
+$env:GLM_API_KEY = "<your-glm-key>"
+```
+
+See [`docs/zh/模型供应商规格.md`](docs/zh/模型供应商规格.md) for the full per-tier variable list and all supported providers.
 
 Run the happy path — goal in, verified artifact out:
 

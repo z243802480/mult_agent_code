@@ -86,9 +86,9 @@ Click any **file chip** in the live stream or collapsed turn to open git diff (f
 | Permission cards (Allow / Deny inline) | ✅ |
 | Conversation turn structure | ✅ |
 | Process archive (collapsed, expandable) | ✅ |
-| Model + token metadata on reply | ✅ |
-| Session management (create, switch) | ✅ |
-| Mode selector (chat / plan / run / review / resume) | ✅ |
+| Model route on reply; token/usage panel in Inspector | ✅ |
+| Session management (create, switch, search) | ✅ |
+| Mode selector (Auto / Chat / Plan / Goal); review/accept surface as contextual actions | ✅ |
 | Chat mode (instant local reply, no CLI) | ✅ |
 | Inspector panel (event detail, evidence, files) | ✅ |
 | Evidence Explorer | ✅ |
