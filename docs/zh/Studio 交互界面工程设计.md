@@ -15,7 +15,7 @@
 | [用户交互模型](./用户交互模型.md) | CLI 侧 Goal/Plan/Ask、权限三档 | 命令交互 |
 | **本文** | **前端怎么搭：技术栈、进程、数据流、构建、测试、诚实不变量** | **工程实现** |
 
-定调（用户 2026-06-28）：**后端是内核（已证明可用），前端才是交互**；UI 比命令行更适合大众，命令行适合专业开发者。前端**对标当前最火的 Codex 与 Claude Code**——它们是行业最优秀的产品设计者。落地路线见 [plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)。
+定调（用户 2026-06-28）：**后端是内核（已证明可用），前端才是交互**；UI 比命令行更适合大众，命令行适合专业开发者。前端**对标当前最火的 Codex 与 Claude Code**——它们是行业最优秀的产品设计者。落地路线见 [前端产品化路线](./前端产品化路线.md)。
 
 ## 1. 架构定位
 
@@ -180,7 +180,7 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 
 ## 9. 演进与冻结合规
 
-落地顺序见 [plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)（8 个 slice + DS 设计系统轨 + CV 对话流轨，源自 design/understand workflow）。**三轨已全部落地**：
+落地顺序见 [前端产品化路线](./前端产品化路线.md)（8 个 slice + DS 设计系统轨 + CV 对话流轨，源自 design/understand workflow）。**三轨已全部落地**：
 
 - **诚实化 #1–#8**：✅ #1 诚实流式 · #2 干净终卡 · #3 内联工具卡 · #4 loop-health 面板 · #5 diff 评审 gate（`RuntimeSnapshot` Accept 前置评审）· #6 内联建议 chip（`SuggestedActions`）· #7 校验矩阵（`VerificationMatrix` + loop_quality 徽章）· #8 权限 scope 保真（`PermissionCard` scope_detail）。
 - **设计系统 DS-0…DS-3**：✅ token 基线 + 全表面迁移 + 语义色归一（raw hex 归零）+ 会话线深度打磨（节奏/抬升/70ch/markdown 排版）。
@@ -196,5 +196,5 @@ useSessionEvents()                # 轮询 /events + 订阅 SSE
 - 产品/体验：[Asteria Studio 产品设计](./Asteria%20Studio%20产品设计.md) · [Studio 会话与上下文设计准则](./Studio%20会话与上下文设计准则.md)
 - 后端对偶：[Asteria 模型主导运行时设计](./Asteria%20模型主导运行时设计.md)
 - 协议：[用户进展与证据协议](./用户进展与证据协议.md)
-- 路线：[plans/Studio-前端对标-Codex-Claude-路线图](./plans/Studio-前端对标-Codex-Claude-路线图.md)
+- 路线：[前端产品化路线](./前端产品化路线.md)
 - 重设计：[plans/Studio-IDE-shell-重设计方案](./plans/Studio-IDE-shell-%E9%87%8D%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md)（外壳/布局 IDE 化，已立项待实现）

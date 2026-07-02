@@ -2,26 +2,27 @@
 
 This directory contains the English reference document set for the project.
 
-The Chinese documents in `docs/zh/` are the source of truth for product direction, delivery planning, and current implementation status. English documents are secondary references and may lag behind the active Chinese roadmap.
+The Chinese documents in `docs/zh/` are the source of truth for product direction, delivery
+planning, and current implementation status. The English tree is a small, secondary set — kept
+deliberately thin so it cannot drift. The standalone English mirrors of the architecture / product /
+data-model / runtime-commands / delivery / quality / cost-security / acceptance docs were removed on
+2026-07-03 because they had gone stale against the converged code (see
+`docs/zh/已删除与已替代登记.md`); read the Chinese sources for those topics.
 
-Recommended order:
+English docs kept here (independently useful, not mirrors):
 
-1. `PRODUCT_SPEC.md`
-2. `ARCHITECTURE.md`
-3. `DATA_MODEL.md`
-4. `RUNTIME_COMMANDS.md`
-5. `DELIVERY_PLAN.md`
-6. `QUALITY_AND_EVALUATION.md`
-7. `COST_SECURITY_RISK.md`
-8. `REAL_MODEL_ACCEPTANCE.md`
+- `MODEL_PROVIDER_SPEC.md` — the `ModelClient` interface / request-response contract.
+- `DEVELOPMENT.md` — English developer quickstart (env, commands, verification).
+- `examples/*.json` — control-surface contract fixtures (referenced by `docs/zh/运行命令.md` and the
+  documentation-contract tests; NOT prose docs).
 
-Current phase:
+For everything else, start from the Chinese sources of truth:
 
-```text
-Orchestrated Asteria Runtime OS stage
-```
-
-For the current status and near-term roadmap, read `docs/zh/当前状态与路线.md` first.
+1. `../zh/研发总计划.md` — the single execution plan.
+2. `../zh/当前状态与路线.md` — the short current-status snapshot.
+3. `../zh/架构设计.md`, `../zh/数据模型.md`, `../zh/产品规格.md`, `../zh/运行命令.md`,
+   `../zh/质量与评估.md`, `../zh/成本安全与风险.md`, `../zh/真实模型验收.md` — architecture, data model,
+   product spec, commands, quality, cost/security, acceptance.
 
 Verification:
 
