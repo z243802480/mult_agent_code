@@ -17,9 +17,6 @@ export function preferredDecisionOptionId(decision: AnyRecord): string {
 
   if (kind === "execution_policy_approval") {
     if (options.some((option) => option.option_id === "approve_once")) return "approve_once";
-    if (options.some((option) => option.option_id === "approve_similar_for_session")) {
-      return "approve_similar_for_session";
-    }
   }
   if (kind === "runtime_request" || requestTypes.length > 0) {
     if (options.some((option) => option.option_id === "review_contract")) return "review_contract";

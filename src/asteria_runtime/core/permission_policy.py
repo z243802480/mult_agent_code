@@ -51,7 +51,6 @@ def permission_policy_profile(permission_level: str) -> dict[str, Any]:
             "auto_allow_low_risk": False,
             "ask_options": [
                 "allow_once",
-                "allow_similar_for_session",
                 "deny",
                 "switch_to_plan",
             ],
@@ -72,7 +71,6 @@ def permission_policy_profile(permission_level: str) -> dict[str, Any]:
         "auto_allow_low_risk": True,
         "ask_options": [
             "allow_once",
-            "allow_similar_for_session",
             "deny",
             "switch_to_plan",
         ],

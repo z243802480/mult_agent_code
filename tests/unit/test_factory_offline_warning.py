@@ -29,6 +29,27 @@ def test_warns_when_offline_tier_mixed_with_real_providers() -> None:
     assert offline == ["cheap"]
 
 
+def test_warns_when_only_offline_tier_and_real_default_route() -> None:
+    # False-negative regression: the real provider lives on the GLOBAL/default route
+    # (AGENT_MODEL_PROVIDER=minimax) while only `cheap` is pinned to fake. `routes` alone has no
+    # real tier, so the old predicate stayed silent even though `cheap` calls return canned output.
+    routes = {"cheap": _route("cheap", "fake")}
+    default_route = ModelRoute(tier="default", provider="minimax", env_prefix="AGENT_MODEL")
+    with pytest.warns(UserWarning, match="canned output"):
+        offline = _warn_if_tier_silently_offline(routes, default_route)
+    assert offline == ["cheap"]
+
+
+def test_quiet_when_only_offline_tier_and_offline_default_route() -> None:
+    # Fully offline (default route also fake) stays quiet even with the default-route check.
+    routes = {"cheap": _route("cheap", "fake")}
+    default_route = ModelRoute(tier="default", provider="fake", env_prefix="AGENT_MODEL")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        offline = _warn_if_tier_silently_offline(routes, default_route)
+    assert offline == ["cheap"]
+
+
 def test_quiet_when_every_tier_is_offline() -> None:
     # A fully offline/test run is intentional — no warning.
     routes = {

@@ -13,8 +13,8 @@ export function AiDebugAgentCard({ runDetail, selectedRunId }: { runDetail: RunD
       <div className="debugAgentHeader">
         <span className="debugAgentIcon"><Bug size={15} /></span>
         <div>
-          <h2>AI Debug Agent</h2>
-          <p>Ask backend questions about runs, blockers, evidence, model routes, costs, gates, and policies.</p>
+          <h2>Run Diagnostics</h2>
+          <p>Look up recorded run evidence — blockers, model routes, next action, costs, gates, policies. A deterministic read of the selected run, not a model.</p>
         </div>
       </div>
       <div className="debugAgentHints">
@@ -37,7 +37,7 @@ export function AiDebugAgentCard({ runDetail, selectedRunId }: { runDetail: RunD
           placeholder="Ask an Ops question, e.g. why is this run blocked?"
           rows={2}
         />
-        <button type="submit" title="Ask Debug Agent">
+        <button type="submit" title="Look up run diagnostics">
           <SendHorizontal size={14} />
         </button>
       </form>

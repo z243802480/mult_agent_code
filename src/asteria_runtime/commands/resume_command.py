@@ -402,8 +402,11 @@ class ResumeCommand:
         metadata = decision.get("metadata") or {}
         if metadata.get("kind") != "execution_policy_approval":
             return False
+        # Only an explicit "approve once" actually unblocks the task. Any other choice (keep
+        # blocked / unknown) must fall through so it is recorded honestly ("constraint_recorded")
+        # instead of emitting a fake "execution_approval_applied" effect for a still-blocked task.
         if not option or option["option_id"] != "approve_once":
-            return True
+            return False
         task_id = str(metadata.get("task_id") or "")
         for task in task_plan["tasks"]:
             if task["task_id"] == task_id and task["status"] == "blocked":

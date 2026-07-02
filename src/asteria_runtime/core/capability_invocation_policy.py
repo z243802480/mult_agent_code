@@ -306,13 +306,19 @@ class CapabilityInvocationPolicy:
         return base
 
     def _mcp_permission(self, permission_mode: str, risk: str) -> str:
-        if permission_mode == "ask_everything" or risk in {"medium", "high"}:
-            return "ask"
-        return "allow" if permission_mode == "auto" else "ask"
+        # MCP invocations are gated by the task's allowed_mcp capability contract, not by an
+        # interactive prompt: nothing in the runtime pauses a run on an MCP decision, so emitting
+        # "ask" here was a label with no gate behind it (requires_decision had zero consumers, and
+        # McpAdapter/SkillAdapter only act on "deny"). Return the honest value — allowed within
+        # contract — and keep the risk tier on the decision record. A real interactive MCP/Skill
+        # gate (reusing the execution-approval DecisionPoint) is a deferred follow-up, not a label.
+        del permission_mode, risk
+        return "allow"
 
     def _skill_permission(self, permission_mode: str, risk: str) -> str:
-        if permission_mode == "ask_everything" or risk == "high":
-            return "ask"
+        # Skills are gated by the allowed_skills contract, not an interactive prompt; same honesty
+        # reasoning as _mcp_permission above.
+        del permission_mode, risk
         return "allow"
 
     def _goal_task_kind(self, intent: str) -> str:

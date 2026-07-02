@@ -981,9 +981,9 @@ async function buildChatAnswer(message, sessionId, route = null, onLifecycleStar
   if (hasAny(lower, ["who are you", "\u4f60\u662f\u8c01", "\u81ea\u6211\u4ecb\u7ecd"])) return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
   if (isModeHelpQuestion(lower)) return chatAnswer(CHAT_MODES);
 
-  const looksLikeTask = m.length > 15 && hasAny(m, ["\u5b9e\u73b0", "\u4fee\u590d", "\u91cd\u6784", "\u6dfb\u52a0", "\u521b\u5efa", "\u66f4\u65b0"]);
-  if (looksLikeTask) return chatAnswer(chatTaskSuggestion(m));
-
+  // The backend intent router (routeUserIntent) already decided this message stays in chat rather
+  // than becoming a run/plan, so buildChatAnswer must NOT re-guess "is this a task?" with a keyword
+  // heuristic and short-circuit to a canned template. Answer conversationally via the model.
   return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
 }
 
@@ -1020,15 +1020,22 @@ async function chatGeneralAnswer(message, sessionId, onLifecycleStart = null) {
     const streamedAnswer = extractVisibleChatAnswerFromEvents(sessionId);
     const finalAnswer = streamedAnswer || answered;
     if (finalAnswer) return chatAnswer(appendModelNotice(finalAnswer, route, true), route, true);
-    await appendChatFallbackDelta(sessionId, lifecycle, localGeneralAnswer(message), route);
+    await appendChatFallbackDelta(sessionId, lifecycle, appendModelNotice(localGeneralAnswer(message), route, false), route);
   }
   return chatAnswer(appendModelNotice(localGeneralAnswer(message), route, false), route, false);
 }
 
+// Honesty: the local*Answer templates are NOT model output. When no model was reached, disclose it
+// so a canned answer is never presented as a generated one. Wording avoids the backend-metadata
+// tokens the fallback smokes forbid (no "route"/"intent"/"Temporary local fallback").
 function appendModelNotice(answer, route, usedModel) {
   void route;
-  void usedModel;
-  return String(answer || "").trim();
+  const text = String(answer || "").trim();
+  if (usedModel) return text;
+  const notice =
+    "_Heads up: no model was reachable for this reply, so this is a built-in template answer, " +
+    "not a generated one. Add your key details and resend for a real answer._";
+  return text ? `${text}\n\n${notice}` : notice;
 }
 
 async function preferredChatRoute() {
@@ -1421,19 +1428,7 @@ function modelRouteSummaryLine(context) {
   return `- ${firstRuntimeText(route.purpose, "unknown")} used ${firstRuntimeText(route.selected_tier, route.tier, "unknown")}: ${firstRuntimeText(route.reason, route.model_selection_reason, "No reason recorded.")}`;
 }
 
-function chatTaskSuggestion(message) {
-  return [
-    "## \u8fd9\u770b\u8d77\u6765\u662f\u4e00\u4e2a\u9700\u8981\u63a8\u8fdb\u7684\u4efb\u52a1",
-    "",
-    `\u4f60\u7684\u76ee\u6807\uff1a${message.slice(0, 120)}`,
-    "",
-    "\u6211\u5efa\u8bae\u5148\u628a\u5b83\u6574\u7406\u6210\u4e00\u4e2a\u53ef\u6267\u884c\u8ba1\u5212\uff0c\u786e\u8ba4\u8303\u56f4\u3001\u4ea7\u7269\u548c\u98ce\u9669\u540e\u518d\u5f00\u59cb\u6267\u884c\u3002",
-    "",
-    "\u4e0b\u4e00\u6b65\uff1a\u4f60\u53ef\u4ee5\u76f4\u63a5\u8bf4\u201c\u5148\u5236\u5b9a\u8ba1\u5212\u201d\uff0c\u6216\u8005\u8865\u5145\u4f60\u7684\u9a8c\u6536\u6807\u51c6\u3002"
-  ].join("\n");
-}
-
-const CHAT_INTRO = `\u4f60\u597d\uff0c\u6211\u662f Asteria\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u95ee\u9898\u3001\u8ba9\u6211\u8981\u70b9\u5206\u6790\u3001\u5199\u4e00\u4efd\u8ba1\u5212\uff0c\u6216\u63cf\u8ff0\u4e00\u4e2a\u4f60\u60f3\u5b8c\u6210\u7684\u76ee\u6807\u3002`;
+const CHAT_INTRO =`\u4f60\u597d\uff0c\u6211\u662f Asteria\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u95ee\u9898\u3001\u8ba9\u6211\u8981\u70b9\u5206\u6790\u3001\u5199\u4e00\u4efd\u8ba1\u5212\uff0c\u6216\u63cf\u8ff0\u4e00\u4e2a\u4f60\u60f3\u5b8c\u6210\u7684\u76ee\u6807\u3002`;
 
 const CHAT_GREETING = `\u4f60\u597d\u3002\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u60f3\u89e3\u51b3\u4ec0\u4e48\u95ee\u9898\uff0c\u6211\u4f1a\u5148\u7ed9\u51fa\u81ea\u7136\u56de\u7b54\uff1b\u5982\u679c\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u5185\u5bb9\uff0c\u6211\u4f1a\u5728\u884c\u52a8\u524d\u8bf4\u660e\u5e76\u7b49\u5f85\u786e\u8ba4\u3002`;
 

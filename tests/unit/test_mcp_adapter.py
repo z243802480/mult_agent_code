@@ -121,7 +121,7 @@ def test_mcp_adapter_invokes_session_and_records_decision_and_progress(tmp_path:
 
     assert decisions[0]["capability_type"] == "mcp"
     assert decisions[0]["mcp_invocation_id"] == "mcp-0001"
-    assert decisions[0]["decision"]["decision"] == "ask"
+    assert decisions[0]["decision"]["decision"] == "allow"
     assert invocations[0]["server_name"] == "docs"
     assert invocations[0]["tool_name"] == "search"
     assert invocations[0]["status"] == "success"

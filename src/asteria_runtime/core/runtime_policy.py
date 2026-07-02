@@ -247,12 +247,6 @@ class ToolPermissionPolicy:
                     "action": "record_constraint",
                 },
                 {
-                    "option_id": "approve_similar_for_session",
-                    "label": "Approve similar for this session",
-                    "tradeoff": "Allow commands with the same intent and prefix during this session; global policy stays unchanged.",
-                    "action": "record_constraint",
-                },
-                {
                     "option_id": "skip",
                     "label": "Keep blocked",
                     "tradeoff": "Do not run the command; the task remains blocked until replanned or changed.",

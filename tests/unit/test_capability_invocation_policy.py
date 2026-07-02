@@ -31,7 +31,9 @@ def test_capability_invocation_policy_allows_controlled_implementation_tools() -
     assert policy["tool_permissions"]["read"] == "allow"
     assert policy["tool_permissions"]["write"] == "ask"
     assert policy["tool_permissions"]["execute"] == "ask"
-    assert policy["mcp_permission"] == "ask"
+    # write/execute keep the real interactive "ask" gate; MCP is contract-gated, not an
+    # interactive prompt, so it reports the honest "allow" (no gate the runtime never honours).
+    assert policy["mcp_permission"] == "allow"
 
 
 def test_capability_invocation_policy_limits_brainstorm_to_read_only_tools() -> None:
@@ -97,14 +99,18 @@ def test_capability_invocation_policy_permits_goal_skills_by_mode_not_artifact_o
     assert skill("documents", task_kind="document", intent="document_goal")["decision"] == "allow"
     assert skill("spreadsheets", task_kind="document", intent="document_goal")["decision"] == "allow"
     assert skill("greet")["decision"] == "allow"
-    # high risk / ask_everything still forces a decision at the call boundary
-    assert skill("greet", risk="high")["decision"] == "ask"
+    # Skills are gated by the allowed_skills contract, not an interactive prompt: a high-risk
+    # skill is allowed within contract (no fake "ask" the runtime never honours).
+    assert skill("greet", risk="high")["decision"] == "allow"
     # chat / brainstorm still deny skills entirely (no "doing" capability on lightweight intents)
     assert skill("greet", task_kind="chat", intent="ordinary_chat", risk="low")["decision"] == "deny"
     assert skill("greet", task_kind="brainstorm", intent="brainstorm_goal", risk="low")["decision"] == "deny"
 
 
-def test_capability_invocation_policy_high_risk_mcp_requires_decision() -> None:
+def test_capability_invocation_policy_mcp_allowed_within_contract_not_fake_ask() -> None:
+    # MCP is gated by the allowed_mcp contract, not an interactive prompt. Even at high risk the
+    # policy returns an honest "allow" (the risk tier is still recorded) instead of a "requires
+    # decision" that nothing in the runtime ever honours.
     decision = CapabilityInvocationPolicy().for_tool(
         "mcp",
         intent="research_goal",
@@ -114,5 +120,6 @@ def test_capability_invocation_policy_high_risk_mcp_requires_decision() -> None:
         capability_type="mcp",
     )
 
-    assert decision["decision"] == "ask"
-    assert decision["requires_decision"] is True
+    assert decision["decision"] == "allow"
+    assert decision["requires_decision"] is False
+    assert decision["risk"] == "high"

@@ -10,10 +10,9 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const visibleText = stripContextNoise(text);
   const modelMeta = turnModelMetadata(middleSteps, step);
   const { lead, details } = splitLeadAndDetails(visibleText);
-  const leadText = lead
-    || (isError
-      ? "Something went wrong while finishing up."
-      : "Done.");
+  // Honesty: never fabricate a "Done." success for a content-less non-error final. Show the real
+  // final text when present; otherwise render nothing (or a neutral note), never a fake outcome.
+  const leadText = lead || (isError ? "Something went wrong while finishing up." : "");
 
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
@@ -23,7 +22,9 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
         {modelMeta && <span className="turnFinalMeta">{modelMeta}</span>}
       </div>
       <div className="turnFinalText">
-        <MarkdownBody text={leadText} />
+        {leadText
+          ? <MarkdownBody text={leadText} />
+          : (!details && <span className="turnFinalEmpty" style={{ opacity: 0.6 }}>(no final message)</span>)}
         {details && (
           <details className="turnFinalDetails">
             <summary>Run details</summary>

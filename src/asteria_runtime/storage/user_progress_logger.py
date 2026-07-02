@@ -284,7 +284,11 @@ class UserProgressLogger:
         if channel == "permission":
             return "permission_request" if event_type == "permission_request" else "decision_request"
         if channel == "conclusion":
-            return "final"
+            # A "conclusion" channel is only the run's real conclusion when it reports a result.
+            # Some runs (e.g. plan_command) open on the conclusion channel with phase="understand";
+            # mapping that opening event to "final" made latest_main_final_event pick the FIRST
+            # step as the run's outcome. Require phase=="result" so only genuine finals qualify.
+            return "final" if phase == "result" else "progress"
         if channel == "diagnostic":
             return "diagnostic"
         if event_type == "decision":

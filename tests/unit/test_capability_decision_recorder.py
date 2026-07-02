@@ -35,7 +35,7 @@ def test_capability_decision_recorder_records_mcp_and_skill_decisions(tmp_path: 
     )
 
     assert mcp_decision["capability_type"] == "mcp"
-    assert mcp_decision["decision"] == "ask"
+    assert mcp_decision["decision"] == "allow"
     assert mcp_decision["reason"]
     assert skill_decision["capability_type"] == "skill"
     assert skill_decision["decision"] == "allow"

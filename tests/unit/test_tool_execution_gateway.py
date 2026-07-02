@@ -251,7 +251,6 @@ def test_tool_permission_decision_uses_permission_mode_options(tmp_path: Path) -
                 "mode": "ask_everything",
                 "ask_options": [
                     "allow_once",
-                    "allow_similar_for_session",
                     "deny",
                     "switch_to_plan",
                 ],
@@ -279,12 +278,15 @@ def test_tool_permission_decision_uses_permission_mode_options(tmp_path: Path) -
 
     assert decision is not None
     assert decision["metadata"]["permission_mode"] == "ask_everything"
-    assert "allow_similar_for_session" in decision["metadata"]["ask_options"]
+    assert "allow_once" in decision["metadata"]["ask_options"]
     assert {option["option_id"] for option in decision["options"]} >= {
         "approve_once",
-        "approve_similar_for_session",
         "skip",
     }
+    # The dead "approve similar for this session" option was never wired to anything and is gone.
+    assert all(
+        option["option_id"] != "approve_similar_for_session" for option in decision["options"]
+    )
 
 
 def _gateway(tmp_path: Path) -> tuple[ToolExecutionGateway, RuntimeContext]:

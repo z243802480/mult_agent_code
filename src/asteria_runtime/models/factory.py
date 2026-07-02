@@ -26,8 +26,8 @@ def create_model_client(
 ) -> ModelClient:
     logger = ModelCallLogger(run_dir, validator)
     routes = _routes_from_env()
-    _warn_if_tier_silently_offline(routes)
     default_route = _default_route(routes)
+    _warn_if_tier_silently_offline(routes, default_route)
     default_client = _create_provider_client(
         default_route.provider,
         default_route.env_prefix,
@@ -43,7 +43,10 @@ def create_model_client(
     return RoutedModelClient(default_client, tier_clients, routes)
 
 
-def _warn_if_tier_silently_offline(routes: dict[str, ModelRoute]) -> list[str]:
+def _warn_if_tier_silently_offline(
+    routes: dict[str, ModelRoute],
+    default_route: ModelRoute | None = None,
+) -> list[str]:
     """Warn when a tier resolves to the fake/offline provider while real providers are configured.
 
     The default route policy points `cheap` at the fake/offline provider, and docs show
@@ -51,11 +54,21 @@ def _warn_if_tier_silently_offline(routes: dict[str, ModelRoute]) -> list[str]:
     stays quiet; but when an offline tier is *mixed* with real providers, any call routed to it
     (summaries, classification, some model-checks) silently returns canned output. Surface that once
     so the canned output is never silent (D-3 decision: keep the fake default, but warn).
+
+    The real provider often lives on the GLOBAL/default route (`AGENT_MODEL_PROVIDER`), not in the
+    per-tier `routes` dict — e.g. `AGENT_MODEL_PROVIDER=minimax` + only `AGENT_MODEL_CHEAP_PROVIDER=
+    fake`. Counting real providers from `routes` alone missed that case (false negative), so a mixed
+    config produced silent canned `cheap` output with no warning. Fold the default route in.
     """
     offline = {"fake", "offline"}
     offline_tiers = sorted(tier for tier, route in routes.items() if route.provider in offline)
     real_tiers = sorted(tier for tier, route in routes.items() if route.provider not in offline)
-    if offline_tiers and real_tiers:
+    default_is_real = (
+        default_route is not None
+        and bool(default_route.provider)
+        and default_route.provider not in offline
+    )
+    if offline_tiers and (real_tiers or default_is_real):
         warnings.warn(
             f"model tier(s) {offline_tiers} use the fake/offline provider while real providers are "
             f"configured for {real_tiers}; calls routed to {offline_tiers} return canned output. "
