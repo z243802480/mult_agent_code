@@ -217,6 +217,14 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
 }
 
 
+// Single source of reasoning cleanup (I5): strip stray <think>/<thinking> markers a provider may
+// leave in the stream, keeping the inner text. Applied on EVERY render path (live tail + finalized,
+// chat + run) so raw tags never leak into the main thread. Intentionally conservative — it only
+// removes the tags themselves, never guesses at content, so no real output is dropped.
+export function cleanReasoning(text: string): string {
+  return String(text || "").replace(/<\/?think(?:ing)?>/gi, "").trim();
+}
+
 export function firstText(...items: unknown[]): string {
   for (const item of items) {
     const text = String(item ?? "").trim();

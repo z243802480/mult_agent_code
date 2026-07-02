@@ -11,6 +11,7 @@ import { LiveStream } from "./LiveStream";
 import { ToolCallCard } from "./ToolCallCard";
 import { TurnFinal } from "./TurnFinal";
 import { runVerificationHint } from "./runtimeNarrative";
+import { cleanReasoning } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
 import { middleRepresentativeEvent, middleSummary, hasFinalAnswerForPhase, isModelThinkingStep } from "./turnHelpers";
@@ -151,7 +152,7 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
   const event = step.events.at(-1) || step.events[0];
   // Honest streaming: render the real content_delta exactly as events land. No client-side
   // typewriter — perceived latency tracks the runtime transport, not an artificial timer.
-  const text = step.events.map((item) => item.content_delta || "").join("");
+  const text = cleanReasoning(step.events.map((item) => item.content_delta || "").join(""));
   const modelId = event?.model_name
     ? `${event.model_provider || "model"}/${event.model_name}`
     : event?.model_provider || "model";
@@ -163,20 +164,15 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
         {modelId && <span>{modelId}</span>}
       </div>
       {text ? (
-        <ClampedOutput text={text} maxLines={8} />
+        <div className="streamTextWrap">
+          <ClampedOutput text={text} maxLines={8} />
+          <span className="streamCaret" aria-hidden="true" />
+        </div>
       ) : (
         <p>Waiting for the first response...</p>
       )}
     </div>
   );
-}
-
-// Strip the raw <think>/<thinking> markers a provider may leave in the stream; keep the inner
-// reasoning text (that IS the content we surface in the labeled block, never shown raw with tags).
-function cleanThinkingText(text: string): string {
-  return String(text || "")
-    .replace(/<\/?think(?:ing)?>/gi, "")
-    .trim();
 }
 
 // Real elapsed seconds across the thinking events (from event timestamps — never fabricated).
@@ -210,7 +206,7 @@ function thinkingTokens(steps: NarrativeStepType[]): number {
 // of vanishing into the process badge. Renders nothing when there is no real reasoning text (no
 // empty chip). Default-collapsed while completed; auto-open while still streaming.
 function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; live?: boolean }) {
-  const text = cleanThinkingText(steps.map((step) => step.events.map((event) => event.content_delta || "").join("")).join("\n\n"));
+  const text = cleanReasoning(steps.map((step) => step.events.map((event) => event.content_delta || "").join("")).join("\n\n"));
   const [open, setOpen] = useState(live);
   useEffect(() => { if (live) setOpen(true); }, [live]);
   if (!text) return null;

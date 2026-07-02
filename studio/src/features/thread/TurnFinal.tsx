@@ -1,13 +1,14 @@
 import React from "react";
 import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { MarkdownBody } from "../../components/MarkdownBody";
+import { cleanReasoning } from "../../narrative";
 import { turnModelMetadata } from "./turnHelpers";
 
 export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
   const event = step.events[0];
   const text = event?.content_delta || step.summary || step.title || "";
   const isError = step.kind === "error" || step.status === "failed";
-  const visibleText = stripContextNoise(text);
+  const visibleText = stripContextNoise(cleanReasoning(text));
   const modelMeta = turnModelMetadata(middleSteps, step);
   const { lead, details } = splitLeadAndDetails(visibleText);
   // Honesty: never fabricate a "Done." success for a content-less non-error final. Show the real

@@ -1104,6 +1104,27 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Streaming caret (I5): a quiet blinking bar at the tail of live-streaming text */
+.streamTextWrap {
+  display: block;
+}
+
+.streamCaret {
+  animation: streamBlink 1s steps(2, start) infinite;
+  background: var(--accent);
+  border-radius: 1px;
+  display: inline-block;
+  height: 13px;
+  margin-top: 2px;
+  vertical-align: text-bottom;
+  width: 2px;
+}
+
+@keyframes streamBlink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
 .turnFinalAvatar {
   display: none;
 }

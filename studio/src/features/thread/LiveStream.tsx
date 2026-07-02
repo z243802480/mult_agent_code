@@ -7,6 +7,7 @@ import { FileChangeChips } from "../../components/FileChangeChips";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
 import { ToolCallCard } from "./ToolCallCard";
+import { cleanReasoning } from "../../narrative";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 
 // Main-thread, user-facing phase copy. Keys are step kinds; unknown kinds fall back
@@ -47,17 +48,19 @@ export function LiveStream({
   const activeStep = steps.at(-1);
   const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "Processing";
   const isWaiting = activeStep?.status === "waiting_user";
-  const modelText = steps
-    .filter((step) => step.kind === "thinking" || step.kind === "plan" || step.kind === "verification")
-    .map((step) => {
-      const event = step.events[0];
-      // Render the real streamed model delta for every phase. The delta is already accumulated
-      // (phase-agnostic) in narrative.toNarrativeEvents; masking non-chat phases with a "Putting
-      // together a plan…" placeholder discarded live data the UI already had.
-      return event?.content_delta || step.summary || "";
-    })
-    .filter(Boolean)
-    .join("\n\n");
+  const modelText = cleanReasoning(
+    steps
+      .filter((step) => step.kind === "thinking" || step.kind === "plan" || step.kind === "verification")
+      .map((step) => {
+        const event = step.events[0];
+        // Render the real streamed model delta for every phase. The delta is already accumulated
+        // (phase-agnostic) in narrative.toNarrativeEvents; masking non-chat phases with a "Putting
+        // together a plan…" placeholder discarded live data the UI already had.
+        return event?.content_delta || step.summary || "";
+      })
+      .filter(Boolean)
+      .join("\n\n")
+  );
   const toolSteps = steps.filter((step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent");
   const fileChanges = extractFileChangesFromSteps(steps);
   const fileStats = aggregateFileChangeStats(fileChanges);
@@ -95,7 +98,10 @@ export function LiveStream({
       )}
 
       {showToolStreams && modelText && (
-        <ClampedOutput text={modelText} className="liveModelText" maxLines={8} defaultExpanded={expandOutput} />
+        <div className="streamTextWrap">
+          <ClampedOutput text={modelText} className="liveModelText" maxLines={8} defaultExpanded={expandOutput} />
+          <span className="streamCaret" aria-hidden="true" />
+        </div>
       )}
 
       {permEvent && (
