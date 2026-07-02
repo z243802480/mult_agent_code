@@ -485,6 +485,10 @@ export function EvidenceExplorer({
           : []
   ) as AnyRecord[];
   const userProgress = (runDetail?.user_progress ?? []) as AnyRecord[];
+  // Already assembled server-side (payload.mcp_invocations / skill_invocations) but previously
+  // rendered nowhere despite inspector_raw_evidence_source promising raw evidence.
+  const mcpInvocations = (runDetail?.mcp_invocations ?? []) as AnyRecord[];
+  const skillInvocations = (runDetail?.skill_invocations ?? []) as AnyRecord[];
   const files = runDetail?.files ?? [];
   const selectedKey = selectedEvidence ? `${selectedEvidence.kind}:${selectedEvidence.title}` : "";
 
@@ -513,6 +517,8 @@ export function EvidenceExplorer({
     if (kind === "worker") return firstText(`${String(item.task_id ?? item.worker_id ?? "worker")} ${String(item.status ?? item.outcome ?? "")}`, String(item.summary ?? ""));
     if (kind === "evidence") return firstText(`${String(item.task_id ?? item.kind ?? "evidence")} ${String(item.status ?? item.outcome ?? "")}`, String(item.path ?? ""));
     if (kind === "route") return firstText(`${String(item.task_id ?? item.purpose ?? "route")} ${String(item.purpose ?? "")} -> ${String(item.selected_tier ?? "unknown")}`, String(item.reason ?? ""));
+    if (kind === "mcp") return firstText(`${String(item.server_name ?? "mcp")}/${String(item.tool_name ?? "")} ${String(item.status ?? "")}`, String(item.summary ?? ""));
+    if (kind === "skill") return firstText(`${String(item.skill_name ?? item.name ?? "skill")} ${String(item.status ?? "")}`, String(item.summary ?? ""));
     return JSON.stringify(item).slice(0, 80);
   }
 
@@ -599,10 +605,12 @@ export function EvidenceExplorer({
           />
           <EvidenceBlock title="Worker results" items={workers.slice(-4)} kind="worker" />
           <EvidenceBlock title="Task evidence" items={evidence.slice(-4)} kind="evidence" />
+          <EvidenceBlock title="MCP invocations" items={mcpInvocations.slice(-8)} kind="mcp" />
+          <EvidenceBlock title="Skill invocations" items={skillInvocations.slice(-8)} kind="skill" />
           {files.length > 0 && (
             <div className="runFiles">
-              <small>Run files</small>
-              {files.slice(0, 6).map((file) => (
+              <small>Run files ({files.length})</small>
+              {files.map((file) => (
                 <button
                   key={file.path}
                   onClick={() => {

@@ -242,6 +242,8 @@ export type RunDetailPayload = {
   task_execution_evidence?: AnyRecord[];
   worker_results?: AnyRecord[];
   validation_results?: AnyRecord[];
+  mcp_invocations?: AnyRecord[];
+  skill_invocations?: AnyRecord[];
   events?: AnyRecord[];
   legacy_events?: AnyRecord[];
   raw_evidence?: AnyRecord;

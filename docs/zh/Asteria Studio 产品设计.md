@@ -35,7 +35,7 @@ Ops / Debug Console 负责 runtime 诊断。
 
 默认首页是 Product Workspace：
 
-- Left Sidebar：Projects / Workspaces、Sessions、Search、Settings。
+- Left Sidebar：Sessions（含 all / recent 过滤）、Settings（已实现）；Search / Projects / Workspaces 为规划中、当前**尚未实现**（勿当现状读）。
 - Main Thread：用户消息、assistant 进展、权限卡、文件变化、最终结果。
 - Composer：自然语言输入，显式或自动选择 Goal / Plan / Ask。
 - Inspector：选中事件详情、命令输出、文件/diff/artifact、Git、token/cost、evidence refs。

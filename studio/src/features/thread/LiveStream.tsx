@@ -51,11 +51,9 @@ export function LiveStream({
     .filter((step) => step.kind === "thinking" || step.kind === "plan" || step.kind === "verification")
     .map((step) => {
       const event = step.events[0];
-      if (event?.type?.startsWith("model_") && event.phase !== "chat") {
-        return event.status === "running"
-          ? "Putting together a plan…"
-          : "Putting the result together…";
-      }
+      // Render the real streamed model delta for every phase. The delta is already accumulated
+      // (phase-agnostic) in narrative.toNarrativeEvents; masking non-chat phases with a "Putting
+      // together a plan…" placeholder discarded live data the UI already had.
       return event?.content_delta || step.summary || "";
     })
     .filter(Boolean)

@@ -1550,9 +1550,11 @@ function tailUserProgress(sessionId, jobId) {
                 lastSeq = seq;
                 // Emit via appendEvent so it persists in events.jsonl AND hits SSE
                 const mapped = userProgressToStudioEvent(evt, sessionId, path.basename(runDir));
+                // Keep the namespaced event_id from userProgressToStudioEvent (runtime-<runId>-<upe>).
+                // Overriding it back to the bare per-run upe-NNNN caused cross-run id collisions (front-end
+                // dedup dropped run B's early events) and left this live copy un-dedupable against the replay re-read.
                 void appendEvent(sessionId, {
                   ...mapped,
-                  event_id: evt.event_id,
                   job_id: jobId,
                 });
               }
@@ -1675,9 +1677,10 @@ ${stderr}` : stdout.slice(-4000)
     const mainFinal = latestMainFinalEvent(userProgressRows);
     if (mainFinal) {
       const mapped = userProgressToStudioEvent(mainFinal, sessionId, completedRunId || "");
+      // Keep the namespaced event_id (see live-tail note above) so this persisted final dedups
+      // cleanly against the runtime re-read instead of appearing twice.
       void appendEvent(sessionId, {
         ...mapped,
-        event_id: mainFinal.event_id,
         job_id: jobId,
       });
     } else {
@@ -2398,8 +2401,25 @@ async function enrichFinalAnswerEvent(event, runId) {
 
 function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {
   const runtimeTypes = new Set(runtimeEvents.map((event) => event.type));
+  const runtimeIds = new Set(runtimeEvents.map((event) => event.event_id).filter(Boolean));
   const replaceable = new Set(["model_start", "model_delta", "model_end", "model_error", "file_changed"]);
+  // Dedup the authoritative runtime re-read against the session-persisted live-tail copy by id.
+  // Live-tail copies now share the runtime-<runId>-<upe> namespace, so this removes the duplicate
+  // tool_start / final_answer / tool_observation rows that the id-less type filter left behind.
+  const isRuntimeDuplicate = (id) => {
+    if (!id) return false;
+    if (runtimeIds.has(id)) return true;
+    // Legacy sessions persisted bare upe-NNNN before namespacing; treat a bare id as a duplicate of
+    // any namespaced runtime id that ends with it so replaying old sessions does not double up.
+    if (/^upe-\d+$/.test(id)) {
+      for (const rid of runtimeIds) {
+        if (rid.endsWith(`-${id}`)) return true;
+      }
+    }
+    return false;
+  };
   const filteredSessionEvents = sessionEvents.filter((event) => {
+    if (isRuntimeDuplicate(event.event_id)) return false;
     if (!replaceable.has(event.type)) return true;
     return !runtimeTypes.has(event.type);
   });
