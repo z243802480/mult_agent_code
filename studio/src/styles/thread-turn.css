@@ -834,6 +834,32 @@
   margin-bottom: 8px;
 }
 
+/* Copy-answer button on the final response (hover-revealed, keyboard-focusable) */
+.turnFinalCopy {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  margin-left: auto;
+  opacity: 0;
+  padding: 2px 7px;
+  transition: opacity var(--dur-fast, 120ms) var(--ease), color var(--dur-fast, 120ms) var(--ease);
+}
+
+.turnFinal:hover .turnFinalCopy,
+.turnFinalCopy:focus-visible {
+  opacity: 1;
+}
+
+.turnFinalCopy:hover {
+  color: var(--text-secondary);
+}
+
 /* Error category badge on a failed final (I12) */
 .turnFinalErrorTag {
   background: var(--bad-subtle, rgba(220, 60, 60, 0.12));

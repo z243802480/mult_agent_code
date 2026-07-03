@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { Check, Copy } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { MarkdownBody } from "../../components/MarkdownBody";
 import { cleanReasoning } from "../../narrative";
@@ -27,6 +28,19 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const category = isError ? String((event?.data as Record<string, unknown> | undefined)?.error_category ?? "") : "";
   const categoryLabel = ERROR_CATEGORY_LABELS[category] ?? "";
 
+  const [copied, setCopied] = useState(false);
+  const copyText = (lead ? `${lead}${details ? `\n\n${details}` : ""}` : visibleText).trim();
+  async function copyAnswer() {
+    if (!copyText) return;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
   return (
     <div className={`turnFinal ${isError ? "failed" : ""}`}>
       <div className="turnFinalHeader">
@@ -34,6 +48,12 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
         <span className="turnFinalLabel">Asteria</span>
         {categoryLabel && <span className="turnFinalErrorTag">{categoryLabel}</span>}
         {modelMeta && <span className="turnFinalMeta">{modelMeta}</span>}
+        {copyText && (
+          <button type="button" className="turnFinalCopy" title="Copy answer" aria-label="Copy answer" onClick={() => void copyAnswer()}>
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        )}
       </div>
       <div className="turnFinalText">
         {leadText
