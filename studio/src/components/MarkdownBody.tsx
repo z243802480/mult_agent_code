@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useState } from "react";
+import { Check, Copy } from "lucide-react";
 
 type Block =
   | { kind: "heading"; level: number; text: string }
@@ -57,6 +58,34 @@ function renderInline(text: string): React.ReactNode[] {
   });
 }
 
+function CodeBlock({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable (headless / insecure context) — no-op */
+    }
+  }
+  return (
+    <div className="markdownCodeWrap">
+      <button
+        type="button"
+        className="markdownCodeCopy"
+        title="Copy code"
+        aria-label="Copy code"
+        onClick={() => void copy()}
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+        <span>{copied ? "Copied" : "Copy"}</span>
+      </button>
+      <pre className="markdownCode">{text}</pre>
+    </div>
+  );
+}
+
 export function MarkdownBody({ text }: { text: string }) {
   const blocks = parseMarkdownBlocks(text);
   return (
@@ -70,7 +99,7 @@ export function MarkdownBody({ text }: { text: string }) {
           return <p key={index} className="finalBullet">{renderInline(block.text)}</p>;
         }
         if (block.kind === "code") {
-          return <pre key={index} className="markdownCode">{block.text}</pre>;
+          return <CodeBlock key={index} text={block.text} />;
         }
         return <p key={index}>{renderInline(block.text)}</p>;
       })}

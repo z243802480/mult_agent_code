@@ -474,6 +474,39 @@ button.aggregateDiffChip {
   padding: 10px;
 }
 
+/* Hover-revealed copy button on code blocks (mainstream: ChatGPT/Claude/Cursor). */
+.markdownCodeWrap {
+  position: relative;
+}
+
+.markdownCodeCopy {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  opacity: 0;
+  padding: 3px 7px;
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.markdownCodeWrap:hover .markdownCodeCopy,
+.markdownCodeCopy:focus-visible {
+  opacity: 1;
+}
+
+.markdownCodeCopy:hover {
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
 .sessionTitleRow {
   align-items: center;
   display: flex;
