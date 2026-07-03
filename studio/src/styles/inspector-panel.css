@@ -53,6 +53,36 @@
   overflow-y: auto;
 }
 
+/* CopyablePre (INS-2): a <pre> with a hover-revealed copy button for raw JSON / command output. */
+.copyablePre {
+  position: relative;
+}
+
+.copyablePreBtn {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  opacity: 0;
+  padding: 3px;
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+.copyablePre:hover .copyablePreBtn,
+.copyablePreBtn:focus-visible {
+  opacity: 1;
+}
+
+.copyablePreBtn:hover {
+  color: var(--text-primary);
+}
+
 /* C-3: frame comes from `.inspector section`; only unique props kept here. */
 .inspectorDiffPreview {
   display: grid;

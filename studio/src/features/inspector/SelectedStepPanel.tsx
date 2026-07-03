@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, FileText } from "lucide-react";
 import type { AnyRecord, StudioEvent } from "../../types";
 import { Metric } from "../../components/Shared";
+import { CopyablePre } from "../../components/CopyablePre";
 import { firstText } from "../../narrative";
 import { asArray, asRecord } from "./inspectorUtils";
 
@@ -59,7 +60,7 @@ function KeyValueList({ items }: { items: { label: string; value: string }[] }) 
       {items.map((item) => (
         <div key={item.label}>
           <small>{item.label}</small>
-          <pre>{item.value}</pre>
+          <CopyablePre text={item.value} />
         </div>
       ))}
     </div>
@@ -72,7 +73,7 @@ function RecordList({ items, render }: { items: AnyRecord[]; render: (item: AnyR
       {items.map((item, index) => (
         <details key={`${render(item)}-${index}`}>
           <summary>{render(item)}</summary>
-          <pre>{JSON.stringify(item, null, 2)}</pre>
+          <CopyablePre text={JSON.stringify(item, null, 2)} />
         </details>
       ))}
     </div>
@@ -180,7 +181,7 @@ function IntentAuditView({ items }: { items: AnyRecord[] }) {
       <div className="keyValueList">
         <div><small>Reason</small><pre>{String(audit.reason ?? "No route reason recorded.")}</pre></div>
         <div><small>Prompt enrichment</small><pre>{String(audit.prompt_enrichment ?? "none")}</pre></div>
-        <div><small>Raw metadata</small><pre>{JSON.stringify(items, null, 2)}</pre></div>
+        <div><small>Raw metadata</small><CopyablePre text={JSON.stringify(items, null, 2)} /></div>
       </div>
     </div>
   );

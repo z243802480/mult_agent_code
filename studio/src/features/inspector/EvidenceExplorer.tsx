@@ -3,9 +3,10 @@ import { FileText, ShieldAlert } from "lucide-react";
 import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { Metric, formatMs, percent, Status } from "../../components/Shared";
 import { WorkflowMonitorPanel } from "../../components/WorkflowMonitorPanel";
+import { CopyablePre } from "../../components/CopyablePre";
 import { VerificationMatrix, LoopQualityMatrix } from "./VerificationMatrix";
 import { firstText } from "../../narrative";
-import { asArray, asRecord, contextSectionLabel, formatUsage, latestRoute, metricTone, rollingValidationFromOverview, runtimeProgressFromDetail, workerCountFromTree } from "./inspectorUtils";
+import { asArray, asRecord, formatUsage, latestRoute, metricTone, rollingValidationFromOverview, runtimeProgressFromDetail, workerCountFromTree } from "./inspectorUtils";
 
 type EvidenceSelection = {
   title: string;
@@ -14,37 +15,8 @@ type EvidenceSelection = {
   item: AnyRecord;
 };
 
-function ContextBreakdownPanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
-  const cost = asRecord(runDetail?.cost_report);
-  const used = Number(cost.latest_context_estimated_tokens ?? cost.max_context_estimated_tokens ?? 0);
-  const capacity = Number(cost.context_window_tokens ?? 0);
-  const ratio = Number(cost.context_window_ratio ?? (capacity > 0 ? used / capacity : 0));
-  const sections = Object.entries(asRecord(cost.latest_context_sections ?? cost.max_context_sections))
-    .map(([id, value]) => ({ id, label: contextSectionLabel(id), value: Number(value ?? 0) }))
-    .filter((item) => Number.isFinite(item.value) && item.value > 0)
-    .sort((a, b) => b.value - a.value);
-  if (!used && !capacity && !sections.length) return null;
-  const total = sections.reduce((sum, item) => sum + item.value, 0);
-  return (
-    <div className="evidenceBlock contextBreakdownPanel">
-      <small>Context window</small>
-      <div className="evidenceStats">
-        <Metric label="Usage" value={percent(ratio)} tone={ratio >= 0.9 ? "bad" : ratio >= 0.75 ? "warn" : "good"} />
-        <Metric label="Used" value={formatUsage(used || total)} tone="warn" />
-        <Metric label="Capacity" value={capacity ? formatUsage(capacity) : "unknown"} tone="warn" />
-      </div>
-      <div className="contextInspectorRows">
-        {sections.slice(0, 8).map((section) => (
-          <div key={section.id} className="contextInspectorRow">
-            <span>{section.label}</span>
-            <strong>{formatUsage(section.value)}</strong>
-            <em>{percent(total ? section.value / total : 0)}</em>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// (INS-2) ContextBreakdownPanel removed — the context-window breakdown now lives solely in the
+// dedicated Context tab (ContextPanel), so the Evidence tab no longer duplicates it.
 
 function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
   const cost = asRecord(runDetail?.cost_report);
@@ -226,7 +198,7 @@ function EvidenceDetailPanel({ selection }: { selection: EvidenceSelection | nul
             <span>{selection.kind}</span>
           </div>
           <p>{selection.summary}</p>
-          <pre>{JSON.stringify(selection.item, null, 2)}</pre>
+          <CopyablePre text={JSON.stringify(selection.item, null, 2)} />
         </>
       )}
     </div>
@@ -609,7 +581,6 @@ export function EvidenceExplorer({
           <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
           <RunUsagePanel runDetail={runDetail} />
-          <ContextBreakdownPanel runDetail={runDetail} />
           <PromotionPreviewPanel
             runDetail={runDetail}
             selectedKey={selectedKey}
