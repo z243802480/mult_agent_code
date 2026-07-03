@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type {
   FilePreview,
   GitDiffPayload,
@@ -9,13 +9,32 @@ import type {
   StudioEvent,
   WorkspaceFile,
 } from "../../types";
-import { Status } from "../../components/Shared";
 import type { DiffLayout, DiffStage } from "../../components/DiffPreview";
 import { ContextPanel } from "../../components/ContextPanel";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 import type { TurnDiffScope } from "../../turnDiff";
 import { DiffReviewPane } from "./DiffReviewPane";
 import { InspectorAdvanced } from "./InspectorAdvanced";
+
+// INS-1: the Inspector is a focused tabbed panel (was a ~2000px vertical stack). Each tab reuses an
+// existing panel, so the user navigates to Changes / Context / Evidence instead of scrolling.
+const INSPECTOR_TABS = [
+  { id: "changes", label: "Changes" },
+  { id: "context", label: "Context" },
+  { id: "evidence", label: "Evidence" },
+] as const;
+type InspectorTabId = (typeof INSPECTOR_TABS)[number]["id"];
+const TAB_STORAGE_KEY = "asteria.studio.inspectorTab";
+
+function loadInspectorTab(): InspectorTabId {
+  try {
+    const raw = localStorage.getItem(TAB_STORAGE_KEY);
+    if (raw === "changes" || raw === "context" || raw === "evidence") return raw;
+  } catch {
+    // ignore
+  }
+  return "changes";
+}
 
 export function Inspector({
   event,
@@ -84,61 +103,92 @@ export function Inspector({
   onSelectRunEvent: (event: StudioEvent) => void;
   viewMode: StudioViewMode;
 }) {
-  const showEventPeek = viewMode !== "focus" && Boolean(event);
+  const [tab, setTab] = useState<InspectorTabId>(loadInspectorTab);
+  const selectTab = (next: InspectorTabId) => {
+    setTab(next);
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, next);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Selecting a process step in the thread focuses the Evidence tab (where its detail lives) — a
+  // transient focus that does not overwrite the saved default.
+  const prevEventId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = event?.event_id ?? null;
+    if (id && id !== prevEventId.current) setTab("evidence");
+    prevEventId.current = id;
+  }, [event?.event_id]);
 
   return (
     <aside className={`inspector view-${viewMode}`}>
-      <div className="inspectorPrimary">
-        <DiffReviewPane
-          gitStatus={gitStatus}
-          gitLoading={gitLoading}
-          gitSelectedPath={gitSelectedPath}
-          diffScopes={diffScopes}
-          diffScopeId={diffScopeId}
-          onSelectDiffScope={onSelectDiffScope}
-          onRefreshGit={onRefreshGit}
-          onSelectGitChange={onSelectGitChange}
-          preview={preview}
-          diffStage={diffStage}
-          diffLayout={diffLayout}
-          gitDiffPayload={gitDiffPayload}
-          gitActionLoading={gitActionLoading}
-          onSelectDiffStage={onSelectDiffStage}
-          onSelectDiffLayout={onSelectDiffLayout}
-          onStageFile={onStageFile}
-          onDiscardFile={onDiscardFile}
-        />
+      <div className="inspectorTabBar" role="tablist" aria-label="Inspector views">
+        {INSPECTOR_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            className={tab === item.id ? "inspectorTab active" : "inspectorTab"}
+            onClick={() => selectTab(item.id)}
+          >
+            {item.label}
+          </button>
+        ))}
       </div>
-      <ContextPanel
-        runDetail={runDetail}
-        isRunning={isRunning}
-        selectedSectionId={contextSectionId}
-        onSelectSection={onSelectContextSection}
-        onCompact={onCompactContext}
-        compacting={compactLoading}
-      />
-      {showEventPeek && event && (
-        <section className="inspectorEventPeek">
-          <div className="detailTitle">
-            <strong>{event.title}</strong>
-            <Status status={event.status} />
+      <div className="inspectorTabPanel">
+        {tab === "changes" && (
+          <div className="inspectorPrimary">
+            <DiffReviewPane
+              gitStatus={gitStatus}
+              gitLoading={gitLoading}
+              gitSelectedPath={gitSelectedPath}
+              diffScopes={diffScopes}
+              diffScopeId={diffScopeId}
+              onSelectDiffScope={onSelectDiffScope}
+              onRefreshGit={onRefreshGit}
+              onSelectGitChange={onSelectGitChange}
+              preview={preview}
+              diffStage={diffStage}
+              diffLayout={diffLayout}
+              gitDiffPayload={gitDiffPayload}
+              gitActionLoading={gitActionLoading}
+              onSelectDiffStage={onSelectDiffStage}
+              onSelectDiffLayout={onSelectDiffLayout}
+              onStageFile={onStageFile}
+              onDiscardFile={onDiscardFile}
+            />
           </div>
-          {event.summary && <p className="eventPeekSummary">{event.summary}</p>}
-        </section>
-      )}
-      <InspectorAdvanced
-        event={event}
-        files={files}
-        settings={settings}
-        overview={overview}
-        selectedRunId={selectedRunId}
-        runDetail={runDetail}
-        contextSectionId={contextSectionId}
-        viewMode={viewMode}
-        onOpenFile={onOpenFile}
-        onOpenRun={onOpenRun}
-        onSelectRunEvent={onSelectRunEvent}
-      />
+        )}
+        {tab === "context" && (
+          <ContextPanel
+            runDetail={runDetail}
+            isRunning={isRunning}
+            selectedSectionId={contextSectionId}
+            onSelectSection={onSelectContextSection}
+            onCompact={onCompactContext}
+            compacting={compactLoading}
+          />
+        )}
+        {tab === "evidence" && (
+          <InspectorAdvanced
+            event={event}
+            files={files}
+            settings={settings}
+            overview={overview}
+            selectedRunId={selectedRunId}
+            runDetail={runDetail}
+            contextSectionId={contextSectionId}
+            viewMode={viewMode}
+            embedded
+            onOpenFile={onOpenFile}
+            onOpenRun={onOpenRun}
+            onSelectRunEvent={onSelectRunEvent}
+          />
+        )}
+      </div>
     </aside>
   );
 }

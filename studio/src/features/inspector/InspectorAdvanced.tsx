@@ -23,6 +23,7 @@ export type InspectorAdvancedProps = {
   runDetail: RunDetailPayload | null;
   contextSectionId: string | null;
   viewMode: StudioViewMode;
+  embedded?: boolean;
   onOpenFile: (path: string) => Promise<void>;
   onOpenRun: (runId: string) => Promise<void>;
   onSelectRunEvent: (event: StudioEvent) => void;
@@ -37,6 +38,7 @@ export function InspectorAdvanced({
   runDetail,
   contextSectionId,
   viewMode,
+  embedded = false,
   onOpenFile,
   onOpenRun,
   onSelectRunEvent,
@@ -47,9 +49,7 @@ export function InspectorAdvanced({
   const showRunOverviewFirst = !event && Boolean(runDetail?.ok);
   const advancedOpen = viewMode === "verbose";
 
-  return (
-    <details className="inspectorAdvanced" open={advancedOpen}>
-      <summary>Evidence &amp; debug</summary>
+  const body = (
       <div className="inspectorAdvancedBody">
         <AiDebugAgentCard runDetail={runDetail} selectedRunId={selectedRunId} />
         <BackgroundRunPanel overview={overview} />
@@ -125,6 +125,15 @@ export function InspectorAdvanced({
           <p className="muted">Shell: {settings?.shell ?? "unknown"}</p>
         </section>
       </div>
+  );
+
+  // In the tabbed Inspector (INS-1) the Evidence tab is itself the disclosure, so render the body
+  // directly. Legacy stacked layout keeps the <details> wrapper.
+  if (embedded) return body;
+  return (
+    <details className="inspectorAdvanced" open={advancedOpen}>
+      <summary>Evidence &amp; debug</summary>
+      {body}
     </details>
   );
 }

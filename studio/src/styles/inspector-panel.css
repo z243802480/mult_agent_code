@@ -4,13 +4,53 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  overflow: auto;
+  overflow: hidden; /* INS-1: the active tab panel scrolls, not the whole aside */
   padding: var(--space-2) var(--space-2) var(--space-3);
 }
 
 .inspectorPrimary {
   display: grid;
   gap: var(--space-2);
+}
+
+/* INS-1 tabbed Inspector */
+.inspectorTabBar {
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding-bottom: var(--space-1);
+}
+
+.inspectorTab {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 12px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.inspectorTab:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.inspectorTab.active {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.inspectorTabPanel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0; /* allow the flex child to scroll */
+  overflow-y: auto;
 }
 
 /* C-3: frame comes from `.inspector section`; only unique props kept here. */
