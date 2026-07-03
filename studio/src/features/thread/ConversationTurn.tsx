@@ -19,13 +19,15 @@ import { formatEventTime } from "./threadUtils";
 
 export type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
 
-function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff }: {
+function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
   onPermit: (jobId: string, action: "allow" | "deny") => Promise<void>;
   expandSignal: ProcessExpandSignal;
   onFileChangeClick?: (path: string) => void;
+  onFileAccept?: (path: string) => Promise<boolean> | void;
+  onFileRevert?: (path: string) => Promise<boolean> | void;
   turnIndex?: number;
   turnDiffLabel?: string;
   onTurnDiffSelect?: (turnIndex: number) => void;
@@ -96,7 +98,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
           deletions={fileStats.deletions}
           onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
         />
-        <FileChangeChips changes={fileChanges} className="turnFileRow" onSelect={onFileChangeClick} />
+        <FileChangeChips changes={fileChanges} className="turnFileRow" onSelect={onFileChangeClick} onAccept={onFileAccept} onRevert={onFileRevert} />
         {turnIndex && fileChanges.length > 0 && onTurnDiffSelect && (
           <button type="button" className="turnDiffButton" onClick={() => onTurnDiffSelect(turnIndex)}>
             {turnDiffLabel ?? `T${turnIndex}`} diff · {fileChanges.length}
@@ -266,7 +268,7 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage }: {
+export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -275,6 +277,8 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   isRunning: boolean;
   expandSignal: ProcessExpandSignal;
   onFileChangeClick?: (path: string) => void;
+  onFileAccept?: (path: string) => Promise<boolean> | void;
+  onFileRevert?: (path: string) => Promise<boolean> | void;
   turnIndex?: number;
   turnDiffLabel?: string;
   onTurnDiffSelect?: (turnIndex: number) => void;
@@ -367,6 +371,8 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
               onPermit={onPermit}
               expandSignal={expandSignal}
               onFileChangeClick={onFileChangeClick}
+              onFileAccept={isLast ? onFileAccept : undefined}
+              onFileRevert={isLast ? onFileRevert : undefined}
               turnIndex={turnIndex}
               turnDiffLabel={turnDiffLabel}
               onTurnDiffSelect={onTurnDiffSelect}

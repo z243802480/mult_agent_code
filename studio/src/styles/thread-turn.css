@@ -750,6 +750,74 @@
   color: var(--bad);
 }
 
+/* Inline per-turn Keep/Revert (I11): chip + hover-revealed action buttons, no nested <button>. */
+.liveFileChipWrap {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.liveFileActions {
+  align-items: center;
+  display: inline-flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.liveFileChipWrap:hover .liveFileActions,
+.liveFileChipWrap:focus-within .liveFileActions {
+  opacity: 1;
+}
+
+.liveFileAction {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  padding: 2px;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.liveFileAction:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.liveFileAction.accept:hover:not(:disabled),
+.liveFileAction.accept:focus-visible:not(:disabled) {
+  background: var(--ok-subtle);
+  border-color: var(--ok);
+  color: var(--ok);
+  outline: none;
+}
+
+.liveFileAction.revert:hover:not(:disabled),
+.liveFileAction.revert:focus-visible:not(:disabled) {
+  background: var(--bad-subtle, rgba(220, 60, 60, 0.12));
+  border-color: var(--bad);
+  color: var(--bad);
+  outline: none;
+}
+
+.liveFileChipWrap.resolved .liveFileChip {
+  opacity: 0.6;
+}
+
+.liveFileResolved {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.liveFileResolved.reverted {
+  color: var(--bad);
+}
+
 /* Streaming LLM text — the actual words from the model as they arrive */
 .liveModelText {
   border-top: 1px solid var(--border-subtle);

@@ -44,6 +44,8 @@ export function Thread({
   runDetail,
   workspaceChangeCount,
   onFileChangeClick,
+  onFileAccept,
+  onFileRevert,
   onTurnDiffSelect,
   turnDiffLabel,
   onAggregateDiffClick,
@@ -66,6 +68,8 @@ export function Thread({
   runDetail?: RunDetailPayload | null;
   workspaceChangeCount?: number;
   onFileChangeClick?: (path: string) => void;
+  onFileAccept?: (path: string) => Promise<boolean> | void;
+  onFileRevert?: (path: string) => Promise<boolean> | void;
   onTurnDiffSelect?: (turnIndex: number) => void;
   turnDiffLabel?: (turnIndex: number) => string;
   onAggregateDiffClick?: (turnIndex: number) => void;
@@ -217,6 +221,8 @@ export function Thread({
             isRunning={isRunning}
             expandSignal={expandSignal}
             onFileChangeClick={onFileChangeClick}
+            onFileAccept={onFileAccept}
+            onFileRevert={onFileRevert}
             turnIndex={globalIndex + 1}
             turnDiffLabel={turnDiffLabel?.(globalIndex + 1)}
             onTurnDiffSelect={onTurnDiffSelect}

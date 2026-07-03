@@ -162,6 +162,21 @@ export function App() {
     review.selectTurnDiff(turnIndex);
   }, [review]);
 
+  // Inline per-turn Keep/Revert (I11) — real git stage / checkout, with honest toasts.
+  const onFileAccept = useCallback(async (pathValue: string): Promise<boolean> => {
+    const ok = await review.acceptFileChange(pathValue);
+    if (ok) toast.success("Kept — file staged.");
+    else toast.error("Couldn't stage that file. Try the review pane.");
+    return ok;
+  }, [review]);
+
+  const onFileRevert = useCallback(async (pathValue: string): Promise<boolean> => {
+    const ok = await review.revertFileChange(pathValue);
+    if (ok) toast.success("Reverted — file restored to last commit.");
+    else toast.error("Couldn't revert that file. Try the review pane.");
+    return ok;
+  }, [review]);
+
   const openCurrentReview = useCallback(async () => {
     setPanelOpen(true);
     const status = await review.refreshGitStatus();
@@ -271,6 +286,8 @@ export function App() {
           runDetail={runEvidence.runDetail}
           workspaceChangeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
           onFileChangeClick={(pathValue) => void openReviewFile(pathValue)}
+          onFileAccept={onFileAccept}
+          onFileRevert={onFileRevert}
           onTurnDiffSelect={openTurnReview}
           turnDiffLabel={(turnIndex) =>
             review.turnDiffScopes.find((scope) => scope.turnIndex === turnIndex)?.label ?? `T${turnIndex}`

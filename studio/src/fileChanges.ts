@@ -18,6 +18,10 @@ export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileCha
   const push = (raw: AnyRecord) => {
     const pathValue = fileChangePath(raw);
     if (!pathValue || seen.has(pathValue)) return;
+    // .asteria/ is the runtime's own state root (goal_spec, task_plan, cost_report, backlog, ...).
+    // Those are evidence bookkeeping, not user code edits, so they must never appear as reviewable
+    // (and now Keep/Revert-able) file changes in the thread.
+    if (isRuntimeInternalPath(pathValue)) return;
     seen.add(pathValue);
     result.push({
       path: pathValue,
@@ -30,15 +34,18 @@ export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileCha
   for (const step of steps) {
     for (const event of step.events) {
       for (const item of (event.file_changes ?? []) as AnyRecord[]) push(item);
-      if (event.type === "file_changed") {
-        push(event.data as AnyRecord);
-        const summary = String(event.summary ?? "");
-        const match = summary.match(/(?:^|\s)([\w./_-]+\.(?:py|ts|tsx|js|mjs|md|json|yaml|yml|css|html|toml))/i);
-        if (match) push({ path: match[1], operation: "change" });
-      }
+      // Structured file_changed events already carry the real, full path. The old summary-text
+      // scrape was dropped: its `js|json` alternation mis-captured `foo.json` as a phantom `foo.js`,
+      // and it surfaced un-path-filterable internal-artifact basenames. Real paths only, no guessing.
+      if (event.type === "file_changed") push(event.data as AnyRecord);
     }
   }
   return result;
+}
+
+function isRuntimeInternalPath(pathValue: string): boolean {
+  const p = pathValue.replace(/\\/g, "/").toLowerCase();
+  return p === ".asteria" || p.startsWith(".asteria/") || p.includes("/.asteria/");
 }
 
 function numberOrUndefined(value: unknown): number | undefined {

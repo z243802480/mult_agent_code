@@ -145,6 +145,34 @@ export function useWorkspaceReview(
     }
   }
 
+  // Inline per-turn actions (I11): path-parameterized siblings of stage/discardSelectedFile so a
+  // thread file chip can Keep (stage) or Revert (checkout) without first selecting it in the side pane.
+  // Honest semantics: revert = `git checkout -- <path>`, i.e. discard ALL uncommitted changes to the
+  // file — not just this turn's delta. The chip owns the confirm; this only runs the real git op.
+  async function acceptFileChange(pathValue: string): Promise<boolean> {
+    if (!pathValue) return false;
+    try {
+      const res = await api.gitStage(pathValue);
+      await refreshGitStatus();
+      if (gitSelectedPath === pathValue) await openFileChange(pathValue, diffStage);
+      return Boolean(res?.ok);
+    } catch {
+      return false;
+    }
+  }
+
+  async function revertFileChange(pathValue: string): Promise<boolean> {
+    if (!pathValue) return false;
+    try {
+      const res = await api.gitDiscard(pathValue);
+      await refreshGitStatus();
+      if (gitSelectedPath === pathValue) await openFileChange(pathValue, diffStage);
+      return Boolean(res?.ok);
+    } catch {
+      return false;
+    }
+  }
+
   async function compactContext() {
     if (!activeSession) return;
     const ok = window.confirm("Compact session context? Older turns may be summarized.");
@@ -197,6 +225,8 @@ export function useWorkspaceReview(
     setDiffLayoutMode,
     stageSelectedFile,
     discardSelectedFile,
+    acceptFileChange,
+    revertFileChange,
     compactContext,
     setContextSectionId,
     applySessionUiState,
