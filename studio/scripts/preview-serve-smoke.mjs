@@ -60,7 +60,13 @@ try {
   const missing = await fetchRaw(`${pv}/nope.html`);
   assert(missing.status === 404, `missing should be 404, got ${missing.status}`);
 
-  console.log("Studio preview-serve smoke passed (multi-file serve, content-types, path-safety)");
+  // PREVIEW-2: live-reload — served HTML injects the client, and a file edit broadcasts "reload".
+  assert(root.body.includes("/__livereload"), "live-reload client not injected into served HTML");
+  const reloaded = await waitForReload(pv, () =>
+    fs.writeFile(path.join(workspace, "index.html"), '<!doctype html><body><h1 id="t">EDITED</h1></body>', "utf8"));
+  assert(reloaded, "did not receive live-reload event after editing a workspace file");
+
+  console.log("Studio preview-serve smoke passed (multi-file serve, content-types, path-safety, live-reload)");
 } finally {
   server.kill("SIGTERM");
   await fs.rm(workspace, { recursive: true, force: true });
@@ -88,4 +94,29 @@ async function fetchJson(url) {
 async function fetchRaw(url) {
   const r = await fetch(url, { redirect: "manual" });
   return { status: r.status, type: r.headers.get("content-type") || "", body: await r.text() };
+}
+
+// Open the live-reload SSE stream, trigger a workspace edit, and resolve true if a "reload" arrives.
+async function waitForReload(pv, triggerFn, timeoutMs = 5000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  let got = false;
+  try {
+    const resp = await fetch(`${pv}/__livereload`, { signal: ac.signal });
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    setTimeout(() => { triggerFn().catch(() => {}); }, 300);
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      if (/data:\s*reload/.test(buf)) { got = true; break; }
+    }
+  } catch {
+    // aborted on timeout
+  } finally {
+    clearTimeout(timer);
+  }
+  return got;
 }

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, statSync, readFileSync, promises as fs } from "node:fs";
+import { existsSync, statSync, readFileSync, watch as fsWatch, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,8 @@ const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
 let previewPort = null; // PREVIEW-1: port of the dedicated static workspace server (null until bound)
+const previewSseClients = new Set(); // PREVIEW-2: live-reload SSE connections from preview iframes
+let previewReloadTimer = null;
 
 // Keep liveJobs bounded. Terminal (completed/failed/cancelled) jobs are retained briefly so the
 // jobs/stop routes still reflect a just-finished run, then pruned after a grace window; a hard cap is
@@ -3624,14 +3626,34 @@ function startPreviewServer(startPort) {
     try {
       if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); res.end("method not allowed"); return; }
       let pathname = decodeURIComponent((req.url || "/").split("?")[0].split("#")[0]);
+      // PREVIEW-2: live-reload SSE channel — the injected script (below) connects here; the workspace
+      // watcher broadcasts "reload" so the preview refreshes when the agent edits files.
+      if (pathname === "/__livereload") {
+        res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "connection": "keep-alive" });
+        res.write(": connected\n\n");
+        previewSseClients.add(res);
+        const ping = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 20000);
+        req.on("close", () => { clearInterval(ping); previewSseClients.delete(res); });
+        return;
+      }
       if (pathname.endsWith("/")) pathname += "index.html";
       const rel = pathname.replace(/^\/+/, "") || "index.html";
       if (!isSafeWorkspacePath(rel)) { res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }); res.end("Forbidden"); return; }
       const abs = path.resolve(workspaceRoot, rel);
       if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + path.sep)) { res.writeHead(403); res.end("Forbidden"); return; }
       if (!existsSync(abs) || !statSync(abs).isFile()) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }); res.end("Not found"); return; }
+      const contentType = previewContentType(abs);
       const body = await fs.readFile(abs);
-      res.writeHead(200, { "content-type": previewContentType(abs), "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      // PREVIEW-2: inject the live-reload client into served HTML so edits auto-refresh the preview.
+      if (contentType.startsWith("text/html") && req.method !== "HEAD") {
+        let html = body.toString("utf8");
+        const snippet = '\n<script>(function(){try{var s=new EventSource("/__livereload");s.onmessage=function(e){if(e.data==="reload")location.reload();};}catch(_){}})();</script>\n';
+        html = html.includes("</body>") ? html.replace("</body>", `${snippet}</body>`) : html + snippet;
+        res.writeHead(200, { "content-type": contentType, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end(html);
+        return;
+      }
+      res.writeHead(200, { "content-type": contentType, "cache-control": "no-store", "x-content-type-options": "nosniff" });
       res.end(req.method === "HEAD" ? undefined : body);
     } catch {
       res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); res.end("Preview error");
@@ -3647,9 +3669,34 @@ function startPreviewServer(startPort) {
       server.removeListener("error", onError);
       previewPort = p;
       console.log(`Asteria preview server on http://127.0.0.1:${p} (workspace static)`);
+      startPreviewWatcher();
     });
   };
   tryPort(startPort);
+}
+
+function broadcastPreviewReload() {
+  for (const res of [...previewSseClients]) {
+    try { res.write("data: reload\n\n"); } catch { previewSseClients.delete(res); }
+  }
+}
+
+// PREVIEW-2: watch the workspace and tell connected previews to reload on change. Ignore runtime
+// churn (.asteria writes constantly during a run) and heavy/generated dirs, or the preview would
+// reload-storm. Debounced so a burst of writes coalesces into one reload.
+function startPreviewWatcher() {
+  const root = path.resolve(workspace);
+  try {
+    fsWatch(root, { recursive: true }, (_event, filename) => {
+      if (!filename) return;
+      const rel = String(filename).replace(/\\/g, "/");
+      if (/(^|\/)(\.asteria|\.git|node_modules|dist|\.venv|__pycache__)(\/|$)/i.test(rel)) return;
+      if (previewReloadTimer) return;
+      previewReloadTimer = setTimeout(() => { previewReloadTimer = null; broadcastPreviewReload(); }, 150);
+    });
+  } catch (err) {
+    console.error(`Asteria preview watcher failed: ${err?.message || err}`);
+  }
 }
 
 async function serveStatic(response, pathname) {

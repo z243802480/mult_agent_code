@@ -135,6 +135,29 @@
   white-space: nowrap;
 }
 
+.previewLive {
+  align-items: center;
+  background: var(--ok-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--ok);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  gap: 4px;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  text-transform: uppercase;
+}
+
+.previewLive::before {
+  background: var(--ok);
+  border-radius: 50%;
+  content: "";
+  height: 6px;
+  width: 6px;
+}
+
 .previewRefresh {
   align-items: center;
   background: transparent;

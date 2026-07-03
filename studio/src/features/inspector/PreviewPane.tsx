@@ -116,6 +116,7 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
         ) : (
           <span className="previewPath" title={selected}>{selected}</span>
         )}
+        {src && <span className="previewLive" title="Auto-refreshes when workspace files change">Live</span>}
         <button
           type="button"
           className="previewRefresh"
