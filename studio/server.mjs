@@ -23,6 +23,23 @@ const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
+
+// Keep liveJobs bounded. Terminal (completed/failed/cancelled) jobs are retained briefly so the
+// jobs/stop routes still reflect a just-finished run, then pruned after a grace window; a hard cap is
+// a backstop. Running jobs are never pruned. Prevents a long-lived server from growing the map
+// unbounded and keeps the workspace-switch guard (which scans liveJobs) honest.
+function pruneLiveJobs(maxAgeMs = 10 * 60 * 1000, keepLatest = 50) {
+  const now = Date.now();
+  for (const [id, job] of liveJobs) {
+    const terminal = job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+    if (terminal && now - (job.started_at_ms || 0) > maxAgeMs) liveJobs.delete(id);
+  }
+  if (liveJobs.size > keepLatest) {
+    const terminalIds = [...liveJobs.entries()].filter(([, job]) => job.status !== "running").map(([id]) => id);
+    for (const id of terminalIds.slice(0, liveJobs.size - keepLatest)) liveJobs.delete(id);
+  }
+}
+
 const pendingJobs = new Map(); // jobId -> { sessionId, mode, goal, command }
 const sseClients = new Map(); // sessionId -> Set<response>
 
@@ -1621,6 +1638,7 @@ function stopSessionJobs(sessionId) {
 }
 
 function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
+  pruneLiveJobs();
   const command = Array.isArray(commandOverride) && commandOverride.length ? commandOverride : runtimeCommand(mode, goal);
   const jobId = `job-${Date.now()}`;
   const job = {
