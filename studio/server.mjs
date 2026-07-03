@@ -88,7 +88,13 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "DELETE" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").pop() || "");
-    sendJson(response, 200, await deleteSession(sessionId));
+    const purge = url.searchParams.get("purge") === "1";
+    sendJson(response, 200, await deleteSession(sessionId, { purge }));
+    return;
+  }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/restore$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    sendJson(response, 200, await restoreSession(sessionId));
     return;
   }
   if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
@@ -2370,12 +2376,47 @@ async function readSession(sessionId) {
   }
 }
 
-async function deleteSession(sessionId) {
+async function deleteSession(sessionId, { purge = false } = {}) {
   if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
   const dir = sessionPath(sessionId);
   if (!existsSync(dir)) return { ok: false, error: "session not found" };
-  await fs.rm(dir, { recursive: true, force: true });
-  return { ok: true, deleted: sessionId };
+  if (purge) {
+    // Permanent removal — only reached via explicit ?purge=1 (a future trash view), never the
+    // default delete click. Honest destructive path kept available, but gated behind an opt-in flag.
+    await fs.rm(dir, { recursive: true, force: true });
+    return { ok: true, deleted: sessionId, purged: true };
+  }
+  // Soft delete (reversible): mark deleted_at so listSessions hides it, but keep session.json +
+  // events.jsonl intact so an accidental delete of a long-task session can be undone. A long task
+  // is expensive to lose; instant hard-delete on a stray click is the exact failure to prevent.
+  const file = sessionPath(sessionId, "session.json");
+  let session = { session_id: sessionId };
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    if (raw.trim()) session = JSON.parse(raw);
+  } catch {
+    session = { session_id: sessionId };
+  }
+  session.deleted_at = new Date().toISOString();
+  await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
+  return { ok: true, deleted: sessionId, soft_deleted: true };
+}
+
+async function restoreSession(sessionId) {
+  if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
+  const file = sessionPath(sessionId, "session.json");
+  if (!existsSync(file)) return { ok: false, error: "session not found" };
+  let session = {};
+  try {
+    session = JSON.parse(await fs.readFile(file, "utf8"));
+  } catch {
+    return { ok: false, error: "session unreadable" };
+  }
+  // Clear the marker without touching updated_at, so the session slots back into its original
+  // position in the list (undo = put it back exactly, not bump to the top).
+  delete session.deleted_at;
+  await fs.writeFile(file, JSON.stringify(session, null, 2), "utf8");
+  return { ok: true, session, restored: sessionId };
 }
 
 async function updateSession(sessionId, body) {
@@ -2406,7 +2447,8 @@ async function listSessions() {
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const loaded = await readSession(entry.name);
-    if (loaded.ok) sessions.push(loaded.session);
+    // Soft-deleted sessions stay on disk (recoverable) but are hidden from the main list.
+    if (loaded.ok && !loaded.session.deleted_at) sessions.push(loaded.session);
   }
   return sessions.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
 }

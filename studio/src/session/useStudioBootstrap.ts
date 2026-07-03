@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { OverviewPayload, SettingsPayload, StudioSession, WorkspaceFile } from "../types";
 import { api } from "../api";
+import { toast } from "../components/toast";
 
 type BootstrapCallbacks = {
   onOverviewReady?: (overview: OverviewPayload) => void | Promise<void>;
@@ -69,11 +70,14 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
   }
 
   async function deleteSession(session: StudioSession, onSessionRemoved?: () => void) {
-    const ok = window.confirm(
-      `Delete session "${session.title || session.session_id}"? This only removes Studio conversation history.`,
-    );
-    if (!ok) return;
-    await api.deleteSession(session.session_id);
+    // No modal: soft-delete is reversible (the server keeps events.jsonl until an explicit purge),
+    // so the mainstream instant-delete + prominent Undo pattern is both lower-friction and safer
+    // for long-task sessions than a permanent delete gated only by a confirm dialog.
+    const res = await api.deleteSession(session.session_id).catch(() => null);
+    if (!res?.ok) {
+      toast.error("Couldn't delete that session. Try again.");
+      return;
+    }
     const refreshed = await api.sessions();
     const nextSessions = refreshed.sessions ?? [];
     setSessions(nextSessions);
@@ -87,6 +91,21 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
       }
       onSessionRemoved?.();
     }
+    toast.info(`Deleted "${session.title || "session"}"`, {
+      duration: 7000,
+      action: { label: "Undo", onClick: () => void restoreSession(session) },
+    });
+  }
+
+  async function restoreSession(session: StudioSession) {
+    const res = await api.restoreSession(session.session_id).catch(() => null);
+    if (!res?.ok) {
+      toast.error("Couldn't restore that session.");
+      return;
+    }
+    const refreshed = await api.sessions();
+    setSessions(refreshed.sessions ?? []);
+    toast.success(`Restored "${session.title || "session"}".`);
   }
 
   function pushPrompt(text: string) {
@@ -110,6 +129,7 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
     bootstrap,
     newSession,
     deleteSession,
+    restoreSession,
     pushPrompt,
   };
 }

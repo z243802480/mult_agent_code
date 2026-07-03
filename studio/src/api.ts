@@ -9,7 +9,16 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   sessions: () => requestJson<{ ok: boolean; sessions: StudioSession[] }>("/api/studio/sessions"),
   createSession: () => requestJson<{ ok: boolean; session: StudioSession }>("/api/studio/sessions", { method: "POST" }),
-  deleteSession: (id: string) => requestJson<{ ok: boolean; deleted: string }>(`/api/studio/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  deleteSession: (id: string, purge = false) =>
+    requestJson<{ ok: boolean; deleted: string; soft_deleted?: boolean; purged?: boolean }>(
+      `/api/studio/sessions/${encodeURIComponent(id)}${purge ? "?purge=1" : ""}`,
+      { method: "DELETE" },
+    ),
+  restoreSession: (id: string) =>
+    requestJson<{ ok: boolean; session?: StudioSession; restored?: string }>(
+      `/api/studio/sessions/${encodeURIComponent(id)}/restore`,
+      { method: "POST" },
+    ),
   updateSession: (id: string, body: { title?: string; goal_preview?: string; ui_state?: Record<string, unknown> }) =>
     requestJson<{ ok: boolean; session: StudioSession }>(`/api/studio/sessions/${encodeURIComponent(id)}`, {
       method: "PATCH",
