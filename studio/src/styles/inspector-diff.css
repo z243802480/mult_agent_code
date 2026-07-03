@@ -507,6 +507,56 @@ button.aggregateDiffChip {
   color: var(--text-primary);
 }
 
+/* Ordered list item — number gutter + inline text, matching the flat bullet rendering. */
+.finalOrdered {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.finalOrderedNum {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* GitHub-flavored pipe tables (agents emit comparison tables constantly). Horizontal-scrolls inside
+   its own container so wide tables never break the thread layout. */
+.markdownTableWrap {
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.markdownTable {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.markdownTable th,
+.markdownTable td {
+  border: 1px solid var(--border-subtle);
+  padding: 5px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdownTable th {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.markdownBody a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.markdownBody a:hover {
+  color: var(--accent-hover);
+}
+
 .sessionTitleRow {
   align-items: center;
   display: flex;
