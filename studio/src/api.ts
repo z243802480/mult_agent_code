@@ -19,6 +19,14 @@ export const api = {
       `/api/studio/sessions/${encodeURIComponent(id)}/restore`,
       { method: "POST" },
     ),
+  // Direct download URL — an <a href download> streams the bundle (with the server's
+  // Content-Disposition filename) without loading a large session into JS memory.
+  exportUrl: (id: string) => `/api/studio/sessions/${encodeURIComponent(id)}/export`,
+  importSession: (bundle: unknown) =>
+    requestJson<{ ok: boolean; session?: StudioSession; imported?: number; error?: string }>(
+      "/api/studio/sessions/import",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bundle }) },
+    ),
   updateSession: (id: string, body: { title?: string; goal_preview?: string; ui_state?: Record<string, unknown> }) =>
     requestJson<{ ok: boolean; session: StudioSession }>(`/api/studio/sessions/${encodeURIComponent(id)}`, {
       method: "PATCH",

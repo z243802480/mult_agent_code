@@ -76,32 +76,71 @@
 }
 
 .sessionDelete,
-.sessionRename {
+.sessionRename,
+.sessionExport {
   align-items: center;
   background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
+  cursor: pointer;
   display: inline-flex;
   height: 30px;
   justify-content: center;
   margin-right: 4px;
   opacity: 0;
+  text-decoration: none;
   width: 30px;
 }
 
 .sessionRow:hover .sessionDelete,
 .sessionRow:hover .sessionRename,
+.sessionRow:hover .sessionExport,
 .sessionRow.active .sessionDelete,
 .sessionRow.active .sessionRename,
+.sessionRow.active .sessionExport,
 .sessionDelete:focus-visible,
-.sessionRename:focus-visible {
+.sessionRename:focus-visible,
+.sessionExport:focus-visible {
   opacity: 1;
 }
 
 .sessionDelete:hover {
   background: var(--bad-subtle);
   color: var(--bad);
+}
+
+.sessionRename:hover,
+.sessionExport:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+.sessionListTitleRow {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.sessionImportButton {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  height: 26px;
+  justify-content: center;
+  width: 26px;
+}
+
+.sessionImportButton:hover,
+.sessionImportButton:focus-visible {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  outline: none;
 }
 
 .sideSection,

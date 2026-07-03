@@ -25,6 +25,7 @@ export function Sidebar({
   onNew,
   onDelete,
   onRename,
+  onImportFile,
   viewMode,
 }: {
   sessions: StudioSession[];
@@ -38,6 +39,7 @@ export function Sidebar({
   onNew: () => void;
   onDelete: (session: StudioSession) => void;
   onRename: (session: StudioSession, title: string) => Promise<void>;
+  onImportFile?: (file: File) => void;
   viewMode: StudioViewMode;
 }) {
   const [statusOpen, setStatusOpen] = useState(false);
@@ -125,6 +127,7 @@ export function Sidebar({
         onSelect={onSelect}
         onDelete={onDelete}
         onRename={onRename}
+        onImportFile={onImportFile}
         compact={compactSessions}
       />
     </aside>

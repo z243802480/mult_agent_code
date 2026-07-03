@@ -256,6 +256,24 @@ export function App() {
             bootstrap.setActiveSession(result.session);
           }
         }}
+        onImportFile={async (file) => {
+          let bundle: unknown;
+          try {
+            bundle = JSON.parse(await file.text());
+          } catch {
+            toast.error("Couldn't read that file — expected a Studio session .json backup.");
+            return;
+          }
+          const res = await api.importSession(bundle).catch(() => null);
+          if (!res?.ok || !res.session) {
+            toast.error(res?.error ? `Import failed: ${res.error}` : "Import failed — not a valid session backup.");
+            return;
+          }
+          const refreshed = await api.sessions();
+          bootstrap.setSessions(refreshed.sessions ?? []);
+          selectSession(res.session);
+          toast.success(`Imported "${res.session.title || "session"}".`);
+        }}
         viewMode={viewMode}
       />
       {!sidebarCollapsed && (

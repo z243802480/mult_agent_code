@@ -40,6 +40,28 @@ try {
   const listAfterCreate = await fetchJson(`${base}/api/studio/sessions`);
   assert(listAfterCreate.sessions.some((s) => s.session_id === sid), "created session missing from list");
 
+  // --- Export / import (backup + restore-to-file) ---
+  // Seed one event straight into events.jsonl (organic events need a runtime job) so export/import
+  // can prove event preservation, not just session metadata.
+  const eventsFile = path.join(workspace, ".asteria", "studio", "sessions", sid, "events.jsonl");
+  const seeded = { event_id: "evt-seed-1", session_id: sid, type: "user_message", summary: "hello backup", content_delta: "hello backup" };
+  await fs.writeFile(eventsFile, `${JSON.stringify(seeded)}\n`, "utf8");
+
+  const bundle = await fetchJson(`${base}/api/studio/sessions/${sid}/export`);
+  assert(bundle.asteria_session_bundle && bundle.session?.session_id === sid, `export missing session: ${JSON.stringify(bundle).slice(0, 200)}`);
+  assert(Array.isArray(bundle.events) && bundle.events.length === 1 && bundle.events[0].event_id === "evt-seed-1", `export missing seeded event: ${JSON.stringify(bundle.events)}`);
+
+  const imported = await fetchJson(`${base}/api/studio/sessions/import`, "POST", { bundle });
+  const importedId = imported?.session?.session_id;
+  assert(imported.ok && importedId && importedId !== sid, `import failed: ${JSON.stringify(imported)}`);
+  assert(imported.imported === 1 && imported.session.imported_from === sid, `import metadata wrong: ${JSON.stringify(imported)}`);
+
+  const importedEvents = await fetchJson(`${base}/api/studio/sessions/${importedId}/events`);
+  assert(importedEvents.events.length === 1 && importedEvents.events[0].session_id === importedId, `imported events not re-stamped: ${JSON.stringify(importedEvents)}`);
+
+  // Clean up the imported session so it doesn't affect the lifecycle assertions below.
+  await fetchJson(`${base}/api/studio/sessions/${importedId}?purge=1`, "DELETE");
+
   // 3. Soft-delete (default): reversible, not a hard delete.
   const deleted = await fetchJson(`${base}/api/studio/sessions/${sid}`, "DELETE");
   assert(deleted.ok && deleted.soft_deleted === true && !deleted.purged, `expected soft delete: ${JSON.stringify(deleted)}`);
@@ -87,8 +109,13 @@ async function waitForHealth() {
   throw new Error("Studio server did not become healthy");
 }
 
-async function fetchJson(url, method = "GET") {
-  const response = await fetch(url, { method });
+async function fetchJson(url, method = "GET", body) {
+  const init = { method };
+  if (body !== undefined) {
+    init.headers = { "content-type": "application/json" };
+    init.body = JSON.stringify(body);
+  }
+  const response = await fetch(url, init);
   const text = await response.text();
   const payload = JSON.parse(text);
   if (!response.ok) throw new Error(`${url} returned ${response.status}: ${text}`);

@@ -81,6 +81,27 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, { ok: true, session: await createSession() });
     return;
   }
+  if (request.method === "POST" && url.pathname === "/api/studio/sessions/import") {
+    const raw = await readRequestBodyRaw(request);
+    if (raw === null) { sendJson(response, 413, { ok: false, error: "bundle too large" }); return; }
+    let body = null;
+    try { body = raw ? JSON.parse(raw) : null; } catch { body = null; }
+    if (!body) { sendJson(response, 400, { ok: false, error: "invalid bundle JSON" }); return; }
+    sendJson(response, 200, await importSessionBundle(body));
+    return;
+  }
+  if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/export$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
+    const result = await exportSessionBundle(sessionId);
+    if (!result.ok) { sendJson(response, 404, result); return; }
+    const filename = `asteria-session-${result.session_id}.json`.replace(/[^a-zA-Z0-9._-]/g, "_");
+    response.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "content-disposition": `attachment; filename="${filename}"`,
+    });
+    response.end(JSON.stringify(result.bundle, null, 2));
+    return;
+  }
   if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").pop() || "");
     sendJson(response, 200, await updateSession(sessionId, await readRequestJson(request)));
@@ -2419,6 +2440,63 @@ async function restoreSession(sessionId) {
   return { ok: true, session, restored: sessionId };
 }
 
+// Backup (I10b): a session bundle is its session.json + the RAW events.jsonl lines (not the
+// assembled/merged view) so a re-import reproduces exactly what was stored. Events are already
+// redacted at write time, so the bundle carries no fresh secrets.
+async function exportSessionBundle(sessionId) {
+  const loaded = await readSession(sessionId);
+  if (!loaded.ok) return { ok: false, error: loaded.error };
+  const eventsFile = sessionPath(sessionId, "events.jsonl");
+  let events = [];
+  if (existsSync(eventsFile)) {
+    events = (await fs.readFile(eventsFile, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
+  }
+  const bundle = {
+    asteria_session_bundle: "0.1.0",
+    exported_at: new Date().toISOString(),
+    session: loaded.session,
+    events,
+  };
+  return { ok: true, bundle, session_id: loaded.session.session_id || sessionId };
+}
+
+async function importSessionBundle(body) {
+  const bundle = body?.bundle && typeof body.bundle === "object" ? body.bundle : body;
+  if (!bundle || typeof bundle !== "object") return { ok: false, error: "invalid bundle" };
+  const src = bundle.session && typeof bundle.session === "object" ? bundle.session : {};
+  const events = Array.isArray(bundle.events) ? bundle.events : [];
+  if (!src && !events.length) return { ok: false, error: "bundle has no session or events" };
+  const sessionId = `session-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  const session = {
+    schema_version: "0.1.0",
+    session_id: sessionId,
+    title: String(src.title || "Imported session").slice(0, 120),
+    workspace,
+    created_at: now,
+    updated_at: now,
+    imported_from: src.session_id ? String(src.session_id) : null,
+    imported_at: now,
+  };
+  if (src.goal_preview) session.goal_preview = String(src.goal_preview).slice(0, 160);
+  await fs.mkdir(sessionPath(sessionId), { recursive: true });
+  await fs.writeFile(sessionPath(sessionId, "session.json"), JSON.stringify(session, null, 2), "utf8");
+  if (events.length) {
+    // Re-stamp session_id so the imported events belong to the new session; keep everything else
+    // (event_id, timestamps, content) verbatim for a faithful restore.
+    const lines = events
+      .filter((ev) => ev && typeof ev === "object")
+      .map((ev) => JSON.stringify({ ...ev, session_id: sessionId }))
+      .join("\n");
+    await fs.writeFile(sessionPath(sessionId, "events.jsonl"), lines ? `${lines}\n` : "", "utf8");
+  }
+  return { ok: true, session, imported: events.length };
+}
+
 async function updateSession(sessionId, body) {
   if (!isSafeId(sessionId)) return { ok: false, error: "invalid session id" };
   const file = sessionPath(sessionId, "session.json");
@@ -3547,6 +3625,25 @@ function readRequestJson(request) {
       }
     });
     request.on("error", () => resolve({}));
+  });
+}
+
+// Session import bundles can be large (a long task = many events), so they need a much higher cap
+// than readRequestJson's 64KB. Still bounded (25MB) to avoid unbounded memory. Returns null if the
+// body exceeds the cap (route replies 413) rather than silently truncating.
+function readRequestBodyRaw(request, maxBytes = 25_000_000) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    let size = 0;
+    let overflow = false;
+    request.on("data", (chunk) => {
+      if (overflow) return;
+      size += chunk.length;
+      if (size > maxBytes) { overflow = true; request.destroy(); return; }
+      chunks.push(Buffer.from(chunk));
+    });
+    request.on("end", () => resolve(overflow ? null : Buffer.concat(chunks).toString("utf8")));
+    request.on("error", () => resolve(null));
   });
 }
 

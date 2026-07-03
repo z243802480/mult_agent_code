@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
-import { Pencil, Trash2 } from "lucide-react";
+import React, { useMemo, useRef, useState } from "react";
+import { Download, Pencil, Trash2, Upload } from "lucide-react";
+import { api } from "../../api";
 import type { StudioSession } from "../../types";
 import type { SessionListFilter } from "./sessionListUtils";
 import {
@@ -20,6 +21,7 @@ type SessionListProps = {
   onSelect: (session: StudioSession) => void;
   onDelete: (session: StudioSession) => void;
   onRename: (session: StudioSession, title: string) => Promise<void>;
+  onImportFile?: (file: File) => void;
   compact?: boolean;
 };
 
@@ -32,11 +34,13 @@ export function SessionList({
   onSelect,
   onDelete,
   onRename,
+  onImportFile,
   compact = false,
 }: SessionListProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [query, setQuery] = useState("");
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const visibleSessions = useMemo(
     () => searchSessions(filterSessions(sessions, filter), query),
@@ -54,7 +58,33 @@ export function SessionList({
   return (
     <nav className="sessionList" aria-label="Sessions">
       <div className="sessionListHeader">
-        <p className="sideTitle">Tasks</p>
+        <div className="sessionListTitleRow">
+          <p className="sideTitle">Tasks</p>
+          {onImportFile && (
+            <>
+              <button
+                type="button"
+                className="sessionImportButton"
+                title="Import a session backup (.json)"
+                aria-label="Import session backup"
+                onClick={() => importInputRef.current?.click()}
+              >
+                <Upload size={13} />
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) onImportFile(file);
+                  event.target.value = ""; // allow re-importing the same file
+                }}
+              />
+            </>
+          )}
+        </div>
         <div className="sessionFilterTabs" role="tablist" aria-label="Session filter">
           {(["all", "recent"] as SessionListFilter[]).map((value) => (
             <button
@@ -99,6 +129,7 @@ export function SessionList({
               compact={compact}
               editingId={editingId}
               draftTitle={draftTitle}
+              exportHref={api.exportUrl(session.session_id)}
               onSelect={onSelect}
               onDelete={onDelete}
               onStartRename={(item) => {
@@ -123,6 +154,7 @@ type SessionRowProps = {
   compact?: boolean;
   editingId: string | null;
   draftTitle: string;
+  exportHref: string;
   onSelect: (session: StudioSession) => void;
   onDelete: (session: StudioSession) => void;
   onStartRename: (session: StudioSession) => void;
@@ -138,6 +170,7 @@ function SessionRow({
   compact = false,
   editingId,
   draftTitle,
+  exportHref,
   onSelect,
   onDelete,
   onStartRename,
@@ -183,6 +216,16 @@ function SessionRow({
       >
         <Pencil size={13} />
       </button>
+      <a
+        className="sessionExport"
+        href={exportHref}
+        download
+        title="Export (backup) session"
+        aria-label="Export session backup"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Download size={13} />
+      </a>
       <button
         className="sessionDelete"
         title="Delete session"
