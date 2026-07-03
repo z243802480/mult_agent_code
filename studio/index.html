@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Asteria Studio</title>
+    <script>
+      // No-flash theme bootstrap: apply the stored theme (or the OS resolution of "system") before
+      // the bundle paints. Kept in sync with src/hooks/useTheme.ts (THEME_STORAGE_KEY / resolution).
+      (function () {
+        try {
+          var t = localStorage.getItem("asteria.studio.theme") || "system";
+          var resolved = t === "light" || t === "dark"
+            ? t
+            : (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+          document.documentElement.setAttribute("data-theme", resolved);
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

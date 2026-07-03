@@ -123,11 +123,12 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Light theme (I14): follows the OS by default. Every value is a remap of a token already used
-   app-wide, so components that respect the design tokens flip cleanly. Opt back to dark explicitly
-   with <html data-theme="dark">. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
+/* ── Light theme (I14 + manual toggle): applied whenever data-theme="light" is set on <html> —
+   either explicitly via the Appearance toggle (Settings) or resolved from the OS for "system" mode
+   by the theme bootstrap (index.html inline script + src/hooks/useTheme.ts). Dark is the :root
+   default and is also what data-theme="dark" resolves to. Every value is a remap of a token used
+   app-wide, so token-respecting components flip cleanly. */
+:root[data-theme="light"] {
     --surface-0: #ffffff;
     --surface-1: #f5f7f9;
     --surface-2: #eef1f4;
@@ -176,7 +177,6 @@
     --shadow-sm: 0 1px 2px rgba(20, 24, 28, 0.10);
     --shadow-md: 0 8px 24px rgba(20, 24, 28, 0.12);
     --shadow-lg: 0 18px 44px rgba(20, 24, 28, 0.16);
-  }
 }
 
 * {

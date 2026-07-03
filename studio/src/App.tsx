@@ -22,12 +22,14 @@ import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { toast } from "./components/toast";
 import { isPermissionTierId } from "./permissionTiers";
+import { useTheme } from "./hooks/useTheme";
 import type { StudioSession } from "./types";
 
 export function App() {
   const [panelOpen, setPanelOpen] = useState(true);
   const paneLayout = usePaneLayout();
   const { viewMode, cycleViewMode } = useViewMode();
+  const { theme, setTheme } = useTheme();
   const { diffFocus, toggleDiffFocus } = useDiffFocus();
   const { sideChatOpen, setSideChatOpen, toggleSideChat, closeSideChat, composerSideAsk, toggleComposerSideAsk } = useSideChat();
   const [sideChatSending, setSideChatSending] = useState(false);
@@ -393,6 +395,8 @@ export function App() {
         open={settingsOpen}
         settings={bootstrap.settings}
         overview={bootstrap.overview}
+        theme={theme}
+        onThemeChange={setTheme}
         onClose={() => setSettingsOpen(false)}
         onChangeWorkspace={() => { setSettingsOpen(false); bootstrap.setWorkspaceOpen(true); }}
         onSaved={(next) => bootstrap.setSettings(next)}

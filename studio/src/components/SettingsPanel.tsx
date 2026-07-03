@@ -1,19 +1,59 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BookText, Check, Cpu, FolderOpen, Info, Loader2, Plug, ShieldCheck, X } from "lucide-react";
+import { BookText, Check, Cpu, FolderOpen, Info, Loader2, Monitor, Moon, Palette, Plug, ShieldCheck, Sun, X } from "lucide-react";
 import type { AnyRecord, OverviewPayload, SettingsPayload } from "../types";
 import { api } from "../api";
 import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, isPermissionTierId, type PermissionTierId } from "../permissionTiers";
+import type { ThemeSetting } from "../hooks/useTheme";
 
-type SectionId = "permission" | "workspace" | "model" | "tools" | "rules" | "about";
+type SectionId = "permission" | "appearance" | "workspace" | "model" | "tools" | "rules" | "about";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ReactNode }[] = [
   { id: "permission", label: "Default permission", icon: <ShieldCheck size={15} /> },
+  { id: "appearance", label: "Appearance", icon: <Palette size={15} /> },
   { id: "workspace", label: "Workspace", icon: <FolderOpen size={15} /> },
   { id: "model", label: "Model & provider", icon: <Cpu size={15} /> },
   { id: "tools", label: "Tools & skills", icon: <Plug size={15} /> },
   { id: "rules", label: "Project rules", icon: <BookText size={15} /> },
   { id: "about", label: "About", icon: <Info size={15} /> },
 ];
+
+const THEME_OPTIONS: { id: ThemeSetting; label: string; icon: React.ReactNode; hint: string }[] = [
+  { id: "system", label: "System", icon: <Monitor size={15} />, hint: "Follow your OS setting" },
+  { id: "light", label: "Light", icon: <Sun size={15} />, hint: "Always light" },
+  { id: "dark", label: "Dark", icon: <Moon size={15} />, hint: "Always dark" },
+];
+
+function AppearanceSection({
+  theme,
+  onThemeChange,
+}: {
+  theme: ThemeSetting;
+  onThemeChange: (next: ThemeSetting) => void;
+}) {
+  return (
+    <div className="settingsSection">
+      <h3>Appearance</h3>
+      <p className="settingsSectionHint">Choose how Studio looks. “System” follows your OS and updates live when it changes.</p>
+      <div className="themeToggle" role="radiogroup" aria-label="Theme">
+        {THEME_OPTIONS.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={theme === option.id}
+            className={theme === option.id ? "themeOption active" : "themeOption"}
+            title={option.hint}
+            onClick={() => onThemeChange(option.id)}
+          >
+            {option.icon}
+            <span>{option.label}</span>
+            {theme === option.id && <Check size={13} className="themeOptionCheck" />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function workspaceBadges(profile: SettingsPayload["workspaceProfile"]): string[] {
   if (!profile) return [];
@@ -272,6 +312,8 @@ export function SettingsPanel({
   open,
   settings,
   overview,
+  theme,
+  onThemeChange,
   onClose,
   onChangeWorkspace,
   onSaved,
@@ -279,6 +321,8 @@ export function SettingsPanel({
   open: boolean;
   settings: SettingsPayload | null;
   overview: OverviewPayload | null;
+  theme: ThemeSetting;
+  onThemeChange: (next: ThemeSetting) => void;
   onClose: () => void;
   onChangeWorkspace: () => void;
   onSaved: (next: SettingsPayload) => void;
@@ -299,6 +343,8 @@ export function SettingsPanel({
 
   const body = useMemo(() => {
     switch (section) {
+      case "appearance":
+        return <AppearanceSection theme={theme} onThemeChange={onThemeChange} />;
       case "workspace":
         return <WorkspaceSection settings={settings} onChangeWorkspace={onChangeWorkspace} />;
       case "model":
@@ -312,7 +358,7 @@ export function SettingsPanel({
       default:
         return <PermissionSection settings={settings} onSaved={onSaved} />;
     }
-  }, [section, settings, overview, onChangeWorkspace, onSaved]);
+  }, [section, settings, overview, theme, onThemeChange, onChangeWorkspace, onSaved]);
 
   if (!open) return null;
 
