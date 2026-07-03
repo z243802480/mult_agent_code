@@ -15,10 +15,13 @@ import type { StudioViewMode } from "../../hooks/useViewMode";
 import type { TurnDiffScope } from "../../turnDiff";
 import { DiffReviewPane } from "./DiffReviewPane";
 import { InspectorAdvanced } from "./InspectorAdvanced";
+import { PreviewPane } from "./PreviewPane";
 
-// INS-1: the Inspector is a focused tabbed panel (was a ~2000px vertical stack). Each tab reuses an
-// existing panel, so the user navigates to Changes / Context / Evidence instead of scrolling.
+// INS-1/INS-3: the Inspector is a focused tabbed workspace panel (was a ~2000px vertical evidence
+// stack). Preview renders the live built result (like Claude Code / Cursor); Changes = diffs;
+// Context = context window; Evidence = raw diagnostics for power users.
 const INSPECTOR_TABS = [
+  { id: "preview", label: "Preview" },
   { id: "changes", label: "Changes" },
   { id: "context", label: "Context" },
   { id: "evidence", label: "Evidence" },
@@ -29,11 +32,11 @@ const TAB_STORAGE_KEY = "asteria.studio.inspectorTab";
 function loadInspectorTab(): InspectorTabId {
   try {
     const raw = localStorage.getItem(TAB_STORAGE_KEY);
-    if (raw === "changes" || raw === "context" || raw === "evidence") return raw;
+    if (raw === "preview" || raw === "changes" || raw === "context" || raw === "evidence") return raw;
   } catch {
     // ignore
   }
-  return "changes";
+  return "preview";
 }
 
 export function Inspector({
@@ -139,6 +142,7 @@ export function Inspector({
         ))}
       </div>
       <div className="inspectorTabPanel">
+        {tab === "preview" && <PreviewPane files={files} />}
         {tab === "changes" && (
           <div className="inspectorPrimary">
             <DiffReviewPane

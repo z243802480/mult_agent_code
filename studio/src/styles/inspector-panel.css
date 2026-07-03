@@ -83,6 +83,99 @@
   color: var(--text-primary);
 }
 
+/* Live browser preview (INS-3) */
+.previewPane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.previewPane.empty {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: center;
+  padding: var(--space-4) var(--space-3);
+  text-align: center;
+}
+
+.previewPane.empty p {
+  color: var(--text-secondary);
+  margin: 4px 0 0;
+}
+
+.previewBar {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  padding-bottom: var(--space-1);
+}
+
+.previewSelect {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  flex: 1 1 auto;
+  font-size: 12px;
+  min-width: 0;
+  padding: 4px 6px;
+}
+
+.previewPath {
+  color: var(--text-secondary);
+  flex: 1 1 auto;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewRefresh {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 4px;
+}
+
+.previewRefresh:hover {
+  color: var(--text-primary);
+}
+
+.previewFrameWrap {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  flex: 1 1 auto;
+  min-height: 320px;
+  overflow: hidden;
+  position: relative;
+}
+
+.previewFrame {
+  background: #ffffff;
+  border: 0;
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.previewStatus {
+  padding: var(--space-2);
+}
+
+.previewStatus.bad {
+  color: var(--bad);
+}
+
 /* C-3: frame comes from `.inspector section`; only unique props kept here. */
 .inspectorDiffPreview {
   display: grid;
