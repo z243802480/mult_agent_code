@@ -1,6 +1,26 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ClipboardList, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck, Square, X } from "lucide-react";
+import { ClipboardList, FileText, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck, Square, X } from "lucide-react";
 import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, legacyPermission, type PermissionTierId } from "../permissionTiers";
+import type { WorkspaceFile } from "../types";
+
+const MENTION_LIMIT = 8;
+
+// Locate an active "@token" ending at the caret: an @ at a word boundary, no whitespace between it
+// and the caret. Returns the @ index and the query typed after it, or null. Powers @-file mentions.
+function activeMention(text: string, caret: number): { start: number; query: string } | null {
+  const upto = text.slice(0, caret);
+  const at = upto.lastIndexOf("@");
+  if (at < 0) return null;
+  if (at > 0 && !/\s/.test(text[at - 1])) return null;
+  const query = upto.slice(at + 1);
+  if (/\s/.test(query)) return null;
+  return { start: at, query };
+}
+
+function basename(pathValue: string): string {
+  const parts = pathValue.split("/");
+  return parts[parts.length - 1] || pathValue;
+}
 
 const MODES = ["auto", "chat", "plan", "run"] as const;
 type Mode = typeof MODES[number];
@@ -71,6 +91,7 @@ export function Composer({
   initialPermissionMode,
   isRunning = false,
   onStop,
+  files = [],
 }: {
   onSend: (message: string, mode: string, permission: string, permissionMode?: string) => Promise<void>;
   onSideAsk?: (message: string) => Promise<void>;
@@ -81,6 +102,7 @@ export function Composer({
   initialPermissionMode?: PermissionTierId;
   isRunning?: boolean;
   onStop?: () => Promise<void> | void;
+  files?: WorkspaceFile[];
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
@@ -91,6 +113,46 @@ export function Composer({
   // auto-send at the turn boundary — we never claim to inject mid-step, which the runtime can't honor.
   const [queue, setQueue] = useState<string[]>([]);
   const wasRunning = useRef(false);
+  // @-file mention (mainstream coding-agent affordance): type @ to point the agent at a workspace
+  // file. The path is inserted as text; the runtime reads it via its file tools — no backend change.
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingCaretRef = useRef<number | null>(null);
+  const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  const mentionMatches = mention
+    ? files
+        .filter((file) => file.path.toLowerCase().includes(mention.query.toLowerCase()))
+        .slice(0, MENTION_LIMIT)
+    : [];
+  const mentionOpen = mentionMatches.length > 0;
+
+  function syncMention(text: string, caret: number) {
+    setMention(activeMention(text, caret));
+    setMentionIndex(0);
+  }
+
+  function insertMention(file: WorkspaceFile) {
+    const el = textareaRef.current;
+    const caret = el ? el.selectionStart : message.length;
+    const m = activeMention(message, caret) ?? mention;
+    if (!m) return;
+    const before = message.slice(0, m.start);
+    const after = message.slice(caret);
+    const inserted = `@${file.path} `;
+    pendingCaretRef.current = (before + inserted).length;
+    setMessage(before + inserted + after);
+    setMention(null);
+  }
+
+  // Restore the caret after an insert re-renders the textarea (keeps typing flowing after the path).
+  useEffect(() => {
+    if (pendingCaretRef.current == null || !textareaRef.current) return;
+    const pos = pendingCaretRef.current;
+    pendingCaretRef.current = null;
+    textareaRef.current.focus();
+    textareaRef.current.setSelectionRange(pos, pos);
+  }, [message]);
 
   // Reflect a newly-saved default tier (Settings panel) in the composer control immediately. Fires
   // only when the persisted default value actually changes, so a per-message override picked this
@@ -144,6 +206,13 @@ export function Composer({
   }, [isRunning, queue.length]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Mention menu owns the keyboard while open: navigate + insert instead of send/stop.
+    if (mentionOpen) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionMatches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(mentionMatches[mentionIndex]); return; }
+      if (e.key === "Escape") { e.preventDefault(); setMention(null); return; }
+    }
     if (e.key === "Escape" && isRunning && onStop && !sideAsk) {
       e.preventDefault();
       void onStop();
@@ -189,12 +258,34 @@ export function Composer({
       )}
       <div className="composerInputWrap">
         <textarea
+          ref={textareaRef}
           value={message}
-          onChange={(event) => setMessage(event.target.value)}
+          onChange={(event) => { setMessage(event.target.value); syncMention(event.target.value, event.target.selectionStart); }}
+          onClick={(event) => syncMention(message, event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           rows={1}
         />
+        {mentionOpen && (
+          <div className="mentionMenu" role="listbox" aria-label="Workspace files">
+            {mentionMatches.map((file, i) => (
+              <button
+                type="button"
+                key={file.path}
+                role="option"
+                aria-selected={i === mentionIndex}
+                className={i === mentionIndex ? "mentionOption active" : "mentionOption"}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setMentionIndex(i)}
+                onClick={() => insertMention(file)}
+              >
+                <FileText size={12} />
+                <span className="mentionName">{basename(file.path)}</span>
+                <span className="mentionPath">{file.path}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {sideAsk && (
           <p className="composerSideAskHint muted">Answers appear in Quick ask — main goal stays on the thread.</p>
         )}

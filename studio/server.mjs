@@ -3502,26 +3502,24 @@ async function modelRouteSummary() {
   })).sort((a, b) => b.total - a.total);
 }
 
+// Heavy / generated / noise directories skipped when walking a general workspace, so the file list
+// (Inspector browser + composer @-mentions) reflects the user's real source, not build output or
+// runtime bookkeeping. Dot-directories (.git/.venv/.asteria/.vscode…) are skipped separately.
+const IGNORED_WORKSPACE_DIRS = new Set([
+  "node_modules", "dist", "build", "out", "target", "vendor", "bin", "obj",
+  "__pycache__", "venv", "env", "coverage", ".gradle",
+]);
+
 async function listWorkspaceFiles() {
-  const candidateRoots = [
-    "src",
-    "tests",
-    "docs",
-    "docs/zh",
-    ".asteria/studio/sessions",
-    ".asteria/verification",
-    "studio/src",
-  ];
+  // General workspace walk from the root (was hardcoded to Asteria's own repo roots, which surfaced
+  // nothing for an arbitrary project). Bounded by depth/scan cap; returns the 200 most recent files.
   const files = [];
-  for (const relativeRoot of candidateRoots) {
-    const absoluteRoot = path.join(workspace, relativeRoot);
-    if (existsSync(absoluteRoot)) await collectFiles(absoluteRoot, files, 0);
-  }
-  return files.sort((a, b) => String(b.modified_at).localeCompare(String(a.modified_at))).slice(0, 80);
+  await collectFiles(workspace, files, 0);
+  return files.sort((a, b) => String(b.modified_at).localeCompare(String(a.modified_at))).slice(0, 200);
 }
 
 async function collectFiles(directory, files, depth) {
-  if (depth > 4 || files.length > 200) return;
+  if (depth > 6 || files.length > 800) return;
   let entries = [];
   try {
     entries = await fs.readdir(directory, { withFileTypes: true });
@@ -3529,13 +3527,15 @@ async function collectFiles(directory, files, depth) {
     return;
   }
   for (const entry of entries) {
+    if (entry.isDirectory()) {
+      // Skip dot-dirs (.git/.venv/.asteria/.next/.vscode…) and known heavy/generated dirs.
+      if (entry.name.startsWith(".") || IGNORED_WORKSPACE_DIRS.has(entry.name)) continue;
+      await collectFiles(path.join(directory, entry.name), files, depth + 1);
+      continue;
+    }
     const absolute = path.join(directory, entry.name);
     const relative = path.relative(workspace, absolute).replace(/\\/g, "/");
     if (!isSafeWorkspacePath(relative)) continue;
-    if (entry.isDirectory()) {
-      await collectFiles(absolute, files, depth + 1);
-      continue;
-    }
     if (!isPreviewableFile(relative)) continue;
     const stat = await fs.stat(absolute);
     files.push({ path: relative, size: stat.size, modified_at: stat.mtime.toISOString() });

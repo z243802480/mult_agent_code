@@ -328,6 +328,7 @@ export function App() {
           initialPermissionMode={isPermissionTierId(bootstrap.settings?.permissionMode) ? bootstrap.settings?.permissionMode : undefined}
           isRunning={sessionEvents.isRunning}
           onStop={sessionEvents.stopRun}
+          files={bootstrap.files}
         />
       </main>
       {panelOpen && (
