@@ -3,12 +3,13 @@ import { Globe, RefreshCw } from "lucide-react";
 import type { WorkspaceFile } from "../../types";
 import { api } from "../../api";
 
-// Live browser preview (like Claude Code artifacts / Cursor / v0): render the workspace's HTML output
-// in a sandboxed iframe so the user SEES and interacts with the built result. Frontend-only — reuses
-// the file-preview endpoint and srcDoc. `sandbox="allow-scripts"` runs the page's JS (interactive apps
-// like games) but withholds same-origin, so the frame can't reach the parent, cookies, or storage.
-// Caveat: best for self-contained HTML (inline CSS/JS); multi-file apps with relative asset URLs won't
-// resolve under srcDoc, and content is redacted + size-capped by the preview endpoint.
+// Live browser preview (PREVIEW-1, VS Code Live Preview / live-server model): the studio backend runs
+// a dedicated localhost static server for the workspace, so the iframe loads a real URL and MULTI-FILE
+// sites resolve their relative/absolute assets (CSS/JS/images). If that server didn't bind, we fall
+// back to srcDoc rendering of a self-contained HTML file so the tab still works.
+// The frame is cross-origin from the studio (separate port) AND sandboxed, so it cannot reach the
+// studio page, its cookies, or storage. Caveat: node_modules/dist are blocked (framework builds →
+// PREVIEW-3 dev server); served content is raw (unredacted) but protected paths are refused server-side.
 
 function isHtml(path: string): boolean {
   return /\.html?$/i.test(path);
@@ -19,15 +20,38 @@ function pickDefault(htmlFiles: WorkspaceFile[]): string {
   return (index ?? htmlFiles[0])?.path ?? "";
 }
 
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
   const htmlFiles = files.filter((file) => isHtml(file.path));
   const [selected, setSelected] = useState("");
-  const [content, setContent] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [previewPort, setPreviewPort] = useState<number | null>(null);
+  const [portResolved, setPortResolved] = useState(false);
+  const [fallbackContent, setFallbackContent] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Default the selection once the html file set is known (or re-pick if the current one disappeared).
+  // Resolve the dedicated preview server's port once.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .previewInfo()
+      .then((res) => {
+        if (!cancelled) setPreviewPort(res.ok && res.port ? res.port : null);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewPort(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPortResolved(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Default / re-pick the selected html file as the workspace file set changes.
   useEffect(() => {
     if (!htmlFiles.length) {
       setSelected("");
@@ -39,38 +63,25 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [files]);
 
+  // Fallback path (srcDoc) only when the dedicated preview server is unavailable.
   useEffect(() => {
-    if (!selected) {
-      setContent(null);
+    if (!portResolved || previewPort || !selected) {
+      setFallbackContent(null);
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     api
       .previewFile(selected)
       .then((res) => {
-        if (cancelled) return;
-        if (res.ok && typeof res.content === "string") {
-          setContent(res.content);
-        } else {
-          setContent(null);
-          setError(res.error || "Could not load this file.");
-        }
+        if (!cancelled) setFallbackContent(res.ok && typeof res.content === "string" ? res.content : null);
       })
-      .catch((err) => {
-        if (!cancelled) {
-          setContent(null);
-          setError(String((err as Error).message || err));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+      .catch(() => {
+        if (!cancelled) setFallbackContent(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [selected, reloadKey]);
+  }, [portResolved, previewPort, selected, reloadKey]);
 
   if (!htmlFiles.length) {
     return (
@@ -81,6 +92,10 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
       </div>
     );
   }
+
+  const src = previewPort
+    ? `${window.location.protocol}//${window.location.hostname}:${previewPort}/${encodePath(selected)}`
+    : null;
 
   return (
     <div className="previewPane">
@@ -112,16 +127,24 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
         </button>
       </div>
       <div className="previewFrameWrap">
-        {loading && <div className="previewStatus muted">Loading…</div>}
-        {error && <div className="previewStatus bad">{error}</div>}
-        {content != null && (
+        {src ? (
           <iframe
-            key={`${selected}-${reloadKey}`}
+            key={`${src}-${reloadKey}`}
+            className="previewFrame"
+            title="Workspace preview"
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            src={src}
+          />
+        ) : fallbackContent != null ? (
+          <iframe
+            key={`fallback-${selected}-${reloadKey}`}
             className="previewFrame"
             title="Workspace preview"
             sandbox="allow-scripts"
-            srcDoc={content}
+            srcDoc={fallbackContent}
           />
+        ) : (
+          <div className="previewStatus muted">{portResolved ? "Loading preview…" : "Starting preview…"}</div>
         )}
       </div>
     </div>

@@ -23,6 +23,7 @@ const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
+let previewPort = null; // PREVIEW-1: port of the dedicated static workspace server (null until bound)
 
 // Keep liveJobs bounded. Terminal (completed/failed/cancelled) jobs are retained briefly so the
 // jobs/stop routes still reflect a just-finished run, then pruned after a grace window; a hard cap is
@@ -66,6 +67,7 @@ createServer(async (request, response) => {
 }).listen(port, "127.0.0.1", () => {
   console.log(`Asteria Studio listening on http://127.0.0.1:${port}`);
   console.log(`workspace=${workspace}`);
+  startPreviewServer(port + 1);
 });
 
 async function handleApi(request, response, url) {
@@ -182,6 +184,12 @@ async function handleApi(request, response, url) {
     const sessionId = decodeURIComponent(parts.at(-4) || "");
     const jobId = decodeURIComponent(parts.at(-2) || "");
     sendJson(response, 200, await handlePermission(sessionId, jobId, await readRequestJson(request)));
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/api/studio/preview-info") {
+    // PREVIEW-1: the dedicated static preview server's port, so the Preview tab can point its iframe
+    // at http://<host>:<port>/<file> for real multi-file rendering. null if the server didn't bind.
+    sendJson(response, 200, { ok: previewPort != null, port: previewPort });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/files") {
@@ -3587,6 +3595,61 @@ async function readJsonlTail(file, limit) {
   } catch {
     return [];
   }
+}
+
+const PREVIEW_MIME = {
+  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".ico": "image/x-icon", ".bmp": "image/bmp",
+  ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf",
+  ".txt": "text/plain; charset=utf-8", ".map": "application/json; charset=utf-8",
+  ".wasm": "application/wasm", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".webmanifest": "application/manifest+json",
+};
+
+function previewContentType(filePath) {
+  return PREVIEW_MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+
+// PREVIEW-1: a dedicated static server (own port, localhost-only) that serves the workspace so the
+// Preview tab's iframe can load MULTI-FILE sites with real relative/absolute asset resolution — the
+// live-server / VS Code Live Preview model, not the srcDoc self-contained-only hack. Path-safe:
+// reuses isSafeWorkspacePath (no traversal; .env/secrets/.git/keys/node_modules/dist refused);
+// serves files only, no directory listing; a trailing slash defaults to index.html.
+function startPreviewServer(startPort) {
+  const workspaceRoot = path.resolve(workspace);
+  let attempt = 0;
+  const server = createServer(async (req, res) => {
+    try {
+      if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); res.end("method not allowed"); return; }
+      let pathname = decodeURIComponent((req.url || "/").split("?")[0].split("#")[0]);
+      if (pathname.endsWith("/")) pathname += "index.html";
+      const rel = pathname.replace(/^\/+/, "") || "index.html";
+      if (!isSafeWorkspacePath(rel)) { res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }); res.end("Forbidden"); return; }
+      const abs = path.resolve(workspaceRoot, rel);
+      if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + path.sep)) { res.writeHead(403); res.end("Forbidden"); return; }
+      if (!existsSync(abs) || !statSync(abs).isFile()) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }); res.end("Not found"); return; }
+      const body = await fs.readFile(abs);
+      res.writeHead(200, { "content-type": previewContentType(abs), "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      res.end(req.method === "HEAD" ? undefined : body);
+    } catch {
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); res.end("Preview error");
+    }
+  });
+  const tryPort = (p) => {
+    const onError = (err) => {
+      if (err && err.code === "EADDRINUSE" && attempt < 15) { attempt += 1; tryPort(p + 1); }
+      else { previewPort = null; console.error(`Asteria preview server failed: ${err?.message || err}`); }
+    };
+    server.once("error", onError);
+    server.listen(p, "127.0.0.1", () => {
+      server.removeListener("error", onError);
+      previewPort = p;
+      console.log(`Asteria preview server on http://127.0.0.1:${p} (workspace static)`);
+    });
+  };
+  tryPort(startPort);
 }
 
 async function serveStatic(response, pathname) {

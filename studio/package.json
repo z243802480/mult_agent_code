@@ -25,7 +25,8 @@
     "smoke:chat-stream-final": "node scripts/chat-stream-final-smoke.mjs",
     "smoke:friendly-ssl-error": "node scripts/friendly-ssl-error-smoke.mjs",
     "smoke:session-lifecycle": "node scripts/session-lifecycle-smoke.mjs",
-    "smoke:workspace-files": "node scripts/workspace-files-smoke.mjs"
+    "smoke:workspace-files": "node scripts/workspace-files-smoke.mjs",
+    "smoke:preview-serve": "node scripts/preview-serve-smoke.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
