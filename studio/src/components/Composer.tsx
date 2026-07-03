@@ -154,6 +154,15 @@ export function Composer({
     textareaRef.current.setSelectionRange(pos, pos);
   }, [message]);
 
+  // Auto-grow the textarea with its content (up to a max, then scroll) — mainstream composer
+  // behavior. Resets cleanly when the message clears after send.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, [message]);
+
   // Reflect a newly-saved default tier (Settings panel) in the composer control immediately. Fires
   // only when the persisted default value actually changes, so a per-message override picked this
   // session survives unrelated re-renders.
