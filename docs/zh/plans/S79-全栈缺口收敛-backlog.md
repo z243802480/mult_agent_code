@@ -60,6 +60,15 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 - ✅ **A5 Evidence 搜索**：EvidenceExplorer 加 `.evidenceSearch` 过滤框——按 `renderLine` 文本过滤各 EvidenceBlock（保留原 index、过滤空块隐藏、标题显 N/M）。studio `tsc` 净。
 - ✅ **A6 gate-status 路由可见度**：加**纯信息** `route_table`（strong/medium/cheap 的 provider/model/selection + `offline_tiers` + `silently_offline`），text 输出加「Model routes / Offline tiers」行。**关键**：与驱动 gate readiness 的 `route_environment` 分离——cheap 有意可 fake/offline，绝不因此 block gate。+1 测试，gate 全绿、ruff/mypy 净。
 - ⏭️ **A7 已满足（亲验推翻审计，无需改动）**：`package_check_command._version_sync_check`(:196) 已比对 `pyproject.version == __version__` 并报 ok/fail。审计"无版本一致性检查"不实。**第三个"审计误报为缺失、实则已做"的项（A4/A7）**——固化"先亲验"纪律的价值。
+- ✅ **A1–A7 已提交**（2026-07-04）：S78 = `ec61caa`，S79 A1–A7 = `52369da`（共享文件 EvidenceExplorer.tsx / 研发总计划.md 随 S79 笔）。未 push。
+- ✅ **A8 per-step telemetry**：SelectedStepPanel 加独立 "Telemetry" 段 + `TelemetryView`——把 `event.telemetry` 从原始 JSON blob 变为可扫指标（Latency/Input/Output/Total tokens，探测多别名字段名、无则不显、raw JSON 折叠兜底）。studio `tsc` 净。
+- ⏭️ **A9 已满足 + 冻结阻断（亲验推翻审计，无需改动）**：WorkerProgressBar / WorkerTopologyPanel / WorkflowMonitorPanel **都是完整功能组件**（进度轨·worker 树·Metrics·调度徽章），无数据时诚实返回 null。审计"占位/罐头/渲染空白"不实——它们不显示只因**并行/swarm worker 是冻结特性**，多数 run 无 worker 数据。要"更显性化"须有 worker 数据 = 需解冻 parallel_writes/swarm（**明令不碰**）。故无守冻结的诚实改动。
+
+## Tier A 收官（2026-07-04）
+
+**9 项全部处理**：真改动 6 项（A1/A2/A3/A5/A6/A8，全验证）+ 亲验已做/冻结阻断 3 项（A4/A7/A9）。全量 1186 绿、mypy/ruff 净、studio tsc 净。A1–A7 已提交（`ec61caa` + `52369da`）；A8 + 本文档更新未提交。
+
+**关键教训（已固化）**：前端审计代理**大幅over-report"占位/罐头"**——A4/A7/A9 判为缺失实则完整，A3 部分已做。逐个亲验避免了对能工作代码的伪造 churn。**Tier B 各项动手前同样须先亲验**（审计前端结论不可尽信）。
 每项：understand（亲验真实状态，不轻信审计二手结论）→ implement（Edit 精确改）→ verify（pytest/tsc/ruff/mypy 相应门）→ 回写文档。撞 Tier C 即停下最小征询。
 
 ## 审计溯源（子代理原文，可回溯）

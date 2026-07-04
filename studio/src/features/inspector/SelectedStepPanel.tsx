@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight, FileText } from "lucide-react";
 import type { AnyRecord, StudioEvent } from "../../types";
-import { Metric } from "../../components/Shared";
+import { Metric, formatMs } from "../../components/Shared";
 import { CopyablePre } from "../../components/CopyablePre";
 import { firstText } from "../../narrative";
-import { asArray, asRecord } from "./inspectorUtils";
+import { asArray, asRecord, formatUsage } from "./inspectorUtils";
 
 type InspectorSection = {
   id: string;
@@ -100,12 +100,14 @@ export function buildInspectorSections(
   ];
   const diagnostics: AnyRecord[] = [
     ...(event.model_provider ? [{ provider: event.model_provider, model: event.model_name }] : []),
-    ...(event.telemetry ? [event.telemetry] : []),
     ...(event.source
       ? [{ source: event.source, channel: event.runtime_channel, event_type: event.runtime_event_type, run_id: event.run_id }]
       : []),
     ...(event.content_delta && !event.type.startsWith("tool_") ? [{ content: event.content_delta }] : []),
   ].filter(Boolean);
+  // Per-step telemetry gets its own scannable metric view (latency + token breakdown) instead of
+  // being dumped as raw JSON inside Diagnostics.
+  const telemetry = asRecord(event.telemetry);
 
   return [
     {
@@ -147,6 +149,13 @@ export function buildInspectorSections(
       ),
     },
     {
+      id: "telemetry",
+      title: "Telemetry",
+      count: Object.keys(telemetry).length,
+      empty: "This event has no token or latency telemetry.",
+      content: <TelemetryView telemetry={telemetry} />,
+    },
+    {
       id: "diagnostic",
       title: "Diagnostics",
       count: diagnostics.length,
@@ -166,6 +175,43 @@ export function buildInspectorSections(
       ),
     },
   ];
+}
+
+function TelemetryView({ telemetry }: { telemetry: AnyRecord }) {
+  // Token/latency field names vary by provider path; probe the known aliases and show whatever the
+  // event actually recorded (no fabricated zeros). Raw payload stays available below for the rest.
+  const num = (keys: string[]): number | null => {
+    for (const key of keys) {
+      const value = telemetry[key];
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+    }
+    return null;
+  };
+  const latency = num(["duration_ms", "latency_ms", "elapsed_ms"]);
+  const input = num(["input_tokens", "estimated_input_tokens", "prompt_tokens"]);
+  const output = num(["output_tokens", "estimated_output_tokens", "completion_tokens"]);
+  const total = num(["total_tokens", "token_count", "num_tokens", "n_tokens"]);
+  const metrics = [
+    latency != null && { label: "Latency", value: formatMs(latency) },
+    input != null && { label: "Input tokens", value: formatUsage(input) },
+    output != null && { label: "Output tokens", value: formatUsage(output) },
+    total != null && { label: "Total tokens", value: formatUsage(total) },
+  ].filter(Boolean) as { label: string; value: string }[];
+  return (
+    <div className="telemetryView">
+      {metrics.length > 0 && (
+        <div className="evidenceStats">
+          {metrics.map((metric) => (
+            <Metric key={metric.label} label={metric.label} value={metric.value} tone="good" />
+          ))}
+        </div>
+      )}
+      <details>
+        <summary>Raw telemetry</summary>
+        <CopyablePre text={JSON.stringify(telemetry, null, 2)} />
+      </details>
+    </div>
+  );
 }
 
 function IntentAuditView({ items }: { items: AnyRecord[] }) {
