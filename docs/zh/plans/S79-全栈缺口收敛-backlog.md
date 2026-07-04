@@ -69,6 +69,13 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 **9 项全部处理**：真改动 6 项（A1/A2/A3/A5/A6/A8，全验证）+ 亲验已做/冻结阻断 3 项（A4/A7/A9）。全量 1186 绿、mypy/ruff 净、studio tsc 净。A1–A7 已提交（`ec61caa` + `52369da`）；A8 + 本文档更新未提交。
 
 **关键教训（已固化）**：前端审计代理**大幅over-report"占位/罐头"**——A4/A7/A9 判为缺失实则完整，A3 部分已做。逐个亲验避免了对能工作代码的伪造 churn。**Tier B 各项动手前同样须先亲验**（审计前端结论不可尽信）。
+
+## Tier B 进展（逐项亲验中，2026-07-04）
+
+- ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**未提交**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。
+- ⏭️ **B7 EmptyState 自适应 = 真缺口但判定不做**：`EMPTY_PROMPTS` 确是硬编码 4 条，但成熟产品（Claude Code/Cursor）同样用通用示例；改自适应需穿入 workspace 语言检测、收益微薄。**诚实地不为凑数而改**（error-recovery / loading 文案多样性另论）。
+- 🔎 **B1 error navigation 确认真缺口（中等）**：Thread 有 I7 窗口化 + Jump-to-latest，但**无失败 turn 标记/迷你地图/跳错误**；CommandPalette **不含**"跳错误/跳决策"命令（审计称 I13 有，实为误报——palette 只接外部传入 session+action 命令）。最高产品价值的 Tier B 项。
+- ⏳ **B2（diff per-hunk+inline）/ B3（dev-server 预览）/ B4（composer 打磨）/ B6（vitest 组件测试）**：待亲验后实施。
 每项：understand（亲验真实状态，不轻信审计二手结论）→ implement（Edit 精确改）→ verify（pytest/tsc/ruff/mypy 相应门）→ 回写文档。撞 Tier C 即停下最小征询。
 
 ## 审计溯源（子代理原文，可回溯）
