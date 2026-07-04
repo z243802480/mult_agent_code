@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { ThreadSkeleton } from "../../components/Skeleton";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
@@ -122,6 +123,23 @@ export function Thread({
     }
     return undefined;
   }, [sessionEvents]);
+  // Live auto-repair progress (S78). The per-attempt events are inspector-level (kept out of the
+  // main narrative to keep the thread compact), so read them from the full `events` — not
+  // mainEvents. Show a summary chip only while running and only when a repair attempt is the current
+  // tail activity: scanning from the newest event, bail if a success/final lands after the last
+  // attempt so the chip never lingers once the repair resolved.
+  const repairProgress = useMemo(() => {
+    if (!isRunning) return null;
+    for (let i = events.length - 1; i >= 0; i -= 1) {
+      const ev = events[i];
+      const data = (ev?.data ?? {}) as Record<string, unknown>;
+      if (typeof data.auto_repair_attempt === "number") {
+        return { attempt: data.auto_repair_attempt, budget: Number(data.auto_repair_budget ?? 0) };
+      }
+      if (ev?.type === "final_answer" || ev?.runtime_event_type === "final_report") return null;
+    }
+    return null;
+  }, [events, isRunning]);
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
@@ -190,9 +208,16 @@ export function Thread({
 
   return (
     <section className="thread" ref={threadRef}>
-      {(plan || contextUsage) && (
+      {(plan || contextUsage || repairProgress) && (
         <div className="threadPlanBar">
           {plan && <PhaseStrip phase={currentPhase} running={isRunning} />}
+          {repairProgress && (
+            <span className="repairProgressChip" role="status" aria-live="polite">
+              <RefreshCw size={12} className="spinning" />
+              Auto-repairing · attempt {repairProgress.attempt}
+              {repairProgress.budget > 0 ? ` / ${repairProgress.budget}` : ""}
+            </span>
+          )}
           {plan && <PlanChecklist plan={plan} defaultOpen={isRunning} />}
           {contextUsage && <ContextMeter usage={contextUsage} />}
         </div>

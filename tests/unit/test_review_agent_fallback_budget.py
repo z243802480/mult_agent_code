@@ -32,6 +32,36 @@ def _review_context(**extra) -> dict:
     return context
 
 
+def _agent() -> ReviewAgent:
+    return ReviewAgent(
+        model_client=CountingFailingModel(), validator=SchemaValidator(Path("schemas"))
+    )
+
+
+def test_overall_uses_real_correctness_score_over_constant() -> None:
+    agent = _agent()
+    real = {"status": "partial", "score": 0.5, "reason": "2/4 verification passed"}
+
+    # Model responded with a status but NO score -> the fabricated constant is replaced by the
+    # real verification pass rate; the model's status is respected.
+    model_no_score = agent._overall({"status": "pass"}, "pass", real)
+    assert model_no_score["score"] == 0.5
+    assert model_no_score["status"] == "pass"
+
+    # Model supplied an explicit score -> that real judgment is kept (A1 only removes the constant).
+    model_with_score = agent._overall({"status": "pass", "score": 0.95}, "pass", real)
+    assert model_with_score["score"] == 0.95
+
+    # Pure-deterministic review (model absent) -> the graded correctness verdict is authoritative.
+    deterministic = agent._overall(None, "pass", real)
+    assert deterministic == {"status": "partial", "score": 0.5, "reason": "2/4 verification passed"}
+
+    # No verification evidence (correctness None) -> legacy constant preserved (reversible / no
+    # fabricated fail against a non-verification task).
+    assert agent._overall({"status": "pass"}, "pass", None)["score"] == 0.9
+    assert agent._overall(None, "partial", None)["score"] == 0.6
+
+
 def test_fallback_total_budget_seconds_parsing() -> None:
     agent = ReviewAgent(model_client=CountingFailingModel(), validator=SchemaValidator(Path("schemas")))
     assert agent._fallback_total_budget_seconds({}) == 120.0

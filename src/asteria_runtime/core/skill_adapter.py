@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -46,7 +47,7 @@ class SkillDefinition:
 class SkillDiscovery:
     """Discover local SKILL.md definitions without invoking their runtime behavior."""
 
-    def __init__(self, roots: list[Path | SkillRoot]) -> None:
+    def __init__(self, roots: Sequence[Path | SkillRoot]) -> None:
         self.roots = [
             root if isinstance(root, SkillRoot) else SkillRoot(path=root) for root in roots
         ]
@@ -197,7 +198,7 @@ class SkillAdapter:
     @classmethod
     def from_skill_roots(
         cls,
-        roots: list[Path | SkillRoot],
+        roots: Sequence[Path | SkillRoot],
         *,
         actor: str = "SkillAdapter",
         handler: str = "manifest",

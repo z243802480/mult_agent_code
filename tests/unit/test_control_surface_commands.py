@@ -1247,6 +1247,28 @@ def test_gate_status_moves_from_gate_to_validation_to_core(tmp_path: Path, monke
     }
 
 
+def test_gate_status_route_table_surfaces_offline_tiers(tmp_path: Path, monkeypatch) -> None:
+    # strong/medium point at a real provider; cheap stays on the fake/offline provider. route_table
+    # must expose all three tiers and honestly flag cheap as silently returning canned output —
+    # without letting cheap block gate readiness (route_environment stays strong+medium only).
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_API_KEY", "k")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "k")
+    monkeypatch.setenv("AGENT_MODEL_CHEAP_PROVIDER", "fake")
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+    table = payload["route_table"]
+
+    assert set(table["tiers"]) == {"strong", "medium", "cheap"}
+    assert table["tiers"]["cheap"]["provider"] == "fake"
+    assert table["offline_tiers"] == ["cheap"]
+    assert table["silently_offline"] is True
+    # cheap being offline must NOT leak into the readiness-driving route_environment.
+    assert "cheap" not in payload["route_environment"]
+    assert "Offline tiers" in GateStatusCommand(tmp_path).run().to_text()
+
+
 def test_gate_status_reports_v02_rolling_validation_summary(tmp_path: Path, monkeypatch) -> None:
     _configure_release_routes(monkeypatch)
     _write_release_ready_gate_files(tmp_path)

@@ -15,6 +15,7 @@
       "gates",
       "route_environment",
       "route_guidance",
+      "route_table",
       "model_call_contract",
       "latest_observation_plan",
       "latest_real_provider_matrix",
@@ -132,6 +133,30 @@
     "recommended_actions": [
       "Keep current model routes and continue collecting capability evidence."
     ]
+  },
+  "route_table": {
+    "tiers": {
+      "strong": {
+        "configured": true,
+        "provider": "glm",
+        "model": "glm-5",
+        "selection_reason": "Selected `strong` because tier-specific environment configuration exists."
+      },
+      "medium": {
+        "configured": true,
+        "provider": "minimax",
+        "model": "MiniMax-M2.7",
+        "selection_reason": "Selected `medium` from global environment route configuration."
+      },
+      "cheap": {
+        "configured": true,
+        "provider": "minimax",
+        "model": "MiniMax-M2.7",
+        "selection_reason": "Selected `cheap` from global environment route configuration."
+      }
+    },
+    "offline_tiers": [],
+    "silently_offline": false
   },
   "model_call_contract": {
     "status": "unknown",

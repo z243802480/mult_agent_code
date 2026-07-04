@@ -28,6 +28,14 @@ function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
   const strong = Number(cost.strong_model_calls ?? 0);
   const cheap = Number(cost.cheap_model_calls ?? 0);
   const repairs = Number(cost.repair_attempts ?? 0);
+  // S78: surface the auto-repair budget as "used/cap" when the run recorded a per-task cap, so the
+  // number reads as bounded ("2/4") rather than an unbounded count. auto_repair_enabled distinguishes
+  // an active auto-repair loop from the (default) human-gated repair path.
+  const loopBudget = asRecord(asRecord(runDetail?.agent_loop_run_summary).budget);
+  const repairCap = Number(loopBudget.repair_attempts_limit ?? 0);
+  const autoRepair = loopBudget.auto_repair_enabled === true;
+  const repairValue = repairCap > 0 ? `${repairs}/${repairCap}${autoRepair ? " auto" : ""}` : String(repairs);
+  const repairTone = repairCap > 0 && repairs >= repairCap ? "bad" : repairs ? "warn" : "good";
   const tokenValue = (value: unknown) => (value == null ? "unknown" : formatUsage(Number(value)));
   return (
     <div className="evidenceBlock runUsagePanel">
@@ -41,7 +49,7 @@ function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
       <div className="evidenceStats">
         <Metric label="Strong calls" value={String(strong)} tone={strong ? "warn" : "good"} />
         <Metric label="Cheap calls" value={String(cheap)} tone="good" />
-        <Metric label="Repairs" value={String(repairs)} tone={repairs ? "warn" : "good"} />
+        <Metric label="Repairs" value={repairValue} tone={repairTone} />
       </div>
       {inputTokens == null && outputTokens == null && (
         <p className="muted">Token usage is unknown for this run (the provider did not report usage).</p>
@@ -473,6 +481,7 @@ export function EvidenceExplorer({
   onSelectRunEvent: (event: StudioEvent) => void;
 }) {
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceSelection | null>(null);
+  const [evidenceFilter, setEvidenceFilter] = useState("");
   const modelCalls = (runDetail?.model_calls ?? []) as AnyRecord[];
   const validations = (runDetail?.validation_results ?? []) as AnyRecord[];
   const workers = (runDetail?.worker_results ?? []) as AnyRecord[];
@@ -532,13 +541,20 @@ export function EvidenceExplorer({
   }
 
   function EvidenceBlock({ title, items, kind }: { title: string; items: AnyRecord[]; kind: string }) {
+    const query = evidenceFilter.trim().toLowerCase();
+    // Preserve the original index (selectProgress uses it for a stable "progress-N" fallback label).
+    const shown = items
+      .map((item, index) => ({ item, index, line: renderLine(item, kind) }))
+      .filter(({ line }) => !query || line.toLowerCase().includes(query));
+    // While filtering, hide blocks with no match so the search declutters instead of showing a
+    // wall of empty sections.
+    if (query && !shown.length) return null;
     return (
       <div className="evidenceBlock">
-        <small>{title}</small>
-        {!items.length && <p className="muted">No records yet.</p>}
+        <small>{title}{query && shown.length !== items.length ? ` (${shown.length}/${items.length})` : ""}</small>
+        {!shown.length && <p className="muted">No records yet.</p>}
         <div className="evidenceSelectableList">
-          {items.map((item, index) => {
-            const line = renderLine(item, kind);
+          {shown.map(({ item, index, line }) => {
             const key = `${kind}:${line}`;
             return (
               <button
@@ -578,6 +594,20 @@ export function EvidenceExplorer({
       {runDetail?.error && <p className="muted">{runDetail.error}</p>}
       {runDetail?.ok && (
         <>
+          <div className="evidenceSearch">
+            <input
+              type="search"
+              value={evidenceFilter}
+              onChange={(event) => setEvidenceFilter(event.target.value)}
+              placeholder="Filter evidence (name, status, route…)"
+              aria-label="Filter evidence"
+            />
+            {evidenceFilter && (
+              <button type="button" className="evidenceSearchClear" onClick={() => setEvidenceFilter("")} aria-label="Clear filter">
+                ×
+              </button>
+            )}
+          </div>
           <V02ReadinessPanel overview={overview} runDetail={runDetail} />
           <RunStatusPanel runDetail={runDetail} />
           <RunUsagePanel runDetail={runDetail} />

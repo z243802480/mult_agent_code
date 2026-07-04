@@ -115,3 +115,35 @@ def test_no_run_returns_empty_result(tmp_path: Path) -> None:
     assert result.run_id is None
     assert result.report_path is None
     assert "no run found" in result.to_text().lower()
+
+
+def test_score_signal_grades_real_rate_without_persisting(tmp_path: Path) -> None:
+    # score_signal is the read-only reuse hook for the review pipeline: it grades on the real
+    # pass rate and must NOT write correctness_eval.json (unlike run()).
+    run_id = _make_run(
+        tmp_path,
+        tool_calls=[("run_tests", "success"), ("run_command", "failure")],
+        tasks=["done"],
+    )
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+
+    signal = CorrectnessEvalCommand(root=tmp_path).score_signal(run_dir)
+
+    assert signal is not None
+    assert signal["status"] == "partial"
+    assert signal["score"] == round(1 / 2, 4)
+    assert not (run_dir / "correctness_eval.json").exists()
+
+
+def test_score_signal_is_none_without_executable_verification(tmp_path: Path) -> None:
+    # No run_tests/run_command ran (docs/creative task): there is no real correctness evidence,
+    # so the signal is None and the caller keeps its own status-derived score rather than being
+    # forced to a fabricated fail.
+    run_id = _make_run(
+        tmp_path,
+        tool_calls=[("write_file", "success")],
+        tasks=["done"],
+    )
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+
+    assert CorrectnessEvalCommand(root=tmp_path).score_signal(run_dir) is None

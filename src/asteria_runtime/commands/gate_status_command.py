@@ -32,7 +32,10 @@ from asteria_runtime.core.agent_loop_decision import (
 )
 from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution_result
 from asteria_runtime.real_model_acceptance import SUITES as REAL_MODEL_ACCEPTANCE_SUITES
-from asteria_runtime.models.route_diagnostics import route_environment_for_tiers
+from asteria_runtime.models.route_diagnostics import (
+    route_diagnostic_for_tier,
+    route_environment_for_tiers,
+)
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
@@ -47,6 +50,7 @@ class GateStatusResult:
     core_report: dict[str, Any] = field(default_factory=dict)
     route_environment: dict[str, Any] = field(default_factory=dict)
     route_guidance: dict[str, Any] = field(default_factory=dict)
+    route_table: dict[str, Any] = field(default_factory=dict)
     model_call_contract: dict[str, Any] = field(default_factory=dict)
     latest_observation_plan: dict[str, Any] = field(default_factory=dict)
     latest_real_provider_matrix: dict[str, Any] = field(default_factory=dict)
@@ -85,6 +89,7 @@ class GateStatusResult:
                     "gates",
                     "route_environment",
                     "route_guidance",
+                    "route_table",
                     "model_call_contract",
                     "latest_observation_plan",
                     "latest_real_provider_matrix",
@@ -116,6 +121,7 @@ class GateStatusResult:
             },
             "route_environment": self.route_environment,
             "route_guidance": self.route_guidance,
+            "route_table": self.route_table,
             "model_call_contract": self.model_call_contract,
             "latest_observation_plan": self.latest_observation_plan,
             "latest_real_provider_matrix": self.latest_real_provider_matrix,
@@ -188,6 +194,21 @@ class GateStatusResult:
             )
         if self.route_guidance:
             lines.append(f"Route guidance: {self.route_guidance.get('status', 'unknown')}")
+        if self.route_table:
+            tiers = self.route_table.get("tiers", {})
+            lines.append(
+                "Model routes: "
+                + ", ".join(
+                    f"{tier}={route.get('provider', '?')}"
+                    for tier, route in tiers.items()
+                )
+            )
+            offline = self.route_table.get("offline_tiers") or []
+            if offline:
+                lines.append(
+                    "Offline tiers (return canned output; set AGENT_MODEL_<TIER>_PROVIDER "
+                    f"to a real provider): {', '.join(offline)}"
+                )
         if self.model_call_contract:
             lines.append(
                 "Model call contract: "
@@ -381,6 +402,7 @@ class GateStatusCommand:
             core_path = fallback_core_path if core else None
         stage, actions = self._stage(gate, validation, core)
         route_environment = _route_environment()
+        route_table = _route_table()
         route_guidance = _route_guidance(self.root)
         route_guidance = _release_evidence_route_guidance(route_guidance, gate, validation, core)
         model_call_contract = _model_call_contract(self.root, self.validator, gate)
@@ -478,6 +500,7 @@ class GateStatusCommand:
             core_report=core,
             route_environment=route_environment,
             route_guidance=route_guidance,
+            route_table=route_table,
             model_call_contract=model_call_contract,
             latest_observation_plan=latest_observation_plan,
             latest_real_provider_matrix=latest_matrix,
@@ -650,6 +673,25 @@ def _scenario_run_dir(workspace: Path, run_id: str | None) -> Path | None:
 
 def _route_environment() -> dict[str, Any]:
     return route_environment_for_tiers(("strong", "medium"))
+
+
+def _route_table() -> dict[str, Any]:
+    # Informational-only view of every tier's resolved route (provider/model/selection reason) plus
+    # which tiers silently return canned output. Deliberately SEPARATE from _route_environment(),
+    # which drives gate readiness: the cheap tier is allowed to be fake/offline, so it must never
+    # count against readiness — this table exposes it honestly without blocking the gate.
+    tiers = ("strong", "medium", "cheap")
+    routes = {tier: route_diagnostic_for_tier(tier).to_dict() for tier in tiers}
+    offline_tiers = [
+        tier for tier, route in routes.items() if str(route.get("provider")) in {"fake", "offline"}
+    ]
+    return {
+        "tiers": routes,
+        "offline_tiers": offline_tiers,
+        # True when some (but not all) tiers are offline: those silently return canned output while
+        # real providers are configured elsewhere — the exact footgun to surface.
+        "silently_offline": 0 < len(offline_tiers) < len(tiers),
+    }
 
 
 def _provider_streaming_available(route_environment: dict[str, Any]) -> bool:

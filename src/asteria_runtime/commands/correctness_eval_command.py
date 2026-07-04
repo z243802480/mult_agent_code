@@ -77,6 +77,21 @@ class CorrectnessEvalCommand:
         self.json_store.write(report_path, report, "eval_report")
         return CorrectnessEvalResult(run_id, report, report_path)
 
+    def score_signal(self, run_dir: Path) -> dict | None:
+        """Read-only graded correctness signal for ``run_dir`` (no persistence).
+
+        Returns the graded ``{status, score, reason}`` derived from the REAL verification
+        pass rate, or ``None`` when the run recorded no executable verification
+        (``run_tests``/``run_command``) call — in that case there is no evidence to derive a
+        real correctness score, so a caller must keep its own status-derived value rather than
+        override a non-verification task (docs/creative) with a fabricated fail. Reused by the
+        review pipeline to replace the 0.9/0.6/0.2 constant with the real signal.
+        """
+        signals = self._signals(run_dir)
+        if signals["command_verification_call_count"] == 0:
+            return None
+        return self._grade(signals)
+
     def _signals(self, run_dir: Path) -> dict:
         # Read without schema validation: these rows were validated on write, and a graded
         # read-only signal must not crash on a legacy/edge record — it only needs name + status.

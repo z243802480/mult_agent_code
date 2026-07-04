@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asteria_runtime.agents.review_agent import ReviewAgent
+from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 from asteria_runtime.core.agent_harness import (
     latest_observation_next_action_plan,
     load_raw_tool_observations,
@@ -184,6 +185,12 @@ class ReviewCommand:
         review_context["tool_observation_actions"] = tool_observation_action_options(
             review_context["tool_observations"]
         )
+        # Real correctness signal (graded verification pass rate) so the review overall score is
+        # the actual exit-code evidence, not a 0.9/0.6/0.2 status constant. None when the run had
+        # no executable verification — callers then keep the deterministic status-derived value.
+        review_context["correctness_signal"] = CorrectnessEvalCommand(
+            self.root, run_id
+        ).score_signal(run_dir)
         progress.record(
             run_id=run_id,
             channel="progress",
@@ -399,17 +406,27 @@ class ReviewCommand:
                 "model_calls": cost_report.get("model_calls", 0),
                 "tool_calls": cost_report.get("tool_calls", 0),
             },
-            "overall": {
-                "status": "pass",
-                "score": 0.9,
-                "reason": (
-                    "Deterministic-first review passed: all active tasks are done, "
-                    "verification passed, and no unresolved runtime blockers were found."
-                ),
-            },
+            "overall": self._fast_path_overall(review_context.get("correctness_signal")),
         }
         self.validator.validate("eval_report", report)
         return report
+
+    def _fast_path_overall(self, correctness: dict | None) -> dict:
+        # Fast-path only fires on a clean pass (no blockers + deterministic verification
+        # evidence). Use the real verification pass rate for the score when available instead
+        # of the fabricated 0.9; the pass status is the fast-path invariant.
+        base_reason = (
+            "Deterministic-first review passed: all active tasks are done, "
+            "verification passed, and no unresolved runtime blockers were found."
+        )
+        if isinstance(correctness, dict):
+            return {
+                "status": "pass",
+                "score": float(correctness["score"]),
+                "reason": f"{base_reason} Score is the real verification pass rate "
+                f"({float(correctness['score']):.2f}).",
+            }
+        return {"status": "pass", "score": 0.9, "reason": base_reason}
 
     def _review_target_files(self, goal_spec: dict, task_plan: dict) -> list[str]:
         files: list[str] = []

@@ -212,7 +212,12 @@ class ReviewAgent:
                 "tool_calls": cost_report.get("tool_calls", 0),
             },
         )
-        normalized["overall"] = self._overall(normalized.get("overall"), deterministic_status)
+        correctness = review_context.get("correctness_signal")
+        normalized["overall"] = self._overall(
+            normalized.get("overall"),
+            deterministic_status,
+            correctness if isinstance(correctness, dict) else None,
+        )
         return normalized
 
     def _object(self, value: object, default: dict) -> dict:
@@ -222,14 +227,35 @@ class ReviewAgent:
             return merged
         return default
 
-    def _overall(self, value: object, default_status: str) -> dict:
+    def _overall(
+        self, value: object, default_status: str, correctness: dict | None = None
+    ) -> dict:
+        # Honest score: when the run has real executable-verification evidence, prefer that
+        # graded pass rate over the 0.9/0.6/0.2 status-bucketed constant. ``correctness`` is
+        # None when no run_tests/run_command ran (docs/creative tasks) — there we keep the
+        # deterministic constant rather than fabricate a fail against a non-verification task.
+        real_score = float(correctness["score"]) if isinstance(correctness, dict) else None
         if isinstance(value, dict):
             status = str(value.get("status") or default_status).lower()
             if status not in {"pass", "partial", "fail"}:
                 status = default_status
-            score = value.get("score", 0.9 if status == "pass" else 0.6 if status == "partial" else 0.2)
+            constant = 0.9 if status == "pass" else 0.6 if status == "partial" else 0.2
+            model_score = value.get("score")
+            # Respect an explicit model score (a real judgment); only the constant fallback is
+            # replaced with the real verification pass rate.
+            score = model_score if model_score is not None else (real_score if real_score is not None else constant)
             reason = str(value.get("reason") or f"Deterministic checks indicate {status}.")
+            if model_score is None and real_score is not None:
+                reason = f"{reason} Score is the real verification pass rate ({real_score:.2f})."
             return {"status": status, "score": float(score), "reason": reason}
+        if real_score is not None:
+            # Pure-deterministic review (model absent/failed) with real verification evidence:
+            # the graded correctness verdict is authoritative for status, score, and reason.
+            return {
+                "status": str(correctness["status"]),
+                "score": real_score,
+                "reason": str(correctness["reason"]),
+            }
         return {
             "status": default_status,
             "score": 0.9 if default_status == "pass" else 0.6 if default_status == "partial" else 0.2,

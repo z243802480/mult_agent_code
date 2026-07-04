@@ -188,6 +188,40 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.evidenceSearch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.evidenceSearch input {
+  width: 100%;
+  font-size: 12px;
+  padding: 6px 26px 6px 10px;
+  color: var(--text-primary, inherit);
+  background: var(--surface-1, rgba(128, 128, 128, 0.06));
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.14));
+  border-radius: 6px;
+}
+
+.evidenceSearch input:focus-visible {
+  outline: 2px solid var(--accent, #6ea8fe);
+  outline-offset: 1px;
+}
+
+.evidenceSearchClear {
+  position: absolute;
+  right: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+
 .evidenceBlock {
   border-top: 1px solid var(--border-subtle);
   padding-top: 9px;
