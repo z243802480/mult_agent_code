@@ -18,6 +18,7 @@ class PatchApplyError(ValueError):
 class FilePatch:
     path: str
     hunks: list[tuple[list[str], list[str]]]
+    mode: str = "modify"  # "modify" | "create" (--- /dev/null) | "delete" (+++ /dev/null)
 
 
 class ApplyPatchTool:
@@ -31,10 +32,29 @@ class ApplyPatchTool:
         if not patches:
             return ToolResult(ok=False, summary="No file patches found", error="empty_patch")
         guard = PathGuard(context.root, context.policy["protected_paths"])
-        planned: list[tuple[str, Path, list[str]]] = []
+        # (path, resolved, patched_lines_or_None, mode); patched is None for deletions.
+        planned: list[tuple[str, Path, list[str] | None, str]] = []
         for file_patch in patches:
             resolved = guard.resolve_for_write(file_patch.path)
-            current = resolved.read_text(encoding="utf-8").splitlines(keepends=True) if resolved.exists() else []
+            if file_patch.mode == "delete":
+                if not resolved.exists():
+                    return ToolResult(
+                        ok=False,
+                        summary=f"Cannot delete missing file: {file_patch.path}",
+                        error="delete_missing_file",
+                        data={"path": file_patch.path},
+                    )
+                planned.append((file_patch.path, resolved, None, "delete"))
+                continue
+            # A `--- /dev/null` create applies against an empty file even if a stale one
+            # exists; a modify reads current content (empty when the file is absent).
+            current = (
+                []
+                if file_patch.mode == "create"
+                else resolved.read_text(encoding="utf-8").splitlines(keepends=True)
+                if resolved.exists()
+                else []
+            )
             patched = apply_file_patch(current, file_patch.hunks)
             if patched is None:
                 return ToolResult(
@@ -43,22 +63,37 @@ class ApplyPatchTool:
                     error="patch_context_mismatch",
                     data={"path": file_patch.path},
                 )
-            planned.append((file_patch.path, resolved, patched))
+            planned.append((file_patch.path, resolved, patched, file_patch.mode))
 
         backup = FileBackupStore(context).backup_paths(
-            [resolved for _, resolved, _ in planned],
+            [resolved for _, resolved, _, _ in planned],
             "apply_patch",
         )
-        changed = []
-        for path, resolved, patched in planned:
+        changed: list[str] = []
+        deleted: list[str] = []
+        for path, resolved, patched, mode in planned:
+            if mode == "delete":
+                resolved.unlink(missing_ok=True)
+                _clear_python_bytecode(resolved)
+                deleted.append(path)
+                continue
             resolved.parent.mkdir(parents=True, exist_ok=True)
-            resolved.write_text("".join(patched), encoding="utf-8")
+            resolved.write_text("".join(patched or []), encoding="utf-8")
             _clear_python_bytecode(resolved)
             changed.append(path)
+        parts: list[str] = []
+        if changed:
+            parts.append(f"{len(changed)} file(s) changed")
+        if deleted:
+            parts.append(f"{len(deleted)} file(s) deleted")
         return ToolResult(
             ok=True,
-            summary=f"Applied patch to {len(changed)} file(s)",
-            data={"changed_files": changed, "backup_id": backup["backup_id"]},
+            summary="Applied patch: " + ", ".join(parts) if parts else "Applied patch (no-op)",
+            data={
+                "changed_files": changed,
+                "deleted_files": deleted,
+                "backup_id": backup["backup_id"],
+            },
         )
 
 
@@ -100,7 +135,7 @@ def parse_unified_diff(patch: str) -> list[FilePatch]:
             raise PatchApplyError("Unified diff missing +++ header")
         new_header = lines[index].strip()
         index += 1
-        path = _path_from_headers(old_header, new_header)
+        path, mode = _path_from_headers(old_header, new_header)
         hunks: list[tuple[list[str], list[str]]] = []
         old_lines: list[str] = []
         new_lines: list[str] = []
@@ -128,7 +163,7 @@ def parse_unified_diff(patch: str) -> list[FilePatch]:
                 new_lines.append(line)
         if old_lines or new_lines:
             hunks.append((old_lines, new_lines))
-        patches.append(FilePatch(path=path, hunks=hunks))
+        patches.append(FilePatch(path=path, hunks=hunks, mode=mode))
     return patches
 
 
@@ -156,12 +191,28 @@ def _find_hunk(current: list[str], old_lines: list[str], start: int) -> int | No
     return None
 
 
-def _path_from_headers(old_header: str, new_header: str) -> str:
-    candidate = new_header[4:] if not new_header.endswith("/dev/null") else old_header[4:]
-    if candidate.startswith("b/") or candidate.startswith("a/"):
-        candidate = candidate[2:]
-    if candidate in {"/dev/null", "dev/null"}:
-        raise PatchApplyError("Creating or deleting files via unified diff is not supported yet")
+def _path_from_headers(old_header: str, new_header: str) -> tuple[str, str]:
+    """Return (target_path, mode) where mode is modify | create | delete.
+
+    A `--- /dev/null` header marks a new file (create); a `+++ /dev/null` header marks a
+    deletion. Otherwise the `+++ b/<path>` side names the target of an in-place modify.
+    """
+    old_target = _strip_ab_prefix(old_header[4:])
+    new_target = _strip_ab_prefix(new_header[4:])
+    old_is_null = old_target in {"/dev/null", "dev/null"}
+    new_is_null = new_target in {"/dev/null", "dev/null"}
+    if old_is_null and new_is_null:
+        raise PatchApplyError("Unified diff has /dev/null on both sides")
+    if new_is_null:
+        return old_target, "delete"
+    if old_is_null:
+        return new_target, "create"
+    return new_target, "modify"
+
+
+def _strip_ab_prefix(candidate: str) -> str:
+    if candidate.startswith(("a/", "b/")):
+        return candidate[2:]
     return candidate
 
 

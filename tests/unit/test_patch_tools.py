@@ -154,3 +154,71 @@ def test_diff_workspace_generates_unified_diff(tmp_path: Path) -> None:
     assert result.ok
     assert "-old" in result.data["diff"]
     assert "+new" in result.data["diff"]
+
+
+def test_apply_patch_creates_file_via_dev_null(tmp_path: Path) -> None:
+    patch = """--- /dev/null
++++ b/pkg/new.txt
+@@
++line1
++line2
+"""
+
+    result = ApplyPatchTool().run(context(tmp_path), patch)
+
+    assert result.ok
+    assert result.data["changed_files"] == ["pkg/new.txt"]
+    assert result.data["deleted_files"] == []
+    assert (tmp_path / "pkg" / "new.txt").read_text(encoding="utf-8") == "line1\nline2\n"
+
+
+def test_apply_patch_deletes_file_via_dev_null_and_restores(tmp_path: Path) -> None:
+    (tmp_path / "gone.txt").write_text("bye\n", encoding="utf-8")
+    patch = """--- a/gone.txt
++++ /dev/null
+@@
+-bye
+"""
+
+    result = ApplyPatchTool().run(context(tmp_path), patch)
+
+    assert result.ok
+    assert result.data["deleted_files"] == ["gone.txt"]
+    assert result.data["changed_files"] == []
+    assert not (tmp_path / "gone.txt").exists()
+
+    restored = RestoreBackupTool().run(context(tmp_path), result.data["backup_id"])
+
+    assert restored.ok
+    assert (tmp_path / "gone.txt").read_text(encoding="utf-8") == "bye\n"
+
+
+def test_apply_patch_delete_missing_file_errors(tmp_path: Path) -> None:
+    patch = """--- a/missing.txt
++++ /dev/null
+@@
+-nope
+"""
+
+    result = ApplyPatchTool().run(context(tmp_path), patch)
+
+    assert not result.ok
+    assert result.error == "delete_missing_file"
+    assert not (tmp_path / ".asteria" / "backups").exists()
+
+
+def test_apply_patch_denies_protected_delete(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("SECRET=1\n", encoding="utf-8")
+    patch = """--- a/.env
++++ /dev/null
+@@
+-SECRET=1
+"""
+
+    try:
+        ApplyPatchTool().run(context(tmp_path), patch)
+    except PermissionError as exc:
+        assert "protected" in str(exc)
+    else:
+        raise AssertionError("Expected protected path denial")
+    assert (tmp_path / ".env").read_text(encoding="utf-8") == "SECRET=1\n"
