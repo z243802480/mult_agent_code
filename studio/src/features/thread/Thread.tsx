@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, AlertTriangle } from "lucide-react";
 import { ThreadSkeleton } from "../../components/Skeleton";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
@@ -143,6 +143,18 @@ export function Thread({
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
+  // B1: failed-turn markers + issue navigator. A turn "failed" if any of its steps errored or carries
+  // a failed status (a tool that broke, a repair that gave up). In a long run these get buried in the
+  // scrollback; we mark each turn and give a pill that cycles focus through them (1-based turn numbers
+  // to match the turnIndex passed to ConversationTurn).
+  const failedTurnNumbers = useMemo(() => {
+    const nums: number[] = [];
+    turns.forEach((turnSteps, i) => {
+      if (turnSteps.some((s) => s.kind === "error" || s.status === "failed")) nums.push(i + 1);
+    });
+    return nums;
+  }, [turns]);
+  const [issueCursor, setIssueCursor] = useState(0);
   const hasProcessBlocks = turns.some((turn) => turn.length > 2 || (turn.length > 1 && turn.at(-1)?.kind !== "final" && turn.at(-1)?.kind !== "error"));
   const showProcessControls = viewMode === "verbose" && hasProcessBlocks;
   // The bottom Next-action bar is the authoritative next-step surface. When it owns a next step,
@@ -175,8 +187,8 @@ export function Thread({
     });
   }, [mainEvents.length, isRunning]);
 
-  // Reset the "load earlier" reveal when switching to a different run/session.
-  useEffect(() => { setShowEarlier(false); }, [selectedRunId]);
+  // Reset the "load earlier" reveal and issue cursor when switching to a different run/session.
+  useEffect(() => { setShowEarlier(false); setIssueCursor(0); }, [selectedRunId]);
 
   const hiddenTurnCount = showEarlier ? 0 : Math.max(0, turns.length - MAX_RENDERED_TURNS);
   const visibleTurns = hiddenTurnCount > 0 ? turns.slice(-MAX_RENDERED_TURNS) : turns;
@@ -184,6 +196,25 @@ export function Thread({
   const scrollToLatest = () => {
     const el = threadRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
+  const jumpToIssue = () => {
+    if (!failedTurnNumbers.length) return;
+    const turnNo = failedTurnNumbers[issueCursor % failedTurnNumbers.length];
+    const focus = () => {
+      const el = threadRef.current?.querySelector<HTMLElement>(`#thread-turn-${turnNo}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.classList.add("issueFlash");
+      window.setTimeout(() => el?.classList.remove("issueFlash"), 1200);
+    };
+    // A failed turn can be inside the windowed-out earlier region — reveal it first, then focus after
+    // React has committed the fuller list.
+    if (turnNo <= turnIndexOffset && !showEarlier) {
+      setShowEarlier(true);
+      window.setTimeout(focus, 60);
+    } else {
+      requestAnimationFrame(focus);
+    }
+    setIssueCursor((c) => c + 1);
   };
 
   if (!turns.length && !shouldShowPending) {
@@ -259,9 +290,22 @@ export function Thread({
             onSuggestedAction={onRuntimeAction}
             suppressSuggested={snapshotOwnsNextStep}
             onEditMessage={onPrompt}
+            failed={failedTurnNumbers.includes(globalIndex + 1)}
           />
         );
       })}
+      {failedTurnNumbers.length > 0 && (
+        <button
+          type="button"
+          className="issueNav"
+          onClick={jumpToIssue}
+          aria-label={`Jump to next of ${failedTurnNumbers.length} issue${failedTurnNumbers.length === 1 ? "" : "s"}`}
+          title="Jump to the next failed turn"
+        >
+          <AlertTriangle size={12} />
+          {failedTurnNumbers.length} issue{failedTurnNumbers.length === 1 ? "" : "s"}
+        </button>
+      )}
       {!atBottom && (
         <button type="button" className="jumpToLatest" onClick={scrollToLatest} aria-label="Jump to latest">
           Jump to latest ↓

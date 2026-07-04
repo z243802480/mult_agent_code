@@ -268,7 +268,7 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage }: {
+export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage, failed }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -290,6 +290,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   onSuggestedAction?: (command: string) => Promise<void>;
   suppressSuggested?: boolean;
   onEditMessage?: (text: string) => void;
+  failed?: boolean;
 }) {
   const goalStep = steps[0];
   // A leading turn that has no user_message (steps before the first goal) renders goal-less:
@@ -323,7 +324,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   const unverifiedHint = responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null) : "";
 
   return (
-    <div className="conversationTurn">
+    <div className={`conversationTurn${failed ? " failed" : ""}`} id={turnIndex ? `thread-turn-${turnIndex}` : undefined} data-failed={failed ? "true" : undefined}>
       {isGoalTurn && (
         <div className="turnUser">
           <div className="turnUserBubble">
