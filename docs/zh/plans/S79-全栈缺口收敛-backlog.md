@@ -77,7 +77,13 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 - ✅ **B5 收尾**：aria-live 残留已补（队列播报 + repair chip 已有 role=status）。审计"DiffPreview `div[role=button]`→`button`"经亲验**误报**——全库 `role="button"` 0 处，DiffPreview 已用真 `<button>`。B5 视为完成。
 - ⏭️ **B7 EmptyState 自适应 = 真缺口但判定不做**：`EMPTY_PROMPTS` 确是硬编码 4 条，但成熟产品（Claude Code/Cursor）同样用通用示例；改自适应需穿入 workspace 语言检测、收益微薄。**诚实地不为凑数而改**（error-recovery / loading 文案多样性另论）。
 - ✅ **B1 error navigation 已实施**：Thread 有 I7 窗口化 + Jump-to-latest，但**无失败 turn 标记/跳错误**（审计称 CommandPalette 有 I13 跳错误命令，实为误报）。已加：①失败 turn 判定（步骤 `kind==="error"` 或 `status==="failed"`）②ConversationTurn 根节点 `id=thread-turn-N` + `.failed` 左缘 danger 标记 ③sticky "N issues" 导航 pill，点击循环滚动到下一个失败 turn（含窗口化外的 turn 先展开再聚焦）+ issueFlash 高亮。tsc + 完整 vite build 双绿。视觉差异仅在存在失败 turn 时出现（需真实失败会话截图，未 fabricate）。**待提交**。
-- ⏳ **B2（diff per-hunk+inline）/ B3（dev-server 预览）/ B4（composer 打磨）/ B6（vitest 组件测试）**：待亲验后实施。
+### Tier B 剩余三项 — 亲验后定性（均非"小/快赢"，各含一处需先拍板的点）
+
+- ⏭️ **B2 diff per-hunk + inline 注释 = 大特性（跨前后端）**：现 `DiffPreview` 仅 per-file `Stage file`/`Discard changes`。按成熟审批模型（文件默认直接改、Accept=finalize），真实价值点是 ①**per-hunk revert**（局部撤销，需后端 `git apply -R` 单 hunk）②**inline 注释→喂给 repair 轮**（与自主环高契合，需注释持久化 + 接 composer/repair）。这不是"中"，是一个独立 slice；且 inline-comment→repair 路径触及自主环编排（Tier C 邻域）。**建议独立 slice，先定 per-hunk-revert vs inline-comment 哪个先做。**
+- ⏳ **B3 PREVIEW-3 dev-server 检测 + 代理 = 中大**：PREVIEW-1/2 只服务**静态**工作区文件（HTML/CSS/JS/图片）+ live-reload；SPA/框架（React/Vue dev server）无法预览。真实缺口，纯扩展现有 preview server（不引工具链）。含：dev-server 端口探测、HTTP 反代 + **websocket upgrade 代理（HMR）**、生命周期。可按项目既有约定写 `scripts/preview-serve-smoke.mjs` 式 smoke（起假 dev server 断言转发）真自验。**产品价值最高的剩余项。**
+- ⚠️ **B6 vitest 组件测试 = 与既有测试范式冲突，属工具链决策**：studio 现有 **~20 个 `node scripts/*.mjs` smoke/unit + playwright** 交互测试，无 vitest/jest/testing-library。按 AGENTS.md §8"先随既有风格"，引入 vitest+testing-library+jsdom 是**新增并行测试范式 + 依赖安装**，非机械补测。宜作 DecisionPoint：引 vitest vs 扩展现有 node-script/playwright 覆盖。**不擅自装工具链。**
+
+> 本轮已交付并提交：B5(`678a4c5`)、B1(`8f5d3c7`)、B4/B5 收尾(`3c51268`)。剩 B2/B3/B6 各需一处先行拍板（B2 slice 拆分 / B3 可直接做为最高价值项 / B6 工具链选型），非"逐个快赢"，故在此 checkpoint 交由用户定下一步投入。
 每项：understand（亲验真实状态，不轻信审计二手结论）→ implement（Edit 精确改）→ verify（pytest/tsc/ruff/mypy 相应门）→ 回写文档。撞 Tier C 即停下最小征询。
 
 ## 审计溯源（子代理原文，可回溯）
