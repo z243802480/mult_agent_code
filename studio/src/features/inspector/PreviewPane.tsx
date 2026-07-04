@@ -8,8 +8,12 @@ import { api } from "../../api";
 // sites resolve their relative/absolute assets (CSS/JS/images). If that server didn't bind, we fall
 // back to srcDoc rendering of a self-contained HTML file so the tab still works.
 // The frame is cross-origin from the studio (separate port) AND sandboxed, so it cannot reach the
-// studio page, its cookies, or storage. Caveat: node_modules/dist are blocked (framework builds →
-// PREVIEW-3 dev server); served content is raw (unredacted) but protected paths are refused server-side.
+// studio page, its cookies, or storage. Served static content is raw (unredacted) but protected paths
+// are refused server-side.
+// PREVIEW-3: when the backend is started with --preview-proxy <url|port> (or ASTERIA_PREVIEW_PROXY),
+// the preview server reverse-proxies a running dev server (Vite/Next/CRA) — HTTP + websocket HMR — so
+// framework/SPA apps (which need a bundler, not static files) preview at the root. This tab detects
+// that via preview-info.mode and frames the dev-server root instead of a picked workspace file.
 
 function isHtml(path: string): boolean {
   return /\.html?$/i.test(path);
@@ -31,17 +35,22 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
   const [portResolved, setPortResolved] = useState(false);
   const [fallbackContent, setFallbackContent] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // PREVIEW-3: when the backend reverse-proxies a dev server, the app lives at the preview root — there
+  // are no static workspace HTML files to pick, so the whole tab switches to a single framed SPA.
+  const [proxyTarget, setProxyTarget] = useState<string | null>(null);
 
-  // Resolve the dedicated preview server's port once.
+  // Resolve the dedicated preview server's port + mode once.
   useEffect(() => {
     let cancelled = false;
     api
       .previewInfo()
       .then((res) => {
-        if (!cancelled) setPreviewPort(res.ok && res.port ? res.port : null);
+        if (cancelled) return;
+        setPreviewPort(res.ok && res.port ? res.port : null);
+        setProxyTarget(res.mode === "proxy" ? res.target ?? null : null);
       })
       .catch(() => {
-        if (!cancelled) setPreviewPort(null);
+        if (!cancelled) { setPreviewPort(null); setProxyTarget(null); }
       })
       .finally(() => {
         if (!cancelled) setPortResolved(true);
@@ -50,6 +59,7 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
       cancelled = true;
     };
   }, []);
+  const proxyMode = Boolean(proxyTarget && previewPort);
 
   // Default / re-pick the selected html file as the workspace file set changes.
   useEffect(() => {
@@ -83,7 +93,7 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     };
   }, [portResolved, previewPort, selected, reloadKey]);
 
-  if (!htmlFiles.length) {
+  if (!htmlFiles.length && !proxyMode) {
     return (
       <div className="previewPane empty">
         <Globe size={22} />
@@ -94,13 +104,17 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
   }
 
   const src = previewPort
-    ? `${window.location.protocol}//${window.location.hostname}:${previewPort}/${encodePath(selected)}`
+    ? proxyMode
+      ? `${window.location.protocol}//${window.location.hostname}:${previewPort}/`
+      : `${window.location.protocol}//${window.location.hostname}:${previewPort}/${encodePath(selected)}`
     : null;
 
   return (
     <div className="previewPane">
       <div className="previewBar">
-        {htmlFiles.length > 1 ? (
+        {proxyMode ? (
+          <span className="previewPath" title={`Reverse-proxying dev server ${proxyTarget}`}>Dev server</span>
+        ) : htmlFiles.length > 1 ? (
           <select
             className="previewSelect"
             aria-label="Preview file"
@@ -116,7 +130,11 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
         ) : (
           <span className="previewPath" title={selected}>{selected}</span>
         )}
-        {src && <span className="previewLive" title="Auto-refreshes when workspace files change">Live</span>}
+        {proxyMode ? (
+          <span className="previewLive" title={`Reverse-proxying ${proxyTarget} (HMR live)`}>Dev · HMR</span>
+        ) : (
+          src && <span className="previewLive" title="Auto-refreshes when workspace files change">Live</span>
+        )}
         <button
           type="button"
           className="previewRefresh"

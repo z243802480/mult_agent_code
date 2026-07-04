@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { existsSync, statSync, readFileSync, watch as fsWatch, promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +26,26 @@ const liveJobs = new Map();
 let previewPort = null; // PREVIEW-1: port of the dedicated static workspace server (null until bound)
 const previewSseClients = new Set(); // PREVIEW-2: live-reload SSE connections from preview iframes
 let previewReloadTimer = null;
+// PREVIEW-3: opt-in reverse proxy to a running dev server (Vite/Next/CRA/etc.) so SPA/framework apps
+// — which need a bundler, not static files — can be previewed. OPT-IN only (an explicit target),
+// never an auto-probe of arbitrary localhost ports, which would risk proxying an unrelated app.
+const previewProxyTarget = normalizeProxyTarget(args.previewProxy || process.env.ASTERIA_PREVIEW_PROXY);
+
+// Accept a full URL ("http://127.0.0.1:5173"), host:port ("localhost:3000"), or a bare port ("5173",
+// → 127.0.0.1:5173). Only http is proxied (local dev servers are http); returns null when unset/invalid.
+function normalizeProxyTarget(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return normalizeProxyTarget(`http://127.0.0.1:${raw}`);
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`);
+    if (url.protocol !== "http:") return null;
+    const targetPort = url.port || "80";
+    return { hostname: url.hostname, port: targetPort, origin: `http://${url.hostname}:${targetPort}` };
+  } catch {
+    return null;
+  }
+}
 
 // Keep liveJobs bounded. Terminal (completed/failed/cancelled) jobs are retained briefly so the
 // jobs/stop routes still reflect a just-finished run, then pruned after a grace window; a hard cap is
@@ -191,7 +211,14 @@ async function handleApi(request, response, url) {
   if (request.method === "GET" && url.pathname === "/api/studio/preview-info") {
     // PREVIEW-1: the dedicated static preview server's port, so the Preview tab can point its iframe
     // at http://<host>:<port>/<file> for real multi-file rendering. null if the server didn't bind.
-    sendJson(response, 200, { ok: previewPort != null, port: previewPort });
+    // PREVIEW-3: mode tells the Preview tab whether it is serving static workspace files or reverse-
+    // proxying a running dev server (SPA/framework), plus the proxied origin for a status line.
+    sendJson(response, 200, {
+      ok: previewPort != null,
+      port: previewPort,
+      mode: previewProxyTarget ? "proxy" : "static",
+      target: previewProxyTarget?.origin ?? null,
+    });
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/files") {
@@ -3624,6 +3651,9 @@ function startPreviewServer(startPort) {
   let attempt = 0;
   const server = createServer(async (req, res) => {
     try {
+      // PREVIEW-3: in proxy mode every request is reverse-proxied to the dev server, which owns
+      // routing, bundling and its own HMR — we do not serve static files or inject a reload client.
+      if (previewProxyTarget) { proxyToDevServer(req, res, previewProxyTarget); return; }
       if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); res.end("method not allowed"); return; }
       let pathname = decodeURIComponent((req.url || "/").split("?")[0].split("#")[0]);
       // PREVIEW-2: live-reload SSE channel — the injected script (below) connects here; the workspace
@@ -3659,6 +3689,31 @@ function startPreviewServer(startPort) {
       res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); res.end("Preview error");
     }
   });
+  // PREVIEW-3: proxy the websocket upgrade too, so the dev server's HMR socket keeps working through
+  // the preview iframe (Vite/Next live-update the app without a full reload).
+  server.on("upgrade", (req, socket, head) => {
+    if (!previewProxyTarget) { socket.destroy(); return; }
+    const upstream = httpRequest({
+      hostname: previewProxyTarget.hostname,
+      port: previewProxyTarget.port,
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: `${previewProxyTarget.hostname}:${previewProxyTarget.port}` },
+    });
+    upstream.on("upgrade", (upRes, upSocket, upHead) => {
+      const statusLine = `HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage}\r\n`;
+      const headerLines = Object.entries(upRes.headers).map(([k, v]) => `${k}: ${v}`).join("\r\n");
+      socket.write(`${statusLine}${headerLines}\r\n\r\n`);
+      if (upHead?.length) upSocket.unshift(upHead);
+      upSocket.pipe(socket);
+      socket.pipe(upSocket);
+      upSocket.on("error", () => socket.destroy());
+      socket.on("error", () => upSocket.destroy());
+    });
+    upstream.on("error", () => socket.destroy());
+    if (head?.length) upstream.write(head);
+    upstream.end();
+  });
   const tryPort = (p) => {
     const onError = (err) => {
       if (err && err.code === "EADDRINUSE" && attempt < 15) { attempt += 1; tryPort(p + 1); }
@@ -3668,11 +3723,35 @@ function startPreviewServer(startPort) {
     server.listen(p, "127.0.0.1", () => {
       server.removeListener("error", onError);
       previewPort = p;
-      console.log(`Asteria preview server on http://127.0.0.1:${p} (workspace static)`);
-      startPreviewWatcher();
+      if (previewProxyTarget) {
+        console.log(`Asteria preview server on http://127.0.0.1:${p} (proxy → ${previewProxyTarget.origin})`);
+      } else {
+        console.log(`Asteria preview server on http://127.0.0.1:${p} (workspace static)`);
+        startPreviewWatcher();
+      }
     });
   };
   tryPort(startPort);
+}
+
+// PREVIEW-3: reverse-proxy one HTTP request to the configured dev server. A dead dev server yields a
+// clear 502 with the origin, not a hang, so the Preview tab can tell the user to start their server.
+function proxyToDevServer(req, res, target) {
+  const upstream = httpRequest({
+    hostname: target.hostname,
+    port: target.port,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: `${target.hostname}:${target.port}` },
+  }, (upRes) => {
+    res.writeHead(upRes.statusCode || 502, upRes.headers);
+    upRes.pipe(res);
+  });
+  upstream.on("error", (err) => {
+    if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+    res.end(`Preview proxy: dev server ${target.origin} is unreachable (${err.code || err.message}). Start it, then reload.`);
+  });
+  req.pipe(upstream);
 }
 
 function broadcastPreviewReload() {

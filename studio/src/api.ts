@@ -21,7 +21,7 @@ export const api = {
     ),
   // Direct download URL — an <a href download> streams the bundle (with the server's
   // Content-Disposition filename) without loading a large session into JS memory.
-  previewInfo: () => requestJson<{ ok: boolean; port: number | null }>("/api/studio/preview-info"),
+  previewInfo: () => requestJson<{ ok: boolean; port: number | null; mode?: "static" | "proxy"; target?: string | null }>("/api/studio/preview-info"),
   exportUrl: (id: string) => `/api/studio/sessions/${encodeURIComponent(id)}/export`,
   importSession: (bundle: unknown) =>
     requestJson<{ ok: boolean; session?: StudioSession; imported?: number; error?: string }>(
