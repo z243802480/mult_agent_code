@@ -20,6 +20,8 @@ EXIT_REASONS = {
     "subagent_pending",
     "repair_dispatch",
     "replan_dispatch",
+    "repair_budget_exhausted",
+    "loop_no_progress",
     "no_action",
 }
 SUMMARY_STATUSES = {"completed", "blocked", "waiting_user", "stopped"}
@@ -111,6 +113,8 @@ def _recovery_chain(
             "stop",
             "repair_dispatch",
             "replan_dispatch",
+            "repair_budget_exhausted",
+            "loop_no_progress",
             "no_action",
         }
         or observation_status in {"failed", "blocked", "waiting_user", "stopped"}

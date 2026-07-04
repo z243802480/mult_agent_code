@@ -823,6 +823,197 @@ class FakeRepairAfterFailureLoopClient:
         )
 
 
+def _failing_tool_action(task_id: str) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "task_id": task_id,
+        "summary": "Make a tool attempt that fails validation.",
+        "tool_calls": [
+            {
+                "tool_name": "write_file",
+                "args": {
+                    "path": "src/notes_tool.py",
+                    "content": "def add_note(notes, text):\n    return notes\n",
+                    "overwrite": True,
+                },
+                "reason": "create an intentionally incomplete module",
+            }
+        ],
+        "verification": [
+            {
+                "tool_name": "run_command",
+                "args": {
+                    "command": 'python -c "raise SystemExit(1)"',
+                    "expected_returncodes": [0],
+                },
+                "reason": "force validation failure for loop recovery",
+            }
+        ],
+        "agent_loop_decision": {
+            "next_action": {
+                "action": "tool",
+                "reason": "Use a tool action so Runtime can observe failure.",
+                "target_task_id": task_id,
+                "capability_ref": {"type": "tool", "name": "write_file"},
+                "expected_observation": {
+                    "summary": "Validation failure should become a repair observation.",
+                    "next_recommended_action": "repair",
+                },
+                "risk": "medium",
+                "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                "evidence_refs": [],
+            }
+        },
+        "completion_notes": "validation should fail",
+    }
+
+
+def _repair_action(task_id: str, observation_id: str) -> dict:
+    return {
+        "schema_version": "0.1.0",
+        "task_id": task_id,
+        "summary": "Route the failed observation into repair.",
+        "tool_calls": [],
+        "verification": [],
+        "runtime_requests": [],
+        "agent_loop_decision": {
+            "next_action": {
+                "action": "repair",
+                "reason": "The failed observation needs a repair retry.",
+                "target_task_id": task_id,
+                "capability_ref": {"type": "runtime", "name": "repair"},
+                "expected_observation": {"summary": "Runtime records repair routing."},
+                "risk": "medium",
+                "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
+                "evidence_refs": [observation_id] if observation_id else [],
+            }
+        },
+        "completion_notes": "repair requested",
+    }
+
+
+class FakeAutoRepairThenSucceedClient:
+    """tool(fail) -> repair -> tool(succeed) -> stop, driven by the latest observation."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.latest_observations: list[dict] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest = runtime_context.get("latest_agent_loop_observation") or {}
+        if latest:
+            self.latest_observations.append(latest)
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        status = str(latest.get("status") or "")
+        observation_type = str(latest.get("observation_type") or "")
+        if not latest:
+            content = _failing_tool_action(task_id)
+        elif observation_type == "tool_result" and status == "failed":
+            content = _repair_action(task_id, str(latest.get("observation_id") or ""))
+        elif observation_type == "repair_result":
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Repair the module so verification passes.",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                        "reason": "write the corrected module",
+                    }
+                ],
+                "verification": [
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": "python -c \"import sys; sys.path.insert(0, 'src'); from notes_tool import add_note; assert add_note([], 'x') == ['x']\""
+                        },
+                        "reason": "verify the corrected module",
+                    }
+                ],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "tool",
+                        "reason": "Retry the tool now that the module is corrected.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "tool", "name": "write_file"},
+                        "expected_observation": {
+                            "summary": "Tool execution should succeed and complete the task.",
+                        },
+                        "risk": "medium",
+                        "budget_hint": {"model_calls": 1, "tool_budget_units": 3},
+                        "evidence_refs": [],
+                    }
+                },
+                "completion_notes": "repair retry should pass",
+            }
+        else:
+            content = {
+                "schema_version": "0.1.0",
+                "task_id": task_id,
+                "summary": "Stop after reviewing the successful tool observation.",
+                "tool_calls": [],
+                "verification": [],
+                "runtime_requests": [],
+                "agent_loop_decision": {
+                    "next_action": {
+                        "action": "stop",
+                        "reason": "The latest observation proves the task is complete.",
+                        "target_task_id": task_id,
+                        "capability_ref": {"type": "runtime", "name": "stop"},
+                        "expected_observation": {"summary": "Runtime records a stop observation."},
+                        "risk": "low",
+                        "budget_hint": {"model_calls": 0, "tool_budget_units": 0},
+                        "evidence_refs": [str(latest.get("observation_id") or "")],
+                    }
+                },
+                "completion_notes": "bounded loop stopped after success",
+            }
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(5, 8, 13),
+            model_provider="fake",
+            model_name="fake-auto-repair-then-succeed",
+            raw_response={},
+        )
+
+
+class FakeAlwaysFailRepairClient:
+    """tool(fail) -> repair, forever: exercises the auto-repair termination fuses."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        payload = json.loads(request.messages[-1].content)
+        runtime_context = payload.get("runtime_context") or {}
+        latest = runtime_context.get("latest_agent_loop_observation") or {}
+        task_id = str(request.metadata.get("task_id") or "task-0001")
+        if str(latest.get("observation_type") or "") == "tool_result" and (
+            str(latest.get("status") or "") == "failed"
+        ):
+            content = _repair_action(task_id, str(latest.get("observation_id") or ""))
+        else:
+            content = _failing_tool_action(task_id)
+        return ChatResponse(
+            content=json.dumps(content, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(5, 8, 13),
+            model_provider="fake",
+            model_name="fake-always-fail-repair",
+            raw_response={},
+        )
+
+
 class FakeDisjointWriteExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
         task_id = str(request.metadata.get("task_id") or "task-0001")
@@ -2206,6 +2397,96 @@ def test_execute_command_routes_failed_observation_to_repair_action(tmp_path: Pa
     assert loop_summary["exit_reason"] == "repair_dispatch"
     assert loop_summary["recommended_command"] == "debug"
     assert "repair" in main_kinds
+
+
+def _enable_auto_repair(tmp_path: Path, *, max_repair_attempts_per_task: int) -> None:
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["auto_repair"] = True
+    policy.setdefault("budgets", {})["max_repair_attempts_per_task"] = max_repair_attempts_per_task
+    # The active budget profile wins over top-level budgets (resolve_budget_limits), so
+    # override the effective per-task repair cap there too.
+    profile = str(policy.get("active_budget_profile") or "")
+    profiles = policy.get("budget_profiles")
+    if profile and isinstance(profiles, dict) and isinstance(profiles.get(profile), dict):
+        profiles[profile]["max_repair_attempts_per_task"] = max_repair_attempts_per_task
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+
+def test_execute_command_auto_repair_then_succeed(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    _enable_auto_repair(tmp_path, max_repair_attempts_per_task=2)
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeAutoRepairThenSucceedClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    observations = [
+        json.loads(line)
+        for line in (run_dir / "agent_loop_observations.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert [item["observation_type"] for item in observations[-3:]] == [
+        "tool_result",
+        "repair_result",
+        "tool_result",
+    ]
+    assert [item["status"] for item in observations[-3:]] == [
+        "failed",
+        "pending",
+        "succeeded",
+    ]
+    assert observations[-2]["observation_type"] == "repair_result"
+    assert observations[-2]["next_recommended_action"] == "tool"
+    assert cost_report["repair_attempts"] == 1
+    assert loop_summary["exit_reason"] == "completed"
+
+
+def test_execute_command_auto_repair_budget_exhausted(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    _enable_auto_repair(tmp_path, max_repair_attempts_per_task=2)
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeAlwaysFailRepairClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert cost_report["repair_attempts"] == 2
+    assert loop_summary["exit_reason"] == "repair_budget_exhausted"
+    assert loop_summary["recommended_command"] == "debug"
+
+
+def test_execute_command_auto_repair_no_progress_guard_trips(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    # Generous repair budget so the no-progress guard (repeated failures) binds first.
+    _enable_auto_repair(tmp_path, max_repair_attempts_per_task=8)
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeAlwaysFailRepairClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    loop_summary = json.loads((run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8"))
+    cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert loop_summary["exit_reason"] == "loop_no_progress"
+    assert loop_summary["recommended_command"] == "debug"
+    # Guard tripped before the numeric repair budget (8) was exhausted.
+    assert cost_report["repair_attempts"] < 8
 
 
 def test_execute_command_runtime_manages_repair_replan_validation_probe(

@@ -40,6 +40,8 @@
         "subagent_pending",
         "repair_dispatch",
         "replan_dispatch",
+        "repair_budget_exhausted",
+        "loop_no_progress",
         "no_action"
       ]
     },

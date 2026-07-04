@@ -246,6 +246,11 @@ export function userFacingStateLabel(value: string): string {
   if (normalized.includes("provider") || normalized.includes("model-check")) return "model connection issue";
   if (normalized.includes("tool_failed")) return "a step failed";
   if (normalized.includes("max_rounds")) return "needs a decision";
+  // S78 auto-repair terminal reasons (must precede the generic "repair" catch below, since
+  // "repair_budget_exhausted" also contains "repair"): auto-repair already retried and stopped
+  // honestly, so frame it as "I tried" — not "want me to keep trying?".
+  if (normalized.includes("repair_budget_exhausted")) return "I auto-retried a few times but it still fails — take a look or try a different approach?";
+  if (normalized.includes("loop_no_progress")) return "the same failure keeps repeating with no progress — take a look or try a different approach?";
   if (normalized.includes("repair_limit") || normalized.includes("repair")) return "a step failed — want me to keep trying or take a different approach?";
   if (normalized.includes("budget_hard_stop")) return "paused — needs your input";
   return stripBackendWording(value.replace(/_/g, " "));

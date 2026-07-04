@@ -6,7 +6,12 @@ from pathlib import Path
 
 from asteria_runtime.agents.coder_agent import CoderAgent
 from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
-from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.budget import (
+    BudgetController,
+    BudgetExceededError,
+    resolve_budget_limits,
+)
+from asteria_runtime.core.loop_progress_guard import evaluate_loop_quality
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
@@ -413,6 +418,53 @@ class ExecuteCommand:
         except (TypeError, ValueError):
             value = 2
         return max(1, min(value, 8))
+
+    def _auto_repair_enabled(self, policy: dict) -> bool:
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("auto_repair", False))
+
+    def _max_repair_attempts_per_task(self, policy: dict) -> int:
+        budgets = resolve_budget_limits(policy)
+        try:
+            value = int(budgets.get("max_repair_attempts_per_task") or 0)
+        except (TypeError, ValueError):
+            value = 0
+        return max(0, value)
+
+    def _loop_quality_guard_config(self, policy: dict) -> dict | None:
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        guard = agent_loop.get("loop_quality_guard")
+        return guard if isinstance(guard, dict) else None
+
+    def _auto_repair_loop_guard_warns(self, context: RuntimeContext, task_id: str) -> bool:
+        # The loop-quality guard measures whether the *work* (tool/verification) rounds
+        # made progress. Auto-repair interleaves bookkeeping ``repair_result`` (pending)
+        # observations between the failing ``tool_result`` rounds, so we evaluate the
+        # guard over the tool observations only — otherwise the pending rows would break
+        # the consecutive-failure run and the no-progress signal could never fire.
+        if context.run_dir is None:
+            return False
+        path = context.run_dir / "agent_loop_observations.jsonl"
+        if not path.exists():
+            return False
+        observations = JsonlStore(context.validator).read_all(path, "agent_loop_observation")
+        tool_results = [
+            item
+            for item in observations
+            if isinstance(item, dict)
+            and item.get("observation_type") == "tool_result"
+            and (
+                str(item.get("task_id") or "") == task_id
+                or str(item.get("target_task_id") or "") == task_id
+            )
+        ]
+        signal = evaluate_loop_quality(
+            tool_results,
+            config=self._loop_quality_guard_config(context.policy),
+        )
+        return bool(signal and signal.get("warn"))
 
     def _subagent_child_max_rounds(self, policy: dict) -> int:
         raw_agent_loop = policy.get("agent_loop")
@@ -1543,6 +1595,185 @@ class ExecuteCommand:
             else None,
         )
 
+    def _handle_auto_repair_round(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        latest_decision: dict | None,
+        execution_result: dict | None,
+        repair_attempts_used: int,
+        repair_cap: int,
+    ) -> tuple[bool, dict | None, TaskExecutionSummary | None]:
+        """Close the repair loop within a bounded budget.
+
+        When ``agent_loop.auto_repair`` is on and the model requests ``repair``, the
+        loop no longer blocks and hands the task back to a human on the first failure.
+        Instead — while the per-task repair budget holds and the loop is still making
+        progress — it records a repair attempt, writes a ``repair_result`` observation
+        that re-arms the next round for a tool retry, and continues. Only budget
+        exhaustion or a no-progress guard trip produces an honest block.
+
+        Returns ``(continue_loop, repair_observation, blocked_summary)``:
+        * ``(True, observation, None)`` — caller should ``continue`` to the next round.
+        * ``(False, None, summary)`` — caller should ``return`` the blocked summary.
+        """
+
+        task_id = str(task["task_id"])
+        # Termination 2 (repair budget) is checked before the no-progress guard so a
+        # tight numeric budget binds first; see benchmarks/reference_briefs/S78.
+        exhausted = repair_attempts_used >= repair_cap
+        if not exhausted:
+            if self._auto_repair_loop_guard_warns(context, task_id):
+                summary = (
+                    f"Auto-repair stopped after {repair_attempts_used} attempt(s): the loop "
+                    "repeated the same failing observation without measurable progress."
+                )
+                return (
+                    False,
+                    None,
+                    self._block_auto_repair(
+                        task=task,
+                        task_board=task_board,
+                        context=context,
+                        round_index=round_index,
+                        max_rounds=max_rounds,
+                        latest_decision=latest_decision,
+                        execution_result=execution_result,
+                        exit_reason="loop_no_progress",
+                        summary=summary,
+                    ),
+                )
+            try:
+                if context.budget is not None:
+                    context.budget.record_repair_attempt()
+            except BudgetExceededError:
+                exhausted = True
+        if exhausted:
+            summary = (
+                f"Auto-repair budget exhausted after {repair_attempts_used} attempt(s) "
+                f"(max {repair_cap}); handing off to a human debug decision."
+            )
+            return (
+                False,
+                None,
+                self._block_auto_repair(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    round_index=round_index,
+                    max_rounds=max_rounds,
+                    latest_decision=latest_decision,
+                    execution_result=execution_result,
+                    exit_reason="repair_budget_exhausted",
+                    summary=summary,
+                ),
+            )
+        attempt_number = repair_attempts_used + 1
+        summary = (
+            f"Auto-repair attempt {attempt_number}/{repair_cap}: retrying automatically "
+            "after a failed verification, within the repair budget."
+        )
+        observation = persist_agent_loop_observation_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=execution_result,
+            status="pending",
+            summary=summary,
+            next_recommended_action="tool",
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title=f"Auto-repair attempt {attempt_number}",
+            summary=summary,
+            display_level="inspector",
+            transcript_kind="repair",
+            ui_intent="progress",
+            data={
+                "task_id": task_id,
+                "agent_loop_execution_result": execution_result or {},
+                "agent_loop_observation": observation or {},
+                "auto_repair_attempt": attempt_number,
+                "auto_repair_budget": repair_cap,
+                "recommended_command": "status",
+            },
+        )
+        return (True, observation, None)
+
+    def _block_auto_repair(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        latest_decision: dict | None,
+        execution_result: dict | None,
+        exit_reason: str,
+        summary: str,
+    ) -> TaskExecutionSummary:
+        task_id = str(task["task_id"])
+        self._mark_task_blocked(task_board, task_id)
+        observation = persist_agent_loop_observation_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=execution_result,
+            status="pending",
+            summary=summary,
+            next_recommended_action="repair",
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="blocked",
+            title="Auto-repair stopped",
+            summary=summary,
+            transcript_kind="repair",
+            ui_intent="needs_attention",
+            data={
+                "task_id": task_id,
+                "agent_loop_execution_result": execution_result or {},
+                "agent_loop_observation": observation or {},
+                "recommended_command": "debug",
+                "exit_reason": exit_reason,
+            },
+        )
+        self._record_agent_loop_run_summary(
+            context=context,
+            task_id=task_id,
+            status="blocked",
+            exit_reason=exit_reason,
+            rounds_completed=round_index,
+            max_rounds=max_rounds,
+            summary=summary,
+            recommended_command="debug",
+            latest_decision=latest_decision,
+            latest_execution=execution_result,
+            latest_observation=observation,
+        )
+        return TaskExecutionSummary(
+            task_id=task_id,
+            status="blocked",
+            summary=summary,
+            tool_calls=0,
+            verification_calls=0,
+            evidence_path=context.run_dir / "agent_loop_observations.jsonl"
+            if context.run_dir is not None
+            else None,
+        )
+
     def _next_action_after_attempt(
         self,
         *,
@@ -1672,6 +1903,8 @@ class ExecuteCommand:
             "tool_calls": report.get("tool_calls", 0),
             "tool_budget_units": report.get("tool_budget_units", report.get("tool_calls", 0)),
             "repair_attempts": report.get("repair_attempts", 0),
+            "repair_attempts_limit": self._max_repair_attempts_per_task(context.policy),
+            "auto_repair_enabled": self._auto_repair_enabled(context.policy),
             "warnings": list(report.get("warnings") or []),
         }
         context_pressure = {
@@ -2313,7 +2546,19 @@ class ExecuteCommand:
                 task,
                 allow_shell=self._shell_allowed(context.policy),
             )
-            max_rounds = self._agent_loop_max_rounds(context.policy)
+            base_max_rounds = self._agent_loop_max_rounds(context.policy)
+            auto_repair_enabled = self._auto_repair_enabled(context.policy)
+            repair_cap = (
+                self._max_repair_attempts_per_task(context.policy)
+                if auto_repair_enabled
+                else 0
+            )
+            # With auto-repair on, extend the round ceiling so the repair budget / the
+            # no-progress guard (not a premature max_rounds) is what terminates a
+            # repairing loop. Each repair cycle spends one repair round plus one retry
+            # round; off => value is unchanged and today's behavior is byte-identical.
+            max_rounds = base_max_rounds + (2 * repair_cap if auto_repair_enabled else 0)
+            repair_attempts_used = 0
             latest_loop_observation: dict | None = None
             latest_summary: TaskExecutionSummary | None = None
             for round_index in range(1, max_rounds + 1):
@@ -2453,6 +2698,30 @@ class ExecuteCommand:
                         )
                         return child_summary
                     continue
+                if auto_repair_enabled and next_action_kind == "repair":
+                    continue_loop, repair_observation, blocked_summary = (
+                        self._handle_auto_repair_round(
+                            task=task,
+                            task_board=task_board,
+                            context=context,
+                            round_index=round_index,
+                            max_rounds=max_rounds,
+                            latest_decision=loop_decision
+                            if isinstance(loop_decision, dict)
+                            else None,
+                            execution_result=loop_execution_result,
+                            repair_attempts_used=repair_attempts_used,
+                            repair_cap=repair_cap,
+                        )
+                    )
+                    if continue_loop:
+                        repair_attempts_used += 1
+                        if repair_observation is not None:
+                            latest_loop_observation = repair_observation
+                        continue
+                    # continue_loop is False => the handler produced a blocked summary.
+                    assert blocked_summary is not None
+                    return blocked_summary
                 runtime_managed = self._handle_runtime_managed_loop_action(
                     task=task,
                     task_board=task_board,

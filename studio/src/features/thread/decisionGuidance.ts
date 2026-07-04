@@ -91,6 +91,15 @@ export function runtimeNextStepSummary(params: {
   const normalized = nextActionValue.trim().toLowerCase();
   const exitReason = String(loop.exit_reason ?? "").toLowerCase();
 
+  // S78 auto-repair terminal reasons must be matched before the generic repair/debug catch below
+  // (which recommends "debug"): auto-repair already retried within budget and stopped honestly, so
+  // frame it as "I tried" rather than "want me to keep trying?".
+  if (exitReason.includes("repair_budget_exhausted")) {
+    return "I auto-retried a few times but it still fails — take a look or try a different approach?";
+  }
+  if (exitReason.includes("loop_no_progress")) {
+    return "The same failure keeps repeating with no progress — take a look or try a different approach?";
+  }
   if (
     mainActionKind === "debug"
     || normalized.includes("debug")
