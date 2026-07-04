@@ -24,8 +24,11 @@ def build_judge_context(
     eval_report = _read_optional(run_dir, "eval_report.json", validator, "eval_report")
     task_plan = _read_optional(run_dir, "task_plan.json", validator, "task_board")
     overall = eval_report.get("overall") if isinstance(eval_report, dict) else {}
+    policy = rule_evaluation.get("policy")
+    min_review_score = policy.get("min_review_score") if isinstance(policy, dict) else None
     return {
         "run_id": rule_evaluation.get("run_id"),
+        "min_review_score": min_review_score,
         "rule_slice_complete": bool(rule_evaluation.get("slice_complete")),
         "rule_summary": str(rule_evaluation.get("summary") or ""),
         "signals": dict(rule_evaluation.get("signals") or {}),
@@ -139,14 +142,23 @@ def _model_judge(
 def _deterministic_judge(context: dict[str, Any]) -> dict[str, Any]:
     open_tasks = context.get("open_tasks") if isinstance(context.get("open_tasks"), list) else []
     review_score = context.get("review_score")
+    # ADR-0016 §3: no fabricated constant. The review-score gate uses the operator-configured
+    # policy threshold (``min_review_score``, the SAME key the rule path honours) — never a made-up
+    # 0.75. When the operator set no threshold (default None), the deterministic judge does not
+    # invent a review-score gate; it just confirms the rule verdict.
+    min_review_score = context.get("min_review_score")
     complete = bool(context.get("rule_slice_complete"))
     reason = "规则判定通过，确定性 judge 确认 slice 完成。"
     if open_tasks:
         complete = False
         reason = f"仍有未完成任务：{', '.join(open_tasks[:3])}。"
-    elif isinstance(review_score, (int, float)) and float(review_score) < 0.75:
+    elif (
+        min_review_score is not None
+        and isinstance(review_score, (int, float))
+        and float(review_score) < float(min_review_score)
+    ):
         complete = False
-        reason = f"评审分数 {review_score} 偏低，slice 不宜标记完成。"
+        reason = f"评审分数 {review_score} 低于阈值 {min_review_score}，slice 不宜标记完成。"
     return {
         "slice_complete": complete,
         "confidence": 0.7 if complete else 0.8,
