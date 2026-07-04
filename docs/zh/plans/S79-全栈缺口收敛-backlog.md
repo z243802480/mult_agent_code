@@ -73,6 +73,8 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 ## Tier B 进展（逐项亲验中，2026-07-04）
 
 - ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**已提交 `678a4c5`**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。
+- ✅ **B4 Composer 打磨 = 大部分已成熟，审计高估**：亲验 Composer 已有 @提及+键盘导航、自动增高、斜杠命令(/ask /plan /goal)、模式/权限分段控件+hint、运行中排队+可删 chip、Esc 停止、side-ask。"学习曲线陡"高估——真实残留仅 aria-live。已给队列加 `role=status aria-live=polite` + 显示队列数。**待提交**。
+- ✅ **B5 收尾**：aria-live 残留已补（队列播报 + repair chip 已有 role=status）。审计"DiffPreview `div[role=button]`→`button`"经亲验**误报**——全库 `role="button"` 0 处，DiffPreview 已用真 `<button>`。B5 视为完成。
 - ⏭️ **B7 EmptyState 自适应 = 真缺口但判定不做**：`EMPTY_PROMPTS` 确是硬编码 4 条，但成熟产品（Claude Code/Cursor）同样用通用示例；改自适应需穿入 workspace 语言检测、收益微薄。**诚实地不为凑数而改**（error-recovery / loading 文案多样性另论）。
 - ✅ **B1 error navigation 已实施**：Thread 有 I7 窗口化 + Jump-to-latest，但**无失败 turn 标记/跳错误**（审计称 CommandPalette 有 I13 跳错误命令，实为误报）。已加：①失败 turn 判定（步骤 `kind==="error"` 或 `status==="failed"`）②ConversationTurn 根节点 `id=thread-turn-N` + `.failed` 左缘 danger 标记 ③sticky "N issues" 导航 pill，点击循环滚动到下一个失败 turn（含窗口化外的 turn 先展开再聚焦）+ issueFlash 高亮。tsc + 完整 vite build 双绿。视觉差异仅在存在失败 turn 时出现（需真实失败会话截图，未 fabricate）。**待提交**。
 - ⏳ **B2（diff per-hunk+inline）/ B3（dev-server 预览）/ B4（composer 打磨）/ B6（vitest 组件测试）**：待亲验后实施。

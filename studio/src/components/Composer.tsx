@@ -253,8 +253,10 @@ export function Composer({
   return (
     <form className={`composer compact ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}${sideAsk ? " sideAskMode" : ""}`} onSubmit={(event) => void submit(event)}>
       {queue.length > 0 && (
-        <div className="composerQueue">
-          <span className="composerQueueLabel">Queued · sends when the run finishes</span>
+        <div className="composerQueue" role="status" aria-live="polite">
+          <span className="composerQueueLabel">
+            {queue.length} queued · sends when the run finishes
+          </span>
           {queue.map((q, i) => (
             <span key={i} className="composerQueueChip" title={q}>
               <span className="composerQueueText">{q}</span>
