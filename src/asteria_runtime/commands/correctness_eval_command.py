@@ -25,10 +25,14 @@ class CorrectnessEvalResult:
             return "Correctness eval: no run found. Run a goal first."
         overall = self.report["overall"]
         signals = self.report["outcome_eval"]
+        score_text = (
+            f"{overall['score']:.2f}   (graded on the real verification pass rate, not a status bucket)"
+            if overall.get("score") is not None
+            else "unverified (no executable verification ran)"
+        )
         lines = [
             f"Correctness eval for run {self.run_id}",
-            f"Status: {overall['status']}   Score: {overall['score']:.2f}"
-            "   (graded on the real verification pass rate, not a status bucket)",
+            f"Status: {overall['status']}   Score: {score_text}",
             f"Verification commands: {signals['command_verification_pass_count']}"
             f"/{signals['command_verification_call_count']} passed"
             f" (rate {signals['command_verification_pass_rate']:.2f})",

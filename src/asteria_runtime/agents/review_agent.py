@@ -230,25 +230,33 @@ class ReviewAgent:
     def _overall(
         self, value: object, default_status: str, correctness: dict | None = None
     ) -> dict:
-        # Honest score: when the run has real executable-verification evidence, prefer that
-        # graded pass rate over the 0.9/0.6/0.2 status-bucketed constant. ``correctness`` is
-        # None when no run_tests/run_command ran (docs/creative tasks) — there we keep the
-        # deterministic constant rather than fabricate a fail against a non-verification task.
+        # ADR-0016 §3: the score is EVIDENCE, never a fabricated constant. It is the model's own
+        # explicit judgment score when present, else the real executable-verification pass rate,
+        # else ``None`` ("unverified") — we do NOT invent a 0.9/0.6/0.2 status-bucketed number for a
+        # task that ran no executable verification. ``status`` still reflects the deterministic/model
+        # verdict, so the run lifecycle is unchanged; a ``None`` score surfaces at the explicit human
+        # Accept step as "unverified" instead of a misleading green score.
         real_score = float(correctness["score"]) if isinstance(correctness, dict) else None
         if isinstance(value, dict):
             status = str(value.get("status") or default_status).lower()
             if status not in {"pass", "partial", "fail"}:
                 status = default_status
-            constant = 0.9 if status == "pass" else 0.6 if status == "partial" else 0.2
             model_score = value.get("score")
-            # Respect an explicit model score (a real judgment); only the constant fallback is
-            # replaced with the real verification pass rate.
-            score = model_score if model_score is not None else (real_score if real_score is not None else constant)
+            score = model_score if model_score is not None else real_score  # may be None
             reason = str(value.get("reason") or f"Deterministic checks indicate {status}.")
             if model_score is None and real_score is not None:
                 reason = f"{reason} Score is the real verification pass rate ({real_score:.2f})."
-            return {"status": status, "score": float(score), "reason": reason}
-        if real_score is not None:
+            elif score is None:
+                reason = (
+                    f"{reason} Unverified: no executable verification ran and no model score "
+                    "was returned; needs an explicit human accept."
+                )
+            return {
+                "status": status,
+                "score": float(score) if score is not None else None,
+                "reason": reason,
+            }
+        if real_score is not None and isinstance(correctness, dict):
             # Pure-deterministic review (model absent/failed) with real verification evidence:
             # the graded correctness verdict is authoritative for status, score, and reason.
             return {
@@ -258,8 +266,11 @@ class ReviewAgent:
             }
         return {
             "status": default_status,
-            "score": 0.9 if default_status == "pass" else 0.6 if default_status == "partial" else 0.2,
-            "reason": f"Deterministic checks indicate {default_status}.",
+            "score": None,
+            "reason": (
+                f"Deterministic checks indicate {default_status}. Unverified: no executable "
+                "verification evidence; needs an explicit human accept."
+            ),
         }
 
     def _system_prompt(self) -> str:

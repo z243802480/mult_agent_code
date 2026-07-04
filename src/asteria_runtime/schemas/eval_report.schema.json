@@ -25,7 +25,7 @@
       "required": ["status", "score", "reason"],
       "properties": {
         "status": { "type": "string", "enum": ["pass", "partial", "fail"] },
-        "score": { "type": "number" },
+        "score": { "type": ["number", "null"] },
         "reason": { "type": "string" }
       }
     }

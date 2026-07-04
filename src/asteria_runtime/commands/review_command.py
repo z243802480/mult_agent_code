@@ -47,7 +47,7 @@ from asteria_runtime.utils.time import now_iso
 class ReviewResult:
     run_id: str
     status: str
-    score: float
+    score: float | None
     eval_report_path: Path
     review_report_path: Path
     cost_report_path: Path
@@ -85,7 +85,7 @@ class ReviewResult:
         lines = [
             f"Reviewed run: {self.run_id}",
             f"Status: {self.status}",
-            f"Score: {self.score:.2f}",
+            f"Score: {self.score:.2f}" if self.score is not None else "Score: unverified",
             f"Eval report: {self.eval_report_path}",
             f"Review report: {self.review_report_path}",
             f"Cost report: {self.cost_report_path}",
@@ -263,12 +263,16 @@ class ReviewCommand:
             encoding="utf-8",
         )
         status = eval_report["overall"]["status"]
-        score = float(eval_report["overall"]["score"])
+        raw_score = eval_report["overall"]["score"]
+        # ADR-0016 §3: score is None for an unverified task (no executable verification, no model
+        # score) — surface it honestly as "未验证" instead of a fabricated number.
+        score = float(raw_score) if raw_score is not None else None
+        score_text = f"{score:.2f}" if score is not None else "未验证"
         reason = str(eval_report["overall"].get("reason", ""))
         progress.validation_event(
             run_id=run_id,
             title="评审结论已生成",
-            summary=f"评审状态为 {status}，评分 {score:.2f}。{reason}",
+            summary=f"评审状态为 {status}，评分 {score_text}。{reason}",
             validation={
                 "status": status,
                 "score": score,
@@ -339,14 +343,14 @@ class ReviewCommand:
             run_id=run_id,
             phase="review",
             title="评审完成",
-            summary=f"评分 {score:.2f}（{status}）。{reason}",
+            summary=f"评分 {score_text}（{status}）。{reason}",
             artifact_refs=[str(eval_report_path), str(review_report_path)],
         )
 
         return ReviewResult(
             run_id=run_id,
             status=status,
-            score=float(eval_report["overall"]["score"]),
+            score=score,
             eval_report_path=eval_report_path,
             review_report_path=review_report_path,
             cost_report_path=cost_report_path,

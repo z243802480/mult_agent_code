@@ -56,10 +56,16 @@ def test_overall_uses_real_correctness_score_over_constant() -> None:
     deterministic = agent._overall(None, "pass", real)
     assert deterministic == {"status": "partial", "score": 0.5, "reason": "2/4 verification passed"}
 
-    # No verification evidence (correctness None) -> legacy constant preserved (reversible / no
-    # fabricated fail against a non-verification task).
-    assert agent._overall({"status": "pass"}, "pass", None)["score"] == 0.9
-    assert agent._overall(None, "partial", None)["score"] == 0.6
+    # ADR-0016 §3: no executable verification AND no model score -> score is None ("unverified"),
+    # NOT a fabricated 0.9/0.6/0.2 constant. The status still reflects the deterministic verdict, and
+    # the reason flags that an explicit human accept is needed; the run lifecycle is unchanged.
+    unverified_model = agent._overall({"status": "pass"}, "pass", None)
+    assert unverified_model["score"] is None
+    assert unverified_model["status"] == "pass"
+    assert "unverified" in unverified_model["reason"].lower()
+    unverified_deterministic = agent._overall(None, "partial", None)
+    assert unverified_deterministic["score"] is None
+    assert "unverified" in unverified_deterministic["reason"].lower()
 
 
 def test_fallback_total_budget_seconds_parsing() -> None:
