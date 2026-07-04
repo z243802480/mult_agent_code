@@ -1,0 +1,31 @@
+Asteria Runtime — Proprietary / Internal-Use License
+Copyright (c) 2026 Asteria authors. All rights reserved.
+
+STATUS: Pre-release internal software. This is NOT open-source.
+
+This software and its source code, documentation, and associated artifacts
+(the "Software") are proprietary and confidential. They are provided solely
+for internal use, evaluation, and development within the authoring team and
+its authorized collaborators during the closed pre-release ("internal beta")
+period.
+
+Permitted, without separate written permission:
+  - Use, run, modify, and build the Software for the authoring team's own
+    internal purposes.
+
+Not permitted, without prior written permission from the copyright holder:
+  - Redistribution, publication, or public disclosure of the Software or any
+    substantial portion of its source code, in original or modified form.
+  - Sublicensing, sale, or transfer to any third party.
+  - Removal or alteration of this notice.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+OR OTHER DEALINGS IN THE SOFTWARE.
+
+This license reflects the project's current closed internal-beta posture and
+may be superseded by a different license at a later date at the copyright
+holder's sole discretion.

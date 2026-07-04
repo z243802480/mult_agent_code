@@ -16,13 +16,13 @@ CLI and Studio surface (not command-only UX).
 ## 2. Execution Plan (mandatory)
 
 ```text
-执行计划唯一入口：docs/zh/研发总计划.md
-当前 ACTIVE_PHASE：Post-S73 Beta convergence
-当前 ACTIVE_SLICE：S74
-当前 Brief：benchmarks/reference_briefs/S74-post-s73-beta-convergence.md
-前置签字：docs/zh/reports/S73-beta-opt-in-ingress-signoff-20260607.md
-执行顺序：文档真源归一 → 主路径基线恢复 → 3–5 个真实 Beta 任务 → 放量 DecisionPoint
-冻结：新编排 Wave、parallel_writes 全局默认开启、无真实 friction 证据的 Studio 新功能
+执行计划唯一入口：docs/zh/研发总计划.md（当前状态见 §16 / §16.1）
+当前 ACTIVE_PHASE：Post-S76 商业化就绪收敛（Commercial-Readiness convergence）
+当前 ACTIVE_SLICE：S77（全系统商业化就绪审计 → 针对性 R&D 重排）
+当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45、今天不可商业推广）
+前置签字：docs/zh/reports/S76-studio-frontend-productization-20260703.md
+执行顺序：P0 法务/假默认档（小时~天级）→ 战略分叉 DecisionPoint（商业模式/目标市场/可审计深度/是否解锁自主环）→ P0 沙箱 + P1 自主闭环 & 真正确性 gate → 利基付费 Beta
+冻结：新编排 Wave、parallel_writes 全局默认开启、无真实 friction 证据的 Studio 新功能；北极星/swarm/12-Agent
 ```
 
 Any agent must read `docs/zh/研发总计划.md` before code or doc changes. Do not start a new

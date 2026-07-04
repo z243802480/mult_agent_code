@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "purpose": "Vibe Slice execution track for Asteria MVP. One slice per agent session.",
   "master_plan": "docs/zh/研发总计划.md",
-  "active_slice": "S74",
-  "active_phase": "Post-S73 Beta convergence",
+  "active_slice": "S77",
+  "active_phase": "Post-S76 商业化就绪收敛",
   "mvp_benchmark_task_id": "small_code_change",
   "slices": [
     {
