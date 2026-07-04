@@ -52,6 +52,7 @@ from asteria_runtime.commands.studio_benchmark_command import StudioBenchmarkCom
 from asteria_runtime.commands.studio_command import StudioCommand
 from asteria_runtime.commands.workspaces_command import WorkspacesCommand, resolve_studio_launch_root
 from asteria_runtime.commands.verification_command import VerificationStatusCommand
+from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
 from asteria_runtime.real_model_acceptance import SCENARIOS as REAL_MODEL_SCENARIOS
@@ -571,6 +572,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show the latest local verification summary",
     )
     verification_parser.add_argument("--root", default=".", help="Workspace root path")
+
+    # Maintainer/eval command: hidden from the default help (argparse.SUPPRESS), like gate/*.
+    correctness_eval_parser = subcommands.add_parser(
+        "correctness-eval",
+        aliases=["/correctness-eval"],
+        help=argparse.SUPPRESS,
+    )
+    correctness_eval_parser.add_argument("--root", default=".", help="Workspace root path")
+    correctness_eval_parser.add_argument(
+        "--run-id", dest="run_id", default=None, help="Run/session id; defaults to the latest run"
+    )
+    correctness_eval_parser.add_argument("--json", action="store_true", help="Emit JSON")
 
     package_check_parser = subcommands.add_parser(
         "package-check",
@@ -1738,6 +1751,16 @@ def _run_cli() -> None:
     if command == "verification":
         verification_result = VerificationStatusCommand(root=Path(args.root)).run()
         print(verification_result.to_text())
+        return
+
+    if command == "correctness-eval":
+        correctness_result = CorrectnessEvalCommand(
+            root=Path(args.root), run_id=args.run_id
+        ).run()
+        if args.json:
+            print(json.dumps(correctness_result.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            print(correctness_result.to_text())
         return
 
     if command == "package-check":
