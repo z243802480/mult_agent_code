@@ -70,6 +70,17 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 
 **关键教训（已固化）**：前端审计代理**大幅over-report"占位/罐头"**——A4/A7/A9 判为缺失实则完整，A3 部分已做。逐个亲验避免了对能工作代码的伪造 churn。**Tier B 各项动手前同样须先亲验**（审计前端结论不可尽信）。
 
+## ADR-0016 第一刀执行（认知归模型/边界归状态，2026-07-05）
+
+用户 2026-07-04 认可"拥抱 AI=给模型合理上下文+工具+目标、模型驱动，不要状态机驱动"。经六大主流产品实证（Claude Code/Cursor/OpenCode/Codex/Cline/Aider，多为 verified-from-source）落 **ADR-0016**（Accepted，强化 0010/0015，不 supersede）：三分类可测判据 §1 认知(禁 FSM)/§2 边界(显式保留)/§3 证据(伪造标量删·证据型 DoD 可把关)+ 合规清单。
+
+第一刀（有界·可回滚，全落地并验证）：
+- ✅ **1a `0162008`**：`_handle_auto_repair_round` **no-progress 先判**(0010 §3)，数字 `repair_cap` 退为"仅循环确在进展时才作 resumable 保险丝"——撞次数不再短路 no-progress 信号、伪装成停止原因。always-fail client 现产 `loop_no_progress`(真因)；budget_exhausted 测试改 cap=1。
+- ✅ **1b `65df0f5`**：`review._overall` **删 0.9/0.6/0.2 伪造常量** → score=模型自判分/真实验证通过率/否则 **None(未验证)**；`eval_report.schema.json` 双份允许 null；显示"未验证"、reason 标注需人审。用户选 A(未验证不自动过质量闸·须人审)。
+- ⏭️ **1c 化妆不做**：`recommended_command_for_next_action` 的 repair→debug 是**给用户/Studio 的提示串、不驱动控制流**(控制流由 `next_action_kind` 直接分支)，溶解它价值低。
+
+关键发现：**acceptance 由 `status` 驱动、非数字 score**，`accept` 本就是独立人工命令(要求 `status==pass`)→"须人审"本就成立；1b 只把误导性假分诚实化、不阻断 docs 任务(保住 A1 顾虑)。全量 1186 passed·mypy·ruff 净。回滚闸：Golden-Task eval 若显示模型驱动 repair 可测更差→关 `auto_repair` 退回。
+
 ## Tier B 进展（逐项亲验中，2026-07-04）
 
 - ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**已提交 `678a4c5`**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。
