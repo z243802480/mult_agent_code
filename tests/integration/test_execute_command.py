@@ -2450,8 +2450,12 @@ def test_execute_command_auto_repair_then_succeed(tmp_path: Path) -> None:
 
 
 def test_execute_command_auto_repair_budget_exhausted(tmp_path: Path) -> None:
+    # ADR-0016 / ADR-0010 §3: no-progress is the primary stop; the numeric repair_cap is only a
+    # runaway resumable fuse. It fires ONLY when the cap binds *before* the no-progress signal (3
+    # consecutive failures) can accumulate — i.e. cap=1 here, so the fuse trips at the 2nd failure
+    # (guard still silent) rather than masquerading as the reason a genuinely-stuck loop stopped.
     InitCommand(tmp_path).run()
-    _enable_auto_repair(tmp_path, max_repair_attempts_per_task=2)
+    _enable_auto_repair(tmp_path, max_repair_attempts_per_task=1)
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
     client = FakeAlwaysFailRepairClient()
 
@@ -2463,7 +2467,7 @@ def test_execute_command_auto_repair_budget_exhausted(tmp_path: Path) -> None:
 
     assert result.completed == 0
     assert result.blocked == 1
-    assert cost_report["repair_attempts"] == 2
+    assert cost_report["repair_attempts"] == 1
     assert loop_summary["exit_reason"] == "repair_budget_exhausted"
     assert loop_summary["recommended_command"] == "debug"
 

@@ -1623,30 +1623,35 @@ class ExecuteCommand:
         """
 
         task_id = str(task["task_id"])
-        # Termination 2 (repair budget) is checked before the no-progress guard so a
-        # tight numeric budget binds first; see benchmarks/reference_briefs/S78.
+        # ADR-0016 / ADR-0010 §3: the real semantic stop is "same failure class, no new evidence"
+        # (a provable no-progress loop), NOT hitting a small numeric count. So evaluate the
+        # no-progress guard FIRST — the numeric repair_cap is only a runaway resumable fuse and must
+        # never short-circuit the progress signal and masquerade as the reason the loop stopped.
+        # (Supersedes the S78 "numeric budget binds first" ordering.)
+        if self._auto_repair_loop_guard_warns(context, task_id):
+            summary = (
+                f"Auto-repair stopped after {repair_attempts_used} attempt(s): the loop "
+                "repeated the same failing observation without measurable progress."
+            )
+            return (
+                False,
+                None,
+                self._block_auto_repair(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    round_index=round_index,
+                    max_rounds=max_rounds,
+                    latest_decision=latest_decision,
+                    execution_result=execution_result,
+                    exit_reason="loop_no_progress",
+                    summary=summary,
+                ),
+            )
+        # The loop is still producing new evidence. Count the attempt; the numeric cap acts only as
+        # a resumable safety fuse (state is persisted; a human/resume can continue via debug).
         exhausted = repair_attempts_used >= repair_cap
         if not exhausted:
-            if self._auto_repair_loop_guard_warns(context, task_id):
-                summary = (
-                    f"Auto-repair stopped after {repair_attempts_used} attempt(s): the loop "
-                    "repeated the same failing observation without measurable progress."
-                )
-                return (
-                    False,
-                    None,
-                    self._block_auto_repair(
-                        task=task,
-                        task_board=task_board,
-                        context=context,
-                        round_index=round_index,
-                        max_rounds=max_rounds,
-                        latest_decision=latest_decision,
-                        execution_result=execution_result,
-                        exit_reason="loop_no_progress",
-                        summary=summary,
-                    ),
-                )
             try:
                 if context.budget is not None:
                     context.budget.record_repair_attempt()
@@ -1654,8 +1659,8 @@ class ExecuteCommand:
                 exhausted = True
         if exhausted:
             summary = (
-                f"Auto-repair budget exhausted after {repair_attempts_used} attempt(s) "
-                f"(max {repair_cap}); handing off to a human debug decision."
+                f"Auto-repair paused at the safety cap after {repair_attempts_used} attempt(s) "
+                f"(max {repair_cap}) while still making progress; resumable via a human debug decision."
             )
             return (
                 False,

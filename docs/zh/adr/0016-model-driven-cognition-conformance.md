@@ -1,6 +1,6 @@
 # ADR-0016：认知归模型 / 边界归状态 —— 可执行合规判据（强化 0010 与 0015）
 
-**状态**：Proposed
+**状态**：Accepted
 **日期**：2026-07-04
 **关系**：扩展并强化 [ADR-0010](0010-open-agent-loop-and-evaluation-boundaries.md) 与 [ADR-0015](0015-session-loop-is-product-architecture.md)；不 supersede 二者。
 
