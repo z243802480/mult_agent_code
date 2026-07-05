@@ -5,7 +5,6 @@ import { NarrativeStep } from "../../components/NarrativeStep";
 import { PermissionCard } from "../../components/PermissionCard";
 import { ClampedOutput } from "../../components/ClampedOutput";
 import { AggregateDiffChip } from "../../components/AggregateDiffChip";
-import { FileChangeChips } from "../../components/FileChangeChips";
 import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fileChanges";
 import { LiveStream } from "./LiveStream";
 import { ToolCallCard } from "./ToolCallCard";
@@ -56,14 +55,9 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
       <div className="turnMiddle compact">
         {fileStats.files > 0 && (
           <div className="turnFileRowWrap">
-            {/* The files ARE the deliverable — name them (click → diff) instead of hiding the
-                product behind a bare "N files" count. The aggregate chip stays as the open-full-diff
-                affordance. This is what makes the main thread read as artifacts, not just process. */}
-            <FileChangeChips
-              changes={fileChanges}
-              className="turnFileRow"
-              onSelect={onFileChangeClick}
-            />
+            {/* Mainstream (Cursor / Copilot) don't scatter per-file cards through the conversation —
+                changed files live in ONE review surface (the right-side Changes pane). The thread
+                carries only a single "N files changed → review" entry point that opens it. */}
             <AggregateDiffChip
               files={fileStats.files}
               additions={fileStats.additions}
@@ -104,20 +98,18 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
 
   return (
     <div className="turnMiddle">
-      <div className="turnFileRowWrap">
-        <AggregateDiffChip
-          files={fileStats.files}
-          additions={fileStats.additions}
-          deletions={fileStats.deletions}
-          onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
-        />
-        <FileChangeChips changes={fileChanges} className="turnFileRow" onSelect={onFileChangeClick} onAccept={onFileAccept} onRevert={onFileRevert} />
-        {turnIndex && fileChanges.length > 0 && onTurnDiffSelect && (
-          <button type="button" className="turnDiffButton" onClick={() => onTurnDiffSelect(turnIndex)}>
-            {turnDiffLabel ?? `T${turnIndex}`} diff · {fileChanges.length}
-          </button>
-        )}
-      </div>
+      {fileStats.files > 0 && (
+        <div className="turnFileRowWrap">
+          {/* One "N files changed → review" entry point, not a scattered per-file list — changed
+              files are reviewed in the consolidated Changes pane (Cursor / Copilot pattern). */}
+          <AggregateDiffChip
+            files={fileStats.files}
+            additions={fileStats.additions}
+            deletions={fileStats.deletions}
+            onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
+          />
+        </div>
+      )}
       {toolSteps.length > 0 && (
         <div className="turnToolCards">
           {toolSteps.map((step) => (
