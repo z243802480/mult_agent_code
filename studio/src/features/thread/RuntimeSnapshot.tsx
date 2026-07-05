@@ -251,6 +251,9 @@ export function userFacingStateLabel(value: string): string {
   // honestly, so frame it as "I tried" — not "want me to keep trying?".
   if (normalized.includes("repair_budget_exhausted")) return "I auto-retried a few times but it still fails — take a look or try a different approach?";
   if (normalized.includes("loop_no_progress")) return "the same failure keeps repeating with no progress — take a look or try a different approach?";
+  // S79 auto-replan terminal reason (must precede the generic "replan"/"repair" catch, since
+  // "replan_budget_exhausted" contains "replan"): auto-replan re-approached the task and stopped.
+  if (normalized.includes("replan_budget_exhausted")) return "I re-approached this a couple of times but it still fails — take a look or re-plan the tasks?";
   if (normalized.includes("repair_limit") || normalized.includes("repair")) return "a step failed — want me to keep trying or take a different approach?";
   if (normalized.includes("budget_hard_stop")) return "paused — needs your input";
   return stripBackendWording(value.replace(/_/g, " "));

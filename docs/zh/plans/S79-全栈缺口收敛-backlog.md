@@ -105,6 +105,8 @@ S77 §7 把"假默认档 fail-loud"降为定向项（硬 fail 会反转 D-3 决�
 - **schema-double-trap 踩坑（已修）**：`replan_budget_exhausted` 需同步加**四处**——`schemas/` + `src/.../schemas/` 两份 `agent_loop_run_summary.schema.json` enum，**和** `core/agent_loop_run_summary.py` 的 Python `EXIT_REASONS` 集合（`clean_reason = ... else "no_action"` 会把未登记的 exit_reason 静默降级成 `no_action`——正是首轮 budget-exhausted 测试假失败的根因）+ recovery-chain required 集合。
 - **验证**：+4 集成测试（replan-then-succeed / budget-exhausted / no-progress / opt-out 回退）+ 现有 repair/probe 逐字回归；`test_execute_command.py`+run_summary 53 绿·**全量 1193 单测+集成绿·1 skip**·mypy·ruff 净。repair 环（S78）与 replan 环独立预算/exit_reason，一个任务循环内可先后触发。
 
+**前端拉齐已落地（2026-07-05，`1a622d2` 后紧接，按 freeze-lifted"后端就绪即拉前端"）**：Studio 诚实呈现 auto-replan 终止/预算，镜像 S78 repair 前端。三处纯函数/证据面板：① `decisionGuidance.runtimeNextStepSummary` + `RuntimeSnapshot.userFacingStateLabel` 为 `replan_budget_exhausted` 加显式文案「我重新构思了几次仍失败——看看，或重排任务?」（**排在泛化 replan/repair catch 之前**，否则 `replan_budget_exhausted` 含 "replan" 被吞成"要我继续试吗"，语义反）；② Inspector `RunUsagePanel` 加条件 **Replans 指标 `≤N auto`**——replan **有意不记 cost_report**（无伪造 budget 账本），故只在 `auto_replan_enabled` 时显示有界 cap、不编造 used 计数（耗尽经 exit_reason 文案呈现）。`decision-guidance-smoke` 加 `replan_budget_exhausted` token 守护。**studio tsc + vite build + smoke 三绿**。此状态需真实 replan-exhausted 会话才可视，未 fabricate 截图。
+
 ## Tier B 进展（逐项亲验中，2026-07-04）
 
 - ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**已提交 `678a4c5`**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。

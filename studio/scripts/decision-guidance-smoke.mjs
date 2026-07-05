@@ -16,6 +16,7 @@ const required = [
   "A step failed",
   "Approve this command once",
   "repair_limit",
+  "replan_budget_exhausted",
 ];
 
 for (const token of required) {

@@ -100,6 +100,12 @@ export function runtimeNextStepSummary(params: {
   if (exitReason.includes("loop_no_progress")) {
     return "The same failure keeps repeating with no progress — take a look or try a different approach?";
   }
+  // S79 auto-replan terminal reason (must precede any generic replan/repair catch, since
+  // "replan_budget_exhausted" contains "replan"): auto-replan already re-approached this task within
+  // budget and stopped honestly — recommend a human goal-level replan, not "keep trying?".
+  if (exitReason.includes("replan_budget_exhausted")) {
+    return "I re-approached this a couple of times but it still fails — take a look, or re-plan the tasks?";
+  }
   if (
     mainActionKind === "debug"
     || normalized.includes("debug")

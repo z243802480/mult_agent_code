@@ -36,6 +36,12 @@ function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
   const autoRepair = loopBudget.auto_repair_enabled === true;
   const repairValue = repairCap > 0 ? `${repairs}/${repairCap}${autoRepair ? " auto" : ""}` : String(repairs);
   const repairTone = repairCap > 0 && repairs >= repairCap ? "bad" : repairs ? "warn" : "good";
+  // S79 auto-replan: the replan loop is bounded by a per-task cap but is deliberately NOT counted in
+  // cost_report (no fabricated budget ledger), so we surface the bounded cap ("≤N auto") only when
+  // auto-replan is active — honest about the budget without inventing a used count. Exhaustion shows
+  // up in the run's exit_reason ("replan_budget_exhausted"), rendered by the thread guidance text.
+  const replanCap = Number(loopBudget.replan_attempts_limit ?? 0);
+  const autoReplan = loopBudget.auto_replan_enabled === true;
   const tokenValue = (value: unknown) => (value == null ? "unknown" : formatUsage(Number(value)));
   return (
     <div className="evidenceBlock runUsagePanel">
@@ -50,6 +56,9 @@ function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
         <Metric label="Strong calls" value={String(strong)} tone={strong ? "warn" : "good"} />
         <Metric label="Cheap calls" value={String(cheap)} tone="good" />
         <Metric label="Repairs" value={repairValue} tone={repairTone} />
+        {autoReplan && replanCap > 0 && (
+          <Metric label="Replans" value={`≤${replanCap} auto`} tone="warn" />
+        )}
       </div>
       {inputTokens == null && outputTokens == null && (
         <p className="muted">Token usage is unknown for this run (the provider did not report usage).</p>
