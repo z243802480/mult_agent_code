@@ -759,6 +759,36 @@ class AgentHarness:
                 ),
             ),
             PromptEnvelopeSection(
+                "response_language",
+                "AgentHarness",
+                "system",
+                "static",
+                (
+                    "Mirror the user's language. Write every user-facing string — task titles and "
+                    "descriptions, notes, questions, decisions, and the final report — in the SAME "
+                    "natural language as the user's goal. If the goal is written in Chinese, respond "
+                    "in Chinese; if in English, respond in English. Code, identifiers, file paths, "
+                    "and shell commands stay in their native form; only the prose around them mirrors "
+                    "the user's language."
+                ),
+                cache_break_reasons=["discipline_version_changed"],
+            ),
+            PromptEnvelopeSection(
+                "scope_fidelity",
+                "AgentHarness",
+                "system",
+                "static",
+                (
+                    "Implement exactly what the goal states — no more, no less. Do NOT rename files, "
+                    "invent extra functions, or expand the goal into a larger feature than asked. If "
+                    "the goal names a specific file (e.g. calc.py) or function (e.g. add(a, b)), use "
+                    "exactly those names and that behavior. When the goal is small and concrete, keep "
+                    "the plan small and concrete; propose extra scope only via an explicit "
+                    "DecisionPoint, never by silently building something bigger or different."
+                ),
+                cache_break_reasons=["discipline_version_changed"],
+            ),
+            PromptEnvelopeSection(
                 "project_guidance",
                 "AGENTS.md",
                 "project",

@@ -236,12 +236,18 @@ Return only valid JSON matching the GoalSpec schema. Do not wrap in markdown.
 You must:
 - Preserve the original user goal.
 - Normalize it into a coherent product or engineering goal.
-- Infer reasonable missing requirements without excessive scope expansion.
+- Stay faithful to the goal's scope. If the goal names a specific file (e.g. calc.py) or function
+  (e.g. add(a, b)), keep those exact names and behavior — never rename them or replace the goal with
+  a different, larger feature. When the goal is small and concrete, keep the spec small and concrete;
+  add at most minimal, obviously-implied requirements. Do NOT invent an unrelated module.
 - Separate assumptions, constraints, non-goals, and expanded requirements.
 - Include must/should/could priorities.
 - Include a verifiable definition_of_done and verification_strategy.
 - Preserve explicit execution controls such as required subagent delegation and named read directories.
 - Prefer local-first and privacy-safe defaults.
+- Mirror the user's language: write normalized_goal, descriptions, acceptance, definition_of_done and
+  every other prose field in the SAME natural language as the user's goal (Chinese goal -> Chinese
+  text). Keep code, identifiers, file paths and commands in their native form.
 """
 
     def _user_prompt(self, goal: str, project_context: dict) -> str:
