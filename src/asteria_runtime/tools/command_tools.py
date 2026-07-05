@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from asteria_runtime.core.runtime_context import RuntimeContext
+from asteria_runtime.security.env_sanitizer import sanitize_subprocess_env
 from asteria_runtime.security.shell_guard import ShellGuard
 from asteria_runtime.tools.base import ToolResult
 
@@ -77,7 +78,10 @@ class RunCommandTool:
         )
 
     def _env(self) -> dict[str, str]:
-        env = os.environ.copy()
+        # Strip the harness's own provider credentials (and any *_API_KEY/*_TOKEN/*_SECRET/
+        # password) from the child shell: the ShellGuard denylist cannot contain an interpreter
+        # payload, so we remove the secret rather than hope to block every exfil command.
+        env, _removed = sanitize_subprocess_env()
         executable_dir = os.path.dirname(sys.executable)
         env["PATH"] = executable_dir + os.pathsep + env.get("PATH", "")
         return env
