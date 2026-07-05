@@ -384,6 +384,11 @@ async function submitUserGoal(sessionId, body) {
   });
   await appendEvent(activeSessionId, progressEventForMode(mode, goal));
 
+  // Best experience by default: the chosen tier decides how autonomous the loop is. Default tiers
+  // self-heal (auto repair/replan); "Ask first" stays supervised. Applied to the workspace policy
+  // the run is about to read (before the command is built), never the shared template.
+  await applyAutonomyForTier(permissionMode);
+
   // Thread the user's chosen tier through to the runtime (it otherwise runs at the CLI default).
   // The same command is used for both the confirm-card (pending) and direct-start paths below.
   const command = withPermissionLevel(
@@ -1699,6 +1704,31 @@ function stopSessionJobs(sessionId) {
     } catch {}
   }
   return { ok: true, stopped };
+}
+
+// Autonomy follows the chosen permission tier: default tiers self-heal (auto repair/replan for the
+// best hands-off experience); "Ask first" (ask_everything) stays supervised and surfaces a decision
+// instead of auto-fixing. We set the run-loop rings in the workspace's OWN .asteria/policies.json —
+// never the shared repo template — so the CLI default and the test suite are untouched. Best-effort:
+// a read/write failure never blocks the run (it just falls back to the workspace's current policy).
+async function applyAutonomyForTier(permissionTier) {
+  const autonomous = permissionTier !== "ask_everything";
+  const policyPath = path.join(workspace, ".asteria", "policies.json");
+  try {
+    const policy = JSON.parse(await fs.readFile(policyPath, "utf8"));
+    const loop = policy.agent_loop && typeof policy.agent_loop === "object" ? policy.agent_loop : {};
+    if (loop.auto_repair === autonomous && loop.auto_replan === autonomous && loop.auto_replan_goal === autonomous) {
+      return autonomous; // already in the desired state — skip the rewrite
+    }
+    loop.auto_repair = autonomous;
+    loop.auto_replan = autonomous;
+    loop.auto_replan_goal = autonomous;
+    policy.agent_loop = loop;
+    await fs.writeFile(policyPath, `${JSON.stringify(policy, null, 2)}\n`, "utf8");
+    return autonomous;
+  } catch {
+    return null; // never block a run on a policy patch
+  }
 }
 
 function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
