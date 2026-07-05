@@ -441,6 +441,7 @@
           "feature_flags",
           "capability_flags",
           "evidence_sources",
+          "acceptance_correctness",
           "validation_task_limits",
           "validation_recommendation",
           "next_actions"
@@ -807,6 +808,7 @@
         "validation_suite": "H:\\mult_agent_code\\.asteria\\verification\\real_model_acceptance_validation.json",
         "core_acceptance": "H:\\mult_agent_code\\.asteria\\acceptance\\acceptance_report.json"
       },
+      "acceptance_correctness": {},
       "validation_task_limits": {
         "max_iterations": 3,
         "max_tasks_per_iteration": 1,

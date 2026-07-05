@@ -1275,6 +1275,54 @@ def test_gate_status_moves_from_gate_to_validation_to_core(tmp_path: Path, monke
     }
 
 
+def test_gate_status_blocks_release_on_failing_real_correctness(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # ADR-0018: even when every acceptance scenario passes STRUCTURALLY (report ok==True), the
+    # release gate must NOT be release-ready if the acceptance runs' REAL verification
+    # (run_tests/run_command exit codes) failed. Closes the "structural pass hides real code
+    # failure" fabrication gap (研发总计划 §16.1 line 467: 真代码正确性 gate 取代 UX 结构指标).
+    _configure_release_routes(monkeypatch)
+    _write_release_ready_gate_files(tmp_path)
+
+    # Baseline: no real-correctness evidence => None => not blocked (never fabricate a fail).
+    assert GateStatusCommand(tmp_path).run().stage == "ready_for_small_real_task_validation"
+
+    # Attach a core acceptance scenario whose recorded run FAILED its executable verification.
+    workspace = tmp_path / "accept_ws"
+    run_dir = workspace / ".asteria" / "runs" / "run-accept-0001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "tool_calls.jsonl").write_text(
+        json.dumps({"tool_name": "run_command", "status": "error"}) + "\n",
+        encoding="utf-8",
+    )
+    verification_dir = tmp_path / ".asteria" / "verification"
+    (verification_dir / "real_model_acceptance_core.json").write_text(
+        json.dumps(
+            {
+                "ok": True,  # structurally passes ...
+                "aggregate": {"total": 10, "passed": 10},
+                "scenarios": [
+                    {
+                        "ok": True,
+                        "workspace": str(workspace),
+                        "summary": {"run_id": "run-accept-0001"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = GateStatusCommand(tmp_path).run().to_dict()
+
+    assert payload["stage"] == "acceptance_correctness_failed"  # ... real correctness blocks it
+    assert payload["release_ready"] is False
+    assert payload["release_state"] == "blocked"
+    assert payload["acceptance_correctness"]["status"] == "fail"
+    assert "run_tests/run_command" in payload["blocking_reason"]
+
+
 def test_gate_status_route_table_surfaces_offline_tiers(tmp_path: Path, monkeypatch) -> None:
     # strong/medium point at a real provider; cheap stays on the fake/offline provider. route_table
     # must expose all three tiers and honestly flag cheap as silently returning canned output —

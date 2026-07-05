@@ -9,6 +9,7 @@ from typing import Any
 
 from asteria_runtime.commands._runtime_os_helpers import runtime_os_release_evidence
 from asteria_runtime.commands.control_surface_contract import control_surface_contract
+from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.core.flag_resolver import FlagResolver
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
@@ -65,6 +66,7 @@ class GateStatusResult:
     feature_flags: dict[str, Any] = field(default_factory=dict)
     capability_flags: dict[str, Any] = field(default_factory=dict)
     evidence_sources: dict[str, str] = field(default_factory=dict)
+    acceptance_correctness: dict[str, Any] = field(default_factory=dict)
     next_actions: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -104,6 +106,7 @@ class GateStatusResult:
                     "feature_flags",
                     "capability_flags",
                     "evidence_sources",
+                    "acceptance_correctness",
                     "validation_task_limits",
                     "validation_recommendation",
                     "next_actions",
@@ -136,6 +139,7 @@ class GateStatusResult:
             "feature_flags": self.feature_flags,
             "capability_flags": self.capability_flags,
             "evidence_sources": self.evidence_sources,
+            "acceptance_correctness": self.acceptance_correctness,
             "validation_task_limits": _validation_task_limits(),
             "validation_recommendation": self.validation_recommendation,
             "gate_report": self.gate_report,
@@ -151,6 +155,7 @@ class GateStatusResult:
             "model_call_contract_blocked",
             "candidate_promotion_risk_blocked",
             "plugin_manifests_blocked",
+            "acceptance_correctness_failed",
         }:
             return "blocked"
         if self.stage == "ready_for_small_real_task_validation":
@@ -463,6 +468,24 @@ class GateStatusCommand:
                 *plugin_risks["actions"],
                 *actions,
             ]
+        # ADR-0018: ground the release terminal in REAL code correctness, not only the acceptance
+        # scenarios' structural `ok` counts. Grade the acceptance runs' recorded run_tests/run_command
+        # exit codes; if that real signal is not green, the gate is NOT release-ready even when every
+        # scenario passed structurally. `None` (no executable verification recorded) is surfaced but
+        # never fabricated into a pass/fail — mirrors CorrectnessEvalCommand.score_signal's contract.
+        acceptance_correctness = self._acceptance_correctness(validation, core)
+        if (
+            stage == "ready_for_small_real_task_validation"
+            and acceptance_correctness is not None
+            and acceptance_correctness.get("status") != "pass"
+        ):
+            stage = "acceptance_correctness_failed"
+            actions = [
+                "Real verification (run_tests/run_command) in the acceptance runs is not green; "
+                "repair code correctness before release.",
+                str(acceptance_correctness.get("reason") or ""),
+                *actions,
+            ]
         policy = self._policy()
         env_capabilities = {
             "strong_model_configured": bool(route_environment.get("strong", {}).get("configured")),
@@ -519,8 +542,43 @@ class GateStatusCommand:
                 validation_path,
                 core_path,
             ),
+            acceptance_correctness=acceptance_correctness or {},
             next_actions=actions,
         )
+
+    def _acceptance_correctness(self, *reports: dict[str, Any]) -> dict[str, Any] | None:
+        """Grade the acceptance runs on REAL executable-verification evidence (ADR-0018).
+
+        Scans each acceptance report's scenarios, resolves each scenario's run_dir from its
+        recorded ``workspace`` + ``summary.run_id``, and grades correctness via
+        ``CorrectnessEvalCommand.score_signal`` (fraction of ``run_tests``/``run_command`` calls
+        that actually passed). Returns the WORST graded signal across scenarios, or ``None`` when
+        no scenario recorded any executable verification (nothing to fabricate — matches
+        ``score_signal``'s own contract). Reads persisted evidence only; re-executes nothing.
+        """
+        grader = CorrectnessEvalCommand(self.root)
+        graded: list[dict[str, Any]] = []
+        for report in reports:
+            for scenario in report.get("scenarios") or []:
+                if not isinstance(scenario, dict):
+                    continue
+                workspace = scenario.get("workspace")
+                if not workspace:
+                    continue
+                summary = scenario.get("summary")
+                run_id = summary.get("run_id") if isinstance(summary, dict) else None
+                run_dir = _scenario_run_dir(
+                    Path(str(workspace)), str(run_id) if run_id else None
+                )
+                if run_dir is None:
+                    continue
+                signal = grader.score_signal(run_dir)
+                if signal is not None:
+                    graded.append(signal)
+        if not graded:
+            return None
+        rank = {"fail": 0, "partial": 1, "pass": 2}
+        return min(graded, key=lambda item: rank.get(str(item.get("status")), 0))
 
     def _policy(self) -> dict[str, Any]:
         agent_dir = self.root / ".asteria"
