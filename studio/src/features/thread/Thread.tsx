@@ -236,11 +236,11 @@ export function Thread({
 
   return (
     <section className="thread" ref={threadRef}>
-      {/* The plan/phase strip is live progress, not conversation — pin it only while a run is
-          active (or auto-repairing). Once the turn completes it folds away so the thread reads like
-          a chat, not a permanent dashboard; the finished plan/process lives inside the assistant
-          message and the Inspector. */}
-      {((isRunning && plan) || repairProgress) && (
+      {/* The plan checklist is the loop's spine — the persistent, self-ticking task list that makes
+          a long autonomous run legible (Claude Code todos, Manus todo.md, Replit task list). It stays
+          visible after completion so the finished plan reads as "what got done". The phase strip is
+          live-progress only, so it shows while running and folds away when done. */}
+      {(plan || repairProgress) && (
         <div className="threadPlanBar">
           {plan && isRunning && <PhaseStrip phase={currentPhase} running={isRunning} />}
           {repairProgress && (
@@ -250,7 +250,7 @@ export function Thread({
               {repairProgress.budget > 0 ? ` / ${repairProgress.budget}` : ""}
             </span>
           )}
-          {plan && isRunning && <PlanChecklist plan={plan} defaultOpen={isRunning} />}
+          {plan && <PlanChecklist plan={plan} defaultOpen={isRunning} />}
         </div>
       )}
       {showProcessControls && (
