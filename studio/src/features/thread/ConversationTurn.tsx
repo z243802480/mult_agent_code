@@ -19,7 +19,7 @@ import { formatEventTime } from "./threadUtils";
 
 export type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
 
-function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff }: {
+function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, excludeFilePaths }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -33,6 +33,7 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   onTurnDiffSelect?: (turnIndex: number) => void;
   onAggregateDiffClick?: (turnIndex: number) => void;
   compactDiff?: boolean;
+  excludeFilePaths?: Set<string>;
 }) {
   const hasPendingPermission = steps.some((s) => s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"));
   const representative = middleRepresentativeEvent(steps);
@@ -43,7 +44,11 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
     setOpen(expandSignal.mode === "expand");
   }, [expandSignal?.id, expandSignal?.mode]);
   if (steps.length === 0) return null;
-  const fileChanges = extractFileChangesFromSteps(steps);
+  // Hide files already shown in an earlier turn so each file appears once (in the turn that first
+  // changed it) instead of repeating down the whole thread.
+  const fileChanges = extractFileChangesFromSteps(steps).filter(
+    (change) => !excludeFilePaths?.has(change.path),
+  );
   const fileStats = aggregateFileChangeStats(fileChanges);
 
   if (compactDiff) {
@@ -276,7 +281,7 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage, failed }: {
+export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, excludeFilePaths, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage, failed }: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -284,6 +289,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   isLast: boolean;
   isRunning: boolean;
   expandSignal: ProcessExpandSignal;
+  excludeFilePaths?: Set<string>;
   onFileChangeClick?: (path: string) => void;
   onFileAccept?: (path: string) => Promise<boolean> | void;
   onFileRevert?: (path: string) => Promise<boolean> | void;
@@ -396,6 +402,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
               onTurnDiffSelect={onTurnDiffSelect}
               onAggregateDiffClick={onAggregateDiffClick}
               compactDiff={compactDiff}
+              excludeFilePaths={excludeFilePaths}
             />
           )}
         </>

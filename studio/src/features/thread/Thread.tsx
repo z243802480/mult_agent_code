@@ -4,6 +4,7 @@ import { ThreadSkeleton } from "../../components/Skeleton";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
 import { toNarrativeEvents, buildRunNarrative } from "../../narrative";
 import { splitIntoTurns } from "../../turnDiff";
+import { extractFileChangesFromSteps } from "../../fileChanges";
 import type { StudioViewMode } from "../../hooks/useViewMode";
 import { RuntimeSnapshot, runtimeSnapshotActionable } from "./RuntimeSnapshot";
 import { runtimeSessionEvents } from "./runtimeNarrative";
@@ -140,6 +141,14 @@ export function Thread({
   const narrativeEvents = useMemo(() => toNarrativeEvents(sessionEvents), [sessionEvents]);
   const narrative = useMemo(() => buildRunNarrative(narrativeEvents), [narrativeEvents]);
   const turns = useMemo(() => splitIntoTurns(narrative.steps), [narrative.steps]);
+  // Files are deliverables, not per-message noise: once a file has been shown in an earlier turn it
+  // must not reappear as a "changed file" in every later turn (the event stream re-emits the same
+  // file_change many times across a resumed/multi-goal run). Precompute each turn's file paths so a
+  // turn can hide files already shown above it — each turn surfaces only what it newly touched.
+  const turnFilePaths = useMemo(
+    () => turns.map((turnSteps) => extractFileChangesFromSteps(turnSteps).map((change) => change.path)),
+    [turns],
+  );
   // B1: failed-turn markers + issue navigator. A turn "failed" if any of its steps errored or carries
   // a failed status (a tool that broke, a repair that gave up). In a long run these get buried in the
   // scrollback; we mark each turn and give a pill that cycles focus through them (1-based turn numbers
@@ -266,10 +275,14 @@ export function Thread({
       )}
       {visibleTurns.map((turnSteps, i) => {
         const globalIndex = turnIndexOffset + i;
+        // Files already shown in any earlier turn — this turn hides them so a file appears once,
+        // in the turn that first changed it, instead of repeating down the whole thread.
+        const priorFilePaths = new Set(turnFilePaths.slice(0, globalIndex).flat());
         return (
           <ConversationTurn
             key={turnSteps[0].id}
             steps={turnSteps}
+            excludeFilePaths={priorFilePaths}
             selected={selected}
             onSelect={onSelect}
             onPermit={onPermit}
