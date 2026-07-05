@@ -930,6 +930,20 @@
   border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
 }
 
+.turnVerifiedNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--good, #1a7f37);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+  padding: 4px 8px;
+  border-left: 2px solid var(--good, #1a7f37);
+  background: var(--good-subtle, rgba(26, 127, 55, 0.09));
+  border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
+}
+
 .turnFinal.failed {
   background: var(--bad-subtle);
   border-left: 2px solid var(--bad);

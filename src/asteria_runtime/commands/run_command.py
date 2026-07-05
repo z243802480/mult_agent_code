@@ -633,6 +633,11 @@ class RunCommand:
                 transcript_kind="verification",
                 ui_intent="work_progress",
                 data={"correctness": None},
+                # Stamp the machine discriminator on every verdict outcome (pass/fail/unrun) so the
+                # Studio thread can tell this graded verdict apart from generic review-phase steps
+                # that reuse transcript_kind="verification" (e.g. "Validation conclusion"). Without
+                # it, a later generic step shadows the real verdict and the UX nags "not verified".
+                telemetry={"correctness_status": "unrun", "correctness_score": None},
             )
             return None
         status = str(signal.get("status"))

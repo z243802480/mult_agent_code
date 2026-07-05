@@ -41,5 +41,13 @@ assert.ok(
   /verdict === "fail"/.test(runtimeNarrative),
   "a failing verification verdict must be surfaced, not hidden",
 );
+// The verdict must be identified by its machine marker (telemetry.correctness_status), NOT merely
+// by transcript_kind==="verification": generic review steps (e.g. "Validation conclusion") reuse
+// that kind and are emitted AFTER the verdict, so kind-only scanning lets them shadow a real pass
+// and wrongly nag the user. Lock the discriminator so that regression can't return.
+assert.ok(
+  /correctness_status/.test(runtimeNarrative),
+  "verdict detection must key off telemetry.correctness_status, not transcript_kind alone",
+);
 
 console.log("session-main-path contract passed");

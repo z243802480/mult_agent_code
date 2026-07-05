@@ -71,6 +71,9 @@ def test_no_executable_verification_is_honest_not_a_fake_pass(tmp_path: Path) ->
     assert ev["transcript_kind"] == "verification"
     assert "未运行" in ev["title"]
     assert ev["data"]["correctness"] is None
+    # Every graded verdict outcome carries the machine discriminator so the Studio thread can tell
+    # it apart from generic review-phase "verification" steps (which never set it).
+    assert ev["telemetry"]["correctness_status"] == "unrun"
 
 
 def test_missing_run_dir_never_aborts(tmp_path: Path) -> None:

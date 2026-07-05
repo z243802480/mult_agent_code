@@ -59,20 +59,26 @@ export function actionLabel(value: string): string {
  * in runDetail (final_report_summary) — no runtime change.
  */
 /**
- * Latest executable-verification verdict recorded by the /run loop, read from the `verification`
- * progress events in runDetail.user_progress (same source the thread renders). Returns "pass"/"fail"
- * for a real graded verdict, "unrun" when a verification event says nothing executable ran, and null
- * when no verification event exists at all. Pure projection — no runtime change.
+ * Latest executable-verification verdict recorded by the /run loop, read from its graded
+ * `verification` progress events in runDetail.user_progress (same source the thread renders).
+ * Returns "pass"/"fail" for a real graded verdict, "unrun" when the loop ran but nothing
+ * executable proved correctness, and null when the loop emitted no graded verdict at all.
+ *
+ * Discriminator: only the /run loop's own verdict carries `telemetry.correctness_status`. Generic
+ * review/validation steps reuse transcript_kind="verification" (e.g. "Validation conclusion") but
+ * never set it — and one of them is typically emitted AFTER the verdict. We must skip those, else a
+ * later generic step shadows the real verdict and a passing run is nagged as unverified. Pure
+ * projection — no runtime change.
  */
 export function latestCorrectnessVerdict(
   runDetail: RunDetailPayload | null,
 ): "pass" | "fail" | "unrun" | null {
   const events = (runDetail?.user_progress ?? []) as AnyRecord[];
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    if (String(events[index].transcript_kind ?? "") !== "verification") continue;
-    const correctness = asRecord(asRecord(events[index].data).correctness);
-    if (!Object.keys(correctness).length) return "unrun";
-    const status = String(correctness.status ?? "").toLowerCase();
+    const event = events[index];
+    if (String(event.transcript_kind ?? "") !== "verification") continue;
+    const status = String(asRecord(event.telemetry).correctness_status ?? "").toLowerCase();
+    if (!status) continue; // generic review-phase step, not the graded verdict — keep scanning
     if (status === "pass") return "pass";
     if (status === "fail" || status === "partial") return "fail";
     return "unrun";

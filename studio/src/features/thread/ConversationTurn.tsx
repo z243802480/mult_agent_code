@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Brain, ChevronRight, Loader2, Pencil, Wrench } from "lucide-react";
+import { Brain, Check, ChevronRight, Loader2, Pencil, Wrench } from "lucide-react";
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../../types";
 import { NarrativeStep } from "../../components/NarrativeStep";
 import { PermissionCard } from "../../components/PermissionCard";
@@ -10,7 +10,7 @@ import { extractFileChangesFromSteps, aggregateFileChangeStats } from "../../fil
 import { LiveStream } from "./LiveStream";
 import { ToolCallCard } from "./ToolCallCard";
 import { TurnFinal } from "./TurnFinal";
-import { runVerificationHint } from "./runtimeNarrative";
+import { runVerificationHint, latestCorrectnessVerdict } from "./runtimeNarrative";
 import { cleanReasoning } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
@@ -322,6 +322,11 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   // Honesty: /run reports lifecycle "completed" but does not inline-run review, so qualify the
   // conclusion with a plain "done but not yet verified" note when the run is unverified.
   const unverifiedHint = responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null) : "";
+  // Symmetry: when the /run loop recorded a passing executable verdict, affirm it explicitly. A bare
+  // "completed" with the nag merely suppressed leaves the user unsure verification even happened —
+  // the positive badge closes the "completed ≠ verified" gap honestly.
+  const verifiedPass = responseStep && isLast && !isRunning
+    && latestCorrectnessVerdict(runDetail ?? null) === "pass";
 
   return (
     <div className={`conversationTurn${failed ? " failed" : ""}`} id={turnIndex ? `thread-turn-${turnIndex}` : undefined} data-failed={failed ? "true" : undefined}>
@@ -386,6 +391,12 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
       {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
       {unverifiedHint && (
         <div className="turnUnverifiedNote" role="note">{unverifiedHint}</div>
+      )}
+      {verifiedPass && (
+        <div className="turnVerifiedNote" role="note">
+          <Check size={12} />
+          <span>Verification passed — the recorded tests/checks ran green.</span>
+        </div>
       )}
       {responseStep && isLast && onSuggestedAction && !suppressSuggested && (
         <SuggestedActions steps={restSteps} onAction={onSuggestedAction} />
