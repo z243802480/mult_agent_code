@@ -548,7 +548,8 @@
 .toolCardStatus.waiting_user { color: var(--permission-accent); }
 .toolCard.running .toolCardStatus { color: var(--accent); }
 
-.toolCardOutput.clampedOutput pre {
+.toolCardOutput.clampedOutput pre,
+.stepVerificationDetail.clampedOutput pre {
   background: var(--surface-0);
   border-top: 1px solid var(--border-subtle);
   color: var(--text-secondary);
@@ -559,6 +560,13 @@
   padding: 5px 8px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.stepVerificationDetail.clampedOutput {
+  margin: 4px 0 2px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .liveModelText.clampedOutput pre {

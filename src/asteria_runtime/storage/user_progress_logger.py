@@ -561,6 +561,7 @@ class UserProgressLogger:
         phase: str = "review",
         status: str = "completed",
         evidence_refs: list[str] | None = None,
+        content_delta: str = "",
     ) -> dict[str, Any]:
         return self.record(
             run_id=run_id,
@@ -570,6 +571,8 @@ class UserProgressLogger:
             status=status,
             title=title,
             summary=summary,
+            # Real verification commands + outcomes (ADR-0021), rendered on the main-thread card.
+            content_delta=content_delta,
             evidence_refs=evidence_refs,
             data={"validation": validation},
             call_chain=["RunCommand"],

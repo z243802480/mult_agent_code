@@ -19,6 +19,7 @@ import {
 import type { NarrativeStep as NarrativeStepType, StudioEvent } from "../types";
 import { Status } from "./Shared";
 import { EventCard } from "./EventCard";
+import { ClampedOutput } from "./ClampedOutput";
 import { capabilityInfo } from "../capability";
 
 function formatEventTime(value: unknown): string {
@@ -154,6 +155,11 @@ export function NarrativeStep({
         <div className="stepExpanded">
           {step.summary && step.summary !== step.title && (
             <p className="stepSummaryText">{step.summary}</p>
+          )}
+          {/* Real verification commands + outcomes (ADR-0021): `✓/✗ $ <command>` lines carried on the
+              verification event's content_delta, shown as the actual checks that ran — not just a count. */}
+          {step.kind === "verification" && primary?.content_delta && (
+            <ClampedOutput text={primary.content_delta} className="stepVerificationDetail" maxLines={10} />
           )}
           <div className="stepEvents">
             {step.events.map((event) => (

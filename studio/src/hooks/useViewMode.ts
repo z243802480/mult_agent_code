@@ -18,6 +18,10 @@ function loadMode(): StudioViewMode {
   } catch {
     // ignore
   }
+  // NOTE (ADR-0021): the goal is process-visible-by-default ("normal"), but non-focus modes still
+  // surface internal lifecycle steps masquerading as tool cards ("工具结果"/"已选择权限模式"/"Starting").
+  // Flip the default to "normal" only after slice 2 cleans that noise, so the default view is real
+  // process — not a noisy dump. Until then keep "focus" as the default.
   return "focus";
 }
 

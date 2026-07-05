@@ -136,6 +136,12 @@ class TaskAttemptRunner:
                     if verification_results
                     else f"{task_id}：未记录验证命令。"
                 ),
+                # Real per-command evidence on the main thread (ADR-0021): the actual verification
+                # command + pass/fail + first output line, so the user sees the real check that ran
+                # instead of only an "N/N passed" count. Full stdout/stderr stays in validation_results.
+                content_delta=self._verification_detail(
+                    action.get("verification") or [], verification_results
+                ),
                 validation={
                     "task_id": task_id,
                     "passed": verification_passed,
@@ -727,6 +733,31 @@ class TaskAttemptRunner:
             task_id=str(task.get("task_id") or ""),
             trigger=f"task_attempt:{stage}",
         )
+
+    def _verification_detail(self, calls: list[Any], results: list[Any]) -> str:
+        """Render the real verification commands + outcomes for the main-thread card (ADR-0021).
+
+        One line per check: `✓/✗ $ <command>` plus the first line of the tool's own summary. The
+        command comes from the verification call args (same source as validation_results.jsonl); the
+        outcome comes from the real ToolResult. No fabrication — empty when nothing ran.
+        """
+        lines: list[str] = []
+        for index, result in enumerate(results):
+            call = calls[index] if index < len(calls) else {}
+            args = call.get("args") if isinstance(call, dict) and isinstance(call.get("args"), dict) else {}
+            command = str(
+                args.get("command")
+                or (call.get("tool_name") if isinstance(call, dict) else "")
+                or "verification"
+            ).strip()
+            mark = "✓" if getattr(result, "ok", False) else "✗"
+            summary_lines = str(getattr(result, "summary", "") or "").strip().splitlines()
+            summary_text = summary_lines[0].strip() if summary_lines else ""
+            line = f"{mark} $ {command}"
+            if summary_text and summary_text != command:
+                line += f"\n    {summary_text}"
+            lines.append(line)
+        return "\n".join(lines)
 
     def _file_changes(self, paths: list[str], operation: str) -> list[dict[str, Any]]:
         event_type = "file_created" if operation == "created" else "file_modified"
