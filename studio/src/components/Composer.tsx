@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ClipboardList, FileText, Loader2, MessageCircle, PlayCircle, Send, ShieldCheck, Square, X } from "lucide-react";
+import { FileText, Loader2, MessageCircle, Send, Square, X } from "lucide-react";
 import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, legacyPermission, type PermissionTierId } from "../permissionTiers";
 import type { WorkspaceFile } from "../types";
 
@@ -56,30 +56,6 @@ const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string; s
   { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
   { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
 ];
-
-function actionProfile(mode: Mode, permission: string) {
-  const effective = mode === "auto" ? "auto" : mode;
-  if (effective === "chat") {
-    return { icon: <MessageCircle size={13} />, label: "Chat", permission: "Read-only", tone: "good" as const };
-  }
-  if (effective === "plan") {
-    return { icon: <ClipboardList size={13} />, label: "Plan", permission: "Read-only", tone: "good" as const };
-  }
-  if (effective === "run") {
-    return {
-      icon: <PlayCircle size={13} />,
-      label: "Goal",
-      permission: permission === "allow" ? "Safe actions" : "Ask first",
-      tone: (permission === "allow" ? "warn" : "neutral") as "warn" | "neutral",
-    };
-  }
-  return {
-    icon: <ShieldCheck size={13} />,
-    label: "Auto",
-    permission: permission === "allow" ? "Safe actions" : "Ask first",
-    tone: (permission === "allow" ? "warn" : "neutral") as "warn" | "neutral",
-  };
-}
 
 export function Composer({
   onSend,
@@ -236,9 +212,6 @@ export function Composer({
   const isAuto = mode === "auto" && !sideAsk;
   const isChat = mode === "chat" || sideAsk;
   const showPermission = !sideAsk && (mode === "auto" || mode === "run");
-  const profile = sideAsk
-    ? { icon: <MessageCircle size={13} />, label: "Quick ask", permission: "Off-thread", tone: "good" as const }
-    : actionProfile(mode, permission);
   const placeholder = sideAsk
     ? "Quick ask — off-thread, with session context (Enter send)…"
     : isRunning
@@ -334,42 +307,31 @@ export function Composer({
               <span>Quick ask</span>
             </button>
           )}
+          {/* Two compact dropdowns instead of 7 radio buttons: a mainstream composer exposes at most
+              a mode picker — the fine-grained controls collapse into selects so the input bar reads
+              clean. All modes/tiers and their runtime wiring are unchanged. */}
           {!sideAsk && (
-            <>
-              <div className="segmented composerModeSegmented" role="radiogroup" aria-label="Mode">
+            <label className="composerSelect" title="Mode">
+              <select value={mode} onChange={(event) => setMode(event.target.value as Mode)} aria-label="Mode">
                 {PRIMARY_MODES.map((item) => (
-                  <button
-                    type="button"
-                    key={item}
-                    role="radio"
-                    aria-checked={mode === item}
-                    className={mode === item ? "active" : ""}
-                    onClick={() => setMode(item)}
-                  >
-                    {MODE_LABELS[item]}
-                  </button>
+                  <option key={item} value={item}>{MODE_LABELS[item]}</option>
                 ))}
-              </div>
-            </>
+              </select>
+            </label>
           )}
           {showPermission && (
-            <div className="segmented composerPermissionSegmented" role="radiogroup" aria-label="Permission tier">
-              {PERMISSION_TIERS.map((tier) => (
-                <button
-                  type="button"
-                  key={tier.id}
-                  role="radio"
-                  aria-checked={permissionMode === tier.id}
-                  className={permissionMode === tier.id ? "active" : ""}
-                  title={tier.hint}
-                  onClick={() => setPermissionMode(tier.id)}
-                >
-                  {tier.label}
-                </button>
-              ))}
-            </div>
+            <label className="composerSelect" title="Permission — how much Asteria may do without asking">
+              <select
+                value={permissionMode}
+                onChange={(event) => setPermissionMode(event.target.value as PermissionTierId)}
+                aria-label="Permission tier"
+              >
+                {PERMISSION_TIERS.map((tier) => (
+                  <option key={tier.id} value={tier.id}>{tier.label}</option>
+                ))}
+              </select>
+            </label>
           )}
-          <span className="composerPermissionHint">{profile.permission}</span>
         </div>
         {isRunning && onStop && !sideAsk ? (
           <button className="composerSend composerStop" type="button" onClick={() => void onStop()} title="Stop the running task">

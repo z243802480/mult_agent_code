@@ -236,9 +236,13 @@ export function Thread({
 
   return (
     <section className="thread" ref={threadRef}>
-      {(plan || repairProgress) && (
+      {/* The plan/phase strip is live progress, not conversation — pin it only while a run is
+          active (or auto-repairing). Once the turn completes it folds away so the thread reads like
+          a chat, not a permanent dashboard; the finished plan/process lives inside the assistant
+          message and the Inspector. */}
+      {((isRunning && plan) || repairProgress) && (
         <div className="threadPlanBar">
-          {plan && <PhaseStrip phase={currentPhase} running={isRunning} />}
+          {plan && isRunning && <PhaseStrip phase={currentPhase} running={isRunning} />}
           {repairProgress && (
             <span className="repairProgressChip" role="status" aria-live="polite">
               <RefreshCw size={12} className="spinning" />
@@ -246,7 +250,7 @@ export function Thread({
               {repairProgress.budget > 0 ? ` / ${repairProgress.budget}` : ""}
             </span>
           )}
-          {plan && <PlanChecklist plan={plan} defaultOpen={isRunning} />}
+          {plan && isRunning && <PlanChecklist plan={plan} defaultOpen={isRunning} />}
         </div>
       )}
       {showProcessControls && (

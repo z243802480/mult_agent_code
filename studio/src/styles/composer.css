@@ -160,6 +160,17 @@
   font-size: 10px;
 }
 
+/* Compact dropdowns that replace the mode + permission radio rows — one clean control each. */
+.composerSelect {
+  display: inline-flex;
+  align-items: center;
+}
+
+.composerSelect select {
+  appearance: auto;
+  cursor: pointer;
+}
+
 .composerSend {
   align-items: center;
   background: var(--accent);

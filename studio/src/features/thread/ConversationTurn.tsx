@@ -376,6 +376,10 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
         )
       ) : (
         <>
+          {/* Answer-first (Cursor / Claude Code): lead with the assistant's prose answer, then fold
+              the reasoning + process + file cards BELOW it. Leading with process is what made the
+              thread read like a dashboard instead of a reply. */}
+          {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
           {thinkingSteps.length > 0 && <ThinkingBlock steps={thinkingSteps} />}
           {processSteps.length > 0 && (
             <TurnMiddle
@@ -396,7 +400,6 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
           )}
         </>
       )}
-      {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
       {unverifiedHint && (
         <div className="turnUnverifiedNote" role="note">{unverifiedHint}</div>
       )}
