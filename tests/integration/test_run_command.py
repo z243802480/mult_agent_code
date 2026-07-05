@@ -1434,6 +1434,47 @@ def test_auto_goal_replan_escalates_to_decision_and_pauses(tmp_path: Path) -> No
     assert any(step.name == "replan" and step.status == "paused" for step in steps)
 
 
+def test_run_command_auto_goal_replan_closes_loop_end_to_end(tmp_path: Path) -> None:
+    # ADR-0017 COMPOSITION: exercise the REAL run() loop, not the helper in isolation. With
+    # auto_replan_goal ON, task-0001 blocks (verification fails), the block boundary auto-invokes
+    # ReplanCommand within its bounds (a repair task is created), `continue` re-enters the loop, and
+    # the replanned repair task executes to completion. This proves the cross-layer seam — task-loop
+    # block -> run-loop goal-replan -> continue -> re-execute — actually composes, and that the
+    # auto-replan is honestly surfaced to the user on the main thread (not a silent plan mutation).
+    InitCommand(tmp_path).run()
+    _patch_policy(
+        tmp_path,
+        lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_replan_goal", True),
+    )
+
+    result = RunCommand(
+        tmp_path,
+        "create a repairable module",
+        plan_model_client=FakePlanClient(),
+        execute_model_client=FakeReplanExecuteClient(),
+        review_model_client=FakeReviewClient(),
+        enable_research=False,
+    ).run()
+
+    # The loop closed within the same goal instead of stopping blocked: the replanned repair task ran
+    # and left the corrected artifact behind.
+    module = tmp_path / "complete_module.py"
+    assert module.exists()
+    assert "return 42" in module.read_text(encoding="utf-8")
+
+    # A goal-level replan step actually fired (proving this was a re-decomposition, not a lucky pass).
+    assert any(step.name == "replan" and step.status == "completed" for step in result.steps)
+
+    # ... and the auto-replan was honestly visible to the user on the main thread.
+    run_dir = tmp_path / ".asteria" / "runs" / result.run_id
+    progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(event["title"] == "自动重规划已创建修复任务" for event in progress)
+
+
 def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -> None:
     result = RunCommand(
         tmp_path,
