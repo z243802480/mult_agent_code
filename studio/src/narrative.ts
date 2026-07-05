@@ -73,6 +73,10 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
   if (transcriptKind === "verification") return "verification";
   if (transcriptKind === "repair") return "repair";
+  // Evidence/diagnostic RECORDS are quiet process rows, never the closing answer (ADR-0021). Mapping
+  // them to "observation" keeps them foldable in the process detail instead of leaking into the
+  // ThinkingBlock or (worse) being picked up as the final reply.
+  if (transcriptKind === "diagnostic") return "observation";
   // The final-report event is a diagnostic artifact pointer, not the conversational closing
   // reply (ADR-0012). Keep it in the process stream so the conclusion message — which now
   // carries the agent's authored recap (CV-C) — is the step rendered as the final answer.

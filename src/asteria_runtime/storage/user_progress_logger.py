@@ -284,6 +284,14 @@ class UserProgressLogger:
             return "file_change"
         if channel == "validation":
             return "verification"
+        if channel == "evidence":
+            # Evidence-channel events (e.g. "Validation results recorded", "task-X completed with
+            # verified evidence") are diagnostic RECORDS, never the conversational final answer. Without
+            # this branch a phase="result" evidence event fell through to the phase=="result"→"final"
+            # rule below and got rendered as the agent's closing reply — a harness self-certification
+            # impersonating the model (ADR-0021). The real final is the model recap on the "conclusion"
+            # channel. Keep evidence as a quiet process record instead.
+            return "diagnostic"
         if channel == "permission":
             return "permission_request" if event_type == "permission_request" else "decision_request"
         if channel == "conclusion":

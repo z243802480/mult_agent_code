@@ -15,8 +15,12 @@ const ERROR_CATEGORY_LABELS: Record<string, string> = {
 
 export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
   const event = step.events[0];
-  const text = event?.content_delta || step.summary || step.title || "";
+  // The closing answer is the MODEL's real prose only (its streamed content_delta / recap). We do NOT
+  // fall back to step.summary/title — those are harness-authored status strings ("task-X completed
+  // with verified evidence"), and using them here is a self-certification impersonating the model
+  // (ADR-0021). When the model produced no prose, render nothing / a neutral note — never a fake pass.
   const isError = step.kind === "error" || step.status === "failed";
+  const text = event?.content_delta || (isError ? (event?.summary || step.summary || "") : "");
   const visibleText = humanizeRunConclusion(stripContextNoise(cleanReasoning(text)));
   const modelMeta = turnModelMetadata(middleSteps, step);
   const { lead, details } = splitLeadAndDetails(visibleText);
