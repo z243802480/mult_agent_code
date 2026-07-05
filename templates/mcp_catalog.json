@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.1.0",
+  "description": "Curated catalog of well-known reference MCP servers, offered as opt-in defaults. Nothing here is active out of the box: the workspace ships with mcp.servers=[] so a fresh run reaches no MCP server and stays offline/local-first. `asteria mcp enable <name>` copies an entry into the workspace policy; `asteria mcp disable <name>` removes it. Notes are honest about network reach, required runtimes, and overlap with native tools so the operator chooses deliberately.",
+  "runtime_note": "These reference servers are launched via `npx`/`uvx`, which fetch the package from the public registry on first use (needs Node or uv installed, and network on that first fetch). They are OFF by default to preserve the offline/local-first posture; enable only the ones your environment actually supports.",
+  "servers": [
+    {
+      "name": "git",
+      "command": ["uvx", "mcp-server-git"],
+      "description": "Structured read-only git repository access: log, diff, blame, show, branch/status.",
+      "reaches_network": false,
+      "requires_runtime": "uvx (Python / uv)",
+      "recommended": true,
+      "notes": "Highest-value local server for a coding engine. Overlaps the native run_command `git ...`; enable when you want the model to see structured git tools rather than parse raw CLI output."
+    },
+    {
+      "name": "fetch",
+      "command": ["uvx", "mcp-server-fetch"],
+      "description": "Fetch a URL and convert HTML to Markdown for documentation/spec lookup.",
+      "reaches_network": true,
+      "requires_runtime": "uvx (Python / uv)",
+      "recommended": false,
+      "notes": "REACHES THE NETWORK. Adds a genuine new capability (doc/spec retrieval) but also a prompt-injection and data-exfiltration surface. Enable only under a network policy you trust (internal wiki / allow-listed docs), never open-web by default."
+    },
+    {
+      "name": "filesystem",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."],
+      "description": "Sandboxed file read/write/list rooted at the given directory.",
+      "reaches_network": false,
+      "requires_runtime": "npx (Node.js)",
+      "recommended": false,
+      "notes": "Overlaps the native read_file/write_file/edit_file/list_files tools, which already enforce protected-path policy. Enable only for parity with other MCP clients; the native tools are the local-first default. Replace the trailing '.' argument with the root you want exposed."
+    },
+    {
+      "name": "time",
+      "command": ["uvx", "mcp-server-time"],
+      "description": "Current time and timezone conversion.",
+      "reaches_network": false,
+      "requires_runtime": "uvx (Python / uv)",
+      "recommended": false,
+      "notes": "Small, harmless helper. Useful only if tasks need timezone-aware reasoning or scheduling."
+    },
+    {
+      "name": "memory",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-memory"],
+      "description": "Persistent knowledge-graph memory across sessions.",
+      "reaches_network": false,
+      "requires_runtime": "npx (Node.js)",
+      "recommended": false,
+      "notes": "Overlaps the runtime's own .asteria persistence and file-based memory; enabling it introduces a second, uncoordinated memory store. Consider before turning on."
+    },
+    {
+      "name": "sequential-thinking",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "External step-by-step reasoning scaffold.",
+      "reaches_network": false,
+      "requires_runtime": "npx (Node.js)",
+      "recommended": false,
+      "notes": "NOT RECOMMENDED here: it externalizes reasoning into a fixed scaffold, which conflicts with ADR-0016 (planning/repair/verification cognition should emerge from the model, not a bolted-on state machine). Listed for completeness and operator choice; off by default."
+    }
+  ]
+}

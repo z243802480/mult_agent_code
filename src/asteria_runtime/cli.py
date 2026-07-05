@@ -38,6 +38,7 @@ from asteria_runtime.commands.gate_command import GateCommand
 from asteria_runtime.commands.validation_run_command import ValidationRunCommand
 from asteria_runtime.commands.handoff_command import HandoffCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.mcp_command import McpCommand
 from asteria_runtime.commands.plugins_command import PluginsCommand
 from asteria_runtime.commands.promotions_command import PromotionsCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
@@ -612,6 +613,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plugins_parser.add_argument("--plugin-id", default=None, help="Plugin id to operate on")
     plugins_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print machine-readable JSON",
+    )
+
+    mcp_parser = subcommands.add_parser(
+        "mcp",
+        aliases=["/mcp"],
+        help="Inspect the curated MCP server catalog and enable/disable servers (opt-in)",
+    )
+    mcp_parser.add_argument("--root", default=".", help="Workspace root path")
+    mcp_parser.add_argument(
+        "mcp_action",
+        nargs="?",
+        choices=["list", "enable", "disable"],
+        default="list",
+        help="MCP catalog action (default: list)",
+    )
+    mcp_parser.add_argument(
+        "--name",
+        default=None,
+        help="Catalog server name to enable/disable (e.g. git, fetch)",
+    )
+    mcp_parser.add_argument(
         "--json",
         action="store_true",
         help="Print machine-readable JSON",
@@ -1786,6 +1811,19 @@ def _run_cli() -> None:
             print(plugins_result.to_text())
         if args.plugin_action == "doctor" and not plugins_result.ok:
             raise SystemExit(1)
+        return
+
+    if command == "mcp":
+        mcp_command = McpCommand(
+            root=Path(args.root),
+            action=args.mcp_action,
+            name=args.name,
+        )
+        mcp_result = mcp_command.run()
+        if args.json:
+            print(mcp_command.to_json(mcp_result))
+        else:
+            print(mcp_result.to_text())
         return
 
     if command == "research":
