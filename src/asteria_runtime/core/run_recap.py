@@ -34,7 +34,11 @@ _SYSTEM_PROMPT = (
     "passed, and — only if it is genuinely useful — the single best next step. Be "
     "honest: if the run was blocked or verification failed, say so plainly. Match "
     "the language of the goal (reply in Chinese when the goal is in Chinese). Do not "
-    "invent results that are not supported by the context below."
+    "invent results that are not supported by the context below. "
+    "Output ONLY the recap itself. Do NOT think out loud, do NOT restate or analyze "
+    "the task, and do NOT write meta sentences such as 'The user wants me to…', "
+    "'The task involves…', 'Let me…', or 'As Asteria, a coding agent…'. Start "
+    "directly with what you did (e.g. 'I added…' / '我已…')."
 )
 
 # Hard caps so a misbehaving model can never bloat the main thread.
@@ -48,6 +52,53 @@ _MAX_FILES = 12
 # was too small: the whole budget went to thinking and the answer was never emitted).
 _MAX_OUTPUT_TOKENS = 2048
 _THINK_BLOCK = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+# Plain-prose chain-of-thought that reasoning models emit WITHOUT <think> tags: the model narrates
+# its plan ("The user wants me to write a recap… The task involves…") instead of writing the recap,
+# and the length clamp then truncates it mid-thought so the real recap never appears. When the
+# (already <think>-stripped) text opens with such meta-narration, treat the recap as failed and
+# return "" so the caller falls back to the clean structured summary rather than leaking planning
+# prose onto the main thread.
+_META_PREAMBLE_SIGNATURES = (
+    "the user wants",
+    "the user asked",
+    "the user is asking",
+    "the user's goal",
+    "the task involves",
+    "the task is to",
+    "the goal is to",
+    "i need to write",
+    "i should write",
+    "i will write",
+    "i'll write",
+    "let me write",
+    "let me summarize",
+    "let me recap",
+    "as asteria, a coding agent",
+    "write a closing recap",
+    "closing recap as",
+    "here is the recap",
+    "here's the recap",
+    "用户想",
+    "用户希望",
+    "用户要求",
+    "用户的目标",
+    "任务包括",
+    "任务是",
+    "目标是",
+    "让我写",
+    "让我总结",
+    "让我来",
+    "我需要写",
+    "我应该写",
+    "我来写一个",
+)
+
+
+def _looks_like_reasoning_preamble(text: str) -> bool:
+    """True when the recap opens with plan-narration instead of the recap itself."""
+    head = text.lstrip("\"'“”‘’ \t").lower()[:80]
+    return any(head.startswith(sig) for sig in _META_PREAMBLE_SIGNATURES)
 
 
 def author_run_recap(
@@ -163,6 +214,9 @@ def _clean(text: str) -> str:
         if line:
             cleaned_lines.append(line)
     joined = " ".join(cleaned_lines).strip()
+    # Untagged chain-of-thought leaked as prose: fall back to the structured summary instead.
+    if _looks_like_reasoning_preamble(joined):
+        return ""
     if len(joined) > _MAX_CHARS:
         joined = joined[:_MAX_CHARS].rstrip() + "…"
     return joined
