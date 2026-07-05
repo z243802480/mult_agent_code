@@ -51,6 +51,14 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
       <div className="turnMiddle compact">
         {fileStats.files > 0 && (
           <div className="turnFileRowWrap">
+            {/* The files ARE the deliverable — name them (click → diff) instead of hiding the
+                product behind a bare "N files" count. The aggregate chip stays as the open-full-diff
+                affordance. This is what makes the main thread read as artifacts, not just process. */}
+            <FileChangeChips
+              changes={fileChanges}
+              className="turnFileRow"
+              onSelect={onFileChangeClick}
+            />
             <AggregateDiffChip
               files={fileStats.files}
               additions={fileStats.additions}

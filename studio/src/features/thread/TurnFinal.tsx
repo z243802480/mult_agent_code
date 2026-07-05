@@ -17,7 +17,7 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const event = step.events[0];
   const text = event?.content_delta || step.summary || step.title || "";
   const isError = step.kind === "error" || step.status === "failed";
-  const visibleText = stripContextNoise(cleanReasoning(text));
+  const visibleText = humanizeRunConclusion(stripContextNoise(cleanReasoning(text)));
   const modelMeta = turnModelMetadata(middleSteps, step);
   const { lead, details } = splitLeadAndDetails(visibleText);
   // Honesty: never fabricate a "Done." success for a content-less non-error final. Show the real
@@ -68,6 +68,30 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
       </div>
     </div>
   );
+}
+
+/**
+ * When the model-authored recap is empty, the runtime's fallback conclusion is a status line that
+ * leaks internals — `Run run-20260705-0002 已完成，状态：completed。共 4 个执行步骤。` (run id, status
+ * enum, step count). The outcome the user cares about is already carried by the file cards + the
+ * verification badge, so project that template to a plain human sentence. Non-matching text (a real
+ * conversational recap) passes through untouched.
+ */
+function humanizeRunConclusion(text: string): string {
+  const match = String(text || "").match(
+    /^Run\s+run-[\w-]+\s+已完成，状态：(\w+)。共\s*\d+\s*个执行步骤。?\s*$/,
+  );
+  if (!match) return text;
+  switch (match[1].toLowerCase()) {
+    case "completed":
+      return "已完成本次任务。";
+    case "blocked":
+      return "本次运行被阻塞，需要你处理后再继续。";
+    case "paused":
+      return "本次运行已暂停。";
+    default:
+      return "本次运行已结束。";
+  }
 }
 
 function stripContextNoise(text: string): string {
