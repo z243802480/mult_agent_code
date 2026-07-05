@@ -29,6 +29,7 @@ class RouteDiagnostic:
     fallback_source: str | None = None
     fallback_reason: str | None = None
     selection_reason: str = "explicit_route"
+    returns_canned_output: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -40,6 +41,11 @@ class RouteDiagnostic:
             "env_prefix": self.env_prefix,
             "source": self.source,
             "api_key_present": self.api_key_present,
+            # ADR-0016 §3 honesty: the fake/offline provider fabricates output. Surface that
+            # explicitly so no consumer (doctor, gate-status, Studio) presents a canned tier as a
+            # real, "configured" model. `configured` stays true (an offline run is intentional), but
+            # this flag makes the canned output impossible to mistake for a real provider.
+            "returns_canned_output": self.returns_canned_output,
             "streaming": {
                 "enabled": self.streaming_enabled,
                 "idle_timeout_seconds": self.stream_idle_timeout_seconds,
@@ -94,6 +100,7 @@ def route_diagnostic_for_tier(tier: str) -> RouteDiagnostic:
         fallback_source=source if fallback_used else None,
         fallback_reason=_fallback_reason(tier, source) if fallback_used else None,
         selection_reason=selection_reason,
+        returns_canned_output=provider in {"fake", "offline"},
     )
 
 

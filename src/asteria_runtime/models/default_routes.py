@@ -35,7 +35,7 @@ DEFAULT_MODEL_ROUTES: dict[str, DefaultModelRoute] = {
         tier="cheap",
         provider="fake",
         model_name="fake-offline",
-        base_url="local offline provider",
+        base_url="offline canned placeholder (fabricated output — not a real model)",
         deadline_seconds=30,
         stream_idle_timeout_seconds=30,
     ),

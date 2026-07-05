@@ -1076,6 +1076,34 @@ def test_doctor_checks_initialized_workspace_and_routes(tmp_path: Path, monkeypa
     )
 
 
+def test_doctor_flags_canned_output_for_fake_default_route(tmp_path: Path, monkeypatch) -> None:
+    # ADR-0016 §3 honesty: with no model env configured the `cheap` tier resolves to the fake
+    # default, which fabricates output. Doctor must not present it as a plain green route — it warns
+    # and says CANNED explicitly, but stays non-blocking (offline is intentional).
+    InitCommand(tmp_path).run()
+    for key in list(os.environ):
+        if key.startswith("AGENT_MODEL") or key.endswith("_API_KEY"):
+            monkeypatch.delenv(key, raising=False)
+
+    result = DoctorCommand(tmp_path).run()
+    payload = result.to_dict()
+
+    # `cheap` is not a doctor check (only strong/medium are), but it IS in the routes table — the
+    # honesty flag + base_url must mark it as canned there.
+    cheap_route = payload["routes"]["cheap"]
+    assert cheap_route["returns_canned_output"] is True
+    assert "canned placeholder" in str(cheap_route["base_url"])
+
+    # A fully-offline `strong` route DOES render as a check: it must warn CANNED, stay non-blocking.
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "fake")
+    offline_payload = DoctorCommand(tmp_path).run().to_dict()
+    strong_check = next(c for c in offline_payload["checks"] if c["name"] == "model_strong")
+    assert strong_check["ok"] is True
+    assert strong_check["severity"] == "warning"
+    assert "CANNED" in strong_check["summary"]
+    assert offline_payload["routes"]["strong"]["returns_canned_output"] is True
+
+
 def test_doctor_reports_blocked_plugin_manifest(tmp_path: Path, monkeypatch) -> None:
     InitCommand(tmp_path).run()
     _write_plugin_manifest(tmp_path, hook_subscriptions=["unknown_hook"])

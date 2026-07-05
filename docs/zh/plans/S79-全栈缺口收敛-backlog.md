@@ -81,6 +81,17 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 
 关键发现：**acceptance 由 `status` 驱动、非数字 score**，`accept` 本就是独立人工命令(要求 `status==pass`)→"须人审"本就成立；1b 只把误导性假分诚实化、不阻断 docs 任务(保住 A1 顾虑)。全量 1186 passed·mypy·ruff 净。回滚闸：Golden-Task eval 若显示模型驱动 repair 可测更差→关 `auto_repair` 退回。
 
+**合规扫查收口 `e7f1650`**：全库扫 §1 认知漂移，唯一命中 `slice_completion_judge._deterministic_judge` 硬编码 `review_score<0.75`（北极星确定性兜底无视 policy），已改读同一 `min_review_score` policy（默认 None→不虚构门）；其余候选亲验为合法 §2/§3 边界，未误改。认知归模型这条线闭环。
+
+## S77 假默认档 · 定向诚实化（2026-07-05，接 ADR-0016 §3 证据线）
+
+S77 §7 把"假默认档 fail-loud"降为定向项（硬 fail 会反转 D-3 决策 + 砸离线测试基础，真实零配置默认其实是 minimax，非假货）。落地的不是硬 fail，而是**让 fake/offline 罐头输出在任何显示面都无法被误认成真实模型**：
+- ✅ **机器可读标记**：`RouteDiagnostic` + `ModelRouteResolution` 增 `returns_canned_output` 进 `to_dict()`（doctor/gate-status/status/Studio 路由表都消费）。fake/offline provider → True。
+- ✅ **doctor 诚实渲染**：落 fake/offline 的档 `severity="warning"` + 显式「returns CANNED placeholder output (not a real model); set AGENT_MODEL_<TIER>_PROVIDER … for real output」，但 `ok=True` **不翻红**（离线是合法意图，`DoctorResult.ok` 只被 `severity==error` 拉红）。
+- ✅ **显示表去中性化**：`default_routes`/`model_failure` 的 fake `base_url`「local offline provider」→「offline canned placeholder (fabricated output — not a real model)」。
+- 构造期既有 `_warn_if_tier_silently_offline`（D-3 混用告警）保留不动。
+- **验证**：+2 单测（route 诊断标记 / doctor 离线档 warning，`test_model_routing` + `test_control_surface_commands`）；全量 **922 单测绿**·mypy·ruff 净。**注**：`cheap` 不是 doctor check（仅 strong/medium 是），其诚实靠 routes 表标记；doctor warning 分支在 strong/medium 自身落 fake（全离线）时触发。
+
 ## Tier B 进展（逐项亲验中，2026-07-04）
 
 - ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**已提交 `678a4c5`**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。

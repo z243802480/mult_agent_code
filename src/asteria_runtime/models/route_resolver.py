@@ -25,6 +25,7 @@ class ModelRouteResolution:
     fallback_used: bool = False
     fallback_source: str | None = None
     fallback_reason: str | None = None
+    returns_canned_output: bool = False
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -33,6 +34,9 @@ class ModelRouteResolution:
             "model_name": self.model_name,
             "base_url": self.base_url,
             "configured": self.configured,
+            # ADR-0016 §3 honesty: a fake/offline route is "configured" but fabricates output;
+            # surface it so route-health consumers never present canned output as a ready model.
+            "returns_canned_output": self.returns_canned_output,
             "env_prefix": self.env_prefix,
             "source": self.source,
             "missing": self.missing,
@@ -67,6 +71,7 @@ def resolve_model_route(tier: str) -> ModelRouteResolution:
         fallback_used=diagnostic.fallback_used,
         fallback_source=diagnostic.fallback_source,
         fallback_reason=diagnostic.fallback_reason,
+        returns_canned_output=diagnostic.returns_canned_output,
     )
 
 

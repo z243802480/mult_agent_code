@@ -231,7 +231,7 @@ def _default_model(provider: str) -> str | None:
 
 def _default_base_url(provider: str, env_prefix: str) -> str | None:
     if provider in {"fake", "offline"}:
-        return "local offline provider"
+        return "offline canned placeholder (fabricated output — not a real model)"
     if provider in local_provider_names():
         return local_default_base_url(provider)
     if provider == "minimax":

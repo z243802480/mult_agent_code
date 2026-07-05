@@ -261,3 +261,20 @@ def test_route_resolver_uses_auditable_default_routes_when_route_missing() -> No
     assert cheap.model_name == "fake-offline"
     assert cheap.deadline_seconds == 30
     assert cheap.next_action.startswith("Using default route policy")
+    # ADR-0016 §3 honesty: the fake default is "configured" (runnable offline) but fabricates
+    # output — it must never be presentable as a real model.
+    assert cheap.returns_canned_output is True
+    assert cheap.to_dict()["returns_canned_output"] is True
+    assert "canned placeholder" in (cheap.base_url or "")
+    assert strong.returns_canned_output is False
+
+
+def test_route_diagnostic_flags_canned_output_for_fake_default() -> None:
+    from asteria_runtime.models.route_diagnostics import route_diagnostic_for_tier
+
+    cheap = route_diagnostic_for_tier("cheap")
+    assert cheap.provider == "fake"
+    assert cheap.returns_canned_output is True
+    payload = cheap.to_dict()
+    assert payload["returns_canned_output"] is True
+    assert "canned placeholder" in str(payload["base_url"])

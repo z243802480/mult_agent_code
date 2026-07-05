@@ -282,6 +282,19 @@ class DoctorCommand:
                 "missing: " + ", ".join(diagnostic.missing),
                 "warning",
             )
+        if diagnostic.returns_canned_output:
+            # ADR-0016 §3 honesty: the tier resolves to the fake/offline provider, which fabricates
+            # output. It IS runnable (offline is intentional) so this is not an error, but never
+            # present it as a real model — warn so the canned output is never mistaken for a run.
+            return DoctorCheck(
+                f"model_{tier}",
+                True,
+                f"{diagnostic.provider}/{diagnostic.model_name or 'model not set'} "
+                "returns CANNED placeholder output (not a real model); set "
+                f"AGENT_MODEL_{tier.upper()}_PROVIDER (or AGENT_MODEL_PROVIDER) to a real "
+                "provider for real output",
+                "warning",
+            )
         return DoctorCheck(
             f"model_{tier}",
             True,
