@@ -200,6 +200,11 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await handleDecisionResolve(sessionId, await readRequestJson(request)));
     return;
   }
+  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/decisions\/answer$/)) {
+    const sessionId = decodeURIComponent(url.pathname.split("/").at(-3) || "");
+    sendJson(response, 200, await handleDecisionAnswer(sessionId, await readRequestJson(request)));
+    return;
+  }
   if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs\/[^/]+\/permission$/)) {
     const parts = url.pathname.split("/");
     // /api/studio/sessions/SESSION_ID/jobs/JOB_ID/permission
@@ -500,6 +505,43 @@ async function handleDecisionResolve(sessionId, body) {
       : null;
   startRuntimeJob(activeSessionId, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
   return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, decision_id: decisionId, option_id: optionId, follow_up_mode: followUpMode };
+}
+
+// Open-ended ask: the model paused the loop with a free-text question (options empty,
+// metadata.kind === "open_question"). The user answers in prose; we record the answer and
+// resume the SAME loop so it continues with the answer folded in as guidance — Claude Code's
+// "ask", not a review gate. The answer is genuine user-typed content, so it shows in the thread.
+async function handleDecisionAnswer(sessionId, body) {
+  const session = await ensureSession(sessionId);
+  const activeSessionId = resolvedSessionId(session, sessionId);
+  const runId = String(body?.run_id || "").trim();
+  const decisionId = String(body?.decision_id || "").trim();
+  const answer = redactText(String(body?.answer || "")).trim();
+  if (!isSafeId(runId) || !isSafeId(decisionId)) {
+    return { ok: false, error: "invalid decision reference" };
+  }
+  if (!answer) return { ok: false, error: "answer is required" };
+  if (answer.length > 4000) return { ok: false, error: "answer is too long" };
+  const runDir = path.join(workspace, ".asteria", "runs", runId);
+  const decisions = latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 200));
+  const decision = decisions.find((item) => String(item.decision_id || "") === decisionId);
+  if (!decision || decision.status !== "pending") return { ok: false, error: "decision is not pending" };
+  const metadata = decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
+  if (metadata.kind !== "open_question") return { ok: false, error: "decision is not an open question" };
+  await appendEvent(activeSessionId, {
+    type: "user_message",
+    status: "completed",
+    title: "Answer",
+    summary: answer,
+    content_delta: answer,
+    phase: "decision",
+    display_level: "main",
+  });
+  await appendEvent(activeSessionId, progressEventForMode("decide", String(decision.question || decisionId)));
+  const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--answer", answer];
+  // Resume right after recording the answer so the loop continues with it as guidance.
+  startRuntimeJob(activeSessionId, "decide", `Answer ${decisionId}.`, command, { followUpMode: "resume" });
+  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, decision_id: decisionId };
 }
 
 function isSafeDecisionOptionId(value) {

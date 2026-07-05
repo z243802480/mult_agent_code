@@ -208,7 +208,7 @@ class ResumeCommand:
         resolved = [
             decision
             for decision in decisions
-            if decision["status"] in {"resolved", "defaulted"}
+            if decision["status"] in {"resolved", "defaulted", "answered"}
             and decision["decision_id"] not in applied_ids
         ]
         if not resolved:
@@ -220,6 +220,14 @@ class ResumeCommand:
         for decision in resolved:
             option = self._selected_option(decision)
             effect = "recorded"
+            open_answer = self._apply_open_question_answer(decision, task_plan, run_id)
+            if open_answer is not None:
+                open_effect, guidance_task = open_answer
+                if guidance_task is not None:
+                    created_tasks.append(guidance_task)
+                self._record_decision_applied(run_dir, run_id, decision, option, open_effect)
+                self._record_decision_memory(agent_dir, run_id, decision, option, open_effect)
+                continue
             if self._apply_execution_approval(decision, option, task_plan):
                 effect = "execution_approval_applied"
                 self._record_decision_applied(run_dir, run_id, decision, option, effect)
@@ -415,6 +423,100 @@ class ResumeCommand:
                 task["updated_at"] = now_iso()
                 return True
         return True
+
+    def _apply_open_question_answer(
+        self,
+        decision: dict,
+        task_plan: dict,
+        run_id: str,
+    ) -> tuple[str, dict | None] | None:
+        """Fold a user's free-text answer back into the loop.
+
+        An open question (metadata.kind == "open_question") answered via `decide --answer`
+        carries the user's prose in `decision["answer"]`. We turn that answer into a ready
+        guidance task so the same loop, on resume, continues with the answer in context —
+        the "problem resolved in interaction" path, not a review gate.
+        """
+        metadata = decision.get("metadata") or {}
+        if metadata.get("kind") != "open_question":
+            return None
+        answer = str(decision.get("answer") or "").strip()
+        if not answer:
+            return "open_question_empty_answer", None
+        task = self._guidance_task_from_answer(decision, answer, task_plan["tasks"], run_id)
+        self.validator.validate("task", task)
+        self._promote_ready_tasks(task_plan)
+        task_plan["tasks"].append(task)
+        return "open_question_answer_applied", task
+
+    def _guidance_task_from_answer(
+        self,
+        decision: dict,
+        answer: str,
+        existing_tasks: list[dict],
+        run_id: str,
+    ) -> dict:
+        next_index = self._next_task_index(existing_tasks)
+        dependency = self._last_active_task_id(existing_tasks)
+        description = (
+            f"Continue the work using the user's answer to your question.\n"
+            f"You asked: {decision.get('question') or ''}\n"
+            f"User answered: {answer}\n"
+            "Proceed with this answer as authoritative guidance."
+        )
+        return {
+            "schema_version": "0.1.0",
+            "task_id": f"task-{next_index:04d}",
+            "title": self._title(f"Continue with user's answer ({decision['decision_id']})"),
+            "description": description,
+            "status": "ready" if dependency is None else "backlog",
+            "priority": self._priority(decision.get("impact") or {}),
+            "role": "CoderAgent",
+            "depends_on": [] if dependency is None else [dependency],
+            "acceptance": [
+                "The work continues consistent with the user's answer",
+            ],
+            "allowed_tools": [
+                "read_file",
+                "search_text",
+                "write_file",
+                "apply_patch",
+                "restore_backup",
+                "run_command",
+                "run_tests",
+            ],
+            "expected_artifacts": [],
+            "task_kind": "implementation",
+            "expected_changed_files": [],
+            "assigned_agent_id": None,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+            "notes": f"Generated from answered open question {decision['decision_id']}",
+            "completion_contract": {
+                "requires_changed_artifact": False,
+                "requires_verification": False,
+                "allows_expected_failure": False,
+            },
+            "verification_policy": {
+                "required": False,
+                "allow_expected_failure": False,
+                "commands": [],
+            },
+            "read_scope": ["AGENTS.md"],
+            "write_scope": [],
+            "context_requirements": {
+                "mount_type": "summary_context",
+                "include_artifacts": True,
+                "include_failures": True,
+                "include_decisions": True,
+                "include_validation": False,
+                "recent_event_count": 20,
+            },
+            "validation_commands": [],
+            "failure_policy": "create_repair_task",
+            "parallel_safety": "serial",
+            "merge_strategy": "none",
+        }
 
     def _apply_runtime_request_decision(
         self,

@@ -9,12 +9,16 @@ function DecisionCard({
   runId,
   decision,
   onResolveDecision,
+  onAnswerDecision,
 }: {
   runId: string;
   decision: AnyRecord;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
+  onAnswerDecision?: (runId: string, decisionId: string, answer: string) => Promise<void>;
 }) {
   const [busyOption, setBusyOption] = useState<string | null>(null);
+  const [answer, setAnswer] = useState("");
+  const [answering, setAnswering] = useState(false);
   const decisionId = String(decision.decision_id ?? "");
   const recommended = preferredDecisionOptionId(decision) || String(decision.recommended_option_id ?? "");
   const options = asArray(decision.options) as AnyRecord[];
@@ -22,6 +26,7 @@ function DecisionCard({
   const metadata = asRecord(decision.metadata);
   const permissionPreview = asRecord(metadata.permission_preview) as PermissionPreview;
   const hint = decisionHint(decision);
+  const isOpenQuestion = String(metadata.kind ?? "") === "open_question";
 
   async function choose(optionId: string) {
     setBusyOption(optionId);
@@ -30,6 +35,52 @@ function DecisionCard({
     } finally {
       setBusyOption(null);
     }
+  }
+
+  async function submitAnswer() {
+    const text = answer.trim();
+    if (!text || !onAnswerDecision) return;
+    setAnswering(true);
+    try {
+      await onAnswerDecision(runId, decisionId, text);
+      setAnswer("");
+    } finally {
+      setAnswering(false);
+    }
+  }
+
+  // Open-ended ask (Claude Code "ask"): the loop paused with a free-text question and no fixed
+  // options — you answer in prose and the same loop resumes with your answer as guidance.
+  if (decisionId && isOpenQuestion && onAnswerDecision) {
+    return (
+      <div className="decisionCard openQuestion">
+        <div className="decisionHeader">
+          <CircleDot size={15} />
+          <strong>{textOrFallback(decision.question, "The agent has a question")}</strong>
+        </div>
+        {hint && <div className="decisionMeta"><span className="decisionHint">{hint}</span></div>}
+        <textarea
+          className="openQuestionInput"
+          value={answer}
+          placeholder="Type your answer…"
+          rows={2}
+          disabled={answering}
+          onChange={(event) => setAnswer(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              void submitAnswer();
+            }
+          }}
+        />
+        <div className="openQuestionActions">
+          <button className="runtimeActionButton primary" disabled={!answer.trim() || answering} onClick={() => void submitAnswer()}>
+            {answering ? <Loader2 size={13} className="spinning" /> : "Send answer"}
+          </button>
+          <small className="openQuestionHint">⌘/Ctrl + Enter</small>
+        </div>
+      </div>
+    );
   }
 
   if (!decisionId || !options.length) return null;
@@ -114,6 +165,7 @@ export function RuntimeSnapshot({
   onRuntimeAction,
   onOpenReview,
   onResolveDecision,
+  onAnswerDecision,
 }: {
   overview: OverviewPayload | null;
   runDetail: RunDetailPayload | null;
@@ -122,6 +174,7 @@ export function RuntimeSnapshot({
   onRuntimeAction: (nextAction: string) => Promise<void>;
   onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
+  onAnswerDecision?: (runId: string, decisionId: string, answer: string) => Promise<void>;
 }) {
   // No forced review gate. Mainstream coding agents (Claude Code, Cursor, Copilot) don't block
   // "done" behind a mandatory diff review — the diff is available to look at, and real questions get
@@ -230,6 +283,7 @@ export function RuntimeSnapshot({
           runId={runId}
           decision={decision}
           onResolveDecision={onResolveDecision}
+          onAnswerDecision={onAnswerDecision}
         />
       ))}
     </section>

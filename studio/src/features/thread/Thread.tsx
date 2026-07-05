@@ -39,6 +39,7 @@ export function Thread({
   onRuntimeAction,
   onOpenReview,
   onResolveDecision,
+  onAnswerDecision,
   pendingTurn,
   overview,
   runDetail,
@@ -63,6 +64,7 @@ export function Thread({
   onRuntimeAction: (nextAction: string) => Promise<void>;
   onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
+  onAnswerDecision?: (runId: string, decisionId: string, answer: string) => Promise<void>;
   pendingTurn?: { message: string; mode: string; startedAt: number } | null;
   overview?: OverviewPayload | null;
   runDetail?: RunDetailPayload | null;
@@ -333,6 +335,7 @@ export function Thread({
         onRuntimeAction={onRuntimeAction}
         onOpenReview={onOpenReview}
         onResolveDecision={onResolveDecision}
+        onAnswerDecision={onAnswerDecision}
       />
     </section>
   );

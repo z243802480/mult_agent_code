@@ -1033,6 +1033,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Resolve with default option",
     )
     decide_parser.add_argument("--list-pending", action="store_true", help="List pending decisions")
+    decide_parser.add_argument(
+        "--open-question",
+        action="store_true",
+        help="Create an open-ended question (free-text answer, no fixed options)",
+    )
+    decide_parser.add_argument(
+        "--answer",
+        default=None,
+        help="Answer an open-ended question with free text",
+    )
 
     acceptance_parser = subcommands.add_parser(
         "acceptance",
@@ -2027,6 +2037,8 @@ def _run_cli() -> None:
             select_option_id=args.select_option_id,
             use_default=args.use_default,
             list_pending=args.list_pending,
+            answer=args.answer,
+            open_question=args.open_question,
         ).run()
         print(decide_result.to_text())
         return

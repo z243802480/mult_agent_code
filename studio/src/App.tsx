@@ -148,6 +148,12 @@ export function App() {
     optionId: string,
   ) => sessionEvents.resolveDecision(runId, decisionId, optionId, runEvidence.setRunDetail), [sessionEvents, runEvidence.setRunDetail]);
 
+  const answerDecision = useCallback((
+    runId: string,
+    decisionId: string,
+    answer: string,
+  ) => sessionEvents.answerDecision(runId, decisionId, answer, runEvidence.setRunDetail), [sessionEvents, runEvidence.setRunDetail]);
+
   const onTurnRewind = useCallback(async (_turnIndex: number, action: string) => {
     await sessionEvents.runRuntimeAction(action);
   }, [sessionEvents]);
@@ -301,6 +307,7 @@ export function App() {
           onRuntimeAction={runRuntimeAction}
           onOpenReview={openCurrentReview}
           onResolveDecision={resolveDecision}
+          onAnswerDecision={answerDecision}
           pendingTurn={sessionEvents.pendingTurn}
           overview={bootstrap.overview}
           runDetail={runEvidence.runDetail}

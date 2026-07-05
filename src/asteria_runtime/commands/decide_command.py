@@ -65,6 +65,8 @@ class DecideCommand:
         select_option_id: str | None = None,
         use_default: bool = False,
         list_pending: bool = False,
+        answer: str | None = None,
+        open_question: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
@@ -78,6 +80,8 @@ class DecideCommand:
         self.select_option_id = select_option_id
         self.use_default = use_default
         self.list_pending = list_pending
+        self.answer = answer
+        self.open_question = open_question
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -101,9 +105,17 @@ class DecideCommand:
             ]
             return DecideResult(run_id, "list_pending", decisions_path, pending)
 
+        if self.answer is not None:
+            decision = self._answer_decision(agent_dir, run_dir, decisions_path, run_id)
+            return DecideResult(run_id, "answer", decisions_path, [decision])
+
         if self.select_option_id or self.use_default:
             decision = self._resolve_decision(agent_dir, run_dir, decisions_path, run_id)
             return DecideResult(run_id, "resolve", decisions_path, [decision])
+
+        if self.open_question:
+            decision = self._create_open_question(agent_dir, run_dir, decisions_path, run_id)
+            return DecideResult(run_id, "create", decisions_path, [decision])
 
         decision = self._create_decision(agent_dir, run_dir, decisions_path, run_id)
         return DecideResult(run_id, "create", decisions_path, [decision])
@@ -152,6 +164,88 @@ class DecideCommand:
         )
         self._record_user_decision_cost(agent_dir, run_dir, run_id)
         return decision
+
+    def _create_open_question(
+        self,
+        agent_dir: Path,
+        run_dir: Path,
+        decisions_path: Path,
+        run_id: str,
+    ) -> dict:
+        """Open-ended ask: the model poses a free-text question with no fixed options.
+
+        The user answers in prose (via `decide --answer`); on resume that answer is folded
+        back into the loop as guidance. This is the "loop hands you the pen" surface — the
+        same decision transport as multiple-choice, minus the options.
+        """
+        if not self.question:
+            raise ValueError("question is required when creating an open question")
+        metadata = dict(self.metadata)
+        metadata["kind"] = "open_question"
+        decision = {
+            "schema_version": "0.1.0",
+            "decision_id": self.decision_id or self._next_decision_id(decisions_path),
+            "status": "pending",
+            "question": self.question,
+            "recommended_option_id": "",
+            "options": [],
+            "default_option_id": "",
+            "impact": self._parse_impact(),
+            "selected_option_id": None,
+            "answer": None,
+            "created_at": now_iso(),
+            "metadata": metadata,
+            "resolved_at": None,
+        }
+        self.validator.validate("decision_point", decision)
+        self.jsonl.append(decisions_path, decision, "decision_point")
+        self._record_event(
+            run_dir,
+            run_id,
+            "decision_created",
+            str(decision["question"]),
+            {"decision_id": decision["decision_id"], "kind": "open_question"},
+        )
+        self._record_user_decision_cost(agent_dir, run_dir, run_id)
+        return decision
+
+    def _answer_decision(
+        self,
+        agent_dir: Path,
+        run_dir: Path,
+        decisions_path: Path,
+        run_id: str,
+    ) -> dict:
+        if not self.decision_id:
+            raise ValueError("decision_id is required when answering a decision")
+        answer_text = str(self.answer or "").strip()
+        if not answer_text:
+            raise ValueError("answer text is required")
+        decisions = self._read_decisions(decisions_path)
+        answered = None
+        for decision in decisions:
+            if decision["decision_id"] != self.decision_id:
+                continue
+            if decision["status"] != "pending":
+                raise ValueError(f"decision is not pending: {self.decision_id}")
+            decision["status"] = "answered"
+            decision["answer"] = answer_text
+            decision["resolved_at"] = now_iso()
+            self.validator.validate("decision_point", decision)
+            answered = decision
+            break
+        if answered is None:
+            raise ValueError(f"decision not found: {self.decision_id}")
+        self._rewrite_decisions(decisions_path, decisions)
+        self._record_event(
+            run_dir,
+            run_id,
+            "decision_resolved",
+            f"{answered['decision_id']} answered",
+            {"decision_id": answered["decision_id"], "kind": "open_question"},
+        )
+        self._record_user_decision_cost(agent_dir, run_dir, run_id)
+        return answered
 
     def _resolve_decision(
         self,

@@ -18,7 +18,7 @@
   "properties": {
     "schema_version": { "type": "string" },
     "decision_id": { "type": "string" },
-    "status": { "type": "string", "enum": ["pending", "resolved", "defaulted", "cancelled"] },
+    "status": { "type": "string", "enum": ["pending", "resolved", "defaulted", "cancelled", "answered"] },
     "question": { "type": "string" },
     "recommended_option_id": { "type": "string" },
     "options": {
@@ -49,6 +49,7 @@
       }
     },
     "selected_option_id": { "type": ["string", "null"] },
+    "answer": { "type": ["string", "null"] },
     "created_at": { "type": "string" },
     "metadata": { "type": "object" },
     "resolved_at": { "type": ["string", "null"] }

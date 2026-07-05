@@ -128,6 +128,27 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     if (refreshed) setRunDetail(refreshed);
   }
 
+  async function answerDecision(
+    runId: string,
+    decisionId: string,
+    answer: string,
+    setRunDetail: (detail: Awaited<ReturnType<typeof api.runDetail>> | null) => void,
+  ) {
+    if (!activeSession) return;
+    try {
+      await api.answerDecision(activeSession.session_id, runId, decisionId, answer);
+    } catch {
+      toast.error("Couldn't send your answer — try again.");
+      return;
+    }
+    const [eventData, refreshed] = await Promise.all([
+      api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] })),
+      waitForDecisionState(runId, decisionId).catch(() => api.runDetail(runId).catch(() => null)),
+    ]);
+    mergeEvents(eventData.events ?? []);
+    if (refreshed) setRunDetail(refreshed);
+  }
+
   function clearEvents() {
     setEvents([]);
   }
@@ -144,6 +165,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     stopRun,
     runRuntimeAction,
     resolveDecision,
+    answerDecision,
     clearEvents,
   };
 }

@@ -229,6 +229,36 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
+/* Open-ended ask (Claude Code "ask"): free-text answer, no fixed options. */
+.openQuestionInput {
+  width: 100%;
+  margin-top: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 8px;
+  resize: vertical;
+  min-height: 44px;
+}
+
+.openQuestionInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.openQuestionActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.openQuestionHint {
+  color: var(--text-muted);
+}
+
 .decisionOptions button {
   align-items: flex-start;
   background: var(--surface-2);

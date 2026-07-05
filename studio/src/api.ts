@@ -53,6 +53,12 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ run_id: runId, decision_id: decisionId, option_id: optionId }),
     }),
+  answerDecision: (id: string, runId: string, decisionId: string, answer: string) =>
+    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/decisions/answer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ run_id: runId, decision_id: decisionId, answer }),
+    }),
   permitJob: (sessionId: string, jobId: string, action: "allow" | "deny") =>
     requestJson<AnyRecord>(
       `/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs/${encodeURIComponent(jobId)}/permission`,
