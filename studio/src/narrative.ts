@@ -1,6 +1,6 @@
 import type { StudioEvent, NarrativeStep, RunNarrative } from "./types";
 import { capabilityInfo } from "./capability";
-import { projectTitle } from "./titleProjection";
+import { projectTitle, projectSummary } from "./titleProjection";
 
 function eventTime(event: StudioEvent): number {
   const value = Date.parse(String(event.created_at ?? ""));
@@ -165,7 +165,7 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
     const previous = steps.at(-1);
     if (previous && previous.kind === kind && shouldGroup(previous, event)) {
       previous.events.push(event);
-      previous.summary = event.summary || previous.summary;
+      previous.summary = projectSummary(event.summary) || previous.summary;
       previous.status = mergeStatus(previous.status, event.status);
       previous.title = projectTitle(event.title) || previous.title;
       continue;
@@ -175,7 +175,7 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
       kind,
       label,
       title: projectTitle(event.title),
-      summary: event.summary || event.content_delta || event.title,
+      summary: projectSummary(event.summary || event.content_delta || event.title),
       status: event.status,
       events: [event],
       defaultOpen: kind === "final",

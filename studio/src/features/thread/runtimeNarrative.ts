@@ -1,6 +1,6 @@
 import type { AnyRecord, RunDetailPayload, StudioEvent } from "../../types";
 import { asArray, asRecord, firstText, textOrFallback } from "./threadUtils";
-import { INTERNAL_TITLE_PROJECTION } from "../../titleProjection";
+import { INTERNAL_TITLE_PROJECTION, projectSummary } from "../../titleProjection";
 
 export function runtimeProgress(runDetail: RunDetailPayload | null): AnyRecord {
   const direct = asRecord(runDetail?.runtime_progress);
@@ -229,6 +229,6 @@ export function userProgressTitle(event: AnyRecord): string {
 export function userProgressSummary(event: AnyRecord): string {
   const title = userProgressTitle(event);
   const summary = firstText(String(event.summary ?? ""), String(event.content_delta ?? ""), title);
-  return summary;
+  return projectSummary(summary);
 }
 
