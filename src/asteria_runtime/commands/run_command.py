@@ -325,6 +325,7 @@ class RunCommand:
                 stop_reason=self._stop_reason(steps, max_iterations=0),
             )
             self._emit_execution_progress_events(_progress, run_id, phase="review")
+            self._emit_correctness_verification(_progress, run_id)
             self._emit_final_report_progress_event(
                 _progress,
                 run_id=run_id,
@@ -379,6 +380,7 @@ class RunCommand:
         review_status = self._latest_review_status(run_id)
         final_report_path = self._write_final_report(run_id, review_status, steps)
         run_status = self._run_status(run_id)
+        self._emit_correctness_verification(_progress, run_id)
         recap_text = self._closing_recap_text(run_id, steps, run_status)
         _progress.conclusion(
             run_id=run_id,
@@ -596,6 +598,63 @@ class RunCommand:
         if not path.exists():
             return {}
         return self.store.read(path, "final_report_summary")
+
+    def _emit_correctness_verification(
+        self, progress: UserProgressLogger, run_id: str
+    ) -> dict | None:
+        """Surface the run's real executable-verification verdict as a progress event.
+
+        Reads the run_tests/run_command exit codes already recorded in the run dir via
+        CorrectnessEvalCommand.score_signal — read-only, no re-execution, no model/tool cost.
+        Emitting it means a Studio user watching the thread (which tails user_progress.jsonl)
+        sees whether the code actually passed verification, not just "completed". Honest when no
+        executable verification ran: score_signal returns None and we say so instead of implying a
+        pass. Best-effort: a failure here never aborts the run.
+        """
+        from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
+
+        run_dir = self.root / ".asteria" / "runs" / run_id
+        try:
+            signal = CorrectnessEvalCommand(self.root).score_signal(run_dir)
+        except Exception:  # noqa: BLE001 - verification visibility must never abort a run
+            return None
+        if signal is None:
+            progress.record(
+                run_id=run_id,
+                channel="progress",
+                phase="review",
+                status="completed",
+                title="验证：未运行",
+                summary=(
+                    "本次运行没有可执行验证（run_tests/run_command）可判定代码正确性；"
+                    "完成状态未经真实验证。"
+                ),
+                display_level="main",
+                transcript_kind="verification",
+                ui_intent="work_progress",
+                data={"correctness": None},
+            )
+            return None
+        status = str(signal.get("status"))
+        passed = status == "pass"
+        label = {"pass": "通过", "partial": "部分通过", "fail": "未通过"}.get(status, status)
+        progress.record(
+            run_id=run_id,
+            channel="progress",
+            phase="review",
+            status="completed" if passed else "failed",
+            title=f"验证：{label}",
+            summary=str(signal.get("reason") or ""),
+            display_level="main",
+            transcript_kind="verification",
+            ui_intent="work_progress",
+            data={"correctness": signal},
+            telemetry={
+                "correctness_status": status,
+                "correctness_score": signal.get("score"),
+            },
+        )
+        return signal
 
     def _write_final_report_summary(
         self,

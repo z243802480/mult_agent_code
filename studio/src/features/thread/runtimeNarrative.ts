@@ -58,12 +58,43 @@ export function actionLabel(value: string): string {
  * "done but not yet verified" line so the user knows to run Review. Pure projection of data already
  * in runDetail (final_report_summary) — no runtime change.
  */
+/**
+ * Latest executable-verification verdict recorded by the /run loop, read from the `verification`
+ * progress events in runDetail.user_progress (same source the thread renders). Returns "pass"/"fail"
+ * for a real graded verdict, "unrun" when a verification event says nothing executable ran, and null
+ * when no verification event exists at all. Pure projection — no runtime change.
+ */
+export function latestCorrectnessVerdict(
+  runDetail: RunDetailPayload | null,
+): "pass" | "fail" | "unrun" | null {
+  const events = (runDetail?.user_progress ?? []) as AnyRecord[];
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (String(events[index].transcript_kind ?? "") !== "verification") continue;
+    const correctness = asRecord(asRecord(events[index].data).correctness);
+    if (!Object.keys(correctness).length) return "unrun";
+    const status = String(correctness.status ?? "").toLowerCase();
+    if (status === "pass") return "pass";
+    if (status === "fail" || status === "partial") return "fail";
+    return "unrun";
+  }
+  return null;
+}
+
 export function runVerificationHint(runDetail: RunDetailPayload | null): string {
   const finalSummary = asRecord(runDetail?.final_report_summary);
   if (!Object.keys(finalSummary).length) return "";
   const run = asRecord(runDetail?.run);
   const runStatus = String(run.status ?? finalSummary.run_status ?? "").toLowerCase();
   if (runStatus && /fail|block|error|running|paused/.test(runStatus)) return "";
+  // The /run loop now emits a real executable-verification verdict (run_tests/run_command exit
+  // codes) as a `verification` progress event. When it passed, the work IS verified — don't nag the
+  // user to run Review. When it explicitly failed, say so. Only fall through to the review-status
+  // heuristic when no executable verdict was recorded (nothing runnable ran).
+  const verdict = latestCorrectnessVerdict(runDetail);
+  if (verdict === "pass") return "";
+  if (verdict === "fail") {
+    return "Verification did not pass — the recorded tests/checks failed. Review before accepting.";
+  }
   const reviewStatus = String(finalSummary.review_status ?? "").toLowerCase();
   const completion = String(finalSummary.completion ?? finalSummary.completion_state ?? "").toLowerCase();
   if (reviewStatus === "pass" || /verified|accepted/.test(completion)) return "";

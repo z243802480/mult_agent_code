@@ -9,6 +9,7 @@ const runtimeSnapshot = readFileSync(path.join(studioDir, "src/features/thread/R
 const app = readFileSync(path.join(studioDir, "src/App.tsx"), "utf8");
 const permissionCard = readFileSync(path.join(studioDir, "src/components/PermissionCard.tsx"), "utf8");
 const eventCard = readFileSync(path.join(studioDir, "src/components/EventCard.tsx"), "utf8");
+const runtimeNarrative = readFileSync(path.join(studioDir, "src/features/thread/runtimeNarrative.ts"), "utf8");
 
 assert.ok(!thread.includes("WorkflowMonitorCompact"), "internal workflow monitor must stay out of the main session");
 assert.ok(!runtimeSnapshot.includes("PermissionCard"), "permission requests must render once in the session timeline");
@@ -24,5 +25,21 @@ const turnPosition = thread.indexOf(".map((turnSteps");
 const actionPosition = thread.lastIndexOf("<RuntimeSnapshot");
 assert.ok(turnPosition >= 0, "main session must render conversation turns");
 assert.ok(actionPosition > turnPosition, "next action must follow the conversation instead of leading it");
+
+// The /run loop now emits a real executable-verification verdict; the "not yet verified, run Review"
+// hint must defer to that verdict (pass => no nag, fail => explicit failure) instead of always
+// telling a UX user their verified work is unverified.
+assert.ok(
+  runtimeNarrative.includes("latestCorrectnessVerdict"),
+  "run verification hint must read the recorded executable-verification verdict",
+);
+assert.ok(
+  /verdict === "pass"[\s\S]*?return ""/.test(runtimeNarrative),
+  "a passing verification verdict must suppress the unverified nag",
+);
+assert.ok(
+  /verdict === "fail"/.test(runtimeNarrative),
+  "a failing verification verdict must be surfaced, not hidden",
+);
 
 console.log("session-main-path contract passed");
