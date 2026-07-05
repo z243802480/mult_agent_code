@@ -87,6 +87,24 @@ def test_gateway_routes_skill_to_adapter(tmp_path: Path) -> None:
     assert len(invocations) == 1 and invocations[0]["skill_name"] == "greet"
 
 
+def test_bundled_default_skills_are_real_and_body_loadable() -> None:
+    # The shipped default skills (skills/bundled, wired first by ExecuteCommand._wire_skill_adapter)
+    # must be genuine procedures: discovered by name, non-empty description, and body-loadable via the
+    # SAME handler the live execute path uses (handler="body") — not empty stubs.
+    import asteria_runtime
+
+    bundled = Path(asteria_runtime.__file__).resolve().parent / "skills" / "bundled"
+    adapter = SkillAdapter.from_skill_roots([bundled], handler="body")
+    names = {d["name"] for d in adapter.discover_skills()}
+    assert {"verify", "investigate", "debug", "minimal-change"} <= names
+    for name, handler in adapter.handlers.items():
+        assert isinstance(handler, SkillBodyHandler), name
+        out = handler.invoke({"arguments": {}})
+        instructions = out["data"]["instructions"]
+        assert "## Steps" in instructions, name  # a real procedure, not echoed frontmatter
+        assert out["data"]["skill_definition"]["description"].strip(), name
+
+
 def test_gateway_skill_denied_outside_contract(tmp_path: Path) -> None:
     adapter = SkillAdapter.from_skill_roots([_skill_root(tmp_path)], handler="body")
     context = _context(tmp_path)
