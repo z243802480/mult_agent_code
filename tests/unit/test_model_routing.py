@@ -121,6 +121,35 @@ def test_routed_client_falls_back_from_strong_timeout_to_medium() -> None:
     assert medium.requests[0].metadata["route_fallback"]["policy"] == "strong_timeout_to_medium"
 
 
+def test_routed_client_falls_back_when_medium_is_the_global_default() -> None:
+    # Real-world shape (doctor: "model_medium ... via global"): minimax is the global DEFAULT provider
+    # and only strong (glm) is an explicit tier route, so "medium" is NOT in tier_clients — it resolves
+    # to default_client. Fallback must STILL fire; the old `"medium" not in tier_clients` guard silently
+    # disabled it here, so a slow glm hard-blocked the whole run instead of retrying on the fast default.
+    medium = CaptureClient()
+    client = RoutedModelClient(
+        default_client=medium,  # minimax as the global default provider
+        tier_clients={"strong": TimeoutClient()},  # only strong is an explicit tier route
+        routes={"strong": ModelRoute("strong", "glm", "AGENT_MODEL_STRONG")},
+    )
+
+    response = client.chat(request("strong"))
+
+    assert response.model_provider == "minimax"
+    assert response.raw_response["route_fallback"]["used"] is True
+    assert response.raw_response["route_fallback"]["from_tier"] == "strong"
+    assert medium.requests[0].model_tier == "medium"
+
+
+def test_routed_client_does_not_fall_back_when_strong_and_medium_are_one_client() -> None:
+    # Single-provider shape: strong and medium both resolve to the same default client. Falling back
+    # would just re-hit the client that timed out, so the guard must keep raising instead of looping.
+    only = TimeoutClient()
+    client = RoutedModelClient(default_client=only, tier_clients={}, routes={})
+    with pytest.raises(RuntimeError, match="stream deadline exceeded"):
+        client.chat(request("strong"))
+
+
 def test_routed_client_can_disable_strong_timeout_fallback() -> None:
     client = RoutedModelClient(
         default_client=FakeModelClient(),
