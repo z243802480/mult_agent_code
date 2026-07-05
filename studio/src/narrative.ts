@@ -144,9 +144,22 @@ function countRefs(events: StudioEvent[], key: "evidence_refs" | "artifact_refs"
   return events.reduce((n, e) => n + (e[key]?.length ?? 0), 0);
 }
 
+// The main conversation shows only the user's real input and the agent-loop's real output. The loop
+// also emits internal scaffolding to drive ITSELF — "next step" routing hints (phase "next", e.g.
+// "Review recent failures / Run /debug or repair workflow") and bare final-report pointers with no
+// prose. Those are machinery, not something the agent said to the user, so they never belong in the
+// thread (they remain in the Inspector). Filtered by stable markers, not by matching their text.
+function isInternalLoopScaffolding(event: StudioEvent): boolean {
+  if (String(event.phase ?? "") === "next") return true;
+  const eventType = String(event.runtime_event_type ?? "");
+  if (eventType === "final_report" && !String(event.content_delta ?? "").trim()) return true;
+  return false;
+}
+
 export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
   const steps: NarrativeStep[] = [];
   for (const event of events) {
+    if (isInternalLoopScaffolding(event)) continue;
     const kind = narrativeKind(event);
     const label = narrativeLabel(kind, event);
     const previous = steps.at(-1);

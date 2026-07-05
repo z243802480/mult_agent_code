@@ -372,6 +372,9 @@ async function submitUserGoal(sessionId, body) {
     summary: goal,
     content_delta: goal
   });
+  // A canned "I'll handle this: <goal>" acknowledgement is machinery, not the agent-loop's output —
+  // it just repeats the user's goal back. Keep it for the Inspector, but the main thread shows only
+  // the user's real input and the loop's real output (plan, steps, deliverable, recap).
   await appendEvent(activeSessionId, {
     type: "assistant_delta",
     status: "completed",
@@ -379,7 +382,7 @@ async function submitUserGoal(sessionId, body) {
     summary: "Received the goal and selected the next controlled step.",
     content_delta: acknowledgementFor(mode, goal),
     phase: "understand",
-    display_level: "main",
+    display_level: "inspector",
     intent_audit: audit,
   });
   await appendEvent(activeSessionId, progressEventForMode(mode, goal));
