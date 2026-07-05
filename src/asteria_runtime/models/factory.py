@@ -43,6 +43,41 @@ def create_model_client(
     return RoutedModelClient(default_client, tier_clients, routes)
 
 
+def real_route_for_tier(tier: str = "medium") -> ModelRoute | None:
+    """Resolved route for ``tier`` IF it uses a real provider, else ``None``.
+
+    Mirrors the offline set used by :func:`_warn_if_tier_silently_offline`. Lets best-effort
+    features (e.g. the closing recap) decide "is a real model reachable for this tier?" so an
+    air-gapped / fake-only run keeps its structured fallback instead of surfacing canned text.
+    """
+    routes = _routes_from_env()
+    route = routes.get(tier) or _default_route(routes)
+    if route is None or route.provider in {"fake", "offline"}:
+        return None
+    return route
+
+
+def create_recap_client(
+    run_dir: Path | None,
+    validator: SchemaValidator,
+    tier: str = "medium",
+) -> ModelClient | None:
+    """Best-effort routed client for a conversational closing recap, or ``None`` when offline.
+
+    The CLI/Studio path builds RunCommand without injecting model clients (execution creates its
+    own run-scoped client internally), so the recap would otherwise never run and every real run
+    falls back to the robotic status-line conclusion. This mints a client for the recap WITHOUT
+    perturbing the execution path — but returns ``None`` on a fake/offline tier so an air-gapped
+    run keeps its clean structured conclusion rather than a canned fake recap. Never raises.
+    """
+    if real_route_for_tier(tier) is None:
+        return None
+    try:
+        return create_model_client(run_dir, validator)
+    except Exception:  # noqa: BLE001 — recap is best-effort; never fail the run.
+        return None
+
+
 def _warn_if_tier_silently_offline(
     routes: dict[str, ModelRoute],
     default_route: ModelRoute | None = None,

@@ -29,6 +29,7 @@ from asteria_runtime.core.execution_profile import execution_profile_from_run_co
 from asteria_runtime.core.policy_config import load_policy_config
 from asteria_runtime.core.run_config import load_run_config
 from asteria_runtime.core.run_recap import author_run_recap
+from asteria_runtime.models.factory import create_recap_client
 from asteria_runtime.core.plugin_diagnostics import plugin_control_summary
 from asteria_runtime.core.real_provider_matrix import (
     latest_real_provider_matrix,
@@ -1101,7 +1102,16 @@ class RunCommand:
             except Exception:  # noqa: BLE001 — recap is best-effort.
                 goal_text = ""
         return author_run_recap(
-            model_client=self.model_client or self.execute_model_client,
+            # The CLI/Studio path injects no model clients (execution builds its own run-scoped
+            # client), so both attributes are None here and the recap always no-opped — every real
+            # run fell back to the robotic status line. Mint a best-effort recap client from the
+            # same factory when none was injected; it returns None on a fake/offline tier so
+            # air-gapped runs keep the structured fallback. Execution path is untouched.
+            model_client=(
+                self.model_client
+                or self.execute_model_client
+                or create_recap_client(run_dir, self.validator)
+            ),
             goal=goal_text,
             run_status=run_status,
             steps=[(step.name, step.status, step.summary) for step in steps],

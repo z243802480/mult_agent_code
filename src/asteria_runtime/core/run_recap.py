@@ -18,6 +18,7 @@ run lifecycle never depends on the recap succeeding.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from asteria_runtime.models.base import ChatMessage, ChatRequest, ModelClient
@@ -40,6 +41,13 @@ _SYSTEM_PROMPT = (
 _MAX_CHARS = 600
 _MAX_STEPS = 12
 _MAX_FILES = 12
+
+# Reasoning models (e.g. MiniMax M2, the default medium tier) inline chain-of-thought in
+# <think>…</think> before the answer, and burn output tokens doing it. The recap is the prose AFTER
+# the reasoning — give enough headroom that the model finishes thinking AND writes the recap (320
+# was too small: the whole budget went to thinking and the answer was never emitted).
+_MAX_OUTPUT_TOKENS = 2048
+_THINK_BLOCK = re.compile(r"<think\b[^>]*>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 def author_run_recap(
@@ -69,8 +77,8 @@ def author_run_recap(
                 ChatMessage(role="user", content=context),
             ],
             temperature=0.3,
-            max_output_tokens=320,
-            timeout_seconds=30,
+            max_output_tokens=_MAX_OUTPUT_TOKENS,
+            timeout_seconds=45,
             metadata={"agent_id": "RunRecap", "purpose": RECAP_PURPOSE},
         )
         response = model_client.chat(request)
@@ -122,9 +130,23 @@ def _build_context(
     return "\n".join(lines)
 
 
+def _strip_reasoning(text: str) -> str:
+    """Drop <think>…</think> chain-of-thought that reasoning models inline before the answer.
+
+    Remove closed blocks; if only an unclosed <think> remains (the model spent its whole budget
+    thinking and never wrote the recap), drop everything from that tag on so we return "" and fall
+    back to the structured summary rather than leaking raw thinking into the main thread.
+    """
+    body = _THINK_BLOCK.sub("", text)
+    lowered = body.lower()
+    if "<think>" in lowered:
+        body = body[: lowered.index("<think>")]
+    return body.strip()
+
+
 def _clean(text: str) -> str:
-    """Strip markdown scaffolding and clamp length so the recap stays conversational."""
-    body = str(text or "").strip()
+    """Strip reasoning + markdown scaffolding and clamp length so the recap stays conversational."""
+    body = _strip_reasoning(str(text or "").strip())
     if not body:
         return ""
     cleaned_lines: list[str] = []

@@ -107,3 +107,40 @@ def test_recap_clamps_overlong_output():
         validation=None,
     )
     assert len(text) <= 601  # 600 cap + ellipsis
+
+
+def test_recap_strips_reasoning_think_block_and_keeps_the_answer():
+    # Reasoning models (MiniMax M2, the default medium tier) inline chain-of-thought in
+    # <think>…</think>; the recap is the prose after it. The think block must never reach the thread.
+    client = _StubModelClient(
+        "<think>\nThe user asked me to add a flag. I created add.py and the test passed.\n"
+        "Let me phrase a short recap.\n</think>\n\n已完成：新增 add.py 与测试，6/6 检查通过。"
+    )
+    text = author_run_recap(
+        model_client=client,
+        goal="加个 add 函数",
+        run_status="completed",
+        steps=[],
+        file_changes=[],
+        validation=_validation(),
+    )
+    assert "<think>" not in text
+    assert "chain-of-thought" not in text.lower()
+    assert text == "已完成：新增 add.py 与测试，6/6 检查通过。"
+
+
+def test_recap_reasoning_only_truncation_falls_back_to_empty():
+    # The model spent its whole budget thinking and never wrote the recap (unclosed <think>): we must
+    # return "" so the caller keeps its structured fallback instead of leaking raw reasoning.
+    client = _StubModelClient(
+        "<think>\nLet me think about how to summarize this run. The task was to add a function and"
+    )
+    text = author_run_recap(
+        model_client=client,
+        goal="g",
+        run_status="completed",
+        steps=[],
+        file_changes=[],
+        validation=_validation(),
+    )
+    assert text == ""
