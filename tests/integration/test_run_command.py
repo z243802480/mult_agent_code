@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.commands.decide_command import DecideCommand
+from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
+from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.new_command import NewCommand
 from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.commands.run_command import RunCommand
@@ -1362,6 +1364,74 @@ def test_run_command_stops_blocked_without_invoking_debug(tmp_path: Path) -> Non
     final_report = result.final_report_path.read_text(encoding="utf-8")
     assert "debug: completed" not in final_report
     assert "Execution stopped at a resumable session boundary." in final_report
+
+
+def _blocked_run(tmp_path: Path) -> str:
+    """Init+Plan+Execute(broken) => a blocked task-0001 with contract-violation evidence."""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a repairable module", model_client=FakePlanClient()).run()
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeBrokenExecuteClient()).run()
+    return plan.run_id
+
+
+def _patch_policy(tmp_path: Path, mutate) -> None:
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    mutate(policy)
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+
+def test_auto_goal_replan_enabled_reads_policy_flag(tmp_path: Path) -> None:
+    InitCommand(tmp_path).run()
+    command = RunCommand(tmp_path, "create a repairable module")
+    assert command._auto_goal_replan_enabled() is False  # ADR-0017 default off
+    _patch_policy(tmp_path, lambda p: p.setdefault("agent_loop", {}).__setitem__("auto_replan_goal", True))
+    assert command._auto_goal_replan_enabled() is True
+
+
+def test_auto_goal_replan_creates_repair_task_and_continues(tmp_path: Path) -> None:
+    # ADR-0017: a blocked task with contract-violation evidence is re-decomposed within the same
+    # goal (a repair task is created), so the run continues instead of stopping for the human.
+    run_id = _blocked_run(tmp_path)
+    command = RunCommand(tmp_path, "create a repairable module")
+    steps: list = []
+
+    outcome = command._auto_goal_replan(run_id, steps, None)
+
+    assert outcome == "continue"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "ready"]
+    assert any(step.name == "replan" and step.status == "completed" for step in steps)
+
+
+def test_auto_goal_replan_escalates_to_decision_and_pauses(tmp_path: Path) -> None:
+    # ADR-0017 §2 boundary preserved: at the replan lineage cap (max_replans_per_task=0) ReplanCommand
+    # escalates to a human DecisionPoint rather than auto-synthesizing, so the run pauses for the human.
+    run_id = _blocked_run(tmp_path)
+
+    def _cap_zero(p: dict) -> None:
+        p.setdefault("budgets", {})["max_replans_per_task"] = 0
+        profile = str(p.get("active_budget_profile") or "")
+        profiles = p.get("budget_profiles")
+        if profile and isinstance(profiles, dict) and isinstance(profiles.get(profile), dict):
+            profiles[profile]["max_replans_per_task"] = 0
+
+    _patch_policy(tmp_path, _cap_zero)
+    command = RunCommand(tmp_path, "create a repairable module")
+    steps: list = []
+
+    outcome = command._auto_goal_replan(run_id, steps, None)
+
+    assert outcome == "paused"
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    decisions = [
+        json.loads(line)
+        for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert decisions  # a human decision point was created
+    assert any(step.name == "replan" and step.status == "paused" for step in steps)
 
 
 def test_run_command_does_not_debug_provider_transient_blocker(tmp_path: Path) -> None:

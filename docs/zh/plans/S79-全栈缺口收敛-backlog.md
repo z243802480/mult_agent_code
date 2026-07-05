@@ -107,6 +107,13 @@ S77 §7 把"假默认档 fail-loud"降为定向项（硬 fail 会反转 D-3 决�
 
 **前端拉齐已落地（2026-07-05，`1a622d2` 后紧接，按 freeze-lifted"后端就绪即拉前端"）**：Studio 诚实呈现 auto-replan 终止/预算，镜像 S78 repair 前端。三处纯函数/证据面板：① `decisionGuidance.runtimeNextStepSummary` + `RuntimeSnapshot.userFacingStateLabel` 为 `replan_budget_exhausted` 加显式文案「我重新构思了几次仍失败——看看，或重排任务?」（**排在泛化 replan/repair catch 之前**，否则 `replan_budget_exhausted` 含 "replan" 被吞成"要我继续试吗"，语义反）；② Inspector `RunUsagePanel` 加条件 **Replans 指标 `≤N auto`**——replan **有意不记 cost_report**（无伪造 budget 账本），故只在 `auto_replan_enabled` 时显示有界 cap、不编造 used 计数（耗尽经 exit_reason 文案呈现）。`decision-guidance-smoke` 加 `replan_budget_exhausted` token 守护。**studio tsc + vite build + smoke 三绿**。此状态需真实 replan-exhausted 会话才可视，未 fabricate 截图。
 
+## S79 · 自主环第三环 = goal-level replan（ADR-0017，2026-07-05 用户"授权你解锁推进·继续吧"）
+
+**关键发现（亲验 `ReplanCommand` 推翻"goal-level replan=scope 扩张"假设）**：`ReplanCommand` **不是无界新目标合成器**——**从不读写 `goal_spec.json`（目标不可变）**、只碰 `status=="blocked"` 任务、lineage 达 `max_replans_per_task` 或遇 policy/permission/exception 失败类型即**自动建 DecisionPoint 交人审**、安全情形才 supersede 一个 blocked 任务为**同目标内的修复任务**。即 **§2 人审边界早已编码在 ReplanCommand 内部**。故"闭合 goal-level 环"不是造新能力/放边界，而是 run 级 block 边界处**自动调用 ReplanCommand（在其既有边界内）**，替代"停下让人类敲 `replan`"。风险远低于预期。ADR=`docs/zh/adr/0017-goal-level-replan-ring-within-goal.md`（Proposed）。
+- **落码**：`run_command._execute_until_no_ready` 的 blocked 分支（provider 检查后）加 flag 门控 `agent_loop.auto_replan_goal`（默认关）；`_auto_goal_replan` 调 ReplanCommand → 建修复任务(ready>0)返 `"continue"`（续跑，受 `max_inner_cycles` recovery-cycle 保险丝 + ReplanCommand lineage cap 双重有界）、建 DecisionPoint 返 `"paused"`（暂停交人）、无证据返 `"stop"`（今日行为）。lineage cap 读 **profile-aware `resolve_budget_limits`**，**honor 显式 0**（总是升 DecisionPoint，不被 `or 2` 误吞——踩坑已修）。
+- **边界不变**：goal_spec 不可变、DecisionPoint 升级路径一字不改、provider transient 停机先于 replan、外层 `max_iterations`/recovery-cycle 双保险丝。冻结（北极星/swarm/parallel_writes/goal_spec 改写）不动。
+- **验证**：+3 集成测试（`_auto_goal_replan_enabled` 读 flag / repair-task→continue / DecisionPoint→paused）+ 现有 `test_run_command_stops_blocked_without_invoking_debug`（默认关→今日 resumable-boundary 停）即 opt-out 端到端证明；run/replan/execute 78 绿·ruff 净·mypy 零新增（run_command.py 220/764 两处既有错误 stash 版同在，未顺手改）。**至此自主环三环（repair S78 + task-level replan S79 + goal-level replan ADR-0017）后端全闭合。**
+
 ## Tier B 进展（逐项亲验中，2026-07-04）
 
 - ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**已提交 `678a4c5`**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。

@@ -10,6 +10,7 @@ from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.replan_command import ReplanCommand
 from asteria_runtime.commands.research_command import ResearchCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.commands.status_command import StatusCommand, StatusResult
@@ -17,7 +18,7 @@ from asteria_runtime.commands.task_plan_quality_gate import TaskPlanQualityGate
 from asteria_runtime.core.active_next_step import capability_feedback_active_next_step
 from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
-from asteria_runtime.core.budget import BudgetController
+from asteria_runtime.core.budget import BudgetController, resolve_budget_limits
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.main_path import (
     build_main_path,
@@ -1246,6 +1247,18 @@ class RunCommand:
                             ui_intent="needs_attention",
                         )
                     return progressed
+                # ADR-0017 goal-level replan ring (flag-gated, default off): instead of stopping at
+                # the resumable boundary and asking the human to type `replan`, auto-invoke
+                # ReplanCommand within its OWN bounds (goal_spec immutable; lineage cap and risky
+                # failure types still escalate to a human DecisionPoint). Repair tasks created =>
+                # continue the (inner-cycle-bounded) loop; a DecisionPoint => pause for the human;
+                # nothing actionable => today's stop. Off => byte-identical to the block below.
+                if self._auto_goal_replan_enabled():
+                    replan_outcome = self._auto_goal_replan(run_id, steps, progress)
+                    if replan_outcome == "continue":
+                        continue
+                    if replan_outcome == "paused":
+                        return progressed
                 steps.append(
                     RunStepSummary(
                         "execute",
@@ -1408,6 +1421,79 @@ class RunCommand:
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
         return bool(agent_loop.get("task_plan_quality_gate_blocks", False))
+
+    def _auto_goal_replan_enabled(self) -> bool:
+        # ADR-0017 third ring: auto-invoke goal-level ReplanCommand at the block boundary. Default
+        # off — byte-identical to today's human-gated `replan` when disabled.
+        policy = self._policy()
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("auto_replan_goal", False))
+
+    def _auto_goal_replan(
+        self,
+        run_id: str,
+        steps: list[RunStepSummary],
+        progress: UserProgressLogger | None,
+    ) -> str:
+        """Auto-invoke goal-level ReplanCommand within its own bounds (ADR-0017).
+
+        Returns one of:
+        * ``"continue"`` — repair tasks were created (goal-internal re-decomposition); the caller
+          re-enters the inner-cycle-bounded loop to execute them.
+        * ``"paused"`` — ReplanCommand escalated to a human DecisionPoint (lineage cap / risky
+          failure type); the run is paused and the caller stops for the human.
+        * ``"stop"`` — no actionable failure evidence; fall through to today's resumable-boundary stop.
+
+        ReplanCommand never touches ``goal_spec.json`` (goal-immutable) and keeps its own
+        DecisionPoint escalations, so this stays within-goal and never expands scope.
+        """
+        # Profile-aware resolution (the active budget profile overrides top-level budgets) so the
+        # auto-replan lineage cap matches the operator's effective policy. Honor an explicit 0
+        # (always escalate to a human DecisionPoint) — do NOT coerce it to the default via ``or``.
+        raw_replans = resolve_budget_limits(self._policy()).get("max_replans_per_task")
+        max_replans = int(raw_replans) if raw_replans is not None else 2
+        result = ReplanCommand(self.root, run_id=run_id, max_replans_per_task=max_replans).run()
+        if result.created_decisions > 0:
+            steps.append(
+                RunStepSummary(
+                    "replan",
+                    "paused",
+                    (
+                        f"Auto goal-replan escalated to {result.created_decisions} human "
+                        "decision(s); run paused."
+                    ),
+                )
+            )
+            return "paused"
+        if result.created_tasks > 0:
+            steps.append(
+                RunStepSummary(
+                    "replan",
+                    "completed",
+                    (
+                        f"Auto goal-replan created {result.created_tasks} repair task(s) "
+                        "within the same goal; continuing."
+                    ),
+                )
+            )
+            if progress:
+                progress.record(
+                    run_id=run_id,
+                    channel="progress",
+                    phase="execute",
+                    status="running",
+                    title="自动重规划已创建修复任务",
+                    summary=(
+                        f"在同一目标内自动创建 {result.created_tasks} 个修复任务，继续执行"
+                        "（达到重规划上限或高风险失败仍会暂停交你决策）。"
+                    ),
+                    display_level="main",
+                    transcript_kind="repair",
+                    ui_intent="work_progress",
+                )
+            return "continue"
+        return "stop"
 
     def _refresh_task_plan_eval(
         self,

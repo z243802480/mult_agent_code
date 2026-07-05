@@ -148,6 +148,7 @@
     "max_rounds_per_task": 5,
     "auto_repair": false,
     "auto_replan": false,
+    "auto_replan_goal": false,
     "task_plan_quality_gate_blocks": false,
     "schema_shape_errors_are_repairable": true,
     "inject_capability_manifest": true,
