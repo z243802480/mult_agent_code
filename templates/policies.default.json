@@ -2,6 +2,7 @@
   "schema_version": "0.1.0",
   "decision_granularity": "balanced",
   "active_budget_profile": "autonomous_long_task",
+  "active_access_profile": null,
   "budgets": {
     "max_model_calls_per_goal": 200,
     "max_tool_calls_per_goal": 1000,
@@ -79,6 +80,7 @@
     ".env.*",
     "secrets/",
     ".git/",
+    ".asteria/",
     "*.pem",
     "*.key",
     "id_rsa",
@@ -126,6 +128,13 @@
       "requires": [
         "provider_streaming"
       ]
+    },
+    "real_disjoint_write_workers": {
+      "enabled": false,
+      "description": "Enable true parallel disjoint write workers after validation probes prove the gate can block unsafe fanout.",
+      "requires": [
+        "real_model"
+      ]
     }
   },
   "capability_flags": {},
@@ -136,7 +145,10 @@
   },
   "agent_loop": {
     "worker_transport": "json",
+    "max_rounds_per_task": 5,
     "auto_repair": false,
+    "auto_replan": false,
+    "auto_replan_goal": false,
     "task_plan_quality_gate_blocks": false,
     "schema_shape_errors_are_repairable": true,
     "inject_capability_manifest": true,
@@ -165,9 +177,9 @@
     "planning": "strong",
     "brainstorming": "strong",
     "architecture": "strong",
-    "coding": "medium",
+    "coding": "strong",
     "review": "strong",
-    "debugging": "medium",
+    "debugging": "strong",
     "summarization": "cheap",
     "classification": "cheap",
     "evaluation": "medium",

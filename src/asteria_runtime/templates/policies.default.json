@@ -168,6 +168,10 @@
     "parallel_writes_beta_opt_in": false,
     "max_parallel_workers_per_run": 16
   },
+  "studio": {
+    "orchestration_router": "model",
+    "orchestration_model_tier": "strong"
+  },
   "model_routing": {
     "goal_spec": "strong",
     "planning": "strong",
@@ -178,7 +182,8 @@
     "debugging": "strong",
     "summarization": "cheap",
     "classification": "cheap",
-    "evaluation": "medium"
+    "evaluation": "medium",
+    "orchestration_route": "strong"
   },
   "provider_route_strategy": {
     "strong_goal_spec": {

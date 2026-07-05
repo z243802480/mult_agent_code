@@ -502,3 +502,29 @@ def test_steady_gate_includes_s74_convergence_without_extra_pulse() -> None:
     assert "create_default_tool_registry" not in debug_command
     assert "check_completion_contract" not in debug_command
     assert '"session_recovery"' in debug_command
+
+
+def test_default_policy_template_copies_are_byte_identical() -> None:
+    """The dev tree reads ``templates/policies.default.json`` (repo root) while an
+    installed wheel reads ``src/asteria_runtime/templates/policies.default.json``
+    (package data). If they drift, dev and packaged runtimes silently load
+    different default policy (e.g. a ``protected_paths`` or ``active_access_profile``
+    mismatch). The canonical source is the packaged copy under ``src/``; the root
+    copy must be kept byte-for-byte in sync with it — same divergence class as the
+    dual ``schemas/`` vs ``src/asteria_runtime/schemas/`` trees.
+    """
+    src_copy = Path("src/asteria_runtime/templates/policies.default.json")
+    root_copy = Path("templates/policies.default.json")
+    assert src_copy.is_file(), f"missing packaged policy default: {src_copy}"
+    assert root_copy.is_file(), f"missing dev policy default: {root_copy}"
+    src_bytes = src_copy.read_bytes()
+    root_bytes = root_copy.read_bytes()
+    assert src_bytes == root_bytes, (
+        "policies.default.json copies have diverged; re-sync the root copy from the "
+        "canonical src copy (they must be byte-identical to avoid dev-vs-packaged "
+        f"default-policy drift). sizes: src={len(src_bytes)} root={len(root_bytes)}"
+    )
+    # Semantic parity as well, so a re-format (key reorder / line-ending change under
+    # git autocrlf) that keeps both copies equal to each other still surfaces if the
+    # decoded policy ever differs. Both must parse and carry the same defaults.
+    assert json.loads(src_bytes) == json.loads(root_bytes)
