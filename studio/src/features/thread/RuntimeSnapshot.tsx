@@ -123,11 +123,10 @@ export function RuntimeSnapshot({
   onOpenReview: () => Promise<void>;
   onResolveDecision: (runId: string, decisionId: string, optionId: string) => Promise<void>;
 }) {
-  // Hooks must run unconditionally and before any early return (rules of hooks). Diff-review gate
-  // (slice #5): when an Accept is offered and the workspace has changes, require the user to open
-  // the read-only diff review at least once before Accept is enabled. The key is (runId, changeCount)
-  // so a new run or a changed diff re-arms the gate — "look before you accept" against the same scope.
-  const [reviewedKey, setReviewedKey] = useState<string | null>(null);
+  // No forced review gate. Mainstream coding agents (Claude Code, Cursor, Copilot) don't block
+  // "done" behind a mandatory diff review — the diff is available to look at, and real questions get
+  // resolved inline via the permission/decision cards, not a pre-accept approval wall. So the diff
+  // button below just opens the read-only diff (optional); it never disables Mark done.
   const [busy, setBusy] = useState(false);
   if (!runtimeSnapshotActionable(overview, runDetail, events)) return null;
 
@@ -147,8 +146,6 @@ export function RuntimeSnapshot({
     : null;
   const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
   const acceptReady = canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue);
-  const reviewGateKey = `${runId}:${workspaceChangeCount}`;
-  const needsDiffReview = acceptReady && workspaceChangeCount > 0 && reviewedKey !== reviewGateKey;
   const nextStep = runtimeNextStepSummary({
     decisions,
     nextActionValue,
@@ -166,7 +163,7 @@ export function RuntimeSnapshot({
   // workspace by the time Finalize is offered, so say so (change count is a real signal) rather
   // than implying a pre-write approval gate. Finalize records the run as done; it doesn't apply.
   const acceptStep = acceptReady && workspaceChangeCount > 0
-    ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — review the diff (keep or revert per file), then mark it done.`
+    ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — open the diff to keep or revert per file, or just mark it done.`
     : null;
 
   // Gate the primary workflow actions so a double-click can't fire duplicate review/accept/decide
@@ -199,18 +196,17 @@ export function RuntimeSnapshot({
             {acceptReady ? (
               <>
                 <button
-                  className={`runtimeActionButton reviewChanges${needsDiffReview ? " gateActive" : ""}`}
+                  className="runtimeActionButton reviewChanges"
                   type="button"
                   disabled={busy}
-                  onClick={() => { setReviewedKey(reviewGateKey); void runAction(() => onOpenReview()); }}
+                  onClick={() => void runAction(() => onOpenReview())}
                 >
-                  {workspaceChangeCount > 0 ? `Review ${workspaceChangeCount} changes` : "Review changes"}
+                  {workspaceChangeCount > 0 ? `View ${workspaceChangeCount} changes` : "View changes"}
                 </button>
                 <button
                   className="runtimeActionButton primary accept"
                   type="button"
-                  disabled={needsDiffReview || busy}
-                  title={needsDiffReview ? `Review the ${workspaceChangeCount} change(s) before accepting` : undefined}
+                  disabled={busy}
                   onClick={() => void runAction(() => onRuntimeAction(nextActionValue || "accept"))}
                 >
                   {busy ? <Loader2 size={13} className="spinning" /> : "Mark done"}
