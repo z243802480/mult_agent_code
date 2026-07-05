@@ -83,6 +83,8 @@ A1（诚实化核心）→ A2（硬化全绿基线）→ A3（S78 前端延伸�
 
 **合规扫查收口 `e7f1650`**：全库扫 §1 认知漂移，唯一命中 `slice_completion_judge._deterministic_judge` 硬编码 `review_score<0.75`（北极星确定性兜底无视 policy），已改读同一 `min_review_score` policy（默认 None→不虚构门）；其余候选亲验为合法 §2/§3 边界，未误改。认知归模型这条线闭环。
 
+**1b 孪生补漏（fast-path §3 去伪造）**：1b 删了 `ReviewAgent._overall` 的伪造分，但**确定性快路** `ReviewCommand._fast_path_overall` 的孪生分支仍遗留：无可执行验证（doc/creative 快路，`correctness_signal is None`）时返回 `score=0.9` 伪造绿分。已同一 §3 哲学修正：无验证证据→`score=None`（未验证·须人审），`status="pass"` 仍是快路确定性不变量（全 done 无 blocker，生命周期不变）。快路测试只断 status 不断 score，无回归；+2 断言（`test_fast_path_overall_score_is_unverified_without_executable_verification`）。correctness→主 review 接线本已完整：模型收全量 `review_context`（含真实 `correctness_signal`）自判 status（符 §1），模型缺席的 deterministic 分支 status 取 `correctness["status"]`。
+
 ## S77 假默认档 · 定向诚实化（2026-07-05，接 ADR-0016 §3 证据线）
 
 S77 §7 把"假默认档 fail-loud"降为定向项（硬 fail 会反转 D-3 决策 + 砸离线测试基础，真实零配置默认其实是 minimax，非假货）。落地的不是硬 fail，而是**让 fake/offline 罐头输出在任何显示面都无法被误认成真实模型**：

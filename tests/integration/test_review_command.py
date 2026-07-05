@@ -480,6 +480,25 @@ def test_review_command_requires_command_verification_for_bugfix_fast_path(
     assert "missing_command_verification_call" in blockers
 
 
+def test_fast_path_overall_score_is_unverified_without_executable_verification(
+    tmp_path: Path,
+) -> None:
+    # ADR-0016 §3: a fast-path run with NO executable verification (doc/creative) must NOT report a
+    # fabricated 0.9 green score — the status stays the deterministic "pass" invariant but the score
+    # is None ("unverified"), matching ReviewAgent._overall's de-fabrication.
+    command = ReviewCommand(tmp_path)
+
+    unverified = command._fast_path_overall(None)
+    assert unverified["status"] == "pass"
+    assert unverified["score"] is None
+    assert "unverified" in unverified["reason"].lower()
+
+    # With real executable verification evidence, the score IS the real pass rate (not a constant).
+    verified = command._fast_path_overall({"status": "pass", "score": 0.5, "reason": "1/2 passed"})
+    assert verified["status"] == "pass"
+    assert verified["score"] == 0.5
+
+
 def test_review_command_treats_discarded_replanned_worker_failure_as_recovered(
     tmp_path: Path,
 ) -> None:

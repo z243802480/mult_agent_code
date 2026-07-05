@@ -416,9 +416,11 @@ class ReviewCommand:
         return report
 
     def _fast_path_overall(self, correctness: dict | None) -> dict:
-        # Fast-path only fires on a clean pass (no blockers + deterministic verification
-        # evidence). Use the real verification pass rate for the score when available instead
-        # of the fabricated 0.9; the pass status is the fast-path invariant.
+        # ADR-0016 §3: the fast-path status ("pass") is a real deterministic invariant (all active
+        # tasks done, no blockers), but the SCORE must be evidence, never a fabricated constant.
+        # Use the real verification pass rate when the run ran executable verification; when it did
+        # NOT (e.g. a doc/creative fast-path with no run_tests/run_command), the score is None
+        # ("unverified") — the same de-fabrication applied to ReviewAgent._overall, not a fake 0.9.
         base_reason = (
             "Deterministic-first review passed: all active tasks are done, "
             "verification passed, and no unresolved runtime blockers were found."
@@ -430,7 +432,14 @@ class ReviewCommand:
                 "reason": f"{base_reason} Score is the real verification pass rate "
                 f"({float(correctness['score']):.2f}).",
             }
-        return {"status": "pass", "score": 0.9, "reason": base_reason}
+        return {
+            "status": "pass",
+            "score": None,
+            "reason": (
+                f"{base_reason} Unverified: no executable verification (run_tests/run_command) ran, "
+                "so the score is not a real pass rate; needs an explicit human accept."
+            ),
+        }
 
     def _review_target_files(self, goal_spec: dict, task_plan: dict) -> list[str]:
         files: list[str] = []
