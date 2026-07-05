@@ -39,16 +39,16 @@ export function decisionHint(decision: AnyRecord): string {
 
   if (kind === "runtime_request") {
     return preferred === "review_contract"
-      ? "Allow the expanded scope — work continues automatically after you confirm."
-      : "Confirm how the agent should handle this.";
+      ? "允许扩大范围——你确认后会自动继续工作。"
+      : "确认智能体该如何处理这件事。";
   }
   if (kind === "execution_policy_approval") {
     return preferred === "approve_once"
-      ? "Approve this command once — the agent will continue after confirmation."
-      : "Approve the pending operation so the agent can continue.";
+      ? "本次批准这条命令——确认后智能体会继续。"
+      : "批准这个待处理的操作,智能体才能继续。";
   }
   if (kind === "replan_decision" || asRecord(decision.metadata).reason === "repair_limit") {
-    return "A step failed — want me to keep trying or take a different approach?";
+    return "某一步失败了——要我继续尝试,还是换个思路?";
   }
   return "";
 }
@@ -59,7 +59,7 @@ export function pendingDecisionSummary(decisions: AnyRecord[]): string {
   const hint = decisionHint(primary);
   if (hint) return hint;
   const count = decisions.length;
-  return `${count} decision${count === 1 ? "" : "s"} need your input.`;
+  return `有 ${count} 个决定需要你处理。`;
 }
 
 export function runtimeNextStepSummary(params: {
@@ -85,8 +85,8 @@ export function runtimeNextStepSummary(params: {
   // Honest affordance, not a verdict: the frontend only knows the run reached an accept/review-able
   // state from a capability flag — it must not assert "Review passed" / "Task complete" (a verdict it
   // doesn't hold). State + next action only; any "passed" wording must come from a real runtime event.
-  if (canAccept) return "Changes are applied to your workspace — review the diff, then mark it done.";
-  if (canReview) return "Ready for review — open the changes to verify.";
+  if (canAccept) return "改动已应用到你的工作区——查看差异后标记完成。";
+  if (canReview) return "可以查看了——打开改动进行核对。";
 
   const normalized = nextActionValue.trim().toLowerCase();
   const exitReason = String(loop.exit_reason ?? "").toLowerCase();
@@ -95,16 +95,16 @@ export function runtimeNextStepSummary(params: {
   // (which recommends "debug"): auto-repair already retried within budget and stopped honestly, so
   // frame it as "I tried" rather than "want me to keep trying?".
   if (exitReason.includes("repair_budget_exhausted")) {
-    return "I auto-retried a few times but it still fails — take a look or try a different approach?";
+    return "我自动重试了几次还是失败——你来看看,还是换个思路?";
   }
   if (exitReason.includes("loop_no_progress")) {
-    return "The same failure keeps repeating with no progress — take a look or try a different approach?";
+    return "同样的失败一直重复、毫无进展——你来看看,还是换个思路?";
   }
   // S79 auto-replan terminal reason (must precede any generic replan/repair catch, since
   // "replan_budget_exhausted" contains "replan"): auto-replan already re-approached this task within
   // budget and stopped honestly — recommend a human goal-level replan, not "keep trying?".
   if (exitReason.includes("replan_budget_exhausted")) {
-    return "I re-approached this a couple of times but it still fails — take a look, or re-plan the tasks?";
+    return "我换了两次思路重做还是失败——你来看看,还是重新规划任务?";
   }
   if (
     mainActionKind === "debug"
@@ -112,17 +112,17 @@ export function runtimeNextStepSummary(params: {
     || normalized.includes("repair")
     || exitReason.includes("repair")
   ) {
-    return "A step failed — want me to keep trying or take a different approach?";
+    return "某一步失败了——要我继续尝试,还是换个思路?";
   }
   if (normalized.includes("decide")) {
-    return "Resolve the decision card below to continue.";
+    return "处理下面的决定卡片以继续。";
   }
   if (normalized.includes("resume") || normalized.includes("continue") || normalized.includes("run")) {
-    return `Ready to continue — tap ${nextLabel || "Continue"}.`;
+    return `可以继续了——点击 ${nextLabel || "继续"}。`;
   }
   if (exitReason.includes("max_rounds") || exitReason.includes("budget")) {
-    return "Paused — check the decision card or next action below.";
+    return "已暂停——查看下方的决定卡片或下一步操作。";
   }
-  if (nextActionValue) return `Ready for ${nextLabel || "the next step"}.`;
+  if (nextActionValue) return `可以${nextLabel || "进行下一步"}了。`;
   return "";
 }

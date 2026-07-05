@@ -21,23 +21,23 @@ export type PermissionTier = {
 export const PERMISSION_TIERS: PermissionTier[] = [
   {
     id: "ask_everything",
-    label: "Ask first",
-    hint: "Asks before each edit and command",
-    detail: "Every file edit and command waits for your approval. Safest and most hands-on.",
+    label: "逐步询问",
+    hint: "每次编辑和命令前都会询问",
+    detail: "每次文件编辑和命令都会等待你的批准。最安全、最贴身。",
   },
   {
     id: "reviewed_auto",
-    label: "Auto-edit",
-    hint: "Edits apply directly; commands and risky steps still ask",
+    label: "自动编辑",
+    hint: "编辑直接应用；命令和有风险的步骤仍会询问",
     detail:
-      "File edits apply to your workspace as the agent works. Commands, and anything risky or irreversible, still pause for you.",
+      "文件编辑会随 agent 工作直接应用到你的工作区。命令，以及任何有风险或不可逆的操作，仍会为你暂停。",
   },
   {
     id: "auto",
-    label: "Full auto",
-    hint: "Edits and tools apply; risky actions still interrupt",
+    label: "全自动",
+    hint: "编辑和工具直接执行；有风险的操作仍会中断",
     detail:
-      "Edits and tool calls run with minimal prompting, for long, trusted tasks. Hard-stops, releases and destructive actions still interrupt.",
+      "编辑和工具调用以最少的询问运行，适合长时间、可信赖的任务。硬停止、发布和破坏性操作仍会中断。",
   },
 ];
 

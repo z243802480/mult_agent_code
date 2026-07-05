@@ -49,8 +49,8 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     } catch {
       // Never silently swallow a failed send — the message was NOT delivered. Offer a Retry that
       // re-sends the exact text (so the draft is not lost) instead of clearing it into the void.
-      toast.error("Couldn't send your message — it wasn't delivered.", {
-        action: { label: "Retry", onClick: () => void sendGoal(message, mode, permission, permissionMode) },
+      toast.error("无法发送你的消息——它未被送达。", {
+        action: { label: "重试", onClick: () => void sendGoal(message, mode, permission, permissionMode) },
       });
     } finally {
       setPendingTurn(null);
@@ -62,8 +62,8 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     try {
       await api.send(activeSession.session_id, message, "chat", "ask", "side");
     } catch {
-      toast.error("Couldn't send — the side question wasn't delivered.", {
-        action: { label: "Retry", onClick: () => void sendSideAsk(message) },
+      toast.error("无法发送——侧边提问未被送达。", {
+        action: { label: "重试", onClick: () => void sendSideAsk(message) },
       });
     }
   }
@@ -73,7 +73,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     try {
       await api.permitJob(activeSession.session_id, jobId, action);
     } catch {
-      toast.error(`Couldn't record your ${action === "allow" ? "approval" : "denial"} — try again.`);
+      toast.error(`无法记录你的${action === "allow" ? "批准" : "拒绝"}——请重试。`);
     }
   }
 
@@ -83,7 +83,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
       await api.stopSession(activeSession.session_id);
     } catch {
       // Never let Stop fail in silence — the run may still be going and the user needs to know.
-      toast.error("Couldn't stop the run — try again.");
+      toast.error("无法停止运行——请重试。");
     }
     const eventData = await api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] }));
     mergeEvents(eventData.events ?? []);
@@ -94,8 +94,8 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     try {
       await api.runtimeAction(activeSession.session_id, nextAction, "ask");
     } catch {
-      toast.error("Couldn't start that action — try again.", {
-        action: { label: "Retry", onClick: () => void runRuntimeAction(nextAction) },
+      toast.error("无法启动该操作——请重试。", {
+        action: { label: "重试", onClick: () => void runRuntimeAction(nextAction) },
       });
       return;
     }
@@ -117,7 +117,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     try {
       await api.resolveDecision(activeSession.session_id, runId, decisionId, optionId);
     } catch {
-      toast.error("Couldn't submit your choice — try again.");
+      toast.error("无法提交你的选择——请重试。");
       return;
     }
     const [eventData, refreshed] = await Promise.all([
@@ -138,7 +138,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     try {
       await api.answerDecision(activeSession.session_id, runId, decisionId, answer);
     } catch {
-      toast.error("Couldn't send your answer — try again.");
+      toast.error("无法发送你的回答——请重试。");
       return;
     }
     const [eventData, refreshed] = await Promise.all([

@@ -48,7 +48,7 @@ export function SuggestedActions({
   }
 
   return (
-    <div className="suggestedActions" aria-label="Suggested next steps">
+    <div className="suggestedActions" aria-label="建议的后续操作">
       {actions.map((action) => (
         <button
           key={action.command}

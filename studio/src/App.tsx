@@ -99,16 +99,16 @@ export function App() {
     const list: Command[] = [];
     for (const session of bootstrap.sessions) {
       if (session.session_id === bootstrap.activeSession?.session_id) continue;
-      list.push({ id: `session:${session.session_id}`, label: session.title || "Untitled session", hint: "Switch session", run: () => selectSession(session) });
+      list.push({ id: `session:${session.session_id}`, label: session.title || "未命名会话", hint: "切换会话", run: () => selectSession(session) });
     }
-    if (sessionEvents.isRunning) list.push({ id: "stop", label: "Stop the running task", hint: "Esc", run: () => void sessionEvents.stopRun() });
+    if (sessionEvents.isRunning) list.push({ id: "stop", label: "停止运行中的任务", hint: "Esc", run: () => void sessionEvents.stopRun() });
     list.push(
-      { id: "review", label: "Review changes", hint: "Ctrl+Shift+D", run: () => toggleDiffFocus() },
-      { id: "panel", label: "Toggle side panel", hint: "Ctrl+\\", run: () => setPanelOpen((open) => !open) },
-      { id: "sidebar", label: "Toggle sessions sidebar", hint: "Ctrl+B", run: () => toggleSidebarCollapsed() },
-      { id: "sidechat", label: "Toggle Quick ask", hint: "Ctrl+;", run: () => toggleSideChat() },
-      { id: "settings", label: "Open Settings", run: () => setSettingsOpen(true) },
-      { id: "refresh", label: "Refresh", run: () => void bootstrap.bootstrap() },
+      { id: "review", label: "查看改动", hint: "Ctrl+Shift+D", run: () => toggleDiffFocus() },
+      { id: "panel", label: "切换侧栏面板", hint: "Ctrl+\\", run: () => setPanelOpen((open) => !open) },
+      { id: "sidebar", label: "切换会话侧边栏", hint: "Ctrl+B", run: () => toggleSidebarCollapsed() },
+      { id: "sidechat", label: "切换快速提问", hint: "Ctrl+;", run: () => toggleSideChat() },
+      { id: "settings", label: "打开设置", run: () => setSettingsOpen(true) },
+      { id: "refresh", label: "刷新", run: () => void bootstrap.bootstrap() },
     );
     return list;
   }, [bootstrap.sessions, bootstrap.activeSession?.session_id, sessionEvents.isRunning, sessionEvents.stopRun, selectSession, toggleDiffFocus, toggleSidebarCollapsed, toggleSideChat, bootstrap]);
@@ -173,15 +173,15 @@ export function App() {
   // Inline per-turn Keep/Revert (I11) — real git stage / checkout, with honest toasts.
   const onFileAccept = useCallback(async (pathValue: string): Promise<boolean> => {
     const ok = await review.acceptFileChange(pathValue);
-    if (ok) toast.success("Kept — file staged.");
-    else toast.error("Couldn't stage that file. Try the review pane.");
+    if (ok) toast.success("已保留——文件已暂存。");
+    else toast.error("无法暂存该文件。请尝试查看面板。");
     return ok;
   }, [review]);
 
   const onFileRevert = useCallback(async (pathValue: string): Promise<boolean> => {
     const ok = await review.revertFileChange(pathValue);
-    if (ok) toast.success("Reverted — file restored to last commit.");
-    else toast.error("Couldn't revert that file. Try the review pane.");
+    if (ok) toast.success("已还原——文件已恢复到上次提交。");
+    else toast.error("无法还原该文件。请尝试查看面板。");
     return ok;
   }, [review]);
 
@@ -202,12 +202,12 @@ export function App() {
     try {
       await sessionEvents.runRuntimeAction(action);
     } catch (err) {
-      toast.error("That action didn't go through. Try again.");
+      toast.error("该操作未能执行。请重试。");
       throw err; // preserve the existing rejection propagation
     }
     // Confirm the terminal action — its button often disappears on success, so a
     // toast is the only post-click acknowledgement the user gets.
-    if (/^accept\b/i.test(trimmed)) toast.success("Run finalized — changes are in your workspace.");
+    if (/^accept\b/i.test(trimmed)) toast.success("运行已最终确认——改动已进入你的工作区。");
   }, [openCurrentReview, sessionEvents]);
 
   return (
@@ -219,7 +219,7 @@ export function App() {
       }}
     >
       <MissionPaneHeader
-        title={bootstrap.activeSession?.title ?? "New task"}
+        title={bootstrap.activeSession?.title ?? "新任务"}
         settings={bootstrap.settings}
         viewMode={viewMode}
         panelOpen={panelOpen}
@@ -269,18 +269,18 @@ export function App() {
           try {
             bundle = JSON.parse(await file.text());
           } catch {
-            toast.error("Couldn't read that file — expected a Studio session .json backup.");
+            toast.error("无法读取该文件——需要 Studio 会话 .json 备份。");
             return;
           }
           const res = await api.importSession(bundle).catch(() => null);
           if (!res?.ok || !res.session) {
-            toast.error(res?.error ? `Import failed: ${res.error}` : "Import failed — not a valid session backup.");
+            toast.error(res?.error ? `导入失败：${res.error}` : "导入失败——不是有效的会话备份。");
             return;
           }
           const refreshed = await api.sessions();
           bootstrap.setSessions(refreshed.sessions ?? []);
           selectSession(res.session);
-          toast.success(`Imported "${res.session.title || "session"}".`);
+          toast.success(`已导入“${res.session.title || "会话"}”。`);
         }}
         viewMode={viewMode}
       />
@@ -289,8 +289,8 @@ export function App() {
           className="paneSplitter sidebarSplitter"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          title="Drag to resize · double-click to reset"
+          aria-label="调整侧边栏宽度"
+          title="拖动调整宽度 · 双击重置"
           onMouseDown={startSidebarDrag}
           onDoubleClick={resetSidebar}
         />
@@ -344,8 +344,8 @@ export function App() {
             className="paneSplitter panelSplitter"
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize side panel"
-            title="Drag to resize · double-click to reset"
+            aria-label="调整侧栏面板宽度"
+            title="拖动调整宽度 · 双击重置"
             onMouseDown={startPanelDrag}
             onDoubleClick={resetPanel}
           />

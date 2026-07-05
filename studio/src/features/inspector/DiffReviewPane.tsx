@@ -82,7 +82,7 @@ export function DiffReviewPane({
             />
           ) : (
             <div className="diffReviewPreviewEmpty">
-              <p className="muted">Select a file to review changes.</p>
+              <p className="muted">选择一个文件以查看改动。</p>
             </div>
           )}
         </div>

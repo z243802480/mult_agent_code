@@ -33,7 +33,7 @@ export function FileChangeChips({
           onRevert={onRevert}
         />
       ))}
-      {remainder > 0 && <span className="liveFileChip muted">+{remainder} more</span>}
+      {remainder > 0 && <span className="liveFileChip muted">还有 {remainder} 个</span>}
     </div>
   );
 }
@@ -65,7 +65,7 @@ function FileChangeChip({
     if (kind === "revert") {
       // Destructive: `git checkout -- <path>` discards ALL uncommitted changes to this file.
       const ok = window.confirm(
-        `Revert ${change.path} to the last commit? Uncommitted changes to this file will be lost.`,
+        `将 ${change.path} 还原到上一次提交？该文件未提交的改动将会丢失。`,
       );
       if (!ok) return;
     }
@@ -95,7 +95,7 @@ function FileChangeChip({
       <button
         type="button"
         className="liveFileChip interactive"
-        title={`View diff: ${change.path}`}
+        title={`查看改动：${change.path}`}
         onClick={() => onSelect?.(change.path)}
         disabled={Boolean(resolved)}
       >
@@ -110,7 +110,7 @@ function FileChangeChip({
       </button>
       {resolved ? (
         <span className={`liveFileResolved ${resolved}`}>
-          {resolved === "kept" ? "Kept" : "Reverted"}
+          {resolved === "kept" ? "已保留" : "已还原"}
         </span>
       ) : hasActions ? (
         <span className="liveFileActions">
@@ -118,8 +118,8 @@ function FileChangeChip({
             <button
               type="button"
               className="liveFileAction accept"
-              title="Keep — stage this file (git add)"
-              aria-label={`Keep ${name}`}
+              title="保留 — 暂存此文件（git add）"
+              aria-label={`保留 ${name}`}
               disabled={Boolean(pending)}
               onClick={() => void runAction("accept")}
             >
@@ -130,8 +130,8 @@ function FileChangeChip({
             <button
               type="button"
               className="liveFileAction revert"
-              title="Revert — discard this file's changes (git checkout)"
-              aria-label={`Revert ${name}`}
+              title="还原 — 丢弃此文件的改动（git checkout）"
+              aria-label={`还原 ${name}`}
               disabled={Boolean(pending)}
               onClick={() => void runAction("revert")}
             >

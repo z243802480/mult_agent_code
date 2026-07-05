@@ -18,10 +18,10 @@ export function PlanChecklist({ plan, defaultOpen = true }: { plan: PlanModel; d
     <div className={`planChecklist ${open ? "open" : ""}`}>
       <button type="button" className="planChecklistHead" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         <ChevronRight size={13} className={`chevron ${open ? "open" : ""}`} />
-        <span className="planChecklistTitle">Plan</span>
+        <span className="planChecklistTitle">计划</span>
         <span className="planChecklistCount">
-          {plan.done} of {plan.total}
-          {blocked > 0 ? ` · ${blocked} blocked` : ""}
+          {plan.done} / {plan.total}
+          {blocked > 0 ? ` · ${blocked} 阻塞` : ""}
         </span>
       </button>
       {open && (

@@ -49,9 +49,9 @@ export function sessionDateGroup(session: StudioSession, now = new Date()): Sess
 }
 
 const GROUP_LABELS: Record<SessionDateGroup, string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  earlier: "Earlier",
+  today: "今天",
+  yesterday: "昨天",
+  earlier: "更早",
 };
 
 export function groupSessionsByDate(sessions: StudioSession[], now = new Date()): GroupedSessions[] {
@@ -70,7 +70,7 @@ export function groupSessionsByDate(sessions: StudioSession[], now = new Date())
 
 export function cleanSessionTitle(value: string): string {
   const text = value.replace(/\?{2,}/g, " ").replace(/\s+/g, " ").trim();
-  return text || "Untitled session";
+  return text || "未命名会话";
 }
 
 export function sessionInitial(title: string): string {

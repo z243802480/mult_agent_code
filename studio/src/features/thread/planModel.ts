@@ -44,11 +44,11 @@ export function derivePlan(runDetail: RunDetailPayload | null | undefined): Plan
 // The macro phase the run is currently in, for the phase strip. Derived from the latest event that
 // carries a phase; assorted runtime phases are folded onto 5 user-facing segments.
 export const MACRO_PHASES = [
-  { key: "understand", label: "Understand" },
-  { key: "plan", label: "Plan" },
-  { key: "execute", label: "Execute" },
-  { key: "review", label: "Review" },
-  { key: "result", label: "Done" },
+  { key: "understand", label: "理解" },
+  { key: "plan", label: "计划" },
+  { key: "execute", label: "执行" },
+  { key: "review", label: "查看" },
+  { key: "result", label: "完成" },
 ] as const;
 
 export function macroPhase(phase?: string): string {

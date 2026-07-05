@@ -6,15 +6,15 @@ import { api } from "../api";
 function basename(value: string): string {
   const normalized = value.replace(/[\\/]+$/, "");
   const parts = normalized.split(/[\\/]/);
-  return parts[parts.length - 1] || normalized || "workspace";
+  return parts[parts.length - 1] || normalized || "工作区";
 }
 
 function WorkspaceProfileBadges({ profile }: { profile: WorkspaceProfile | null | undefined }) {
   if (!profile) return null;
   const badges = [
-    profile.initialized ? "Asteria init" : "Needs init",
-    profile.has_git ? "Git" : "No git",
-    profile.has_agents_md ? "AGENTS.md" : "No AGENTS.md",
+    profile.initialized ? "Asteria 已初始化" : "待初始化",
+    profile.has_git ? "Git" : "无 Git",
+    profile.has_agents_md ? "AGENTS.md" : "无 AGENTS.md",
   ];
   return (
     <div className="workspaceBadges">
@@ -81,7 +81,7 @@ export function WorkspaceSwitcher({
   async function openPath(nextPath: string) {
     const trimmed = nextPath.trim();
     if (!trimmed) {
-      setError("Enter a workspace folder path.");
+      setError("请输入工作区文件夹路径。");
       return;
     }
     setLoading(true);
@@ -89,7 +89,7 @@ export function WorkspaceSwitcher({
     try {
       const result = await api.openWorkspace(trimmed);
       if (!result.ok) {
-        setError(result.error || "Could not open workspace.");
+        setError(result.error || "无法打开工作区。");
         return;
       }
       onOpened();
@@ -107,7 +107,7 @@ export function WorkspaceSwitcher({
     try {
       const result = await api.browseWorkspace();
       if (!result.ok) {
-        setError(result.error || "Folder picker is unavailable.");
+        setError(result.error || "文件夹选择器不可用。");
         return;
       }
       if (result.cancelled || !result.path) return;
@@ -125,35 +125,35 @@ export function WorkspaceSwitcher({
         className="workspaceModal"
         role="dialog"
         aria-modal="true"
-        aria-label="Open workspace"
+        aria-label="打开工作区"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="workspaceModalHeader">
           <div>
-            <p className="eyebrow">Project folder</p>
-            <h2>Open workspace</h2>
+            <p className="eyebrow">项目文件夹</p>
+            <h2>打开工作区</h2>
             <p className="muted">
-              Like Claude Code&apos;s project picker: goals, plans, and file edits use this folder as the primary working directory.
+              类似 Claude Code 的项目选择器:目标、计划和文件改动都以此文件夹作为主工作目录。
             </p>
           </div>
-          <button className="iconButton" title="Close" aria-label="Close" onClick={onClose}>
+          <button className="iconButton" title="关闭" aria-label="关闭" onClick={onClose}>
             <X size={18} />
           </button>
         </header>
 
         <div className="workspaceCurrent">
-          <small>Current primary cwd</small>
+          <small>当前主工作目录</small>
           <strong title={currentWorkspace}>{currentLabel}</strong>
           <span className="muted" title={currentWorkspace}>{currentWorkspace}</span>
         </div>
 
         <label className="workspaceField">
-          <span>Folder path</span>
+          <span>文件夹路径</span>
           <div className="workspacePathRow">
             <input
               type="text"
               value={pathValue}
-              placeholder="e.g. H:\projects\my-app"
+              placeholder="例如 H:\projects\my-app"
               onChange={(event) => setPathValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") void openPath(pathValue);
@@ -161,7 +161,7 @@ export function WorkspaceSwitcher({
               disabled={loading}
             />
             <button type="button" className="secondaryButton" onClick={() => void browseFolder()} disabled={loading}>
-              <FolderOpen size={15} /> Browse
+              <FolderOpen size={15} /> 浏览
             </button>
           </div>
         </label>
@@ -170,7 +170,7 @@ export function WorkspaceSwitcher({
 
         {recent.length > 0 && (
           <div className="workspaceRecent">
-            <p className="sideTitle">Recent</p>
+            <p className="sideTitle">最近</p>
             <div className="workspaceRecentList">
               {recent.map((entry) => {
                 const root = String(entry.workspace_root ?? "");
@@ -199,10 +199,10 @@ export function WorkspaceSwitcher({
 
         <footer className="workspaceModalFooter">
           <button type="button" className="secondaryButton" onClick={onClose} disabled={loading}>
-            Cancel
+            取消
           </button>
           <button type="button" className="primaryButton" onClick={() => void openPath(pathValue)} disabled={loading}>
-            {loading ? "Opening…" : "Open workspace"}
+            {loading ? "打开中…" : "打开工作区"}
           </button>
         </footer>
       </div>

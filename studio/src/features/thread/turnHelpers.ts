@@ -15,13 +15,13 @@ export function middleSummary(steps: NarrativeStepType[]): string {
   const hasError = steps.some((step) => step.kind === "error" || step.status === "failed" || step.status === "blocked");
   const hasPlan = steps.some((step) => step.kind === "plan");
   const parts: string[] = [];
-  if (commandCount) parts.push(`Ran ${commandCount} action${commandCount === 1 ? "" : "s"}`);
-  if (fileCount) parts.push(`Updated ${fileCount} file${fileCount === 1 ? "" : "s"}`);
-  if (hasVerification) parts.push("Verified");
-  if (hasRepair) parts.push("Repaired");
-  if (hasError) parts.push("Needs attention");
-  if (!parts.length && hasPlan) parts.push("Planned");
-  if (!parts.length) parts.push(`${steps.length} process update${steps.length === 1 ? "" : "s"}`);
+  if (commandCount) parts.push(`执行了 ${commandCount} 个操作`);
+  if (fileCount) parts.push(`更新了 ${fileCount} 个文件`);
+  if (hasVerification) parts.push("已验证");
+  if (hasRepair) parts.push("已修复");
+  if (hasError) parts.push("待处理");
+  if (!parts.length && hasPlan) parts.push("已规划");
+  if (!parts.length) parts.push(`${steps.length} 条过程更新`);
   return parts.slice(0, 3).join(" / ");
 }
 

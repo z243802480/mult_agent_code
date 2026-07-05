@@ -54,42 +54,42 @@ export function MissionPaneHeader({
         <button
           type="button"
           className="workspaceChip"
-          title={settings?.workspace ?? "Open workspace folder"}
+          title={settings?.workspace ?? "打开工作区文件夹"}
           onClick={onOpenWorkspace}
         >
           <FolderOpen size={13} />
-          <span>{settings?.workspaceName ?? "Workspace"}</span>
+          <span>{settings?.workspaceName ?? "工作区"}</span>
         </button>
         {branch && (
-          <span className="headerBranch" title={`Branch: ${branch}`}>
+          <span className="headerBranch" title={`分支: ${branch}`}>
             <GitBranch size={12} />
             <span>{branch}</span>
           </span>
         )}
         <span
           className={isRunning ? "headerStatus running" : "headerStatus"}
-          title={isRunning ? "Agent is running" : "Idle"}
+          title={isRunning ? "Agent 运行中" : "空闲"}
         >
           <span className="headerStatusDot" />
-          {isRunning ? "Running" : "Idle"}
+          {isRunning ? "运行中" : "空闲"}
         </span>
         {connectivity && connectivity !== "live" && (
           <span
             className={`headerConnectivity ${connectivity}`}
             title={
               connectivity === "offline"
-                ? "Can't reach the Studio server — retrying automatically."
-                : "Live stream dropped — reconnecting; updates are arriving via fallback polling."
+                ? "无法连接 Studio 服务器——正在自动重试。"
+                : "实时流已断开——正在重连；更新通过兜底轮询到达。"
             }
           >
             <WifiOff size={12} />
-            <span>{connectivity === "offline" ? "Offline — retrying" : "Reconnecting…"}</span>
+            <span>{connectivity === "offline" ? "离线——重试中" : "重连中…"}</span>
           </span>
         )}
         {settings?.permissionMode && (
           <span
             className="headerPermission"
-            title={`Default permission: ${permissionTier(settings.permissionMode).hint}. Change in Settings.`}
+            title={`默认权限: ${permissionTier(settings.permissionMode).hint}。可在设置中更改。`}
           >
             <ShieldCheck size={12} />
             <span>{permissionTier(settings.permissionMode).label}</span>
@@ -101,10 +101,10 @@ export function MissionPaneHeader({
           <button
             type="button"
             className={diffFocus ? "diffFocusButton active" : "diffFocusButton"}
-            title="Review changes (Ctrl+Shift+D)"
+            title="查看改动 (Ctrl+Shift+D)"
             onClick={onToggleDiffFocus}
           >
-            Review
+            查看
             {changeCount > 0 && <span className="headerBadge">{changeCount}</span>}
           </button>
         </div>
@@ -112,7 +112,7 @@ export function MissionPaneHeader({
           <button
             type="button"
             className={`viewModeButton view-${viewMode}`}
-            title={`View: ${viewModeLabel(viewMode)} (click to cycle)`}
+            title={`视图: ${viewModeLabel(viewMode)} (点击切换)`}
             onClick={onCycleViewMode}
           >
             <LayoutList size={15} />
@@ -121,15 +121,15 @@ export function MissionPaneHeader({
           <SideChatToggle open={sideChatOpen} onToggle={onToggleSideChat} />
           <button
             type="button"
-            title={panelOpen ? "Hide side panel (Ctrl+\\)" : "Show side panel (Ctrl+\\)"}
+            title={panelOpen ? "隐藏侧栏 (Ctrl+\\)" : "显示侧栏 (Ctrl+\\)"}
             onClick={onTogglePanel}
           >
             {panelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </button>
-          <button title="Refresh" onClick={onRefresh} disabled={loading}>
+          <button title="刷新" onClick={onRefresh} disabled={loading}>
             <RefreshCw size={16} className={loading ? "spinning" : ""} />
           </button>
-          <button type="button" title="Settings" aria-label="Settings" onClick={onOpenSettings}>
+          <button type="button" title="设置" aria-label="设置" onClick={onOpenSettings}>
             <Settings size={16} />
           </button>
         </div>

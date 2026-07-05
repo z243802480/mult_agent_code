@@ -6,11 +6,11 @@ import { cleanReasoning } from "../../narrative";
 import { turnModelMetadata } from "./turnHelpers";
 
 const ERROR_CATEGORY_LABELS: Record<string, string> = {
-  auth: "Auth",
-  rate_limit: "Rate limited",
-  timeout: "Timeout",
-  network: "Network",
-  model: "Model",
+  auth: "鉴权",
+  rate_limit: "限流",
+  timeout: "超时",
+  network: "网络",
+  model: "模型",
 };
 
 export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
@@ -22,7 +22,7 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const { lead, details } = splitLeadAndDetails(visibleText);
   // Honesty: never fabricate a "Done." success for a content-less non-error final. Show the real
   // final text when present; otherwise render nothing (or a neutral note), never a fake outcome.
-  const leadText = lead || (isError ? "Something went wrong while finishing up." : "");
+  const leadText = lead || (isError ? "收尾时出了点问题。" : "");
   // Coarse error category (auth/rate_limit/timeout/network/model) badged from the real error, when
   // the runtime actually detected one — never invented (I12).
   const category = isError ? String((event?.data as Record<string, unknown> | undefined)?.error_category ?? "") : "";
@@ -49,19 +49,19 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
         {categoryLabel && <span className="turnFinalErrorTag">{categoryLabel}</span>}
         {modelMeta && <span className="turnFinalMeta">{modelMeta}</span>}
         {copyText && (
-          <button type="button" className="turnFinalCopy" title="Copy answer" aria-label="Copy answer" onClick={() => void copyAnswer()}>
+          <button type="button" className="turnFinalCopy" title="复制回答" aria-label="复制回答" onClick={() => void copyAnswer()}>
             {copied ? <Check size={12} /> : <Copy size={12} />}
-            <span>{copied ? "Copied" : "Copy"}</span>
+            <span>{copied ? "已复制" : "复制"}</span>
           </button>
         )}
       </div>
       <div className="turnFinalText">
         {leadText
           ? <MarkdownBody text={leadText} />
-          : (!details && <span className="turnFinalEmpty" style={{ opacity: 0.6 }}>(no final message)</span>)}
+          : (!details && <span className="turnFinalEmpty" style={{ opacity: 0.6 }}>(无最终结果)</span>)}
         {details && (
           <details className="turnFinalDetails">
-            <summary>Run details</summary>
+            <summary>运行详情</summary>
             <MarkdownBody text={details} />
           </details>
         )}

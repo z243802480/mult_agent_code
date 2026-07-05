@@ -35,7 +35,7 @@ export function buildSideChatItems(events: StudioEvent[]): SideChatItem[] {
       items.push({
         kind: "error",
         id: event.event_id,
-        text: event.content_delta || event.summary || "Something went wrong.",
+        text: event.content_delta || event.summary || "出了点问题。",
         at: event.created_at,
       });
     }

@@ -23,7 +23,7 @@ export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; 
 
   const schedulingLabel = schedulingMode
     ? fakePath === true
-      ? `${schedulingMode} (preview)`
+      ? `${schedulingMode}（预览）`
       : schedulingMode
     : "";
 
@@ -32,22 +32,22 @@ export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; 
   // promotion_hint). Inspector (non-compact) keeps the raw detail below.
   if (compact) {
     return (
-      <div className="workerProgressBar" aria-label="Background worker progress">
+      <div className="workerProgressBar" aria-label="后台任务进度">
         <div className="workerProgressTrack">
           <span className="workerProgressFill success" style={{ width: `${(successful / total) * 100}%` }} />
           <span className="workerProgressFill failed" style={{ width: `${(failed / total) * 100}%` }} />
           <span className="workerProgressFill running" style={{ width: `${(running / total) * 100}%` }} />
         </div>
         <div className="workerProgressMeta">
-          <span>Working on {total} thing{total === 1 ? "" : "s"}… {successful} done</span>
-          {failed > 0 && <span className="workerProgressWarn">{failed} need attention</span>}
+          <span>正在处理 {total} 项…已完成 {successful} 项</span>
+          {failed > 0 && <span className="workerProgressWarn">{failed} 项需要关注</span>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="workerProgressBar" aria-label="Background worker progress">
+    <div className="workerProgressBar" aria-label="后台任务进度">
       {schedulingLabel && (
         <div className="workerSchedulingBadge" data-fake-path={fakePath === true ? "true" : "false"}>
           {schedulingLabel}
@@ -59,8 +59,8 @@ export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; 
         <span className="workerProgressFill running" style={{ width: `${(running / total) * 100}%` }} />
       </div>
       <div className="workerProgressMeta">
-        <span>{successful}/{total} done</span>
-        {failed > 0 && <span className="workerProgressWarn">{failed} need attention</span>}
+        <span>{successful}/{total} 已完成</span>
+        {failed > 0 && <span className="workerProgressWarn">{failed} 项需要关注</span>}
         <span>{percent}%</span>
       </div>
       {workers.length > 0 && (

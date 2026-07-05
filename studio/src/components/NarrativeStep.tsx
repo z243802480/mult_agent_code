@@ -84,14 +84,14 @@ export function NarrativeStep({
         <div className="holdCard">
           <div className="holdHead">
             <ShieldAlert size={15} />
-            <strong>Held for your review</strong>
+            <strong>已扣留，等待你查看</strong>
             {time && <span className="holdTime">{time}</span>}
           </div>
           <p className="holdBody">
             {count > 0
-              ? `Holding ${count} change${count === 1 ? "" : "s"} in an isolated copy until you approve.`
-              : "Holding this change until you approve."}
-            {risky.length > 0 && <> Flagged as sensitive: {risky.join(", ")}.</>}
+              ? `已在隔离副本中扣留 ${count} 处改动，等待你批准。`
+              : "已扣留此改动，等待你批准。"}
+            {risky.length > 0 && <> 已标记为敏感：{risky.join("、")}。</>}
           </p>
         </div>
       </article>
@@ -111,10 +111,10 @@ export function NarrativeStep({
           <RotateCcw size={14} />
           <span className="resumeText">
             {applied > 0
-              ? `Resumed — reused ${applied} prior decision${applied === 1 ? "" : "s"}`
-              : "Resumed the session"}
-            {created > 0 && ` and queued ${created} follow-up task${created === 1 ? "" : "s"}`}
-            .
+              ? `已继续 — 复用了 ${applied} 条此前的决定`
+              : "已继续该会话"}
+            {created > 0 && `，并排入 ${created} 个后续任务`}
+            。
           </span>
           {time && <span className="resumeTime">{time}</span>}
         </div>
@@ -134,17 +134,17 @@ export function NarrativeStep({
         </span>
         {cap && (
           <span className="stepCapabilityChips">
-            {cap.denied && <span className="capabilityChip denied">blocked</span>}
+            {cap.denied && <span className="capabilityChip denied">已拦截</span>}
             {!cap.denied && cap.retries > 0 && (
-              <span className="capabilityChip">retried {cap.retries}×</span>
+              <span className="capabilityChip">重试 {cap.retries} 次</span>
             )}
             {!cap.denied && cap.artifacts > 0 && (
-              <span className="capabilityChip">{cap.artifacts} file{cap.artifacts === 1 ? "" : "s"}</span>
+              <span className="capabilityChip">{cap.artifacts} 个文件</span>
             )}
           </span>
         )}
         <span className="stepInlineFacts">
-          <span>{step.events.length} update{step.events.length === 1 ? "" : "s"}</span>
+          <span>{step.events.length} 条更新</span>
           <span>{time}</span>
         </span>
         <Status status={step.status} />

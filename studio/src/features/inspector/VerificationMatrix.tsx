@@ -14,9 +14,9 @@ function classifyOutcome(raw: string): Outcome {
 }
 
 function OutcomeIcon({ outcome }: { outcome: Outcome }) {
-  if (outcome === "pass") return <CheckCircle2 size={14} className="vmIcon pass" aria-label="passed" />;
-  if (outcome === "fail") return <XCircle size={14} className="vmIcon fail" aria-label="failed" />;
-  return <MinusCircle size={14} className="vmIcon unknown" aria-label="not recorded" />;
+  if (outcome === "pass") return <CheckCircle2 size={14} className="vmIcon pass" aria-label="通过" />;
+  if (outcome === "fail") return <XCircle size={14} className="vmIcon fail" aria-label="失败" />;
+  return <MinusCircle size={14} className="vmIcon unknown" aria-label="未记录" />;
 }
 
 /**
@@ -36,8 +36,8 @@ export function VerificationMatrix({
   if (!validations.length) {
     return (
       <div className="evidenceBlock verificationMatrix">
-        <small>Verification</small>
-        <p className="muted">No validation or verification check recorded yet.</p>
+        <small>验证</small>
+        <p className="muted">暂无验证或校验记录。</p>
       </div>
     );
   }
@@ -47,7 +47,7 @@ export function VerificationMatrix({
       String(item.name ?? ""),
       String(item.command ?? ""),
       String(item.id ?? ""),
-      "check",
+      "校验项",
     );
     const statusText = firstText(String(item.status ?? ""), String(item.outcome ?? ""), "unknown");
     const outcome = classifyOutcome(statusText);
@@ -66,10 +66,10 @@ export function VerificationMatrix({
   return (
     <div className="evidenceBlock verificationMatrix">
       <div className="vmHead">
-        <small>Verification</small>
+        <small>验证</small>
         <span className="vmTally">
-          <span className="pass">{passed} pass</span>
-          {failed > 0 && <span className="fail">{failed} fail</span>}
+          <span className="pass">{passed} 通过</span>
+          {failed > 0 && <span className="fail">{failed} 失败</span>}
           <span className="muted">/ {rows.length}</span>
         </span>
       </div>
@@ -108,8 +108,8 @@ export function LoopQualityMatrix({ loopQuality }: { loopQuality: AnyRecord }) {
   if (!has) {
     return (
       <div className="loopQualityMatrix">
-        <small>Loop quality (SLO · observe_then_warn)</small>
-        <p className="muted">not recorded (run predates loop_quality_guard)</p>
+        <small>循环质量(SLO · observe_then_warn)</small>
+        <p className="muted">未记录(该运行早于 loop_quality_guard)</p>
       </div>
     );
   }
@@ -122,13 +122,13 @@ export function LoopQualityMatrix({ loopQuality }: { loopQuality: AnyRecord }) {
 
   return (
     <div className="loopQualityMatrix">
-      <small>Loop quality (SLO · observe_then_warn)</small>
+      <small>循环质量(SLO · observe_then_warn)</small>
       <div className="lqBadges">
-        <span className="lqBadge">mode <strong>{String(loopQuality.mode ?? "n/a")}</strong></span>
-        <span className={`lqBadge ${warn ? "warn" : "ok"}`}>health <strong>{warn ? `warn (${severity})` : "ok"}</strong></span>
-        <span className="lqBadge">identical <strong>{identical}</strong></span>
-        <span className="lqBadge">failed verify <strong>{failedVerify}</strong></span>
-        {hardBlock && <span className="lqBadge bad">hard block</span>}
+        <span className="lqBadge">模式 <strong>{String(loopQuality.mode ?? "n/a")}</strong></span>
+        <span className={`lqBadge ${warn ? "warn" : "ok"}`}>健康 <strong>{warn ? `warn (${severity})` : "ok"}</strong></span>
+        <span className="lqBadge">重复观测 <strong>{identical}</strong></span>
+        <span className="lqBadge">重复失败验证 <strong>{failedVerify}</strong></span>
+        {hardBlock && <span className="lqBadge bad">硬阻断</span>}
       </div>
       {reason && reason !== "none" && <p className="lqReason">{reason}</p>}
     </div>

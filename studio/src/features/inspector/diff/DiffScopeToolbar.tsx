@@ -25,23 +25,23 @@ export function DiffScopeToolbar({
     <>
       <div className="gitChangesHeader">
         <div>
-          <h2>Diff review</h2>
+          <h2>改动查看</h2>
           {gitStatus?.available && (
             <p className="gitBranchLine">
               <GitBranch size={13} />
               <span>{gitStatus.branch ?? "HEAD"}</span>
               <span className="muted">
-                {gitStatus.clean ? "· clean" : `· ${gitStatus.change_count ?? gitStatus.changes?.length ?? 0} changed`}
+                {gitStatus.clean ? "· 干净" : `· ${gitStatus.change_count ?? gitStatus.changes?.length ?? 0} 处改动`}
               </span>
             </p>
           )}
         </div>
-        <button type="button" className="iconButton" title="Refresh git status" onClick={onRefresh} disabled={loading}>
+        <button type="button" className="iconButton" title="刷新 git 状态" onClick={onRefresh} disabled={loading}>
           <RefreshCw size={14} className={loading ? "spinning" : ""} />
         </button>
       </div>
 
-      <div className="diffScopeTabs" role="tablist" aria-label="Diff scope">
+      <div className="diffScopeTabs" role="tablist" aria-label="改动范围">
         <button
           type="button"
           role="tab"
@@ -49,7 +49,7 @@ export function DiffScopeToolbar({
           aria-selected={activeScopeId === "current"}
           onClick={() => onSelectScope("current")}
         >
-          Current
+          当前
         </button>
         {turnScopes.map((scope) => (
           <button
@@ -69,7 +69,7 @@ export function DiffScopeToolbar({
 
       {activeScope?.kind === "turn" && activeScope.userPreview && (
         <p className="diffScopeHint" title={activeScope.userPreview}>
-          Turn goal: {activeScope.userPreview}
+          本轮目标: {activeScope.userPreview}
         </p>
       )}
     </>

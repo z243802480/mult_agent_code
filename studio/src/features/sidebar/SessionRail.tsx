@@ -20,11 +20,11 @@ export function SessionRail({ sessions, active, isRunning, filter, onSelect }: S
   const visibleSessions = React.useMemo(() => filterSessions(sessions, filter), [sessions, filter]);
 
   return (
-    <nav className="sessionRailList" aria-label="Sessions">
+    <nav className="sessionRailList" aria-label="会话">
       {visibleSessions.map((session) => {
         const isActive = active?.session_id === session.session_id;
         const showLive = isActive && isRunning;
-        const title = cleanSessionTitle(String(session.title || "Untitled"));
+        const title = cleanSessionTitle(String(session.title || "未命名"));
         const preview = sessionPreview(session);
         const hint = [title, preview, new Date(session.updated_at).toLocaleString()].filter(Boolean).join(" · ");
         return (

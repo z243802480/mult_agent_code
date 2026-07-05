@@ -75,7 +75,7 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
     // for long-task sessions than a permanent delete gated only by a confirm dialog.
     const res = await api.deleteSession(session.session_id).catch(() => null);
     if (!res?.ok) {
-      toast.error("Couldn't delete that session. Try again.");
+      toast.error("无法删除该会话。请重试。");
       return;
     }
     const refreshed = await api.sessions();
@@ -91,21 +91,21 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
       }
       onSessionRemoved?.();
     }
-    toast.info(`Deleted "${session.title || "session"}"`, {
+    toast.info(`已删除“${session.title || "会话"}”`, {
       duration: 7000,
-      action: { label: "Undo", onClick: () => void restoreSession(session) },
+      action: { label: "撤销", onClick: () => void restoreSession(session) },
     });
   }
 
   async function restoreSession(session: StudioSession) {
     const res = await api.restoreSession(session.session_id).catch(() => null);
     if (!res?.ok) {
-      toast.error("Couldn't restore that session.");
+      toast.error("无法恢复该会话。");
       return;
     }
     const refreshed = await api.sessions();
     setSessions(refreshed.sessions ?? []);
-    toast.success(`Restored "${session.title || "session"}".`);
+    toast.success(`已恢复“${session.title || "会话"}”。`);
   }
 
   function pushPrompt(text: string) {

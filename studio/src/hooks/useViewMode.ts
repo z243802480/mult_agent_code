@@ -6,9 +6,9 @@ const STORAGE_KEY = "asteria.studio.viewMode";
 const ORDER: StudioViewMode[] = ["focus", "normal", "verbose"];
 
 const LABELS: Record<StudioViewMode, string> = {
-  focus: "Focus",
-  normal: "Normal",
-  verbose: "Verbose",
+  focus: "专注",
+  normal: "常规",
+  verbose: "详尽",
 };
 
 function loadMode(): StudioViewMode {

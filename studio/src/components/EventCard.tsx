@@ -46,13 +46,13 @@ function iconFor(type: StudioEvent["type"]) {
 }
 
 function phaseLabel(phase: StudioEvent["phase"], fallback: string): string {
-  if (phase === "understand") return "understand";
-  if (phase === "plan") return "plan";
-  if (phase === "execute") return "execute";
-  if (phase === "review") return "review";
-  if (phase === "resume") return "resume";
-  if (phase === "result") return "result";
-  if (phase === "next") return "next";
+  if (phase === "understand") return "理解";
+  if (phase === "plan") return "计划";
+  if (phase === "execute") return "执行";
+  if (phase === "review") return "查看";
+  if (phase === "resume") return "继续";
+  if (phase === "result") return "结果";
+  if (phase === "next") return "下一步";
   return fallback;
 }
 
@@ -61,7 +61,7 @@ function observationText(event: StudioEvent): string {
   const summary = String(observation?.model_summary ?? observation?.summary ?? "").trim();
   const stdout = String(observation?.stdout_excerpt ?? "").trim();
   const stderr = String(observation?.stderr_excerpt ?? "").trim();
-  return [summary, stdout && `output: ${stdout}`, stderr && `errors: ${stderr}`]
+  return [summary, stdout && `输出：${stdout}`, stderr && `错误：${stderr}`]
     .filter(Boolean)
     .join("\n");
 }
@@ -134,24 +134,24 @@ export function EventCard({
           <WorkerProgressBar data={asRecord(event.data)} compact={compact} />
         )}
         <div className="eventFacts">
-          {cap?.denied && <span className="capabilityChip denied">blocked by permission</span>}
-          {cap && !cap.denied && cap.retries > 0 && <span>retried {cap.retries}×</span>}
+          {cap?.denied && <span className="capabilityChip denied">已被权限拦截</span>}
+          {cap && !cap.denied && cap.retries > 0 && <span>重试 {cap.retries} 次</span>}
           {cap && !cap.denied && cap.artifacts > 0 && (
-            <span>{cap.artifacts} file{cap.artifacts === 1 ? "" : "s"} produced</span>
+            <span>产出 {cap.artifacts} 个文件</span>
           )}
           {!compact && event.model_provider && (
             <span>
-              {event.model_provider}/{event.model_name ?? "unknown"}{event.model_tier ? ` ? ${event.model_tier}` : ""}
+              {event.model_provider}/{event.model_name ?? "未知"}{event.model_tier ? ` ? ${event.model_tier}` : ""}
             </span>
           )}
           {!compact && event.model_route && !event.model_provider && (
             <span>
-              {String((event.model_route as AnyRecord).provider ?? "model")}/{String((event.model_route as AnyRecord).model ?? "unknown")}
+              {String((event.model_route as AnyRecord).provider ?? "model")}/{String((event.model_route as AnyRecord).model ?? "未知")}
             </span>
           )}
-          {!compact && (event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} evidence</span>}
-          {!compact && (event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} artifacts</span>}
-          {fileChanges.length > 0 && <span>{fileChanges.length} file{fileChanges.length === 1 ? "" : "s"}</span>}
+          {!compact && (event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} 条证据</span>}
+          {!compact && (event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} 个产物</span>}
+          {fileChanges.length > 0 && <span>{fileChanges.length} 个文件</span>}
           <span>{formatEventTime(event.created_at)}</span>
         </div>
         {showBody &&

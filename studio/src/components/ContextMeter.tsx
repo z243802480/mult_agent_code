@@ -15,8 +15,8 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
   const warn = ratio != null && ratio >= 0.75;
   const pct = ratio != null ? Math.round(ratio * 100) : null;
   const io = [
-    usage.inputTokens != null ? `${fmt(usage.inputTokens)} in` : null,
-    usage.outputTokens != null ? `${fmt(usage.outputTokens)} out` : null,
+    usage.inputTokens != null ? `${fmt(usage.inputTokens)} 输入` : null,
+    usage.outputTokens != null ? `${fmt(usage.outputTokens)} 输出` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -24,7 +24,7 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
   return (
     <div
       className={`contextMeter ${warn ? "warn" : ""}`}
-      title="Estimated context-window usage (not billed). Turns amber near the compaction threshold."
+      title="上下文窗口用量估算(不计费)。接近压缩阈值时变为琥珀色。"
     >
       <Gauge size={12} className="contextMeterIcon" />
       {ratio != null && (
@@ -33,9 +33,9 @@ export function ContextMeter({ usage }: { usage: ContextUsage }) {
         </span>
       )}
       <span className="contextMeterText">
-        {pct != null ? `${pct}% context` : "context"}
+        {pct != null ? `${pct}% 上下文` : "上下文"}
         {usage.usedTokens != null && usage.windowTokens ? ` · ${fmt(usage.usedTokens)}/${fmt(usage.windowTokens)}` : ""}
-        {io ? ` · ${io} (est.)` : " (est.)"}
+        {io ? ` · ${io}(估算)` : "(估算)"}
       </span>
     </div>
   );

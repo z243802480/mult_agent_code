@@ -33,7 +33,7 @@ export function DiffPreviewSection({
     <section className="inspectorDiffPreview">
       {!isDiff && preview.ok && (
         <>
-          <strong>{preview.path ?? "Preview"}</strong>
+          <strong>{preview.path ?? "预览"}</strong>
           <pre className="filePreviewBody">{(preview.content ?? "").slice(0, 12000)}</pre>
         </>
       )}
@@ -41,7 +41,7 @@ export function DiffPreviewSection({
       {preview.ok && isDiff && (
         <>
           <div className="diffViewControls">
-            <div className="diffStageTabs" role="tablist" aria-label="Diff stage">
+            <div className="diffStageTabs" role="tablist" aria-label="改动暂存状态">
               {(["all", "staged", "unstaged"] as DiffStage[]).map((stage) => (
                 <button
                   key={stage}
@@ -51,13 +51,13 @@ export function DiffPreviewSection({
                   aria-selected={diffStage === stage}
                   onClick={() => onSelectDiffStage(stage)}
                 >
-                  {stage === "all" ? "All" : stage === "staged" ? "Staged" : "Unstaged"}
+                  {stage === "all" ? "全部" : stage === "staged" ? "已暂存" : "未暂存"}
                 </button>
               ))}
             </div>
             <div className="diffLayoutTabs">
-              <button type="button" className={diffLayout === "unified" ? "active" : ""} onClick={() => onSelectDiffLayout("unified")}>Unified</button>
-              <button type="button" className={diffLayout === "split" ? "active" : ""} onClick={() => onSelectDiffLayout("split")}>Split</button>
+              <button type="button" className={diffLayout === "unified" ? "active" : ""} onClick={() => onSelectDiffLayout("unified")}>合并视图</button>
+              <button type="button" className={diffLayout === "split" ? "active" : ""} onClick={() => onSelectDiffLayout("split")}>并排视图</button>
             </div>
           </div>
           <DiffPreview

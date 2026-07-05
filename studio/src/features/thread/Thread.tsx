@@ -257,7 +257,7 @@ export function Thread({
           {repairProgress && (
             <span className="repairProgressChip" role="status" aria-live="polite">
               <RefreshCw size={12} className="spinning" />
-              Auto-repairing · attempt {repairProgress.attempt}
+              自动修复中 · 第 {repairProgress.attempt} 次尝试
               {repairProgress.budget > 0 ? ` / ${repairProgress.budget}` : ""}
             </span>
           )}
@@ -265,14 +265,14 @@ export function Thread({
         </div>
       )}
       {showProcessControls && (
-        <div className="threadProcessControls" aria-label="Process display controls">
-          <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>Expand process</button>
-          <button type="button" onClick={() => setExpandSignal({ mode: "collapse", id: Date.now() })}>Collapse process</button>
+        <div className="threadProcessControls" aria-label="过程显示控制">
+          <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>展开过程</button>
+          <button type="button" onClick={() => setExpandSignal({ mode: "collapse", id: Date.now() })}>收起过程</button>
         </div>
       )}
       {hiddenTurnCount > 0 && (
         <button type="button" className="loadEarlierTurns" onClick={() => setShowEarlier(true)}>
-          Load {hiddenTurnCount} earlier turn{hiddenTurnCount === 1 ? "" : "s"}
+          加载更早的 {hiddenTurnCount} 轮
         </button>
       )}
       {visibleTurns.map((turnSteps, i) => {
@@ -314,16 +314,16 @@ export function Thread({
           type="button"
           className="issueNav"
           onClick={jumpToIssue}
-          aria-label={`Jump to next of ${failedTurnNumbers.length} issue${failedTurnNumbers.length === 1 ? "" : "s"}`}
-          title="Jump to the next failed turn"
+          aria-label={`跳到下一个问题（共 ${failedTurnNumbers.length} 个）`}
+          title="跳到下一个失败的轮次"
         >
           <AlertTriangle size={12} />
-          {failedTurnNumbers.length} issue{failedTurnNumbers.length === 1 ? "" : "s"}
+          {failedTurnNumbers.length} 个问题
         </button>
       )}
       {!atBottom && (
-        <button type="button" className="jumpToLatest" onClick={scrollToLatest} aria-label="Jump to latest">
-          Jump to latest ↓
+        <button type="button" className="jumpToLatest" onClick={scrollToLatest} aria-label="跳到最新">
+          跳到最新 ↓
         </button>
       )}
       {shouldShowPending && pendingTurn && <PendingTurn {...pendingTurn} />}

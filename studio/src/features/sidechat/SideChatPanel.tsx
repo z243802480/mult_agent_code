@@ -46,20 +46,20 @@ export function SideChatPanel({
   if (!open) return null;
 
   return (
-    <div className="sideChatDock open" aria-label="Quick ask">
+    <div className="sideChatDock open" aria-label="快速提问">
       <section className="sideChatPanel">
         <header className="sideChatHeader">
           <div>
-            <strong>Quick ask</strong>
-            <p className="muted">Off-thread questions — main goal stays untouched.</p>
+            <strong>快速提问</strong>
+            <p className="muted">不占用主线程的提问——主目标保持不变。</p>
           </div>
-          <button type="button" className="iconButton" title="Close (Ctrl+;)" aria-label="Close quick ask" onClick={onClose}>
+          <button type="button" className="iconButton" title="关闭 (Ctrl+;)" aria-label="关闭快速提问" onClick={onClose}>
             <X size={16} />
           </button>
         </header>
         <div className="sideChatMessages" ref={scrollRef}>
           {items.length === 0 && !waiting && (
-            <p className="muted sideChatEmpty">Ask about the workspace, runtime status, or planning — without starting a new turn.</p>
+            <p className="muted sideChatEmpty">可以问工作区、运行状态或规划相关的问题——不会开启新的一轮。</p>
           )}
           {items.map((item) => (
             <div key={item.id} className={`sideChatBubble sideChatBubble-${item.kind}`}>
@@ -72,7 +72,7 @@ export function SideChatPanel({
           ))}
           {waiting && (
             <div className="sideChatBubble sideChatBubble-pending">
-              <p className="muted">Thinking…</p>
+              <p className="muted">思考中…</p>
             </div>
           )}
         </div>
@@ -81,12 +81,12 @@ export function SideChatPanel({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Ask a quick question…"
+            placeholder="问一个简短的问题…"
             rows={2}
             disabled={sending}
           />
           <button type="submit" disabled={sending || !draft.trim()}>
-            Send
+            发送
           </button>
         </form>
       </section>
@@ -105,13 +105,13 @@ export function SideChatToggle({
     <button
       type="button"
       className={open ? "sideChatHeaderButton active" : "sideChatHeaderButton"}
-      title="Quick ask (Ctrl+;)"
-      aria-label="Toggle quick ask"
+      title="快速提问 (Ctrl+;)"
+      aria-label="切换快速提问"
       aria-pressed={open}
       onClick={onToggle}
     >
       <MessageCircle size={16} />
-      <span>Ask</span>
+      <span>提问</span>
     </button>
   );
 }

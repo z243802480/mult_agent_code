@@ -29,18 +29,18 @@ export function WorkflowMonitorPanel({
   const verifierStatus = String(workflow.verifier_status ?? "n/a");
 
   return (
-    <div className="evidenceBlock workflowMonitorPanel" aria-label="L3 workflow monitor">
-      <small>Workflow monitor · {workflowId}</small>
+    <div className="evidenceBlock workflowMonitorPanel" aria-label="L3 工作流监视器">
+      <small>工作流监视器 · {workflowId}</small>
       <div className="workflowMonitorStats">
         <Metric
-          label="Steps"
+          label="步骤"
           value={`${String(workflow.completed_steps ?? 0)}/${String(workflow.step_count ?? steps.length)}`}
           tone={Number(workflow.failed_steps ?? 0) ? "bad" : "good"}
         />
-        <Metric label="Merge" value={mergeStatus} tone={mergeStatus === "passed" ? "good" : mergeStatus === "failed" ? "bad" : "warn"} />
-        <Metric label="Verifier" value={verifierStatus} tone={verifierStatus === "passed" ? "good" : verifierStatus === "failed" ? "bad" : "warn"} />
+        <Metric label="合并" value={mergeStatus} tone={mergeStatus === "passed" ? "good" : mergeStatus === "failed" ? "bad" : "warn"} />
+        <Metric label="校验" value={verifierStatus} tone={verifierStatus === "passed" ? "good" : verifierStatus === "failed" ? "bad" : "warn"} />
         <Metric
-          label="Checkpoint"
+          label="检查点"
           value={String(workflow.resume_checkpoint ?? "none")}
           tone={workflow.resume_checkpoint ? "good" : "warn"}
         />

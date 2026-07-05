@@ -13,13 +13,13 @@ import type { StudioViewMode } from "../../hooks/useViewMode";
 // Main-thread, user-facing phase copy. Keys are step kinds; unknown kinds fall back
 // to the step's own label. Keep this plain and human — no internal phase vocabulary.
 const PHASE_LABELS: Record<string, string> = {
-  thinking: "Thinking",
-  plan: "Planning",
-  tool: "Working",
-  result: "Result",
-  verification: "Checking the work",
-  repair: "Working",
-  error: "Error",
+  thinking: "思考中",
+  plan: "规划中",
+  tool: "执行中",
+  result: "结果",
+  verification: "核对结果",
+  repair: "执行中",
+  error: "出错",
 };
 
 export type LiveStreamProps = {
@@ -46,7 +46,7 @@ export function LiveStream({
 }: LiveStreamProps) {
   const expandOutput = viewMode === "verbose";
   const activeStep = steps.at(-1);
-  const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "Processing";
+  const phaseLabel = activeStep ? (PHASE_LABELS[activeStep.kind] ?? activeStep.label) : "处理中";
   const isWaiting = activeStep?.status === "waiting_user";
   const modelText = cleanReasoning(
     steps

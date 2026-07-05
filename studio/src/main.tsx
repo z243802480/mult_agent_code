@@ -24,10 +24,10 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorFallba
       <main className="studioCrash">
         <section>
           <p className="eyebrow">Asteria Studio</p>
-          <h1>Studio failed to render</h1>
-          <p>The frontend hit a recoverable rendering error. The details are shown below so the page doesn't go fully blank.</p>
+          <h1>Studio 渲染失败</h1>
+          <p>前端遇到一个可恢复的渲染错误。下面显示了详情,以免页面完全空白。</p>
           <pre>{this.state.error.stack || this.state.error.message}</pre>
-          <button onClick={() => window.location.reload()}>Reload Studio</button>
+          <button onClick={() => window.location.reload()}>重新加载 Studio</button>
         </section>
       </main>
     );

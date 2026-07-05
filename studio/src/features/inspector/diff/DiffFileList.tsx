@@ -23,11 +23,11 @@ export function DiffFileList({
   onSelectChange: (path: string) => void;
 }) {
   if (!gitStatus) {
-    return <p className="muted">Loading git status…</p>;
+    return <p className="muted">加载 git 状态中…</p>;
   }
 
   if (!gitStatus.available) {
-    return <p className="muted">{gitStatus.reason ?? "Git is not available for this workspace."}</p>;
+    return <p className="muted">{gitStatus.reason ?? "该工作区不支持 Git。"}</p>;
   }
 
   return (
@@ -55,7 +55,7 @@ function ScopeChangeList({
 
   if (activeScope?.kind === "turn") {
     if (!activeScope.files.length) {
-      return <p className="muted">No file changes recorded for this turn.</p>;
+      return <p className="muted">本轮未记录文件改动。</p>;
     }
     return (
       <div className="gitChangeList">
@@ -79,7 +79,7 @@ function ScopeChangeList({
   }
 
   if (gitChanges.length === 0) {
-    return <p className="muted">No uncommitted changes in this workspace.</p>;
+    return <p className="muted">该工作区没有未提交的改动。</p>;
   }
 
   return (

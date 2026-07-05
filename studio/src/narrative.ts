@@ -15,7 +15,7 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
   let activeModel: StudioEvent | null = null;
   for (const event of events) {
     if (event.type === "model_start") {
-      activeModel = { ...event, type: "model_delta", summary: event.summary || "Waiting for model response..." };
+      activeModel = { ...event, type: "model_delta", summary: event.summary || "等待模型响应..." };
       result.push(activeModel);
       continue;
     }
@@ -98,25 +98,25 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 }
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string {
-  if (kind === "observation") return "Observation";
-  if (kind === "turn") return "Agent step";
-  if (kind === "goal") return "User message";
-  if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "Structured generation";
-  if (kind === "thinking") return "Thinking";
-  if (kind === "plan") return "Plan";
+  if (kind === "observation") return "观察";
+  if (kind === "turn") return "Agent 步骤";
+  if (kind === "goal") return "用户消息";
+  if (kind === "thinking" && event.phase === "plan" && event.model_provider) return "结构化生成";
+  if (kind === "thinking") return "思考";
+  if (kind === "plan") return "计划";
   if (kind === "tool") {
     const cap = capabilityInfo(event);
     if (cap) return cap.label;
-    return event.command?.length ? "Tool call" : "Action";
+    return event.command?.length ? "工具调用" : "操作";
   }
-  if (kind === "result") return event.runtime_event_type === "final_report" ? "Final report" : "File change";
-  if (kind === "repair") return "Repair";
-  if (kind === "verification") return "Verification";
-  if (kind === "final") return "Final answer";
-  if (kind === "subagent") return "Subagent";
-  if (kind === "hold") return "Held for your review";
-  if (kind === "resume") return "Resumed";
-  return "Issue";
+  if (kind === "result") return event.runtime_event_type === "final_report" ? "最终报告" : "文件改动";
+  if (kind === "repair") return "修复";
+  if (kind === "verification") return "验证";
+  if (kind === "final") return "最终答复";
+  if (kind === "subagent") return "子 agent";
+  if (kind === "hold") return "已保留待你查看";
+  if (kind === "resume") return "已恢复";
+  return "问题";
 }
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
@@ -213,10 +213,10 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
       status,
       headline:
         status === "running"
-          ? "Agent is processing the task."
+          ? "Agent 正在处理任务。"
           : status === "failed"
-          ? "The run encountered an issue."
-          : "The run completed and produced a final result.",
+          ? "运行遇到了问题。"
+          : "运行已完成并产出了最终结果。",
       goal: (goalEvent?.summary ?? "") as string,
       modelEvents: events.filter(
         (e) => e.type.startsWith("model_") || e.type === "assistant_delta" || e.type === "reasoning_delta"

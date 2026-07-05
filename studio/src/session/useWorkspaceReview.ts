@@ -40,7 +40,7 @@ export function useWorkspaceReview(
       const status: GitStatusPayload = {
         ok: false,
         available: false,
-        reason: "Could not load git status.",
+        reason: "无法加载 git 状态。",
       };
       setGitStatus(status);
       return status;
@@ -133,7 +133,7 @@ export function useWorkspaceReview(
 
   async function discardSelectedFile() {
     if (!gitSelectedPath) return;
-    const ok = window.confirm(`Discard uncommitted changes in ${gitSelectedPath}?`);
+    const ok = window.confirm(`放弃 ${gitSelectedPath} 中未提交的改动？`);
     if (!ok) return;
     setGitActionLoading(true);
     try {
@@ -175,7 +175,7 @@ export function useWorkspaceReview(
 
   async function compactContext() {
     if (!activeSession) return;
-    const ok = window.confirm("Compact session context? Older turns may be summarized.");
+    const ok = window.confirm("压缩会话上下文？较早的对话轮次可能会被摘要化。");
     if (!ok) return;
     setCompactLoading(true);
     try {

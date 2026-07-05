@@ -56,17 +56,17 @@ export function SessionList({
   }
 
   return (
-    <nav className="sessionList" aria-label="Sessions">
+    <nav className="sessionList" aria-label="会话">
       <div className="sessionListHeader">
         <div className="sessionListTitleRow">
-          <p className="sideTitle">Tasks</p>
+          <p className="sideTitle">任务</p>
           {onImportFile && (
             <>
               <button
                 type="button"
                 className="sessionImportButton"
-                title="Import a session backup (.json)"
-                aria-label="Import session backup"
+                title="导入会话备份 (.json)"
+                aria-label="导入会话备份"
                 onClick={() => importInputRef.current?.click()}
               >
                 <Upload size={13} />
@@ -85,7 +85,7 @@ export function SessionList({
             </>
           )}
         </div>
-        <div className="sessionFilterTabs" role="tablist" aria-label="Session filter">
+        <div className="sessionFilterTabs" role="tablist" aria-label="会话筛选">
           {(["all", "recent"] as SessionListFilter[]).map((value) => (
             <button
               key={value}
@@ -95,7 +95,7 @@ export function SessionList({
               aria-selected={filter === value}
               onClick={() => onFilterChange(value)}
             >
-              {value === "all" ? "All" : "Recent"}
+              {value === "all" ? "全部" : "最近"}
             </button>
           ))}
         </div>
@@ -104,17 +104,17 @@ export function SessionList({
           className="sessionSearchInput"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search tasks…"
-          aria-label="Search sessions"
+          placeholder="搜索任务…"
+          aria-label="搜索会话"
         />
       </div>
       {groups.length === 0 && (
         <p className="sessionListEmpty muted">
           {query.trim()
-            ? `No tasks match “${query.trim()}”.`
+            ? `没有匹配“${query.trim()}”的任务。`
             : filter === "recent"
-              ? "No tasks in the last 7 days."
-              : "No tasks yet."}
+              ? "最近 7 天没有任务。"
+              : "还没有任务。"}
         </p>
       )}
       {groups.map((group) => (
@@ -178,7 +178,7 @@ function SessionRow({
   onCommitRename,
   onCancelRename,
 }: SessionRowProps) {
-  const title = cleanSessionTitle(String(session.title || "Untitled"));
+  const title = cleanSessionTitle(String(session.title || "未命名"));
   const preview = sessionPreview(session);
   const hint = sessionHint(session, title, preview);
 
@@ -199,7 +199,7 @@ function SessionRow({
       ) : (
         <button className="session sessionFlat" onClick={() => onSelect(session)} title={hint || title}>
           <span className="sessionTitleRow">
-            {showLive && <span className="sessionLiveDot" aria-label="Live" />}
+            {showLive && <span className="sessionLiveDot" aria-label="运行中" />}
             <span className="sessionTitleText">{title}</span>
           </span>
           {preview && !isActive && !compact && <small className="sessionPreview">{preview}</small>}
@@ -207,8 +207,8 @@ function SessionRow({
       )}
       <button
         className="sessionRename"
-        title="Rename session"
-        aria-label="Rename session"
+        title="重命名会话"
+        aria-label="重命名会话"
         onClick={(event) => {
           event.stopPropagation();
           onStartRename(session);
@@ -220,16 +220,16 @@ function SessionRow({
         className="sessionExport"
         href={exportHref}
         download
-        title="Export (backup) session"
-        aria-label="Export session backup"
+        title="导出(备份)会话"
+        aria-label="导出会话备份"
         onClick={(event) => event.stopPropagation()}
       >
         <Download size={13} />
       </a>
       <button
         className="sessionDelete"
-        title="Delete session"
-        aria-label="Delete session"
+        title="删除会话"
+        aria-label="删除会话"
         onClick={(event) => {
           event.stopPropagation();
           onDelete(session);

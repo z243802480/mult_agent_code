@@ -167,7 +167,7 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
     <div className="chatStreamPreview">
       <div className="chatStreamHeader">
         <Loader2 size={13} className="spinning" />
-        <strong>Thinking</strong>
+        <strong>思考中</strong>
         {modelId && <span>{modelId}</span>}
       </div>
       {text ? (
@@ -176,7 +176,7 @@ function ChatStreamPreview({ step }: { step: NarrativeStepType }) {
           <span className="streamCaret" aria-hidden="true" />
         </div>
       ) : (
-        <p>Waiting for the first response...</p>
+        <p>等待首个响应…</p>
       )}
     </div>
   );
@@ -220,10 +220,10 @@ function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; li
   const duration = thinkingDurationSeconds(steps);
   const tokens = thinkingTokens(steps);
   const label = live
-    ? "Thinking…"
+    ? "思考中…"
     : duration > 0
-      ? `Thought for ${duration}s${tokens > 0 ? ` · ${tokens} tokens` : ""}`
-      : "Reasoning";
+      ? `思考了 ${duration} 秒${tokens > 0 ? ` · ${tokens} tokens` : ""}`
+      : "思考过程";
 
   return (
     <div className={`thinkingBlock ${open ? "open" : ""}`}>
@@ -253,14 +253,14 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   // Main thread shows one calm loading phrase regardless of internal routing mode.
   // (mode is retained for callers; the user-facing copy is uniform.)
   void mode;
-  const phase = "Thinking…";
+  const phase = "思考中…";
 
   return (
     <div className="conversationTurn pendingTurn">
       <div className="turnUser">
         <div className="turnUserBubble optimistic">
           <p>{message}</p>
-          <span className="turnUserTime">sending</span>
+          <span className="turnUserTime">发送中</span>
         </div>
       </div>
       <div className="turnWaiting">
@@ -345,11 +345,11 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
               <button
                 type="button"
                 className="turnUserEdit"
-                title="Edit & resend — puts this message back in the composer as a new turn"
+                title="编辑并重发——把这条消息放回输入框,作为新的一轮"
                 onClick={() => onEditMessage(userText)}
               >
                 <Pencil size={11} />
-                <span>Edit</span>
+                <span>编辑</span>
               </button>
             )}
           </div>
@@ -357,7 +357,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
       )}
       {turnRunning ? (
         rawMiddleSteps.length === 0 ? (
-          <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>Starting...</span></div>
+          <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>启动中…</span></div>
         ) : rawMiddleSteps.length === 1 && isModelThinkingStep(rawMiddleSteps[0], "chat") ? (
           <ChatStreamPreview step={rawMiddleSteps[0]} />
         ) : (
@@ -405,7 +405,7 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
       {verifiedPass && (
         <div className="turnVerifiedNote" role="note">
           <Check size={12} />
-          <span>Verification passed — the recorded tests/checks ran green.</span>
+          <span>验证通过——记录的测试/检查均已跑绿。</span>
         </div>
       )}
       {responseStep && isLast && onSuggestedAction && !suppressSuggested && (

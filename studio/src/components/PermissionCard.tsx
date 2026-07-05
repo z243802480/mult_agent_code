@@ -52,15 +52,15 @@ export function PermissionCard({
       <p className="permissionSummary">{event.summary}</p>
       {event.content_delta && !preview && <p className="permissionDetail">{event.content_delta}</p>}
       {preview && (
-        <div className="permissionPreview" aria-label="Permission impact">
-          {preview.action && <PermissionFact label="Action" value={preview.action} icon={<ShieldAlert size={13} />} />}
-          {preview.impact && <PermissionFact label="Impact" value={preview.impact} icon={<FilePenLine size={13} />} />}
-          {preview.scope && <PermissionFact label="Scope" value={preview.scope} icon={<FolderLock size={13} />} />}
-          {preview.network && <PermissionFact label="Network" value={preview.network} icon={<Globe2 size={13} />} />}
+        <div className="permissionPreview" aria-label="权限影响">
+          {preview.action && <PermissionFact label="动作" value={preview.action} icon={<ShieldAlert size={13} />} />}
+          {preview.impact && <PermissionFact label="影响" value={preview.impact} icon={<FilePenLine size={13} />} />}
+          {preview.scope && <PermissionFact label="范围" value={preview.scope} icon={<FolderLock size={13} />} />}
+          {preview.network && <PermissionFact label="网络" value={preview.network} icon={<Globe2 size={13} />} />}
           {(preview.risk || preview.reversible) && (
             <PermissionFact
-              label={`Risk${preview.risk ? ` · ${preview.risk}` : ""}`}
-              value={preview.reversible || "Review the impact before continuing."}
+              label={`风险${preview.risk ? ` · ${preview.risk}` : ""}`}
+              value={preview.reversible || "继续前请先了解影响"}
               icon={<RotateCcw size={13} />}
             />
           )}
@@ -93,15 +93,15 @@ function permissionPreview(event: StudioEvent): PermissionPreview | null {
 function PermissionScopeDetail({ detail }: { detail?: PermissionPreview["scope_detail"] }) {
   if (!detail) return null;
   const groups: Array<{ label: string; items: string[] }> = [
-    { label: "Reads", items: (detail.read_scope ?? []).map(String) },
-    { label: "Writes", items: (detail.write_scope ?? []).map(String) },
-    { label: "Tools", items: (detail.tools ?? []).map(String) },
-    { label: "Requests", items: (detail.request_types ?? []).map(String) },
+    { label: "读取", items: (detail.read_scope ?? []).map(String) },
+    { label: "写入", items: (detail.write_scope ?? []).map(String) },
+    { label: "工具", items: (detail.tools ?? []).map(String) },
+    { label: "请求", items: (detail.request_types ?? []).map(String) },
   ].filter((group) => group.items.length > 0);
   if (!groups.length) return null;
   return (
     <details className="permissionScope">
-      <summary>Review what this touches</summary>
+      <summary>查看它会动到什么</summary>
       <div className="permissionScopeGroups">
         {groups.map((group) => (
           <div key={group.label} className="permissionScopeGroup">

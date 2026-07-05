@@ -42,26 +42,26 @@ function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
   // up in the run's exit_reason ("replan_budget_exhausted"), rendered by the thread guidance text.
   const replanCap = Number(loopBudget.replan_attempts_limit ?? 0);
   const autoReplan = loopBudget.auto_replan_enabled === true;
-  const tokenValue = (value: unknown) => (value == null ? "unknown" : formatUsage(Number(value)));
+  const tokenValue = (value: unknown) => (value == null ? "未知" : formatUsage(Number(value)));
   return (
     <div className="evidenceBlock runUsagePanel">
-      <small>Run usage</small>
+      <small>运行用量</small>
       <div className="evidenceStats">
-        <Metric label="Model calls" value={String(Number(cost.model_calls ?? 0))} tone="good" />
-        <Metric label="Tool calls" value={String(Number(cost.tool_calls ?? 0))} tone="good" />
-        <Metric label="Input tokens" value={tokenValue(inputTokens)} tone="warn" />
-        <Metric label="Output tokens" value={tokenValue(outputTokens)} tone="warn" />
+        <Metric label="模型调用" value={String(Number(cost.model_calls ?? 0))} tone="good" />
+        <Metric label="工具调用" value={String(Number(cost.tool_calls ?? 0))} tone="good" />
+        <Metric label="输入 token" value={tokenValue(inputTokens)} tone="warn" />
+        <Metric label="输出 token" value={tokenValue(outputTokens)} tone="warn" />
       </div>
       <div className="evidenceStats">
-        <Metric label="Strong calls" value={String(strong)} tone={strong ? "warn" : "good"} />
-        <Metric label="Cheap calls" value={String(cheap)} tone="good" />
-        <Metric label="Repairs" value={repairValue} tone={repairTone} />
+        <Metric label="强模型调用" value={String(strong)} tone={strong ? "warn" : "good"} />
+        <Metric label="廉价模型调用" value={String(cheap)} tone="good" />
+        <Metric label="修复次数" value={repairValue} tone={repairTone} />
         {autoReplan && replanCap > 0 && (
-          <Metric label="Replans" value={`≤${replanCap} auto`} tone="warn" />
+          <Metric label="重规划" value={`≤${replanCap} auto`} tone="warn" />
         )}
       </div>
       {inputTokens == null && outputTokens == null && (
-        <p className="muted">Token usage is unknown for this run (the provider did not report usage).</p>
+        <p className="muted">本次运行的 token 用量未知(供应商未报告用量)。</p>
       )}
     </div>
   );
@@ -72,25 +72,25 @@ export function BackgroundRunPanel({ overview }: { overview: OverviewPayload | n
   if (!background || background.enabled === false) return null;
   const runningCount = Number(background.running_count ?? 0);
   const totalCount = Number(background.total_count ?? 0);
-  const badgeStatus = firstText(String(background.badge_status ?? ""), "idle");
-  const summary = firstText(String(background.badge_summary ?? ""), "No background run status recorded.");
+  const badgeStatus = firstText(String(background.badge_status ?? ""), "空闲");
+  const summary = firstText(String(background.badge_summary ?? ""), "暂无后台运行状态记录。");
   const latest = asRecord(background.latest);
 
   return (
     <div className="evidenceBlock backgroundRunPanel">
-      <small>Local background runs</small>
+      <small>本地后台运行</small>
       <div className="workerSchedulingBadge" data-fake-path="false">
-        {runningCount > 0 ? `local subprocess · ${runningCount} running` : "local subprocess · idle"}
+        {runningCount > 0 ? `本地子进程 · ${runningCount} 个运行中` : "本地子进程 · 空闲"}
       </div>
       <div className="evidenceStats">
-        <Metric label="Badge" value={badgeStatus} tone={runningCount ? "warn" : "good"} />
-        <Metric label="Running" value={`${runningCount}/${totalCount}`} tone={runningCount ? "warn" : "good"} />
-        <Metric label="Cloud VM" value="defer" tone="good" />
+        <Metric label="标记" value={badgeStatus} tone={runningCount ? "warn" : "good"} />
+        <Metric label="运行中" value={`${runningCount}/${totalCount}`} tone={runningCount ? "warn" : "good"} />
+        <Metric label="云端 VM" value="暂缓" tone="good" />
       </div>
       <div className="keyValueList">
-        <div><small>Summary</small><pre>{summary}</pre></div>
+        <div><small>摘要</small><pre>{summary}</pre></div>
         {latest && Object.keys(latest).length > 0 && (
-          <div><small>Latest</small><pre>{`${String(latest.background_run_id ?? "n/a")} · ${String(latest.status ?? "unknown")}\n${String(latest.goal ?? "")}`}</pre></div>
+          <div><small>最新</small><pre>{`${String(latest.background_run_id ?? "n/a")} · ${String(latest.status ?? "unknown")}\n${String(latest.goal ?? "")}`}</pre></div>
         )}
       </div>
     </div>
@@ -102,37 +102,37 @@ export function LongHorizonPanel({ overview }: { overview: OverviewPayload | nul
   if (!longHorizon || !Object.keys(longHorizon).length) return null;
   const northStar = asRecord(longHorizon.north_star);
   const handoffCompact = asRecord(longHorizon.handoff_compact);
-  const status = firstText(String(longHorizon.status ?? ""), "unknown");
-  const summary = firstText(String(longHorizon.summary ?? ""), "No long-horizon summary recorded.");
+  const status = firstText(String(longHorizon.status ?? ""), "未知");
+  const summary = firstText(String(longHorizon.summary ?? ""), "暂无长程摘要记录。");
   const configured = longHorizon.north_star_configured === true;
   const ready = longHorizon.ready_for_implementation === true;
 
   return (
     <div className="evidenceBlock longHorizonPanel">
-      <small>Long horizon (Inspector)</small>
+      <small>长程规划(检查器)</small>
       <div className="evidenceStats">
-        <Metric label="Status" value={status} tone={configured ? "good" : ready ? "warn" : "warn"} />
+        <Metric label="状态" value={status} tone={configured ? "good" : ready ? "warn" : "warn"} />
         <Metric
-          label="Milestones"
+          label="里程碑"
           value={configured ? `${String(northStar.completed_milestones ?? 0)}/${String(northStar.milestone_count ?? 0)}` : "n/a"}
           tone={configured ? "good" : "warn"}
         />
-        <Metric label="Ready" value={ready ? "yes" : "no"} tone={ready ? "good" : "warn"} />
+        <Metric label="就绪" value={ready ? "是" : "否"} tone={ready ? "good" : "warn"} />
       </div>
       <div className="keyValueList">
-        <div><small>Summary</small><pre>{summary}</pre></div>
+        <div><small>摘要</small><pre>{summary}</pre></div>
         {configured && (
           <>
-            <div><small>Title</small><pre>{String(northStar.title ?? "")}</pre></div>
-            <div><small>Active milestone</small><pre>{String(northStar.active_milestone ?? "none")}</pre></div>
-            <div><small>Statement</small><pre>{String(northStar.statement ?? "")}</pre></div>
+            <div><small>标题</small><pre>{String(northStar.title ?? "")}</pre></div>
+            <div><small>当前里程碑</small><pre>{String(northStar.active_milestone ?? "none")}</pre></div>
+            <div><small>陈述</small><pre>{String(northStar.statement ?? "")}</pre></div>
           </>
         )}
         {handoffCompact.available === true && (
           <>
-            <div><small>Handoff compact</small><pre>{String(handoffCompact.narrative ?? "")}</pre></div>
+            <div><small>交接摘要</small><pre>{String(handoffCompact.narrative ?? "")}</pre></div>
             {handoffCompact.recommended_next_command ? (
-              <div><small>Continue</small><pre>{String(handoffCompact.recommended_next_command)}</pre></div>
+              <div><small>继续</small><pre>{String(handoffCompact.recommended_next_command)}</pre></div>
             ) : null}
           </>
         )}
@@ -161,7 +161,7 @@ function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload 
     String(asArray(rolling.next_actions)[0] ?? ""),
     String(agentLoopSummary.recommended_command ?? ""),
     String(legacyLoopSummary.recommended_next_command ?? ""),
-    "No action recorded"
+    "未记录动作"
   );
   const coverageLine = ["route", "context", "capability", "loop", "worker"]
     .map((key) => `${key}=${coverage[key] === true ? "yes" : "no"}`)
@@ -169,23 +169,23 @@ function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload 
 
   return (
     <div className="evidenceBlock v02ReadinessPanel">
-      <small>v0.2 Readiness</small>
+      <small>v0.2 就绪度</small>
       <div className="evidenceStats">
-        <Metric label="Bundle" value={`${rollingStatus} (${sampleCount})`} tone={metricTone(rollingStatus)} />
-        <Metric label="Loop exit" value={loopExit} tone={metricTone(String(agentLoopSummary.status ?? legacyLoopSummary.workflow_state ?? loopExit))} />
-        <Metric label="Workers" value={`${String(workerTree.successful_workers ?? 0)}/${String(workerTotal)}`} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : workerTotal ? "good" : "warn"} />
+        <Metric label="证据包" value={`${rollingStatus} (${sampleCount})`} tone={metricTone(rollingStatus)} />
+        <Metric label="循环退出" value={loopExit} tone={metricTone(String(agentLoopSummary.status ?? legacyLoopSummary.workflow_state ?? loopExit))} />
+        <Metric label="工作者" value={`${String(workerTree.successful_workers ?? 0)}/${String(workerTotal)}`} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : workerTotal ? "good" : "warn"} />
       </div>
       <div className="keyValueList">
-        <div><small>Evidence coverage</small><pre>{coverageLine || "No v0.2 rolling validation bundle found."}</pre></div>
-        <div><small>Missing evidence</small><pre>{missing.length ? missing.join(", ") : "none"}</pre></div>
-        <div><small>Loop summary</small><pre>{`exit=${loopExit}
+        <div><small>证据覆盖</small><pre>{coverageLine || "未找到 v0.2 滚动验证证据包。"}</pre></div>
+        <div><small>缺失证据</small><pre>{missing.length ? missing.join(", ") : "无"}</pre></div>
+        <div><small>循环摘要</small><pre>{`exit=${loopExit}
 rounds=${loopRounds}
 latest_action=${String(agentLoopSummary.latest_action ?? "n/a")}`}</pre></div>
-        <div><small>Worker tree</small><pre>{`roots=${asArray(workerTree.roots).length}
+        <div><small>工作者树</small><pre>{`roots=${asArray(workerTree.roots).length}
 orphans=${asArray(workerTree.orphan_workers).length}
 graph=${String(agentRunGraph.status ?? "unknown")}
 parallel_batches=${String(workerTree.parallel_batches ?? 0)}`}</pre></div>
-        <div><small>Next action</small><pre>{nextAction}</pre></div>
+        <div><small>下一步动作</small><pre>{nextAction}</pre></div>
       </div>
     </div>
   );
@@ -205,9 +205,9 @@ function flattenWorkerTree(workerTree: AnyRecord): AnyRecord[] {
 function EvidenceDetailPanel({ selection }: { selection: EvidenceSelection | null }) {
   return (
     <div className="evidenceDetailPanel">
-      <small>Evidence detail</small>
+      <small>证据详情</small>
       {!selection ? (
-        <p className="muted">Select a worker, progress entry, route, validation, or run file to inspect its evidence.</p>
+        <p className="muted">选择一个工作者、进度条目、路由、验证或运行文件,以查看其证据。</p>
       ) : (
         <>
           <div className="evidenceDetailHeader">
@@ -237,43 +237,43 @@ function PromotionPreviewPanel({
   const mergeStatus = String(preview.merge_preview_status ?? "none");
   return (
     <div className="evidenceBlock promotionPreviewPanel">
-      <small>Candidate merge preview</small>
+      <small>候选合并预览</small>
       <div className="evidenceStats">
-        <Metric label="Exports" value={String(preview.export_count ?? 0)} tone={Number(preview.export_count ?? 0) ? "good" : "warn"} />
-        <Metric label="Preview" value={mergeStatus === "ready" ? "ready" : mergeStatus === "needs_review" ? "review" : "—"} tone={mergeStatus === "ready" ? "good" : mergeStatus === "needs_review" ? "bad" : "warn"} />
-        <Metric label="Pending" value={String(preview.pending_promotions ?? 0)} tone={Number(preview.pending_promotions ?? 0) ? "warn" : "good"} />
+        <Metric label="导出" value={String(preview.export_count ?? 0)} tone={Number(preview.export_count ?? 0) ? "good" : "warn"} />
+        <Metric label="预览" value={mergeStatus === "ready" ? "就绪" : mergeStatus === "needs_review" ? "待查看" : "—"} tone={mergeStatus === "ready" ? "good" : mergeStatus === "needs_review" ? "bad" : "warn"} />
+        <Metric label="待处理" value={String(preview.pending_promotions ?? 0)} tone={Number(preview.pending_promotions ?? 0) ? "warn" : "good"} />
       </div>
       {preview.merge_preview_summary ? (
         <p className="promotionPreviewSummary">{String(preview.merge_preview_summary)}</p>
       ) : null}
       {asArray(preview.lineages).length > 0 && (
         <div className="lineageList">
-          <p className="sideTitle">Isolated → verified → merged</p>
+          <p className="sideTitle">隔离 → 验证 → 合并</p>
           {(asArray(preview.lineages) as AnyRecord[]).map((lin, i) => {
             const isolated = asRecord(lin.isolated);
             const verified = asRecord(lin.verified);
             const merged = asRecord(lin.merged);
             const riskyFiles = asArray(merged.risky_files).map(String);
             const mergedStatus = String(merged.status ?? "");
-            const mergeLabel = mergedStatus === "promoted" ? "Merged"
-              : mergedStatus === "pending_manual_approval" ? "Held for review"
+            const mergeLabel = mergedStatus === "promoted" ? "已合并"
+              : mergedStatus === "pending_manual_approval" ? "待人工查看"
               : mergedStatus ? mergedStatus.replace(/_/g, " ") : "—";
             const isoFiles = Number(isolated.files ?? 0);
             const mergedFiles = Number(merged.files ?? 0);
             return (
               <div className="lineageRow" key={String(lin.task_id ?? i)}>
                 <span className="lineageStage">
-                  <small>Isolated</small>
-                  <strong>{isoFiles ? `${isoFiles} file${isoFiles === 1 ? "" : "s"}` : String(isolated.status ?? "—")}</strong>
+                  <small>隔离</small>
+                  <strong>{isoFiles ? `${isoFiles} 个文件` : String(isolated.status ?? "—")}</strong>
                 </span>
                 <span className="lineageArrow">→</span>
                 <span className="lineageStage">
-                  <small>Verified{verified.batch ? " (batch)" : ""}</small>
-                  <strong>{verified.ok === true ? "passed" : verified.ok === false ? "needs review" : "—"}</strong>
+                  <small>验证{verified.batch ? "(批量)" : ""}</small>
+                  <strong>{verified.ok === true ? "通过" : verified.ok === false ? "待查看" : "—"}</strong>
                 </span>
                 <span className="lineageArrow">→</span>
                 <span className={mergedStatus === "pending_manual_approval" ? "lineageStage held" : "lineageStage"}>
-                  <small>Merged</small>
+                  <small>合并</small>
                   <strong>{mergeLabel}{mergedFiles ? ` · ${mergedFiles}` : ""}</strong>
                 </span>
                 {riskyFiles.length > 0 && (
@@ -319,7 +319,7 @@ function PromotionPreviewPanel({
               {heldForReview && (
                 <span className="promotionPreviewItemRisk">
                   <ShieldAlert size={12} />
-                  <span>Held for your review — flagged as sensitive: {riskyFiles.join(", ")}</span>
+                  <span>已扣留待你查看 — 被标记为敏感: {riskyFiles.join(", ")}</span>
                 </span>
               )}
             </button>
@@ -344,11 +344,11 @@ function WorkerTopologyPanel({
   if (!workers.length) return null;
   return (
     <div className="evidenceBlock workerTopologyPanel">
-      <small>Worker topology</small>
+      <small>工作者拓扑</small>
       <div className="workerTopologyStats">
-        <Metric label="Roots" value={String(asArray(workerTree.roots).length)} tone="warn" />
-        <Metric label="Parallel" value={String(workerTree.parallel_batches ?? 0)} tone={Number(workerTree.parallel_batches ?? 0) ? "good" : "warn"} />
-        <Metric label="Failed" value={String(workerTree.failed_workers ?? 0)} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : "good"} />
+        <Metric label="根节点" value={String(asArray(workerTree.roots).length)} tone="warn" />
+        <Metric label="并行" value={String(workerTree.parallel_batches ?? 0)} tone={Number(workerTree.parallel_batches ?? 0) ? "good" : "warn"} />
+        <Metric label="失败" value={String(workerTree.failed_workers ?? 0)} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : "good"} />
       </div>
       <div className="workerTopologyList">
         {workers.slice(0, 12).map((worker, index) => {
@@ -409,7 +409,7 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   const nextCommand = firstText(String(mainAction.next_command ?? ""), String(finalSummary.recommended_next_command ?? ""), String(agentLoopSummary.recommended_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
   const nextLabel = firstText(String(mainAction.label ?? ""), nextCommand);
   const commandDisplay = nextCommand === "none"
-    ? "No action needed"
+    ? "无需操作"
     : /^asteria\b/i.test(nextCommand) ? nextCommand : `asteria ${nextCommand}`;
   const blocker = firstText(String(finalSummary.current_blocker ?? ""), String(runLoopSummary.current_blocker ?? ""), "none");
   const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(runLoopSummary.stop_reason ?? ""), "n/a");
@@ -419,30 +419,30 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   const hasLoopQuality = Object.keys(loopQuality).length > 0;
   const loopWarn = Boolean(loopQuality.warn);
   const loopSeverity = firstText(String(loopQuality.severity ?? ""), loopWarn ? "warn" : "ok");
-  const loopHealth = hasLoopQuality ? (loopWarn ? `warn (${loopSeverity})` : "ok") : "not recorded";
+  const loopHealth = hasLoopQuality ? (loopWarn ? `warn (${loopSeverity})` : "ok") : "未记录";
 
   return (
     <div className="evidenceBlock runStatusPanel">
-      <small>Long-task loop</small>
+      <small>长任务循环</small>
       <div className="evidenceStats">
-        <Metric label="State" value={workflowState} tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"} />
-        <Metric label="Next" value={nextLabel} tone={nextCommand === "none" ? "good" : "warn"} />
-        <Metric label="Loop exit" value={loopExit} tone={/blocked|fail|limit/i.test(loopExit) ? "warn" : "good"} />
-        <Metric label="Loop health" value={loopHealth} tone={loopWarn ? "bad" : hasLoopQuality ? "good" : "warn"} />
+        <Metric label="状态" value={workflowState} tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"} />
+        <Metric label="下一步" value={nextLabel} tone={nextCommand === "none" ? "good" : "warn"} />
+        <Metric label="循环退出" value={loopExit} tone={/blocked|fail|limit/i.test(loopExit) ? "warn" : "good"} />
+        <Metric label="循环健康" value={loopHealth} tone={loopWarn ? "bad" : hasLoopQuality ? "good" : "warn"} />
       </div>
       <div className="keyValueList">
-        <div><small>Current status</small><pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre></div>
-        <div><small>Current blocker</small><pre>{blocker}</pre></div>
-        <div><small>Recommended command</small><pre>{commandDisplay}</pre></div>
-        <div><small>Main action source</small><pre>{`kind=${String(mainAction.kind ?? "unknown")}
+        <div><small>当前状态</small><pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre></div>
+        <div><small>当前阻塞项</small><pre>{blocker}</pre></div>
+        <div><small>建议命令</small><pre>{commandDisplay}</pre></div>
+        <div><small>主动作来源</small><pre>{`kind=${String(mainAction.kind ?? "unknown")}
 status=${String(mainAction.status ?? "unknown")}
 requires_permission=${String(mainAction.requires_permission ?? "unknown")}
 source=${String(mainAction.source ?? "unknown")}
 evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre></div>
-        <div><small>Run loop summary</small><pre>{`exit=${loopExit}
+        <div><small>运行循环摘要</small><pre>{`exit=${loopExit}
 rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre></div>
-        <div><small>Model route rationale</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
-reason=${String(latestRoute.reason ?? "No route reason recorded.")}`}</pre></div>
+        <div><small>模型路由依据</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
+reason=${String(latestRoute.reason ?? "未记录路由原因。")}`}</pre></div>
       </div>
       <LoopQualityMatrix loopQuality={loopQuality} />
     </div>
@@ -457,7 +457,7 @@ function progressToStudioEvent(item: AnyRecord, runId: unknown): StudioEvent {
     session_id: "runtime-progress",
     type: "assistant_delta",
     status,
-    title: firstText(String(item.title ?? ""), String(item.event_type ?? ""), "Runtime progress"),
+    title: firstText(String(item.title ?? ""), String(item.event_type ?? ""), "运行时进度"),
     summary: firstText(String(item.summary ?? ""), phase),
     content_delta: String(item.content_delta ?? item.summary ?? ""),
     evidence_refs: asArray(item.evidence_refs).map(String),
@@ -524,7 +524,7 @@ export function EvidenceExplorer({
     selectEvidence({
       title,
       kind: "progress",
-      summary: firstText(String(item.summary ?? ""), String(item.phase ?? ""), "No summary recorded."),
+      summary: firstText(String(item.summary ?? ""), String(item.phase ?? ""), "未记录摘要。"),
       item,
     });
     onSelectRunEvent(progressToStudioEvent(item, runDetail?.run_id));
@@ -561,7 +561,7 @@ export function EvidenceExplorer({
     return (
       <div className="evidenceBlock">
         <small>{title}{query && shown.length !== items.length ? ` (${shown.length}/${items.length})` : ""}</small>
-        {!shown.length && <p className="muted">No records yet.</p>}
+        {!shown.length && <p className="muted">暂无记录。</p>}
         <div className="evidenceSelectableList">
           {shown.map(({ item, index, line }) => {
             const key = `${kind}:${line}`;
@@ -588,9 +588,9 @@ export function EvidenceExplorer({
 
   return (
     <section className="evidenceExplorer">
-      <h2>Evidence Explorer</h2>
+      <h2>证据浏览器</h2>
       <div className="runPicker">
-        {runs.length === 0 && <p className="muted">No local run evidence yet.</p>}
+        {runs.length === 0 && <p className="muted">暂无本地运行证据。</p>}
         {runs.slice(0, 6).map((run) => {
           const runId = String(run.run_id ?? "");
           return (
@@ -608,11 +608,11 @@ export function EvidenceExplorer({
               type="search"
               value={evidenceFilter}
               onChange={(event) => setEvidenceFilter(event.target.value)}
-              placeholder="Filter evidence (name, status, route…)"
-              aria-label="Filter evidence"
+              placeholder="过滤证据(名称、状态、路由…)"
+              aria-label="过滤证据"
             />
             {evidenceFilter && (
-              <button type="button" className="evidenceSearchClear" onClick={() => setEvidenceFilter("")} aria-label="Clear filter">
+              <button type="button" className="evidenceSearchClear" onClick={() => setEvidenceFilter("")} aria-label="清除过滤">
                 ×
               </button>
             )}
@@ -637,13 +637,13 @@ export function EvidenceExplorer({
           />
           <EvidenceDetailPanel selection={selectedEvidence} />
           <div className="evidenceStats">
-            <Metric label="Model calls" value={String(modelCalls.length)} tone={modelCalls.some((m) => m.status === "failure") ? "bad" : "good"} />
-            <Metric label="Validation" value={String(validations.length)} tone={validations.some((v) => /fail|error/i.test(String(v.status ?? v.outcome ?? ""))) ? "bad" : "warn"} />
-            <Metric label="Progress" value={String(userProgress.length)} tone={userProgress.length ? "good" : "warn"} />
+            <Metric label="模型调用" value={String(modelCalls.length)} tone={modelCalls.some((m) => m.status === "failure") ? "bad" : "good"} />
+            <Metric label="验证" value={String(validations.length)} tone={validations.some((v) => /fail|error/i.test(String(v.status ?? v.outcome ?? ""))) ? "bad" : "warn"} />
+            <Metric label="进度" value={String(userProgress.length)} tone={userProgress.length ? "good" : "warn"} />
           </div>
-          <EvidenceBlock title="Model route timeline" items={routeTimeline.slice(-8)} kind="route" />
-          <EvidenceBlock title="User progress" items={userProgress.slice(-8)} kind="progress" />
-          <EvidenceBlock title="Model calls" items={modelCalls.slice(-5)} kind="model" />
+          <EvidenceBlock title="模型路由时间线" items={routeTimeline.slice(-8)} kind="route" />
+          <EvidenceBlock title="用户进度" items={userProgress.slice(-8)} kind="progress" />
+          <EvidenceBlock title="模型调用" items={modelCalls.slice(-5)} kind="model" />
           <VerificationMatrix
             validations={validations.slice(-8)}
             selectedKey={selectedKey}
@@ -651,14 +651,14 @@ export function EvidenceExplorer({
               selectEvidence({ title: label, kind: "validation", summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), label), item })
             }
           />
-          <EvidenceBlock title="Worker results" items={workers.slice(-4)} kind="worker" />
-          <EvidenceBlock title="Task evidence" items={evidence.slice(-4)} kind="evidence" />
-          <EvidenceBlock title="MCP invocations" items={mcpInvocations.slice(-8)} kind="mcp" />
-          <EvidenceBlock title="Skill invocations" items={skillInvocations.slice(-8)} kind="skill" />
-          <EvidenceBlock title="Capability decisions" items={capabilityDecisions.slice(-8)} kind="capability" />
+          <EvidenceBlock title="工作者结果" items={workers.slice(-4)} kind="worker" />
+          <EvidenceBlock title="任务证据" items={evidence.slice(-4)} kind="evidence" />
+          <EvidenceBlock title="MCP 调用" items={mcpInvocations.slice(-8)} kind="mcp" />
+          <EvidenceBlock title="技能调用" items={skillInvocations.slice(-8)} kind="skill" />
+          <EvidenceBlock title="能力决策" items={capabilityDecisions.slice(-8)} kind="capability" />
           {files.length > 0 && (
             <div className="runFiles">
-              <small>Run files ({files.length})</small>
+              <small>运行文件 ({files.length})</small>
               {files.map((file) => (
                 <button
                   key={file.path}

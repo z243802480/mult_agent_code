@@ -130,12 +130,12 @@ function CodeBlock({ text }: { text: string }) {
       <button
         type="button"
         className="markdownCodeCopy"
-        title="Copy code"
-        aria-label="Copy code"
+        title="复制代码"
+        aria-label="复制代码"
         onClick={() => void copy()}
       >
         {copied ? <Check size={12} /> : <Copy size={12} />}
-        <span>{copied ? "Copied" : "Copy"}</span>
+        <span>{copied ? "已复制" : "复制"}</span>
       </button>
       <pre className="markdownCode">{text}</pre>
     </div>

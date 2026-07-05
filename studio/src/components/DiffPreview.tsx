@@ -130,7 +130,7 @@ export function DiffPreview({
     return <p className="diffPreviewError">{error}</p>;
   }
   if (!stageText.trim()) {
-    return <p className="muted">No diff content for this view.</p>;
+    return <p className="muted">此视图暂无改动内容。</p>;
   }
 
   return (
@@ -140,21 +140,21 @@ export function DiffPreview({
         <div className="diffPreviewActions">
           {onStageFile && (
             <button type="button" className="diffActionButton" disabled={staging} onClick={onStageFile}>
-              Stage file
+              暂存文件
             </button>
           )}
           {onDiscardFile && (
             <button type="button" className="diffActionButton danger" disabled={staging} onClick={onDiscardFile}>
-              Discard changes
+              丢弃改动
             </button>
           )}
         </div>
       </div>
       {layout === "split" ? (
-        <div className="diffSplitTable" role="region" aria-label="Side-by-side git diff">
+        <div className="diffSplitTable" role="region" aria-label="并排显示的 git diff">
           <div className="diffSplitHeader">
-            <span>Before</span>
-            <span>After</span>
+            <span>修改前</span>
+            <span>修改后</span>
           </div>
           {visibleSplit.map((row, index) => (
             <div key={`${index}-${row.kind}`} className={`diffSplitRow kind-${row.kind}`}>
@@ -170,7 +170,7 @@ export function DiffPreview({
           ))}
         </div>
       ) : (
-        <div className="diffPreviewTable" role="region" aria-label="Git diff">
+        <div className="diffPreviewTable" role="region" aria-label="Git diff（差异）">
           {visibleLines.map((line, index) => (
             <div key={`${index}-${line.kind}`} className={`diffPreviewRow kind-${line.kind}`}>
               <span className="diffGutter old">{line.oldNo ?? ""}</span>
@@ -180,7 +180,7 @@ export function DiffPreview({
           ))}
         </div>
       )}
-      {clipped && <p className="diffPreviewTruncated">Showing first {maxLines} diff lines.</p>}
+      {clipped && <p className="diffPreviewTruncated">仅显示前 {maxLines} 行差异。</p>}
     </div>
   );
 }

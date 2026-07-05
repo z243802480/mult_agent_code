@@ -56,13 +56,13 @@ function DecisionCard({
       <div className="decisionCard openQuestion">
         <div className="decisionHeader">
           <CircleDot size={15} />
-          <strong>{textOrFallback(decision.question, "The agent has a question")}</strong>
+          <strong>{textOrFallback(decision.question, "智能体有个问题要问你")}</strong>
         </div>
         {hint && <div className="decisionMeta"><span className="decisionHint">{hint}</span></div>}
         <textarea
           className="openQuestionInput"
           value={answer}
-          placeholder="Type your answer…"
+          placeholder="输入你的回答…"
           rows={2}
           disabled={answering}
           onChange={(event) => setAnswer(event.target.value)}
@@ -75,7 +75,7 @@ function DecisionCard({
         />
         <div className="openQuestionActions">
           <button className="runtimeActionButton primary" disabled={!answer.trim() || answering} onClick={() => void submitAnswer()}>
-            {answering ? <Loader2 size={13} className="spinning" /> : "Send answer"}
+            {answering ? <Loader2 size={13} className="spinning" /> : "发送回答"}
           </button>
           <small className="openQuestionHint">⌘/Ctrl + Enter</small>
         </div>
@@ -88,17 +88,17 @@ function DecisionCard({
     <div className="decisionCard">
       <div className="decisionHeader">
         <CircleDot size={15} />
-        <strong>{textOrFallback(decision.question, "Decision needed")}</strong>
+        <strong>{textOrFallback(decision.question, "需要你决定")}</strong>
       </div>
       <div className="decisionMeta">
         {hint && <span className="decisionHint">{hint}</span>}
         {permissionPreview.action && <span>{permissionPreview.action}</span>}
         {permissionPreview.scope && <span>{permissionPreview.scope}</span>}
         {permissionPreview.network && <span>{permissionPreview.network}</span>}
-        {recommended && <span>Suggested: {recommended.replace(/_/g, " ")}</span>}
+        {recommended && <span>建议: {recommended.replace(/_/g, " ")}</span>}
         {Object.keys(impact).length > 0 && (
           <span>
-            Risk {textOrFallback(impact.risk, "medium")} / Budget {textOrFallback(impact.budget, "medium")}
+            风险 {textOrFallback(impact.risk, "medium")} / 预算 {textOrFallback(impact.budget, "medium")}
           </span>
         )}
       </div>
@@ -197,7 +197,9 @@ export function RuntimeSnapshot({
   const pendingPermission = activeEvent?.type === "permission_request" && activeEvent.status === "waiting_user" && activeEvent.job_id
     ? activeEvent
     : null;
-  const nextLabel = nextActionValue ? firstText(String(mainAction.label ?? ""), actionLabel(nextActionValue)) : "";
+  // Prefer the localized actionLabel over the raw backend main_action.label (which is an English
+  // command name like "Debug") so the next-step button reads in Chinese.
+  const nextLabel = nextActionValue ? firstText(actionLabel(nextActionValue), String(mainAction.label ?? "")) : "";
   const acceptReady = canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue);
   const nextStep = runtimeNextStepSummary({
     decisions,
@@ -208,15 +210,15 @@ export function RuntimeSnapshot({
     canAccept,
     mainActionKind,
   }) || textOrFallback(
-    loop.exit_reason ? `Stopped: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
-    "No action needed right now",
+    loop.exit_reason ? `已停止: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
+    "当前没有需要处理的操作",
   );
 
   // Honest framing: under the default auto-promote config the edits are already in the real
   // workspace by the time Finalize is offered, so say so (change count is a real signal) rather
   // than implying a pre-write approval gate. Finalize records the run as done; it doesn't apply.
   const acceptStep = acceptReady && workspaceChangeCount > 0
-    ? `${workspaceChangeCount} file${workspaceChangeCount === 1 ? "" : "s"} changed in your workspace — open the diff to keep or revert per file, or just mark it done.`
+    ? `工作区有 ${workspaceChangeCount} 个文件已改动——打开差异逐个保留或还原,或直接标记完成。`
     : null;
 
   // Gate the primary workflow actions so a double-click can't fire duplicate review/accept/decide
@@ -233,9 +235,9 @@ export function RuntimeSnapshot({
   };
 
   return (
-    <section className="runtimeSnapshot compact" aria-label="Next action">
+    <section className="runtimeSnapshot compact" aria-label="下一步">
       <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
-        {decisions.length || pendingPermission ? "needs you" : acceptReady ? (workspaceChangeCount > 0 ? "applied" : "ready") : canReview ? "review" : nextActionValue ? "ready" : "stopped"}
+        {decisions.length || pendingPermission ? "待你处理" : acceptReady ? (workspaceChangeCount > 0 ? "已应用" : "就绪") : canReview ? "待查看" : nextActionValue ? "就绪" : "已停止"}
       </span>
       <span className="runtimeSnapshotText">{acceptStep ?? nextStep}</span>
       <div className="runtimeSnapshotActions">
@@ -243,7 +245,7 @@ export function RuntimeSnapshot({
           <>
             {canReview ? (
               <button className="runtimeActionButton primary" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction("review"))}>
-                {busy ? <Loader2 size={13} className="spinning" /> : "Review"}
+                {busy ? <Loader2 size={13} className="spinning" /> : "查看"}
               </button>
             ) : null}
             {acceptReady ? (
@@ -254,7 +256,7 @@ export function RuntimeSnapshot({
                   disabled={busy}
                   onClick={() => void runAction(() => onOpenReview())}
                 >
-                  {workspaceChangeCount > 0 ? `View ${workspaceChangeCount} changes` : "View changes"}
+                  {workspaceChangeCount > 0 ? `查看 ${workspaceChangeCount} 处改动` : "查看改动"}
                 </button>
                 <button
                   className="runtimeActionButton primary accept"
@@ -262,14 +264,14 @@ export function RuntimeSnapshot({
                   disabled={busy}
                   onClick={() => void runAction(() => onRuntimeAction(nextActionValue || "accept"))}
                 >
-                  {busy ? <Loader2 size={13} className="spinning" /> : "Mark done"}
+                  {busy ? <Loader2 size={13} className="spinning" /> : "标记完成"}
                 </button>
               </>
             ) : null}
           </>
         ) : decisions.length ? (
           <button className="runtimeActionButton" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction("decide --list-pending"))}>
-            Decide
+            决定
           </button>
         ) : nextActionValue ? (
           <button className="runtimeActionButton" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction(nextActionValue))}>
@@ -293,19 +295,19 @@ export function RuntimeSnapshot({
 export function userFacingStateLabel(value: string): string {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "";
-  if (normalized.includes("provider") || normalized.includes("model-check")) return "model connection issue";
-  if (normalized.includes("tool_failed")) return "a step failed";
-  if (normalized.includes("max_rounds")) return "needs a decision";
+  if (normalized.includes("provider") || normalized.includes("model-check")) return "模型连接出问题了";
+  if (normalized.includes("tool_failed")) return "某一步失败了";
+  if (normalized.includes("max_rounds")) return "需要一个决定";
   // S78 auto-repair terminal reasons (must precede the generic "repair" catch below, since
   // "repair_budget_exhausted" also contains "repair"): auto-repair already retried and stopped
   // honestly, so frame it as "I tried" — not "want me to keep trying?".
-  if (normalized.includes("repair_budget_exhausted")) return "I auto-retried a few times but it still fails — take a look or try a different approach?";
-  if (normalized.includes("loop_no_progress")) return "the same failure keeps repeating with no progress — take a look or try a different approach?";
+  if (normalized.includes("repair_budget_exhausted")) return "我自动重试了几次还是失败——你来看看,还是换个思路?";
+  if (normalized.includes("loop_no_progress")) return "同样的失败一直重复、毫无进展——你来看看,还是换个思路?";
   // S79 auto-replan terminal reason (must precede the generic "replan"/"repair" catch, since
   // "replan_budget_exhausted" contains "replan"): auto-replan re-approached the task and stopped.
-  if (normalized.includes("replan_budget_exhausted")) return "I re-approached this a couple of times but it still fails — take a look or re-plan the tasks?";
-  if (normalized.includes("repair_limit") || normalized.includes("repair")) return "a step failed — want me to keep trying or take a different approach?";
-  if (normalized.includes("budget_hard_stop")) return "paused — needs your input";
+  if (normalized.includes("replan_budget_exhausted")) return "我换了两次思路重做还是失败——你来看看,还是重新规划任务?";
+  if (normalized.includes("repair_limit") || normalized.includes("repair")) return "某一步失败了——要我继续尝试,还是换个思路?";
+  if (normalized.includes("budget_hard_stop")) return "已暂停——需要你的输入";
   return stripBackendWording(value.replace(/_/g, " "));
 }
 

@@ -18,13 +18,13 @@ export type ContextWindowSummary = {
 export function contextSectionLabel(value: string): string {
   const normalized = value.toLowerCase();
   if (normalized.includes("mcp")) return "MCP";
-  if (normalized.includes("message") || normalized.includes("conversation")) return "Messages";
-  if (normalized.includes("tool") || normalized.includes("shell")) return "Tools";
-  if (normalized.includes("skill")) return "Skills";
-  if (normalized.includes("system")) return "System";
-  if (normalized.includes("prompt") || normalized.includes("instruction")) return "Project rules";
-  if (normalized.includes("memory") || normalized.includes("durable")) return "Memory";
-  if (normalized.includes("file") || normalized.includes("context")) return "Files";
+  if (normalized.includes("message") || normalized.includes("conversation")) return "消息";
+  if (normalized.includes("tool") || normalized.includes("shell")) return "工具";
+  if (normalized.includes("skill")) return "技能";
+  if (normalized.includes("system")) return "系统";
+  if (normalized.includes("prompt") || normalized.includes("instruction")) return "项目规则";
+  if (normalized.includes("memory") || normalized.includes("durable")) return "记忆";
+  if (normalized.includes("file") || normalized.includes("context")) return "文件";
   return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 

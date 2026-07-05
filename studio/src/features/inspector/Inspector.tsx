@@ -21,10 +21,10 @@ import { PreviewPane } from "./PreviewPane";
 // stack). Preview renders the live built result (like Claude Code / Cursor); Changes = diffs;
 // Context = context window; Evidence = raw diagnostics for power users.
 const INSPECTOR_TABS = [
-  { id: "preview", label: "Preview" },
-  { id: "changes", label: "Changes" },
-  { id: "context", label: "Context" },
-  { id: "evidence", label: "Evidence" },
+  { id: "preview", label: "预览" },
+  { id: "changes", label: "改动" },
+  { id: "context", label: "上下文" },
+  { id: "evidence", label: "证据" },
 ] as const;
 type InspectorTabId = (typeof INSPECTOR_TABS)[number]["id"];
 const TAB_STORAGE_KEY = "asteria.studio.inspectorTab";
@@ -127,7 +127,7 @@ export function Inspector({
 
   return (
     <aside className={`inspector view-${viewMode}`}>
-      <div className="inspectorTabBar" role="tablist" aria-label="Inspector views">
+      <div className="inspectorTabBar" role="tablist" aria-label="检查器视图">
         {INSPECTOR_TABS.map((item) => (
           <button
             key={item.id}

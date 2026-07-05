@@ -4,11 +4,11 @@ import type { NarrativeStep as NarrativeStepType } from "../../types";
 import { ClampedOutput } from "../../components/ClampedOutput";
 
 const TOOL_STATUS_LABEL: Record<string, string> = {
-  running: "running",
-  completed: "done",
-  failed: "failed",
-  blocked: "blocked",
-  waiting_user: "waiting",
+  running: "运行中",
+  completed: "完成",
+  failed: "失败",
+  blocked: "阻塞",
+  waiting_user: "等待中",
 };
 
 /**

@@ -45,7 +45,7 @@ export function ClampedOutput({
       <div className="clampedOutputActions">
         <button type="button" className="clampedOutputCopy" onClick={(event) => void copyText(event)}>
           {copied ? <Check size={12} /> : <Copy size={12} />}
-          <span>{copied ? "Copied" : "Copy"}</span>
+          <span>{copied ? "已复制" : "复制"}</span>
         </button>
         {long && (
           <button
@@ -56,7 +56,7 @@ export function ClampedOutput({
               setExpanded((value) => !value);
             }}
           >
-            {expanded ? "Show less" : `Show more (${lineCount} lines)`}
+            {expanded ? "收起" : `展开更多（共 ${lineCount} 行）`}
           </button>
         )}
       </div>

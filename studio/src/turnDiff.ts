@@ -62,7 +62,7 @@ export function buildTurnDiffScopes(events: StudioEvent[]): TurnDiffScope[] {
   const scopes: TurnDiffScope[] = [
     {
       id: "current",
-      label: "Current",
+      label: "当前",
       kind: "workspace",
       files: [],
     },

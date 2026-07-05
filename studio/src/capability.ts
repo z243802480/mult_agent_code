@@ -40,8 +40,8 @@ export function capabilityInfo(event: StudioEvent | null | undefined): Capabilit
     const tool = String(inv.tool_name ?? "").trim();
     return {
       type: "mcp",
-      label: "MCP tool",
-      title: [server, tool].filter(Boolean).join(" · ") || String(event?.title ?? "MCP tool"),
+      label: "MCP 工具",
+      title: [server, tool].filter(Boolean).join(" · ") || String(event?.title ?? "MCP 工具"),
       decision: decisionValue,
       denied,
       retries: Number(inv.retry_attempts ?? 0) || 0,
@@ -58,8 +58,8 @@ export function capabilityInfo(event: StudioEvent | null | undefined): Capabilit
       : 0;
   return {
     type: "skill",
-    label: "Skill",
-    title: skill || String(event?.title ?? "Skill"),
+    label: "技能",
+    title: skill || String(event?.title ?? "技能"),
     decision: decisionValue,
     denied,
     retries: 0,

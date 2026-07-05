@@ -26,10 +26,10 @@ const MODES = ["auto", "chat", "plan", "run"] as const;
 type Mode = typeof MODES[number];
 
 const MODE_LABELS: Record<Mode, string> = {
-  auto: "Auto",
-  chat: "Chat",
-  plan: "Plan",
-  run: "Goal",
+  auto: "自动",
+  chat: "对话",
+  plan: "计划",
+  run: "目标",
 };
 
 // User-facing intent modes only. Lifecycle/maintainer actions (review/resume/accept/finalize) are
@@ -43,18 +43,18 @@ const PRIMARY_MODES = ["auto", "chat", "plan", "run"] as const;
 // still prompt inline in every tier.
 
 const MODE_PLACEHOLDERS: Record<Mode, string> = {
-  auto: "Message Asteria… (Enter send, Shift+Enter newline)",
-  chat: "Ask a question…",
-  plan: "Describe what to plan…",
-  run: "Describe a goal…",
+  auto: "给 Asteria 发消息…(Enter 发送，Shift+Enter 换行)",
+  chat: "问一个问题…",
+  plan: "描述要规划的内容…",
+  run: "描述一个目标…",
 };
 
 export type PromptSignal = { text: string; id: number };
 
 const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string; sideAsk?: boolean }[] = [
-  { key: "/ask", label: "Quick ask", mode: "auto", prompt: "", sideAsk: true },
-  { key: "/plan", label: "Plan", mode: "plan", prompt: "Create a plan for " },
-  { key: "/goal", label: "Goal", mode: "run", prompt: "Work on this goal: " },
+  { key: "/ask", label: "快速提问", mode: "auto", prompt: "", sideAsk: true },
+  { key: "/plan", label: "计划", mode: "plan", prompt: "为其制定计划：" },
+  { key: "/goal", label: "目标", mode: "run", prompt: "推进这个目标：" },
 ];
 
 export function Composer({
@@ -213,9 +213,9 @@ export function Composer({
   const isChat = mode === "chat" || sideAsk;
   const showPermission = !sideAsk && (mode === "auto" || mode === "run");
   const placeholder = sideAsk
-    ? "Quick ask — off-thread, with session context (Enter send)…"
+    ? "快速提问 — 不占主线程，带会话上下文（Enter 发送）…"
     : isRunning
-      ? "Queue a follow-up… (sends when the run finishes · Esc to stop)"
+      ? "排一条后续消息…（运行结束后发送 · Esc 停止）"
       : MODE_PLACEHOLDERS[mode];
   const slashOpen = message.trim() === "/" || /^\/[a-z]*$/i.test(message.trim());
   const slashQuery = message.trim().toLowerCase();
@@ -228,12 +228,12 @@ export function Composer({
       {queue.length > 0 && (
         <div className="composerQueue" role="status" aria-live="polite">
           <span className="composerQueueLabel">
-            {queue.length} queued · sends when the run finishes
+            {queue.length} 条已排队 · 运行结束后发送
           </span>
           {queue.map((q, i) => (
             <span key={i} className="composerQueueChip" title={q}>
               <span className="composerQueueText">{q}</span>
-              <button type="button" onClick={() => setQueue((qs) => qs.filter((_, j) => j !== i))} aria-label="Remove queued message">
+              <button type="button" onClick={() => setQueue((qs) => qs.filter((_, j) => j !== i))} aria-label="移除排队消息">
                 <X size={11} />
               </button>
             </span>
@@ -251,7 +251,7 @@ export function Composer({
           rows={1}
         />
         {mentionOpen && (
-          <div className="mentionMenu" role="listbox" aria-label="Workspace files">
+          <div className="mentionMenu" role="listbox" aria-label="工作区文件">
             {mentionMatches.map((file, i) => (
               <button
                 type="button"
@@ -271,7 +271,7 @@ export function Composer({
           </div>
         )}
         {sideAsk && (
-          <p className="composerSideAskHint muted">Answers appear in Quick ask — main goal stays on the thread.</p>
+          <p className="composerSideAskHint muted">回答显示在快速提问区——主目标留在主线程。</p>
         )}
         {slashActions.length > 0 && (
           <div className="slashMenu">
@@ -299,20 +299,20 @@ export function Composer({
             <button
               type="button"
               className={sideAsk ? "composerSideAskToggle active" : "composerSideAskToggle"}
-              title="Quick ask — off-thread with session context"
+              title="快速提问 — 不占主线程，带会话上下文"
               aria-pressed={sideAsk}
               onClick={onSideAskToggle}
             >
               <MessageCircle size={13} />
-              <span>Quick ask</span>
+              <span>快速提问</span>
             </button>
           )}
           {/* Two compact dropdowns instead of 7 radio buttons: a mainstream composer exposes at most
               a mode picker — the fine-grained controls collapse into selects so the input bar reads
               clean. All modes/tiers and their runtime wiring are unchanged. */}
           {!sideAsk && (
-            <label className="composerSelect" title="Mode">
-              <select value={mode} onChange={(event) => setMode(event.target.value as Mode)} aria-label="Mode">
+            <label className="composerSelect" title="模式">
+              <select value={mode} onChange={(event) => setMode(event.target.value as Mode)} aria-label="模式">
                 {PRIMARY_MODES.map((item) => (
                   <option key={item} value={item}>{MODE_LABELS[item]}</option>
                 ))}
@@ -320,11 +320,11 @@ export function Composer({
             </label>
           )}
           {showPermission && (
-            <label className="composerSelect" title="Permission — how much Asteria may do without asking">
+            <label className="composerSelect" title="权限 — Asteria 无需询问可自行完成多少">
               <select
                 value={permissionMode}
                 onChange={(event) => setPermissionMode(event.target.value as PermissionTierId)}
-                aria-label="Permission tier"
+                aria-label="权限档"
               >
                 {PERMISSION_TIERS.map((tier) => (
                   <option key={tier.id} value={tier.id}>{tier.label}</option>
@@ -334,14 +334,14 @@ export function Composer({
           )}
         </div>
         {isRunning && onStop && !sideAsk ? (
-          <button className="composerSend composerStop" type="button" onClick={() => void onStop()} title="Stop the running task">
+          <button className="composerSend composerStop" type="button" onClick={() => void onStop()} title="停止正在运行的任务">
             <Square size={14} />
-            <span>Stop</span>
+            <span>停止</span>
           </button>
         ) : (
           <button className="composerSend" disabled={sending} type="submit">
             {sending ? <Loader2 size={15} className="spinning" /> : <Send size={15} />}
-            <span>{isChat ? "Ask" : "Send"}</span>
+            <span>{isChat ? "提问" : "发送"}</span>
           </button>
         )}
       </div>

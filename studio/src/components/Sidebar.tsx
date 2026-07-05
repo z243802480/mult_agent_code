@@ -50,17 +50,17 @@ export function Sidebar({
 
   if (collapsed) {
     return (
-      <aside className="sidebar sidebarRail" aria-label="Sessions">
+      <aside className="sidebar sidebarRail" aria-label="会话">
         <button
           type="button"
           className="sidebarRailButton brandMark"
-          title="Expand sidebar (Ctrl+B)"
-          aria-label="Expand sidebar"
+          title="展开侧栏 (Ctrl+B)"
+          aria-label="展开侧栏"
           onClick={onToggleCollapse}
         >
           A
         </button>
-        <button type="button" className="sidebarRailButton" title="New task" onClick={onNew}>
+        <button type="button" className="sidebarRailButton" title="新建任务" onClick={onNew}>
           <Plus size={16} />
         </button>
         <SessionRail
@@ -83,33 +83,33 @@ export function Sidebar({
         <button
           type="button"
           className="sidebarCollapseButton"
-          title="Collapse sidebar (Ctrl+B)"
-          aria-label="Collapse sidebar"
+          title="收起侧栏 (Ctrl+B)"
+          aria-label="收起侧栏"
           onClick={onToggleCollapse}
         >
           <PanelLeftClose size={15} />
         </button>
       </div>
       <button className="newButton" onClick={onNew}>
-        <Plus size={15} /> New task
+        <Plus size={15} /> 新建任务
       </button>
 
       {viewMode !== "focus" && (
         <div className="sideSection">
           <button className="statusToggle" onClick={() => setStatusOpen((open) => !open)}>
-            <span className="sideTitle">Workspace health</span>
+            <span className="sideTitle">工作区健康度</span>
             {statusOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
           </button>
           {statusOpen && (
             <div className="statusCards">
               <SignalCard
                 icon={<Sparkles size={14} />}
-                label={diagnosticsLoaded ? "Ready" : "Checking"}
+                label={diagnosticsLoaded ? "就绪" : "检查中"}
                 value={gateStage(overview)}
                 detail={
                   diagnosticsLoaded
-                    ? String(gate.blocking_reason ?? gate.release_state ?? gate.status ?? "Ready to help")
-                    : "Loading deeper checks"
+                    ? String(gate.blocking_reason ?? gate.release_state ?? gate.status ?? "已就绪")
+                    : "正在加载深度检查"
                 }
                 tone={validationTone(overview)}
               />

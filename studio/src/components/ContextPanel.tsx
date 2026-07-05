@@ -36,18 +36,18 @@ export function ContextPanel({
       {showPressureBar && (
         <div className={`contextPressureBar health-${health}`} role="status">
           <CircleDot size={12} />
-          <span>Context {percent(summary.ratio)}</span>
+          <span>上下文 {percent(summary.ratio)}</span>
           <strong>{summary.status || health}</strong>
           {onCompact && summary.ratio >= 0.75 && (
             <button type="button" className="contextCompactButton" disabled={compacting || isRunning} onClick={onCompact}>
-              Compact
+              压缩
             </button>
           )}
         </div>
       )}
       <button type="button" className="contextPanelToggle" onClick={() => setOpen((value) => !value)}>
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        <span>Context usage</span>
+        <span>上下文用量</span>
         <strong>{formatUsage(summary.used)}{summary.capacity ? ` / ${formatUsage(summary.capacity)}` : ""}</strong>
         <em>{percent(summary.ratio)}</em>
       </button>
@@ -66,7 +66,7 @@ export function ContextPanel({
               />
             ))}
             {!summary.sections.length && (
-              <p className="muted">No section breakdown recorded for this run yet.</p>
+              <p className="muted">本次运行暂无分区明细记录。</p>
             )}
           </div>
         </div>

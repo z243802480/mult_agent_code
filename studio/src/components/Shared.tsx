@@ -12,12 +12,12 @@ export function Metric({ label, value, tone }: { label: string; value: string; t
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  running: "Working",
-  queued: "Queued",
-  completed: "Done",
-  failed: "Failed",
-  blocked: "Blocked",
-  waiting_user: "Your turn",
+  running: "运行中",
+  queued: "已排队",
+  completed: "已完成",
+  failed: "失败",
+  blocked: "受阻",
+  waiting_user: "待你处理",
 };
 
 export function Status({ status }: { status: StudioEvent["status"] }) {
@@ -53,7 +53,7 @@ export function SignalCard({
         <span>{label}</span>
       </div>
       <strong>{value}</strong>
-      <small>{detail || "No evidence yet"}</small>
+      <small>{detail || "暂无证据"}</small>
     </div>
   );
 }
@@ -98,14 +98,14 @@ function firstNonEmpty(...items: string[]): string {
 }
 
 export function formatMs(value: unknown): string {
-  if (value === null || value === undefined || value === "") return "n/a";
+  if (value === null || value === undefined || value === "") return "不适用";
   const n = Number(value);
-  if (!Number.isFinite(n)) return "n/a";
+  if (!Number.isFinite(n)) return "不适用";
   return `${Math.round(n)}ms`;
 }
 
 export function percent(value: unknown): string {
   const n = Number(value);
-  if (!Number.isFinite(n)) return "n/a";
+  if (!Number.isFinite(n)) return "不适用";
   return `${Math.round(n * 100)}%`;
 }

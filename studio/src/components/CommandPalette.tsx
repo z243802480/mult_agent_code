@@ -57,22 +57,22 @@ export function CommandPalette({ open, commands, onClose }: { open: boolean; com
 
   return (
     <div className="cmdkOverlay" onClick={onClose}>
-      <div className="cmdkPanel" role="dialog" aria-modal="true" aria-label="Command palette" onClick={(e) => e.stopPropagation()}>
+      <div className="cmdkPanel" role="dialog" aria-modal="true" aria-label="命令面板" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           className="cmdkInput"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Type a command or session…"
-          aria-label="Command palette search"
+          placeholder="输入命令或会话…"
+          aria-label="命令面板搜索"
           role="combobox"
           aria-expanded
           aria-controls="cmdkList"
           aria-activedescendant={activeId}
         />
-        <ul className="cmdkList" id="cmdkList" role="listbox" aria-label="Commands">
-          {filtered.length === 0 && <li className="cmdkEmpty">No matches</li>}
+        <ul className="cmdkList" id="cmdkList" role="listbox" aria-label="命令">
+          {filtered.length === 0 && <li className="cmdkEmpty">无匹配项</li>}
           {filtered.map((cmd, i) => (
             <li
               key={cmd.id}

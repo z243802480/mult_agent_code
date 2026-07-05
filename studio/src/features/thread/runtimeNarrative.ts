@@ -14,13 +14,13 @@ export function runtimeProgress(runDetail: RunDetailPayload | null): AnyRecord {
 
 export function contextSectionLabel(value: string): string {
   const normalized = value.toLowerCase();
-  if (normalized.includes("message") || normalized.includes("conversation")) return "Messages";
-  if (normalized.includes("tool") || normalized.includes("shell")) return "Tool output";
-  if (normalized.includes("skill")) return "Skills";
-  if (normalized.includes("system")) return "System";
-  if (normalized.includes("prompt") || normalized.includes("instruction")) return "Project rules";
-  if (normalized.includes("memory") || normalized.includes("durable")) return "Memory";
-  if (normalized.includes("file") || normalized.includes("context")) return "Files";
+  if (normalized.includes("message") || normalized.includes("conversation")) return "消息";
+  if (normalized.includes("tool") || normalized.includes("shell")) return "工具输出";
+  if (normalized.includes("skill")) return "技能";
+  if (normalized.includes("system")) return "系统";
+  if (normalized.includes("prompt") || normalized.includes("instruction")) return "项目规则";
+  if (normalized.includes("memory") || normalized.includes("durable")) return "记忆";
+  if (normalized.includes("file") || normalized.includes("context")) return "文件";
   return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
@@ -37,18 +37,18 @@ export function eventStatus(value: unknown): StudioEvent["status"] {
 export function goalTitle(runDetail: RunDetailPayload | null): string {
   const goal = asRecord(runDetail?.goal_spec);
   const run = asRecord(runDetail?.run);
-  return textOrFallback(goal.normalized_goal ?? goal.original_goal ?? run.goal ?? run.summary, "No goal selected yet");
+  return textOrFallback(goal.normalized_goal ?? goal.original_goal ?? run.goal ?? run.summary, "还没有选择目标");
 }
 
 export function actionLabel(value: string): string {
   const normalized = value.trim().toLowerCase().replace(/^asteria\s+/, "");
-  if (normalized.startsWith("model-check")) return "Check connection";
-  if (normalized.startsWith("review")) return "Review";
-  if (normalized.startsWith("accept")) return "Accept";
-  if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "Continue";
-  if (normalized.startsWith("decide")) return "Decide";
-  if (normalized.startsWith("debug") || normalized.startsWith("repair")) return "Debug";
-  return "Continue";
+  if (normalized.startsWith("model-check")) return "检查连接";
+  if (normalized.startsWith("review")) return "查看";
+  if (normalized.startsWith("accept")) return "接受";
+  if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "继续";
+  if (normalized.startsWith("decide")) return "决定";
+  if (normalized.startsWith("debug") || normalized.startsWith("repair")) return "调试";
+  return "继续";
 }
 
 /**
@@ -99,13 +99,13 @@ export function runVerificationHint(runDetail: RunDetailPayload | null): string 
   const verdict = latestCorrectnessVerdict(runDetail);
   if (verdict === "pass") return "";
   if (verdict === "fail") {
-    return "Verification did not pass — the recorded tests/checks failed. Review before accepting.";
+    return "验证未通过——记录的测试/检查失败了。接受前请先查看。";
   }
   const reviewStatus = String(finalSummary.review_status ?? "").toLowerCase();
   const completion = String(finalSummary.completion ?? finalSummary.completion_state ?? "").toLowerCase();
   if (reviewStatus === "pass" || /verified|accepted/.test(completion)) return "";
   if (reviewStatus === "unknown" || reviewStatus === "" || /needs_review|unverified|implemented/.test(completion)) {
-    return "Changes are done but not yet verified. Run Review to check them.";
+    return "改动已完成,但还没验证。运行查看来核对。";
   }
   return "";
 }
@@ -165,7 +165,7 @@ export function runtimeSessionEvents(runDetail: RunDetailPayload | null): Studio
       session_id: "runtime-session",
       type: "user_message",
       status: "completed",
-      title: "Goal",
+      title: "目标",
       summary: goalText,
       content_delta: goalText,
       run_id: runId,
@@ -196,18 +196,18 @@ export function userProgressType(event: AnyRecord): StudioEvent["type"] {
 // literals the runtime may emit, so the main thread never shows process jargon
 // like "Tool Use"/"Tool Result"/"Verify"/"Background work".
 const TRANSCRIPT_KIND_TITLES: Record<string, string> = {
-  plan: "Planning",
-  todo_update: "Planning",
-  tool_use: "Working",
-  tool_result: "Result",
-  file_change: "File Change",
-  verification: "Checking the work",
-  permission_request: "Next step",
-  decision_request: "Next step",
-  ask: "Next step",
-  subagent_summary: "Working in the background",
-  final: "Result",
-  stop: "Result",
+  plan: "规划中",
+  todo_update: "规划中",
+  tool_use: "执行中",
+  tool_result: "结果",
+  file_change: "文件改动",
+  verification: "核对结果",
+  permission_request: "下一步",
+  decision_request: "下一步",
+  ask: "下一步",
+  subagent_summary: "后台执行中",
+  final: "结果",
+  stop: "结果",
 };
 
 // Internal/legacy title literals → human action titles live in the shared title-projection module
@@ -218,12 +218,12 @@ export function userProgressTitle(event: AnyRecord): string {
   const transcriptKind = String(event.transcript_kind ?? "");
   const phase = String(event.phase ?? "").trim();
   // Review-phase steps read as "Checking the work" regardless of kind.
-  if (phase === "review") return "Checking the work";
+  if (phase === "review") return "核对结果";
   if (title) {
     // Project known internal/legacy literals; unknown titles pass through.
     return INTERNAL_TITLE_PROJECTION[title] ?? title;
   }
-  return TRANSCRIPT_KIND_TITLES[transcriptKind] ?? "Progress";
+  return TRANSCRIPT_KIND_TITLES[transcriptKind] ?? "进度";
 }
 
 export function userProgressSummary(event: AnyRecord): string {

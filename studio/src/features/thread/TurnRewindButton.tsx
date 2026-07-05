@@ -53,14 +53,14 @@ export function TurnRewindButton({
           <span>{plan.label}</span>
         </button>
       ) : (
-        <div className="turnRewindConfirm" role="dialog" aria-label="Confirm rewind">
+        <div className="turnRewindConfirm" role="dialog" aria-label="确认回退">
           <p>{plan.reason}</p>
           <div className="turnRewindConfirmActions">
             <button type="button" onClick={() => setConfirming(false)} disabled={busy}>
-              Cancel
+              取消
             </button>
             <button type="button" className="primary" onClick={() => void confirmRewind()} disabled={busy}>
-              {busy ? "Working…" : plan.label}
+              {busy ? "执行中…" : plan.label}
             </button>
           </div>
         </div>

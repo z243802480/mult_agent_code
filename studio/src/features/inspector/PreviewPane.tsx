@@ -97,8 +97,8 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     return (
       <div className="previewPane empty">
         <Globe size={22} />
-        <p>No web output to preview yet.</p>
-        <small>HTML files in your workspace render here — live and interactive.</small>
+        <p>暂无可预览的网页输出。</p>
+        <small>工作区中的 HTML 文件会在此实时、可交互地渲染。</small>
       </div>
     );
   }
@@ -113,11 +113,11 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     <div className="previewPane">
       <div className="previewBar">
         {proxyMode ? (
-          <span className="previewPath" title={`Reverse-proxying dev server ${proxyTarget}`}>Dev server</span>
+          <span className="previewPath" title={`反向代理开发服务器 ${proxyTarget}`}>开发服务器</span>
         ) : htmlFiles.length > 1 ? (
           <select
             className="previewSelect"
-            aria-label="Preview file"
+            aria-label="预览文件"
             value={selected}
             onChange={(event) => setSelected(event.target.value)}
           >
@@ -131,15 +131,15 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
           <span className="previewPath" title={selected}>{selected}</span>
         )}
         {proxyMode ? (
-          <span className="previewLive" title={`Reverse-proxying ${proxyTarget} (HMR live)`}>Dev · HMR</span>
+          <span className="previewLive" title={`反向代理 ${proxyTarget}(HMR 实时)`}>开发 · HMR</span>
         ) : (
-          src && <span className="previewLive" title="Auto-refreshes when workspace files change">Live</span>
+          src && <span className="previewLive" title="工作区文件变化时自动刷新">实时</span>
         )}
         <button
           type="button"
           className="previewRefresh"
-          title="Reload preview"
-          aria-label="Reload preview"
+          title="重新加载预览"
+          aria-label="重新加载预览"
           onClick={() => setReloadKey((key) => key + 1)}
         >
           <RefreshCw size={13} />
@@ -150,7 +150,7 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
           <iframe
             key={`${src}-${reloadKey}`}
             className="previewFrame"
-            title="Workspace preview"
+            title="工作区预览"
             sandbox="allow-scripts allow-same-origin allow-forms"
             src={src}
           />
@@ -158,12 +158,12 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
           <iframe
             key={`fallback-${selected}-${reloadKey}`}
             className="previewFrame"
-            title="Workspace preview"
+            title="工作区预览"
             sandbox="allow-scripts"
             srcDoc={fallbackContent}
           />
         ) : (
-          <div className="previewStatus muted">{portResolved ? "Loading preview…" : "Starting preview…"}</div>
+          <div className="previewStatus muted">{portResolved ? "加载预览中…" : "启动预览中…"}</div>
         )}
       </div>
     </div>

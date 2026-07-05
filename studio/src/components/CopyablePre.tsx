@@ -19,8 +19,8 @@ export function CopyablePre({ text, className }: { text: string; className?: str
       <button
         type="button"
         className="copyablePreBtn"
-        title="Copy"
-        aria-label="Copy"
+        title="复制"
+        aria-label="复制"
         onClick={() => void copy()}
       >
         {copied ? <Check size={11} /> : <Copy size={11} />}

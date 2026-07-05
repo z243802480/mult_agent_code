@@ -86,9 +86,9 @@ export function buildInspectorSections(
 ): InspectorSection[] {
   if (!event) return [];
   const shellItems = [
-    ...(event.command?.length ? [{ label: "Command", value: event.command.join(" ") }] : []),
+    ...(event.command?.length ? [{ label: "命令", value: event.command.join(" ") }] : []),
     ...(event.content_delta && (event.type.startsWith("tool_") || event.runtime_channel === "tool")
-      ? [{ label: "Output", value: event.content_delta }]
+      ? [{ label: "输出", value: event.content_delta }]
       : []),
   ];
   const fileChanges = (event.file_changes ?? []) as AnyRecord[];
@@ -112,23 +112,23 @@ export function buildInspectorSections(
   return [
     {
       id: "intent",
-      title: "Intent",
+      title: "意图",
       count: intentDiagnostics.length,
-      empty: "This event has no intent routing metadata.",
+      empty: "该事件没有意图路由元数据。",
       content: <IntentAuditView items={intentDiagnostics} />,
     },
     {
       id: "shell",
       title: "Shell",
       count: shellItems.length,
-      empty: "This event has no shell command or tool output.",
+      empty: "该事件没有 Shell 命令或工具输出。",
       content: <KeyValueList items={shellItems} />,
     },
     {
       id: "diff",
-      title: "Diff",
+      title: "改动",
       count: fileChanges.length,
-      empty: "This event has no file changes.",
+      empty: "该事件没有文件改动。",
       content: (
         <RecordList
           items={fileChanges}
@@ -138,28 +138,28 @@ export function buildInspectorSections(
     },
     {
       id: "artifact",
-      title: "Artifacts",
+      title: "产物",
       count: artifacts.length + evidence.length,
-      empty: "This event has no artifact or evidence references.",
+      empty: "该事件没有产物或证据引用。",
       content: (
         <>
-          {artifacts.length > 0 && <RefList title="Artifacts" items={artifacts} runId={event.run_id} onOpenFile={onOpenFile} />}
-          {evidence.length > 0 && <RefList title="Evidence" items={evidence} runId={event.run_id} onOpenFile={onOpenFile} />}
+          {artifacts.length > 0 && <RefList title="产物" items={artifacts} runId={event.run_id} onOpenFile={onOpenFile} />}
+          {evidence.length > 0 && <RefList title="证据" items={evidence} runId={event.run_id} onOpenFile={onOpenFile} />}
         </>
       ),
     },
     {
       id: "telemetry",
-      title: "Telemetry",
+      title: "遥测",
       count: Object.keys(telemetry).length,
-      empty: "This event has no token or latency telemetry.",
+      empty: "该事件没有 token 或延迟遥测数据。",
       content: <TelemetryView telemetry={telemetry} />,
     },
     {
       id: "diagnostic",
-      title: "Diagnostics",
+      title: "诊断",
       count: diagnostics.length,
-      empty: "This event has no diagnostics.",
+      empty: "该事件没有诊断信息。",
       content: (
         <RecordList
           items={diagnostics}
@@ -192,10 +192,10 @@ function TelemetryView({ telemetry }: { telemetry: AnyRecord }) {
   const output = num(["output_tokens", "estimated_output_tokens", "completion_tokens"]);
   const total = num(["total_tokens", "token_count", "num_tokens", "n_tokens"]);
   const metrics = [
-    latency != null && { label: "Latency", value: formatMs(latency) },
-    input != null && { label: "Input tokens", value: formatUsage(input) },
-    output != null && { label: "Output tokens", value: formatUsage(output) },
-    total != null && { label: "Total tokens", value: formatUsage(total) },
+    latency != null && { label: "延迟", value: formatMs(latency) },
+    input != null && { label: "输入 token", value: formatUsage(input) },
+    output != null && { label: "输出 token", value: formatUsage(output) },
+    total != null && { label: "总 token", value: formatUsage(total) },
   ].filter(Boolean) as { label: string; value: string }[];
   return (
     <div className="telemetryView">
@@ -207,7 +207,7 @@ function TelemetryView({ telemetry }: { telemetry: AnyRecord }) {
         </div>
       )}
       <details>
-        <summary>Raw telemetry</summary>
+        <summary>原始遥测</summary>
         <CopyablePre text={JSON.stringify(telemetry, null, 2)} />
       </details>
     </div>
@@ -220,14 +220,14 @@ function IntentAuditView({ items }: { items: AnyRecord[] }) {
   return (
     <div className="intentAudit">
       <div className="intentAuditGrid">
-        <Metric label="Route" value={String(audit.route ?? audit.selected_mode ?? "unknown")} tone="good" />
-        <Metric label="Intent" value={String(audit.intent_kind ?? "unknown")} tone="warn" />
-        <Metric label="Permission" value={String(audit.permission_effect ?? "unknown")} tone={String(audit.permission_effect ?? "").includes("execute") ? "warn" : "good"} />
+        <Metric label="路由" value={String(audit.route ?? audit.selected_mode ?? "unknown")} tone="good" />
+        <Metric label="意图" value={String(audit.intent_kind ?? "unknown")} tone="warn" />
+        <Metric label="权限" value={String(audit.permission_effect ?? "unknown")} tone={String(audit.permission_effect ?? "").includes("execute") ? "warn" : "good"} />
       </div>
       <div className="keyValueList">
-        <div><small>Reason</small><pre>{String(audit.reason ?? "No route reason recorded.")}</pre></div>
-        <div><small>Prompt enrichment</small><pre>{String(audit.prompt_enrichment ?? "none")}</pre></div>
-        <div><small>Raw metadata</small><CopyablePre text={JSON.stringify(items, null, 2)} /></div>
+        <div><small>原因</small><pre>{String(audit.reason ?? "未记录路由原因。")}</pre></div>
+        <div><small>Prompt 增强</small><pre>{String(audit.prompt_enrichment ?? "none")}</pre></div>
+        <div><small>原始元数据</small><CopyablePre text={JSON.stringify(items, null, 2)} /></div>
       </div>
     </div>
   );
