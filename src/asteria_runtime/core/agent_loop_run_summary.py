@@ -21,6 +21,7 @@ EXIT_REASONS = {
     "repair_dispatch",
     "replan_dispatch",
     "repair_budget_exhausted",
+    "replan_budget_exhausted",
     "loop_no_progress",
     "no_action",
 }
@@ -114,6 +115,7 @@ def _recovery_chain(
             "repair_dispatch",
             "replan_dispatch",
             "repair_budget_exhausted",
+            "replan_budget_exhausted",
             "loop_no_progress",
             "no_action",
         }

@@ -94,6 +94,17 @@ S77 §7 把"假默认档 fail-loud"降为定向项（硬 fail 会反转 D-3 决�
 - 构造期既有 `_warn_if_tier_silently_offline`（D-3 混用告警）保留不动。
 - **验证**：+2 单测（route 诊断标记 / doctor 离线档 warning，`test_model_routing` + `test_control_surface_commands`）；全量 **922 单测绿**·mypy·ruff 净。**注**：`cheap` 不是 doctor check（仅 strong/medium 是），其诚实靠 routes 表标记；doctor warning 分支在 strong/medium 自身落 fake（全离线）时触发。
 
+## S79 · 自主 replan 闭环（第二环，2026-07-05 用户"授权解锁推进"）
+
+承 S78 repair 环，闭合**任务级 replan 环**：模型在任务循环内出 `replan`（"本任务方法根本错了，重新构思"）时，有界预算内自动让 CoderAgent 换方法重试，不再每次就 block 交还人类。brief `benchmarks/reference_briefs/S79-autonomous-replan-loop-closure.md`。
+- **关键边界（§2 防 scope 扩张）**：只闭 **task-level** replan（同 goal 同任务边界内重新构思）；**goal-level** `ReplanCommand`（合成新任务 + lineage 计数）= scope 扩张越 DecisionPoint，**保持人类门控不动**。auto-replan 预算耗尽时 `recommended_command="replan"` 荐人类走 goal-level。
+- **flag 门控·默认关·可回退**：`agent_loop.auto_replan`（默认 `false`，`agent_loop` 宽松 object 无需改 policy schema）。关时逐字节同今日。
+- **落码**：`_auto_replan_enabled`/`_max_replans_per_task` + `_handle_auto_replan_round`/`_block_auto_replan`（镜像 repair 孪生，no-progress guard 先判复用 `_auto_repair_loop_guard_warns`）+ `_execute_task` 分派分支 + `max_rounds` 开时 `+2*replan_cap` + budget 快照补 `replan_attempts_limit`/`auto_replan_enabled`（前端 parity）。
+- **有界保险丝**：局部 `replan_attempts_used`（cap=`max_replans_per_task`，默认 2）+ no-progress guard。**不新增 budget replan 计数器 / 不改 cost_report schema**（budget 无 `max_replans_total`，不伪造）。
+- **终止**（先触发者胜）：成功→`completed`；局部计数≥cap→`replan_budget_exhausted`(荐 `replan`)；no-progress→`loop_no_progress`；hard-stop 已保。
+- **schema-double-trap 踩坑（已修）**：`replan_budget_exhausted` 需同步加**四处**——`schemas/` + `src/.../schemas/` 两份 `agent_loop_run_summary.schema.json` enum，**和** `core/agent_loop_run_summary.py` 的 Python `EXIT_REASONS` 集合（`clean_reason = ... else "no_action"` 会把未登记的 exit_reason 静默降级成 `no_action`——正是首轮 budget-exhausted 测试假失败的根因）+ recovery-chain required 集合。
+- **验证**：+4 集成测试（replan-then-succeed / budget-exhausted / no-progress / opt-out 回退）+ 现有 repair/probe 逐字回归；`test_execute_command.py`+run_summary 53 绿·**全量 1193 单测+集成绿·1 skip**·mypy·ruff 净。repair 环（S78）与 replan 环独立预算/exit_reason，一个任务循环内可先后触发。
+
 ## Tier B 进展（逐项亲验中，2026-07-04）
 
 - ✅ **B5（部分）focus trap + combobox a11y**：CommandPalette 原有 focus 恢复但**无 Tab trap**（aria-modal 却能 Tab 逃逸背景）+ 无 listbox 语义。已加 Tab trap + 标准 combobox/listbox（role/aria-activedescendant/aria-selected）。studio tsc 净。**已提交 `678a4c5`**。B5 剩余：长任务进度的 aria-live region、DiffPreview 的 `div[role=button]`→`button`。

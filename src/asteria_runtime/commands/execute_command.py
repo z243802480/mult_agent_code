@@ -432,6 +432,22 @@ class ExecuteCommand:
             value = 0
         return max(0, value)
 
+    def _auto_replan_enabled(self, policy: dict) -> bool:
+        # S79 second ring: close the task-level replan loop (model re-approaches THIS task within
+        # the same goal scope). Default off — behaviour is byte-identical to today when disabled.
+        # Goal-level replan (ReplanCommand: new-task synthesis / lineage) stays human-gated.
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("auto_replan", False))
+
+    def _max_replans_per_task(self, policy: dict) -> int:
+        budgets = resolve_budget_limits(policy)
+        try:
+            value = int(budgets.get("max_replans_per_task") or 0)
+        except (TypeError, ValueError):
+            value = 0
+        return max(0, value)
+
     def _loop_quality_guard_config(self, policy: dict) -> dict | None:
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
@@ -1779,6 +1795,183 @@ class ExecuteCommand:
             else None,
         )
 
+    def _handle_auto_replan_round(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        latest_decision: dict | None,
+        execution_result: dict | None,
+        replan_attempts_used: int,
+        replan_cap: int,
+    ) -> tuple[bool, dict | None, TaskExecutionSummary | None]:
+        """Close the task-level replan loop within a bounded budget (S79, second ring).
+
+        When ``agent_loop.auto_replan`` is on and the model requests ``replan`` — "my approach to
+        THIS task is wrong, let me rethink it" — the loop no longer blocks and hands the task back
+        on the first such signal. While the per-task replan budget holds and the loop is still
+        making progress, it records a ``replan_result`` observation that re-arms the next round for
+        a fresh tool attempt (the CoderAgent re-approaches within the same task/goal scope), and
+        continues. Budget exhaustion or a no-progress guard trip produces an honest block.
+
+        This is task-level only: goal-level replan (``ReplanCommand``: new-task synthesis / lineage)
+        stays human-gated, so auto-replan never expands the goal scope (ADR-0016 §2). The numeric
+        ``replan_cap`` is a resumable fuse; the no-progress guard is the real semantic stop
+        (ADR-0010 §3), so it is evaluated FIRST and never short-circuited by the count.
+
+        Returns ``(continue_loop, replan_observation, blocked_summary)`` (same contract as repair).
+        """
+
+        task_id = str(task["task_id"])
+        if self._auto_repair_loop_guard_warns(context, task_id):
+            summary = (
+                f"Auto-replan stopped after {replan_attempts_used} attempt(s): the loop "
+                "repeated the same failing observation without measurable progress."
+            )
+            return (
+                False,
+                None,
+                self._block_auto_replan(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    round_index=round_index,
+                    max_rounds=max_rounds,
+                    latest_decision=latest_decision,
+                    execution_result=execution_result,
+                    exit_reason="loop_no_progress",
+                    summary=summary,
+                ),
+            )
+        # The numeric per-task cap is a purely local resumable fuse. Unlike repair there is no
+        # cross-goal ``max_replans_total`` ledger in the budget, so we do NOT fabricate a budget
+        # counter — the local count plus the no-progress guard bound the loop honestly.
+        if replan_attempts_used >= replan_cap:
+            summary = (
+                f"Auto-replan paused at the safety cap after {replan_attempts_used} attempt(s) "
+                f"(max {replan_cap}) while still making progress; resumable via a human replan "
+                "decision (goal-level re-planning)."
+            )
+            return (
+                False,
+                None,
+                self._block_auto_replan(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    round_index=round_index,
+                    max_rounds=max_rounds,
+                    latest_decision=latest_decision,
+                    execution_result=execution_result,
+                    exit_reason="replan_budget_exhausted",
+                    summary=summary,
+                ),
+            )
+        attempt_number = replan_attempts_used + 1
+        summary = (
+            f"Auto-replan attempt {attempt_number}/{replan_cap}: re-approaching this task "
+            "automatically after a failed verification, within the replan budget."
+        )
+        observation = persist_agent_loop_observation_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=execution_result,
+            status="pending",
+            summary=summary,
+            next_recommended_action="tool",
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="running",
+            title=f"Auto-replan attempt {attempt_number}",
+            summary=summary,
+            display_level="inspector",
+            transcript_kind="replan",
+            ui_intent="progress",
+            data={
+                "task_id": task_id,
+                "agent_loop_execution_result": execution_result or {},
+                "agent_loop_observation": observation or {},
+                "auto_replan_attempt": attempt_number,
+                "auto_replan_budget": replan_cap,
+                "recommended_command": "status",
+            },
+        )
+        return (True, observation, None)
+
+    def _block_auto_replan(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        round_index: int,
+        max_rounds: int,
+        latest_decision: dict | None,
+        execution_result: dict | None,
+        exit_reason: str,
+        summary: str,
+    ) -> TaskExecutionSummary:
+        task_id = str(task["task_id"])
+        self._mark_task_blocked(task_board, task_id)
+        observation = persist_agent_loop_observation_for_execution(
+            run_dir=context.run_dir,
+            validator=context.validator,
+            execution_result=execution_result,
+            status="pending",
+            summary=summary,
+            next_recommended_action="replan",
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="execution_chain",
+            event_type="message",
+            phase="execute",
+            status="blocked",
+            title="Auto-replan stopped",
+            summary=summary,
+            transcript_kind="replan",
+            ui_intent="needs_attention",
+            data={
+                "task_id": task_id,
+                "agent_loop_execution_result": execution_result or {},
+                "agent_loop_observation": observation or {},
+                "recommended_command": "replan",
+                "exit_reason": exit_reason,
+            },
+        )
+        self._record_agent_loop_run_summary(
+            context=context,
+            task_id=task_id,
+            status="blocked",
+            exit_reason=exit_reason,
+            rounds_completed=round_index,
+            max_rounds=max_rounds,
+            summary=summary,
+            recommended_command="replan",
+            latest_decision=latest_decision,
+            latest_execution=execution_result,
+            latest_observation=observation,
+        )
+        return TaskExecutionSummary(
+            task_id=task_id,
+            status="blocked",
+            summary=summary,
+            tool_calls=0,
+            verification_calls=0,
+            evidence_path=context.run_dir / "agent_loop_observations.jsonl"
+            if context.run_dir is not None
+            else None,
+        )
+
     def _next_action_after_attempt(
         self,
         *,
@@ -1910,6 +2103,8 @@ class ExecuteCommand:
             "repair_attempts": report.get("repair_attempts", 0),
             "repair_attempts_limit": self._max_repair_attempts_per_task(context.policy),
             "auto_repair_enabled": self._auto_repair_enabled(context.policy),
+            "replan_attempts_limit": self._max_replans_per_task(context.policy),
+            "auto_replan_enabled": self._auto_replan_enabled(context.policy),
             "warnings": list(report.get("warnings") or []),
         }
         context_pressure = {
@@ -2558,12 +2753,20 @@ class ExecuteCommand:
                 if auto_repair_enabled
                 else 0
             )
-            # With auto-repair on, extend the round ceiling so the repair budget / the
-            # no-progress guard (not a premature max_rounds) is what terminates a
-            # repairing loop. Each repair cycle spends one repair round plus one retry
-            # round; off => value is unchanged and today's behavior is byte-identical.
-            max_rounds = base_max_rounds + (2 * repair_cap if auto_repair_enabled else 0)
+            auto_replan_enabled = self._auto_replan_enabled(context.policy)
+            replan_cap = (
+                self._max_replans_per_task(context.policy) if auto_replan_enabled else 0
+            )
+            # With auto-repair/auto-replan on, extend the round ceiling so the per-task budget /
+            # the no-progress guard (not a premature max_rounds) is what terminates the loop. Each
+            # repair/replan cycle spends one dispatch round plus one retry round; both off =>
+            # value is unchanged and today's behavior is byte-identical.
+            max_rounds = base_max_rounds + (
+                (2 * repair_cap if auto_repair_enabled else 0)
+                + (2 * replan_cap if auto_replan_enabled else 0)
+            )
             repair_attempts_used = 0
+            replan_attempts_used = 0
             latest_loop_observation: dict | None = None
             latest_summary: TaskExecutionSummary | None = None
             for round_index in range(1, max_rounds + 1):
@@ -2723,6 +2926,30 @@ class ExecuteCommand:
                         repair_attempts_used += 1
                         if repair_observation is not None:
                             latest_loop_observation = repair_observation
+                        continue
+                    # continue_loop is False => the handler produced a blocked summary.
+                    assert blocked_summary is not None
+                    return blocked_summary
+                if auto_replan_enabled and next_action_kind == "replan":
+                    continue_loop, replan_observation, blocked_summary = (
+                        self._handle_auto_replan_round(
+                            task=task,
+                            task_board=task_board,
+                            context=context,
+                            round_index=round_index,
+                            max_rounds=max_rounds,
+                            latest_decision=loop_decision
+                            if isinstance(loop_decision, dict)
+                            else None,
+                            execution_result=loop_execution_result,
+                            replan_attempts_used=replan_attempts_used,
+                            replan_cap=replan_cap,
+                        )
+                    )
+                    if continue_loop:
+                        replan_attempts_used += 1
+                        if replan_observation is not None:
+                            latest_loop_observation = replan_observation
                         continue
                     # continue_loop is False => the handler produced a blocked summary.
                     assert blocked_summary is not None
