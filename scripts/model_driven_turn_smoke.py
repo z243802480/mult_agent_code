@@ -17,12 +17,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-# Windows 控制台默认 GBK，narration/中文会 UnicodeEncodeError —— 强制 UTF-8 输出。
-for _stream in (sys.stdout, sys.stderr):
-    reconfigure = getattr(_stream, "reconfigure", None)
-    if reconfigure is not None:
-        reconfigure(encoding="utf-8", errors="replace")
-
 from asteria_runtime.core.model_driven_turn import TurnEvent, run_model_driven_turn
 from asteria_runtime.core.policy_config import merge_policy_defaults
 from asteria_runtime.core.runtime_context import RuntimeContext
@@ -31,6 +25,12 @@ from asteria_runtime.storage.schema_validator import SchemaValidator
 from asteria_runtime.tools.defaults import create_default_tool_registry
 
 _ROOT = Path(__file__).resolve().parents[1]
+
+# Windows 控制台默认 GBK，narration/中文会 UnicodeEncodeError —— 强制 UTF-8 输出。
+for _stream in (sys.stdout, sys.stderr):
+    _reconfigure = getattr(_stream, "reconfigure", None)
+    if _reconfigure is not None:
+        _reconfigure(encoding="utf-8", errors="replace")
 
 SYSTEM_PROMPT = (
     "You are CoderAgent in a local-first autonomous development runtime.\n"
