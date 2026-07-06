@@ -33,6 +33,22 @@ from asteria_runtime.core.agent_harness import (
 )
 from asteria_runtime.core.worker_transport import extract_tool_calls, tool_definitions_for
 from asteria_runtime.models.base import ChatMessage, ChatRequest
+from asteria_runtime.models.json_extractor import JsonExtractionError, parse_json_object
+
+# 每轮 JSON 契约（transport="json" 时追加到 system prompt）。刻意极简：只有本轮要说的话、
+# 要调的工具、以及做完没做完——**没有** next_action 枚举、没有 ExecutionAction 壳（ADR-0016 保真）。
+_JSON_TURN_CONTRACT = (
+    "OUTPUT CONTRACT (return ONE JSON object, nothing else):\n"
+    '{"narration": "<one short sentence in the user\'s language about what you are doing this step>", '
+    '"tool_calls": [{"tool_name": "write_file", "args": {"path": "...", "content": "..."}}], '
+    '"done": false}\n'
+    "- Put the tools you want to run THIS step in tool_calls (each has tool_name + args). "
+    "You may call multiple tools in one step.\n"
+    "- After you see the tool results, decide the next step and return the next JSON object.\n"
+    "- When the task is complete AND verified, return {\"narration\": \"<final sentence>\", "
+    '"tool_calls": [], "done": true}.\n'
+    "- Never return prose or markdown outside the JSON object."
+)
 
 
 class ToolRunner(Protocol):
@@ -88,16 +104,26 @@ def run_model_driven_turn(
     request_purpose: str = "task_execution",
     temperature: float = 0.2,
     max_output_tokens: int = 5000,
+    transport: str = "json",
     on_event: Callable[[TurnEvent], None] | None = None,
 ) -> ModelDrivenTurnResult:
-    """跑一条模型驱动的 tool-use 循环，直到模型停止调用工具或撞上保险丝。
+    """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
 
-    返回 `ModelDrivenTurnResult`：`status="completed"` 表示模型主动收尾（不再调工具），
-    `status="budget_exhausted"` 表示撞上 `max_iterations` 保险丝（可 resume，不冒充语义完成/失败）。
+    `transport`：
+    - ``"json"``（默认，本 glm/minimax 弱模型栈的**已证明通路**）——模型每轮返回
+      `{narration, tool_calls, done}` JSON，由本函数解析。原生 tool_use 在该流式栈上不可靠
+      （空 content / tool_call 未组装，见 openai_compatible._parse_response）。
+    - ``"tool_use"``——OpenAI 原生 function calling（`extract_tool_calls`），供支持的 provider。
+
+    控制语义**与 transport 无关**：模型这步给了 tool_calls 就执行、否则视为本轮完成；失败即
+    observation 回灌；`max_iterations` 保险丝。返回 `status="completed"` 或 `"budget_exhausted"`。
     """
 
+    system_content = system_prompt
+    if transport == "json":
+        system_content = f"{system_prompt}\n\n{_JSON_TURN_CONTRACT}"
     messages: list[ChatMessage] = [
-        ChatMessage(role="system", content=system_prompt),
+        ChatMessage(role="system", content=system_content),
         ChatMessage(role="user", content=user_prompt),
     ]
     tool_defs = tool_definitions_for(available_tools, extra_tool_specs)
@@ -111,27 +137,26 @@ def run_model_driven_turn(
 
     nudged = False
     for iteration in range(1, max_iterations + 1):
-        response = model_client.chat(
-            ChatRequest(
-                purpose=request_purpose,
-                model_tier=model_tier,
-                messages=list(messages),
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-                worker_transport="tool_use",
-                tools=tool_defs or None,
-                metadata={
-                    "task_id": task.get("task_id"),
-                    "iteration": iteration,
-                    "loop": "model_driven_turn",
-                },
-            )
+        request = ChatRequest(
+            purpose=request_purpose,
+            model_tier=model_tier,
+            messages=list(messages),
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            worker_transport=transport,
+            response_format="json" if transport == "json" else None,
+            tools=(tool_defs or None) if transport == "tool_use" else None,
+            metadata={
+                "task_id": task.get("task_id"),
+                "iteration": iteration,
+                "loop": "model_driven_turn",
+            },
         )
-        narration = str(getattr(response, "content", "") or "").strip()
+        response = model_client.chat(request)
+        narration, calls = _read_turn(response, transport)
         if narration:
             emit(TurnEvent(kind="narration", iteration=iteration, text=narration))
 
-        calls = extract_tool_calls(getattr(response, "raw_response", {}) or {})
         if not calls:
             # 模型只说话、不调工具 = 它认为本轮做完了。唯一的例外是弱模型的"过早收尾"：
             # 第一轮就停、任务还有明确产出、且尚无任何 observation —— 轻推一次（继续），
@@ -159,7 +184,9 @@ def run_model_driven_turn(
         messages.append(
             ChatMessage(role="assistant", content=_assistant_turn_text(narration, calls))
         )
-        messages.append(ChatMessage(role="user", content=_observation_feedback(observations)))
+        messages.append(
+            ChatMessage(role="user", content=_observation_feedback(observations, transport))
+        )
 
     # 撞上保险丝：可 resume 的预算边界，不是"失败"也不是"完成"。
     emit(TurnEvent(kind="fuse", iteration=max_iterations))
@@ -191,15 +218,49 @@ def _execute(
     return observations
 
 
-def _observation_feedback(observations: list[ToolObservation]) -> str:
+def _read_turn(response: Any, transport: str) -> tuple[str, list[dict]]:
+    """从模型响应里取出（narration, tool_calls），屏蔽 transport 差异。"""
+    content = str(getattr(response, "content", "") or "")
+    if transport == "tool_use":
+        calls = extract_tool_calls(getattr(response, "raw_response", {}) or {})
+        return content.strip(), calls
+    # json transport（本弱模型栈的已证明通路）
+    try:
+        parsed = parse_json_object(content)
+    except JsonExtractionError:
+        # 没给合法 JSON：当作一步无效输出（narration=原文、无 tool_calls）——交给轻推/完成判定处理。
+        return content.strip(), []
+    narration = str(parsed.get("narration") or "").strip()
+    if parsed.get("done"):
+        return narration, []
+    return narration, _normalize_json_calls(parsed.get("tool_calls"))
+
+
+def _normalize_json_calls(raw: Any) -> list[dict]:
+    if not isinstance(raw, list):
+        return []
+    calls: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("tool_name") or item.get("name") or "").strip()
+        if not name:
+            continue
+        raw_args = item.get("args")
+        args = raw_args if isinstance(raw_args, dict) else {}
+        calls.append({"tool_name": name, "args": args, "reason": "model_driven_turn json tool call"})
+    return calls
+
+
+def _observation_feedback(observations: list[ToolObservation], transport: str) -> str:
     lines = [obs.model_summary() for obs in observations]
     body = "\n".join(lines) if lines else "(no observation)"
-    return (
-        "Tool results (observations):\n"
-        f"{body}\n"
-        "Continue with more tool calls if the task is not complete. "
-        "When the task is done and verified, reply with a short final message and NO tool calls."
+    tail = (
+        "Return the next JSON object per the contract; set done=true and tool_calls=[] when finished."
+        if transport == "json"
+        else "Continue with tool calls if not complete, or reply with a final message and NO tool calls when done."
     )
+    return f"Tool results (observations):\n{body}\n{tail}"
 
 
 def _assistant_turn_text(narration: str, calls: list[dict]) -> str:

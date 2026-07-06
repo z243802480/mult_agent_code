@@ -66,7 +66,13 @@ class FakeToolRunner:
         return [FakeToolResult() for _ in calls]
 
 
-def _run(model, tools, *, task=None, **kw):
+def _json_resp(narration: str, tool_calls=None, done: bool = False) -> SimpleNamespace:
+    """构造 JSON transport 的响应替身：content 是 {narration, tool_calls, done} 的 JSON 串。"""
+    payload = {"narration": narration, "tool_calls": tool_calls or [], "done": done}
+    return SimpleNamespace(content=json.dumps(payload, ensure_ascii=False), raw_response={})
+
+
+def _run(model, tools, *, task=None, transport="tool_use", **kw):
     return run_model_driven_turn(
         model_client=model,
         tool_runner=tools,
@@ -75,6 +81,7 @@ def _run(model, tools, *, task=None, **kw):
         available_tools=["write_file", "read_file", "run_command", "run_tests"],
         system_prompt="system",
         user_prompt="build calc.py",
+        transport=transport,
         **kw,
     )
 
@@ -209,3 +216,77 @@ def test_events_are_emitted_in_order() -> None:
 
     kinds = [event.kind for event in seen]
     assert kinds == ["narration", "tool_observation", "narration", "final"]
+
+
+# --- JSON transport（本 glm/minimax 弱模型栈的已证明通路）---------------------------------
+
+
+def test_json_transport_executes_tools_and_completes() -> None:
+    model = FakeModelClient(
+        [
+            _json_resp("建 calc.py", [{"tool_name": "write_file", "args": {"path": "calc.py", "content": "code"}}]),
+            _json_resp("完成", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary="wrote calc.py")]])
+
+    result = _run(model, tools, transport="json")
+
+    assert result.status == "completed"
+    assert result.iterations == 2
+    assert result.final_message == "完成"
+    assert len(result.observations) == 1 and result.observations[0].tool_name == "write_file"
+    # 第一次请求必须注入 JSON 契约 + 走 response_format=json（不发 tools）。
+    first = model.requests[0]
+    assert "OUTPUT CONTRACT" in first.messages[0].content
+    assert first.response_format == "json" and first.tools is None
+
+
+def test_json_transport_failure_fed_back_without_repair_branch() -> None:
+    model = FakeModelClient(
+        [
+            _json_resp("跑测试", [{"tool_name": "run_tests", "args": {"command": "pytest"}}]),
+            _json_resp("测试挂了,我来修", [{"tool_name": "write_file", "args": {"path": "calc.py", "content": "fix"}}]),
+            _json_resp("修好了", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner(
+        [
+            [FakeToolResult(ok=False, summary="1 failed", status="failure", error="AssertionError")],
+            [FakeToolResult(ok=True, summary="wrote calc.py")],
+        ]
+    )
+
+    result = _run(model, tools, transport="json")
+
+    assert result.status == "completed" and result.iterations == 3
+    assert len(result.observations) == 2 and result.observations[0].ok is False
+    second_call_texts = [m.content for m in model.requests[1].messages]
+    assert any("1 failed" in t or "AssertionError" in t for t in second_call_texts)
+
+
+def test_json_transport_done_flag_completes_even_with_tool_calls() -> None:
+    # done=true 收尾优先——即便模型顺手又塞了 tool_calls,也当完成,防止困惑的模型无限调用。
+    model = FakeModelClient(
+        [_json_resp("其实已经好了", [{"tool_name": "write_file", "args": {"path": "x", "content": "y"}}], done=True)]
+    )
+    tools = FakeToolRunner([])
+    task = {"task_id": "task-0001", "allowed_tools": ["write_file"]}
+
+    result = _run(model, tools, transport="json", task=task)
+
+    assert result.status == "completed"
+    assert result.iterations == 1
+    assert result.observations == []
+
+
+def test_json_transport_invalid_json_does_not_crash() -> None:
+    model = FakeModelClient([SimpleNamespace(content="这不是 JSON", raw_response={})])
+    tools = FakeToolRunner([])
+    task = {"task_id": "task-0001", "allowed_tools": []}  # 无待办 -> 不轻推,如实完成
+
+    result = _run(model, tools, transport="json", task=task)
+
+    assert result.status == "completed"
+    assert result.iterations == 1
+    assert result.observations == []
