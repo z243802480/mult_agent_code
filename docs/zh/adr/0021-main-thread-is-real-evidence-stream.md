@@ -91,8 +91,19 @@ harness 自述注入点(节选,均可由真数据替代或直接删)：
     冒充显性工具卡,折叠进明细。默认视图 `focus→normal`(过程默认可见且干净)。
   - E2E(studio 起 run,isodd.py):`normal` 显性卡恰为 `写入 isodd.py`/`写入 test_isodd.py`/
     `$ python -m pytest …`/`$ python -c …` 四个真动作;权限决策/生命周期全部折叠;终答=模型真中文话;零英文。
-- **切片 3 — 文档/上下文关联过程卡（待做）**:`context_mounts` 目前无对应 user_progress 事件。
-- **切片 4 — 阶段旁白降级为安静状态（待做）**:`理解目标/执行迭代/运行完成` 由真数据派生或降级。
+- **切片 3 — 文档/上下文关联过程卡（已做，验证）**：
+  - `runtime_profile_builder._record_profiles` 写 `context_mounts.jsonl` 后发 user_progress 事件
+    (`transcript_kind=context_status`,复用既有枚举·无 schema 迁移,best-effort 不阻断挂载),标题
+    "已关联任务上下文" + 中文文档清单(项目指南/目标简报/任务简报 + 产物/失败/决策/验证计数)。
+  - 前端新增 narrative kind `context`(narrativeKind/label/icon=Paperclip),`ConversationTurn` 在
+    工具卡上方**显性渲染**"上下文关联"卡。
+  - E2E(studio 起 run·clamp.py):上下文卡显示"为本任务关联了：项目指南、目标简报、任务简报",
+    置于 `写入/pytest` 工具卡之上;console 无错。
+- **切片 4 — 阶段旁白降级为安静状态（暂缓·非显性问题）**:`理解目标/执行迭代/运行完成/开始验证/
+  验证完成` 等阶段旁白经切片 2b 已**不再冒充显性卡**、仅存在于**默认折叠**的"详情"里(opt-in 明细,
+  非显性展示问题)。进一步移出折叠需要:①可靠的稳定判据(试过的前端 fold 去噪对 runtime 事件行为不
+  一致·仅删部分),或 ②在源头把这些 emit 的 `display_level` 降到 `inspector`——后者会触碰 DO_NOT_TOUCH
+  的 `run_command.py`(`执行迭代/任务执行进展`),须单独谨慎处理。故留作后续专项,不在本刀草率降级。
 
 ## 主流实证
 
