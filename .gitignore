@@ -14,6 +14,7 @@ studio/playwright-report/
 studio/blob-report/
 Thumbs.db
 .DS_Store
+.claude/
 *.egg-info/
 .asteria/
 .agent/
