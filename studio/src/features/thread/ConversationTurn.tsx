@@ -102,8 +102,17 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
     (step) => !permIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
   );
   const toolIds = new Set(toolSteps.map((step) => step.id));
+  // Holistic rule (ADR-0021): the main thread is a conversation, not a machine dashboard. The user
+  // sees their message, the model's words (narration + final), the real tools/commands it ran, the
+  // files it changed, and any real problem (repair / error / subagent). EVERYTHING else the loop emits
+  // to drive itself — "Agent 步骤 执行迭代", "已记录能力决策", "计划思考中", "观察", phase narration,
+  // "正在压缩上下文", thinking placeholders — is machinery. It lives in the Inspector (raw evidence),
+  // never on the main thread. This is a WHITELIST, not a per-card blacklist.
+  const DETAIL_KINDS = new Set(["repair", "error", "subagent"]);
   const detailSteps = steps.filter(
-    (step) => !permIds.has(step.id) && !toolIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id)
+    (step) =>
+      !permIds.has(step.id) && !toolIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id)
+      && DETAIL_KINDS.has(step.kind)
   );
 
   return (
@@ -239,8 +248,32 @@ function thinkingTokens(steps: NarrativeStepType[]): number {
 // answer lands" behavior: after completion the reasoning collapses into a re-openable chip instead
 // of vanishing into the process badge. Renders nothing when there is no real reasoning text (no
 // empty chip). Default-collapsed while completed; auto-open while still streaming.
+// Harness-authored placeholder lines the model_start/model_end events carry when the real reasoning
+// stream is kept in the Inspector (not surfaced to the thread). They are machine status text, not the
+// model thinking — strip them so we never render an empty/English "思考过程" chip (ADR-0021).
+const THINKING_PLACEHOLDERS = new Set([
+  "Asteria is preparing the next step.",
+  "Asteria is preparing the next step",
+  "Asteria finished drafting this step.",
+  "Asteria finished drafting this step",
+  "Asteria is drafting a response.",
+  "Asteria is drafting a response",
+  "Draft complete",
+  "Drafting",
+  "Thinking",
+]);
+
 function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; live?: boolean }) {
-  const text = cleanReasoning(steps.map((step) => step.events.map((event) => event.content_delta || "").join("")).join("\n\n"));
+  // Filter per EVENT before joining: within a step the harness "preparing"/"drafting" placeholders
+  // concatenate with no separator, so a line-based filter would miss the merged string. Drop each
+  // placeholder event, keep only real reasoning text.
+  const text = cleanReasoning(
+    steps
+      .flatMap((step) => step.events)
+      .map((event) => cleanReasoning(event.content_delta || "").trim())
+      .filter((t) => t && !THINKING_PLACEHOLDERS.has(t))
+      .join("\n\n")
+  ).trim();
   const [open, setOpen] = useState(live);
   useEffect(() => { if (live) setOpen(true); }, [live]);
   if (!text) return null;
@@ -405,7 +438,10 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
               the reasoning + process + file cards BELOW it. Leading with process is what made the
               thread read like a dashboard instead of a reply. */}
           {responseStep && <TurnFinal step={responseStep} middleSteps={processSteps} />}
-          {thinkingSteps.length > 0 && <ThinkingBlock steps={thinkingSteps} />}
+          {/* No thinking block on a completed turn (ADR-0021 whitelist): the model's real reasoning
+              stream stays in the Inspector, and its conversational voice is the narration/final. The
+              only thing this block ever carried on the main thread was harness placeholders / a goal
+              echo — machinery, not the model's thought. Real live streaming still uses LiveStream. */}
           {processSteps.length > 0 && (
             <TurnMiddle
               steps={processSteps}

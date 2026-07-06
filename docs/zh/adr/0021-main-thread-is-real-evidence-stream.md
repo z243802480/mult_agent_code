@@ -104,7 +104,8 @@ harness 自述注入点(节选,均可由真数据替代或直接删)：
   - **emit**:`task_attempt_runner` 在跑工具**之前**把 `action["narration"]` 作为 `channel=model / transcript_kind=assistant_message / display_level=main` 事件发到主线程(真模型话,模型没说就跳过)。
   - **前端**:新增 narrative kind `narration`,`ConversationTurn` 在工具卡**之上**渲染为模型口语散文(`.turnNarrationText`,非标签/chip)。
   - E2E(真 glm-5.2·studio 起 run):面板真出现模型中文话——"clamp 部分已经完成并通过测试了,现在我来做后续的阶乘任务:写一个 fact.py 里的 factorial 函数,负数会抛 ValueError,然后把 pytest 测试补齐。"(甚至诚实说明了 scope 限制)。单测 951 通过(3 既有 provider 失败无关)、tsc+build 绿、console 无错。**至此主线程有了模型自己的声音,不再只有 recap 一句。**
-- **切片 4 — 阶段旁白降级为安静状态（暂缓·非显性问题）**:`理解目标/执行迭代/运行完成/开始验证/
+- **切片 6 — 主线程白名单化（架构纠偏·已做，验证·把切片 4 一并解决）**：用户复核真实"开发一个简易计算器"窗口后指出"除 recap 外全是 harness 自己写进去的·一条对用户有用的真实信息都没有·还在缝缝补补"。反思确认:此前一直在显示层**逐卡黑名单**降噪(降级/改标签/滤内部步),治标不治本——干净跑里折叠区仍有 **22 条机器脚手架**(Agent 步骤/已记录能力决策/计划思考中/观察/阶段旁白/正在压缩上下文)。改为**白名单**:`ConversationTurn` 主线程只渲染「用户消息 + 模型的话(narration+final) + 真实工具/命令卡 + 文件改动 chip + 上下文关联 + 真实报错/修复(repair/error/subagent)」;其余一切(turn/plan 阶段旁白/observation/thinking 占位/goal 回显/多余的 final 英文串)一次性只进 Inspector,`detailSteps` 从"非白名单全收"改成"仅 {repair,error,subagent}"。并移除完成态的 ThinkingBlock(真推理在 Inspector·占位/目标回显是垃圾·模型声音已由 narration 承载)+ 过滤 harness 思考占位串。**E2E(真 glm-5.2·全新干净 workspace·"开发一个简易计算器")**:真产出 `calc.py`(四则+除零+CLI);面板从上到下=①用户"开发一个简易计算器" ②Asteria"我已开发了…calc.py…验证全部通过…" ③Asteria"我先创建 calc.py,用四个独立函数实现加减乘除…" ④上下文关联 ⑤写入 calc.py ⑥`$ python -c "…断言…"`——**detailSteps=0、思考 chip=0、机器脚手架全清、零英文、console 无错**。这一刀把切片 4(阶段旁白)一并解决。**教训**:该白名单而非黑名单——见 [[keep-docs-aligned-no-drift]]。
+- **切片 4 — 阶段旁白降级为安静状态（已被切片 6 白名单一并解决）**:`理解目标/执行迭代/运行完成/开始验证/
   验证完成` 等阶段旁白经切片 2b 已**不再冒充显性卡**、仅存在于**默认折叠**的"详情"里(opt-in 明细,
   非显性展示问题)。进一步移出折叠需要:①可靠的稳定判据(试过的前端 fold 去噪对 runtime 事件行为不
   一致·仅删部分),或 ②在源头把这些 emit 的 `display_level` 降到 `inspector`——后者会触碰 DO_NOT_TOUCH
