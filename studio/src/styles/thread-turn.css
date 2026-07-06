@@ -1067,6 +1067,15 @@
   margin: 6px 0 0 28px;
 }
 
+/* Context/document association step (ADR-0021 slice 3) sits just above the tool cards, sharing the
+   same indent so the process reads top-to-bottom: what context we attached → what tools we ran. */
+.turnContextCards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0 28px;
+}
+
 /* ── Plan/phase spine (I3): a sticky, de-boxed, compact bar at the top of the thread */
 .threadPlanBar {
   position: sticky;

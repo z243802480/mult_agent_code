@@ -33,6 +33,7 @@ from asteria_runtime.models.route_resolver import resolve_model_route
 from asteria_runtime.models.route_diagnostics import route_diagnostic_for_tier
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 
 
 @dataclass(frozen=True)
@@ -275,6 +276,11 @@ class RuntimeProfileBuilder:
         )
         if context_mount:
             store.append(context.run_dir / "context_mounts.jsonl", context_mount, "context_mount")
+            # ADR-0021 slice 3: make "文档/上下文关联" a real, visible process step on the main thread.
+            # The context the loop mounts for a task (project guidance, goal/task brief, prior evidence)
+            # was only ever recorded in context_mounts.jsonl — invisible to the user. Emit a user_progress
+            # step so the conversation shows WHAT was mounted, alongside the shell/tool/verification steps.
+            self._emit_context_mount_progress(context, task, context_mount)
         store.append(
             context.run_dir / "runtime_profiles.jsonl",
             runtime_profile.to_dict(),
@@ -308,6 +314,63 @@ class RuntimeProfileBuilder:
                     "parallel_safety": runtime_profile.parallel_safety,
                 },
             )
+
+    def _emit_context_mount_progress(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        context_mount: dict,
+    ) -> None:
+        if context.run_dir is None or not context.run_id:
+            return
+        title, summary = self._context_mount_copy(context_mount)
+        try:
+            UserProgressLogger(
+                context.run_dir / "user_progress.jsonl", self.validator
+            ).record(
+                run_id=context.run_id,
+                channel="execution_chain",
+                event_type="message",
+                phase="execute",
+                status="completed",
+                title=title,
+                summary=summary,
+                display_level="main",
+                transcript_kind="context_status",
+                ui_intent="work_progress",
+                execution_chain=[str(task.get("task_id", "")), "context_mount"],
+                evidence_refs=[str(context.run_dir / "context_mounts.jsonl")],
+            )
+        except Exception:
+            # Progress is best-effort: a surfacing hiccup must never break profile mounting.
+            return
+
+    def _context_mount_copy(self, context_mount: dict) -> tuple[str, str]:
+        """Plain-language "what context did we attach" copy for the main thread (ADR-0021 slice 3)."""
+        includes = context_mount.get("includes") if isinstance(context_mount, dict) else {}
+        includes = includes if isinstance(includes, dict) else {}
+        docs: list[str] = []
+        if includes.get("root_guidance"):
+            docs.append("项目指南")
+        if includes.get("goal_brief"):
+            docs.append("目标简报")
+        if includes.get("task_brief"):
+            docs.append("任务简报")
+        extras: list[str] = []
+        pairs = (
+            ("artifact_refs", "个产物"),
+            ("failure_evidence_refs", "条失败证据"),
+            ("decision_refs", "条决策"),
+            ("validation_refs", "条验证记录"),
+        )
+        for key, unit in pairs:
+            value = includes.get(key)
+            count = len(value) if isinstance(value, list) else 0
+            if count:
+                extras.append(f"{count} {unit}")
+        pieces = docs + extras
+        detail = "、".join(pieces) if pieces else "任务所需上下文"
+        return "已关联任务上下文", f"为本任务关联了：{detail}。"
 
     def _model_selection(self, task: dict, context: RuntimeContext, purpose: str) -> dict:
         kind = task_kind(task)

@@ -90,11 +90,17 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
     step.events.some((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id)
   );
   const permIds = new Set(permissionSteps.map((step) => step.id));
+  // Context/document association (ADR-0021 slice 3): its own visible step above the tool cards, so
+  // "what context did the agent attach" reads as real process — not buried in the folded detail.
+  const contextSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "context");
+  const contextIds = new Set(contextSteps.map((step) => step.id));
   const toolSteps = steps.filter(
-    (step) => !permIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
+    (step) => !permIds.has(step.id) && !contextIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
   );
   const toolIds = new Set(toolSteps.map((step) => step.id));
-  const detailSteps = steps.filter((step) => !permIds.has(step.id) && !toolIds.has(step.id));
+  const detailSteps = steps.filter(
+    (step) => !permIds.has(step.id) && !toolIds.has(step.id) && !contextIds.has(step.id)
+  );
 
   return (
     <div className="turnMiddle">
@@ -108,6 +114,13 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
             deletions={fileStats.deletions}
             onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
           />
+        </div>
+      )}
+      {contextSteps.length > 0 && (
+        <div className="turnContextCards">
+          {contextSteps.map((step) => (
+            <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />
+          ))}
         </div>
       )}
       {toolSteps.length > 0 && (

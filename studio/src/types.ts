@@ -261,7 +261,7 @@ export type NarrativeStep = {
   title: string;
   summary: string;
   status: StudioEvent["status"];
-  kind: "goal" | "thinking" | "plan" | "turn" | "tool" | "observation" | "result" | "repair" | "verification" | "final" | "error" | "subagent" | "hold" | "resume";
+  kind: "goal" | "thinking" | "plan" | "turn" | "tool" | "observation" | "result" | "repair" | "verification" | "final" | "error" | "subagent" | "hold" | "resume" | "context";
   events: StudioEvent[];
   defaultOpen: boolean;
 };

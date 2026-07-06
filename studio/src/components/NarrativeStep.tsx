@@ -7,6 +7,7 @@ import {
   FileText,
   GitBranch,
   ListChecks,
+  Paperclip,
   Plug,
   RefreshCw,
   RotateCcw,
@@ -35,6 +36,7 @@ function stepIcon(kind: NarrativeStepType["kind"]) {
   if (kind === "turn") return <RefreshCw size={14} />;
   if (kind === "tool") return <Terminal size={14} />;
   if (kind === "observation") return <ListChecks size={14} />;
+  if (kind === "context") return <Paperclip size={14} />;
   if (kind === "result") return <FileText size={14} />;
   if (kind === "repair") return <RefreshCw size={14} />;
   if (kind === "verification") return <ShieldAlert size={14} />;
