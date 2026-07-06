@@ -80,6 +80,23 @@ class TaskAttemptRunner:
                 "branch_name": candidate.branch_name,
             },
         )
+        # The model's own conversational message for this step (ADR-0021): surface it on the main
+        # thread BEFORE the tool cards so the panel reads as the model speaking, then acting — not a
+        # harness narrating on its behalf. Real model prose only; skipped when the model didn't speak.
+        narration = str(action.get("narration") or "").strip()
+        if narration:
+            self._record_progress(
+                context,
+                task,
+                channel="model",
+                event_type="message",
+                phase="execute",
+                status="completed",
+                title="",
+                summary=narration,
+                content_delta=narration,
+                transcript_kind="assistant_message",
+            )
         tool_results = run_tool_calls(action["tool_calls"], task, candidate_context_value)
         self._append_harness_observations(
             runtime_context,
@@ -683,6 +700,7 @@ class TaskAttemptRunner:
         status: str,
         title: str,
         summary: str,
+        content_delta: str = "",
         artifact_refs: list[str] | None = None,
         evidence_refs: list[str] | None = None,
         file_changes: list[dict[str, Any]] | None = None,
@@ -700,6 +718,7 @@ class TaskAttemptRunner:
             status=status,
             title=title,
             summary=summary,
+            content_delta=content_delta,
             artifact_refs=artifact_refs,
             evidence_refs=evidence_refs,
             file_changes=file_changes,

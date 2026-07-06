@@ -107,6 +107,13 @@ class CoderAgent:
                         run_id,
                         sequence=self._loop_sequence(runtime_context or {}),
                     )
+                    # In tool_use mode the model's conversational message rides on the assistant text
+                    # that accompanies the tool calls — surface it as narration (the JSON path carries
+                    # its own `narration` field). Kept only when the model actually spoke.
+                    if not str(action.get("narration") or "").strip():
+                        spoken = str(getattr(response, "content", "") or "").strip()
+                        if spoken:
+                            action["narration"] = spoken
                 else:
                     action = self._validated_action(
                         response.content,
@@ -341,6 +348,7 @@ class CoderAgent:
 Use native tool calls when work is needed. Do not return plain JSON or markdown.
 
 You must:
+- Alongside your tool calls, include one assistant message that speaks to the user in THEIR language (mirror the goal's language — Chinese goal → Chinese) about what you are doing this step and why, conversationally (1–3 sentences). This is your message in the conversation — natural speech only, no JSON or raw file dumps.
 - Make a small, verifiable change for the assigned task.
 - Use only tools from available_tools. These are model-facing primitives backed by runtime policy.
 - Prefer edit_file for editing existing files and write_file for new files.
@@ -362,6 +370,7 @@ You must:
 Return only valid JSON matching the ExecutionAction schema. Do not wrap in markdown.
 
 You must:
+- In `narration`, speak to the user in THEIR language (mirror the goal's language — if the goal is Chinese, write Chinese) about what you are doing this step and why, conversationally, as if talking to them (1–3 sentences). This is shown to the user as YOUR message in the conversation. Write natural speech only — no JSON, no schema words, no raw file dumps. Example (Chinese goal): "我先创建 clamp.py，用简单的边界比较实现夹取，再写 pytest 覆盖越界和边界值。"
 - Explicitly choose exactly one agent_loop_decision.next_action.action: tool, subagent, repair, replan, ask, or stop.
 - Every next action must include reason, target_task_id, capability_ref, expected_observation, risk, budget_hint, and evidence_refs.
 - Make a small, verifiable change for the assigned task.
@@ -475,6 +484,7 @@ You must:
                 "schema_version": "0.1.0",
                 "task_id": task["task_id"],
                 "summary": "short execution summary",
+                "narration": "对用户说的一句话:这一步在做什么、为什么(用户语言,口语,不含 JSON/路径)",
                 "tool_calls": [
                     {
                         "tool_name": "write_file",

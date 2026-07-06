@@ -83,6 +83,10 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   ) {
     return "hold";
   }
+  // The model's own conversational message for a step (ADR-0021): "我先创建 clamp.py …". This is the
+  // model speaking to the user — surfaced as prose, never a harness label. Must precede the phase/
+  // model fallbacks so it isn't misread as a tool or thinking step.
+  if (transcriptKind === "assistant_message") return "narration";
   // Document/context association (ADR-0021 slice 3): what the loop mounted for this task (project
   // guidance, goal/task brief, prior evidence). Its own visible process step, not folded as noise.
   if (transcriptKind === "context_status") return "context";
@@ -131,6 +135,7 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
 }
 
 function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string {
+  if (kind === "narration") return "Asteria";
   if (kind === "context") return "上下文关联";
   if (kind === "observation") return "观察";
   if (kind === "turn") return "Agent 步骤";

@@ -99,6 +99,11 @@ harness 自述注入点(节选,均可由真数据替代或直接删)：
     工具卡上方**显性渲染**"上下文关联"卡。
   - E2E(studio 起 run·clamp.py):上下文卡显示"为本任务关联了：项目指南、目标简报、任务简报",
     置于 `写入/pytest` 工具卡之上;console 无错。
+- **切片 5 — 模型每步用中文对用户说话（narration·已做，验证·核心）**：用户复核后指出"面板上除了 ASTERIA 那句 recap,其余全是 harness 自己写进去的,看不到大模型输出"。真实数据确认:模型每回合的产出是 `<think>` 英文推理 + 结构化 JSON(被 harness 渲染成卡),自然语言正文只有收尾 recap;model delta 全 `inspector`,"思考过程"按钮甚至展开是空的。用户拍板"改模型契约,让它产出中文过程叙述"。做法(不破坏结构化 tool-call):
+  - **契约**:`execution_action` schema(两份)新增可选 `narration` 字段;CoderAgent 系统提示 + `output_schema` 要求模型用**用户语言、口语**说这一步在做什么/为什么(1–3 句·无 JSON/路径);tool_use transport 从 assistant 正文兜底取 narration。
+  - **emit**:`task_attempt_runner` 在跑工具**之前**把 `action["narration"]` 作为 `channel=model / transcript_kind=assistant_message / display_level=main` 事件发到主线程(真模型话,模型没说就跳过)。
+  - **前端**:新增 narrative kind `narration`,`ConversationTurn` 在工具卡**之上**渲染为模型口语散文(`.turnNarrationText`,非标签/chip)。
+  - E2E(真 glm-5.2·studio 起 run):面板真出现模型中文话——"clamp 部分已经完成并通过测试了,现在我来做后续的阶乘任务:写一个 fact.py 里的 factorial 函数,负数会抛 ValueError,然后把 pytest 测试补齐。"(甚至诚实说明了 scope 限制)。单测 951 通过(3 既有 provider 失败无关)、tsc+build 绿、console 无错。**至此主线程有了模型自己的声音,不再只有 recap 一句。**
 - **切片 4 — 阶段旁白降级为安静状态（暂缓·非显性问题）**:`理解目标/执行迭代/运行完成/开始验证/
   验证完成` 等阶段旁白经切片 2b 已**不再冒充显性卡**、仅存在于**默认折叠**的"详情"里(opt-in 明细,
   非显性展示问题)。进一步移出折叠需要:①可靠的稳定判据(试过的前端 fold 去噪对 runtime 事件行为不

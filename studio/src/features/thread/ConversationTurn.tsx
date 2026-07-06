@@ -90,20 +90,34 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
     step.events.some((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id)
   );
   const permIds = new Set(permissionSteps.map((step) => step.id));
+  // The model's own per-step message (ADR-0021): real model prose, shown as the model speaking above
+  // the process cards — this is the LLM's actual output on the panel, not a harness label.
+  const narrationSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "narration");
+  const narrationIds = new Set(narrationSteps.map((step) => step.id));
   // Context/document association (ADR-0021 slice 3): its own visible step above the tool cards, so
   // "what context did the agent attach" reads as real process — not buried in the folded detail.
   const contextSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "context");
   const contextIds = new Set(contextSteps.map((step) => step.id));
   const toolSteps = steps.filter(
-    (step) => !permIds.has(step.id) && !contextIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
+    (step) => !permIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
   );
   const toolIds = new Set(toolSteps.map((step) => step.id));
   const detailSteps = steps.filter(
-    (step) => !permIds.has(step.id) && !toolIds.has(step.id) && !contextIds.has(step.id)
+    (step) => !permIds.has(step.id) && !toolIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id)
   );
 
   return (
     <div className="turnMiddle">
+      {narrationSteps.length > 0 && (
+        <div className="turnNarration">
+          {narrationSteps.map((step) => {
+            const text = cleanReasoning(
+              step.events.map((e) => e.content_delta || "").join("") || step.summary || ""
+            );
+            return text ? <p key={step.id} className="turnNarrationText">{text}</p> : null;
+          })}
+        </div>
+      )}
       {fileStats.files > 0 && (
         <div className="turnFileRowWrap">
           {/* One "N files changed → review" entry point, not a scattered per-file list — changed

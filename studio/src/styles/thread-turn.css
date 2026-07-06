@@ -1067,6 +1067,24 @@
   margin: 6px 0 0 28px;
 }
 
+/* The model's own per-step message (ADR-0021): real LLM prose shown as the model speaking, above the
+   process cards. Styled as conversational text (not a chip/label) so the panel reads as the model
+   talking to the user, then acting. */
+.turnNarration {
+  margin: 2px 0 6px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.turnNarrationText {
+  margin: 0;
+  color: var(--text-primary, #1f2328);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* Context/document association step (ADR-0021 slice 3) sits just above the tool cards, sharing the
    same indent so the process reads top-to-bottom: what context we attached → what tools we ran. */
 .turnContextCards {

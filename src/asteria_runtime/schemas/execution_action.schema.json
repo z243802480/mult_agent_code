@@ -66,6 +66,7 @@
         "next_action": { "type": "object" }
       }
     },
-    "completion_notes": { "type": "string" }
+    "completion_notes": { "type": "string" },
+    "narration": { "type": "string" }
   }
 }
