@@ -130,14 +130,23 @@ def test_tool_gateway_records_user_progress_tool_events(tmp_path: Path) -> None:
     assert events[1]["data"]["capability_decision"]["decision"] == "ask"
     assert events[1]["title"] == "正在使用 command"
     assert events[1]["transcript_kind"] == "tool_use"
+    # ADR-0021: the harness lifecycle wrappers (turn_start/tool_observation/turn_end) live in the
+    # Inspector, not the main thread — the paired coder tool_call/tool_output carry the real action.
+    assert events[1]["display_level"] == "inspector"
     assert events[2]["command"] == ["pytest -q"]
     assert events[2]["data"]["permission"]["mode"] == "reviewed_auto"
     assert events[2]["data"]["capability_decision"]["reason"]
     assert events[2]["transcript_kind"] == "tool_use"
+    # The coder tool card is on the main thread and carries the real command as its title, stable
+    # across call+result so the two collapse into one meaningful row instead of two generic cards.
+    assert events[2]["display_level"] == "main"
+    assert events[2]["title"] == "$ pytest -q"
     assert events[3]["status"] == "completed"
     assert events[3]["parent_event_id"] == events[2]["event_id"]
     assert events[3]["transcript_kind"] == "tool_result"
-    assert events[4]["display_level"] == "main"
+    assert events[3]["display_level"] == "main"
+    assert events[3]["title"] == "$ pytest -q"
+    assert events[4]["display_level"] == "inspector"
     assert events[4]["title"] == "工具结果"
     assert events[4]["transcript_kind"] == "tool_result"
     assert events[4]["data"]["observation"]["tool_name"] == "run_command"

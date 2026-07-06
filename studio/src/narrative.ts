@@ -50,6 +50,20 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
   return result;
 }
 
+// A REAL tool card is backed by an actual tool_call/tool_output/error event — it carries a tool
+// identity (tool_call_id) or a concrete command. The loop also reuses the tool_use/tool_result
+// transcript kinds (and the execute phase) for its own bookkeeping — iteration markers ("执行迭代 N"),
+// task-progress rollups ("任务执行进展"), "worker action requested", "candidate workspace created" —
+// which are plain `message` events with no tool identity. Those are turn/phase narration, not tools,
+// so they must NOT render as prominent, empty tool cards (ADR-0021). Detected by stable structural
+// markers (runtime_event_type / tool_call_id / command), never by matching their localized text.
+function isRealToolEvent(event: StudioEvent): boolean {
+  const rt = String(event.runtime_event_type ?? "");
+  if (rt === "tool_call" || rt === "tool_output" || rt === "error") return true;
+  if (event.tool_call_id) return true;
+  return (event.command?.length ?? 0) > 0;
+}
+
 function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   const transcriptKind = String(event.transcript_kind ?? "");
   const data = (event.data ?? {}) as Record<string, unknown>;
@@ -70,7 +84,9 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
     return "hold";
   }
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
-  if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return "tool";
+  // tool_use/tool_result classify as a tool card only when backed by a real tool event; otherwise
+  // they are loop bookkeeping (iteration/progress markers) and fold in as a quiet turn step.
+  if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return isRealToolEvent(event) ? "tool" : "turn";
   if (transcriptKind === "verification") return "verification";
   if (transcriptKind === "repair") return "repair";
   // Evidence/diagnostic RECORDS are quiet process rows, never the closing answer (ADR-0021). Mapping
@@ -83,7 +99,12 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (event.runtime_event_type === "final_report") return "result";
   if (transcriptKind === "final" || transcriptKind === "stop") return "final";
   if (transcriptKind === "file_change") return "result";
-  if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") return "tool";
+  // A PENDING permission/decision ask (waiting for the user) is a prominent action card. An
+  // already-recorded decision ("已记录能力决策"/"已选择权限模式") is quiet bookkeeping the loop keeps
+  // per tool call — it must fold into the detail, not sit as a prominent card between the real tools.
+  if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") {
+    return event.status === "waiting_user" || event.job_id ? "tool" : "observation";
+  }
   if (transcriptKind === "subagent_summary") return "subagent";
   if (event.type === "user_message") return "goal";
   if (event.type === "agent_turn" || event.runtime_event_type === "turn_start" || event.runtime_event_type === "turn_end") return "turn";
@@ -95,7 +116,12 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (event.type === "final_answer") return "final";
   if (event.phase === "plan") return "plan";
   if (event.phase === "review") return "verification";
-  if (event.phase === "execute" || event.phase === "resume") return event.status === "failed" ? "repair" : "tool";
+  if (event.phase === "execute" || event.phase === "resume") {
+    if (event.status === "failed") return "repair";
+    // Only real tool events become prominent tool cards; other execute-phase progress (worker/turn/
+    // promotion bookkeeping) folds in as a quiet turn step instead of an empty tool card.
+    return isRealToolEvent(event) ? "tool" : "turn";
+  }
   if (event.type === "model_start" || event.type === "model_delta" || event.type === "model_end" || event.type === "reasoning_delta") return "thinking";
   if (event.type === "file_changed") return "result";
   return "thinking";
@@ -129,7 +155,12 @@ function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
   if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {
-    if (first.command?.join(" ") === event.command?.join(" ")) return true;
+    // Same shell command → same card (run_command/run_tests carry a real command string). Guard on
+    // non-empty: file/read/patch tools have an empty command, and "" === "" must NOT collapse two
+    // different tools into one card. For those, group by the stable action title instead (ADR-0021:
+    // a tool's call+result share one target-carrying title like "写入 square.py").
+    const cmd = first.command?.join(" ") ?? "";
+    if (cmd && cmd === (event.command?.join(" ") ?? "")) return true;
     return first.type.startsWith("tool_") && event.type.startsWith("tool_") && first.title === event.title;
   }
   if (step.kind === "observation") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;

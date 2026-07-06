@@ -129,6 +129,7 @@ class ToolExecutionGateway:
                     summary=self._tool_start_summary(tool_name, args),
                     command=self._command_args(tool_name, args),
                     file_changes=pre_file_changes,
+                    args=args,
                     data={
                         "arg_keys": sorted(list(args.keys())),
                         "permission": self.permission_policy.permission_profile(context),
@@ -185,6 +186,7 @@ class ToolExecutionGateway:
                     command=self._command_args(tool_name, args),
                     telemetry={"duration_ms": duration_ms},
                     data=self._tool_result_data(result),
+                    args=args,
                 )
                 self._record_harness_observation(
                     context,
@@ -268,6 +270,7 @@ class ToolExecutionGateway:
                     command=self._command_args(tool_name, args),
                     telemetry={"duration_ms": duration_ms},
                     file_changes=pre_file_changes,
+                    args=args,
                     data={
                         "error": str(exc),
                         "error_type": exc.__class__.__name__,
@@ -491,6 +494,7 @@ class ToolExecutionGateway:
         telemetry: dict[str, Any] | None = None,
         file_changes: list[dict[str, Any]] | None = None,
         data: dict[str, Any] | None = None,
+        args: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         logger = self._progress_logger(context)
         if logger is None:
@@ -507,6 +511,7 @@ class ToolExecutionGateway:
             status=status,
             title=title,
             summary=summary,
+            action_label=self._tool_action_label(tool_name, args or {}),
         )
         return logger.record(
             run_id=context.run_id,
@@ -652,7 +657,11 @@ class ToolExecutionGateway:
             status=status,
             title=title,
             summary=summary,
-            display_level="main",
+            # ADR-0021: turn_start / turn_end / tool_observation are the loop's own lifecycle wrappers
+            # around a tool call ("Agent 回合" / "工具结果"). The real action — command, path, result —
+            # is already carried by the paired coder tool_call/tool_output events on the main thread, so
+            # these wrappers are demoted to the Inspector instead of duplicating every tool as 3 cards.
+            display_level="inspector",
             parent_event_id=parent_event_id,
             tool_call_id=tool_call_id,
             artifact_refs=artifact_refs,
@@ -783,6 +792,29 @@ class ToolExecutionGateway:
             return "工具结果", observed_summary
         return title, summary
 
+    def _tool_action_label(self, tool_name: str, args: dict[str, Any]) -> str:
+        """The human, target-carrying title for a tool card ("写入 square.py", "$ pytest …").
+
+        This is deliberately STABLE across a tool's call/result/error events: the frontend groups a
+        tool card by an identical title (see narrative.ts shouldGroup), so call+result collapse into a
+        single meaningful row instead of two generic "正在使用 …" / "… 已完成" cards. The card's own
+        status conveys running/done/failed — the title just says what real action ran."""
+        command = str(args.get("command") or "").strip()
+        path = str(args.get("path") or "").strip()
+        if tool_name in {"run_command", "run_tests"} and command:
+            return f"$ {command}"
+        if tool_name == "write_file" and path:
+            return f"写入 {path}"
+        if tool_name == "read_file" and path:
+            return f"读取 {path}"
+        if tool_name == "diff_workspace":
+            return f"对比 {path}" if path else "查看工作区改动"
+        if tool_name == "apply_patch":
+            return "应用补丁"
+        if tool_name == "restore_backup":
+            return "恢复备份"
+        return f"使用 {self._tool_display_name(tool_name)}"
+
     def _tool_user_copy(
         self,
         *,
@@ -791,16 +823,14 @@ class ToolExecutionGateway:
         status: str,
         title: str,
         summary: str,
+        action_label: str,
     ) -> tuple[str, str]:
-        name = self._tool_display_name(tool_name)
-        if event_type == "tool_call":
-            return f"正在使用 {name}", summary or f"正在执行 {name}。"
-        if event_type == "tool_output":
-            if status == "failed":
-                return f"{name} 未完成", summary or f"{name} 执行失败。"
-            return f"{name} 已完成", summary or f"{name} 执行完成。"
-        if event_type == "error":
-            return f"{name} 失败", summary or str(title)
+        label = action_label or f"使用 {self._tool_display_name(tool_name)}"
+        if event_type in {"tool_call", "tool_output", "error"}:
+            # One stable, target-carrying title across the tool's lifecycle so the card merges into a
+            # single real-action row (ADR-0021). Status conveys running/done/failed; the body keeps the
+            # tool's real summary (command output / write result), falling back only to the label.
+            return label, summary or label
         return title, summary
 
     def _command_args(self, tool_name: str, args: dict[str, Any]) -> list[str]:

@@ -74,6 +74,26 @@ harness 自述注入点(节选,均可由真数据替代或直接删)：
 - **验证**：同一中文编码案例端到端跑一遍,主线程每步 shell/tool/文档/验证都看得见真实过程,且模型自陈
   未完成时不出现假绿条。
 
+## 实现进度（增量交付，逐刀真实运行验证）
+
+- **切片 1 — evidence 不冒充 final（已做，验证）**：`user_progress_logger._transcript_kind` 对
+  `channel=="evidence"` 一律归 `diagnostic`,不再落进 `final`;`TurnFinal` 去掉 `step.summary` 的 harness
+  回退,主线程"回答"只取模型 `content_delta`。E2E:greet.py 回答=模型复盘,自证串消失。
+- **切片 2a — 验证带真命令+输出（已做，验证）**：验证事件 `content_delta` = `✓/✗ $ <command>` + 首行输出;
+  `NarrativeStep` 渲染。E2E:square.py 验证步显示 `✓ $ python -m pytest … / Test command passed`。
+- **切片 2b — 工具卡是真实动作 + 内部脚手架下主线程（已做，验证）**：
+  - `tool_execution_gateway._tool_action_label` 给 coder 工具事件一个**带真目标、且 call/result 一致**的标题
+    (`写入 <path>` / `$ <command>`),前端按标题合并成**一张有实义的卡**。
+  - harness 生命周期 `turn_start/tool_observation/turn_end`(`正在使用…`/`工具结果`)从 `main` **降级到
+    `inspector`**——真实体已由 coder 工具卡承载,不再每个工具刷 3 张卡。
+  - 前端 `narrative.ts`:用**稳定结构标记**(`runtime_event_type`/`tool_call_id`/`command`)区分真工具与
+    内部标记;`执行迭代 N`/`任务执行进展`/`Worker action …` 及**已记录的**能力/权限决策(非 waiting)不再
+    冒充显性工具卡,折叠进明细。默认视图 `focus→normal`(过程默认可见且干净)。
+  - E2E(studio 起 run,isodd.py):`normal` 显性卡恰为 `写入 isodd.py`/`写入 test_isodd.py`/
+    `$ python -m pytest …`/`$ python -c …` 四个真动作;权限决策/生命周期全部折叠;终答=模型真中文话;零英文。
+- **切片 3 — 文档/上下文关联过程卡（待做）**:`context_mounts` 目前无对应 user_progress 事件。
+- **切片 4 — 阶段旁白降级为安静状态（待做）**:`理解目标/执行迭代/运行完成` 由真数据派生或降级。
+
 ## 主流实证
 
 - **Claude Code**：主线程 = 模型流式文字 + `$ cmd` 及真实 stdout + diff;状态提示绑真实结果,无 harness 自证句。

@@ -18,11 +18,11 @@ function loadMode(): StudioViewMode {
   } catch {
     // ignore
   }
-  // NOTE (ADR-0021): the goal is process-visible-by-default ("normal"), but non-focus modes still
-  // surface internal lifecycle steps masquerading as tool cards ("工具结果"/"已选择权限模式"/"Starting").
-  // Flip the default to "normal" only after slice 2 cleans that noise, so the default view is real
-  // process — not a noisy dump. Until then keep "focus" as the default.
-  return "focus";
+  // ADR-0021: process-visible-by-default. The loop's own lifecycle wrappers (turn_start/turn_end/
+  // tool_observation → "Agent 回合"/"工具结果") are now demoted to the Inspector, and each real tool
+  // renders as a single card carrying its true target ("写入 square.py", "$ pytest …"). So "normal"
+  // is a clean, real process stream — the default. "focus" remains for a deliberately minimal view.
+  return "normal";
 }
 
 function saveMode(mode: StudioViewMode) {
