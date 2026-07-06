@@ -61,9 +61,16 @@ def test_prepare_session_follow_up_requeues_task_without_new_run(tmp_path: Path)
     )
 
     task_plan = store.read(tmp_path / ".asteria" / "runs" / run_id / "task_plan.json", "task_board")
-    task = task_plan["tasks"][0]
-    assert task["status"] == "ready"
-    assert "quiet" in task["description"].lower()
+    # A follow-up appends a FRESH task; the prior task keeps its completed status (never hijacked).
+    prior = task_plan["tasks"][0]
+    assert prior["status"] in {"done", "completed", "accepted"}
+    follow = task_plan["tasks"][-1]
+    assert follow["task_id"] != prior["task_id"]
+    assert follow["status"] == "ready"
+    assert "quiet" in follow["description"].lower()
+    # The new task must NOT inherit the prior goal's write scope — it gets an open implementation
+    # scope so the model can create whatever files the new instruction needs.
+    assert follow["write_scope"] == ["implementation artifact"]
 
     run = store.read(tmp_path / ".asteria" / "runs" / run_id / "run.json", "run")
     assert run["status"] == "running"

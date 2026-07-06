@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -78,16 +80,32 @@ def prepare_session_follow_up(
     tasks = list(task_plan.get("tasks") or [])
     if not tasks:
         raise SessionContinuationError("Current run has no tasks to continue.")
-    target = _continuation_task(tasks)
-    if target is None:
+    template = _continuation_task(tasks)
+    if template is None:
         raise SessionContinuationError("No session task available for warm continuation.")
-    target["status"] = "ready"
-    target["title"] = goal[:120]
-    target["description"] = goal
-    target["summary"] = f"Session follow-up: {goal[:160]}"
-    target["updated_at"] = now_iso()
-    notes = str(target.get("notes") or "").strip()
-    target["notes"] = f"{notes}\n[continuation {now_iso()}] {goal}".strip()
+    # Append a FRESH task for the new instruction — never hijack a prior task. The old task's
+    # write_scope / read_scope / expected_artifacts / validation_commands belong to the PREVIOUS goal
+    # (e.g. "clamp.py"); reusing them for an unrelated follow-up ("build a calculator") tells the model
+    # to do the new work but only lets it touch the old files, so it thrashes or fails. Deep-copy the
+    # template only to inherit a schema-valid task shape, then reset every goal-specific field and open
+    # the scope to the generic "implementation artifact" placeholder so the model can create whatever
+    # files the new goal needs — exactly as a cold-planned implementation task would.
+    follow_task = copy.deepcopy(template)
+    follow_task["task_id"] = _next_task_id(tasks)
+    follow_task["status"] = "ready"
+    follow_task["title"] = goal[:120]
+    follow_task["description"] = goal
+    follow_task["summary"] = f"Session follow-up: {goal[:160]}"
+    follow_task["write_scope"] = ["implementation artifact"]
+    follow_task["read_scope"] = ["implementation artifact"]
+    follow_task["expected_artifacts"] = []
+    follow_task["validation_commands"] = []
+    follow_task["notes"] = f"[continuation {now_iso()}] {goal}"
+    follow_task["created_at"] = now_iso()
+    follow_task["updated_at"] = now_iso()
+    for stale in ("expected_changed_files", "acceptance", "assigned_agent_id"):
+        follow_task.pop(stale, None)
+    tasks.append(follow_task)
     task_plan["tasks"] = tasks
     task_plan["updated_at"] = now_iso()
     store.write(task_plan_path, task_plan, "task_board")
@@ -133,6 +151,16 @@ def prepare_session_follow_up(
         update_reason="warm_follow_up",
         next_actions=[f"Execute follow-up: {goal[:120]}"],
     )
+
+
+def _next_task_id(tasks: list[dict]) -> str:
+    """Next free task-NNNN id so a follow-up never collides with an existing task."""
+    max_n = 0
+    for task in tasks:
+        match = re.fullmatch(r"task-(\d+)", str(task.get("task_id") or ""))
+        if match:
+            max_n = max(max_n, int(match.group(1)))
+    return f"task-{max_n + 1:04d}"
 
 
 def _continuation_task(tasks: list[dict]) -> dict | None:

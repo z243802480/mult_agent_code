@@ -795,9 +795,24 @@ function runtimeContinuationCommand(goal) {
 
 async function resolveStudioOrchestrationRoute(goal, requestedMode) {
   const explicitModes = new Set(["chat", "plan", "run", "review", "resume", "accept"]);
-  const modeArg = explicitModes.has(String(requestedMode || "").toLowerCase())
+  const explicit = explicitModes.has(String(requestedMode || "").toLowerCase())
     ? String(requestedMode).toLowerCase()
-    : "auto";
+    : null;
+  // Honor an explicit user choice directly: if the user picked "run", RUN it — the model intent
+  // router only decides in "auto". Letting the router reclassify an explicit execute request into a
+  // read-only plan (or a continuation) is exactly the erratic behavior that made "开发一个计算器"
+  // silently turn into a plan or a redo of the previous task.
+  if (explicit && explicit !== "chat") {
+    return {
+      mode: explicit,
+      studio_mode: explicit,
+      route: "explicit",
+      reason: "",
+      source: "explicit_mode",
+      command: orchestrationCommandFor(explicit, goal),
+    };
+  }
+  const modeArg = explicit || "auto";
   const routed = await routeClient.route({
     root: workspace,
     message: String(goal || ""),
@@ -824,7 +839,13 @@ async function resolveStudioOrchestrationRoute(goal, requestedMode) {
 }
 
 function orchestrationCommandFor(studioMode, goal, options = {}) {
-  if (studioMode === "continue") return runtimeContinuationCommand(goal);
+  // A new user message is a new goal — plan it fresh over the current workspace, like Claude Code /
+  // Cursor handle every turn. The old "continue-session" shortcut skipped GoalSpec/Plan and reused the
+  // previous task's scope, so an unrelated new goal ("build a calculator") got misrouted into the last
+  // task and thrashed/blocked. Route it as a normal cold run instead; the planner infers the right
+  // scope and the existing files simply stay in the workspace. (Genuinely in-progress runs still
+  // resume via the separate "resume" mode.)
+  if (studioMode === "continue") return runtimeCommand("run", goal);
   if (studioMode === "orchestration") {
     return runtimeCommand("orchestration", goal, {
       manifest: options.manifest,
@@ -872,18 +893,9 @@ async function resolveStudioExecutionRouteFallback(goal, requestedMode) {
     };
   }
 
-  if (CONTINUABLE_STUDIO_PHASES.has(phase) || runStatus === "completed") {
-    if (phase === "ACCEPTED") {
-      return {
-        mode: "continue",
-        route: "warm_session",
-        reason: "同 workspace 已有 accepted/completed run，后续改动走 continue-session 短链（跳过 GoalSpec/Plan）。",
-        command: runtimeContinuationCommand(goal),
-        source: "rules_fallback",
-      };
-    }
-  }
-
+  // A completed/accepted run means the workspace is idle — a new message is a NEW goal, so plan it
+  // fresh (cold) rather than reusing the previous task via the continue-session shortcut, which
+  // misrouted unrelated goals into the last task. Only genuinely in-progress runs resume (above).
   return { mode: "run", route: "cold", reason: null, command: null, source: "rules_fallback" };
 }
 
