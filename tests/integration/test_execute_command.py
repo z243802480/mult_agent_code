@@ -4554,6 +4554,89 @@ def test_execute_command_model_driven_turn_premature_stop_continues_and_fires_ho
     assert any(event.get("hook_name") == "pre_final" for event in hook_events)
 
 
+class FakeModelDrivenDelegatingClient:
+    """Lead 立真身 delegates a sub-task to a coder expert via spawn_subagent; the child runs its own
+    bounded loop (distinguished by the '-sub-' task id) and produces the artifact, then the lead
+    finishes. One fake model plays both roles, branching on the request's task_id."""
+
+    def __init__(self) -> None:
+        self.parent_calls = 0
+        self.child_calls = 0
+        self.spawned = False
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str((request.metadata or {}).get("task_id") or "")
+        if "-sub-" in task_id:
+            self.child_calls += 1
+            if self.child_calls == 1:
+                payload = {
+                    "narration": "创建 notes 模块。",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": "src/notes_tool.py",
+                                "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                                "overwrite": True,
+                            },
+                        }
+                    ],
+                    "done": False,
+                }
+            else:
+                payload = {"narration": "子任务完成。", "tool_calls": [], "done": True}
+        else:
+            self.parent_calls += 1
+            if self.parent_calls == 1:
+                self.spawned = True
+                payload = {
+                    "narration": "把实现委派给 coder 专家。",
+                    "tool_calls": [
+                        {
+                            "tool_name": "spawn_subagent",
+                            "args": {
+                                "role": "coder",
+                                "task": "create the notes module",
+                                "write_scope": ["src/notes_tool.py"],
+                            },
+                        }
+                    ],
+                    "done": False,
+                }
+            else:
+                payload = {"narration": "专家已完成,任务结束。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-mdt-delegating",
+            raw_response={},
+        )
+
+
+def test_execute_command_model_driven_turn_spawn_subagent(tmp_path: Path) -> None:
+    """The lead model delegates to a coder expert via spawn_subagent; the child runs its own 立真身
+    loop and produces the artifact, and only a summary rides back to the lead (MoE via tool call)."""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeModelDrivenDelegatingClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert client.spawned is True  # lead delegated
+    assert client.child_calls >= 2  # the child ran its OWN loop
+    # The child expert produced the artifact through the real gateway.
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
+        "def add_note"
+    )
+
+
 def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
     """flag 默认关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。"""
     InitCommand(tmp_path).run()

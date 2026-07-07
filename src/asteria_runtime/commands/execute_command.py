@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any, Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from asteria_runtime.core.loop_progress_guard import evaluate_loop_quality
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.context_prompt_view import context_prompt_view
+from asteria_runtime.core.expert_registry import expert_roles, resolve_expert
 from asteria_runtime.core.model_driven_turn import (
     TurnControl,
     TurnEvent,
@@ -2711,6 +2713,24 @@ class ExecuteCommand:
         if status == "ready":
             task_board.update_status(task_id, "in_progress")
 
+    def _max_subagent_depth(self, policy: dict) -> int:
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        try:
+            value = int(agent_loop.get("max_subagent_depth") or 2)
+        except (TypeError, ValueError):
+            value = 2
+        return max(1, value)
+
+    def _subagent_allowed_tools(self, task: dict, expert: Any) -> list[str]:
+        """The child expert's tool surface: the parent's allowed_tools, minus write tools for a
+        read-only expert (reviewer / researcher)."""
+        allowed = [str(item) for item in (task.get("allowed_tools") or [])]
+        if not getattr(expert, "read_only", False):
+            return allowed
+        write_tools = {"write_file", "apply_patch", "edit_file", "restore_backup"}
+        return [name for name in allowed if name not in write_tools]
+
     def _run_model_driven_task(
         self,
         *,
@@ -2740,9 +2760,11 @@ class ExecuteCommand:
         # finish; the hard budget/hard-stop still governs cost.
         max_iterations = self._agent_loop_max_rounds(context.policy) + 4
         system_prompt, user_prompt = self._model_driven_prompts(
-            task, goal_spec, project_config, available_tools, runtime_context
+            task, goal_spec, project_config, available_tools, runtime_context, can_delegate=True
         )
         model_tier = str(runtime_context.get("execution_model_tier") or "strong")
+        max_subagent_depth = self._max_subagent_depth(context.policy)
+        subagent_counter = {"n": 0}
 
         # Methodology glue: the control hooks (kickoff reminder + stop-guardrail) run through the
         # RuntimeHookManager so they are policy-gated and audited like any hook. The loop consults
@@ -2775,9 +2797,83 @@ class ExecuteCommand:
                 continue_turn=decision.continue_turn,
             )
 
+        def _spawn_subagent(args: dict) -> _SubagentResult:
+            # Expert-cluster delegation (ADR-0022): the lead model routes a scoped sub-task to a
+            # specialist. The child runs its OWN bounded 立真身 loop (fresh context, expert persona +
+            # methodology skills, scoped tools) and returns ONLY a summary. Skeleton = serial, shared
+            # workspace; concurrency + candidate isolation is Part B (B1). Depth-guarded so a child
+            # cannot recurse without bound.
+            depth = int(runtime_context.get("subagent_recursion_depth") or 0)
+            if depth >= max_subagent_depth:
+                return _SubagentResult(
+                    ok=False,
+                    status="failure",
+                    error="subagent_recursion_depth_exceeded",
+                    summary=(
+                        f"spawn_subagent refused: recursion depth {depth} >= cap {max_subagent_depth}."
+                    ),
+                )
+            expert = resolve_expert(args.get("role"))
+            subagent_counter["n"] += 1
+            child_task_id = f"{task_id}-sub-{subagent_counter['n']:02d}"
+            child_allowed = self._subagent_allowed_tools(task, expert)
+            child_task = {
+                "task_id": child_task_id,
+                "title": f"{expert.role} subagent",
+                "description": str(args.get("task") or ""),
+                "allowed_tools": child_allowed,
+                "read_scope": [
+                    str(item) for item in (args.get("read_scope") or task.get("read_scope") or []) if item
+                ],
+                "write_scope": (
+                    []
+                    if expert.read_only
+                    else [str(item) for item in (args.get("write_scope") or []) if item]
+                ),
+                "expected_artifacts": [
+                    str(item) for item in (args.get("expected_artifacts") or []) if item
+                ],
+            }
+            child_runtime_context = {
+                **runtime_context,
+                "subagent_recursion_depth": depth + 1,
+                "subagent_role": expert.role,
+            }
+            child_system, child_user = self._model_driven_prompts(
+                child_task, goal_spec, project_config, child_allowed, child_runtime_context
+            )
+            child_system = f"{child_system}\n\n[Expert role: {expert.role}] {expert.persona}"
+            child_result = run_model_driven_turn(
+                model_client=coder.model_client,
+                tool_runner=self.tool_gateway,  # bare gateway: child does not nest-spawn (skeleton)
+                task=child_task,
+                context=context,
+                available_tools=child_allowed,
+                system_prompt=child_system,
+                user_prompt=child_user,
+                model_tier=expert.model_tier,
+                max_iterations=max_iterations,
+                transport="json",
+                on_event=lambda event: self._record_model_driven_event(context, child_task, event),
+            )
+            ok = child_result.status == "completed"
+            return _SubagentResult(
+                ok=ok,
+                status="success" if ok else "failure",
+                summary=f"[{expert.role}] " + (child_result.final_message or "subagent finished"),
+                data={
+                    "role": expert.role,
+                    "child_task_id": child_task_id,
+                    "iterations": child_result.iterations,
+                    "child_status": child_result.status,
+                },
+            )
+
+        tool_runner = _SubagentAwareToolRunner(self.tool_gateway, _spawn_subagent)
+
         result = run_model_driven_turn(
             model_client=coder.model_client,
-            tool_runner=self.tool_gateway,
+            tool_runner=tool_runner,
             task=task,
             context=context,
             available_tools=available_tools,
@@ -2841,6 +2937,7 @@ class ExecuteCommand:
         project_config: dict,
         available_tools: list[str],
         runtime_context: dict,
+        can_delegate: bool = False,
     ) -> tuple[str, str]:
         """Build the 立真身 turn envelope: rich task/goal/project/mounted context, but NO
         ``next_action`` enum / decision-table contract (that closed enum IS the FSM the
@@ -2857,7 +2954,7 @@ class ExecuteCommand:
             "- Only finish (done=true, empty tool_calls) once the expected artifact exists AND you "
             "have verified it.\n"
             "- narration is one short sentence in the user's language (Chinese) describing THIS step."
-        ) + self._methodology_guidance(runtime_context)
+        ) + self._methodology_guidance(runtime_context, can_delegate=can_delegate)
         payload = {
             "task": task,
             "goal_spec": goal_spec,
@@ -2895,11 +2992,12 @@ class ExecuteCommand:
                     skills.append({"name": name, "description": str(tool.get("description") or "")})
         return skills
 
-    def _methodology_guidance(self, runtime_context: dict) -> str:
+    def _methodology_guidance(self, runtime_context: dict, can_delegate: bool = False) -> str:
         """Trigger-conditional methodology guidance appended to the system prompt — SUGGESTIONS the
         model applies by judgment (not enforced phases; skip for simple tasks). Externalizing the
         plan via todo_write embodies the model's own organizational capability; the skill procedures
-        cover diagnose/investigate/execute/verify/retrospect on demand."""
+        cover diagnose/investigate/execute/verify/retrospect on demand. When ``can_delegate`` (the
+        lead loop only), the model may also route a sub-task to a specialist via spawn_subagent."""
         skills = self._methodology_skills(runtime_context)
         lines = [
             "\n\nOptional methodology (use by judgment — suggestions, NOT required; skip simple tasks):",
@@ -2915,6 +3013,15 @@ class ExecuteCommand:
             lines.append(
                 "  e.g. non-obvious failure -> skill__debug; unfamiliar code -> skill__investigate; "
                 "before finishing -> skill__verify / skill__retrospect."
+            )
+        if can_delegate:
+            lines.append(
+                "- You may delegate a well-scoped sub-task to a specialist expert with a "
+                'spawn_subagent tool call, e.g. {"tool_name": "spawn_subagent", "args": '
+                '{"role": "coder", "task": "<what to do>", "read_scope": [...], "write_scope": [...]}}. '
+                "Roles: " + ", ".join(expert_roles()) + ". The subagent runs independently with a "
+                "fresh context and returns only a summary. Use it when a sub-task benefits from a "
+                "focused expert; otherwise just do the work yourself."
             )
         return "\n".join(lines)
 
@@ -3878,3 +3985,52 @@ def _methodology_stop_guardrail_decision(record: dict) -> RuntimeHookDecision | 
         ),
         continue_turn=True,
     )
+
+
+@dataclass(frozen=True)
+class _SubagentResult:
+    """A summary-only result from a spawned expert sub-agent, shaped so
+    ``observation_from_tool_result`` can consume it (ok / summary / status / error / data). Only the
+    summary rides back to the lead model — the child's full context stays isolated (Claude Code
+    Task-tool semantics)."""
+
+    ok: bool
+    summary: str
+    status: str = "success"
+    error: str | None = None
+    data: dict = field(default_factory=dict)
+
+
+class _SubagentAwareToolRunner:
+    """Wraps the ToolExecutionGateway so the model-driven loop can call ``spawn_subagent``: that one
+    call is routed to the spawn callback (which runs a child 立真身 loop), everything else delegates
+    to the real gateway (permissions / sandbox / evidence intact). Keeps the frozen gateway
+    untouched — the expert-cluster capability is added as a tool the model chooses, not a new FSM."""
+
+    def __init__(self, gateway: Any, spawn: Callable[[dict], _SubagentResult]) -> None:
+        self._gateway = gateway
+        self._spawn = spawn
+
+    def run_tool_calls(
+        self,
+        calls: list[dict],
+        task: dict,
+        context: Any,
+        stop_on_failure: bool = True,
+        stop_verification_on_fatal: bool = False,
+    ) -> list[Any]:
+        results: list[Any] = []
+        for call in calls:
+            if str(call.get("tool_name") or "") == "spawn_subagent":
+                results.append(self._spawn(call.get("args") or {}))
+            else:
+                results.extend(
+                    self._gateway.run_tool_calls(
+                        [call],
+                        task,
+                        context,
+                        stop_on_failure=stop_on_failure,
+                        stop_verification_on_fatal=stop_verification_on_fatal,
+                    )
+                )
+        return results
