@@ -4431,6 +4431,66 @@ def test_execute_command_model_driven_turn_invokes_methodology_skill(tmp_path: P
     assert any(inv.get("skill_name") == "debug" for inv in skill_invocations)
 
 
+class FakeModelDrivenPrematureStopClient:
+    """立真身 tries to finish before producing the expected artifact; the stop-guardrail hook holds
+    the loop open until it exists, then the model writes it and completes."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {"narration": "看起来不用做什么。", "tool_calls": [], "done": True}
+        elif self.calls == 2:
+            payload = {
+                "narration": "好的,我来创建 notes 模块。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "已创建。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-mdt-premature",
+            raw_response={},
+        )
+
+
+def test_execute_command_model_driven_turn_stop_guardrail_holds_loop_open(
+    tmp_path: Path,
+) -> None:
+    """The methodology stop-guardrail (a control hook) forces the model to keep working when it
+    tries to finish before the expected artifact exists — continuity without a state machine."""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeModelDrivenPrematureStopClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert client.calls == 3  # premature stop → guardrail continue → write → done
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
+        "def add_note"
+    )
+
+
 def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
     """flag 默认关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。"""
     InitCommand(tmp_path).run()

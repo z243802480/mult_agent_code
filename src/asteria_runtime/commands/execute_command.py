@@ -16,7 +16,11 @@ from asteria_runtime.core.loop_progress_guard import evaluate_loop_quality
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.context_prompt_view import context_prompt_view
-from asteria_runtime.core.model_driven_turn import TurnEvent, run_model_driven_turn
+from asteria_runtime.core.model_driven_turn import (
+    TurnControl,
+    TurnEvent,
+    run_model_driven_turn,
+)
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
 from asteria_runtime.core.agent_loop_decision import (
@@ -57,7 +61,7 @@ from asteria_runtime.core.run_state_finalizer import RunStateFinalizer
 from asteria_runtime.core.run_config import effective_policy_for_run
 from asteria_runtime.core.runtime_profile_builder import RuntimeProfileBuilder
 from asteria_runtime.core.runtime_context import RuntimeContext
-from asteria_runtime.core.runtime_hooks import RuntimeHookManager
+from asteria_runtime.core.runtime_hooks import RuntimeHookDecision, RuntimeHookManager
 from asteria_runtime.core.runtime_policy import (
     RuntimeRequestPolicy,
     RuntimeRequestPolicyResult,
@@ -153,6 +157,11 @@ class ExecuteCommand:
         )
         self.tool_permission_policy = ToolPermissionPolicy(self.root, self.validator)
         self.hook_manager = RuntimeHookManager(self.validator)
+        # Methodology control hooks — the deterministic glue that keeps the model-driven loop working
+        # systematically (kickoff reminder + stop-guardrail continuity). Boundary, not cognition;
+        # they only fire on the model-driven loop's control hook points (task/turn_start/pre_final).
+        self.hook_manager.register_control_handler(_methodology_turn_start_decision)
+        self.hook_manager.register_control_handler(_methodology_stop_guardrail_decision)
         self.action_preparer = ExecutionActionPreparer(self.tool_permission_policy.shell_denial)
         self.task_attempt_runner = TaskAttemptRunner(
             self.execution_evidence,
@@ -2735,6 +2744,37 @@ class ExecuteCommand:
         )
         model_tier = str(runtime_context.get("execution_model_tier") or "strong")
 
+        # Methodology glue: the control hooks (kickoff reminder + stop-guardrail) run through the
+        # RuntimeHookManager so they are policy-gated and audited like any hook. The loop consults
+        # this callback at turn_start / pre_final and honours the returned TurnControl (boundary only).
+        skill_names = [str(item["name"]) for item in self._methodology_skills(runtime_context)]
+        expected_artifacts = [
+            str(item)
+            for item in (task.get("expected_artifacts") or task.get("write_scope") or [])
+            if item
+        ]
+
+        def _hook(event_name: str, payload: dict) -> TurnControl:
+            decision = self.hook_manager.dispatch_control(
+                context,
+                event_name,
+                "execute",
+                "ModelDrivenTurn",
+                f"{event_name} control hook",
+                task=task,
+                data={
+                    "iteration": payload.get("iteration"),
+                    "model_tier": model_tier,
+                    "root": str(context.root),
+                    "expected_artifacts": expected_artifacts,
+                    "methodology_skill_names": skill_names,
+                },
+            )
+            return TurnControl(
+                additional_context=decision.additional_context,
+                continue_turn=decision.continue_turn,
+            )
+
         result = run_model_driven_turn(
             model_client=coder.model_client,
             tool_runner=self.tool_gateway,
@@ -2747,6 +2787,7 @@ class ExecuteCommand:
             max_iterations=max_iterations,
             transport="json",
             on_event=lambda event: self._record_model_driven_event(context, task, event),
+            hook=_hook,
         )
 
         tool_calls = sum(
@@ -3770,3 +3811,54 @@ def _readonly_probe_list_path(task: dict) -> str:
 def _is_runtime_managed_validation_probe(task: dict) -> bool:
     hints = task.get("runtime_profile_hints")
     return isinstance(hints, dict) and hints.get("runtime_managed_validation_probe") is True
+
+
+def _methodology_turn_start_decision(record: dict) -> RuntimeHookDecision | None:
+    """turn_start control hook: a one-time kickoff reminder of the available methodology (skills +
+    todo self-organization), skewed to weaker models. Suggestion injected as context — NOT a phase.
+    Strong models get less scaffolding (density by tier); reminder never repeats every turn."""
+    if record.get("hook_name") != "turn_start":
+        return None
+    data = record.get("data") or {}
+    try:
+        iteration = int(data.get("iteration") or 0)
+    except (TypeError, ValueError):
+        iteration = 0
+    if iteration != 1:  # kickoff only — do not bloat every turn
+        return None
+    if str(data.get("model_tier") or "") == "strong":  # strong models self-organize; low density
+        return None
+    hint = (
+        "[methodology reminder] For a multi-step task, externalize a short plan with todo_write and "
+        "verify your work (run_tests / run_command) before finishing."
+    )
+    skills = [str(name) for name in (data.get("methodology_skill_names") or []) if name]
+    if skills:
+        hint += " Optional procedure skills you may load when they fit: " + ", ".join(skills) + "."
+    return RuntimeHookDecision(additional_context=hint)
+
+
+def _methodology_stop_guardrail_decision(record: dict) -> RuntimeHookDecision | None:
+    """pre_final(stop) control hook = the continuity guardrail. When the model tries to finish but a
+    deterministic evidence boundary is unmet — an expected artifact does not exist on disk — hold
+    the loop open and hand control BACK to the model with a factual nudge. It checks evidence and
+    reopens the turn; it never decides HOW to fix (that stays the model's — ADR-0016). The loop's
+    max_iterations fuse bounds it so it can never spin forever."""
+    if record.get("hook_name") != "pre_final":
+        return None
+    data = record.get("data") or {}
+    root = data.get("root")
+    expected = [str(item) for item in (data.get("expected_artifacts") or []) if item]
+    if not root or not expected:
+        return None
+    missing = [path for path in expected if not (Path(str(root)) / path).exists()]
+    if not missing:
+        return None
+    return RuntimeHookDecision(
+        additional_context=(
+            "The task is not complete yet: expected artifact(s) not found: "
+            + ", ".join(missing)
+            + ". Produce and verify them with tool calls before finishing."
+        ),
+        continue_turn=True,
+    )
