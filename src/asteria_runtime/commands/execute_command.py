@@ -2864,14 +2864,19 @@ class ExecuteCommand:
             )
         elif event.kind == "tool_observation":
             for obs in event.observations:
+                # status must be a valid user_progress enum (queued/running/waiting_user/completed/
+                # failed/blocked) — NOT "warning". A failed observation does NOT fail the task here:
+                # the loop feeds it back and the model decides the next step, so the task is still
+                # "running". The ok/failure detail rides in the summary + data.ok.
                 self._record_progress(
                     context,
                     task,
                     channel="progress",
                     event_type="message",
                     phase="execute",
-                    status="running" if obs.ok else "warning",
-                    title=f"工具结果 · {obs.tool_name}",
+                    status="running",
+                    title=f"工具结果 · {obs.tool_name}"
+                    + ("" if obs.ok else " (失败)"),
                     summary=obs.model_summary(),
                     display_level="inspector",
                     data={
@@ -2883,13 +2888,15 @@ class ExecuteCommand:
                     },
                 )
         elif event.kind == "fuse":
+            # "running" (valid enum) — the terminal blocked status is set by the caller's
+            # finalization; this is only an inspector breadcrumb, not the task's final status.
             self._record_progress(
                 context,
                 task,
                 channel="progress",
                 event_type="message",
                 phase="execute",
-                status="warning",
+                status="running",
                 title="迭代保险丝",
                 summary="模型驱动循环达到迭代上限（预算保险丝），可 resume 继续。",
                 display_level="inspector",

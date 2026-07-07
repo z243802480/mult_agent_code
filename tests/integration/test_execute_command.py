@@ -4219,6 +4219,86 @@ def test_execute_command_model_driven_turn_flag_routes_through_real_thing(
     assert loop_summary["exit_reason"] == "completed"
 
 
+class FakeModelDrivenRecoveryClient:
+    """立真身: first tool call fails through the REAL gateway (write_file without overwrite on an
+    existing file → file_exists), the model reads the failure observation and retries with
+    overwrite=True, then stops. Guards two things: (1) a non-ok observation is recorded with a
+    VALID user_progress status (not "warning") so it never crashes the loop; (2) the model
+    self-recovers from a real failure with no FSM repair branch."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {
+                "narration": "写入 notes 模块。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        elif self.calls == 2:
+            payload = {
+                "narration": "文件已存在，改用 overwrite 重写。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "notes 模块已就绪。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-model-driven-recovery",
+            raw_response={},
+        )
+
+
+def test_execute_command_model_driven_turn_failed_observation_does_not_crash(
+    tmp_path: Path,
+) -> None:
+    """A non-ok tool observation must be recorded with a valid status and fed back — the model
+    self-recovers and the task completes (regression: status="warning" crashed the loop)."""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    # Seed an existing file so the first (no-overwrite) write_file fails through the real gateway.
+    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "src" / "notes_tool.py").write_text("# placeholder\n", encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeModelDrivenRecoveryClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert client.calls == 3  # fail → recover → done
+    # The failed observation was recorded (a valid-status progress event), and recovery overwrote.
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
+        "def add_note"
+    )
+
+
 def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
     """flag 默认关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。"""
     InitCommand(tmp_path).run()
