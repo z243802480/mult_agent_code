@@ -93,7 +93,11 @@
       "worker_error",
       "before_tool_call",
       "after_tool_call",
-      "tool_call_error"
+      "tool_call_error",
+      "task_start",
+      "turn_start",
+      "post_tool_observation",
+      "pre_final"
     ],
     "redacted_data_keys": [
       "secret",

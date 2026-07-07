@@ -3813,6 +3813,15 @@ def _is_runtime_managed_validation_probe(task: dict) -> bool:
     return isinstance(hints, dict) and hints.get("runtime_managed_validation_probe") is True
 
 
+def _looks_like_path(value: str) -> str | bool:
+    """A concrete relative file path (for the stop-guardrail) vs a prose placeholder: no whitespace,
+    and either a directory separator or a filename extension."""
+    text = value.strip()
+    if not text or any(ch.isspace() for ch in text):
+        return False
+    return ("/" in text) or ("\\" in text) or ("." in Path(text).name)
+
+
 def _methodology_turn_start_decision(record: dict) -> RuntimeHookDecision | None:
     """turn_start control hook: a one-time kickoff reminder of the available methodology (skills +
     todo self-organization), skewed to weaker models. Suggestion injected as context — NOT a phase.
@@ -3848,7 +3857,14 @@ def _methodology_stop_guardrail_decision(record: dict) -> RuntimeHookDecision | 
         return None
     data = record.get("data") or {}
     root = data.get("root")
-    expected = [str(item) for item in (data.get("expected_artifacts") or []) if item]
+    # Only enforce entries that look like a concrete relative file path — a task's expected_artifacts
+    # / write_scope may hold prose placeholders (e.g. "implementation artifact"), which are not files
+    # to check. Enforcing a non-path would wrongly hold the loop open forever.
+    expected = [
+        str(item)
+        for item in (data.get("expected_artifacts") or [])
+        if item and _looks_like_path(str(item))
+    ]
     if not root or not expected:
         return None
     missing = [path for path in expected if not (Path(str(root)) / path).exists()]

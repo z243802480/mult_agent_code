@@ -5,7 +5,11 @@ from threading import Lock
 import pytest
 
 from asteria_runtime.commands.decide_command import DecideCommand
-from asteria_runtime.commands.execute_command import ExecuteCommand
+from asteria_runtime.commands.execute_command import (
+    ExecuteCommand,
+    _methodology_stop_guardrail_decision,
+    _methodology_turn_start_decision,
+)
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.promotions_command import PromotionsCommand
@@ -4469,11 +4473,64 @@ class FakeModelDrivenPrematureStopClient:
         )
 
 
-def test_execute_command_model_driven_turn_stop_guardrail_holds_loop_open(
+def test_stop_guardrail_forces_continue_when_artifact_missing(tmp_path: Path) -> None:
+    """Isolated: the stop-guardrail holds the loop open when an expected file is absent."""
+    record = {
+        "hook_name": "pre_final",
+        "data": {"root": str(tmp_path), "expected_artifacts": ["result.py"]},
+    }
+    decision = _methodology_stop_guardrail_decision(record)
+    assert decision is not None
+    assert decision.continue_turn is True
+    assert "result.py" in decision.additional_context
+
+
+def test_stop_guardrail_allows_stop_when_artifact_exists(tmp_path: Path) -> None:
+    (tmp_path / "result.py").write_text("x\n", encoding="utf-8")
+    record = {
+        "hook_name": "pre_final",
+        "data": {"root": str(tmp_path), "expected_artifacts": ["result.py"]},
+    }
+    assert _methodology_stop_guardrail_decision(record) is None
+
+
+def test_stop_guardrail_ignores_prose_placeholder(tmp_path: Path) -> None:
+    # A task's write_scope/expected_artifacts may hold prose (e.g. "implementation artifact");
+    # the guardrail must NOT treat it as a file to check (else it would loop forever).
+    record = {
+        "hook_name": "pre_final",
+        "data": {"root": str(tmp_path), "expected_artifacts": ["implementation artifact"]},
+    }
+    assert _methodology_stop_guardrail_decision(record) is None
+
+
+def test_turn_start_reminder_skips_strong_tier() -> None:
+    record = {
+        "hook_name": "turn_start",
+        "data": {"iteration": 1, "model_tier": "strong", "methodology_skill_names": ["skill__debug"]},
+    }
+    assert _methodology_turn_start_decision(record) is None
+
+
+def test_turn_start_reminder_fires_weak_tier_kickoff_only() -> None:
+    weak = {
+        "hook_name": "turn_start",
+        "data": {"iteration": 1, "model_tier": "medium", "methodology_skill_names": ["skill__debug"]},
+    }
+    decision = _methodology_turn_start_decision(weak)
+    assert decision is not None
+    assert "methodology reminder" in decision.additional_context
+    assert "skill__debug" in decision.additional_context
+    # Not on later turns (kickoff only — do not bloat every turn).
+    later = {**weak, "data": {**weak["data"], "iteration": 3}}
+    assert _methodology_turn_start_decision(later) is None
+
+
+def test_execute_command_model_driven_turn_premature_stop_continues_and_fires_hooks(
     tmp_path: Path,
 ) -> None:
-    """The methodology stop-guardrail (a control hook) forces the model to keep working when it
-    tries to finish before the expected artifact exists — continuity without a state machine."""
+    """The model-driven loop holds open past a premature stop and completes, and the control hooks
+    actually FIRE (policy allows the new hook points) — recorded in runtime_hooks.jsonl."""
     InitCommand(tmp_path).run()
     policy_path = tmp_path / ".asteria" / "policies.json"
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
@@ -4485,10 +4542,16 @@ def test_execute_command_model_driven_turn_stop_guardrail_holds_loop_open(
     result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
 
     assert result.completed == 1
-    assert client.calls == 3  # premature stop → guardrail continue → write → done
     assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
         "def add_note"
     )
+    # Control hooks are no longer blocked by policy — the pre_final point fired and was recorded.
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    hook_events = [
+        json.loads(line)
+        for line in (run_dir / "runtime_hooks.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event.get("hook_name") == "pre_final" for event in hook_events)
 
 
 def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
