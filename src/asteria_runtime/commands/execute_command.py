@@ -18,6 +18,7 @@ from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionG
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.context_prompt_view import context_prompt_view
 from asteria_runtime.core.expert_registry import expert_roles, resolve_expert
+from asteria_runtime.core.worker_executor import SubagentRequest, resolve_worker_executor
 from asteria_runtime.core.model_driven_turn import (
     TurnControl,
     TurnEvent,
@@ -2722,6 +2723,13 @@ class ExecuteCommand:
             value = 2
         return max(1, value)
 
+    def _subagent_backend_kind(self, policy: dict) -> str:
+        """Which worker backend runs spawned experts: "local" (default, in-process) or the
+        "cloud_session" stub (North Star, opt-in). Off by default → zero effect on local/offline."""
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return str(agent_loop.get("subagent_backend") or "local")
+
     def _subagent_allowed_tools(self, task: dict, expert: Any) -> list[str]:
         """The child expert's tool surface: the parent's allowed_tools, minus write tools for a
         read-only expert (reviewer / researcher)."""
@@ -2843,29 +2851,38 @@ class ExecuteCommand:
                 child_task, goal_spec, project_config, child_allowed, child_runtime_context
             )
             child_system = f"{child_system}\n\n[Expert role: {expert.role}] {expert.persona}"
-            child_result = run_model_driven_turn(
+            # Pluggable worker backend: LocalExecutor (in-process, default) runs the child 立真身 loop
+            # exactly as before; CloudSessionExecutor is an opt-in North Star stub. spawn_subagent
+            # only describes the sub-task — where it runs is resolved here (bare gateway: the child
+            # does not nest-spawn in this skeleton; concurrency + isolation is Part B).
+            executor = resolve_worker_executor(
+                self._subagent_backend_kind(context.policy), validator=self.validator
+            )
+            outcome = executor.run_subagent(
+                SubagentRequest(
+                    role=expert.role,
+                    task=child_task,
+                    system_prompt=child_system,
+                    user_prompt=child_user,
+                    available_tools=child_allowed,
+                    model_tier=expert.model_tier,
+                    max_iterations=max_iterations,
+                ),
                 model_client=coder.model_client,
-                tool_runner=self.tool_gateway,  # bare gateway: child does not nest-spawn (skeleton)
-                task=child_task,
+                tool_runner=self.tool_gateway,
                 context=context,
-                available_tools=child_allowed,
-                system_prompt=child_system,
-                user_prompt=child_user,
-                model_tier=expert.model_tier,
-                max_iterations=max_iterations,
-                transport="json",
                 on_event=lambda event: self._record_model_driven_event(context, child_task, event),
             )
-            ok = child_result.status == "completed"
             return _SubagentResult(
-                ok=ok,
-                status="success" if ok else "failure",
-                summary=f"[{expert.role}] " + (child_result.final_message or "subagent finished"),
+                ok=outcome.ok,
+                status="success" if outcome.ok else "failure",
+                summary=f"[{expert.role}] {outcome.summary}",
                 data={
                     "role": expert.role,
                     "child_task_id": child_task_id,
-                    "iterations": child_result.iterations,
-                    "child_status": child_result.status,
+                    "iterations": outcome.iterations,
+                    "child_status": outcome.status,
+                    "backend": outcome.data.get("backend"),
                 },
             )
 
