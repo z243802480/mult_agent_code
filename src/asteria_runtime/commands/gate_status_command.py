@@ -27,11 +27,6 @@ from asteria_runtime.core.runtime_validation_matrix import (
     runtime_validation_matrix_text_lines,
 )
 from asteria_runtime.core.runtime_progress_metrics import runtime_progress_metrics
-from asteria_runtime.core.agent_loop_decision import (
-    latest_agent_loop_decision,
-    recommended_command_for_next_action,
-)
-from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution_result
 from asteria_runtime.real_model_acceptance import SUITES as REAL_MODEL_ACCEPTANCE_SUITES
 from asteria_runtime.models.route_diagnostics import (
     route_diagnostic_for_tier,
@@ -696,26 +691,11 @@ def _validation_failure_next_actions(
         workspace = scenario.get("workspace")
         if not workspace:
             continue
-        run_id = (
-            ((scenario.get("summary") or {}).get("run_id"))
-            if isinstance(scenario.get("summary"), dict)
-            else None
+        # RA7b: FSM agent_loop decision/execution evidence is retired (the model-driven spine records
+        # the next step in the run summary + status). Point the operator at the failed scenario evidence.
+        actions.append(
+            f"Inspect failed scenario {scenario.get('scenario', 'unknown')} evidence at {workspace}."
         )
-        run_dir = _scenario_run_dir(Path(str(workspace)), str(run_id) if run_id else None)
-        execution = latest_agent_loop_execution_result(run_dir, validator) or {}
-        command = str(execution.get("recommended_command") or "")
-        if not command:
-            decision = latest_agent_loop_decision(run_dir, validator) or {}
-            command = recommended_command_for_next_action(decision.get("next_action") or {}) or ""
-        if command:
-            actions.append(
-                f"Run `asteria {command} --root {workspace}` for failed scenario "
-                f"{scenario.get('scenario', 'unknown')}."
-            )
-        else:
-            actions.append(
-                f"Inspect failed scenario {scenario.get('scenario', 'unknown')} evidence at {workspace}."
-            )
     return actions[:5]
 
 

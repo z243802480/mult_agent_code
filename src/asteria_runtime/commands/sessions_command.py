@@ -4,12 +4,6 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from asteria_runtime.core.agent_loop_decision import (
-    latest_agent_loop_decision,
-    recommended_command_for_next_action,
-)
-from asteria_runtime.core.agent_loop_executor import latest_agent_loop_execution_result
-from asteria_runtime.core.agent_loop_observation import latest_agent_loop_observation
 from asteria_runtime.core.agent_loop_run_summary import latest_agent_loop_run_summary
 from asteria_runtime.core.candidate_promotion_queue import CandidatePromotionQueue
 from asteria_runtime.core.execution_profile import (
@@ -248,9 +242,12 @@ class SessionsCommand:
             task_summary=task_summary,
         )
         latest_observation_plan = self._latest_observation_plan(run_dir)
-        latest_loop_decision = latest_agent_loop_decision(run_dir, self.validator) or {}
-        latest_loop_execution = latest_agent_loop_execution_result(run_dir, self.validator) or {}
-        latest_loop_observation = latest_agent_loop_observation(run_dir, self.validator) or {}
+        # RA7b: FSM agent_loop decision/execution/observation evidence is retired; the model-driven
+        # spine records the next step in agent_loop_run_summary (read below) + task_execution_evidence.
+        # The payload keys are kept (empty) for backward-compatible consumers.
+        latest_loop_decision: dict = {}
+        latest_loop_execution: dict = {}
+        latest_loop_observation: dict = {}
         agent_loop_run_summary = latest_agent_loop_run_summary(run_dir, self.validator) or {}
         workspace_envelope = self._workspace_envelope(run_dir)
         route_health = self._route_health(run_dir)
@@ -283,13 +280,6 @@ class SessionsCommand:
             summary_command = str(agent_loop_run_summary.get("recommended_command") or "")
             if summary_command and summary_command != "None":
                 recommended_next_command = summary_command
-            next_action_command = recommended_command_for_next_action(
-                latest_loop_decision.get("next_action", {})
-            )
-            if next_action_command in {"debug", "replan", "decide --list", "status --debug"} and (
-                recommended_next_command is None or recommended_next_command == "debug"
-            ):
-                recommended_next_command = next_action_command
         if (
             recommended_next_command is None
             and str(run_status.get("status") or "") != "completed"

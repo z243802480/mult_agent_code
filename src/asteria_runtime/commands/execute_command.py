@@ -39,7 +39,6 @@ from asteria_runtime.core.mcp_adapter import (
     mcp_adapter_config_from_policy,
 )
 from asteria_runtime.core.skill_adapter import SkillAdapter, SkillRoot
-from asteria_runtime.core.execution_action_preparer import ExecutionActionPreparer
 from asteria_runtime.core.execution_coordinator import ExecutionCoordinator
 from asteria_runtime.core.execution_evidence_sink import ExecutionEvidenceSink
 from asteria_runtime.core.plugin_manifest import PluginManifestLoader
@@ -151,7 +150,6 @@ class ExecuteCommand:
         # they only fire on the model-driven loop's control hook points (task/turn_start/pre_final).
         self.hook_manager.register_control_handler(_methodology_turn_start_decision)
         self.hook_manager.register_control_handler(_methodology_stop_guardrail_decision)
-        self.action_preparer = ExecutionActionPreparer(self.tool_permission_policy.shell_denial)
         self.task_attempt_runner = TaskAttemptRunner(
             self.execution_evidence,
             actor="ExecuteCommand",
