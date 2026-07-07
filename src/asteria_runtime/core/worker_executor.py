@@ -81,12 +81,26 @@ class LocalExecutor:
             transport="json",
             on_event=on_event,
         )
+        # Surface what the child actually changed so the LEAD's completion contract can credit the
+        # delegated artifacts (shared-workspace skeleton). Same artifact_refs extraction the lead
+        # uses on its own observations; failed/denied writes are excluded via the ok guard.
+        child_changed = [
+            str(ref)
+            for observation in result.observations
+            if getattr(observation, "ok", False)
+            for ref in getattr(observation, "artifact_refs", [])
+            if ref
+        ]
         return SubagentOutcome(
             ok=result.status == "completed",
             status=result.status,
             summary=result.final_message or "subagent finished",
             iterations=result.iterations,
-            data={"role": request.role, "backend": self.backend_kind},
+            data={
+                "role": request.role,
+                "backend": self.backend_kind,
+                "changed_files": child_changed,
+            },
         )
 
 

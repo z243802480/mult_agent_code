@@ -68,6 +68,7 @@ from asteria_runtime.core.runtime_policy import (
 )
 from asteria_runtime.core.task_blocking_handler import BlockingResult, TaskBlockingHandler
 from asteria_runtime.core.task_attempt_runner import TaskAttemptRunner
+from asteria_runtime.core.task_contract import check_completion_contract
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.core.task_board import TaskBoard
 from asteria_runtime.core.tool_execution_gateway import ToolExecutionGateway
@@ -1136,6 +1137,9 @@ class ExecuteCommand:
                     "iterations": outcome.iterations,
                     "child_status": outcome.status,
                     "backend": outcome.data.get("backend"),
+                    # Delegated artifacts flow up so the lead's completion contract credits them
+                    # (observation_from_tool_result → _artifact_refs reads data["changed_files"]).
+                    "changed_files": list(outcome.data.get("changed_files") or []),
                 },
             )
 
@@ -1156,31 +1160,56 @@ class ExecuteCommand:
             hook=_hook,
         )
 
-        tool_calls = sum(
-            len(event.observations) for event in result.events if event.kind == "tool_observation"
-        )
-        status = "done" if result.status == "completed" else "blocked"
-        summary = result.final_message or (
-            "模型驱动循环撞上迭代保险丝（可 resume），本轮尚未收尾。"
-            if result.status == "budget_exhausted"
-            else "模型驱动循环已结束。"
-        )
+        # 立真身完成判定 = 确定性正确性边界（ADR-0016：认知归模型、证据边界归 harness）。模型吐
+        # done 只是它的认知；工件到底改没改、验证跑没跑 / 过没过，由 harness 用与 FSM 同一套
+        # task_contract 复核（不重造轮子）。契约不满足即 blocked——正如预算保险丝覆盖上报状态，这是
+        # 边界对"完成"的确定性否决，不替模型做认知（模型仍在循环内自行 repair，越权/超预算才被拦）。
+        observations = result.observations
+        # 改动工件来自成功观察的 artifact_refs（write_file→[path]，其余工具→data.changed_files）；
+        # 脊梁的 _execute 不填 file_changes，artifact_refs 才是真源。失败/被拒的写不计入改动。
+        changed_files = [
+            str(ref)
+            for obs in observations
+            if getattr(obs, "ok", False)
+            for ref in getattr(obs, "artifact_refs", [])
+            if ref
+        ]
+        verification_results = [obs for obs in observations if _is_verification_observation(obs)]
+        contract = check_completion_contract(task, changed_files, verification_results)
+        tool_calls = len(observations)
+        verification_calls = contract.verification_total
+
+        if result.status == "budget_exhausted":
+            status = "blocked"
+            exit_reason = "max_rounds"
+            summary = "模型驱动循环撞上迭代保险丝（可 resume），本轮尚未收尾。"
+        elif not contract.ok:
+            status = "blocked"
+            exit_reason = "tool_failed"
+            summary = "任务完成契约未满足：" + "；".join(contract.violations)
+        else:
+            status = "done"
+            exit_reason = "completed"
+            summary = result.final_message or "模型驱动循环已完成并通过完成契约。"
+
         # TaskBoard enforces ready→in_progress→testing→reviewing→done; complete_task walks the
         # intermediate hops (a direct in_progress→done transition is rejected). Blocked is a valid
-        # direct transition from in_progress.
+        # direct transition from in_progress, and carries the contract-violation note for the user.
         if status == "done":
             task_board.complete_task(task_id, notes=summary)
         else:
             task_board.update_status(task_id, "blocked")
+            task_board.update_notes(task_id, summary)
         evidence_path = context.run_dir / "tool_calls.jsonl" if context.run_dir else None
         # NB schema-double-trap: SUMMARY_STATUSES = {completed, blocked, waiting_user, stopped}
         # (NOT "succeeded"); EXIT_REASONS has no "budget_exhausted" — the fuse tripping IS the
-        # max-rounds ceiling. Wrong values silently downgrade to blocked / no_action.
+        # max-rounds ceiling; a contract violation reports as tool_failed. Wrong values silently
+        # downgrade to blocked / no_action.
         self._record_agent_loop_run_summary(
             context=context,
             task_id=task_id,
             status="completed" if status == "done" else "blocked",
-            exit_reason="completed" if status == "done" else "max_rounds",
+            exit_reason=exit_reason,
             rounds_completed=result.iterations,
             max_rounds=max_iterations,
             summary=summary,
@@ -1195,7 +1224,7 @@ class ExecuteCommand:
             status=status,
             summary=summary,
             tool_calls=tool_calls,
-            verification_calls=0,
+            verification_calls=verification_calls,
             evidence_path=evidence_path,
             validation_refs=[],
         )
@@ -2058,6 +2087,16 @@ def _readonly_probe_list_path(task: dict) -> str:
         if text.endswith(("/", "\\")):
             return text.rstrip("/\\") or "."
     return "src"
+
+
+_VERIFICATION_TOOL_NAMES = frozenset({"run_command", "run_tests", "run_pytest"})
+
+
+def _is_verification_observation(observation: Any) -> bool:
+    """立真身把统一 tool_calls 里"跑命令"的观察当作验证证据。对齐 FSM 的 verification 分离：
+    FSM 单列 ``action["verification"]``（清一色 run_command），脊梁没有这层分离，于是用工具名归类
+    ——run_command 一类即验证。完成契约（task_contract）据此判定验证跑没跑 / 过没过（ADR-0016 边界）。"""
+    return str(getattr(observation, "tool_name", "") or "") in _VERIFICATION_TOOL_NAMES
 
 
 def _looks_like_path(value: str) -> str | bool:

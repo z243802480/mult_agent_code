@@ -3260,6 +3260,16 @@ def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
     assert decisions[0]["metadata"]["kind"] == "task_plan_quality_gate"
 
 
+def _notes_verify_call(path: str = "src/notes_tool.py") -> dict:
+    """A run_command the 立真身 correctness gate (RA7b-4) counts as verification evidence: a real
+    implementation task must verify, so the model-driven fakes run a command that confirms the
+    produced artifact exists (cwd = workspace root). Keeps the fakes honest about the contract."""
+    return {
+        "tool_name": "run_command",
+        "args": {"command": f"python -c \"import os; assert os.path.exists('{path}')\""},
+    }
+
+
 class FakeModelDrivenClient:
     """立真身 JSON transport client: returns ``{narration, tool_calls, done}`` per the
     model-driven turn contract (NOT the FSM's agent_loop_decision.next_action table).
@@ -3277,7 +3287,7 @@ class FakeModelDrivenClient:
         self.transports.append(str(request.worker_transport))
         if self.calls == 1:
             payload = {
-                "narration": "创建 notes 工具模块。",
+                "narration": "创建并验证 notes 工具模块。",
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
@@ -3286,7 +3296,17 @@ class FakeModelDrivenClient:
                             "content": "def add_note(notes, text):\n    return [*notes, text]\n",
                             "overwrite": True,
                         },
-                    }
+                    },
+                    {
+                        "tool_name": "run_command",
+                        "args": {
+                            "command": (
+                                "python -c "
+                                '"from src.notes_tool import add_note; '
+                                'assert add_note([], \'x\') == [\'x\']"'
+                            )
+                        },
+                    },
                 ],
                 "done": False,
             }
@@ -3374,7 +3394,7 @@ class FakeModelDrivenRecoveryClient:
             }
         elif self.calls == 2:
             payload = {
-                "narration": "文件已存在，改用 overwrite 重写。",
+                "narration": "文件已存在，改用 overwrite 重写并验证。",
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
@@ -3383,7 +3403,8 @@ class FakeModelDrivenRecoveryClient:
                             "content": "def add_note(notes, text):\n    return [*notes, text]\n",
                             "overwrite": True,
                         },
-                    }
+                    },
+                    _notes_verify_call(),
                 ],
                 "done": False,
             }
@@ -3428,6 +3449,7 @@ class FakeModelDrivenMultiFileClient:
                             "overwrite": True,
                         },
                     },
+                    _notes_verify_call(),
                 ],
                 "done": False,
             }
@@ -3510,7 +3532,7 @@ class FakeModelDrivenSkillClient:
             }
         elif self.calls == 2:
             payload = {
-                "narration": "创建 notes 模块。",
+                "narration": "创建并验证 notes 模块。",
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
@@ -3519,7 +3541,8 @@ class FakeModelDrivenSkillClient:
                             "content": "def add_note(notes, text):\n    return [*notes, text]\n",
                             "overwrite": True,
                         },
-                    }
+                    },
+                    _notes_verify_call(),
                 ],
                 "done": False,
             }
@@ -3571,7 +3594,7 @@ class FakeModelDrivenPrematureStopClient:
             payload = {"narration": "看起来不用做什么。", "tool_calls": [], "done": True}
         elif self.calls == 2:
             payload = {
-                "narration": "好的,我来创建 notes 模块。",
+                "narration": "好的,我来创建并验证 notes 模块。",
                 "tool_calls": [
                     {
                         "tool_name": "write_file",
@@ -3580,7 +3603,8 @@ class FakeModelDrivenPrematureStopClient:
                             "content": "def add_note(notes, text):\n    return [*notes, text]\n",
                             "overwrite": True,
                         },
-                    }
+                    },
+                    _notes_verify_call(),
                 ],
                 "done": False,
             }
@@ -3713,7 +3737,7 @@ class FakeModelDrivenDelegatingClient:
             if self.parent_calls == 1:
                 self.spawned = True
                 payload = {
-                    "narration": "把实现委派给 coder 专家。",
+                    "narration": "把实现委派给 coder 专家，随后验证产物。",
                     "tool_calls": [
                         {
                             "tool_name": "spawn_subagent",
@@ -3722,7 +3746,8 @@ class FakeModelDrivenDelegatingClient:
                                 "task": "create the notes module",
                                 "write_scope": ["src/notes_tool.py"],
                             },
-                        }
+                        },
+                        _notes_verify_call(),
                     ],
                     "done": False,
                 }
@@ -3819,3 +3844,209 @@ def test_model_driven_turn_default_is_on_after_ra7_flip(tmp_path: Path) -> None:
     assert command._model_driven_turn_enabled({}) is True
     assert command._model_driven_turn_enabled({"agent_loop": {}}) is True
     assert command._model_driven_turn_enabled({"agent_loop": {"model_driven_turn": False}}) is False
+
+
+# --- RA7b-4 立真身正确性 gate（确定性证据边界，ADR-0016）--------------------------------------
+# 模型吐 done 只是它的认知；工件改没改、验证跑没跑 / 过没过由 harness 用与 FSM 同一套 task_contract
+# 复核。契约不满足即 blocked——把 FSM 的确定性 done-gate（验证失败 / 缺验证 / 无改动工件 / 越权写）
+# 原样搬进脊梁，语义不减配（区别：脊梁直写工作区，blocked 时产物仍在盘上，不做候选丢弃）。
+
+
+class FakeModelDrivenVerifyFailsClient:
+    """立真身写出工件，但验证命令非零退出（真 gateway 跑）。完成契约据此判 blocked。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {
+                "narration": "写出 notes 模块并验证。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    },
+                    {
+                        "tool_name": "run_command",
+                        "args": {"command": 'python -c "import sys; sys.exit(1)"'},
+                    },
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "自认为完成。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-mdt-verify-fails",
+            raw_response={},
+        )
+
+
+class FakeModelDrivenNoVerifyClient:
+    """立真身写出工件却完全不验证——required-verification 契约缺失，判 blocked。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {
+                "narration": "写出 notes 模块就收工。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "自认为完成。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-mdt-no-verify",
+            raw_response={},
+        )
+
+
+class FakeModelDrivenOutOfScopeClient:
+    """立真身把写落在 write_scope 之外——真 gateway 拒绝，无改动工件，契约判 blocked。验证通过以
+    隔离出"缺改动工件"这一条违约（证明越权写在脊梁上照样被证据边界拦住）。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {
+                "narration": "尝试写到 blocked/ 并验证。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "blocked/output.txt",
+                            "content": "nope\n",
+                            "overwrite": True,
+                        },
+                    },
+                    {"tool_name": "run_command", "args": {"command": 'python -c "assert True"'}},
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "自认为完成。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-mdt-out-of-scope",
+            raw_response={},
+        )
+
+
+@pytest.mark.spine_default
+def test_model_driven_spine_blocks_when_verification_fails(tmp_path: Path) -> None:
+    """正确性 gate：验证命令失败 → 任务 blocked（模型说 done 也否决），note 记"验证未通过"，
+    verification_calls 如实计数。脊梁直写：与 FSM 候选丢弃不同，产物仍留在工作区。"""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenVerifyFailsClient()
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert result.executed_tasks[0].verification_calls == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "blocked"
+    assert "verification did not pass" in task_plan["tasks"][0]["notes"]
+    # 直写模型：blocked 时产物仍在盘上（不做候选隔离/丢弃）。
+    assert (tmp_path / "src" / "notes_tool.py").exists()
+
+
+@pytest.mark.spine_default
+def test_model_driven_spine_blocks_required_task_without_verification(tmp_path: Path) -> None:
+    """正确性 gate：实现任务写了工件却零验证 → blocked，note 记"缺必需验证"。"""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenNoVerifyClient()
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert result.executed_tasks[0].verification_calls == 0
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "blocked"
+    assert "required verification was not provided" in task_plan["tasks"][0]["notes"]
+
+
+@pytest.mark.spine_default
+def test_model_driven_spine_blocks_out_of_scope_write_without_artifact(tmp_path: Path) -> None:
+    """正确性 gate + 权限边界：写落在 write_scope 之外被真 gateway 拒 → 无改动工件 → blocked，
+    文件没落盘，note 记"缺必需改动工件"。证明越权写在脊梁上照样被拦。"""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan_path = run_dir / "task_plan.json"
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    task_plan["tasks"][0].update(
+        {
+            "allowed_tools": ["write_file", "run_command"],
+            "expected_artifacts": ["implementation artifact"],
+            "write_scope": ["allowed/"],
+            "read_scope": ["AGENTS.md"],
+            "task_kind": "implementation",
+            "parallel_safety": "serial",
+        }
+    )
+    task_plan_path.write_text(json.dumps(task_plan, ensure_ascii=False), encoding="utf-8")
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenOutOfScopeClient()
+    ).run()
+
+    assert result.completed == 0
+    assert result.blocked == 1
+    assert not (tmp_path / "blocked" / "output.txt").exists()
+    task_plan = json.loads(task_plan_path.read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "blocked"
+    assert "required changed artifact was not produced" in task_plan["tasks"][0]["notes"]
+
+
+@pytest.mark.spine_default
+def test_model_driven_spine_reports_verification_calls_on_success(tmp_path: Path) -> None:
+    """happy path：写 + 验证通过 → completed，且 verification_calls 真实上报（不再硬编码 0）。"""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenClient()
+    ).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert result.executed_tasks[0].verification_calls >= 1
