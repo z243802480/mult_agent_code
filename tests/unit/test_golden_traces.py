@@ -263,8 +263,9 @@ class TestRuntimeOSFixtureCoverage:
         assert {item["capability"] for item in catalog["capabilities"]} == {
             item.capability for item in RUNTIME_OS_CAPABILITIES
         }
-        assert "session_recovery_consumed_failure_next_hint" in catalog["evidence_keys"]
-        assert "delegation_evidence_consistent" in catalog["evidence_keys"]
+        # RA7b slice 4: evidence keys derive from the (spine-reconciled) catalog's special_evidence.
+        assert "failure_blocked" in catalog["evidence_keys"]
+        assert "verification_commands_recorded" in catalog["evidence_keys"]
 
 
 class TestPromptEnvelopeContract:

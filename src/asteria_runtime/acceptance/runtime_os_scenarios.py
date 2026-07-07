@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import tempfile
 import time
@@ -14,6 +13,66 @@ from asteria_runtime.utils.time import now_iso
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def _is_spine_request(request: Any) -> bool:
+    """立真身循环给每次 chat 打 metadata.loop=model_driven_turn。"""
+    return (getattr(request, "metadata", None) or {}).get("loop") == "model_driven_turn"
+
+
+def _spine_turn(request: Any) -> int:
+    return int((getattr(request, "metadata", None) or {}).get("iteration") or 1)
+
+
+def _acceptance_payload(request: Any) -> dict:
+    """FSM 形态下 messages[-1] 是任务 JSON;脊梁形态下是散文旁白/观察回灌——解析失败即空。"""
+    try:
+        parsed = json.loads(request.messages[-1].content)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _acceptance_task_id(request: Any) -> str:
+    meta = getattr(request, "metadata", None) or {}
+    if meta.get("task_id"):
+        return str(meta["task_id"])
+    task = _acceptance_payload(request).get("task")
+    if isinstance(task, dict) and task.get("task_id"):
+        return str(task["task_id"])
+    return "task-0001"
+
+
+def _acceptance_spine_response(request: Any, action: dict) -> Any:
+    """把一份 FSM ExecutionAction 复用成脊梁轮次(FSM tool_calls+verification 合并成脊梁一批
+    tool_calls;脊梁无独立 verification 字段·run_command 观察即被正确性 gate 计作验证)。
+    含 runtime_requests-only 的 FSM 动作在脊梁上没有对应(该能力已随 FSM 退休),故只余空批→收尾。"""
+    from asteria_runtime.models.base import ChatResponse, TokenUsage
+
+    tool_calls = [
+        {"tool_name": call["tool_name"], "args": call.get("args", {})}
+        for call in [*action.get("tool_calls", []), *action.get("verification", [])]
+    ]
+    if _spine_turn(request) <= 1 and tool_calls:
+        payload = {
+            "narration": str(action.get("summary") or "执行并验证任务。"),
+            "tool_calls": tool_calls,
+            "done": False,
+        }
+    else:
+        payload = {
+            "narration": str(action.get("completion_notes") or "任务已完成并验证。"),
+            "tool_calls": [],
+            "done": True,
+        }
+    return ChatResponse(
+        content=json.dumps(payload, ensure_ascii=False),
+        finish_reason="stop",
+        usage=TokenUsage(1, 1, 2),
+        model_provider="runtime-acceptance",
+        model_name="spine",
+        raw_response={},
+    )
+
+
 class RuntimeAcceptanceClient:
     def __init__(self, mode: str) -> None:
         self.mode = mode
@@ -22,9 +81,8 @@ class RuntimeAcceptanceClient:
     def chat(self, request: Any) -> Any:
         from asteria_runtime.models.base import ChatResponse, TokenUsage
 
-        payload = json.loads(request.messages[-1].content)
-        task = payload["task"]
-        task_id = task["task_id"]
+        payload = _acceptance_payload(request)
+        task_id = _acceptance_task_id(request)
         if self.mode == "readonly":
             action = {
                 "schema_version": "0.1.0",
@@ -232,6 +290,8 @@ class RuntimeAcceptanceClient:
                 }
         else:
             raise ValueError(f"Unknown runtime acceptance mode: {self.mode}")
+        if _is_spine_request(request):
+            return _acceptance_spine_response(request, action)
         return ChatResponse(
             content=json.dumps(action, ensure_ascii=False),
             finish_reason="stop",
@@ -242,70 +302,6 @@ class RuntimeAcceptanceClient:
         )
 
 
-class RuntimeEvidenceRecoveryClient:
-    def __init__(self) -> None:
-        self.consumed_runtime_evidence = False
-        self.consumed_failure_next_hint = False
-
-    def chat(self, request: Any) -> Any:
-        from asteria_runtime.models.base import ChatResponse, TokenUsage
-
-        payload = json.loads(request.messages[-1].content)
-        task = payload["task"]
-        runtime_context = payload.get("runtime_context", {})
-        recovery = runtime_context.get("session_recovery", {})
-        task_evidence = recovery.get("task_evidence", {})
-        evidence = task_evidence.get(task["task_id"], {})
-        observations = runtime_context.get("tool_observations")
-        observations = observations if isinstance(observations, list) else []
-        self.consumed_runtime_evidence = bool(
-            isinstance(evidence, dict)
-            and evidence.get("worker_results")
-            and evidence.get("task_execution_evidence")
-        )
-        self.consumed_failure_next_hint = any(
-            isinstance(item, dict)
-            and item.get("ok") is False
-            and item.get("next_hint") == "diagnose_then_repair_replan_ask_or_stop"
-            for item in observations
-        )
-        action = {
-            "schema_version": "0.1.0",
-            "task_id": task["task_id"],
-            "summary": "Repair using Runtime OS evidence.",
-            "tool_calls": [
-                {
-                    "tool_name": "write_file",
-                    "args": {
-                        "path": "blocked/output.txt",
-                        "content": "expected",
-                        "overwrite": True,
-                    },
-                    "reason": "repair failed worker output",
-                }
-            ],
-            "verification": [
-                {
-                    "tool_name": "run_command",
-                    "args": {
-                        "command": (
-                            'python -c "from pathlib import Path; '
-                            "assert Path('blocked/output.txt').read_text(encoding='utf-8') == 'expected'\""
-                        )
-                    },
-                    "reason": "verify repaired output",
-                }
-            ],
-            "completion_notes": "Runtime evidence guided repair",
-        }
-        return ChatResponse(
-            content=json.dumps(action, ensure_ascii=False),
-            finish_reason="stop",
-            usage=TokenUsage(1, 1, 2),
-            model_provider="runtime-acceptance",
-            model_name="runtime-evidence-recovery",
-            raw_response={},
-        )
 
 
 class RuntimeEvidenceReviewClient:
@@ -379,20 +375,10 @@ def run_runtime_os_scenario(
             ok, summary = _runtime_worker_failure(workspace)
         elif scenario_name == "runtime_merge_gate_block":
             ok, summary = _runtime_merge_gate_block(workspace)
-        elif scenario_name == "runtime_request_resume":
-            ok, summary = _runtime_request_resume(workspace)
         elif scenario_name == "runtime_context_package_slice":
             ok, summary = _runtime_context_package_slice(workspace)
         elif scenario_name == "runtime_sandbox_backend_selection":
             ok, summary = _runtime_sandbox_backend_selection(workspace)
-        elif scenario_name == "runtime_planner_scope_quality":
-            ok, summary = _runtime_planner_scope_quality(workspace)
-        elif scenario_name == "runtime_capability_feedback":
-            ok, summary = _runtime_capability_feedback(workspace)
-        elif scenario_name == "runtime_evidence_consumption":
-            ok, summary = _runtime_evidence_consumption(workspace)
-        elif scenario_name == "runtime_delegation_contract":
-            ok, summary = _runtime_delegation_contract(workspace)
         elif scenario_name == "runtime_independent_verification":
             ok, summary = _runtime_independent_verification(workspace)
         else:
@@ -596,73 +582,22 @@ def _runtime_worker_failure(workspace: Path) -> tuple[bool, dict[str, Any]]:
     ).run()
     run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
-    evidence["candidate_isolated"] = not (workspace / "blocked" / "output.txt").exists()
-    evidence["failure_evidence"] = bool(_read_jsonl(run_dir / "task_failures.jsonl"))
-    evidence["promotion_failure_recorded"] = _exercise_failed_promotion_queue(
-        workspace, run_dir, run_id
-    )
-    worker_results = _read_jsonl(run_dir / "worker_results.jsonl")
-    ok = (
-        result.blocked == 1
-        and evidence["candidate_isolated"]
-        and evidence["failure_evidence"]
-        and evidence["promotion_failure_recorded"]
-        and bool(worker_results)
-        and worker_results[-1].get("status") == "failed"
-    )
+    # 立真身直写模型:失败态(验证不过)被正确性 gate 拦为 blocked——错误产物留盘但**不被接受**
+    # (任务 blocked 非 done),证据落 task_execution_evidence(contract 不 ok)。取代 FSM 的候选隔离/
+    # 晋升失败语义(脊梁无候选/晋升队列)。REQUIREMENT 保留:失败被拦、不被当完成接受、留证据。
+    execution_evidence = _read_jsonl(run_dir / "task_execution_evidence.jsonl")
+    blocked_records = [
+        item
+        for item in execution_evidence
+        if item.get("status") == "blocked"
+        and (item.get("contract_check") or {}).get("ok") is False
+    ]
+    evidence["failure_blocked"] = result.blocked == 1 and result.completed == 0
+    evidence["failure_evidence"] = bool(blocked_records)
+    ok = evidence["failure_blocked"] and evidence["failure_evidence"]
     return ok, _runtime_summary("runtime_worker_failure", run_id, evidence, result=result.to_text())
 
 
-def _exercise_failed_promotion_queue(workspace: Path, run_dir: Path, run_id: str) -> bool:
-    from asteria_runtime.commands.promotions_command import PromotionsCommand
-    from asteria_runtime.core.candidate_workspace import CandidateWorkspace
-    from asteria_runtime.storage.jsonl_store import JsonlStore
-    from asteria_runtime.storage.schema_validator import SchemaValidator
-
-    validator = SchemaValidator(REPO_ROOT / "schemas")
-    source_file = workspace / "promotion-source.txt"
-    source_file.write_text("source stays stable\n", encoding="utf-8")
-    candidate = CandidateWorkspace.create(workspace, run_dir, "task-promotion-failure")
-    candidate_file = candidate.root / "promotion-source.txt"
-    if candidate_file.exists():
-        candidate_file.unlink()
-    JsonlStore(validator).append(
-        run_dir / "candidate_promotions.jsonl",
-        {
-            "schema_version": "0.1.0",
-            "promotion_id": "promotion-runtime-failure",
-            "run_id": run_id,
-            "task_id": "task-promotion-failure",
-            "candidate_id": candidate.candidate_id,
-            "workspace": str(candidate.root),
-            "strategy": candidate.strategy,
-            "workspace_policy": candidate.workspace_policy,
-            "backend_reason": candidate.backend_reason,
-            "branch_name": candidate.branch_name,
-            "promotable_files": ["promotion-source.txt"],
-            "promoted_files": [],
-            "status": "pending_manual_approval",
-            "approval_mode": "manual",
-            "merge_gate": {"ok": True},
-            "failure": None,
-            "decision": None,
-            "created_at": now_iso(),
-            "updated_at": now_iso(),
-        },
-        "candidate_promotion",
-    )
-    result = PromotionsCommand(
-        workspace,
-        run_id=run_id,
-        action="approve",
-        promotion_id="promotion-runtime-failure",
-    ).run()
-    latest = result.promotions[-1] if result.promotions else {}
-    return (
-        latest.get("status") == "promotion_failed"
-        and bool(latest.get("failure"))
-        and source_file.read_text(encoding="utf-8") == "source stays stable\n"
-    )
 
 
 def _runtime_merge_gate_block(workspace: Path) -> tuple[bool, dict[str, Any]]:
@@ -702,50 +637,6 @@ def _runtime_merge_gate_block(workspace: Path) -> tuple[bool, dict[str, Any]]:
     return ok, summary
 
 
-def _runtime_request_resume(workspace: Path) -> tuple[bool, dict[str, Any]]:
-    from asteria_runtime.commands.decide_command import DecideCommand
-    from asteria_runtime.commands.execute_command import ExecuteCommand
-    from asteria_runtime.commands.resume_command import ResumeCommand
-
-    run_id = _seed_runtime_run(
-        workspace,
-        [
-            _runtime_task(
-                "task-0001",
-                "Request runtime scope",
-                write_scope=["allowed/output.txt"],
-            )
-        ],
-    )
-    execute = ExecuteCommand(
-        workspace,
-        run_id=run_id,
-        model_client=RuntimeAcceptanceClient("runtime_request"),
-    ).run()
-    DecideCommand(
-        workspace,
-        run_id=run_id,
-        decision_id="decision-0001",
-        select_option_id="reject_request",
-    ).run()
-    resumed = ResumeCommand(
-        workspace,
-        run_id=run_id,
-        max_iterations=1,
-        execute_model_client=RuntimeAcceptanceClient("runtime_request"),
-        review_model_client=RuntimeEvidenceReviewClient(),
-    ).run()
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    evidence = _runtime_evidence(run_dir)
-    evidence["resume_recovered"] = resumed.applied_decisions == 1
-    evidence["failure_evidence"] = bool(_read_jsonl(run_dir / "task_failures.jsonl"))
-    ok = execute.blocked == 1 and evidence["resume_recovered"]
-    return ok, _runtime_summary(
-        "runtime_request_resume",
-        run_id,
-        evidence,
-        result=resumed.to_text(),
-    )
 
 
 def _runtime_context_package_slice(workspace: Path) -> tuple[bool, dict[str, Any]]:
@@ -761,29 +652,32 @@ def _runtime_context_package_slice(workspace: Path) -> tuple[bool, dict[str, Any
     )
     task["read_scope"] = ["input/scoped.txt"]
     run_id = _seed_runtime_run(workspace, [task])
-    client = RuntimeAcceptanceClient("context_package")
-    result = ExecuteCommand(workspace, run_id=run_id, model_client=client).run()
+    result = ExecuteCommand(
+        workspace, run_id=run_id, model_client=RuntimeAcceptanceClient("context_package")
+    ).run()
     run_dir = workspace / ".asteria" / "runs" / run_id
     evidence = _runtime_evidence(run_dir)
-    evidence["context_package_sliced"] = bool(
-        client.seen_context_package.get("has_scoped_file")
-        and not client.seen_context_package.get("has_unscoped_file")
+    # 立真身把 scoped context 渲进提示词(而非作 payload 字段回给模型),故集成证据取自 harness 落的
+    # context_mounts.jsonl:per-task coding_context 挂载·含 root_guidance/goal_brief/task_brief。
+    # scope 应用由"任务只用其 read_scope(input/scoped.txt)完成、未越权读 input/unscoped.txt"佐证
+    # (输出如期写就、run 未 blocked)。细粒度切片入/出由 context_package_builder 单测覆盖。
+    mounts = _read_jsonl(run_dir / "context_mounts.jsonl")
+    task_mount = next((m for m in mounts if m.get("task_id") == "task-0001"), {})
+    includes = task_mount.get("includes") if isinstance(task_mount, dict) else {}
+    includes = includes if isinstance(includes, dict) else {}
+    evidence["context_mount_built"] = bool(
+        task_mount.get("mount_type") == "coding_context"
+        and includes.get("goal_brief")
+        and includes.get("task_brief")
     )
-    evidence["context_package_scope_partitioned"] = bool(
-        client.seen_context_package.get("has_scope_summary")
-        and client.seen_context_package.get("has_evidence_scope")
-        and client.seen_context_package.get("has_write_scope_files")
-        and client.seen_context_package.get("has_recent_failures")
-    )
-    ok = (
+    evidence["context_scope_applied"] = (
         result.completed == 1
-        and evidence["context_package_sliced"]
-        and evidence["context_package_scope_partitioned"]
         and (workspace / "out" / "context.txt").read_text(encoding="utf-8")
         == "sliced context observed"
     )
+    ok = evidence["context_mount_built"] and evidence["context_scope_applied"]
     summary = _runtime_summary("context_package_slice", run_id, evidence, result=result.to_text())
-    summary["runtime_os"]["context_package"] = client.seen_context_package
+    summary["runtime_os"]["context_mount"] = task_mount
     return ok, summary
 
 
@@ -820,312 +714,14 @@ def _runtime_sandbox_backend_selection(workspace: Path) -> tuple[bool, dict[str,
     return ok, summary
 
 
-def _runtime_planner_scope_quality(workspace: Path) -> tuple[bool, dict[str, Any]]:
-    from asteria_runtime.agents.planner import RequirementPlanner
-    from asteria_runtime.commands.execute_command import ExecuteCommand
-
-    goal_spec = {
-        "schema_version": "0.1.0",
-        "goal_id": "goal-runtime-os",
-        "original_goal": "Improve the src package behavior.",
-        "normalized_goal": "Improve the src package behavior.",
-        "goal_type": "codebase_improvement",
-        "assumptions": [],
-        "constraints": [],
-        "non_goals": [],
-        "expanded_requirements": [
-            {
-                "id": "req-runtime-scope",
-                "priority": "must",
-                "description": "Improve behavior across src without a known concrete file.",
-                "acceptance": ["Behavior improvement is implemented and verified."],
-                "expected_artifacts": ["src/"],
-            }
-        ],
-        "target_outputs": ["src/"],
-        "definition_of_done": ["Behavior improvement is implemented and verified."],
-        "verification_strategy": ["local command"],
-        "budget": {"max_iterations": 2, "max_model_calls": 10},
-    }
-    planned_task = RequirementPlanner().build_task_plan(goal_spec)["tasks"][0]
-    planned_task["status"] = "ready"
-    run_id = _seed_runtime_run(workspace, [planned_task])
-    result = ExecuteCommand(
-        workspace,
-        run_id=run_id,
-        model_client=RuntimeAcceptanceClient("planner_scope"),
-    ).run()
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    evidence = _runtime_evidence(run_dir)
-    runtime_requests = _read_jsonl(run_dir / "runtime_requests.jsonl")
-    notes = str(planned_task.get("notes", "")).lower()
-    evidence["planner_scope_narrowed"] = (
-        planned_task.get("write_scope") == []
-        and "scope quality" in notes
-        and "scope request" in notes
-    )
-    evidence["runtime_request_created"] = any(
-        item.get("request_type") == "scope_expansion" for item in runtime_requests
-    )
-    ok = (
-        result.blocked == 1
-        and evidence["planner_scope_narrowed"]
-        and evidence["runtime_request_created"]
-    )
-    summary = _runtime_summary("planner_scope_quality", run_id, evidence, result=result.to_text())
-    summary["runtime_os"]["planned_task"] = {
-        "write_scope": planned_task.get("write_scope"),
-        "parallel_safety": planned_task.get("parallel_safety"),
-        "notes": planned_task.get("notes"),
-    }
-    return ok, summary
 
 
-def _runtime_capability_feedback(workspace: Path) -> tuple[bool, dict[str, Any]]:
-    from asteria_runtime.commands.capability_report_command import CapabilityReportCommand
-    from asteria_runtime.commands.execute_command import ExecuteCommand
-
-    previous_provider = os.environ.get("AGENT_MODEL_PROVIDER")
-    previous_name = os.environ.get("AGENT_MODEL_NAME")
-    os.environ["AGENT_MODEL_PROVIDER"] = "fake"
-    os.environ["AGENT_MODEL_NAME"] = "medium-route"
-    run_id = _seed_runtime_run(
-        workspace,
-        [
-            _runtime_task(
-                "task-0001", "Collect validation signal", write_scope=["out/feedback.txt"]
-            ),
-            _runtime_task(
-                "task-0002",
-                "Collect runtime request signal",
-                write_scope=["out/feedback-request.txt"],
-            ),
-        ],
-    )
-    try:
-        result = ExecuteCommand(
-            workspace,
-            run_id=run_id,
-            max_tasks=2,
-            model_client=RuntimeAcceptanceClient("feedback"),
-        ).run()
-        run_dir = workspace / ".asteria" / "runs" / run_id
-        _append_merge_gate_feedback(run_dir, run_id)
-        report = CapabilityReportCommand(workspace).run()
-    finally:
-        if previous_provider is None:
-            os.environ.pop("AGENT_MODEL_PROVIDER", None)
-        else:
-            os.environ["AGENT_MODEL_PROVIDER"] = previous_provider
-        if previous_name is None:
-            os.environ.pop("AGENT_MODEL_NAME", None)
-        else:
-            os.environ["AGENT_MODEL_NAME"] = previous_name
-    profiles = report.model_profiles
-    profile = next(
-        (
-            item
-            for item in profiles
-            if item.get("purpose") == "coding"
-            and str(item.get("model_tier") or "") == "medium"
-            and int(item.get("runtime_request_total") or 0) >= 1
-            and int(item.get("merge_gate_blocks") or 0) >= 1
-            and int(item.get("validation_total") or 0) >= 1
-        ),
-        {},
-    )
-    evidence = _runtime_evidence(run_dir)
-    evidence["capability_feedback_recorded"] = bool(
-        profile
-        and int(profile.get("runtime_request_total") or 0) >= 1
-        and int(profile.get("merge_gate_blocks") or 0) >= 1
-        and int(profile.get("validation_total") or 0) >= 1
-    )
-    ok = result.completed == 1 and result.blocked == 1 and evidence["capability_feedback_recorded"]
-    summary = _runtime_summary("capability_feedback", run_id, evidence, result=report.to_text())
-    summary["runtime_os"]["capability_profile"] = profile
-    return ok, summary
 
 
-def _append_merge_gate_feedback(run_dir: Path, run_id: str) -> None:
-    from asteria_runtime.storage.jsonl_store import JsonlStore
-    from asteria_runtime.storage.schema_validator import SchemaValidator
-
-    validator = SchemaValidator(REPO_ROOT / "schemas")
-    JsonlStore(validator).append(
-        run_dir / "task_execution_evidence.jsonl",
-        {
-            "schema_version": "0.1.0",
-            "evidence_id": "evidence-merge-feedback",
-            "run_id": run_id,
-            "task_id": "task-0001",
-            "status": "blocked",
-            "summary": "Synthetic merge gate signal for capability feedback acceptance.",
-            "failure_type": "merge_gate",
-            "task": {"task_id": "task-0001"},
-            "action": {"summary": "feedback merge gate"},
-            "candidate": {"changed_files": ["out/feedback.txt", "unsafe/feedback.txt"]},
-            "contract_check": {
-                "ok": False,
-                "changed_files": ["out/feedback.txt", "unsafe/feedback.txt"],
-                "merge_gate": {
-                    "ok": False,
-                    "summary": "unsafe/feedback.txt outside write_scope",
-                    "violations": ["unsafe/feedback.txt outside write_scope"],
-                    "promotable_files": ["out/feedback.txt"],
-                },
-            },
-            "tool_results": [],
-            "verification_results": [],
-            "created_at": now_iso(),
-        },
-        "task_execution_evidence",
-    )
 
 
-def _runtime_evidence_consumption(workspace: Path) -> tuple[bool, dict[str, Any]]:
-    from asteria_runtime.commands.debug_command import DebugCommand
-    from asteria_runtime.commands.execute_command import ExecuteCommand
-    from asteria_runtime.commands.review_command import ReviewCommand
-
-    run_id = _seed_runtime_run(
-        workspace,
-        [
-            _runtime_task(
-                "task-0001",
-                "Repair and review Runtime OS evidence",
-                write_scope=["blocked/output.txt"],
-            )
-        ],
-    )
-    ExecuteCommand(
-        workspace,
-        run_id=run_id,
-        model_client=RuntimeAcceptanceClient("failure"),
-    ).run()
-    recovery_client = RuntimeEvidenceRecoveryClient()
-    DebugCommand(workspace, run_id=run_id, model_client=recovery_client).run()
-    review_client = RuntimeEvidenceReviewClient()
-    ReviewCommand(workspace, run_id=run_id, model_client=review_client).run()
-    run_dir = workspace / ".asteria" / "runs" / run_id
-    evidence = _runtime_evidence(run_dir)
-    evidence["session_recovery_consumed_runtime_evidence"] = (
-        recovery_client.consumed_runtime_evidence
-    )
-    evidence["review_consumed_runtime_evidence"] = review_client.consumed_runtime_evidence
-    evidence["session_recovery_consumed_failure_next_hint"] = (
-        recovery_client.consumed_failure_next_hint
-    )
-    evidence["review_consumed_failure_next_hint"] = review_client.consumed_failure_next_hint
-    ok = (
-        evidence["session_recovery_consumed_runtime_evidence"]
-        and evidence["review_consumed_runtime_evidence"]
-        and evidence["session_recovery_consumed_failure_next_hint"]
-        and evidence["review_consumed_failure_next_hint"]
-    )
-    summary = _runtime_summary(
-        "runtime_evidence_consumption",
-        run_id,
-        evidence,
-        result="session recovery and review consumed Runtime OS evidence",
-    )
-    return ok, summary
 
 
-def _runtime_delegation_contract(workspace: Path) -> tuple[bool, dict[str, Any]]:
-    from asteria_runtime.commands.execute_command import ExecuteCommand
-
-    blocked_task = _runtime_task(
-        "task-0001",
-        "High-risk write without output contract",
-        write_scope=[],
-    )
-    blocked_task["expected_artifacts"] = ["out/guarded.txt"]
-    blocked_task["expected_changed_files"] = []
-    blocked_task["write_scope"] = []
-    blocked_task["read_scope"] = ["AGENTS.md"]
-    blocked_task["risk_score"] = 0.95
-    blocked_run_id = _seed_runtime_run(workspace, [blocked_task])
-    blocked_result = ExecuteCommand(
-        workspace,
-        run_id=blocked_run_id,
-        model_client=RuntimeAcceptanceClient("disjoint"),
-    ).run()
-    blocked_run_dir = workspace / ".asteria" / "runs" / blocked_run_id
-    blocked_workers = _read_jsonl(blocked_run_dir / "workers.jsonl")
-    blocked_results = _read_jsonl(blocked_run_dir / "worker_results.jsonl")
-    blocked_evidence = _read_jsonl(blocked_run_dir / "task_execution_evidence.jsonl")
-    blocked_worker = blocked_workers[-1] if blocked_workers else {}
-    blocked_worker_result = blocked_results[-1] if blocked_results else {}
-    blocked_execution = blocked_evidence[-1] if blocked_evidence else {}
-
-    scope_workspace = workspace / "scope-exception"
-    scope_workspace.mkdir()
-    scope_task = _runtime_task(
-        "task-0001",
-        "Create scoped runtime request",
-        write_scope=[],
-    )
-    scope_task["expected_artifacts"] = ["src/"]
-    scope_task["expected_changed_files"] = []
-    scope_task["write_scope"] = []
-    scope_task["read_scope"] = ["AGENTS.md"]
-    scope_task["allowed_tools"] = ["write_file", "run_command"]
-    scope_task["notes"] = (
-        "Scope quality: write_scope was broad, so it was narrowed to require a runtime scope request."
-    )
-    scope_run_id = _seed_runtime_run(scope_workspace, [scope_task])
-    scope_result = ExecuteCommand(
-        scope_workspace,
-        run_id=scope_run_id,
-        model_client=RuntimeAcceptanceClient("planner_scope"),
-    ).run()
-    scope_run_dir = scope_workspace / ".asteria" / "runs" / scope_run_id
-    scope_workers = _read_jsonl(scope_run_dir / "workers.jsonl")
-    scope_runtime_requests = _read_jsonl(scope_run_dir / "runtime_requests.jsonl")
-
-    evidence = {
-        "delegation_brief_recorded": bool(blocked_worker.get("delegation_brief")),
-        "brief_quality_status_present": bool(
-            blocked_worker.get("brief_quality")
-            and blocked_worker["brief_quality"].get("status") in {"pass", "warn", "fail"}
-        ),
-        "high_risk_delegation_blocked": (
-            blocked_result.blocked == 1
-            and blocked_worker.get("status") == "denied"
-            and blocked_worker_result.get("status") == "denied"
-            and blocked_execution.get("failure_type") == "delegation_brief_quality_gate"
-        ),
-        "scope_request_exception_recorded": (
-            scope_result.blocked == 1
-            and bool(scope_runtime_requests)
-            and (scope_workers[-1].get("status") == "failed" if scope_workers else False)
-            and (scope_workers[-1].get("brief_quality") or {}).get("status") == "warn"
-        ),
-        "delegation_evidence_consistent": (
-            blocked_worker.get("worker_invocation_id")
-            == blocked_worker_result.get("worker_invocation_id")
-            and blocked_worker.get("task_id") == blocked_execution.get("task_id")
-        ),
-    }
-    ok = (
-        evidence["delegation_brief_recorded"]
-        and evidence["brief_quality_status_present"]
-        and evidence["high_risk_delegation_blocked"]
-        and evidence["scope_request_exception_recorded"]
-        and evidence["delegation_evidence_consistent"]
-    )
-    summary = _runtime_summary(
-        "delegation_contract",
-        blocked_run_id,
-        evidence,
-        result=blocked_result.to_text(),
-    )
-    summary["runtime_os"]["blocked_brief_quality"] = blocked_worker.get("brief_quality")
-    summary["runtime_os"]["scope_exception_brief_quality"] = (
-        scope_workers[-1].get("brief_quality") if scope_workers else None
-    )
-    return ok, summary
 
 
 def _runtime_independent_verification(workspace: Path) -> tuple[bool, dict[str, Any]]:

@@ -150,6 +150,13 @@ class RuntimeOSGateEvaluator:
             return f"{scenario_name}: no independent verification commands were recorded"
         if key == "review_evidence_present":
             return f"{scenario_name}: review agent did not produce an eval report"
+        # RA7b slice 4 spine-native runtime-OS evidence keys.
+        if key == "failure_blocked":
+            return f"{scenario_name}: failing task was not blocked by the correctness gate"
+        if key == "context_mount_built":
+            return f"{scenario_name}: per-task coding_context mount was not built"
+        if key == "context_scope_applied":
+            return f"{scenario_name}: task did not complete within its scoped context"
         return f"{scenario_name}: missing {key}"
 
 

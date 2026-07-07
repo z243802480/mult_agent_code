@@ -75,16 +75,12 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
     assert history[0]["trend"]["previous"] is None
 
 
-def test_acceptance_runtime_os_scenarios_feed_release_gate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # RA7: the runtime-OS acceptance scenarios validate the FSM runtime-management mechanism
-    # (probes, parallel-readonly / disjoint-write fanout) via RuntimeAcceptanceClient, which speaks
-    # the FSM ExecutionAction contract. AcceptanceCommand runs them in a spawned subprocess (out of
-    # reach of the in-process conftest pin), so we pin the legacy FSM path fleet-wide with the
-    # rollout override env — it propagates through os.environ.copy() into that subprocess. RA7b
-    # migrates or retires these scenarios alongside the FSM deletion.
-    monkeypatch.setenv("ASTERIA_MODEL_DRIVEN_TURN", "0")
+def test_acceptance_runtime_os_scenarios_feed_release_gate(tmp_path: Path) -> None:
+    # RA7b slice 4: the runtime-OS acceptance scenarios + RuntimeAcceptanceClient are migrated to the
+    # model-driven spine (production default). Five FSM-mechanism capabilities were retired with the
+    # round loop (per-tool scope-expansion, delegation-brief gate, runtime_request feedback, FSM-worker
+    # session-recovery); worker_failure/context_package_slice were migrated to spine-native evidence.
+    # The gate is catalog-driven, so require_tiers/min counts auto-adjust to the surviving capabilities.
     root = tmp_path / "runtime-os"
     scenarios = runtime_os_scenario_names()
 
@@ -527,10 +523,12 @@ def test_acceptance_result_prints_promoted_rerun_text(tmp_path: Path) -> None:
     assert "Closed failures: markdown_kb" in text
 
 
+@pytest.mark.spine_default
 def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    # RA7b slice 4: the promoted repair task runs through the model-driven spine (production default).
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")
     monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "fake")
     monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "fake")
@@ -598,7 +596,10 @@ def test_acceptance_failure_can_be_promoted_and_run_in_current_session(
     assert "Run:" in result.promoted_run_text
     assert promoted_task["status"] in {"done", "blocked"}
     if promoted_task["status"] == "blocked":
-        assert "decision" in (result.promoted_run_text or "").lower()
+        # 立真身下被晋升的修复任务可能停在**可 resume 的会话边界**(而非 FSM 的人审 decision):两者
+        # 都是可续的阻塞态,promoted_run_text 给出下一步。接受任一,证明晋升任务确实在会话内跑过。
+        lowered = (result.promoted_run_text or "").lower()
+        assert "resumable session boundary" in lowered or "decision" in lowered
     assert (run_dir / "final_report.md").exists()
     assert (tmp_path / "offline_artifact.txt").exists()
     memory_path = tmp_path / ".asteria" / "memory" / "failures.jsonl"
