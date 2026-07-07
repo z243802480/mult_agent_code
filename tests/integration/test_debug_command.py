@@ -8,8 +8,9 @@ from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from tests.helpers.spine import spine_response
 
-pytestmark = pytest.mark.workflow
+pytestmark = [pytest.mark.workflow, pytest.mark.spine_default]
 
 
 class FakePlanClient:
@@ -46,41 +47,26 @@ class FakeExecutionClient:
         self.value = value
 
     def chat(self, request: ChatRequest) -> ChatResponse:
-        del request
-        return ChatResponse(
-            content=json.dumps(
+        return spine_response(
+            request,
+            narration=f"设置 VALUE 为 {self.value} 并验证。",
+            tool_calls=[
                 {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": f"Set VALUE to {self.value}.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "repairable.py",
-                                "content": f"VALUE = {self.value}\n",
-                                "overwrite": True,
-                            },
-                            "reason": "implement task",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
-                            },
-                            "reason": "verify value",
-                        }
-                    ],
-                    "completion_notes": "execution finished",
-                }
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(10, 20, 30),
-            model_provider="fake",
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "repairable.py",
+                        "content": f"VALUE = {self.value}\n",
+                        "overwrite": True,
+                    },
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": 'python -c "from repairable import VALUE; assert VALUE == 2"'
+                    },
+                },
+            ],
             model_name="fake-execute",
-            raw_response={},
         )
 
 

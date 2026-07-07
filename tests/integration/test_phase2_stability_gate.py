@@ -19,7 +19,7 @@ from tests.integration.test_phase3_rolling_gate import (
 )
 from tests.integration.test_run_command import FakePlanClient, FakeReviewClient
 
-pytestmark = pytest.mark.workflow
+pytestmark = [pytest.mark.workflow, pytest.mark.spine_default]
 
 GATE = json.loads(Path("benchmarks/phase2_stability_gate.json").read_text(encoding="utf-8"))
 CASES_BY_NAME = {case.name: case for case in P0_MATRIX_CASES}

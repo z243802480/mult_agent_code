@@ -1,11 +1,20 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.debug_command import DebugCommand
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from tests.helpers.spine import spine_response
+
+pytestmark = pytest.mark.spine_default
+
+
+def _mount_present(request: ChatRequest, needle: str) -> bool:
+    return any(needle in message.content for message in request.messages)
 
 
 def _response(payload: dict) -> ChatResponse:
@@ -67,96 +76,72 @@ class ContextPlanClient:
 
 class ContextExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        assert "Keep outputs local and markdown-first" in request.messages[-1].content
-        task_id = json.loads(request.messages[-1].content)["task"]["task_id"]
-        return _response(
-            {
-                "schema_version": "0.1.0",
-                "task_id": task_id,
-                "summary": "Create markdown artifact.",
-                "tool_calls": [
-                    {
-                        "tool_name": "write_file",
-                        "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
-                        "reason": "create artifact",
-                    }
-                ],
-                "verification": [
-                    {
-                        "tool_name": "run_command",
-                        "args": {
-                            "command": "python -c \"from pathlib import Path; assert Path('CONTEXT.md').exists()\""
-                        },
-                        "reason": "verify artifact",
-                    }
-                ],
-                "completion_notes": "CONTEXT.md exists",
-            }
+        assert _mount_present(request, "Keep outputs local and markdown-first")
+        return spine_response(
+            request,
+            narration="创建 markdown 产物并验证。",
+            tool_calls=[
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": "python -c \"from pathlib import Path; assert Path('CONTEXT.md').exists()\""
+                    },
+                },
+            ],
+            model_name="fake-context",
         )
 
 
 class BrokenExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        task_id = json.loads(request.messages[-1].content)["task"]["task_id"]
-        return _response(
-            {
-                "schema_version": "0.1.0",
-                "task_id": task_id,
-                "summary": "Create broken artifact.",
-                "tool_calls": [
-                    {
-                        "tool_name": "write_file",
-                        "args": {"path": "CONTEXT.md", "content": "remote\n", "overwrite": True},
-                        "reason": "create artifact",
-                    }
-                ],
-                "verification": [
-                    {
-                        "tool_name": "run_command",
-                        "args": {
-                            "command": (
-                                'python -c "from pathlib import Path; '
-                                "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
-                            )
-                        },
-                        "reason": "verify artifact",
-                    }
-                ],
-                "completion_notes": "intentionally broken",
-            }
+        return spine_response(
+            request,
+            narration="写入(会验证失败的)产物。",
+            tool_calls=[
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": "CONTEXT.md", "content": "remote\n", "overwrite": True},
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            'python -c "from pathlib import Path; '
+                            "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
+                        )
+                    },
+                },
+            ],
+            model_name="fake-context",
         )
 
 
 class ContextDebugClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        assert "Keep outputs local and markdown-first" in request.messages[-1].content
-        task_id = json.loads(request.messages[-1].content)["task"]["task_id"]
-        return _response(
-            {
-                "schema_version": "0.1.0",
-                "task_id": task_id,
-                "summary": "Repair artifact.",
-                "tool_calls": [
-                    {
-                        "tool_name": "write_file",
-                        "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
-                        "reason": "repair artifact",
-                    }
-                ],
-                "verification": [
-                    {
-                        "tool_name": "run_command",
-                        "args": {
-                            "command": (
-                                'python -c "from pathlib import Path; '
-                                "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
-                            )
-                        },
-                        "reason": "verify repair",
-                    }
-                ],
-                "completion_notes": "broken.py repaired",
-            }
+        assert _mount_present(request, "Keep outputs local and markdown-first")
+        return spine_response(
+            request,
+            narration="修复产物并验证。",
+            tool_calls=[
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": "CONTEXT.md", "content": "local\n", "overwrite": True},
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            'python -c "from pathlib import Path; '
+                            "assert Path('CONTEXT.md').read_text(encoding='utf-8') == 'local\\n'\""
+                        )
+                    },
+                },
+            ],
+            model_name="fake-context",
         )
 
 

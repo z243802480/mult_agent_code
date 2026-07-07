@@ -1,10 +1,15 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.new_command import NewCommand
 from asteria_runtime.commands.sessions_command import SessionsCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from tests.helpers.spine import spine_response
+
+pytestmark = pytest.mark.spine_default
 
 
 class GoalEchoPlanClient:
@@ -47,41 +52,27 @@ class GoalEchoPlanClient:
 
 class CurrentRunExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        content = request.messages[-1].content
-        path = "alpha.txt" if "alpha" in content.lower() else "beta.txt"
-        return ChatResponse(
-            content=json.dumps(
+        text = " ".join(message.content for message in request.messages).lower()
+        path = "alpha.txt" if "alpha" in text else "beta.txt"
+        return spine_response(
+            request,
+            narration=f"创建 {path} 并验证。",
+            tool_calls=[
                 {
-                    "schema_version": "0.1.0",
-                    "task_id": json.loads(content)["task"]["task_id"],
-                    "summary": f"Create {path}",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {"path": path, "content": path, "overwrite": True},
-                            "reason": "create artifact",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": (
-                                    'python -c "from pathlib import Path; '
-                                    f"assert Path('{path}').exists()\""
-                                )
-                            },
-                            "reason": "verify artifact",
-                        }
-                    ],
-                    "completion_notes": f"{path} exists",
-                }
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(1, 1, 2),
-            model_provider="fake",
+                    "tool_name": "write_file",
+                    "args": {"path": path, "content": path, "overwrite": True},
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            'python -c "from pathlib import Path; '
+                            f"assert Path('{path}').exists()\""
+                        )
+                    },
+                },
+            ],
             model_name="fake-execute",
-            raw_response={},
         )
 
 

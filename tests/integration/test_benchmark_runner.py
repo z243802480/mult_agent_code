@@ -2,6 +2,11 @@ from pathlib import Path
 
 from scripts.run_benchmarks import run_benchmarks
 
+# RA7b slice 3 (deferred): this benchmark's `failing_tests_project` case asserts FSM candidate-discard
+# + backup semantics (experiments.jsonl discarded candidate, restore_backup manifest) that the direct-
+# write spine intentionally does not produce. It stays pinned to the legacy FSM default until the
+# round-loop deletion, when the benchmark spec is reworked for spine repair evidence.
+
 
 def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("AGENT_MODEL_PROVIDER", "fake")

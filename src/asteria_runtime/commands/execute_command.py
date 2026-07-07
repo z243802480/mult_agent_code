@@ -1230,8 +1230,10 @@ class ExecuteCommand:
                 verification_results,
             )
             # changed_files 来自成功观察的 artifact_refs(脊梁 _execute 不填 data.path,recorder 的
-            # _changed_files 读不到)——用一个轻量 shim 把它喂进证据,让 replan 能据此推 expected_changed_files。
+            # _changed_files 读不到)——用一个轻量 shim 把它喂进证据,让 replan 能据此推 expected_changed_files
+            # 并让 artifacts.jsonl 记下产物。
             changed_shim = SimpleNamespace(ok=True, data={"changed_files": changed_files})
+            self.evidence_sink.record_artifacts(context, task, [changed_shim])
             self.execution_evidence.record(
                 context=context,
                 task=task,
@@ -2149,10 +2151,15 @@ def _is_verification_observation(observation: Any, *, allow_readback: bool = Fal
 
 
 def _looks_like_path(value: str) -> str | bool:
-    """A concrete relative file path (for the stop-guardrail) vs a prose placeholder: no whitespace,
-    and either a directory separator or a filename extension."""
+    """A concrete relative FILE path (for the stop-guardrail) vs a prose placeholder or directory
+    scope: no whitespace, and either a directory separator or a filename extension. A trailing-slash
+    entry (e.g. ``src/``) is a directory SCOPE, not a deliverable file — the guardrail must not force
+    the loop open waiting for it to "exist" (the model may legitimately write files anywhere in
+    scope, or the concrete filename differs), so it is not treated as a path to check."""
     text = value.strip()
     if not text or any(ch.isspace() for ch in text):
+        return False
+    if text.endswith("/") or text.endswith("\\"):
         return False
     return ("/" in text) or ("\\" in text) or ("." in Path(text).name)
 
