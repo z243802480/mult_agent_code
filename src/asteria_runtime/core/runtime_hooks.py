@@ -14,6 +14,28 @@ from asteria_runtime.utils.time import now_iso
 RuntimeHookHandler = Callable[[dict[str, Any]], None]
 
 
+@dataclass
+class RuntimeHookDecision:
+    """A control-hook's decision back to the loop (reference-first: mirrors Claude Code hook
+    outputs — inject context / force continue). Hooks are BOUNDARY glue, not cognition: they only
+    inject reminders or hold the loop open on a deterministic evidence check; they never decide
+    *how* to fix or *what* the next semantic step is (ADR-0016)."""
+
+    additional_context: str = ""  # injected into the model's next turn (a reminder / nudge)
+    continue_turn: bool = False  # hold the loop open when the model tried to stop (Stop-hook)
+
+    def merge(self, other: RuntimeHookDecision) -> RuntimeHookDecision:
+        parts = [part for part in (self.additional_context, other.additional_context) if part]
+        return RuntimeHookDecision(
+            additional_context="\n".join(parts),
+            continue_turn=self.continue_turn or other.continue_turn,
+        )
+
+
+# A control handler receives the recorded event (incl. its data payload) and may return a decision.
+RuntimeHookControlHandler = Callable[[dict[str, Any]], "RuntimeHookDecision | None"]
+
+
 @dataclass(frozen=True)
 class RuntimeHookPolicy:
     enabled: bool = True
@@ -26,6 +48,12 @@ class RuntimeHookPolicy:
             "before_tool_call",
             "after_tool_call",
             "tool_call_error",
+            # Control-hook points wiring the methodology layer into the model-driven loop
+            # (reference-first ~ CC SessionStart/UserPromptSubmit/PostToolUse/Stop):
+            "task_start",
+            "turn_start",
+            "post_tool_observation",
+            "pre_final",
         }
     )
     redacted_data_keys: frozenset[str] = frozenset(
@@ -102,12 +130,52 @@ class RuntimeHookManager:
         validator: SchemaValidator,
         handlers: list[RuntimeHookHandler] | None = None,
         policy: RuntimeHookPolicy | None = None,
+        control_handlers: list[RuntimeHookControlHandler] | None = None,
     ) -> None:
         self.validator = validator
         self.store = JsonlStore(validator)
         self.handlers = handlers or []
+        self.control_handlers = control_handlers or []
         self.policy = policy or RuntimeHookPolicy()
         self._lock = RLock()
+
+    def register_control_handler(self, handler: RuntimeHookControlHandler) -> None:
+        self.control_handlers.append(handler)
+
+    def dispatch_control(
+        self,
+        context: RuntimeContext,
+        hook_name: str,
+        phase: str,
+        actor: str,
+        summary: str,
+        *,
+        task: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> RuntimeHookDecision:
+        """Fire a CONTROL hook: record the event (like ``emit``), run control handlers, and merge
+        their decisions back to the caller. Returns an empty decision when hooks are disabled, the
+        name is not allowed, there is no run dir, or no handler responds — so callers can always act
+        on the result unconditionally. Handler failures are recorded, never raised (hooks must not
+        break a run)."""
+        record = self.emit(context, hook_name, phase, actor, summary, task=task, data=data)
+        decision = RuntimeHookDecision()
+        if record is None or not self.control_handlers:
+            return decision
+        for handler in self.control_handlers:
+            try:
+                result = handler(record)
+            except Exception as exc:  # noqa: BLE001 - control hooks must not break runs
+                self._record_event(
+                    context,
+                    "runtime_hook_control_failed",
+                    f"Runtime control hook failed for {record['hook_name']}: {exc}",
+                    {"hook_name": record["hook_name"], "error": str(exc)},
+                )
+                continue
+            if isinstance(result, RuntimeHookDecision):
+                decision = decision.merge(result)
+        return decision
 
     def configure(self, policy: dict[str, Any] | RuntimeHookPolicy) -> None:
         self.policy = (

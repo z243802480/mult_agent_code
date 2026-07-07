@@ -92,6 +92,58 @@ def test_runtime_hook_manager_blocks_disallowed_hook_name(tmp_path: Path) -> Non
     assert events[0]["type"] == "runtime_hook_blocked"
 
 
+def test_dispatch_control_merges_handler_decisions(tmp_path: Path) -> None:
+    from asteria_runtime.core.runtime_hooks import RuntimeHookDecision
+
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = _context(tmp_path, validator)
+
+    def reminder(_record: dict) -> RuntimeHookDecision:
+        return RuntimeHookDecision(additional_context="remember to verify")
+
+    def guardrail(_record: dict) -> RuntimeHookDecision:
+        return RuntimeHookDecision(additional_context="artifact missing", continue_turn=True)
+
+    manager = RuntimeHookManager(validator, control_handlers=[reminder, guardrail])
+
+    decision = manager.dispatch_control(
+        context, "pre_final", "execute", "ExecuteCommand", "model wants to stop",
+        task={"task_id": "task-0001"},
+    )
+
+    assert decision.continue_turn is True
+    assert "remember to verify" in decision.additional_context
+    assert "artifact missing" in decision.additional_context
+    # The control event is still recorded like any hook (audit trail).
+    hooks = JsonlStore(validator).read_all(tmp_path / "runtime_hooks.jsonl", "runtime_hook_event")
+    assert hooks[0]["hook_name"] == "pre_final"
+
+
+def test_dispatch_control_returns_empty_when_no_handlers(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = _context(tmp_path, validator)
+    manager = RuntimeHookManager(validator)
+
+    decision = manager.dispatch_control(context, "turn_start", "execute", "ExecuteCommand", "turn")
+
+    assert decision.continue_turn is False and decision.additional_context == ""
+
+
+def test_dispatch_control_handler_failure_is_audited_not_raised(tmp_path: Path) -> None:
+    validator = SchemaValidator(Path.cwd() / "schemas")
+    context = _context(tmp_path, validator)
+
+    def boom(_record: dict):
+        raise RuntimeError("control boom")
+
+    manager = RuntimeHookManager(validator, control_handlers=[boom])
+    decision = manager.dispatch_control(context, "turn_start", "execute", "ExecuteCommand", "turn")
+
+    assert decision.continue_turn is False
+    events = JsonlStore(validator).read_all(tmp_path / "events.jsonl", "event")
+    assert any(event["type"] == "runtime_hook_control_failed" for event in events)
+
+
 def _context(tmp_path: Path, validator: SchemaValidator) -> RuntimeContext:
     return RuntimeContext(
         root=tmp_path,
