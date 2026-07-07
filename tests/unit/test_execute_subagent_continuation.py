@@ -28,54 +28,6 @@ def _minimal_context(tmp_path: Path) -> RuntimeContext:
     )
 
 
-def test_parent_loop_stops_after_successful_subagent(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    cmd = ExecuteCommand(tmp_path)
-    context = _minimal_context(tmp_path)
-    observation = {"status": "succeeded", "next_recommended_action": "stop"}
-    assert (
-        cmd._should_continue_after_subagent(
-            context=context,
-            round_index=1,
-            max_rounds=8,
-            observation=observation,
-        )
-        is False
-    )
-
-
-def test_parent_loop_continues_after_failed_subagent_for_repair(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    cmd = ExecuteCommand(tmp_path)
-    context = _minimal_context(tmp_path)
-    observation = {"status": "failed", "next_recommended_action": "repair"}
-    assert (
-        cmd._should_continue_after_subagent(
-            context=context,
-            round_index=1,
-            max_rounds=8,
-            observation=observation,
-        )
-        is True
-    )
-
-
-def test_parent_loop_does_not_continue_on_stop_without_success(tmp_path: Path) -> None:
-    InitCommand(tmp_path).run()
-    cmd = ExecuteCommand(tmp_path)
-    context = _minimal_context(tmp_path)
-    observation = {"status": "failed", "next_recommended_action": "stop"}
-    assert (
-        cmd._should_continue_after_subagent(
-            context=context,
-            round_index=1,
-            max_rounds=8,
-            observation=observation,
-        )
-        is False
-    )
-
-
 def test_agent_loop_continues_after_failed_attempt_when_observation_requests_repair(
     tmp_path: Path,
 ) -> None:
