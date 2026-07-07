@@ -4272,6 +4272,73 @@ class FakeModelDrivenRecoveryClient:
         )
 
 
+class FakeModelDrivenMultiFileClient:
+    """立真身 across a multi-file task: writes two files in one step, verifies, then stops.
+    Proves the model-driven loop produces multiple artifacts through the real gateway."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {
+                "narration": "创建 notes 模块与它的测试。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    },
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/test_notes_tool.py",
+                            "content": "from notes_tool import add_note\n\n\ndef test_add():\n    assert add_note([], 'x') == ['x']\n",
+                            "overwrite": True,
+                        },
+                    },
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "两个文件都已创建。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-model-driven-multifile",
+            raw_response={},
+        )
+
+
+def test_execute_command_model_driven_turn_multi_file(tmp_path: Path) -> None:
+    """立真身 produces multiple files in one task (multi-artifact coverage)."""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenMultiFileClient()
+    ).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
+        "def add_note"
+    )
+    assert (tmp_path / "src" / "test_notes_tool.py").read_text(encoding="utf-8").startswith(
+        "from notes_tool"
+    )
+
+
 def test_execute_command_model_driven_turn_failed_observation_does_not_crash(
     tmp_path: Path,
 ) -> None:
