@@ -8,8 +8,11 @@ from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.review_command import ReviewCommand
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from tests.helpers.spine import spine_response
 
-pytestmark = pytest.mark.workflow
+# RA7b slice 3: this file drives the 立真身 spine (production default) — its execute fakes speak the
+# model-driven turn contract, so opt every test out of the conftest legacy-FSM pin.
+pytestmark = [pytest.mark.workflow, pytest.mark.spine_default]
 
 
 class FakePlanClient:
@@ -51,44 +54,29 @@ class FakePlanClient:
 
 class FakeExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content=json.dumps(
+        return spine_response(
+            request,
+            narration="创建 reviewed_module 并验证。",
+            tool_calls=[
                 {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Create module and verify it.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "reviewed_module.py",
-                                "content": "def answer():\n    return 42\n",
-                                "overwrite": True,
-                            },
-                            "reason": "create artifact",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": (
-                                    "python -c "
-                                    '"from reviewed_module import answer; assert answer() == 42"'
-                                )
-                            },
-                            "reason": "verify behavior",
-                        }
-                    ],
-                    "completion_notes": "reviewed_module.py works",
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "reviewed_module.py",
+                        "content": "def answer():\n    return 42\n",
+                        "overwrite": True,
+                    },
                 },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(15, 25, 40),
-            model_provider="fake",
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            "python -c "
+                            '"from reviewed_module import answer; assert answer() == 42"'
+                        )
+                    },
+                },
+            ],
             model_name="fake-execute",
-            raw_response={},
         )
 
 
@@ -131,39 +119,24 @@ class FakeDocPlanClient:
 
 class FakeDocReadbackExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        return ChatResponse(
-            content=json.dumps(
+        return spine_response(
+            request,
+            narration="创建文档并读回验证。",
+            tool_calls=[
                 {
-                    "schema_version": "0.1.0",
-                    "task_id": "task-0001",
-                    "summary": "Create documentation and read it back.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "docs/p0_matrix_doc_update.md",
-                                "content": "# P0 Matrix Doc Update\n\n- Evidence captured\n",
-                                "overwrite": True,
-                            },
-                            "reason": "create documentation artifact",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "read_file",
-                            "args": {"path": "docs/p0_matrix_doc_update.md"},
-                            "reason": "verify the artifact can be read back",
-                        }
-                    ],
-                    "completion_notes": "documentation artifact exists",
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "docs/p0_matrix_doc_update.md",
+                        "content": "# P0 Matrix Doc Update\n\n- Evidence captured\n",
+                        "overwrite": True,
+                    },
                 },
-                ensure_ascii=False,
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(15, 25, 40),
-            model_provider="fake",
+                {
+                    "tool_name": "read_file",
+                    "args": {"path": "docs/p0_matrix_doc_update.md"},
+                },
+            ],
             model_name="fake-doc-execute",
-            raw_response={},
         )
 
 
@@ -335,9 +308,9 @@ def test_review_command_writes_eval_and_markdown_reports(tmp_path: Path) -> None
     assert run["status"] == "completed"
     assert run["current_phase"] == "REVIEWED"
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 3
-    assert cost_report["estimated_input_tokens"] == 45
-    assert cost_report["estimated_output_tokens"] == 75
+    assert cost_report["model_calls"] == 4
+    assert cost_report["estimated_input_tokens"] == 60
+    assert cost_report["estimated_output_tokens"] == 100
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
@@ -381,7 +354,7 @@ def test_review_command_uses_deterministic_first_for_fast_path_without_model_cli
     assert review_tier["accepted_without_model"] is True
     assert review_tier["fast_path"]["task_kind"] == "simple_file"
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 2
+    assert cost_report["model_calls"] == 3
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
@@ -426,7 +399,7 @@ def test_review_command_accepts_recovered_fast_path_worker_failure_without_model
     assert review_tier["mode"] == "deterministic_first"
     assert review_tier["accepted_without_model"] is True
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 2
+    assert cost_report["model_calls"] == 3
 
 
 def test_review_command_accepts_doc_fast_path_readback_without_model_call(
@@ -455,7 +428,7 @@ def test_review_command_accepts_doc_fast_path_readback_without_model_call(
     assert review_tier["accepted_without_model"] is True
     assert review_tier["fast_path"]["task_kind"] == "doc_update"
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 2
+    assert cost_report["model_calls"] == 3
 
 
 def test_review_command_requires_command_verification_for_bugfix_fast_path(
@@ -562,7 +535,7 @@ def test_review_command_reports_high_risk_follow_up_without_orchestrating(tmp_pa
     task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
     assert len(task_plan["tasks"]) == 1
     cost_report = json.loads((run_dir / "cost_report.json").read_text(encoding="utf-8"))
-    assert cost_report["model_calls"] == 3
+    assert cost_report["model_calls"] == 4
     assert cost_report["user_decisions"] == 0
 
 

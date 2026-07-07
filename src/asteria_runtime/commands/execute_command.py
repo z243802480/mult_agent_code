@@ -68,6 +68,7 @@ from asteria_runtime.core.runtime_policy import (
 )
 from asteria_runtime.core.task_blocking_handler import BlockingResult, TaskBlockingHandler
 from asteria_runtime.core.task_attempt_runner import TaskAttemptRunner
+from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.task_contract import check_completion_contract
 from asteria_runtime.core.task_execution_evidence import TaskExecutionEvidenceRecorder
 from asteria_runtime.core.task_board import TaskBoard
@@ -1174,7 +1175,20 @@ class ExecuteCommand:
             for ref in getattr(obs, "artifact_refs", [])
             if ref
         ]
-        verification_results = [obs for obs in observations if _is_verification_observation(obs)]
+        # 验证证据口径与 review 的确定性快评保持一致(单一真源语义):仅 bug_fix/single_file_bugfix
+        # 要求可执行命令验证,其余(含 doc_update)读回产物即算验证。用同一 classify_fast_path 判定,
+        # 避免执行门与评审门对"何为验证"各执一词。
+        fast_path = classify_fast_path(
+            str(goal_spec.get("normalized_goal") or goal_spec.get("original_goal") or ""),
+            goal_spec=goal_spec,
+            task=task,
+        )
+        allow_readback = fast_path.task_kind not in {"bug_fix", "single_file_bugfix"}
+        verification_results = [
+            obs
+            for obs in observations
+            if _is_verification_observation(obs, allow_readback=allow_readback)
+        ]
         contract = check_completion_contract(task, changed_files, verification_results)
         tool_calls = len(observations)
         verification_calls = contract.verification_total
@@ -1200,6 +1214,31 @@ class ExecuteCommand:
         else:
             task_board.update_status(task_id, "blocked")
             task_board.update_notes(task_id, summary)
+
+        # 证据契约对齐（脊梁作一等证据生产者）：把本任务的验证结果 + 任务执行证据落进与 FSM 同名的
+        # sink,让下游消费者(review 的确定性快评/恢复判定、worker_result.validation_refs、
+        # real_model_acceptance、runtime_validation_evidence)读到脊梁执行证据,而不是只看到空壳。
+        # 无候选/experiments(直写模型),故不写 experiments.jsonl。
+        contract_dict = contract.to_dict()
+        validation_refs: list[str] = []
+        if context.run_dir is not None:
+            validation_refs = self.evidence_sink.record_validation_results(
+                context,
+                task,
+                [{"tool_name": obs.tool_name, "args": {}} for obs in verification_results],
+                verification_results,
+            )
+            self.execution_evidence.record(
+                context=context,
+                task=task,
+                action={"summary": summary, "tool_calls": [], "verification": []},
+                tool_results=observations,
+                verification_results=verification_results,
+                status=status,
+                summary=summary,
+                actor="ModelDrivenTurn",
+                contract_check=contract_dict,
+            )
         evidence_path = context.run_dir / "tool_calls.jsonl" if context.run_dir else None
         # NB schema-double-trap: SUMMARY_STATUSES = {completed, blocked, waiting_user, stopped}
         # (NOT "succeeded"); EXIT_REASONS has no "budget_exhausted" — the fuse tripping IS the
@@ -1226,7 +1265,7 @@ class ExecuteCommand:
             tool_calls=tool_calls,
             verification_calls=verification_calls,
             evidence_path=evidence_path,
-            validation_refs=[],
+            validation_refs=validation_refs,
         )
 
     def _model_driven_prompts(
@@ -2092,11 +2131,17 @@ def _readonly_probe_list_path(task: dict) -> str:
 _VERIFICATION_TOOL_NAMES = frozenset({"run_command", "run_tests", "run_pytest"})
 
 
-def _is_verification_observation(observation: Any) -> bool:
+def _is_verification_observation(observation: Any, *, allow_readback: bool = False) -> bool:
     """立真身把统一 tool_calls 里"跑命令"的观察当作验证证据。对齐 FSM 的 verification 分离：
     FSM 单列 ``action["verification"]``（清一色 run_command），脊梁没有这层分离，于是用工具名归类
-    ——run_command 一类即验证。完成契约（task_contract）据此判定验证跑没跑 / 过没过（ADR-0016 边界）。"""
-    return str(getattr(observation, "tool_name", "") or "") in _VERIFICATION_TOOL_NAMES
+    ——run_command 一类即验证。完成契约（task_contract）据此判定验证跑没跑 / 过没过（ADR-0016 边界）。
+
+    ``allow_readback``：文档/报告类任务没有可执行命令,其"验证"就是把产物读回确认(对齐 review 的
+    artifact_readback 计入 verification_call_count);代码类任务仍必须跑命令,read_file 不算数。"""
+    name = str(getattr(observation, "tool_name", "") or "")
+    if name in _VERIFICATION_TOOL_NAMES:
+        return True
+    return allow_readback and name == "read_file"
 
 
 def _looks_like_path(value: str) -> str | bool:
