@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from types import SimpleNamespace
 from typing import Any, Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1228,11 +1229,14 @@ class ExecuteCommand:
                 [{"tool_name": obs.tool_name, "args": {}} for obs in verification_results],
                 verification_results,
             )
+            # changed_files 来自成功观察的 artifact_refs(脊梁 _execute 不填 data.path,recorder 的
+            # _changed_files 读不到)——用一个轻量 shim 把它喂进证据,让 replan 能据此推 expected_changed_files。
+            changed_shim = SimpleNamespace(ok=True, data={"changed_files": changed_files})
             self.execution_evidence.record(
                 context=context,
                 task=task,
                 action={"summary": summary, "tool_calls": [], "verification": []},
-                tool_results=observations,
+                tool_results=[changed_shim],
                 verification_results=verification_results,
                 status=status,
                 summary=summary,

@@ -5,7 +5,13 @@ from asteria_runtime.commands.execute_command import ExecuteCommand
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
 from asteria_runtime.commands.replan_command import ReplanCommand
+import pytest
+
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
+from tests.helpers.spine import spine_response
+
+# RA7b slice 3: replan drives the 立真身 spine (production default) — opt out of the legacy-FSM pin.
+pytestmark = pytest.mark.spine_default
 
 
 class FakePlanClient:
@@ -46,44 +52,29 @@ class FakePlanClient:
 
 class FakeBrokenExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
-        task_id = json.loads(request.messages[-1].content)["task"]["task_id"]
-        return ChatResponse(
-            content=json.dumps(
+        return spine_response(
+            request,
+            narration="创建模块（值写错）并验证。",
+            tool_calls=[
                 {
-                    "schema_version": "0.1.0",
-                    "task_id": task_id,
-                    "summary": "Create module with wrong value.",
-                    "tool_calls": [
-                        {
-                            "tool_name": "write_file",
-                            "args": {
-                                "path": "complete_module.py",
-                                "content": "def answer():\n    return 41\n",
-                                "overwrite": True,
-                            },
-                            "reason": "create broken artifact",
-                        }
-                    ],
-                    "verification": [
-                        {
-                            "tool_name": "run_command",
-                            "args": {
-                                "command": (
-                                    "python -c "
-                                    '"from complete_module import answer; assert answer() == 42"'
-                                )
-                            },
-                            "reason": "verify behavior",
-                        }
-                    ],
-                    "completion_notes": "intentionally broken",
-                }
-            ),
-            finish_reason="stop",
-            usage=TokenUsage(1, 1, 2),
-            model_provider="fake",
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "complete_module.py",
+                        "content": "def answer():\n    return 41\n",
+                        "overwrite": True,
+                    },
+                },
+                {
+                    "tool_name": "run_command",
+                    "args": {
+                        "command": (
+                            "python -c "
+                            '"from complete_module import answer; assert answer() == 42"'
+                        )
+                    },
+                },
+            ],
             model_name="fake-execute",
-            raw_response={},
         )
 
 
@@ -102,11 +93,11 @@ def test_replan_command_creates_repair_task_from_task_failure_evidence(tmp_path:
     assert [task["status"] for task in task_plan["tasks"]] == ["discarded", "ready"]
     repair_task = task_plan["tasks"][1]
     assert repair_task["task_id"] == "task-0002"
-    assert repair_task["replan"]["source_evidence_id"] == "task-execution-0002"
+    assert repair_task["replan"]["source_evidence_id"] == "task-execution-0001"
     assert repair_task["expected_changed_files"] == ["complete_module.py"]
     assert "list_files" in repair_task["allowed_tools"]
-    assert "Primary evidence: task-execution-0002" in repair_task["description"]
-    assert "Candidate workspace:" in repair_task["description"]
+    assert "Primary evidence: task-execution-0001" in repair_task["description"]
+    # 直写脊梁没有候选工作区(FSM 候选隔离已随重塑退役),故修复描述不再引用 "Candidate workspace:"。
     assert "verification did not pass" in repair_task["description"]
     backlog = json.loads(
         (tmp_path / ".asteria" / "tasks" / "backlog.json").read_text(encoding="utf-8")
@@ -144,7 +135,7 @@ def test_replan_command_creates_decision_after_replan_limit(tmp_path: Path) -> N
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert decisions[0]["metadata"]["kind"] == "replan_decision"
-    assert decisions[0]["metadata"]["source_evidence_id"] == "task-execution-0002"
+    assert decisions[0]["metadata"]["source_evidence_id"] == "task-execution-0001"
     user_progress = [
         json.loads(line)
         for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
