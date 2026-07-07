@@ -81,6 +81,18 @@ class TurnEvent:
     observations: list[ToolObservation] = field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class TurnControl:
+    """A control-hook's decision back to the loop (mirrors ``RuntimeHookDecision``, kept
+    dependency-free here so this module stays pure). ``additional_context`` is injected as the
+    model's next input (a reminder / nudge); ``continue_turn`` holds the loop open when the model
+    tried to stop but a deterministic boundary (e.g. expected artifact absent) is unmet — the hook
+    hands control BACK to the model, it never decides the next semantic step (ADR-0016)."""
+
+    additional_context: str = ""
+    continue_turn: bool = False
+
+
 @dataclass
 class ModelDrivenTurnResult:
     status: str  # "completed" | "budget_exhausted"
@@ -107,6 +119,7 @@ def run_model_driven_turn(
     max_output_tokens: int = 5000,
     transport: str = "json",
     on_event: Callable[[TurnEvent], None] | None = None,
+    hook: Callable[[str, dict], TurnControl] | None = None,
 ) -> ModelDrivenTurnResult:
     """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
 
@@ -138,6 +151,16 @@ def run_model_driven_turn(
 
     nudged = False
     for iteration in range(1, max_iterations + 1):
+        # turn_start control hook: the methodology glue may inject a reminder (available skills +
+        # current todo + "verify before finishing") as the model's next input. Density is the hook's
+        # call (tunable by tier); the loop just injects whatever it returns. Boundary, not cognition.
+        if hook is not None:
+            control = hook(
+                "turn_start",
+                {"iteration": iteration, "task": task, "observation_count": len(all_observations)},
+            )
+            if control.additional_context:
+                messages.append(ChatMessage(role="user", content=control.additional_context))
         request = ChatRequest(
             purpose=request_purpose,
             model_tier=model_tier,
@@ -159,10 +182,30 @@ def run_model_driven_turn(
             emit(TurnEvent(kind="narration", iteration=iteration, text=narration))
 
         if not calls:
-            # 模型只说话、不调工具 = 它认为本轮做完了。唯一的例外是弱模型的"过早收尾"：
-            # 第一轮就停、任务还有明确产出、且尚无任何 observation —— 轻推一次（继续），
-            # 而不是把没根据的 stop 当完成。推一次即止，之后完全尊重模型判断（ADR-0016：
-            # 脚手架是护栏不是认知，且只在证据支持时介入）。
+            # 模型只说话、不调工具 = 它认为本轮做完了。先问 pre_final(stop)续跑守门 hook：它按
+            # 确定性证据边界(产物在不在/验证跑没跑)决定要不要把控制交回模型(continue_turn)，
+            # 自己不做认知。hook 未给决策时，回落到内置的一次性"过早收尾"轻推。max_iterations 兜底。
+            if hook is not None:
+                control = hook(
+                    "pre_final",
+                    {
+                        "iteration": iteration,
+                        "task": task,
+                        "narration": narration,
+                        "observation_count": len(all_observations),
+                    },
+                )
+                if control.continue_turn:
+                    messages.append(
+                        ChatMessage(role="assistant", content=narration or "(no tool call)")
+                    )
+                    messages.append(
+                        ChatMessage(
+                            role="user", content=control.additional_context or _grounding_nudge(task)
+                        )
+                    )
+                    continue
+            # 弱模型的"过早收尾"内置兜底：第一轮就停、任务还有明确产出、且尚无任何 observation。
             if iteration == 1 and not nudged and not all_observations and _has_pending_work(task):
                 nudged = True
                 messages.append(ChatMessage(role="assistant", content=narration or "(no tool call)"))

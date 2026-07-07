@@ -14,7 +14,11 @@ import json
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-from asteria_runtime.core.model_driven_turn import TurnEvent, run_model_driven_turn
+from asteria_runtime.core.model_driven_turn import (
+    TurnControl,
+    TurnEvent,
+    run_model_driven_turn,
+)
 
 
 def _resp(narration: str, *tool_calls: tuple[str, dict]) -> SimpleNamespace:
@@ -290,3 +294,57 @@ def test_json_transport_invalid_json_does_not_crash() -> None:
     assert result.status == "completed"
     assert result.iterations == 1
     assert result.observations == []
+
+
+# --- 控制型 Hook 胶水（把方法论层串进循环，保连续性）--------------------------------------
+
+
+def test_hook_turn_start_injects_reminder() -> None:
+    model = FakeModelClient(
+        [
+            _json_resp("建文件", [{"tool_name": "write_file", "args": {"path": "x", "content": "y"}}]),
+            _json_resp("完成", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary="wrote")]])
+
+    def hook(name: str, _payload: dict) -> TurnControl:
+        if name == "turn_start":
+            return TurnControl(additional_context="REMINDER: verify before finishing")
+        return TurnControl()
+
+    result = _run(model, tools, transport="json", hook=hook)
+
+    assert result.status == "completed"
+    # The reminder was injected into the model's first turn as input.
+    first_call_texts = [m.content for m in model.requests[0].messages]
+    assert any("REMINDER" in text for text in first_call_texts)
+
+
+def test_hook_pre_final_holds_loop_open_until_evidence() -> None:
+    # Model tries to stop at iteration 1; the stop-guardrail hook forces one more turn (continuity),
+    # then the model does the work and finishes. Guardrail = boundary, model still decides the step.
+    model = FakeModelClient(
+        [
+            _json_resp("看起来不用做什么"),  # premature stop
+            _json_resp("好,建文件", [{"tool_name": "write_file", "args": {"path": "calc.py", "content": "code"}}]),
+            _json_resp("完成", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary="wrote calc.py")]])
+    fired = {"n": 0}
+
+    def hook(name: str, _payload: dict) -> TurnControl:
+        if name == "pre_final" and fired["n"] == 0:
+            fired["n"] += 1
+            return TurnControl(additional_context="artifact not produced yet, continue", continue_turn=True)
+        return TurnControl()
+
+    task = {"task_id": "task-0001", "allowed_tools": ["write_file"], "write_scope": ["calc.py"]}
+    result = _run(model, tools, transport="json", task=task, hook=hook)
+
+    assert result.status == "completed"
+    assert result.iterations == 3
+    assert len(result.observations) == 1
+    second_call_texts = [m.content for m in model.requests[1].messages]
+    assert any("continue" in text for text in second_call_texts)
