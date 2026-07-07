@@ -4638,9 +4638,16 @@ def test_execute_command_model_driven_turn_spawn_subagent(tmp_path: Path) -> Non
 
 
 def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
-    """flag 默认关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。"""
+    """flag 显式关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。
+
+    RA7 后立真身已是默认；本测试锁定「一键回退」——把 model_driven_turn 显式置 False 时
+    行为仍是老 FSM 路径（保留 flag 的可逆性契约）。"""
     InitCommand(tmp_path).run()
     plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = False
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
 
     result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
 
@@ -4653,3 +4660,39 @@ def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path
     assert not any(
         (event.get("data") or {}).get("model_driven_turn") for event in user_progress
     )
+
+
+@pytest.mark.spine_default
+def test_execute_command_default_routes_through_model_driven_spine(tmp_path: Path) -> None:
+    """RA7 翻默认锁定：策略里**不设** model_driven_turn 键时，走的就是立真身脊梁（生产默认）。
+
+    这个用例 `@spine_default` 显式退出 conftest 的 RA7 legacy-FSM pin，因此它验证的是**真实翻转
+    后的默认**——没有任何对启用判定的打桩。默认路径必须产出工件、把 model_driven_turn 标记写进
+    user_progress，并如实收口为 completed。"""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeModelDrivenClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    # 默认（无 flag）就走 JSON transport 的立真身通路，而不是 FSM 的 next_action 填表。
+    assert client.transports and all(transport == "json" for transport in client.transports)
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith("def add_note")
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any((event.get("data") or {}).get("model_driven_turn") for event in user_progress)
+
+
+@pytest.mark.spine_default
+def test_model_driven_turn_default_is_on_after_ra7_flip(tmp_path: Path) -> None:
+    """单元级锁死：`_model_driven_turn_enabled` 在策略缺省 model_driven_turn 键时返回 True
+    （RA7 生产默认已翻转），显式 False 仍可一键回退。不打桩、直调真实方法。"""
+    command = ExecuteCommand(tmp_path, run_id="run-unused", model_client=FakeExecuteClient())
+    assert command._model_driven_turn_enabled({}) is True
+    assert command._model_driven_turn_enabled({"agent_loop": {}}) is True
+    assert command._model_driven_turn_enabled({"agent_loop": {"model_driven_turn": False}}) is False

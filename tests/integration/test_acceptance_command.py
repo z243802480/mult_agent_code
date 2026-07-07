@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from asteria_runtime.acceptance.runtime_os_catalog import (
     runtime_os_capability_names,
     runtime_os_scenario_names,
@@ -73,7 +75,16 @@ def test_acceptance_command_runs_offline_suite_with_fake_provider(tmp_path: Path
     assert history[0]["trend"]["previous"] is None
 
 
-def test_acceptance_runtime_os_scenarios_feed_release_gate(tmp_path: Path) -> None:
+def test_acceptance_runtime_os_scenarios_feed_release_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # RA7: the runtime-OS acceptance scenarios validate the FSM runtime-management mechanism
+    # (probes, parallel-readonly / disjoint-write fanout) via RuntimeAcceptanceClient, which speaks
+    # the FSM ExecutionAction contract. AcceptanceCommand runs them in a spawned subprocess (out of
+    # reach of the in-process conftest pin), so we pin the legacy FSM path fleet-wide with the
+    # rollout override env — it propagates through os.environ.copy() into that subprocess. RA7b
+    # migrates or retires these scenarios alongside the FSM deletion.
+    monkeypatch.setenv("ASTERIA_MODEL_DRIVEN_TURN", "0")
     root = tmp_path / "runtime-os"
     scenarios = runtime_os_scenario_names()
 

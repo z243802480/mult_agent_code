@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Callable
 from dataclasses import dataclass, field, replace
@@ -467,12 +468,19 @@ class ExecuteCommand:
         # 立真身 (ADR-0016 §1): route the whole coding task through the model-driven single loop
         # (model→tool→observation→model) instead of the per-round next_action FSM. The loop's only
         # control branch is "did the model call a tool this step or stop"; failures are fed back as
-        # observations (no independent repair/replan branch, no closed action enum). Default OFF —
-        # behaviour is byte-identical to the FSM path when disabled; flipped on for gray rollout /
-        # behavioural comparison on the glm/minimax stack. Flag: agent_loop.model_driven_turn.
+        # observations (no independent repair/replan branch, no closed action enum).
+        # RA7 flipped the default ON — 立真身 is now the coding brain for every real task. The FSM
+        # path remains reachable as a one-flag opt-out (agent_loop.model_driven_turn=False) until
+        # RA7b deletes it; that keeps the switch reversible byte-for-byte. Flag: agent_loop.model_driven_turn.
+        # Rollout/rollback override: ASTERIA_MODEL_DRIVEN_TURN=0/1 forces the path fleet-wide (and
+        # into spawned subprocesses via inherited env) without editing every policies.json — wins
+        # over policy so an operator can pin the legacy FSM path during a staged rollout.
+        override = os.environ.get("ASTERIA_MODEL_DRIVEN_TURN")
+        if override is not None and override.strip():
+            return override.strip().lower() in {"1", "true", "yes", "on"}
         raw_agent_loop = policy.get("agent_loop")
         agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
-        return bool(agent_loop.get("model_driven_turn", False))
+        return bool(agent_loop.get("model_driven_turn", True))
 
     def _loop_quality_guard_config(self, policy: dict) -> dict | None:
         raw_agent_loop = policy.get("agent_loop")

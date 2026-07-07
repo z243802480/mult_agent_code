@@ -99,6 +99,11 @@ class FakeModelClient:
             return {"ok": True}
         if request.purpose == "goal_spec":
             return self._goal_spec(request)
+        if (request.metadata or {}).get("loop") == "model_driven_turn":
+            # 立真身脊梁（RA7 后的默认路径）：模型每步返回 {narration, tool_calls, done}，
+            # 而不是 FSM 的 ExecutionAction。离线 fake 也须能驱动脊梁到完成，否则脊梁默认下
+            # 离线跑一律撞保险丝空转。第一步写工件 + 验证，看到 observation 后收尾。
+            return self._model_driven_turn(request)
         if request.purpose in {"task_execution", "task_repair"}:
             return self._execution_action(request)
         if request.purpose == "run_review":
@@ -176,6 +181,56 @@ class FakeModelClient:
             "tool_calls": tool_calls,
             "verification": verification,
             "completion_notes": f"{target_paths[0]} exists" if target_paths else "no artifact target",
+        }
+
+    def _model_driven_turn(self, request: ChatRequest) -> dict:
+        """立真身单循环的离线 fake 步。契约 = {narration, tool_calls, done}（见
+        ``model_driven_turn._JSON_TURN_CONTRACT``）。第一步（历史里还没有 assistant 轮）产出
+        write_file(每个目标) + run_command 验证；看到工具 observation 回灌（已有 assistant 轮）后
+        收尾 done=true。无写目标的只读任务直接收尾。"""
+        already_acted = any(
+            getattr(message, "role", "") == "assistant" for message in request.messages
+        )
+        # 首个 user 消息（index 1）是 _model_driven_prompts 打的 task 载荷；系统提示在 index 0。
+        task: dict = {}
+        for message in request.messages:
+            if getattr(message, "role", "") != "user":
+                continue
+            try:
+                payload = json.loads(message.content)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if isinstance(payload, dict) and isinstance(payload.get("task"), dict):
+                task = payload["task"]
+                break
+        target_paths = self._task_target_paths(task)
+        if already_acted or not target_paths:
+            return {
+                "narration": "工件已产出并通过验证，任务完成。",
+                "tool_calls": [],
+                "done": True,
+            }
+        calls: list[dict] = []
+        for path in target_paths:
+            content = self._content_for_task_path(task, path)
+            calls.append(
+                {
+                    "tool_name": "write_file",
+                    "args": {"path": path, "content": content, "overwrite": True},
+                }
+            )
+        first_path = target_paths[0]
+        first_content = self._content_for_task_path(task, first_path)
+        calls.append(
+            {
+                "tool_name": "run_command",
+                "args": {"command": self._verification_command(first_path, first_content.strip())},
+            }
+        )
+        return {
+            "narration": f"创建 {first_path} 并运行验证。",
+            "tool_calls": calls,
+            "done": False,
         }
 
     def _eval_report(self, request: ChatRequest) -> dict:

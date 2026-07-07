@@ -56,6 +56,7 @@ markers = [
   "real_provider_validation: real-provider validation acceptance tests and validation contracts",
   "real_provider_core: real-provider core/nightly acceptance contracts",
   "mcp_official_smoke: official MCP server stdio smoke tests",
+  "spine_default: opt out of the RA7 legacy-FSM pin to exercise the real flipped model_driven_turn default",
 ]
 
 [tool.ruff]
