@@ -1147,6 +1147,16 @@ class ExecuteCommand:
 
         tool_runner = _SubagentAwareToolRunner(self.tool_gateway, _spawn_subagent)
 
+        def _approval_gate(calls: list[dict]) -> dict | None:
+            # 人审边界（ADR-0016）：把模型这一步要跑的整批工具当作一个待审动作，交给与 FSM 同一套
+            # 执行策略去判定——命中 shell denylist 且尚无 approve_once 决策就生成一个 execution_policy_
+            # approval DecisionPoint（已在案则返回 None）。策略/决策归 harness，脊梁循环只在执行边界拦。
+            return self.tool_permission_policy.create_policy_decision_if_needed(
+                action={"tool_calls": list(calls), "verification": []},
+                task=task,
+                context=context,
+            )
+
         result = run_model_driven_turn(
             model_client=coder.model_client,
             tool_runner=tool_runner,
@@ -1160,7 +1170,22 @@ class ExecuteCommand:
             transport="json",
             on_event=lambda event: self._record_model_driven_event(context, task, event),
             hook=_hook,
+            approval_gate=_approval_gate,
         )
+
+        # 人审边界命中（ADR-0016：人审=显式边界）：脊梁在跑到需人批的工具批前整批停手，本轮无残留
+        # 写入。复用 FSM 同一套 block/证据/进度落法（单一真源），把任务标 blocked 并留下 pending
+        # DecisionPoint —— run 层据 pending_decisions 把整个 run 报成 paused。人批后 resume 重跑本任务，
+        # gate 认到 approval 便放行整批。
+        if result.status == "paused" and result.pending_decision is not None:
+            return self._pause_model_driven_task(
+                task=task,
+                task_board=task_board,
+                context=context,
+                decision=result.pending_decision,
+                rounds_completed=result.iterations,
+                max_rounds=max_iterations,
+            )
 
         # 立真身完成判定 = 确定性正确性边界（ADR-0016：认知归模型、证据边界归 harness）。模型吐
         # done 只是它的认知；工件到底改没改、验证跑没跑 / 过没过，由 harness 用与 FSM 同一套
@@ -1273,6 +1298,65 @@ class ExecuteCommand:
             evidence_path=evidence_path,
             validation_refs=validation_refs,
         )
+
+    def _pause_model_driven_task(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        decision: dict,
+        rounds_completed: int,
+        max_rounds: int,
+    ) -> TaskExecutionSummary:
+        """脊梁命中人审边界时的收尾（ADR-0016：人审=显式边界）。复用 FSM 同一套 block/证据/进度落法：
+        任务标 blocked + 留 pending DecisionPoint，run 层据 pending_decisions 把 run 报成 paused。"""
+        task_id = task["task_id"]
+        blocked = self.blocking_handler.block_for_policy_decision(
+            context=context,
+            task_board=task_board,
+            task=task,
+            action={
+                "summary": "模型驱动循环命中执行策略人审边界，整批工具暂停待人批。",
+                "tool_calls": [],
+                "verification": [],
+            },
+            decision=decision,
+        )
+        self._record_agent_loop_run_summary(
+            context=context,
+            task_id=task_id,
+            status="waiting_user",
+            exit_reason="ask",
+            rounds_completed=rounds_completed,
+            max_rounds=max_rounds,
+            summary=blocked.summary,
+            recommended_command="decide --list",
+            latest_decision=None,
+            latest_execution=None,
+            latest_observation=None,
+            evidence_refs=self._refs(blocked.evidence_path),
+        )
+        self._record_progress(
+            context,
+            task,
+            channel="progress",
+            event_type="decision",
+            phase="blocked",
+            status="waiting_user",
+            title="Tool permission decision required",
+            summary=blocked.summary,
+            evidence_refs=self._refs(blocked.evidence_path),
+            transcript_kind="ask",
+            ui_intent="needs_input",
+            data={
+                "task_id": task_id,
+                "decision_id": decision.get("decision_id"),
+                "risk": decision.get("risk"),
+                "reason": decision.get("reason"),
+            },
+        )
+        return self._blocked_task_summary(blocked)
 
     def _model_driven_prompts(
         self,

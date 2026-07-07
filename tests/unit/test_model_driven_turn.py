@@ -348,3 +348,62 @@ def test_hook_pre_final_holds_loop_open_until_evidence() -> None:
     assert len(result.observations) == 1
     second_call_texts = [m.content for m in model.requests[1].messages]
     assert any("continue" in text for text in second_call_texts)
+
+
+# --- 人审边界（ADR-0016：人审=显式边界，不是模型认知）----------------------------------------
+
+
+def test_approval_gate_halts_whole_batch_and_reports_paused() -> None:
+    # gate 对这批工具返回一个待人批决策 = 命中人审边界：整批**一个都不跑**（无残留写入），
+    # 循环返回 paused 并携带该决策上抛。模型这一步的 tool_calls 被原地停住，不进 observation。
+    model = FakeModelClient(
+        [
+            _json_resp(
+                "先跑一条需人批的命令,再写文件",
+                [
+                    {"tool_name": "run_command", "args": {"command": "rm -rf / && echo hi"}},
+                    {"tool_name": "write_file", "args": {"path": "calc.py", "content": "code"}},
+                ],
+            ),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True)]])
+    decision = {"decision_id": "decision-0001", "metadata": {"kind": "execution_policy_approval"}}
+
+    def gate(calls: list[dict]):
+        # 只要这批里有需人批的动作,就返回决策(真值)——整批停手。
+        return decision if calls else None
+
+    result = _run(model, tools, transport="json", approval_gate=gate)
+
+    assert result.status == "paused"
+    assert result.pending_decision is decision
+    assert result.iterations == 1
+    # 关键:整批未执行——工具网关一次都没被调用,没有任何 observation 残留。
+    assert tools.calls_seen == []
+    assert result.observations == []
+    assert result.events[-1].kind == "paused"
+
+
+def test_approval_gate_none_lets_batch_run_as_usual() -> None:
+    # gate 对该批返回 None（已在案/无需人批）= 未命中边界：整批照常执行，行为与无 gate 时一致。
+    model = FakeModelClient(
+        [
+            _json_resp("建文件", [{"tool_name": "write_file", "args": {"path": "calc.py", "content": "code"}}]),
+            _json_resp("完成", [], done=True),
+        ]
+    )
+    tools = FakeToolRunner([[FakeToolResult(ok=True, summary="wrote calc.py")]])
+    seen_batches: list[list[dict]] = []
+
+    def gate(calls: list[dict]):
+        seen_batches.append(calls)
+        return None
+
+    result = _run(model, tools, transport="json", approval_gate=gate)
+
+    assert result.status == "completed"
+    assert result.iterations == 2
+    assert len(result.observations) == 1 and result.observations[0].tool_name == "write_file"
+    # gate 被问过一次(那一批工具),但放行了。
+    assert len(seen_batches) == 1

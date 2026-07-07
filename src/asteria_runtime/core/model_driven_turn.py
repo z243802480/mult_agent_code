@@ -73,9 +73,9 @@ class ChatClient(Protocol):
 
 @dataclass(frozen=True)
 class TurnEvent:
-    """一步循环产生的可观察事件（narration/工具观察/完成/保险丝），供上层投影到主线程。"""
+    """一步循环产生的可观察事件（narration/工具观察/完成/保险丝/人审暂停），供上层投影到主线程。"""
 
-    kind: str  # "narration" | "tool_observation" | "final" | "fuse"
+    kind: str  # "narration" | "tool_observation" | "final" | "fuse" | "paused"
     iteration: int
     text: str = ""
     observations: list[ToolObservation] = field(default_factory=list)
@@ -95,11 +95,14 @@ class TurnControl:
 
 @dataclass
 class ModelDrivenTurnResult:
-    status: str  # "completed" | "budget_exhausted"
+    status: str  # "completed" | "budget_exhausted" | "paused"
     final_message: str
     iterations: int
     events: list[TurnEvent]
     observations: list[ToolObservation]
+    # 人审边界命中时（ADR-0016：人审=显式边界）携带待人批的 DecisionPoint，供上层落 decisions.jsonl
+    # 并把整个 run 报成 paused。非暂停路径恒为 None。
+    pending_decision: Any = None
 
 
 def run_model_driven_turn(
@@ -120,6 +123,7 @@ def run_model_driven_turn(
     transport: str = "json",
     on_event: Callable[[TurnEvent], None] | None = None,
     hook: Callable[[str, dict], TurnControl] | None = None,
+    approval_gate: Callable[[list[dict]], Any] | None = None,
 ) -> ModelDrivenTurnResult:
     """跑一条模型驱动的循环，直到模型收尾或撞上保险丝。
 
@@ -131,6 +135,12 @@ def run_model_driven_turn(
 
     控制语义**与 transport 无关**：模型这步给了 tool_calls 就执行、否则视为本轮完成；失败即
     observation 回灌；`max_iterations` 保险丝。返回 `status="completed"` 或 `"budget_exhausted"`。
+
+    `approval_gate`（可选）：人审边界（ADR-0016：人审=显式边界，不是模型认知）。每当模型给出一批
+    tool_calls，先把整批交给注入的 gate；gate 返回一个待人批的 DecisionPoint（真值）即命中边界——
+    **整批不执行**（不半跑，故无残留写入），本函数返回 `status="paused"` 并在 `pending_decision`
+    携带该决策，由上层落 `decisions.jsonl` 把 run 报成 paused。人批后 resume 重跑本任务，gate 认到
+    approval 便返回 None，整批照常执行。gate 未注入时无人审边界，行为不变。
     """
 
     system_content = system_prompt
@@ -219,6 +229,22 @@ def run_model_driven_turn(
                 events=events,
                 observations=all_observations,
             )
+
+        # 人审边界（ADR-0016）：跑这批工具前，先问注入的 approval_gate 这批里有没有被策略拦住、需人批
+        # 的动作。命中就**整批不跑**（不半跑，故 workspace 无残留写入），把待人批决策上抛、报 paused；
+        # resume 时 approval 已在案，gate 回 None，整批照常跑。gate 不做认知，只在执行边界拦一下。
+        if approval_gate is not None:
+            pending = approval_gate(calls)
+            if pending is not None:
+                emit(TurnEvent(kind="paused", iteration=iteration))
+                return ModelDrivenTurnResult(
+                    status="paused",
+                    final_message="",
+                    iterations=iteration,
+                    events=events,
+                    observations=all_observations,
+                    pending_decision=pending,
+                )
 
         # 执行模型选的工具。失败不抛、不进 repair 分支——一律作为 observation 回灌，模型自己决定下一步。
         observations = _execute(tool_runner, calls, task, context)

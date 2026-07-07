@@ -2174,12 +2174,12 @@ def test_resume_command_applies_cancel_and_replan_decision_effects(tmp_path: Pat
 
 
 def test_run_command_pauses_for_execution_policy_approval_and_resumes(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path,
 ) -> None:
-    # RA7b slice 3 (deferred): FSM 的执行策略审批是**执行前整任务闸门**(未批准前整任务不动);立真身
-    # 增量跑工具,审批只否决单个工具、后续工具照跑,与"暂停整个任务待人批"语义不同。把人审批边界
-    # (ADR-0016 人审=显式边界)搬进脊梁是独立特性,待专项。此用例暂经 env 钉在 FSM 上保绿。
-    monkeypatch.setenv("ASTERIA_MODEL_DRIVEN_TURN", "0")
+    # RA7b slice 3: 人审边界已搬进脊梁（ADR-0016 人审=显式边界）。脊梁跑一批工具前先过 approval_gate
+    # （与 FSM 同一套执行策略）——命中 shell denylist 且无 approve_once 就**整批停手**、留 pending
+    # DecisionPoint 报 paused，本轮无残留写入（下方 assert not exists 即证）。人批后 resume 重跑，
+    # 网关按决议 context_with_approval 放行整批。本用例现跑在脊梁默认上（模块级 spine_default 标记）。
     paused = RunCommand(
         tmp_path,
         "create a complete module",
