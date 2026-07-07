@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from asteria_runtime.core.runtime_validation_evidence import _record_swarm_matrix_probe_evidence
 from asteria_runtime.core.runtime_validation_matrix import runtime_validation_matrix
 from asteria_runtime.core.runtime_validation_evidence import (
     record_runtime_validation_matrix_evidence,
@@ -83,12 +82,6 @@ def test_runtime_validation_matrix_covers_fixed_real_task_cases(tmp_path: Path) 
             ensure_ascii=False,
         ),
         encoding="utf-8",
-    )
-    (tmp_path / ".asteria" / "runs" / "run-swarm").mkdir(parents=True)
-    _record_swarm_matrix_probe_evidence(
-        run_dir=tmp_path / ".asteria" / "runs" / "run-swarm",
-        run_id="run-swarm",
-        validator=validator,
     )
     metrics = runtime_progress_metrics(tmp_path, validator)
 

@@ -288,7 +288,10 @@ def test_real_model_acceptance_writes_incremental_summary_on_partial_run(
     ]
 
 
-def test_acceptance_timeout_records_agent_loop_decision(tmp_path: Path) -> None:
+def test_acceptance_timeout_records_spine_native_evidence(tmp_path: Path) -> None:
+    # RA7b: a scenario timeout is captured as a spine-native user_progress validation event
+    # (the FSM agent_loop_decision writer was retired with the round loop), carrying the
+    # recommended recovery command so an operator can continue from it.
     workspace = tmp_path / "validation_small_cli"
     run_dir = workspace / ".asteria" / "runs" / "run-0001"
     run_dir.mkdir(parents=True)
@@ -301,33 +304,29 @@ def test_acceptance_timeout_records_agent_loop_decision(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    acceptance.record_acceptance_timeout_loop_decision(
+    acceptance.record_acceptance_timeout_evidence(
         workspace=workspace,
         scenario=acceptance.SCENARIOS["validation_small_cli"],
         reason="Scenario timed out after 360s.",
         stderr="recovery-review timed out",
     )
 
-    decisions = [
+    events = [
         json.loads(line)
-        for line in (run_dir / "agent_loop_decisions.jsonl").read_text(encoding="utf-8").splitlines()
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert decisions[-1]["task_id"] == "task-0001"
-    assert decisions[-1]["next_action"]["action"] == "repair"
-    assert decisions[-1]["next_action"]["capability_ref"]["name"] == (
-        "acceptance_timeout:validation_small_cli"
-    )
-    executions = [
-        json.loads(line)
-        for line in (run_dir / "agent_loop_execution_results.jsonl")
-        .read_text(encoding="utf-8")
-        .splitlines()
-        if line.strip()
+    timeout_events = [
+        event
+        for event in events
+        if ((event.get("data") or {}).get("validation") or {}).get("kind") == "acceptance_timeout"
     ]
-    assert executions[-1]["decision_id"] == decisions[-1]["decision_id"]
-    assert executions[-1]["target"] == "debug_agent"
-    assert executions[-1]["recommended_command"] == "debug"
+    assert timeout_events, "expected an acceptance_timeout validation event"
+    validation = timeout_events[-1]["data"]["validation"]
+    assert validation["scenario"] == "validation_small_cli"
+    assert validation["task_id"] == "task-0001"
+    assert validation["recommended_action"] == "repair"
+    assert validation["recommended_command"] == "debug"
 
 
 def test_real_model_acceptance_classifies_retryable_subprocess_failures() -> None:

@@ -4,12 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from asteria_runtime.core.agent_loop_executor import (
-    persist_agent_loop_execution_result,
-    persist_subagent_child_plan_for_execution,
-)
 from asteria_runtime.core.agent_loop_profiles import AgentLoopProfileRegistry
-from asteria_runtime.core.agent_loop_decision import persist_agent_loop_decision
 from asteria_runtime.core.mcp_adapter import McpAdapter
 from asteria_runtime.core.runtime_context import RuntimeContext
 from asteria_runtime.core.skill_adapter import SkillAdapter
@@ -154,7 +149,9 @@ def record_runtime_validation_matrix_evidence(
             str(run_dir / "user_progress.jsonl"),
         ],
     )
-    _record_swarm_matrix_probe_evidence(run_dir=run_dir, run_id=run_id, validator=validator)
+    # RA7b: the FSM swarm-matrix probe evidence writer was retired with agent_loop_decision/executor.
+    # The disjoint-write/swarm capability stays frozen (parallel_writes=disabled); the validation
+    # matrix's swarm/subagent probes now legitimately have no synthetic FSM evidence to score against.
     # Swarm production-gray band is frozen/removed; report disabled evidence.
     production_gray = SimpleNamespace(
         ok=False,
@@ -224,56 +221,3 @@ def _run_id() -> str:
     return f"runtime-validation-matrix-{safe}"
 
 
-def _record_swarm_matrix_probe_evidence(
-    *,
-    run_dir: Path,
-    run_id: str,
-    validator: Any,
-) -> None:
-    """Minimal subagent swarm planning evidence so matrix swarm_scenario_audit can pass."""
-    decision = {
-        "schema_version": "0.1.0",
-        "decision_id": "agent-loop-decision-matrix-swarm-0001",
-        "run_id": run_id,
-        "task_id": "runtime-matrix-multi-agent",
-        "created_at": now_iso(),
-        "next_action": {
-            "action": "subagent",
-            "reason": "Matrix probe for swarm scenario audit.",
-            "target_task_id": "runtime-matrix-multi-agent",
-            "capability_ref": {"type": "subagent", "name": "disjoint_write_workers"},
-            "expected_observation": {
-                "summary": "Matrix probe child plan.",
-                "write_scope": ["src/matrix_probe_a.py", "src/matrix_probe_b.py"],
-                "parallel_safety": "disjoint_writes",
-            },
-            "risk": "low",
-            "budget_hint": {"model_calls": 1, "tool_budget_units": 0},
-            "evidence_refs": [],
-        },
-    }
-    task = {
-        "task_id": "runtime-matrix-multi-agent",
-        "title": "Matrix swarm probe",
-        "parallel_safety": "disjoint_writes",
-        "write_scope": ["src/matrix_probe_a.py", "src/matrix_probe_b.py"],
-        "multi_agent_strategy": {
-            "mode": "disjoint_write_workers",
-            "max_child_workers": 2,
-            "coordination_policy": {"requires_disjoint_write_scope": True},
-        },
-    }
-    persist_agent_loop_decision(run_dir=run_dir, validator=validator, decision=decision)
-    execution = persist_agent_loop_execution_result(
-        run_dir=run_dir,
-        validator=validator,
-        decision=decision,
-    )
-    if isinstance(execution, dict):
-        persist_subagent_child_plan_for_execution(
-            run_dir=run_dir,
-            validator=validator,
-            decision=decision,
-            execution_result=execution,
-            task=task,
-        )

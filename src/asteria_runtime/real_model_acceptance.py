@@ -18,11 +18,10 @@ from asteria_runtime.acceptance.runtime_os_catalog import (  # noqa: E402
     runtime_os_scenario_names,
 )
 from asteria_runtime.acceptance.runtime_os_scenarios import run_runtime_os_scenario  # noqa: E402
-from asteria_runtime.core.agent_loop_decision import persist_runtime_agent_loop_decision
-from asteria_runtime.core.agent_loop_executor import persist_agent_loop_execution_result
 from asteria_runtime.core.deadline_budget import DeadlineBudget, apply_deadline_budget_env
 from asteria_runtime.core.subprocess_heartbeat import run_with_heartbeat
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.storage.user_progress_logger import UserProgressLogger
 
 
 @dataclass(frozen=True)
@@ -703,7 +702,7 @@ def run_scenario(
                 text_or_empty(exc.stderr)
                 + f"\nScenario timed out after {timeout_budget.subprocess_seconds}s."
             )
-            record_acceptance_timeout_loop_decision(
+            record_acceptance_timeout_evidence(
                 workspace=workspace,
                 scenario=scenario,
                 reason=f"Scenario timed out after {timeout_budget.subprocess_seconds}s.",
@@ -809,13 +808,21 @@ def classify_acceptance_subprocess_failure(
     return False, "scenario_failure"
 
 
-def record_acceptance_timeout_loop_decision(
+def record_acceptance_timeout_evidence(
     *,
     workspace: Path,
     scenario: AcceptanceScenario,
     reason: str,
     stderr: str,
 ) -> None:
+    """Capture an acceptance-scenario timeout as spine-native, resumable evidence.
+
+    RA7b: the FSM agent_loop_decision/execution_result timeout writer was retired with the round
+    loop (the model-driven spine cannot run on a hung scenario, and nothing consumed that decision
+    for recovery). The timeout is now recorded as a user_progress validation event — read/displayed
+    on the main thread — carrying the recommended recovery path (debug / replan / decide) so an
+    operator can continue from it.
+    """
     run_id = current_run_id(workspace)
     if not run_id:
         return
@@ -828,34 +835,25 @@ def record_acceptance_timeout_loop_decision(
         action = "ask"
     elif "plan" in lowered or "scope" in lowered:
         action = "replan"
+    recommended_command = {"repair": "debug", "replan": "replan", "ask": "decide --list"}[action]
     validator = SchemaValidator(Path(__file__).resolve().parents[2] / "schemas")
-    decision = persist_runtime_agent_loop_decision(
-        run_dir=run_dir,
-        validator=validator,
+    UserProgressLogger(run_dir / "user_progress.jsonl", validator).validation_event(
         run_id=run_id,
-        task_id=latest_task_id(run_dir),
-        action=action,
-        reason=(
-            "Acceptance scenario timed out before review/recovery could return a "
-            f"model-authored next action: {reason}"
+        title=f"Acceptance scenario timeout: {scenario.name}",
+        summary=(
+            "Scenario timed out before review/recovery could return a model-authored next action: "
+            f"{reason}. Recommended recovery path: {recommended_command}."
         ),
-        capability_name=f"acceptance_timeout:{scenario.name}",
-        expected_observation={
-            "summary": "Scenario timeout is captured as a recoverable loop decision.",
-            "success_signal": "Debug, replan, decide, or stop can continue from the recorded timeout evidence.",
+        status="blocked",
+        validation={
+            "kind": "acceptance_timeout",
             "scenario": scenario.name,
+            "task_id": latest_task_id(run_dir),
+            "recommended_action": action,
+            "recommended_command": recommended_command,
         },
-        risk="medium",
         evidence_refs=[str(run_dir / "user_progress.jsonl"), str(run_dir / "model_calls.jsonl")],
-        budget_hint={"model_calls": 1, "tool_budget_units": 0, "context": "acceptance_timeout"},
     )
-    if decision is not None:
-        persist_agent_loop_execution_result(
-            run_dir=run_dir,
-            validator=validator,
-            decision=decision,
-            create_decision_point=action == "ask",
-        )
 
 
 def write_setup_files(workspace: Path, scenario: AcceptanceScenario) -> None:
