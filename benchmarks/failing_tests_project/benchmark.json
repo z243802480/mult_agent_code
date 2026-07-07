@@ -2,7 +2,7 @@
   "schema_version": "0.1.0",
   "benchmark_id": "failing_tests_project",
   "goal": "修复已有项目中失败的测试，并生成修复报告",
-  "purpose": "Validate verification failure handling, debug repair, backup creation, experiment recording, and final reporting.",
+  "purpose": "Validate verification failure handling, debug repair, backup creation, correctness-gate rejection of the failing baseline, and final reporting.",
   "budget": {
     "max_model_calls": 60,
     "max_tool_calls": 120,
@@ -14,7 +14,7 @@
   ],
   "expected_capabilities": [
     "Runs the failing verification command.",
-    "Records the failed attempt as an experiment with a blocked or retry decision.",
+    "Rejects the failing baseline via the correctness gate (blocked task_execution_evidence, contract not ok) instead of accepting it as done.",
     "Applies a minimal repair.",
     "Creates backups for modified files before writing.",
     "Reports the final verification result."
@@ -24,7 +24,7 @@
     "task_plan.json",
     "task_plan_eval.json",
     "tool_calls.jsonl",
-    "experiments.jsonl",
+    "task_execution_evidence.jsonl",
     "artifacts.jsonl",
     "final_report.md"
   ],

@@ -79,6 +79,17 @@ class FailingProjectPlanClient:
 
 class FailingProjectExecuteClient:
     def chat(self, request: ChatRequest) -> ChatResponse:
+        if _is_spine_request(request):
+            # 基线阶段:只跑现有测试(失败)、**不修复** —— 脊梁正确性 gate 据此 block(无改动工件 +
+            # 验证未过)。等同 FSM 的"基线执行在失败测试上阻塞"。
+            return _spine_response(
+                request,
+                narration="先跑一遍现有测试,捕获修复前的基线失败。",
+                tool_calls=[
+                    {"tool_name": "run_command", "args": {"command": "python -m pytest tests"}}
+                ],
+                final="基线测试仍失败,本阶段不做修复。",
+            )
         task = json.loads(request.messages[-1].content)["task"]
         payload = {
             "schema_version": "0.1.0",
@@ -98,7 +109,28 @@ class FailingProjectExecuteClient:
 
 
 class FailingProjectRepairClient:
+    _SPINE_PATCH = (
+        "--- a/buggy_math.py\n"
+        "+++ b/buggy_math.py\n"
+        "@@\n"
+        " def add(a: int, b: int) -> int:\n"
+        "-    return a - b\n"
+        "+    return a + b\n"
+    )
+
     def chat(self, request: ChatRequest) -> ChatResponse:
+        if _is_spine_request(request):
+            # 修复阶段:改减号为加号 + 跑测试(通过) —— 脊梁 gate 据此 done(改动工件 buggy_math.py +
+            # 验证过)。等同 FSM debug 的候选修复,唯直写在盘、无候选/backup。
+            return _spine_response(
+                request,
+                narration="把 buggy_math.add 的减号改成加号,再跑测试确认修复。",
+                tool_calls=[
+                    {"tool_name": "apply_patch", "args": {"patch": self._SPINE_PATCH}},
+                    {"tool_name": "run_command", "args": {"command": "python -m pytest tests"}},
+                ],
+                final="buggy_math.add 现在做加法,pytest 全绿。",
+            )
         task = json.loads(request.messages[-1].content)["task"]
         payload = {
             "schema_version": "0.1.0",
@@ -140,6 +172,8 @@ class FileRenamerClient:
         if request.purpose == "goal_spec":
             return _response(request, self._goal_spec(request))
         if request.purpose == "task_execution":
+            if _is_spine_request(request):
+                return _spine_from_execution_action(request, self._execution_action(request))
             return _response(request, self._execution_action(request))
         return self.review_client.chat(request)
 
@@ -180,7 +214,7 @@ class FileRenamerClient:
         }
 
     def _execution_action(self, request: ChatRequest) -> dict:
-        task = json.loads(request.messages[-1].content)["task"]
+        task_id = _task_id_for(request)
         plan = {
             "schema_version": "0.1.0",
             "dry_run": True,
@@ -206,7 +240,7 @@ print(f"preview ok: {len(plan['mappings'])} rename(s)")
 """
         return {
             "schema_version": "0.1.0",
-            "task_id": task["task_id"],
+            "task_id": task_id,
             "summary": "Create a dry-run rename plan and preview validator.",
             "tool_calls": [
                 {
@@ -260,6 +294,8 @@ class MarkdownKbClient:
         if request.purpose == "goal_spec":
             return _response(request, self._goal_spec(request))
         if request.purpose == "task_execution":
+            if _is_spine_request(request):
+                return _spine_from_execution_action(request, self._execution_action(request))
             return _response(request, self._execution_action(request))
         return self.review_client.chat(request)
 
@@ -283,7 +319,10 @@ class MarkdownKbClient:
                     "acceptance": [
                         "markdown_kb.py accepts a directory and keyword",
                         "kb_index.json includes fixture markdown files",
-                        "searching for runtime returns asteria_runtime.md",
+                        # 指向 fixture 真实路径 notes/asteria_runtime.md(而非裸文件名):否则规划器把这个
+                        # 被检索的**输入文件**误当成待产交付物写进 expected_artifacts,脊梁续跑守门便一直
+                        # 等一个永不产出的根级 asteria_runtime.md → 撞保险丝 blocked(FSM 无此守门故不受影响)。
+                        "searching for runtime returns the notes/asteria_runtime.md note",
                     ],
                 }
             ],
@@ -298,7 +337,7 @@ class MarkdownKbClient:
         }
 
     def _execution_action(self, request: ChatRequest) -> dict:
-        task = json.loads(request.messages[-1].content)["task"]
+        task_id = _task_id_for(request)
         script = """from __future__ import annotations
 
 import json
@@ -379,7 +418,7 @@ if __name__ == "__main__":
         ]
         return {
             "schema_version": "0.1.0",
-            "task_id": task["task_id"],
+            "task_id": task_id,
             "summary": "Create a local markdown indexer and keyword search CLI.",
             "tool_calls": [
                 {
@@ -539,15 +578,23 @@ def _run_failing_tests_project(workspace: Path) -> BenchmarkResult:
 
         run_dir = workspace / ".asteria" / "runs" / plan.run_id
         _check_expected_files(result, run_dir, manifest["expected_artifacts"])
-        experiments = _read_jsonl(run_dir / "experiments.jsonl")
+        # 立真身直写模型无候选/experiments —— "失败候选被丢弃"的**要求**(失败态被拒、不被当完成接受)
+        # 由正确性 gate 在 task_execution_evidence 上留下的确定性证据承载:基线执行(未修复)被记为
+        # blocked 且 contract_check.ok=false(验证未过/无改动工件),修复后再记 done。这是脊梁原生的
+        # "拒绝坏状态 + 证据化恢复",取代 FSM 候选丢弃语义(需求不减配·机制换血)。
+        evidence = _read_jsonl(run_dir / "task_execution_evidence.jsonl")
         _check(
             result,
             any(
-                item["decision"] == "discard"
-                and item["metrics_after"]["verification_pass_rate"] < 1.0
-                for item in experiments
+                item["status"] == "blocked" and item.get("contract_check", {}).get("ok") is False
+                for item in evidence
             ),
-            "failed candidate is discarded",
+            "failing baseline is rejected by the correctness gate (not accepted as done)",
+        )
+        _check(
+            result,
+            any(item["status"] == "done" for item in evidence),
+            "repair recovery is evidenced (task_execution_evidence done record)",
         )
         _check(
             result,
@@ -767,6 +814,61 @@ def _response(request: ChatRequest, payload: dict) -> ChatResponse:
         model_provider="benchmark",
         model_name="deterministic-benchmark",
         raw_response={"purpose": request.purpose},
+    )
+
+
+def _is_spine_request(request: ChatRequest) -> bool:
+    """立真身循环给每次 chat 打 metadata.loop=model_driven_turn（见 model_driven_turn.run_...）。"""
+    return (getattr(request, "metadata", None) or {}).get("loop") == "model_driven_turn"
+
+
+def _spine_turn(request: ChatRequest) -> int:
+    return int((getattr(request, "metadata", None) or {}).get("iteration") or 1)
+
+
+def _spine_response(
+    request: ChatRequest,
+    *,
+    tool_calls: list[dict],
+    narration: str,
+    final: str,
+) -> ChatResponse:
+    """脊梁 JSON 轮次契约的确定性替身：iter1 干活(done=false)、iter≥2 收尾(done=true)。
+
+    与 tests/helpers/spine.spine_response 同形；脚本不依赖 test helper，故内联一份。
+    """
+    if _spine_turn(request) <= 1:
+        payload = {"narration": narration, "tool_calls": tool_calls, "done": False}
+    else:
+        payload = {"narration": final, "tool_calls": [], "done": True}
+    return _response(request, payload)
+
+
+def _task_id_for(request: ChatRequest) -> str:
+    """取当前任务 id,兼容脊梁与 FSM 两种消息形态。脊梁把 task_id 放 metadata(且 messages[-1] 是
+    散文旁白/观察回灌·非任务 JSON);FSM 把任务 JSON 放 messages[-1]。故先读 metadata、再回落解析。"""
+    meta = getattr(request, "metadata", None) or {}
+    if meta.get("task_id"):
+        return str(meta["task_id"])
+    try:
+        return str(json.loads(request.messages[-1].content)["task"]["task_id"])
+    except Exception:  # noqa: BLE001 - 散文消息解析失败即回落占位,不炸整轮
+        return "task-0001"
+
+
+def _spine_from_execution_action(request: ChatRequest, action: dict) -> ChatResponse:
+    """把一份 FSM ExecutionAction 载荷复用成脊梁轮次:FSM 的 tool_calls + verification 合并成脊梁的
+    一批 tool_calls(脊梁无独立 verification 字段·run_command 观察即被正确性 gate 计作验证)。
+    让既有确定性 fake(FileRenamer/MarkdownKb 的 _execution_action)零重复地在脊梁默认下工作。"""
+    tool_calls = [
+        {"tool_name": call["tool_name"], "args": call.get("args", {})}
+        for call in [*action.get("tool_calls", []), *action.get("verification", [])]
+    ]
+    return _spine_response(
+        request,
+        tool_calls=tool_calls,
+        narration=str(action.get("summary") or "执行并验证任务。"),
+        final=str(action.get("completion_notes") or "任务已完成并验证。"),
     )
 
 

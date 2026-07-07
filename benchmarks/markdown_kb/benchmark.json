@@ -23,7 +23,6 @@
     "task_plan.json",
     "task_plan_eval.json",
     "tool_calls.jsonl",
-    "experiments.jsonl",
     "artifacts.jsonl",
     "final_report.md"
   ],

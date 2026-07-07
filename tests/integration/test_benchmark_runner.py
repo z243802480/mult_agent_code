@@ -1,11 +1,15 @@
 from pathlib import Path
 
+import pytest
+
 from scripts.run_benchmarks import run_benchmarks
 
-# RA7b slice 3 (deferred): this benchmark's `failing_tests_project` case asserts FSM candidate-discard
-# + backup semantics (experiments.jsonl discarded candidate, restore_backup manifest) that the direct-
-# write spine intentionally does not produce. It stays pinned to the legacy FSM default until the
-# round-loop deletion, when the benchmark spec is reworked for spine repair evidence.
+# RA7b slice3e: the whole benchmark runner now runs on the model-driven spine default.
+# `failing_tests_project` asserts spine-native recovery evidence (correctness-gate rejection of the
+# failing baseline + repaired-then-done task_execution_evidence) instead of FSM candidate-discard /
+# experiments.jsonl; the file_renamer/markdown_kb fakes emit the spine JSON turn contract via
+# _spine_from_execution_action. This unpins the last FSM-only benchmark test.
+pytestmark = pytest.mark.spine_default
 
 
 def test_benchmark_runner_executes_mvp_benchmarks(tmp_path: Path, monkeypatch) -> None:
