@@ -4366,6 +4366,71 @@ def test_execute_command_model_driven_turn_failed_observation_does_not_crash(
     )
 
 
+class FakeModelDrivenSkillClient:
+    """立真身 reaches for a methodology skill (skill__debug) to load its procedure on demand, then
+    proceeds — proves the optional methodology layer is reachable through the real gateway."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        if self.calls == 1:
+            payload = {
+                "narration": "先加载 debug 方法论。",
+                "tool_calls": [{"tool_name": "skill__debug", "args": {}}],
+                "done": False,
+            }
+        elif self.calls == 2:
+            payload = {
+                "narration": "创建 notes 模块。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "完成。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-mdt-skill",
+            raw_response={},
+        )
+
+
+def test_execute_command_model_driven_turn_invokes_methodology_skill(tmp_path: Path) -> None:
+    """立真身 can invoke a bundled methodology skill on demand (progressive disclosure): the call
+    routes through the gateway's skill adapter, loads the procedure, and the task still completes."""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(
+        tmp_path, run_id=plan.run_id, model_client=FakeModelDrivenSkillClient()
+    ).run()
+
+    assert result.completed == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    skill_invocations = [
+        json.loads(line)
+        for line in (run_dir / "skill_invocations.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(inv.get("skill_name") == "debug" for inv in skill_invocations)
+
+
 def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
     """flag 默认关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。"""
     InitCommand(tmp_path).run()

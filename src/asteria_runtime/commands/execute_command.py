@@ -2816,7 +2816,7 @@ class ExecuteCommand:
             "- Only finish (done=true, empty tool_calls) once the expected artifact exists AND you "
             "have verified it.\n"
             "- narration is one short sentence in the user's language (Chinese) describing THIS step."
-        )
+        ) + self._methodology_guidance(runtime_context)
         payload = {
             "task": task,
             "goal_spec": goal_spec,
@@ -2831,8 +2831,51 @@ class ExecuteCommand:
             "runtime_context": context_prompt_view(runtime_context),
             "available_tools": available_tools,
             "allowed_tools": task.get("allowed_tools", []),
+            "methodology_skills": self._methodology_skills(runtime_context),
         }
         return system_prompt, json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def _methodology_skills(self, runtime_context: dict) -> list[dict]:
+        """The task-allowed methodology procedures (skills) offered to the model, as
+        {name, description} — progressive disclosure: the model sees only the one-line description
+        and calls the skill to load its full procedure when it judges it relevant (ADR-0016 §1:
+        methodology is OFFERED in the model's decision space, never a forced phase)."""
+        surface = runtime_context.get("model_tool_surface")
+        tools = surface.get("tools") if isinstance(surface, dict) else None
+        if not isinstance(tools, list):
+            return []
+        skills: list[dict] = []
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+            if tool.get("kind") == "skill" and tool.get("task_allowed"):
+                name = str(tool.get("name") or "")
+                if name:
+                    skills.append({"name": name, "description": str(tool.get("description") or "")})
+        return skills
+
+    def _methodology_guidance(self, runtime_context: dict) -> str:
+        """Trigger-conditional methodology guidance appended to the system prompt — SUGGESTIONS the
+        model applies by judgment (not enforced phases; skip for simple tasks). Externalizing the
+        plan via todo_write embodies the model's own organizational capability; the skill procedures
+        cover diagnose/investigate/execute/verify/retrospect on demand."""
+        skills = self._methodology_skills(runtime_context)
+        lines = [
+            "\n\nOptional methodology (use by judgment — suggestions, NOT required; skip simple tasks):",
+            "- For a multi-step or unfamiliar task, externalize a plan with todo_write and update it "
+            "as you go — this is your working memory, not a gate.",
+        ]
+        if skills:
+            catalog = "\n".join(f"  - {item['name']}: {item['description']}" for item in skills)
+            lines.append(
+                "- These procedure skills are available; call one to load its steps when it fits the "
+                "situation, then carry it out with your normal tools:\n" + catalog
+            )
+            lines.append(
+                "  e.g. non-obvious failure -> skill__debug; unfamiliar code -> skill__investigate; "
+                "before finishing -> skill__verify / skill__retrospect."
+            )
+        return "\n".join(lines)
 
     def _record_model_driven_event(
         self,
