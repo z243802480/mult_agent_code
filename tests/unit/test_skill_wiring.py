@@ -96,7 +96,8 @@ def test_bundled_default_skills_are_real_and_body_loadable() -> None:
     bundled = Path(asteria_runtime.__file__).resolve().parent / "skills" / "bundled"
     adapter = SkillAdapter.from_skill_roots([bundled], handler="body")
     names = {d["name"] for d in adapter.discover_skills()}
-    assert {"verify", "investigate", "debug", "minimal-change"} <= names
+    # Methodology arc: diagnose(investigate/debug) → plan → execute(minimal-change) → verify → retrospect.
+    assert {"verify", "investigate", "debug", "minimal-change", "plan", "retrospect"} <= names
     for name, handler in adapter.handlers.items():
         assert isinstance(handler, SkillBodyHandler), name
         out = handler.invoke({"arguments": {}})
