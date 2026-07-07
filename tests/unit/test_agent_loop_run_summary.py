@@ -2,14 +2,49 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from asteria_runtime.core.agent_loop_observation import (
-    persist_agent_loop_observation_for_execution,
-)
 from asteria_runtime.core.agent_loop_run_summary import (
     build_agent_loop_run_summary,
     persist_agent_loop_run_summary,
 )
+from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.schema_validator import SchemaValidator
+from asteria_runtime.utils.time import now_iso
+
+
+def _append_tool_observation(
+    run_dir: Path,
+    validator: SchemaValidator,
+    *,
+    sequence: int,
+    status: str,
+    next_recommended_action: str,
+    summary: str,
+    task_id: str = "task-1",
+) -> None:
+    """Write one schema-valid agent_loop_observation directly.
+
+    RA7b deleted ``agent_loop_observation`` (its persist helper wrote these); the KEEP
+    ``loop_quality_for_task`` still reads ``agent_loop_observations.jsonl`` by schema name, so this
+    fixture seeds it without the deleted module. A ``tool`` action maps to a ``tool_result`` type.
+    """
+    observation = {
+        "schema_version": "0.1.0",
+        "observation_id": f"agent-loop-observation-{sequence:04d}",
+        "run_id": "run-1",
+        "task_id": task_id,
+        "target_task_id": task_id,
+        "created_at": now_iso(),
+        "observation_type": "tool_result",
+        "source_execution_id": f"agent-loop-execution-{sequence:04d}",
+        "source_decision_id": f"agent-loop-decision-{sequence:04d}",
+        "status": status,
+        "summary": summary,
+        "evidence_refs": [],
+        "next_recommended_action": next_recommended_action,
+    }
+    JsonlStore(validator).append(
+        run_dir / "agent_loop_observations.jsonl", observation, "agent_loop_observation"
+    )
 
 
 def test_agent_loop_run_summary_records_budget_context_and_recovery_chain() -> None:
@@ -94,20 +129,13 @@ def test_agent_loop_run_summary_marks_failed_observation_without_recovery_unsati
 def test_persist_run_summary_attaches_loop_quality_warning(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
     for index in range(1, 4):
-        persist_agent_loop_observation_for_execution(
-            run_dir=tmp_path,
-            validator=validator,
-            execution_result={
-                "action": "tool",
-                "run_id": "run-1",
-                "task_id": "task-1",
-                "target_task_id": "task-1",
-                "execution_id": f"agent-loop-execution-000{index}",
-                "decision_id": f"agent-loop-decision-000{index}",
-            },
+        _append_tool_observation(
+            tmp_path,
+            validator,
+            sequence=index,
             status="failed",
-            summary="verification failed: greet.py missing",
             next_recommended_action="repair",
+            summary="verification failed: greet.py missing",
         )
 
     record = build_agent_loop_run_summary(
@@ -134,20 +162,13 @@ def test_persist_run_summary_attaches_loop_quality_warning(tmp_path: Path) -> No
 
 def test_persist_run_summary_loop_quality_clean_when_no_spin(tmp_path: Path) -> None:
     validator = SchemaValidator(Path("schemas"))
-    persist_agent_loop_observation_for_execution(
-        run_dir=tmp_path,
-        validator=validator,
-        execution_result={
-            "action": "tool",
-            "run_id": "run-1",
-            "task_id": "task-1",
-            "target_task_id": "task-1",
-            "execution_id": "agent-loop-execution-0001",
-            "decision_id": "agent-loop-decision-0001",
-        },
+    _append_tool_observation(
+        tmp_path,
+        validator,
+        sequence=1,
         status="succeeded",
-        summary="wrote greet.py",
         next_recommended_action="stop",
+        summary="wrote greet.py",
     )
 
     record = build_agent_loop_run_summary(
