@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -14,6 +15,8 @@ from asteria_runtime.core.budget import (
 from asteria_runtime.core.loop_progress_guard import evaluate_loop_quality
 from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionGateway
 from asteria_runtime.core.context_loader import ContextLoader
+from asteria_runtime.core.context_prompt_view import context_prompt_view
+from asteria_runtime.core.model_driven_turn import TurnEvent, run_model_driven_turn
 from asteria_runtime.core.agent_run_graph import AgentRunGraphBuilder
 from asteria_runtime.core.agent_harness import load_harness_observations, load_raw_tool_observations
 from asteria_runtime.core.agent_loop_decision import (
@@ -447,6 +450,17 @@ class ExecuteCommand:
         except (TypeError, ValueError):
             value = 0
         return max(0, value)
+
+    def _model_driven_turn_enabled(self, policy: dict) -> bool:
+        # 立真身 (ADR-0016 §1): route the whole coding task through the model-driven single loop
+        # (model→tool→observation→model) instead of the per-round next_action FSM. The loop's only
+        # control branch is "did the model call a tool this step or stop"; failures are fed back as
+        # observations (no independent repair/replan branch, no closed action enum). Default OFF —
+        # behaviour is byte-identical to the FSM path when disabled; flipped on for gray rollout /
+        # behavioural comparison on the glm/minimax stack. Flag: agent_loop.model_driven_turn.
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("model_driven_turn", False))
 
     def _loop_quality_guard_config(self, policy: dict) -> dict | None:
         raw_agent_loop = policy.get("agent_loop")
@@ -2688,6 +2702,200 @@ class ExecuteCommand:
         if status == "ready":
             task_board.update_status(task_id, "in_progress")
 
+    def _run_model_driven_task(
+        self,
+        *,
+        task: dict,
+        task_board: TaskBoard,
+        context: RuntimeContext,
+        coder: CoderAgent,
+        goal_spec: dict,
+        project_config: dict,
+        runtime_context: dict,
+        available_tools: list[str],
+    ) -> TaskExecutionSummary:
+        """立真身 gray path (ADR-0016 §1): run the task on the model-driven single loop.
+
+        The model drives itself — each step it calls whatever tools it needs through the *real*
+        ``ToolExecutionGateway`` (permissions / sandbox / evidence intact), reads the observations,
+        and decides the next step. The loop's only control branch is "did the model call a tool or
+        stop"; tool/command failures are fed back as observations rather than routed into an
+        ``if next_action_kind == "repair"`` FSM branch. ``max_iterations`` is a resumable budget
+        fuse, not cognition. Writes land directly in the workspace (non-parallel default), so this
+        path finalizes the task_board + run summary itself rather than going through the FSM's
+        candidate-promotion attempt runner. Gated by ``agent_loop.model_driven_turn`` (default off).
+        """
+        task_id = task["task_id"]
+        # max_iterations is a fuse (budget boundary), NOT the FSM's cognitive round ceiling. Give the
+        # model a little more headroom than the FSM's per-task rounds so a genuine multi-step task can
+        # finish; the hard budget/hard-stop still governs cost.
+        max_iterations = self._agent_loop_max_rounds(context.policy) + 4
+        system_prompt, user_prompt = self._model_driven_prompts(
+            task, goal_spec, project_config, available_tools, runtime_context
+        )
+        model_tier = str(runtime_context.get("execution_model_tier") or "strong")
+
+        result = run_model_driven_turn(
+            model_client=coder.model_client,
+            tool_runner=self.tool_gateway,
+            task=task,
+            context=context,
+            available_tools=available_tools,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            model_tier=model_tier,
+            max_iterations=max_iterations,
+            transport="json",
+            on_event=lambda event: self._record_model_driven_event(context, task, event),
+        )
+
+        tool_calls = sum(
+            len(event.observations) for event in result.events if event.kind == "tool_observation"
+        )
+        status = "done" if result.status == "completed" else "blocked"
+        summary = result.final_message or (
+            "模型驱动循环撞上迭代保险丝（可 resume），本轮尚未收尾。"
+            if result.status == "budget_exhausted"
+            else "模型驱动循环已结束。"
+        )
+        # TaskBoard enforces ready→in_progress→testing→reviewing→done; complete_task walks the
+        # intermediate hops (a direct in_progress→done transition is rejected). Blocked is a valid
+        # direct transition from in_progress.
+        if status == "done":
+            task_board.complete_task(task_id, notes=summary)
+        else:
+            task_board.update_status(task_id, "blocked")
+        evidence_path = context.run_dir / "tool_calls.jsonl" if context.run_dir else None
+        # NB schema-double-trap: SUMMARY_STATUSES = {completed, blocked, waiting_user, stopped}
+        # (NOT "succeeded"); EXIT_REASONS has no "budget_exhausted" — the fuse tripping IS the
+        # max-rounds ceiling. Wrong values silently downgrade to blocked / no_action.
+        self._record_agent_loop_run_summary(
+            context=context,
+            task_id=task_id,
+            status="completed" if status == "done" else "blocked",
+            exit_reason="completed" if status == "done" else "max_rounds",
+            rounds_completed=result.iterations,
+            max_rounds=max_iterations,
+            summary=summary,
+            recommended_command="review" if status == "done" else "status --debug",
+            latest_decision=None,
+            latest_execution=None,
+            latest_observation=None,
+            evidence_refs=self._refs(evidence_path),
+        )
+        return TaskExecutionSummary(
+            task_id=task_id,
+            status=status,
+            summary=summary,
+            tool_calls=tool_calls,
+            verification_calls=0,
+            evidence_path=evidence_path,
+            validation_refs=[],
+        )
+
+    def _model_driven_prompts(
+        self,
+        task: dict,
+        goal_spec: dict,
+        project_config: dict,
+        available_tools: list[str],
+        runtime_context: dict,
+    ) -> tuple[str, str]:
+        """Build the 立真身 turn envelope: rich task/goal/project/mounted context, but NO
+        ``next_action`` enum / decision-table contract (that closed enum IS the FSM the
+        model-driven loop escapes). The per-step JSON output contract is appended by
+        ``run_model_driven_turn`` itself; here we only supply the grounding context."""
+        system_prompt = (
+            "You are CoderAgent in a local-first autonomous development runtime.\n"
+            "Drive the task to completion yourself: at each step call the tools you need, read the "
+            "observations you get back, then decide the next step. Verify your work with "
+            "run_command / run_tests before you finish.\n"
+            "- Make the smallest change that satisfies the task contract; stay within write_scope.\n"
+            "- Tool or command failures come back to you as observations — adapt and retry; a "
+            "failure does not block you and does not require anyone's permission to continue.\n"
+            "- Only finish (done=true, empty tool_calls) once the expected artifact exists AND you "
+            "have verified it.\n"
+            "- narration is one short sentence in the user's language (Chinese) describing THIS step."
+        )
+        payload = {
+            "task": task,
+            "goal_spec": goal_spec,
+            "task_contract": {
+                "read_scope": task.get("read_scope", []),
+                "write_scope": task.get("write_scope", []),
+                "expected_artifacts": task.get("expected_artifacts", []),
+                "validation_commands": task.get("validation_commands", []),
+                "acceptance": task.get("acceptance", []),
+            },
+            "project": project_config,
+            "runtime_context": context_prompt_view(runtime_context),
+            "available_tools": available_tools,
+            "allowed_tools": task.get("allowed_tools", []),
+        }
+        return system_prompt, json.dumps(payload, ensure_ascii=False, indent=2)
+
+    def _record_model_driven_event(
+        self,
+        context: RuntimeContext,
+        task: dict,
+        event: TurnEvent,
+    ) -> None:
+        """Project 立真身 loop events onto the user progress stream: the model's narration/final
+        message rides the main thread in its own voice (ADR-0021); tool observations land in the
+        Inspector (evidence, not conversation)."""
+        task_id = str(task.get("task_id") or "")
+        if event.kind in {"narration", "final"} and event.text:
+            self._record_progress(
+                context,
+                task,
+                channel="model",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title="模型叙述" if event.kind == "narration" else "模型收尾",
+                summary=event.text,
+                display_level="main",
+                transcript_kind="assistant_message",
+                data={
+                    "task_id": task_id,
+                    "iteration": event.iteration,
+                    "model_driven_turn": True,
+                },
+            )
+        elif event.kind == "tool_observation":
+            for obs in event.observations:
+                self._record_progress(
+                    context,
+                    task,
+                    channel="progress",
+                    event_type="message",
+                    phase="execute",
+                    status="running" if obs.ok else "warning",
+                    title=f"工具结果 · {obs.tool_name}",
+                    summary=obs.model_summary(),
+                    display_level="inspector",
+                    data={
+                        "task_id": task_id,
+                        "iteration": event.iteration,
+                        "tool_name": obs.tool_name,
+                        "ok": obs.ok,
+                        "model_driven_turn": True,
+                    },
+                )
+        elif event.kind == "fuse":
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="warning",
+                title="迭代保险丝",
+                summary="模型驱动循环达到迭代上限（预算保险丝），可 resume 继续。",
+                display_level="inspector",
+                data={"task_id": task_id, "iteration": event.iteration, "model_driven_turn": True},
+            )
+
     def _execute_task(
         self,
         task: dict,
@@ -2746,6 +2954,22 @@ class ExecuteCommand:
                 task,
                 allow_shell=self._shell_allowed(context.policy),
             )
+            # 立真身 gray entry (ADR-0016 §1): when agent_loop.model_driven_turn is on, drive the
+            # whole task through the model-driven single loop instead of the FSM round loop below.
+            # Mirrors the `_validation_probe_runtime_action(...) or coder.propose_action(...)`
+            # short-circuit style — a 1-branch opt-in that leaves the FSM path byte-identical when
+            # the flag is off. Reuses the already-prepared task + RuntimeContext + full tool gateway.
+            if self._model_driven_turn_enabled(context.policy):
+                return self._run_model_driven_task(
+                    task=task,
+                    task_board=task_board,
+                    context=context,
+                    coder=coder,
+                    goal_spec=goal_spec,
+                    project_config=project_config,
+                    runtime_context=runtime_context,
+                    available_tools=available_tools,
+                )
             base_max_rounds = self._agent_loop_max_rounds(context.policy)
             auto_repair_enabled = self._auto_repair_enabled(context.policy)
             repair_cap = (

@@ -4131,3 +4131,107 @@ def test_execute_command_pauses_direct_execute_when_task_plan_quality_fails(
         for line in (run_dir / "decisions.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert decisions[0]["metadata"]["kind"] == "task_plan_quality_gate"
+
+
+class FakeModelDrivenClient:
+    """立真身 JSON transport client: returns ``{narration, tool_calls, done}`` per the
+    model-driven turn contract (NOT the FSM's agent_loop_decision.next_action table).
+
+    Step 1: write the expected artifact through the real gateway (done=false).
+    Step 2: model stops calling tools (done=true) — the loop's single control branch = completed.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.transports: list[str] = []
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        self.transports.append(str(request.worker_transport))
+        if self.calls == 1:
+            payload = {
+                "narration": "创建 notes 工具模块。",
+                "tool_calls": [
+                    {
+                        "tool_name": "write_file",
+                        "args": {
+                            "path": "src/notes_tool.py",
+                            "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                            "overwrite": True,
+                        },
+                    }
+                ],
+                "done": False,
+            }
+        else:
+            payload = {"narration": "已创建并确认 notes 工具。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-model-driven",
+            raw_response={},
+        )
+
+
+def test_execute_command_model_driven_turn_flag_routes_through_real_thing(
+    tmp_path: Path,
+) -> None:
+    """立真身灰度接入：flag 开 → 整任务走模型驱动单循环（model→tool→observation→model），
+    经真 gateway 产出工件、模型 narration 上主线程、run summary 如实记 completed。"""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy.setdefault("agent_loop", {})["model_driven_turn"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+    client = FakeModelDrivenClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert result.blocked == 0
+    # 每轮都走 JSON transport（立真身通路），不是 FSM 的 next_action 填表。
+    assert client.transports and all(transport == "json" for transport in client.transports)
+    # 真的经 gateway 产出了工件。
+    assert (tmp_path / "src" / "notes_tool.py").read_text(encoding="utf-8").startswith(
+        "def add_note"
+    )
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    # 模型自己的声音（narration）上了主线程。
+    assert any(
+        event.get("transcript_kind") == "assistant_message"
+        and event.get("channel") == "model"
+        and event.get("display_level") == "main"
+        and (event.get("data") or {}).get("model_driven_turn")
+        for event in user_progress
+    )
+    # 收口没被 schema-double-trap 静默降级。
+    loop_summary = json.loads(
+        (run_dir / "agent_loop_run_summary.json").read_text(encoding="utf-8")
+    )
+    assert loop_summary["status"] == "completed"
+    assert loop_summary["exit_reason"] == "completed"
+
+
+def test_execute_command_model_driven_turn_flag_off_uses_fsm_path(tmp_path: Path) -> None:
+    """flag 默认关：走既有 FSM 路径（逐字节回退），进度流里没有任何 model_driven_turn 标记。"""
+    InitCommand(tmp_path).run()
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=FakeExecuteClient()).run()
+
+    assert result.completed == 1
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    user_progress = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert not any(
+        (event.get("data") or {}).get("model_driven_turn") for event in user_progress
+    )

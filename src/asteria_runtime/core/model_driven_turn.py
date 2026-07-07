@@ -23,6 +23,7 @@ codex-rs `tasks/regular.rs::run_turn` 与 Anthropic tool-use 规范循环——
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
@@ -182,7 +183,7 @@ def run_model_driven_turn(
         emit(TurnEvent(kind="tool_observation", iteration=iteration, observations=observations))
 
         messages.append(
-            ChatMessage(role="assistant", content=_assistant_turn_text(narration, calls))
+            ChatMessage(role="assistant", content=_assistant_turn_text(narration, calls, transport))
         )
         messages.append(
             ChatMessage(role="user", content=_observation_feedback(observations, transport))
@@ -263,7 +264,26 @@ def _observation_feedback(observations: list[ToolObservation], transport: str) -
     return f"Tool results (observations):\n{body}\n{tail}"
 
 
-def _assistant_turn_text(narration: str, calls: list[dict]) -> str:
+def _assistant_turn_text(narration: str, calls: list[dict], transport: str) -> str:
+    if transport == "json":
+        # Echo the model's OWN turn shape back into history so the (weak) model sees a consistent
+        # format across turns and does not learn to copy a synthetic "[called tools: …]" string
+        # into its next narration field (observed on real glm/minimax). Keeps narration clean —
+        # which is exactly what rides the main thread (ADR-0021).
+        return json.dumps(
+            {
+                "narration": narration,
+                "tool_calls": [
+                    {
+                        "tool_name": str(call.get("tool_name") or "tool"),
+                        "args": call.get("args") or {},
+                    }
+                    for call in calls
+                ],
+                "done": False,
+            },
+            ensure_ascii=False,
+        )
     summary = ", ".join(_call_signature(call) for call in calls)
     prefix = narration or "(worked via tools)"
     return f"{prefix}\n[called tools: {summary}]"
