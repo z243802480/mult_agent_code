@@ -452,6 +452,44 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+/* Batch-level merge-gate reconciliation banner (ADR-0023 B1-b): concurrent isolated writes either
+   all promote into the shared workspace, or a cross-write conflict blocks the batch. */
+.subagentMerge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  border-radius: var(--radius-2, 6px);
+  border-left: 3px solid var(--border);
+  background: var(--surface-2, rgba(127, 127, 127, 0.08));
+  font-size: 12px;
+  line-height: 1.4;
+}
+.subagentMerge .subagentMergeDot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.subagentMerge .subagentMergeText {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subagentMerge.isOk {
+  border-left-color: var(--ok, #2ea043);
+}
+.subagentMerge.isOk .subagentMergeDot {
+  background: var(--ok, #2ea043);
+}
+.subagentMerge.isBlocked {
+  border-left-color: var(--bad, #e5534b);
+}
+.subagentMerge.isBlocked .subagentMergeDot {
+  background: var(--bad, #e5534b);
+}
 .subagentGroup {
   display: flex;
   flex-direction: column;

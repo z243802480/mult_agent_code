@@ -21,6 +21,32 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
+// The batch-level merge-gate reconciliation for concurrent isolated writes (ADR-0023 B1-b). This
+// card is NOT tied to one child (it summarizes the whole write fan-out), so it is surfaced as a
+// panel banner rather than an expert row: how many disjoint writes were promoted into the shared
+// workspace, or that a cross-write conflict blocked the batch (nothing promoted).
+export interface MergeReconciliation {
+  ok: boolean;
+  summary: string;
+  promotedFiles: number;
+}
+
+export function buildReconciliation(events: StudioEvent[]): MergeReconciliation | null {
+  let result: MergeReconciliation | null = null;
+  for (const event of events) {
+    if (event.transcript_kind !== "subagent_summary") continue;
+    const data = asRecord(event.data);
+    if (String(data.subagent_phase ?? "") !== "merge_gate") continue;
+    // Last reconciliation wins (a run can fan out writers more than once).
+    result = {
+      ok: data.ok !== false,
+      summary: String(event.summary ?? ""),
+      promotedFiles: typeof data.promoted_files === "number" ? (data.promoted_files as number) : 0,
+    };
+  }
+  return result;
+}
+
 export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
   const order: string[] = [];
   const byChild = new Map<string, ExpertRow>();
@@ -69,6 +95,7 @@ const STATUS_GROUPS: { status: ExpertStatus; label: string; className: string }[
 
 export function SubagentPanel({ events }: { events: StudioEvent[] }) {
   const experts = buildExpertRows(events);
+  const reconciliation = buildReconciliation(events);
   const [openId, setOpenId] = useState<string | null>(null);
 
   if (experts.length === 0) {
@@ -87,6 +114,14 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
 
   return (
     <div className="subagentPanel">
+      {reconciliation && (
+        <div className={`subagentMerge ${reconciliation.ok ? "isOk" : "isBlocked"}`}>
+          <span className="subagentMergeDot" aria-hidden />
+          <span className="subagentMergeText" title={reconciliation.summary}>
+            {reconciliation.summary}
+          </span>
+        </div>
+      )}
       <div className="subagentSummaryLine">
         {experts.length} 个子 agent · {running} 运行中 · {experts.length - running} 已结束
       </div>

@@ -40,6 +40,8 @@ lead 一批发的专家里**含写专家**且 flag 开时：每个写 child 在*
 
 `studio/src/features/inspector/SubagentPanel.tsx`——Inspector「子 agent」tab：`buildExpertRows` 纯函数按 `child_task_id` 聚合专家（dispatch/result 卡定状态·子 transcript 按 `subagent_role`/`task_id` 归集）→ 状态分组（running/failed/done）每专家一行（色点 + role + 状态线 + 步数）→ 点行下钻到该专家完整过程；主线程只留 dispatch/result 摘要卡（Part B4 的 subagent_summary）。形态照搬 CC。
 
+**B1-b 合并可见性（拉齐）**：并发隔离写的 `merge_gate` 汇合卡是**批级**（无 `child_task_id`），故 `buildExpertRows` 会跳过它 → 之前不可见。新增 `buildReconciliation` 纯函数抽出该卡，渲染成面板**顶部横幅**：绿（isOk）"晋升 N 个文件到工作区" / 红（isBlocked）"被合并门阻止：…"，诚实呈现并发写到底并回了几个文件还是被冲突挡下（写 child 各自的 done/failed 状态已由 result 卡驱动的行呈现）。SSR 确定性验证（真组件 + 真投影，覆盖 ok/blocked/无卡三态）。
+
 ## 边界与非目标
 
 - **不翻 `parallel_writes` 全局默认开**：解冻的是并发专家能力的研发（flag opt-in，B1-a/B1-b 两 flag 均默认关），把出厂默认自主并发行为翻开仍是独立的自主性/安全 DecisionPoint，须用户另行确认。
