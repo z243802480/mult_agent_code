@@ -351,6 +351,7 @@ export function App() {
           />
           <SidePanel
             event={runEvidence.selectedEvent}
+            events={sessionEvents.events}
             files={bootstrap.files}
             preview={review.preview}
             settings={bootstrap.settings}

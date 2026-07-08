@@ -427,3 +427,128 @@
   display: grid;
   gap: 8px;
 }
+
+/* Sub-agent status panel (ADR-0023) — state-grouped expert monitor with drill-down. */
+.subagentPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.subagentPanel.subagentEmpty {
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+.subagentEmptyTitle {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.subagentEmptyHint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.subagentSummaryLine {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.subagentGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.subagentGroupLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.subagentGroupCount {
+  color: var(--text-muted);
+}
+.subagentRow {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.subagentRowHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+.subagentRowHead:hover {
+  background: var(--surface-3);
+}
+.subagentDot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.subagentDot.isRunning {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.subagentDot.isFailed { background: var(--bad); }
+.subagentDot.isDone { background: var(--ok); }
+.subagentRole {
+  flex: 0 0 auto;
+  font-weight: 600;
+  font-size: 12px;
+}
+.subagentStatusText {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.subagentIters {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.subagentChevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.subagentDrill {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+.subagentDrillEmpty {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.subagentStep {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.subagentStepTitle {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.subagentStepSummary {
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

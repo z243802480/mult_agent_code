@@ -16,6 +16,7 @@ import type { TurnDiffScope } from "../../turnDiff";
 import { DiffReviewPane } from "./DiffReviewPane";
 import { InspectorAdvanced } from "./InspectorAdvanced";
 import { PreviewPane } from "./PreviewPane";
+import { SubagentPanel } from "./SubagentPanel";
 
 // INS-1/INS-3: the Inspector is a focused tabbed workspace panel (was a ~2000px vertical evidence
 // stack). Preview renders the live built result (like Claude Code / Cursor); Changes = diffs;
@@ -24,6 +25,7 @@ const INSPECTOR_TABS = [
   { id: "preview", label: "预览" },
   { id: "changes", label: "改动" },
   { id: "context", label: "上下文" },
+  { id: "agents", label: "子 agent" },
   { id: "evidence", label: "证据" },
 ] as const;
 type InspectorTabId = (typeof INSPECTOR_TABS)[number]["id"];
@@ -32,7 +34,7 @@ const TAB_STORAGE_KEY = "asteria.studio.inspectorTab";
 function loadInspectorTab(): InspectorTabId {
   try {
     const raw = localStorage.getItem(TAB_STORAGE_KEY);
-    if (raw === "preview" || raw === "changes" || raw === "context" || raw === "evidence") return raw;
+    if (raw === "preview" || raw === "changes" || raw === "context" || raw === "agents" || raw === "evidence") return raw;
   } catch {
     // ignore
   }
@@ -41,6 +43,7 @@ function loadInspectorTab(): InspectorTabId {
 
 export function Inspector({
   event,
+  events,
   files,
   preview,
   settings,
@@ -74,6 +77,7 @@ export function Inspector({
   viewMode,
 }: {
   event: StudioEvent | null;
+  events: StudioEvent[];
   files: WorkspaceFile[];
   preview: FilePreview | null;
   settings: SettingsPayload | null;
@@ -165,6 +169,15 @@ export function Inspector({
               onDiscardFile={onDiscardFile}
             />
           </div>
+        )}
+        {tab === "agents" && (
+          <SubagentPanel
+            events={
+              events.length
+                ? events
+                : ((runDetail?.events ?? runDetail?.user_progress ?? []) as StudioEvent[])
+            }
+          />
         )}
         {tab === "context" && (
           <ContextPanel
