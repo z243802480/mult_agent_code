@@ -1005,6 +1005,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     review_parser.add_argument("--root", default=".", help="Workspace root path")
     add_session_id_argument(review_parser, "Session id to review; defaults to current session")
+    review_parser.add_argument(
+        "--rerun",
+        action="store_true",
+        help="Independently re-run recorded verification commands for the correctness signal",
+    )
 
     decide_parser = subcommands.add_parser(
         "decide",
@@ -2010,7 +2015,11 @@ def _run_cli() -> None:
         return
 
     if command == "review":
-        review_result = ReviewCommand(root=Path(args.root), run_id=args.session_id).run()
+        review_result = ReviewCommand(
+            root=Path(args.root),
+            run_id=args.session_id,
+            rerun=bool(getattr(args, "rerun", False)),
+        ).run()
         print(review_result.to_text())
         return
 

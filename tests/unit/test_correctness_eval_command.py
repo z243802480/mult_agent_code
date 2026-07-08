@@ -126,6 +126,24 @@ def test_rerun_none_without_verification_observations(tmp_path: Path) -> None:
     assert "rerun_eval" not in result.report
 
 
+def test_score_signal_rerun_reflects_fresh_exit_code(tmp_path: Path) -> None:
+    # The review-facing seam: score_signal(rerun=True) independently re-runs the recorded
+    # verification command. A recorded pass whose command now fails is caught (status flips to fail
+    # with a DIVERGENCE reason), where the read-only score_signal still trusts the recorded pass.
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(run_dir, validator, 0, "python -c \"import sys; sys.exit(1)\"", True)
+
+    read_only = CorrectnessEvalCommand(root=tmp_path, run_id=run_id).score_signal(run_dir)
+    assert read_only is not None and read_only["status"] == "pass"
+
+    reran = CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).score_signal(run_dir)
+    assert reran is not None and reran["status"] == "fail"
+    assert "DIVERGENCE" in reran["reason"]
+
+
 def test_score_is_graded_on_real_pass_rate_not_a_bucket(tmp_path: Path) -> None:
     run_id = _make_run(
         tmp_path,

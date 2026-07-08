@@ -114,10 +114,16 @@ class ReviewCommand:
         root: Path,
         run_id: str | None = None,
         model_client: ModelClient | None = None,
+        *,
+        rerun: bool = False,
     ) -> None:
         self.root = root.resolve()
         self.run_id = run_id
         self.model_client = model_client
+        # Opt-in: when set, the correctness signal is the INDEPENDENT re-run (recorded verification
+        # commands re-executed against the current workspace) rather than trusting recorded exit
+        # codes. Default off → byte-identical read-only review.
+        self.rerun = rerun
         self.validator = SchemaValidator(Path(__file__).resolve().parents[3] / "schemas")
         self.store = JsonStore(self.validator)
         self.jsonl = JsonlStore(self.validator)
@@ -188,8 +194,10 @@ class ReviewCommand:
         # Real correctness signal (graded verification pass rate) so the review overall score is
         # the actual exit-code evidence, not a 0.9/0.6/0.2 status constant. None when the run had
         # no executable verification — callers then keep the deterministic status-derived value.
+        # With --rerun the signal is INDEPENDENT: recorded verification commands are re-executed
+        # against the current workspace, so a recorded pass that is now broken/stale is caught.
         review_context["correctness_signal"] = CorrectnessEvalCommand(
-            self.root, run_id
+            self.root, run_id, rerun=self.rerun
         ).score_signal(run_dir)
         progress.record(
             run_id=run_id,

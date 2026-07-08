@@ -104,7 +104,7 @@ class CorrectnessEvalCommand:
         return CorrectnessEvalResult(run_id, report, report_path)
 
     def score_signal(self, run_dir: Path) -> dict | None:
-        """Read-only graded correctness signal for ``run_dir`` (no persistence).
+        """Graded correctness signal for ``run_dir`` (no report persistence).
 
         Returns the graded ``{status, score, reason}`` derived from the REAL verification
         pass rate, or ``None`` when the run recorded no executable verification
@@ -112,7 +112,17 @@ class CorrectnessEvalCommand:
         real correctness score, so a caller must keep its own status-derived value rather than
         override a non-verification task (docs/creative) with a fabricated fail. Reused by the
         review pipeline to replace the 0.9/0.6/0.2 constant with the real signal.
+
+        When ``self.rerun`` is set (opt-in), the signal is the INDEPENDENT one: the recorded
+        verification commands are re-executed against the current workspace (guarded) and the grade
+        reflects the fresh exit codes — its ``reason`` carries any DIVERGENCE. This executes commands
+        (unlike the default read-only path); default off keeps it byte-identical.
         """
+        if self.rerun:
+            rerun_eval = self._rerun_signal(run_dir)
+            if rerun_eval is not None:
+                return self._grade_rerun(rerun_eval)
+            # Nothing to independently re-run → fall through to the read-only signal (also None here).
         signals = self._signals(run_dir)
         if signals["command_verification_call_count"] == 0:
             return None

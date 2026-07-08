@@ -79,6 +79,12 @@ PASS 但重跑 FAIL**（产物陈旧/破损/flaky）——只读打分抓不到�
   安全边界（§2）。默认关 → 零行为变化。
 - **安全**：重跑必经 ShellGuard；工作区无 `policies.json` 时回退默认策略（仍带标准 denylist），**绝不
   裸跑或崩溃**。
-- **范围**：本切片交付 CLI 能力 + `rerun_eval` 报告段（`eval_report` schema `additionalProperties` 开放·
-  无 schema 迁移）。**接主 gate/release 自动重跑**为后续（gate 会因此执行命令·更重·单独评估）。
-- 回退：不传 `--rerun`（默认）即完全等同 ADR-0018 只读行为。
+- **范围**：交付 CLI 能力 + `rerun_eval` 报告段（`eval_report` schema `additionalProperties` 开放·
+  无 schema 迁移）。
+- **接主 review 已落地（2026-07-08）**：`review` 早已消费 `CorrectnessEvalCommand.score_signal`（把
+  0.9/0.6/0.2 常量换成真实 pass-rate）。`score_signal` 现认 `self.rerun`：`review --rerun`（opt-in·
+  默认关）时评审吃的是**独立重跑**信号——记录说过、现在跑挂了的产物在评审时即被抓（`reason` 带
+  DIVERGENCE）。review 是用户显式动作，重跑命令天经地义；默认关 → 只读逐字节不变。
+- **接主 release gate 仍为后续**：release gate 自动重跑会让 gate 执行命令（更重·有成本/时间代价·
+  且属 DO_NOT_TOUCH 栈），是独立的成本/设计权衡，**不在本轮自动化**（避免方向走偏）。
+- 回退：不传 `--rerun`（默认）即完全等同 ADR-0018 只读行为（review 与 CLI 皆然）。
