@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.capability_feedback import CapabilityFeedbackAdvisor
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -44,7 +45,42 @@ class ContextLoader:
             "capability_feedback": CapabilityFeedbackAdvisor(self.validator).planner_hints(
                 agent_dir
             ),
+            "active_goal": self._active_goal(),
             "workspace_files": self._workspace_files(),
+        }
+
+    def _active_goal(self) -> dict:
+        """The durable long-task memory the runtime writes after each run (completed work,
+        artifacts already produced, next task, blockers). It is written by ``ActiveGoalMemory``
+        but was never fed back to the executing model — so a resumed/continued run started blind,
+        re-doing work and re-writing files it had already produced. Surface a bounded, prompt-safe
+        projection here so the doer actually sees its own prior progress. Best-effort: absent or
+        damaged memory returns ``{}`` (never blocks context loading)."""
+        memory = ActiveGoalMemory(self.root)
+        try:
+            structured = memory.read_structured()
+        except Exception:  # noqa: BLE001 - context loading is best effort; damaged memory is not fatal
+            return {}
+        if not isinstance(structured, dict) or not structured.get("current_goal"):
+            return {}
+        result = structured.get("current_result")
+        return {
+            "current_goal": structured.get("current_goal"),
+            "current_result": result if isinstance(result, dict) else {},
+            "overall_plan": [
+                {
+                    "title": item.get("title"),
+                    "status": item.get("status"),
+                }
+                for item in structured.get("overall_plan", [])
+                if isinstance(item, dict)
+            ][:12],
+            "completed_work": [str(item) for item in structured.get("completed_work", [])][:8],
+            "artifacts_already_produced": [
+                str(item) for item in structured.get("artifact_refs", [])
+            ][:10],
+            "next_task": [str(item) for item in structured.get("next_task", [])][:5],
+            "current_blockers": [str(item) for item in structured.get("current_blockers", [])][:5],
         }
 
     def _memory(self, agent_dir: Path) -> list[dict]:

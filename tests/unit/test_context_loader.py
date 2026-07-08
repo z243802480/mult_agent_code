@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from asteria_runtime.core.active_goal_memory import ActiveGoalMemory
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
@@ -55,6 +56,41 @@ def test_context_loader_skips_stale_memory_rows(tmp_path: Path) -> None:
 
     assert len(context["memory"]) == 1
     assert context["memory"][0]["content"] == "Keep validation probes scoped."
+
+
+def test_context_loader_feeds_back_active_goal_memory(tmp_path: Path) -> None:
+    # The runtime writes ActiveGoalMemory after each run but historically never fed it back to the
+    # executing model, so a resumed run started blind and re-did work / re-wrote files. The loader
+    # must surface a bounded projection (prior goal, completed work, artifacts already produced).
+    ActiveGoalMemory(tmp_path).write_from_run(
+        goal_spec={"goal_id": "g1", "normalized_goal": "Build a snake game"},
+        task_plan={
+            "tasks": [
+                {"task_id": "t0", "title": "Create snake.py", "status": "done", "summary": "done"},
+                {"task_id": "t1", "title": "Add scoring", "status": "todo", "summary": ""},
+            ]
+        },
+        run_status={"run_id": "run-1", "current_phase": "IMPLEMENTED"},
+        review_status="unknown",
+        completion="implemented_needs_review",
+        artifacts=["snake.py"],
+    )
+
+    context = ContextLoader(tmp_path, validator()).load()
+
+    active_goal = context["active_goal"]
+    assert active_goal["current_goal"] == "Build a snake game"
+    assert "snake.py" in active_goal["artifacts_already_produced"]
+    assert any("Create snake.py" in item or "done" in item for item in active_goal["completed_work"])
+    assert {"title": "Create snake.py", "status": "done"} in active_goal["overall_plan"]
+
+
+def test_context_loader_active_goal_is_empty_without_memory(tmp_path: Path) -> None:
+    (tmp_path / ".asteria").mkdir(parents=True)
+
+    context = ContextLoader(tmp_path, validator()).load()
+
+    assert context["active_goal"] == {}
 
 
 def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: Path) -> None:
