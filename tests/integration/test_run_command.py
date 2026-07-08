@@ -523,10 +523,11 @@ class FakeApprovalExecuteClient:
                     {
                         "tool_name": "run_command",
                         "args": {
-                            "command": (
-                                "python -c \"print('approval required')\" "
-                                "&& python -c \"print('approved')\""
-                            )
+                            # A policy-gated command (pip install trips GLOBAL_INSTALL denylist) so the
+                            # execution-approval gate pauses the batch. NOT a benign shell operator —
+                            # those now run without approval (ADR-0025). Harmless on approve+resume:
+                            # `--help` just prints usage (exit 0, no network, no install).
+                            "command": "python -m pip install --help"
                         },
                     },
                     {
@@ -554,10 +555,9 @@ class FakeApprovalExecuteClient:
             {
                 "tool_name": "run_command",
                 "args": {
-                    "command": (
-                        "python -c \"print('approval required')\" "
-                        "&& python -c \"print('approved')\""
-                    )
+                    # Policy-gated (pip install) so the approval gate pauses; benign `&&` no longer
+                    # triggers approval (ADR-0025). Harmless on resume (`--help` only prints usage).
+                    "command": "python -m pip install --help"
                 },
             },
             {
@@ -592,7 +592,7 @@ class FakeApprovalExecuteClient:
                 {
                     "schema_version": "0.1.0",
                     "task_id": task_id,
-                    "summary": "Create artifact and verify with a shell operator.",
+                    "summary": "Create artifact after a policy-gated command needs approval.",
                     "tool_calls": [
                         {
                             "tool_name": "run_command",
