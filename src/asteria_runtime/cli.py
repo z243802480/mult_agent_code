@@ -585,6 +585,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-id", dest="run_id", default=None, help="Run/session id; defaults to the latest run"
     )
     correctness_eval_parser.add_argument("--json", action="store_true", help="Emit JSON")
+    correctness_eval_parser.add_argument(
+        "--rerun",
+        action="store_true",
+        help="Independently re-execute the recorded verification commands (fresh exit codes)",
+    )
 
     package_check_parser = subcommands.add_parser(
         "package-check",
@@ -1790,7 +1795,7 @@ def _run_cli() -> None:
 
     if command == "correctness-eval":
         correctness_result = CorrectnessEvalCommand(
-            root=Path(args.root), run_id=args.run_id
+            root=Path(args.root), run_id=args.run_id, rerun=bool(getattr(args, "rerun", False))
         ).run()
         if args.json:
             print(json.dumps(correctness_result.to_dict(), ensure_ascii=False, indent=2))

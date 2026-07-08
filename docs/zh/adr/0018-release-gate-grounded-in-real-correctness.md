@@ -62,3 +62,23 @@ gate 尚未。
 - 是否把 `partial` 与 `fail` 区别对待（当前一律非 `pass` 即降级，release 从严）——若真实 acceptance
   运行出现"预期非零退出的负向测试"误伤，再引入按场景意图标注。
 - Studio 侧把 `acceptance_correctness` 透到 gate 面板（maintainer 视图），与其它 gate 证据并列。
+
+## 7. 深化：独立重跑验证（2026-07-08 已落地）
+
+ADR-0018 让 gate **消费**落盘的真实退出码，但那仍是**信任历史证据**——一个 run 记录了"验证通过"，
+若产物此后被改坏/变陈旧/本就 flaky，只读打分仍报 pass。§16.1 line 474 早标"只读打分是第一步，后续
+可扩展**重跑验证**"。
+
+`CorrectnessEvalCommand(rerun=True)`（CLI `correctness-eval --rerun`，**opt-in·默认关·只读逐字节不变**）
+把只读信号深化为**独立信号**：从 `tool_observations.jsonl` 的结构化 `observation.data.requested_command`
+取出每条已记录的验证命令（去重），经**同一套 guarded `RunCommandTool`**（ShellGuard + ADR-0020 env
+清洗·非裸 subprocess）**对当前工作区重新执行**，按**新鲜退出码**打分。核心产出 `divergence`：**记录说
+PASS 但重跑 FAIL**（产物陈旧/破损/flaky）——只读打分抓不到、重跑抓得到，`overall` 据新鲜结果翻成 fail。
+
+- **ADR-0016 合规**：重跑不做认知，只把"命令现在还过不过"的客观退出码作为证据（§3 证据型）；执行经既有
+  安全边界（§2）。默认关 → 零行为变化。
+- **安全**：重跑必经 ShellGuard；工作区无 `policies.json` 时回退默认策略（仍带标准 denylist），**绝不
+  裸跑或崩溃**。
+- **范围**：本切片交付 CLI 能力 + `rerun_eval` 报告段（`eval_report` schema `additionalProperties` 开放·
+  无 schema 迁移）。**接主 gate/release 自动重跑**为后续（gate 会因此执行命令·更重·单独评估）。
+- 回退：不传 `--rerun`（默认）即完全等同 ADR-0018 只读行为。

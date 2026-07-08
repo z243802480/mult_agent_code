@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
+from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.storage.json_store import JsonStore
 from asteria_runtime.storage.jsonl_store import JsonlStore
 from asteria_runtime.storage.run_store import RunStore
@@ -43,6 +44,86 @@ def _make_run(
         "task_board",
     )
     return run_id
+
+
+def _write_verification_observation(
+    run_dir: Path, validator: SchemaValidator, index: int, command: str, recorded_ok: bool
+) -> None:
+    JsonlStore(validator).append(
+        run_dir / "tool_observations.jsonl",
+        {
+            "schema_version": "0.1.0",
+            "observation_id": f"obs-{index}",
+            "run_id": "run",
+            "task_id": "t0",
+            "tool_call_id": f"tc-{index}",
+            "tool_name": "run_command",
+            "ok": recorded_ok,
+            "status": "success" if recorded_ok else "failure",
+            "summary": "recorded",
+            "observation": {
+                "tool_name": "run_command",
+                "ok": recorded_ok,
+                "summary": "recorded",
+                "status": "success" if recorded_ok else "failure",
+                "data": {"requested_command": command, "command": command, "returncode": 0},
+            },
+            "created_at": "2026-07-08T00:00:00+08:00",
+        },
+        "tool_observation",
+    )
+
+
+def test_rerun_confirms_pass_independently(tmp_path: Path) -> None:
+    # A recorded pass whose command still passes on independent re-run → overall stays pass with the
+    # fresh signal, no divergence.
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(run_dir, validator, 0, "python -c \"import sys; sys.exit(0)\"", True)
+
+    result = CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).run()
+
+    rerun = result.report["rerun_eval"]
+    assert rerun["reran"] is True
+    assert rerun["command_count"] == 1
+    assert rerun["pass_count"] == 1
+    assert rerun["divergence"] is False
+    assert result.report["overall"]["status"] == "pass"
+
+
+def test_rerun_catches_stale_recorded_pass(tmp_path: Path) -> None:
+    # The money case: recorded evidence says the verification PASSED, but re-running the same command
+    # now FAILS (artifact went stale/broken). Read-only grading would still say pass; re-run catches
+    # the divergence and the overall verdict flips to fail.
+    InitCommand(tmp_path).run()
+    validator = SchemaValidator(SCHEMAS)
+    run_id = _make_run(tmp_path, tool_calls=[("run_command", "success")], tasks=["done"])
+    run_dir = tmp_path / ".asteria" / "runs" / run_id
+    _write_verification_observation(run_dir, validator, 0, "python -c \"import sys; sys.exit(1)\"", True)
+
+    # Read-only: trusts the recorded pass.
+    read_only = CorrectnessEvalCommand(root=tmp_path, run_id=run_id).run()
+    assert read_only.report["overall"]["status"] == "pass"
+    assert "rerun_eval" not in read_only.report
+
+    # Re-run: independently proves it fails now.
+    reran = CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).run()
+    assert reran.report["rerun_eval"]["divergence"] is True
+    assert reran.report["rerun_eval"]["pass_count"] == 0
+    assert reran.report["overall"]["status"] == "fail"
+    assert "DIVERGENCE" in reran.report["overall"]["reason"]
+
+
+def test_rerun_none_without_verification_observations(tmp_path: Path) -> None:
+    # No verification commands recorded → nothing to independently re-run → no rerun_eval, overall
+    # falls back to the read-only grade.
+    run_id = _make_run(tmp_path, tool_calls=[("write_file", "success")], tasks=["done"])
+
+    result = CorrectnessEvalCommand(root=tmp_path, run_id=run_id, rerun=True).run()
+
+    assert "rerun_eval" not in result.report
 
 
 def test_score_is_graded_on_real_pass_rate_not_a_bucket(tmp_path: Path) -> None:
