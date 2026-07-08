@@ -173,6 +173,14 @@ function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
     return first.type.startsWith("tool_") && event.type.startsWith("tool_") && first.title === event.title;
   }
   if (step.kind === "observation") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
+  if (step.kind === "subagent") {
+    // One delegation = one card: merge a spawn_subagent's dispatch + returned-summary events by
+    // their shared child_task_id. Two DIFFERENT experts (distinct child_task_id) must stay separate
+    // cards, otherwise the phase-fallback below would collapse them and lose the first expert.
+    const firstChild = String(((first.data ?? {}) as Record<string, unknown>).child_task_id ?? "");
+    const eventChild = String(((event.data ?? {}) as Record<string, unknown>).child_task_id ?? "");
+    return !!firstChild && firstChild === eventChild;
+  }
   return first.phase === event.phase;
 }
 

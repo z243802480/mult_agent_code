@@ -800,6 +800,29 @@ class ExecuteCommand:
             # exactly as before; CloudSessionExecutor is an opt-in North Star stub. spawn_subagent
             # only describes the sub-task — where it runs is resolved here (bare gateway: the child
             # does not nest-spawn in this skeleton; concurrency + isolation is Part B).
+            # Make delegation visible on the lead's main thread (ADR-0022 ③ expert cluster). The
+            # dispatch card shows immediately — a long expert run is otherwise silent — while the
+            # child's own narration/tools stay in the Inspector (subagent_role); only the returned
+            # summary rides back up, mirroring the summary-only context contract.
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="running",
+                title=f"委派 {expert.role} 专家",
+                summary=f"委派 {expert.role} 专家：{str(args.get('task') or '').strip()[:200]}",
+                display_level="main",
+                transcript_kind="subagent_summary",
+                data={
+                    "task_id": task_id,
+                    "subagent_role": expert.role,
+                    "child_task_id": child_task_id,
+                    "subagent_phase": "dispatch",
+                    "model_driven_turn": True,
+                },
+            )
             executor = resolve_worker_executor(
                 self._subagent_backend_kind(context.policy), validator=self.validator
             )
@@ -816,7 +839,33 @@ class ExecuteCommand:
                 model_client=coder.model_client,
                 tool_runner=self.tool_gateway,
                 context=context,
-                on_event=lambda event: self._record_model_driven_event(context, child_task, event),
+                on_event=lambda event: self._record_model_driven_event(
+                    context, child_task, event, subagent_role=expert.role
+                ),
+            )
+            # Returned-summary card on the main thread — lights up the wired "子 agent" narrative
+            # kind (narrative.ts subagent_summary → subagent) with the expert's role + result.
+            self._record_progress(
+                context,
+                task,
+                channel="progress",
+                event_type="message",
+                phase="execute",
+                status="completed" if outcome.ok else "running",
+                title="子 agent 完成" if outcome.ok else "子 agent 未完成",
+                summary=f"[{expert.role}] {outcome.summary}",
+                display_level="main",
+                transcript_kind="subagent_summary",
+                data={
+                    "task_id": task_id,
+                    "subagent_role": expert.role,
+                    "child_task_id": child_task_id,
+                    "subagent_phase": "result",
+                    "child_status": outcome.status,
+                    "iterations": outcome.iterations,
+                    "ok": outcome.ok,
+                    "model_driven_turn": True,
+                },
             )
             return _SubagentResult(
                 ok=outcome.ok,
@@ -1147,11 +1196,16 @@ class ExecuteCommand:
         context: RuntimeContext,
         task: dict,
         event: TurnEvent,
+        *,
+        subagent_role: str | None = None,
     ) -> None:
         """Project 立真身 loop events onto the user progress stream: the model's narration/final
         message rides the main thread in its own voice (ADR-0021); tool observations land in the
-        Inspector (evidence, not conversation)."""
+        Inspector (evidence, not conversation). A DELEGATED expert's events carry ``subagent_role`` —
+        its narration is the sub-task's evidence, not the lead's voice, so it stays in the Inspector;
+        the lead only sees the returned summary on the main thread (spawn_subagent, ADR-0022 ③)."""
         task_id = str(task.get("task_id") or "")
+        is_child = subagent_role is not None
         if event.kind in {"narration", "final"} and event.text:
             self._record_progress(
                 context,
@@ -1160,14 +1214,19 @@ class ExecuteCommand:
                 event_type="message",
                 phase="execute",
                 status="running",
-                title="模型叙述" if event.kind == "narration" else "模型收尾",
+                title=(
+                    f"{subagent_role} 专家叙述"
+                    if is_child
+                    else ("模型叙述" if event.kind == "narration" else "模型收尾")
+                ),
                 summary=event.text,
-                display_level="main",
+                display_level="inspector" if is_child else "main",
                 transcript_kind="assistant_message",
                 data={
                     "task_id": task_id,
                     "iteration": event.iteration,
                     "model_driven_turn": True,
+                    **({"subagent_role": subagent_role} if is_child else {}),
                 },
             )
         elif event.kind == "tool_observation":

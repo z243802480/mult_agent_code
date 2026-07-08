@@ -2592,6 +2592,36 @@ def test_execute_command_model_driven_turn_spawn_subagent(tmp_path: Path) -> Non
         "def add_note"
     )
 
+    # Part B4 frontend pull-up: delegation is VISIBLE on the lead's main thread as two
+    # subagent_summary events (dispatch + returned summary), which light up the wired "子 agent"
+    # narrative card (ADR-0022 ③). The expert's OWN narration stays in the Inspector, not masquerading
+    # as the lead's voice.
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    subagent_main = [
+        e
+        for e in events
+        if e.get("transcript_kind") == "subagent_summary" and e.get("display_level") == "main"
+    ]
+    phases = {(e.get("data") or {}).get("subagent_phase") for e in subagent_main}
+    assert phases == {"dispatch", "result"}
+    assert all((e.get("data") or {}).get("subagent_role") == "coder" for e in subagent_main)
+    # Same delegation → shared child_task_id (frontend groups dispatch+result into one card).
+    assert len({(e.get("data") or {}).get("child_task_id") for e in subagent_main}) == 1
+    # The child expert's narration is Inspector evidence, tagged with its role — never a main-thread
+    # "模型叙述" masquerading as the lead.
+    child_narration = [
+        e
+        for e in events
+        if e.get("transcript_kind") == "assistant_message"
+        and (e.get("data") or {}).get("subagent_role") == "coder"
+    ]
+    assert child_narration
+    assert all(e.get("display_level") == "inspector" for e in child_narration)
+
 
 
 
