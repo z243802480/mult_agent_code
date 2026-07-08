@@ -100,6 +100,13 @@ class CapabilityDecisionRecorder:
             event_type="permission_decision",
             phase="execute",
             status="running" if decision["decision"] != "deny" else "blocked",
+            # Inspector-only: this is the per-tool-call AUDIT that a capability decision was computed
+            # (also persisted to capability_decisions.jsonl). One fires for EVERY tool/MCP/skill call,
+            # so on the main thread it floods the stream with 20+ identical "已记录能力决策" rows that
+            # bury the real content. The genuine user-facing "needs your approval" ask is a SEPARATE
+            # main event (transcript_kind=ask, status=waiting_user) emitted by the pause flow — this
+            # audit record belongs in the Inspector, not the conversation. (ADR-0021 main-thread honesty)
+            display_level="inspector",
             title="Capability decision recorded",
             summary=(
                 f"{request.capability_type}:{capability_name}: {decision['decision']} "

@@ -155,7 +155,10 @@ export function NarrativeStep({
       </button>
       <div className={`stepExpandedWrap ${open ? "open" : ""}`}>
         <div className="stepExpanded">
-          {step.summary && step.summary !== step.title && (
+          {/* Always show the detail line for an error step so clicking it reveals WHAT/WHERE went
+              wrong (otherwise a "遇到问题" card expands to nothing). Other kinds keep the de-dup that
+              hides a summary identical to the title. */}
+          {step.summary && (step.kind === "error" || step.summary !== step.title) && (
             <p className="stepSummaryText">{step.summary}</p>
           )}
           {/* Real verification commands + outcomes (ADR-0021): `✓/✗ $ <command>` lines carried on the

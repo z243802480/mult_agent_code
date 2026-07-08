@@ -155,7 +155,11 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "subagent") return "子 agent";
   if (kind === "hold") return "已保留待你查看";
   if (kind === "resume") return "已恢复";
-  return "问题";
+  // A genuine error gets an explicit, non-cryptic label AND its detail (summary/error) is always shown
+  // (see NarrativeStep) so the user can see WHAT and WHERE. The bare fallback below must stay neutral
+  // ("步骤"), not "问题" — otherwise every unmapped-kind bookkeeping row screams "problem" for nothing.
+  if (kind === "error") return "遇到问题";
+  return "步骤";
 }
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
@@ -164,6 +168,12 @@ function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
   if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {
+    // Same tool call → same card. A single file op emits a tool_use THEN a tool_result user_progress
+    // event that share one tool_call_id (e.g. toolcall-0002) but different EN/CN summaries ("读取 X" /
+    // "Read file: X") — without this they render as two duplicate same-title cards ("重复打开"). These
+    // user_progress events do NOT carry an event.type starting with "tool_", so the legacy type-based
+    // check below never merged them; keying on the shared tool_call_id does.
+    if (first.tool_call_id && first.tool_call_id === event.tool_call_id) return true;
     // Same shell command → same card (run_command/run_tests carry a real command string). Guard on
     // non-empty: file/read/patch tools have an empty command, and "" === "" must NOT collapse two
     // different tools into one card. For those, group by the stable action title instead (ADR-0021:

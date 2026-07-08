@@ -58,6 +58,10 @@ def test_capability_decision_recorder_records_mcp_and_skill_decisions(tmp_path: 
         ("permission", "permission_decision"),
     ]
     assert progress[0]["data"]["capability_decision"]["capability_type"] == "mcp"
+    # The per-tool-call decision AUDIT must be Inspector-only: one fires for every capability call, so
+    # on the main thread it floods the conversation with identical rows. The real approval ask is a
+    # separate main event. (ADR-0021 main-thread honesty)
+    assert all(event["display_level"] == "inspector" for event in progress)
 
 
 def test_capability_decision_recorder_denies_unlisted_skill(tmp_path: Path) -> None:

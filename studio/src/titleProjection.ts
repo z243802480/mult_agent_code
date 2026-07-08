@@ -68,7 +68,12 @@ const SUMMARY_PROJECTIONS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(\d+) changed file\(s\) are now visible in the run timeline\.?$/, (m) => `${m[1]} 个改动文件已在运行时间线中可见。`],
   [/^Validation passed: (\d+)\/(\d+) check\(s\) passed\.?$/, (m) => `验证通过：${m[1]}/${m[2]} 项检查已通过。`],
   [/^All (\d+) verification command\(s\) passed and no tasks are blocked\.?$/, (m) => `全部 ${m[1]} 条验证命令通过，无任务受阻。`],
-  [/^Asked the coder model to propose execution steps for (\S+?)\.?$/, (m) => `已请编码模型为 ${m[1]} 提出执行步骤。`],
+  // Internal task ids (task-000N) must never surface on the main thread — the user thinks in the
+  // work, not the runtime's bookkeeping counter. These phrasings all carried a raw id; rewrite them
+  // to plain language that drops it.
+  [/^Asked the coder model to propose execution steps for \S+\.?$/, () => `已请编码模型规划下一步执行步骤。`],
+  [/^task-\S+ 已被 task-\S+ 替代并进入后续执行。?$/, () => `当前任务已被新的修复任务替代，继续执行。`],
+  [/^Tool is not allowed for \S+: (.+)$/, (m) => `当前任务不允许使用该工具：${m[1]}`],
   [/^Updated (\S+)$/, (m) => `已更新 ${m[1]}`],
   [/^Wrote file: (\S+)$/, (m) => `已写入文件：${m[1]}`],
   [/^Running (.+)$/, (m) => `正在运行 ${m[1]}`],
@@ -80,5 +85,7 @@ export function projectSummary(summary: string): string {
     const match = trimmed.match(pattern);
     if (match) return render(match);
   }
-  return summary;
+  // Safety net: any unlisted phrasing that still embeds a raw task id gets the id neutralized rather
+  // than leaked verbatim to the user (e.g. "…task-0007…" → "…任务…").
+  return trimmed.replace(/\btask-\d+\b/g, "任务");
 }
