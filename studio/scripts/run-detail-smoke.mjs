@@ -55,12 +55,6 @@ await writeJson("agent_loop_run_summary.json", {
   rounds_completed: 2,
   max_rounds: 2,
   summary: "Loop stopped after reaching max rounds.",
-  recommended_command: "status --debug",
-  latest_decision_id: "loop-decision-0001",
-  latest_execution_id: "loop-execution-0001",
-  latest_observation_id: "loop-observation-0001",
-  latest_action: "replan",
-  evidence_refs: ["agent_loop_decisions.jsonl"],
 });
 await writeJson("final_report_summary.json", {
   workflow_state: "review_passed",

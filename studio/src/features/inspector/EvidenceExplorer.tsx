@@ -159,7 +159,6 @@ function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload 
   );
   const nextAction = firstText(
     String(asArray(rolling.next_actions)[0] ?? ""),
-    String(agentLoopSummary.recommended_command ?? ""),
     String(legacyLoopSummary.recommended_next_command ?? ""),
     "未记录动作"
   );
@@ -406,7 +405,7 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
   ) as AnyRecord[];
   const latestRoute = timeline.at(-1) ?? {};
   const workflowState = firstText(String(finalSummary.workflow_state ?? ""), String(runLoopSummary.workflow_state ?? ""), String(run.current_phase ?? "unknown"));
-  const nextCommand = firstText(String(mainAction.next_command ?? ""), String(finalSummary.recommended_next_command ?? ""), String(agentLoopSummary.recommended_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
+  const nextCommand = firstText(String(mainAction.next_command ?? ""), String(finalSummary.recommended_next_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
   const nextLabel = firstText(String(mainAction.label ?? ""), nextCommand);
   const commandDisplay = nextCommand === "none"
     ? "无需操作"

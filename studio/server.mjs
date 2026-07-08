@@ -3543,12 +3543,12 @@ function mainActionForRun(payload, currentDecisions) {
   }
   const finalSummary = payload.final_report_summary || {};
   const loopSummary = payload.run_loop_summary || {};
-  const agentLoopSummary = payload.agent_loop_run_summary || {};
   const progress = payload.runtime_progress || {};
+  // agent_loop_run_summary.recommended_command was an FSM projection RA7b deleted (never written
+  // now); the spine's next-command chip resolves from runtime_progress / final_report_summary.
   const nextCommand = firstRuntimeText(
     progress.next_command,
     finalSummary.recommended_next_command,
-    agentLoopSummary.recommended_command,
     loopSummary.recommended_next_command,
     ""
   );
