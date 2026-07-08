@@ -180,7 +180,9 @@ export function App() {
 
   const onFileRevert = useCallback(async (pathValue: string): Promise<boolean> => {
     const ok = await review.revertFileChange(pathValue);
-    if (ok) toast.success("已还原——文件已恢复到上次提交。");
+    // Accurate for both cases: a tracked file reverts to its committed content, an agent-CREATED
+    // (untracked) file is removed — "恢复到上次提交" was wrong (and confusing) for the created case.
+    if (ok) toast.success("已还原——已撤销该文件的改动。");
     else toast.error("无法还原该文件。请尝试查看面板。");
     return ok;
   }, [review]);
@@ -199,14 +201,12 @@ export function App() {
     if (/^(review|accept)\b/i.test(trimmed)) {
       await openCurrentReview();
     }
-    try {
-      await sessionEvents.runRuntimeAction(action);
-    } catch (err) {
-      toast.error("该操作未能执行。请重试。");
-      throw err; // preserve the existing rejection propagation
-    }
-    // Confirm the terminal action — its button often disappears on success, so a
-    // toast is the only post-click acknowledgement the user gets.
+    // runRuntimeAction now surfaces its own failure toast and returns the server result. Only claim
+    // the terminal action succeeded when the server actually STARTED it (started===true) — previously
+    // this fired a green "已最终确认" toast even when the server had merely queued a second approval
+    // and NOT accepted, so the user was told the run was finalized when it was not.
+    const result = await sessionEvents.runRuntimeAction(action);
+    if (!result?.ok || result?.started === false) return;
     if (/^accept\b/i.test(trimmed)) toast.success("运行已最终确认——改动已进入你的工作区。");
   }, [openCurrentReview, sessionEvents]);
 

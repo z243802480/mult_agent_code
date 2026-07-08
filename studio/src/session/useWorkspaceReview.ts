@@ -8,6 +8,7 @@ import type {
 } from "../types";
 import type { DiffLayout, DiffStage } from "../components/DiffPreview";
 import { api } from "../api";
+import { toast } from "../components/toast";
 import { buildTurnDiffScopes } from "../turnDiff";
 
 export function useWorkspaceReview(
@@ -179,7 +180,14 @@ export function useWorkspaceReview(
     if (!ok) return;
     setCompactLoading(true);
     try {
-      await api.runtimeAction(activeSession.session_id, "compact", "ask");
+      // The window.confirm above IS the approval — send "allow" so compaction runs immediately.
+      // "ask" made the server append a second permission card to the thread and NOT compact,
+      // leaving the confirm dialog feeling like a no-op.
+      const result = await api.runtimeAction(activeSession.session_id, "compact", "allow");
+      if (!result?.ok) {
+        toast.error(`无法压缩上下文${result?.error ? `：${result.error}` : ""}。`);
+        return;
+      }
       if (selectedRunId) {
         setRunDetail(await api.runDetail(selectedRunId));
       }

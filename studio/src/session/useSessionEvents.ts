@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { StudioEvent, StudioSession } from "../types";
+import type { AnyRecord, StudioEvent, StudioSession } from "../types";
 import { api, subscribeToEvents, type ConnectivityStatus } from "../api";
 import { isSessionLive } from "../narrative";
 import { mergeEventLists } from "./eventUtils";
@@ -89,15 +89,26 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     mergeEvents(eventData.events ?? []);
   }
 
-  async function runRuntimeAction(nextAction: string) {
-    if (!activeSession) return;
+  async function runRuntimeAction(nextAction: string): Promise<AnyRecord> {
+    if (!activeSession) return { ok: false };
+    let result: AnyRecord;
     try {
-      await api.runtimeAction(activeSession.session_id, nextAction, "ask");
+      // These actions are ALL triggered by an explicit user click (Review / Accept / Decide /
+      // Continue / a suggested-action chip). The click IS the approval, so send permission="allow":
+      // sending "ask" made the server append a SECOND permission card and NOT run the action, while
+      // the caller still reported success — the "标记完成 lies" bug. (Explicit click = consent.)
+      result = await api.runtimeAction(activeSession.session_id, nextAction, "allow");
     } catch {
       toast.error("无法启动该操作——请重试。", {
         action: { label: "重试", onClick: () => void runRuntimeAction(nextAction) },
       });
-      return;
+      return { ok: false };
+    }
+    // Server rejections come back as {ok:false} with HTTP 200 (no throw). Surface them instead of
+    // clearing the spinner and silently doing nothing.
+    if (!result?.ok) {
+      toast.error(`该操作未能执行${result?.error ? `：${result.error}` : ""}。`);
+      return result;
     }
     const [eventData, refreshed] = await Promise.all([
       api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] })),
@@ -105,6 +116,7 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     ]);
     mergeEvents(eventData.events ?? []);
     setSessions(refreshed.sessions ?? sessions);
+    return result;
   }
 
   async function resolveDecision(

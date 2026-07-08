@@ -4189,6 +4189,20 @@ async function discardWorkspaceGitFile(body) {
   if (!normalized) return { ok: false, error: "path is required" };
   if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
   if (!existsSync(path.join(workspace, ".git"))) return { ok: false, error: "not a git repository" };
+  // Untracked files (the COMMON case: a file the agent just CREATED) cannot be reverted with
+  // `git checkout` — it errors "pathspec did not match". `git status -u` still lists them, so the
+  // thread shows a Revert button for them. For an untracked file, "revert" means remove the
+  // newly-created file from disk; tracked files revert to their last committed content.
+  const tracked = await runGit(["ls-files", "--error-unmatch", "--", normalized]);
+  if (tracked.code !== 0) {
+    const absolute = path.join(workspace, normalized);
+    try {
+      if (existsSync(absolute)) await fs.rm(absolute, { force: true });
+    } catch (err) {
+      return { ok: false, error: redactText(String(err?.message || "failed to remove file")) };
+    }
+    return { ok: true, path: normalized, action: "removed" };
+  }
   const result = await runGit(["checkout", "--", normalized]);
   if (result.code !== 0) return { ok: false, error: redactText(result.stderr || "git checkout failed") };
   return { ok: true, path: normalized, action: "discarded" };
