@@ -1,10 +1,9 @@
 import json
 from pathlib import Path
-from threading import Lock
+from threading import Barrier, BrokenBarrierError, Lock
 
 import pytest
 
-from asteria_runtime.commands.decide_command import DecideCommand
 from asteria_runtime.commands.execute_command import (
     ExecuteCommand,
     _methodology_stop_guardrail_decision,
@@ -12,8 +11,6 @@ from asteria_runtime.commands.execute_command import (
 )
 from asteria_runtime.commands.init_command import InitCommand
 from asteria_runtime.commands.plan_command import PlanCommand
-from asteria_runtime.commands.promotions_command import PromotionsCommand
-from asteria_runtime.commands.resume_command import ResumeCommand
 from asteria_runtime.evaluation.task_plan_evaluator import TaskPlanEvaluator
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
@@ -2623,6 +2620,105 @@ def test_execute_command_model_driven_turn_spawn_subagent(tmp_path: Path) -> Non
     assert all(e.get("display_level") == "inspector" for e in child_narration)
 
 
+class FakeConcurrentReviewersClient:
+    """Lead delegates to TWO read-only reviewer experts in ONE tool batch. Each child blocks on a
+    shared Barrier(2) on its first turn: if the fan-out is concurrent both children reach the barrier
+    together and pass; if it were serial the first child's wait would time out (BrokenBarrier). The
+    barrier passing IS the deterministic concurrency proof (ADR-0023 B1-a)."""
+
+    def __init__(self) -> None:
+        self.parent_calls = 0
+        self._barrier = Barrier(2, timeout=8)
+        self._lock = Lock()
+        self._seen_children: set[str] = set()
+        self.child_task_ids: set[str] = set()
+        self.barrier_ok = False
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str((request.metadata or {}).get("task_id") or "")
+        if "-sub-" in task_id:
+            first = False
+            with self._lock:
+                if task_id not in self._seen_children:
+                    self._seen_children.add(task_id)
+                    self.child_task_ids.add(task_id)
+                    first = True
+            if first:
+                try:
+                    self._barrier.wait()
+                    self.barrier_ok = True
+                except BrokenBarrierError:
+                    pass
+                payload = {
+                    "narration": f"审阅 {task_id}。",
+                    "tool_calls": [{"tool_name": "read_file", "args": {"path": "notes/subject.md"}}],
+                    "done": False,
+                }
+            else:
+                payload = {"narration": "审阅完成。", "tool_calls": [], "done": True}
+        else:
+            self.parent_calls += 1
+            if self.parent_calls == 1:
+                payload = {
+                    "narration": "并发委派两位 reviewer 专家审阅。",
+                    "tool_calls": [
+                        {"tool_name": "spawn_subagent", "args": {"role": "reviewer", "task": "review section A"}},
+                        {"tool_name": "spawn_subagent", "args": {"role": "reviewer", "task": "review section B"}},
+                    ],
+                    "done": False,
+                }
+            else:
+                payload = {"narration": "两位 reviewer 已完成审阅。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-concurrent-reviewers",
+            raw_response={},
+        )
+
+
+def test_execute_command_concurrent_readonly_subagent_fanout(tmp_path: Path) -> None:
+    """ADR-0023 B1-a: with agent_loop.concurrent_subagents on, a batch of ≥2 spawn_subagent calls to
+    read-only experts runs concurrently on a ThreadPool. Proven deterministically by a Barrier(2) the
+    two reviewers must reach together; also asserts both delegations surface on the main thread."""
+    InitCommand(tmp_path).run()
+    (tmp_path / "notes").mkdir(exist_ok=True)
+    (tmp_path / "notes" / "subject.md").write_text("# Subject under review\n", encoding="utf-8")
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    agent_loop = policy.setdefault("agent_loop", {})
+    agent_loop["model_driven_turn"] = True
+    agent_loop["concurrent_subagents"] = True
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "review the subject notes", model_client=FakePlanClient()).run()
+    client = FakeConcurrentReviewersClient()
+
+    ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    # Concurrency proof: both reviewers reached the shared barrier at the same time.
+    assert client.barrier_ok is True
+    assert len(client.child_task_ids) == 2
+    # Both delegations are visible on the lead's main thread (dispatch + result per expert).
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    result_cards = [
+        e
+        for e in events
+        if e.get("transcript_kind") == "subagent_summary"
+        and e.get("display_level") == "main"
+        and (e.get("data") or {}).get("subagent_phase") == "result"
+    ]
+    assert len(result_cards) == 2
+    assert all((e.get("data") or {}).get("subagent_role") == "reviewer" for e in result_cards)
+    # Concurrent children minted DISTINCT child_task_ids (counter lock) and event_ids (per-path
+    # sequence) — no collisions.
+    assert len({(e.get("data") or {}).get("child_task_id") for e in result_cards}) == 2
+    assert len({e.get("event_id") for e in events}) == len(events)
 
 
 @pytest.mark.spine_default

@@ -10,6 +10,11 @@ from asteria_runtime.utils.time import now_iso
 
 
 _USER_PROGRESS_LOCK = RLock()
+# Per-path monotonic sequence, shared across logger instances (each _record_progress builds a fresh
+# UserProgressLogger). Under concurrent expert fan-out (ADR-0023) two child threads would otherwise
+# seed `_counter` from the same file length before either appended and mint a colliding upe-NNNN /
+# sequence. Assigned only inside _USER_PROGRESS_LOCK so ids stay globally unique + monotonic per run.
+_PATH_SEQUENCE: dict[str, int] = {}
 _TRANSCRIPT_KINDS = {
     "user_message",
     "assistant_message",
@@ -86,7 +91,13 @@ class UserProgressLogger:
         actions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         with _USER_PROGRESS_LOCK:
-            self._counter += 1
+            key = str(self.path)
+            seq = _PATH_SEQUENCE.get(key)
+            if seq is None:
+                seq = self._load_existing_count()
+            seq += 1
+            _PATH_SEQUENCE[key] = seq
+            self._counter = seq
             safe_title, safe_summary, safe_content_delta = self._main_copy(
                 display_level=display_level,
                 title=title,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from types import SimpleNamespace
 from typing import Any, Callable
 from dataclasses import dataclass, field, replace
@@ -668,6 +670,23 @@ class ExecuteCommand:
             value = 2
         return max(1, value)
 
+    def _concurrent_subagents_enabled(self, policy: dict) -> bool:
+        """Whether a batch of ≥2 spawn_subagent calls to read-only experts runs concurrently
+        (ADR-0023 B1-a). Default off → byte-identical serial fan-out. Concurrent WRITES (isolated
+        candidate workspaces + merge_gate) are a separate flag/slice (B1-b)."""
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("concurrent_subagents") or False)
+
+    def _max_parallel_workers(self, policy: dict) -> int:
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        try:
+            value = int(agent_loop.get("max_parallel_workers_per_run") or 16)
+        except (TypeError, ValueError):
+            value = 16
+        return max(1, value)
+
     def _subagent_backend_kind(self, policy: dict) -> str:
         """Which worker backend runs spawned experts: "local" (default, in-process) or the
         "cloud_session" stub (North Star, opt-in). Off by default → zero effect on local/offline."""
@@ -718,6 +737,11 @@ class ExecuteCommand:
         model_tier = str(runtime_context.get("execution_model_tier") or "strong")
         max_subagent_depth = self._max_subagent_depth(context.policy)
         subagent_counter = {"n": 0}
+        # Guards the child-index counter so concurrent fan-out (ADR-0023) cannot mint a colliding
+        # child_task_id. Evidence appends are already serialized by JsonlStore / UserProgressLogger.
+        subagent_counter_lock = threading.Lock()
+        concurrent_subagents = self._concurrent_subagents_enabled(context.policy)
+        max_parallel_workers = self._max_parallel_workers(context.policy)
 
         # Methodology glue: the control hooks (kickoff reminder + stop-guardrail) run through the
         # RuntimeHookManager so they are policy-gated and audited like any hook. The loop consults
@@ -767,8 +791,10 @@ class ExecuteCommand:
                     ),
                 )
             expert = resolve_expert(args.get("role"))
-            subagent_counter["n"] += 1
-            child_task_id = f"{task_id}-sub-{subagent_counter['n']:02d}"
+            with subagent_counter_lock:
+                subagent_counter["n"] += 1
+                child_index = subagent_counter["n"]
+            child_task_id = f"{task_id}-sub-{child_index:02d}"
             child_allowed = self._subagent_allowed_tools(task, expert)
             child_task = {
                 "task_id": child_task_id,
@@ -883,7 +909,31 @@ class ExecuteCommand:
                 },
             )
 
-        tool_runner = _SubagentAwareToolRunner(self.tool_gateway, _spawn_subagent)
+        def _spawn_batch(spawn_args_list: list[dict]) -> list[_SubagentResult]:
+            # Model-driven concurrency (ADR-0023 B1-a): when the lead puts ≥2 spawn_subagent calls in
+            # ONE tool batch and every target is a READ-ONLY expert, run them concurrently — read-only
+            # experts write no files, so there is no conflict and no candidate isolation is needed
+            # (evidence appends are already lock-serialized). Anything else stays serial: a single
+            # call, the flag off, or any writing expert (concurrent writes need isolation → B1-b).
+            if len(spawn_args_list) < 2 or not concurrent_subagents:
+                return [_spawn_subagent(args) for args in spawn_args_list]
+            experts = [resolve_expert(args.get("role")) for args in spawn_args_list]
+            if not all(getattr(expert, "read_only", False) for expert in experts):
+                return [_spawn_subagent(args) for args in spawn_args_list]
+            results: list[_SubagentResult | None] = [None] * len(spawn_args_list)
+            workers = min(len(spawn_args_list), max_parallel_workers)
+            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="expert") as pool:
+                futures = {
+                    pool.submit(_spawn_subagent, args): index
+                    for index, args in enumerate(spawn_args_list)
+                }
+                for future in as_completed(futures):
+                    results[futures[future]] = future.result()
+            return [result for result in results if result is not None]
+
+        tool_runner = _SubagentAwareToolRunner(
+            self.tool_gateway, _spawn_subagent, spawn_batch=_spawn_batch
+        )
 
         def _approval_gate(calls: list[dict]) -> dict | None:
             # 人审边界（ADR-0016）：把模型这一步要跑的整批工具当作一个待审动作，交给与 FSM 同一套
@@ -1785,9 +1835,15 @@ class _SubagentAwareToolRunner:
     to the real gateway (permissions / sandbox / evidence intact). Keeps the frozen gateway
     untouched — the expert-cluster capability is added as a tool the model chooses, not a new FSM."""
 
-    def __init__(self, gateway: Any, spawn: Callable[[dict], _SubagentResult]) -> None:
+    def __init__(
+        self,
+        gateway: Any,
+        spawn: Callable[[dict], _SubagentResult],
+        spawn_batch: Callable[[list[dict]], list[_SubagentResult]] | None = None,
+    ) -> None:
         self._gateway = gateway
         self._spawn = spawn
+        self._spawn_batch = spawn_batch
 
     def run_tool_calls(
         self,
@@ -1797,10 +1853,28 @@ class _SubagentAwareToolRunner:
         stop_on_failure: bool = True,
         stop_verification_on_fatal: bool = False,
     ) -> list[Any]:
+        # Collect the batch's spawn_subagent calls so they can fan out concurrently (ADR-0023),
+        # while non-spawn tools still run serially through the frozen gateway (permissions / sandbox
+        # / evidence intact). Results are reassembled into the model's original call order.
+        spawn_indices = [
+            index
+            for index, call in enumerate(calls)
+            if str(call.get("tool_name") or "") == "spawn_subagent"
+        ]
+        spawn_results: dict[int, Any] = {}
+        if spawn_indices:
+            spawn_args = [calls[index].get("args") or {} for index in spawn_indices]
+            batched = (
+                self._spawn_batch(spawn_args)
+                if self._spawn_batch is not None
+                else [self._spawn(args) for args in spawn_args]
+            )
+            spawn_results = dict(zip(spawn_indices, batched))
+
         results: list[Any] = []
-        for call in calls:
-            if str(call.get("tool_name") or "") == "spawn_subagent":
-                results.append(self._spawn(call.get("args") or {}))
+        for index, call in enumerate(calls):
+            if index in spawn_results:
+                results.append(spawn_results[index])
             else:
                 results.extend(
                     self._gateway.run_tool_calls(
