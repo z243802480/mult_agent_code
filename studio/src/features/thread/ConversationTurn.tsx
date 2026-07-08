@@ -98,6 +98,11 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   // "what context did the agent attach" reads as real process — not buried in the folded detail.
   const contextSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "context");
   const contextIds = new Set(contextSteps.map((step) => step.id));
+  // A pending decision ("需要你的决定") is a first-class, prominent in-context card — the run paused
+  // waiting for the user. Without its own bucket it would fall through every filter and vanish,
+  // making a legitimately-paused run look silently stuck. (ADR-0021)
+  const decisionSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "decision");
+  const decisionIds = new Set(decisionSteps.map((step) => step.id));
   const toolSteps = steps.filter(
     (step) => !permIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
   );
@@ -137,6 +142,13 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
             deletions={fileStats.deletions}
             onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
           />
+        </div>
+      )}
+      {decisionSteps.length > 0 && (
+        <div className="turnDecisionCards">
+          {decisionSteps.map((step) => (
+            <NarrativeStep key={step.id} step={step} selected={selected} onSelect={onSelect} />
+          ))}
         </div>
       )}
       {contextSteps.length > 0 && (

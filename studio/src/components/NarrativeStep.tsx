@@ -101,6 +101,31 @@ export function NarrativeStep({
     );
   }
 
+  // Pending decision: the loop paused and needs the user's call before it can safely continue (e.g.
+  // "approve this run_command?"). A prominent, in-context card — NOT a dead tool card — so a
+  // legitimately-paused run reads as "waiting for you", not "stuck". The actionable buttons live in
+  // the bottom next-action bar (RuntimeSnapshot DecisionCard), which carries the decision's options.
+  if (step.kind === "decision") {
+    const data = (primary?.data ?? {}) as Record<string, unknown>;
+    const reason = String(data.reason ?? "").trim();
+    return (
+      <article className="narrativeStep decision waiting_user">
+        <div className="decisionInlineCard">
+          <div className="decisionInlineHead">
+            <CircleDot size={15} />
+            <strong>需要你的决定</strong>
+            {time && <span className="decisionInlineTime">{time}</span>}
+          </div>
+          <p className="decisionInlineBody">
+            智能体已暂停，等待你的决定后再继续。
+            {reason ? ` 原因：${reason}。` : ""}
+            请在下方的操作栏选择如何继续。
+          </p>
+        </div>
+      </article>
+    );
+  }
+
   // Warm resume: a compact, plain-language line — the agent re-applied prior decisions and continued
   // the same session. Counts come from the decision payload; no CLI/maintainer text is shown.
   if (step.kind === "resume") {

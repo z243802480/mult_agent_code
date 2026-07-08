@@ -110,7 +110,15 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   // already-recorded decision ("已记录能力决策"/"已选择权限模式") is quiet bookkeeping the loop keeps
   // per tool call — it must fold into the detail, not sit as a prominent card between the real tools.
   if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") {
-    return event.status === "waiting_user" || event.job_id ? "tool" : "observation";
+    // A job-based permission_request (has job_id) is handled by PermissionCard (allow/deny). A
+    // waiting_user decision WITHOUT a job_id is the loop pausing for your call (e.g. "approve this
+    // run_command?") — it renders as a prominent, in-context "需要你的决定" card instead of a dead,
+    // unactionable tool card that made a legitimately-paused run look stuck. Resolved via the bottom
+    // next-action bar (RuntimeSnapshot DecisionCard). Only a real ask (waiting_user) is a decision;
+    // an already-recorded/non-waiting one stays quiet bookkeeping.
+    if (event.job_id) return "tool";
+    if (event.status === "waiting_user") return "decision";
+    return "observation";
   }
   if (transcriptKind === "subagent_summary") return "subagent";
   if (event.type === "user_message") return "goal";
@@ -155,6 +163,7 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
   if (kind === "subagent") return "子 agent";
   if (kind === "hold") return "已保留待你查看";
   if (kind === "resume") return "已恢复";
+  if (kind === "decision") return "需要你的决定";
   // A genuine error gets an explicit, non-cryptic label AND its detail (summary/error) is always shown
   // (see NarrativeStep) so the user can see WHAT and WHERE. The bare fallback below must stay neutral
   // ("步骤"), not "问题" — otherwise every unmapped-kind bookkeeping row screams "problem" for nothing.
@@ -164,7 +173,7 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   const first = step.events[0];
-  if (step.kind === "goal" || step.kind === "final" || step.kind === "error" || step.kind === "hold" || step.kind === "resume") return false;
+  if (step.kind === "goal" || step.kind === "final" || step.kind === "error" || step.kind === "hold" || step.kind === "resume" || step.kind === "decision") return false;
   if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
   if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {

@@ -69,6 +69,47 @@
   margin: 0;
 }
 
+/* Pending decision: the loop paused and needs the user's call. Prominent (accent), in-context —
+   mirrors the hold card but uses the accent tone since it is an active "your turn" moment, not a
+   held-back change. Actionable buttons live in the bottom next-action bar (RuntimeSnapshot). */
+.narrativeStep.decision {
+  background: transparent;
+  border: none;
+}
+
+.decisionInlineCard {
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.decisionInlineHead {
+  align-items: center;
+  color: var(--accent);
+  display: flex;
+  gap: 8px;
+}
+
+.decisionInlineHead strong {
+  font-size: 14px;
+}
+
+.decisionInlineTime {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-left: auto;
+}
+
+.decisionInlineBody {
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+
 /* Warm resume: an informational one-liner (not an action), lighter than the hold card. */
 .resumeLine {
   align-items: center;
