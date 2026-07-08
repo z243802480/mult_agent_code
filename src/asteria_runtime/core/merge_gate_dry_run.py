@@ -155,22 +155,49 @@ class MergeGateDryRunner:
 
 
 def _disjoint_write_gate_result(tasks: list[dict]) -> dict[str, Any]:
-    # Disjoint parallel writes are frozen; the only worker concurrency is readonly
-    # fanout, so the dry-run gate is always skipped as not required.
+    # Pre-flight declared-scope disjointness (ADR-0023 B1-b): before any candidate is promoted,
+    # reject a batch whose tasks DECLARE overlapping write_scope — two writers claiming the same
+    # path can never be safely merged in parallel, so they must not run as an isolated-write batch.
+    # This is the cheap declared-intent gate; `_cross_task_file_conflicts` is the post-execution
+    # backstop over what the candidates ACTUALLY wrote. A single task can never self-conflict, so
+    # single-task callers (preview_promotion) stay ok. Readonly experts declare no write_scope →
+    # empty owners → ok, so readonly fanout is unaffected.
+    owners: dict[str, list[str]] = {}
+    for task in tasks:
+        task_id = str(task.get("task_id") or "unknown")
+        for raw in task.get("write_scope") or []:
+            path = str(raw).replace("\\", "/").strip().lstrip("/")
+            if not path:
+                continue
+            bucket = owners.setdefault(path, [])
+            if task_id not in bucket:
+                bucket.append(task_id)
+    conflicts = {path: ids for path, ids in owners.items() if len(ids) > 1}
+    blocked = sorted({task_id for ids in conflicts.values() for task_id in ids})
+    violations = [
+        f"{path}: declared in write_scope of multiple tasks ({', '.join(ids)})"
+        for path, ids in sorted(conflicts.items())
+    ]
+    all_task_ids = [str(task.get("task_id") or "unknown") for task in tasks]
     return {
-        "ok": True,
-        "allowed_task_ids": [str(task.get("task_id") or "unknown") for task in tasks],
-        "blocked_task_ids": [],
-        "violations": [],
-        "skipped": True,
-        "reason": "Disjoint write gate disabled; only readonly fanout is supported.",
+        "ok": not conflicts,
+        "allowed_task_ids": [task_id for task_id in all_task_ids if task_id not in blocked],
+        "blocked_task_ids": blocked,
+        "violations": violations,
+        "skipped": False,
+        "reason": (
+            "Declared write scopes are disjoint."
+            if not conflicts
+            else "Declared write scopes overlap; disjoint-write fanout blocked before promotion."
+        ),
     }
 
 
 def _cross_task_file_conflicts(task_results: list[dict[str, Any]]) -> list[str]:
     owners: dict[str, list[str]] = {}
     for item in task_results:
-        merge_gate = item.get("merge_gate") if isinstance(item.get("merge_gate"), dict) else {}
+        raw_merge_gate = item.get("merge_gate")
+        merge_gate = raw_merge_gate if isinstance(raw_merge_gate, dict) else {}
         if merge_gate.get("ok") is not True:
             continue
         task_id = str(item.get("task_id") or "unknown")

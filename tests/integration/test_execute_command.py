@@ -2721,6 +2721,213 @@ def test_execute_command_concurrent_readonly_subagent_fanout(tmp_path: Path) -> 
     assert len({e.get("event_id") for e in events}) == len(events)
 
 
+class FakeConcurrentWritersClient:
+    """Lead delegates to TWO coder experts in ONE tool batch (ADR-0023 B1-b). With a barrier each
+    child blocks on its first turn so both must run concurrently (proof); each writes into its OWN
+    candidate workspace, then the merge gate reconciles. ``conflict`` makes both declare + write the
+    SAME path (merge gate must block, nothing promoted); otherwise they write disjoint files (both
+    promote into the shared workspace). ``use_barrier=False`` drops the barrier so a SERIAL fallback
+    (isolated-write flag off) does not hang. One fake plays lead + both children."""
+
+    def __init__(self, *, conflict: bool = False, use_barrier: bool = True) -> None:
+        self.conflict = conflict
+        self.use_barrier = use_barrier
+        self.parent_calls = 0
+        self._barrier = Barrier(2, timeout=8) if use_barrier else None
+        self._lock = Lock()
+        self._seen: set[str] = set()
+        self.child_task_ids: set[str] = set()
+        self.barrier_ok = False
+
+    def _child_file(self, task_id: str) -> str:
+        if self.conflict:
+            return "src/shared.py"
+        # Children are prepared in spawn-arg order → -sub-01 = alpha, -sub-02 = beta (deterministic).
+        return "src/alpha.py" if task_id.endswith("-01") else "src/beta.py"
+
+    def _scopes(self) -> tuple[list[str], list[str]]:
+        if self.conflict:
+            return ["src/shared.py"], ["src/shared.py"]
+        return ["src/alpha.py"], ["src/beta.py"]
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        task_id = str((request.metadata or {}).get("task_id") or "")
+        if "-sub-" in task_id:
+            first = False
+            with self._lock:
+                if task_id not in self._seen:
+                    self._seen.add(task_id)
+                    self.child_task_ids.add(task_id)
+                    first = True
+            if first:
+                if self._barrier is not None:
+                    try:
+                        self._barrier.wait()
+                        self.barrier_ok = True
+                    except BrokenBarrierError:
+                        pass
+                path = self._child_file(task_id)
+                payload = {
+                    "narration": f"写入 {path}。",
+                    "tool_calls": [
+                        {
+                            "tool_name": "write_file",
+                            "args": {
+                                "path": path,
+                                "content": f"# {path}\nvalue = 1\n",
+                                "overwrite": True,
+                            },
+                        }
+                    ],
+                    "done": False,
+                }
+            else:
+                payload = {"narration": "子任务完成。", "tool_calls": [], "done": True}
+        else:
+            self.parent_calls += 1
+            if self.parent_calls == 1:
+                scope_a, scope_b = self._scopes()
+                tool_calls = [
+                    {
+                        "tool_name": "spawn_subagent",
+                        "args": {"role": "coder", "task": "write module A", "write_scope": scope_a},
+                    },
+                    {
+                        "tool_name": "spawn_subagent",
+                        "args": {"role": "coder", "task": "write module B", "write_scope": scope_b},
+                    },
+                ]
+                if not self.conflict:
+                    # Disjoint writers promote before this verify runs (same batch, after the fan-out),
+                    # so the command confirms both landed in the SHARED workspace.
+                    tool_calls.append(
+                        {
+                            "tool_name": "run_command",
+                            "args": {
+                                "command": (
+                                    "python -c \"import os; assert os.path.exists('src/alpha.py') "
+                                    "and os.path.exists('src/beta.py')\""
+                                )
+                            },
+                        }
+                    )
+                payload = {
+                    "narration": "并发委派两位 coder 专家写模块。",
+                    "tool_calls": tool_calls,
+                    "done": False,
+                }
+            else:
+                payload = {"narration": "收尾。", "tool_calls": [], "done": True}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-concurrent-writers",
+            raw_response={},
+        )
+
+
+def _enable_isolated_writes(tmp_path: Path, *, isolated: bool) -> None:
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    agent_loop = policy.setdefault("agent_loop", {})
+    agent_loop["model_driven_turn"] = True
+    agent_loop["concurrent_subagents"] = True
+    agent_loop["isolated_parallel_write_production_path"] = isolated
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+
+
+def test_execute_command_concurrent_isolated_writes_disjoint_promote(tmp_path: Path) -> None:
+    """ADR-0023 B1-b: with isolated_parallel_write_production_path on, a batch of ≥2 writing experts
+    runs CONCURRENTLY, each in its own candidate workspace; the merge gate sees disjoint writes and
+    promotes both into the shared workspace. Concurrency proven by a Barrier(2); isolation+promotion
+    proven by both files landing and a merge-gate-ok card."""
+    InitCommand(tmp_path).run()
+    _enable_isolated_writes(tmp_path, isolated=True)
+    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+    client = FakeConcurrentWritersClient()
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    # Concurrency proof: both writers reached the shared barrier together.
+    assert client.barrier_ok is True
+    assert len(client.child_task_ids) == 2
+    # Both disjoint writers were promoted from their isolated candidates into the SHARED workspace.
+    assert (tmp_path / "src" / "alpha.py").exists()
+    assert (tmp_path / "src" / "beta.py").exists()
+    assert result.completed == 1
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    # Isolation actually happened: candidate workspaces were created and a merge-gate dry-run ran.
+    assert (run_dir / "merge_gate_dry_runs.jsonl").exists()
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    merge_cards = [
+        e for e in events if (e.get("data") or {}).get("subagent_phase") == "merge_gate"
+    ]
+    assert merge_cards and all((e.get("data") or {}).get("ok") is True for e in merge_cards)
+    # Distinct child_task_ids + globally unique event_ids under concurrency (counter lock / per-path
+    # sequence).
+    assert len(client.child_task_ids) == 2
+    assert len({e.get("event_id") for e in events}) == len(events)
+
+
+def test_execute_command_concurrent_isolated_writes_conflict_blocked(tmp_path: Path) -> None:
+    """ADR-0023 B1-b safety: two writers claiming the SAME path are blocked by the merge gate — the
+    isolated changes stay in their candidates and the SHARED workspace is never corrupted with a
+    partial/racing merge. The lead sees the failure (cognition stays with the model, ADR-0016)."""
+    InitCommand(tmp_path).run()
+    _enable_isolated_writes(tmp_path, isolated=True)
+    plan = PlanCommand(tmp_path, "create the shared module", model_client=FakePlanClient()).run()
+    client = FakeConcurrentWritersClient(conflict=True)
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    # They still ran concurrently (both reached the barrier) — the block is at reconcile, not run.
+    assert client.barrier_ok is True
+    assert len(client.child_task_ids) == 2
+    # Merge gate blocked → nothing promoted; the shared workspace is untouched.
+    assert not (tmp_path / "src" / "shared.py").exists()
+    assert result.completed == 0
+
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    merge_cards = [
+        e for e in events if (e.get("data") or {}).get("subagent_phase") == "merge_gate"
+    ]
+    assert merge_cards and all((e.get("data") or {}).get("ok") is False for e in merge_cards)
+
+
+def test_execute_command_isolated_writes_flag_off_stays_serial(tmp_path: Path) -> None:
+    """Reversibility: with the isolated-write flag OFF (default), a 2-writer batch runs SERIALLY on the
+    shared workspace — no candidate isolation, no merge gate — byte-identical to today. Both files land
+    via direct writes and no merge-gate card is emitted."""
+    InitCommand(tmp_path).run()
+    _enable_isolated_writes(tmp_path, isolated=False)
+    plan = PlanCommand(tmp_path, "create alpha and beta modules", model_client=FakePlanClient()).run()
+    client = FakeConcurrentWritersClient(use_barrier=False)
+
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    assert result.completed == 1
+    assert (tmp_path / "src" / "alpha.py").exists()
+    assert (tmp_path / "src" / "beta.py").exists()
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    # Serial path → no candidate isolation → no merge-gate reconciliation.
+    assert not (run_dir / "merge_gate_dry_runs.jsonl").exists()
+    events = [
+        json.loads(line)
+        for line in (run_dir / "user_progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert not any((e.get("data") or {}).get("subagent_phase") == "merge_gate" for e in events)
+
+
 @pytest.mark.spine_default
 def test_execute_command_default_routes_through_model_driven_spine(tmp_path: Path) -> None:
     """RA7 翻默认锁定：策略里**不设** model_driven_turn 键时，走的就是立真身脊梁（生产默认）。

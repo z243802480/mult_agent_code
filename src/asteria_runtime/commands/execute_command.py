@@ -18,7 +18,11 @@ from asteria_runtime.core.candidate_execution_gateway import CandidateExecutionG
 from asteria_runtime.core.context_loader import ContextLoader
 from asteria_runtime.core.context_prompt_view import context_prompt_view
 from asteria_runtime.core.expert_registry import expert_roles, resolve_expert
-from asteria_runtime.core.worker_executor import SubagentRequest, resolve_worker_executor
+from asteria_runtime.core.worker_executor import (
+    SubagentOutcome,
+    SubagentRequest,
+    resolve_worker_executor,
+)
 from asteria_runtime.core.model_driven_turn import (
     TurnControl,
     TurnEvent,
@@ -687,6 +691,16 @@ class ExecuteCommand:
             value = 16
         return max(1, value)
 
+    def _isolated_parallel_writes_enabled(self, policy: dict) -> bool:
+        """Whether a batch of ≥2 spawn_subagent calls that includes WRITING experts fans out
+        concurrently, each in its own candidate workspace, reconciled through the merge gate before
+        promotion (ADR-0023 B1-b). Default off → writing batches stay serial on the shared workspace
+        (byte-identical to today). This is capability opt-in, NOT flipping the global parallel_writes
+        default (still a separate autonomy/safety DecisionPoint)."""
+        raw_agent_loop = policy.get("agent_loop")
+        agent_loop = raw_agent_loop if isinstance(raw_agent_loop, dict) else {}
+        return bool(agent_loop.get("isolated_parallel_write_production_path") or False)
+
     def _subagent_backend_kind(self, policy: dict) -> str:
         """Which worker backend runs spawned experts: "local" (default, in-process) or the
         "cloud_session" stub (North Star, opt-in). Off by default → zero effect on local/offline."""
@@ -742,6 +756,7 @@ class ExecuteCommand:
         subagent_counter_lock = threading.Lock()
         concurrent_subagents = self._concurrent_subagents_enabled(context.policy)
         max_parallel_workers = self._max_parallel_workers(context.policy)
+        isolated_parallel_writes = self._isolated_parallel_writes_enabled(context.policy)
 
         # Methodology glue: the control hooks (kickoff reminder + stop-guardrail) run through the
         # RuntimeHookManager so they are policy-gated and audited like any hook. The loop consults
@@ -774,12 +789,11 @@ class ExecuteCommand:
                 continue_turn=decision.continue_turn,
             )
 
-        def _spawn_subagent(args: dict) -> _SubagentResult:
-            # Expert-cluster delegation (ADR-0022): the lead model routes a scoped sub-task to a
-            # specialist. The child runs its OWN bounded 立真身 loop (fresh context, expert persona +
-            # methodology skills, scoped tools) and returns ONLY a summary. Skeleton = serial, shared
-            # workspace; concurrency + candidate isolation is Part B (B1). Depth-guarded so a child
-            # cannot recurse without bound.
+        def _prepare_child(args: dict) -> tuple[Any, str, dict, dict] | _SubagentResult:
+            # Build one expert child's task scaffolding (depth-guarded, uniquely numbered). Shared by
+            # the serial path and the concurrent isolated-write batch so both mint identical children.
+            # The depth guard returns BEFORE the counter increments, so a refused child never burns a
+            # child_task_id (a batch that falls back to serial re-prepares without double-counting).
             depth = int(runtime_context.get("subagent_recursion_depth") or 0)
             if depth >= max_subagent_depth:
                 return _SubagentResult(
@@ -818,18 +832,33 @@ class ExecuteCommand:
                 "subagent_recursion_depth": depth + 1,
                 "subagent_role": expert.role,
             }
+            return expert, child_task_id, child_task, child_runtime_context
+
+        def _run_child(
+            expert: Any,
+            child_task_id: str,
+            child_task: dict,
+            child_runtime_context: dict,
+            args: dict,
+            *,
+            child_context: RuntimeContext,
+        ) -> SubagentOutcome:
+            # Run one expert's bounded 立真身 loop and light up the dispatch + result cards on the
+            # lead's main thread (ADR-0022 ③). ``child_context`` is the lead's SHARED workspace for
+            # serial fanout, or an ISOLATED candidate context for concurrent writes (B1-b) — the
+            # child's writes land in whichever root that context carries, since the gateway resolves
+            # every path against ``context.root``. Pluggable backend: LocalExecutor (in-process,
+            # default) / CloudSessionExecutor (North Star stub). The dispatch card shows immediately
+            # (a long expert run is otherwise silent); the child's own narration/tools stay in the
+            # Inspector (subagent_role); only the returned summary rides back up.
             child_system, child_user = self._model_driven_prompts(
-                child_task, goal_spec, project_config, child_allowed, child_runtime_context
+                child_task,
+                goal_spec,
+                project_config,
+                child_task["allowed_tools"],
+                child_runtime_context,
             )
             child_system = f"{child_system}\n\n[Expert role: {expert.role}] {expert.persona}"
-            # Pluggable worker backend: LocalExecutor (in-process, default) runs the child 立真身 loop
-            # exactly as before; CloudSessionExecutor is an opt-in North Star stub. spawn_subagent
-            # only describes the sub-task — where it runs is resolved here (bare gateway: the child
-            # does not nest-spawn in this skeleton; concurrency + isolation is Part B).
-            # Make delegation visible on the lead's main thread (ADR-0022 ③ expert cluster). The
-            # dispatch card shows immediately — a long expert run is otherwise silent — while the
-            # child's own narration/tools stay in the Inspector (subagent_role); only the returned
-            # summary rides back up, mirroring the summary-only context contract.
             self._record_progress(
                 context,
                 task,
@@ -858,13 +887,13 @@ class ExecuteCommand:
                     task=child_task,
                     system_prompt=child_system,
                     user_prompt=child_user,
-                    available_tools=child_allowed,
+                    available_tools=child_task["allowed_tools"],
                     model_tier=expert.model_tier,
                     max_iterations=max_iterations,
                 ),
                 model_client=coder.model_client,
                 tool_runner=self.tool_gateway,
-                context=context,
+                context=child_context,
                 on_event=lambda event: self._record_model_driven_event(
                     context, child_task, event, subagent_role=expert.role
                 ),
@@ -893,6 +922,11 @@ class ExecuteCommand:
                     "model_driven_turn": True,
                 },
             )
+            return outcome
+
+        def _result_from_outcome(
+            expert: Any, child_task_id: str, outcome: SubagentOutcome
+        ) -> _SubagentResult:
             return _SubagentResult(
                 ok=outcome.ok,
                 status="success" if outcome.ok else "failure",
@@ -909,27 +943,192 @@ class ExecuteCommand:
                 },
             )
 
+        def _spawn_subagent(args: dict) -> _SubagentResult:
+            # Expert-cluster delegation (ADR-0022): the lead model routes a scoped sub-task to a
+            # specialist that runs its OWN bounded 立真身 loop on the SHARED workspace and returns ONLY
+            # a summary. Serial default; concurrency + candidate isolation is the batch path below.
+            prepared = _prepare_child(args)
+            if isinstance(prepared, _SubagentResult):
+                return prepared
+            expert, child_task_id, child_task, child_runtime_context = prepared
+            outcome = _run_child(
+                expert, child_task_id, child_task, child_runtime_context, args, child_context=context
+            )
+            return _result_from_outcome(expert, child_task_id, outcome)
+
+        def _spawn_isolated_writes(
+            prepared_list: list[tuple[Any, str, dict, dict]],
+            spawn_args_list: list[dict],
+        ) -> list[_SubagentResult]:
+            # ADR-0023 B1-b: run a batch of WRITING experts CONCURRENTLY, each in its OWN candidate
+            # workspace, then reconcile through the merge gate and promote atomically. Candidate
+            # creation runs SERIALLY on this thread first — `_candidate_id()` is timestamp-based and
+            # `git worktree add` mutates the shared repo, neither is thread-safe; only the expensive
+            # model-driven child RUNS fan out. Read-only children in a mixed batch keep the shared
+            # context (they write nothing). On join, every writer's candidate is judged by ONE
+            # cross-task merge gate: all disjoint writers promote into the shared workspace, or none
+            # do (never a partial merge of cross-conflicting writes).
+            candidates: dict[str, Any] = {}
+            for expert, child_task_id, child_task, _child_rc in prepared_list:
+                if getattr(expert, "read_only", False):
+                    continue
+                candidates[child_task_id] = self.candidate_gateway.create_workspace(
+                    context, child_task
+                )
+
+            outcomes: list[SubagentOutcome | None] = [None] * len(prepared_list)
+
+            def _run_indexed(index: int) -> SubagentOutcome:
+                expert, child_task_id, child_task, child_rc = prepared_list[index]
+                candidate = candidates.get(child_task_id)
+                child_ctx = (
+                    self.candidate_gateway.candidate_context(context, candidate)
+                    if candidate is not None
+                    else context
+                )
+                return _run_child(
+                    expert,
+                    child_task_id,
+                    child_task,
+                    child_rc,
+                    spawn_args_list[index],
+                    child_context=child_ctx,
+                )
+
+            workers = min(len(prepared_list), max_parallel_workers)
+            with ThreadPoolExecutor(
+                max_workers=workers, thread_name_prefix="expert-write"
+            ) as pool:
+                futures = {
+                    pool.submit(_run_indexed, index): index
+                    for index in range(len(prepared_list))
+                }
+                for future in as_completed(futures):
+                    outcomes[futures[future]] = future.result()
+
+            # Reconcile writers through ONE merge gate (serial, main thread). Only successful writers
+            # with actual changes are candidates for promotion.
+            batch_items: list[dict] = []
+            writer_indices: set[int] = set()
+            for index, (expert, child_task_id, child_task, _rc) in enumerate(prepared_list):
+                candidate = candidates.get(child_task_id)
+                outcome = outcomes[index]
+                if candidate is None or outcome is None or not outcome.ok:
+                    continue
+                changed = list(outcome.data.get("changed_files") or [])
+                if not changed:
+                    continue
+                writer_indices.add(index)
+                batch_items.append(
+                    {"candidate": candidate, "task": child_task, "changed_files": changed}
+                )
+
+            promoted_by_task: dict[str, list[str]] = {}
+            merge_ok = True
+            merge_summary = ""
+            if batch_items:
+                dry_run, promoted_by_task = self.candidate_gateway.preview_and_promote_batch(
+                    context, batch_items
+                )
+                merge_ok = bool(dry_run.get("ok"))
+                merge_summary = str(dry_run.get("summary") or "")
+                promoted_count = sum(len(files) for files in promoted_by_task.values())
+                self._record_progress(
+                    context,
+                    task,
+                    channel="progress",
+                    event_type="message",
+                    phase="execute",
+                    status="completed" if merge_ok else "blocked",
+                    title="并发写合并" if merge_ok else "并发写合并阻止",
+                    summary=(
+                        f"并发隔离写合并门通过，晋升 {promoted_count} 个文件到工作区。"
+                        if merge_ok
+                        else f"并发隔离写被合并门阻止：{merge_summary}"
+                    ),
+                    display_level="main",
+                    transcript_kind="subagent_summary",
+                    data={
+                        "task_id": task_id,
+                        "subagent_phase": "merge_gate",
+                        "ok": merge_ok,
+                        "promoted_files": promoted_count,
+                        "model_driven_turn": True,
+                    },
+                )
+
+            results: list[_SubagentResult] = []
+            for index, (expert, child_task_id, child_task, _rc) in enumerate(prepared_list):
+                outcome = outcomes[index]
+                if outcome is None:
+                    results.append(
+                        _SubagentResult(
+                            ok=False,
+                            status="failure",
+                            error="subagent_no_result",
+                            summary=f"[{expert.role}] subagent produced no result.",
+                        )
+                    )
+                    continue
+                if index in writer_indices and not merge_ok:
+                    # Merge gate blocked → nothing promoted; the writer's isolated changes stay in its
+                    # candidate (shared workspace untouched). Surface as a failure so the LEAD model
+                    # sees it and decides the next step (ADR-0016: cognition stays with the model).
+                    results.append(
+                        _SubagentResult(
+                            ok=False,
+                            status="failure",
+                            error="merge_gate_blocked",
+                            summary=f"[{expert.role}] 并发写被合并门阻止：{merge_summary}",
+                            data={
+                                "role": expert.role,
+                                "child_task_id": child_task_id,
+                                "iterations": outcome.iterations,
+                                "child_status": outcome.status,
+                                "changed_files": [],
+                            },
+                        )
+                    )
+                    continue
+                result = _result_from_outcome(expert, child_task_id, outcome)
+                if index in writer_indices:
+                    # Credit the LEAD only with what actually landed in the shared workspace.
+                    result.data["changed_files"] = list(promoted_by_task.get(child_task_id) or [])
+                results.append(result)
+            return results
+
         def _spawn_batch(spawn_args_list: list[dict]) -> list[_SubagentResult]:
-            # Model-driven concurrency (ADR-0023 B1-a): when the lead puts ≥2 spawn_subagent calls in
-            # ONE tool batch and every target is a READ-ONLY expert, run them concurrently — read-only
-            # experts write no files, so there is no conflict and no candidate isolation is needed
-            # (evidence appends are already lock-serialized). Anything else stays serial: a single
-            # call, the flag off, or any writing expert (concurrent writes need isolation → B1-b).
+            # Model-driven concurrency (ADR-0023): when the lead puts ≥2 spawn_subagent calls in ONE
+            # tool batch and the flag is on, fan them out. All read-only → shared-context concurrency
+            # (B1-a: no writes → no conflict → no isolation; evidence appends are lock-serialized).
+            # Any writer + isolated-write flag on → per-child candidate isolation + merge gate (B1-b).
+            # Otherwise serial: a single call, the flag off, or writers present with the isolated-write
+            # path still off (byte-identical to today).
             if len(spawn_args_list) < 2 or not concurrent_subagents:
                 return [_spawn_subagent(args) for args in spawn_args_list]
             experts = [resolve_expert(args.get("role")) for args in spawn_args_list]
-            if not all(getattr(expert, "read_only", False) for expert in experts):
+            if all(getattr(expert, "read_only", False) for expert in experts):
+                results: list[_SubagentResult | None] = [None] * len(spawn_args_list)
+                workers = min(len(spawn_args_list), max_parallel_workers)
+                with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="expert") as pool:
+                    futures = {
+                        pool.submit(_spawn_subagent, args): index
+                        for index, args in enumerate(spawn_args_list)
+                    }
+                    for future in as_completed(futures):
+                        results[futures[future]] = future.result()
+                return [result for result in results if result is not None]
+            if not isolated_parallel_writes:
                 return [_spawn_subagent(args) for args in spawn_args_list]
-            results: list[_SubagentResult | None] = [None] * len(spawn_args_list)
-            workers = min(len(spawn_args_list), max_parallel_workers)
-            with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="expert") as pool:
-                futures = {
-                    pool.submit(_spawn_subagent, args): index
-                    for index, args in enumerate(spawn_args_list)
-                }
-                for future in as_completed(futures):
-                    results[futures[future]] = future.result()
-            return [result for result in results if result is not None]
+            # Isolated concurrent writes (B1-b). Prepare every child first; if any hits the depth cap
+            # (uniform across a batch) fall back to serial so the guard result surfaces unchanged.
+            prepared_list: list[tuple[Any, str, dict, dict]] = []
+            for args in spawn_args_list:
+                prepared = _prepare_child(args)
+                if isinstance(prepared, _SubagentResult):
+                    return [_spawn_subagent(inner) for inner in spawn_args_list]
+                prepared_list.append(prepared)
+            return _spawn_isolated_writes(prepared_list, spawn_args_list)
 
         tool_runner = _SubagentAwareToolRunner(
             self.tool_gateway, _spawn_subagent, spawn_batch=_spawn_batch

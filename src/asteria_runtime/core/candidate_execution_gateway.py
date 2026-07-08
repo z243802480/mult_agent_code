@@ -69,6 +69,59 @@ class CandidateExecutionGateway:
         )
         return export, dry_run
 
+    def preview_and_promote_batch(
+        self,
+        context: RuntimeContext,
+        items: list[dict],
+    ) -> tuple[dict, dict[str, list[str]]]:
+        """Reconcile a batch of isolated write candidates, then promote atomically (ADR-0023 B1-b).
+
+        Each ``item`` = ``{candidate, task, changed_files, verification_results?}`` from a writing
+        expert that ran in its OWN candidate workspace concurrently. This exports every candidate,
+        runs ONE cross-task merge-gate dry-run over the whole batch (pre-flight declared-scope
+        disjointness + per-task write_scope/verification + post-execution cross-task file conflict),
+        and promotes every candidate's scope-validated files back into the shared workspace ONLY if
+        the batch gate passes — all disjoint writers land or none do (never a partial merge of
+        cross-conflicting writes). Promotion copies run under the process-wide promotion lock so a
+        concurrent run cannot interleave file writes. Returns ``(dry_run_record, {task_id: promoted})``.
+        """
+        exporter = CandidateExporter(context.validator)
+        exports: list[dict] = []
+        tasks: list[dict] = []
+        verification_by_task: dict[str, list] = {}
+        for item in items:
+            task = item["task"]
+            task_id = str(task.get("task_id") or "unknown")
+            export = exporter.export_and_persist(
+                context=context,
+                candidate=item["candidate"],
+                task=task,
+                changed_files=list(item.get("changed_files") or []),
+                worker_invocation_id=item.get("worker_invocation_id"),
+            )
+            exports.append(export)
+            tasks.append(task)
+            verification_by_task[task_id] = list(item.get("verification_results") or [])
+        dry_run = MergeGateDryRunner(context.validator).evaluate_and_persist(
+            context, tasks, exports, verification_by_task
+        )
+        promoted_by_task: dict[str, list[str]] = {}
+        if not dry_run.get("ok"):
+            return dry_run, promoted_by_task
+        promotable_by_task = {
+            str(result.get("task_id") or ""): [
+                str(path) for path in (result.get("merge_gate") or {}).get("promotable_files") or []
+            ]
+            for result in dry_run.get("task_results") or []
+        }
+        with _PROMOTION_APPLY_LOCK:
+            for item in items:
+                task_id = str(item["task"].get("task_id") or "unknown")
+                promotable = promotable_by_task.get(task_id) or []
+                if promotable:
+                    promoted_by_task[task_id] = item["candidate"].promote(promotable)
+        return dry_run, promoted_by_task
+
     def promote_changes(
         self,
         context: RuntimeContext,
