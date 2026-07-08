@@ -94,6 +94,13 @@
 **整体健康度**:后端 **71% model-driven / 29% FSM 残渣**,残渣集中在 action dispatch + repair 循环控制,**可改不动架构**。
 **最危险 Top3**:①auto_repair 进度守卫(硬编码启发式卡循环)②action dispatch 表 ③`attempt.status` 冒充任务完成。
 
+> **✅ 收官更新（2026-07-08 · RA7b 重塑完成 → FSM 残渣 29%→0）**：上表所列 FIX/DELETE 文件**已全部删除或转正**，立真身脊梁（`core/model_driven_turn.py`）是编码任务唯一执行路径，详见 [ADR-0022](../adr/0022-model-driven-spine-landed.md) 与 `已删除与已替代登记.md` §3.2。逐项动作 + commit：
+> - `agent_loop_executor.py` / `agent_loop_decision.py`（含 `:34` 静默降级、`recommended_command`）/ `execution_action.py` / `agent_loop_observation.py` → **DELETE**（task7 `86e16fe`+`a559a33`）
+> - `coder_agent.py` json path `next_action` 枚举 + `propose_action` → **DELETE**，gut 到 `model_client` 壳（task7 `86e16fe`）；tool_use 原生调用形态由脊梁 `extract_tool_calls` 承接
+> - `execute_command.py` 主循环 + repair 进度守卫（§最危险 Top3 全部）→ **DELETE**（`for round_index` 循环体 slice3f `7b25257`；auto_repair/replan 环 `db414d0`；探针 `13a3916`）
+> - `task_attempt_runner.py` / `task_board.py` / `worker_runner.py` / `subagent_planner.py` / `review_agent.py`（真证据的 KEEP 项）→ 原样保留，不受影响
+> §4 纠偏顺序 1–3（立真身→溶解 action-FSM→repair 退保险丝）+ §7 蓝图（A 轨立真身 / B 轨删废物合流）**全部达成**。剩 §4 步骤 4/5（前端流式叙事 Tier2 / 路由去中心化）由 ADR-0021 主线程系列（第一–五刀）落地，§5 遗留卫生项（`test_runtime_profiles` 3 红）仍为既有 config drift 非本重塑引入。
+
 ---
 
 ## 3. 前端同步方案（Studio,与新核心循环对齐）
