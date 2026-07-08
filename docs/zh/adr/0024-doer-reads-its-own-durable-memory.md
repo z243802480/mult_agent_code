@@ -62,8 +62,12 @@
   - ⬜ **快照按 task 刷新仍待做**：`workspace_files` 快照冻结于 run 启动，多 task run 里后续 task 看不到
     前一 task 刚写的文件（active_goal 仅在 run 结束后刷新，补不上 run 内跨 task 的空窗）。→ 在
     `_model_driven_prompts` 前按当前工作区重扫 workspace_files（per-task 浅拷贝，勿污染共享 runtime_context）。
-- **#3 项目记忆（AGENTS.md 类）**：`_root_guidance` 读取器已存在却只接了 WorkerRunner 旁路，执行 prompt
-  仅**偶然**从 20 文件快照里截到 AGENTS.md 正文。→ 把 root_guidance 正文有意接入执行上下文。
+- ✅ **#3 项目记忆（AGENTS.md）有意接入已落地（2026-07-08）**：`ContextLoader.load()` 加 `root_guidance`
+  键（`_root_guidance()` 读 `root/AGENTS.md`，字符预算 4000 远大于 workspace_files 的 1200），并从
+  `_workspace_files` 里**排除 AGENTS.md**（避免正文重复 + 释放一个 20 文件槽位）。执行 prompt 现在**有意**
+  读项目自己的指引，而非偶然截断泄漏。缺失→`{}`。+2 单测（浮现且不重复 / 无 AGENTS.md 时为 {}）；
+  context_loader 8 绿 + context_injection/execute/planner 53 绿·ruff/mypy 净。（未加 CLAUDE.md：本项目
+  CLAUDE.md 仅 `@import` AGENTS.md，AGENTS.md 是跨工具单一真源。）
 
 ## 6. 回退（Rollback）
 

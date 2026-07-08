@@ -93,6 +93,32 @@ def test_context_loader_active_goal_is_empty_without_memory(tmp_path: Path) -> N
     assert context["active_goal"] == {}
 
 
+def test_context_loader_surfaces_root_guidance_and_dedupes_it_from_workspace_files(
+    tmp_path: Path,
+) -> None:
+    # The project's own AGENTS.md guidance must reach the executing model deliberately (with a
+    # generous budget), not merely leak in truncated via the 20-file workspace snapshot. It must NOT
+    # also appear in workspace_files (no duplicated content, no wasted slot). (ADR-0024 §5 #3)
+    (tmp_path / "AGENTS.md").write_text("# Project rules\nStay in scope.\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text("print('hi')\n", encoding="utf-8")
+
+    context = ContextLoader(tmp_path, validator()).load()
+
+    assert context["root_guidance"]["path"] == "AGENTS.md"
+    assert "Stay in scope." in context["root_guidance"]["content"]
+    workspace_paths = {item["path"] for item in context["workspace_files"]}
+    assert "AGENTS.md" not in workspace_paths
+    assert "app.py" in workspace_paths
+
+
+def test_context_loader_root_guidance_is_empty_without_agents_md(tmp_path: Path) -> None:
+    (tmp_path / ".asteria").mkdir(parents=True)
+
+    context = ContextLoader(tmp_path, validator()).load()
+
+    assert context["root_guidance"] == {}
+
+
 def test_context_loader_includes_bounded_acceptance_failure_evidence(tmp_path: Path) -> None:
     schema_validator = validator()
     failures_dir = tmp_path / ".asteria" / "acceptance" / "failures"

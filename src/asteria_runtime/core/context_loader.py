@@ -23,6 +23,7 @@ class ContextLoader:
         workspace_file_limit: int = 20,
         workspace_file_chars: int = 1_200,
         task_failure_limit: int = 5,
+        root_guidance_chars: int = 4_000,
     ) -> None:
         self.root = root.resolve()
         self.validator = validator
@@ -31,6 +32,7 @@ class ContextLoader:
         self.workspace_file_limit = workspace_file_limit
         self.workspace_file_chars = workspace_file_chars
         self.task_failure_limit = task_failure_limit
+        self.root_guidance_chars = root_guidance_chars
         self.store = JsonStore(validator)
         self.jsonl = JsonlStore(validator)
 
@@ -46,7 +48,28 @@ class ContextLoader:
                 agent_dir
             ),
             "active_goal": self._active_goal(),
+            "root_guidance": self._root_guidance(),
             "workspace_files": self._workspace_files(),
+        }
+
+    def _root_guidance(self) -> dict:
+        """The project's own guidance file (AGENTS.md at the workspace root — the cross-tool
+        single-source convention this project adopts). A ``_root_guidance`` reader already existed in
+        ``ContextPackageBuilder`` but was only wired to the WorkerRunner path, so the live execute
+        prompt saw AGENTS.md only *incidentally* — as a root ``.md`` truncated to 1200 chars inside
+        the 20-file ``workspace_files`` cap (and only if it fit). Surface it deliberately with a
+        generous budget so 'read the current directory's guidance' actually happens. (ADR-0024 §5 #3)"""
+        path = self.root / "AGENTS.md"
+        if not path.exists():
+            return {}
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError:
+            return {}
+        return {
+            "path": "AGENTS.md",
+            "content": content[: self.root_guidance_chars],
+            "truncated": len(content) > self.root_guidance_chars,
         }
 
     def _active_goal(self) -> dict:
@@ -255,6 +278,10 @@ class ContextLoader:
         try:
             relative = path.relative_to(self.root)
         except ValueError:
+            return True
+        # AGENTS.md is surfaced deliberately (and with a larger budget) via ``root_guidance``; skip it
+        # here so its content is not duplicated in the prompt and it does not consume a workspace slot.
+        if relative.as_posix() == "AGENTS.md":
             return True
         parts = set(relative.parts)
         if parts & {".asteria", ".git", "secrets", "__pycache__", ".pytest_cache"}:
