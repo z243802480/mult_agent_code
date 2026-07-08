@@ -46,12 +46,20 @@ class RunStateFinalizer:
         blocked = len([item for item in executed if item.status == "blocked"])
         remaining_ready = task_board.ready_tasks()
         all_tasks = task_board.list_tasks()
+        # A `discarded` task is terminal-and-resolved: replan supersedes a failed task by
+        # discarding it and adding a replacement (ADR-0017), and a user may drop a task outright.
+        # Such tasks are NOT unfinished work, so they must not block run completion. Requiring
+        # `all(... == "done")` over every task left the ADR-0017 goal-replan ring stuck at
+        # status="running"/ended_at=None once any task was superseded. Complete when every task
+        # is resolved (done or discarded) AND at least one task actually reached `done` — an
+        # all-discarded plan accomplished nothing and must not false-complete.
+        active_tasks = [task for task in all_tasks if task["status"] != "discarded"]
         if self._pending_decisions(run_dir):
             run["status"] = "paused"
             run["current_phase"] = "DECISION"
             run["summary"] = "Execution paused for a user decision."
             event_logger.record(run.get("run_id"), "run_paused", self.actor, run["summary"])
-        elif all(task["status"] == "done" for task in all_tasks):
+        elif active_tasks and all(task["status"] == "done" for task in active_tasks):
             run["status"] = "completed"
             run["current_phase"] = "DONE"
             run["ended_at"] = now_iso()
