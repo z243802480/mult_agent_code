@@ -54,7 +54,8 @@ class WriteFileTool:
     ) -> ToolResult:
         guard = PathGuard(context.root, context.policy["protected_paths"])
         resolved = guard.resolve_for_write(path)
-        if resolved.exists() and not overwrite:
+        existed_before = resolved.exists()
+        if existed_before and not overwrite:
             return ToolResult(
                 ok=False,
                 summary=f"File exists and overwrite is false: {path}",
@@ -62,15 +63,25 @@ class WriteFileTool:
             )
         backup = FileBackupStore(context).backup_paths([resolved], "write_file")
         resolved.parent.mkdir(parents=True, exist_ok=True)
+        byte_count = len(content.encode(encoding))
         resolved.write_bytes(content.encode(encoding))
         self._clear_python_bytecode(resolved)
+        # Tell the model explicitly whether this CREATED a new file or OVERWROTE an existing one, and
+        # that the file now exists. A weak model that only saw "Wrote file: X" could not tell the two
+        # apart and would blindly re-issue write_file for a path it had already produced (a same-path
+        # rewrite then hard-fails on overwrite=False). Surfacing created/modified + "now exists" here
+        # is the cheapest signal that stops the redundant re-write loop. (ADR-0024 §5 #1)
+        operation = "modified" if existed_before else "created"
+        verb = "Overwrote existing" if existed_before else "Created new"
         return ToolResult(
             ok=True,
-            summary=f"Wrote file: {path}",
+            summary=f"{verb} file: {path} ({byte_count} bytes) — it now exists at {path}",
             data={
                 "path": resolved.relative_to(context.root).as_posix(),
-                "bytes": len(content.encode(encoding)),
+                "bytes": byte_count,
                 "backup_id": backup["backup_id"],
+                "operation": operation,
+                "existed_before": existed_before,
             },
         )
 

@@ -94,6 +94,28 @@ def test_write_file_preserves_lf_bytes(tmp_path: Path) -> None:
     assert (tmp_path / "notes" / "lf.txt").read_bytes() == b"one\ntwo\n"
 
 
+def test_write_file_observation_distinguishes_created_from_modified(tmp_path: Path) -> None:
+    # The model must be able to tell a fresh create from an overwrite (and that the file now
+    # exists), otherwise a weak model blindly re-writes a path it already produced. (ADR-0024 §5 #1)
+    ctx = context(tmp_path)
+    tools = registry()
+
+    created = tools.call("write_file", ctx, path="pkg/mod.py", content="x = 1\n")
+    assert created.ok
+    assert created.data["operation"] == "created"
+    assert created.data["existed_before"] is False
+    assert "Created new file" in created.summary
+    assert "now exists" in created.summary
+
+    overwritten = tools.call(
+        "write_file", ctx, path="pkg/mod.py", content="x = 2\n", overwrite=True
+    )
+    assert overwritten.ok
+    assert overwritten.data["operation"] == "modified"
+    assert overwritten.data["existed_before"] is True
+    assert "Overwrote existing file" in overwritten.summary
+
+
 def test_list_files_missing_directory_is_empty_observation(tmp_path: Path) -> None:
     ctx = context(tmp_path)
     tools = registry()

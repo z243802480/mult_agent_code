@@ -52,10 +52,16 @@
 
 对标成熟 agent 的"上下文自觉"还差两刀，单列避免本刀膨胀：
 
-- **#1 重复写的直接止血**：写文件成功的 observation 只回灌 `Wrote file: X; files=X`，**不明说 created vs
-  modified、不明说"现已存在"**（该区分已在 `tool_execution_gateway` 算出却没进 `model_summary`）；且
-  `workspace_files` 快照冻结于 run 启动、多 task 时对后续 task 陈旧。→ 让 observation 显式带
-  created/modified + 快照按 task 刷新。
+- **#1 重复写的直接止血**：
+  - ✅ **observation 显式化已落地（2026-07-08）**：`WriteFileTool.run` 在写前已知 `resolved.exists()`，
+    据此把 summary 从 `Wrote file: X` 改为 `Created new file: X (N bytes) — it now exists at X` /
+    `Overwrote existing file: X ...`，并在 `data` 带 `operation`（created/modified）+ `existed_before`。
+    弱模型现在能分辨新建 vs 覆盖、且明知"文件现已存在"，不再盲目重发 write_file（同路径重写会硬失败
+    于 `overwrite=False`）。+1 集成测试（created→modified 分辨）；tool_registry/execute/run/gateway
+    共 85 测绿·ruff/mypy 净。
+  - ⬜ **快照按 task 刷新仍待做**：`workspace_files` 快照冻结于 run 启动，多 task run 里后续 task 看不到
+    前一 task 刚写的文件（active_goal 仅在 run 结束后刷新，补不上 run 内跨 task 的空窗）。→ 在
+    `_model_driven_prompts` 前按当前工作区重扫 workspace_files（per-task 浅拷贝，勿污染共享 runtime_context）。
 - **#3 项目记忆（AGENTS.md 类）**：`_root_guidance` 读取器已存在却只接了 WorkerRunner 旁路，执行 prompt
   仅**偶然**从 20 文件快照里截到 AGENTS.md 正文。→ 把 root_guidance 正文有意接入执行上下文。
 
