@@ -3050,7 +3050,11 @@ async function readRunDetail(runId) {
   const workflowStateRows = await readJsonlTail(path.join(runDir, "orchestration_runner_state.jsonl"), 120);
   payload.orchestration_workflow = redact(buildOrchestrationWorkflowMonitor(workflowStateRows));
   payload.runtime_progress = redact(enrichRuntimeProgress(payload.runtime_progress || {}, payload));
-  const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 120);
+  // 500 (not 120) to match the thread's own event read (readRuntimeUserProgressEvents). user_progress
+  // is ~85% inspector rows, so a 120-physical-line tail kept only ~18 user-facing events and dropped a
+  // run's whole opening (goal → plan → first steps) — the "process" the user wants to see. 500 keeps a
+  // typical run's full arc while staying bounded for very long runs.
+  const userProgress = await readJsonlTail(path.join(runDir, "user_progress.jsonl"), 500);
   const legacyEvents = await readJsonlTail(path.join(runDir, "events.jsonl"), 120);
   payload.user_progress = redact(userProgress);
   payload.raw_evidence = redact({
