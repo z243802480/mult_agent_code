@@ -1043,10 +1043,15 @@ def _observation_data(data: Any) -> dict[str, Any]:
 def _artifact_refs(tool_name: str, data: dict[str, Any]) -> list[str]:
     if tool_name == "write_file" and data.get("path"):
         return [str(data["path"])]
-    changed_files = data.get("changed_files")
-    if isinstance(changed_files, list):
-        return [str(path) for path in changed_files]
-    return []
+    # A deletion is a changed artifact too: apply_patch reports removals under `deleted_files`
+    # (not `changed_files`), so a delete-only task would otherwise surface zero changed artifacts
+    # and be falsely blocked by the completion contract even though it did real, verified work.
+    refs: list[str] = []
+    for key in ("changed_files", "deleted_files"):
+        value = data.get(key)
+        if isinstance(value, list):
+            refs.extend(str(path) for path in value)
+    return refs
 
 
 def _content_hash(content: str) -> str:

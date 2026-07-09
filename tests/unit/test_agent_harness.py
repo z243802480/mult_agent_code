@@ -194,6 +194,33 @@ def test_tool_observation_summarizes_result_for_model_loop() -> None:
     assert observation.model_summary() == "write_file ok: Wrote src/app.py"
 
 
+def test_apply_patch_deletion_counts_as_changed_artifact() -> None:
+    # A delete-only patch reports removals under `deleted_files`; the completion contract reads
+    # artifact_refs to decide whether real work happened, so a deletion must surface there too —
+    # otherwise a legitimate "remove deprecated module" task is falsely blocked as a no-op.
+    result = ToolResult(
+        ok=True,
+        summary="Applied patch: 1 file(s) deleted",
+        data={"changed_files": [], "deleted_files": ["src/legacy.py"], "backup_id": "b1"},
+    )
+
+    observation = observation_from_tool_result(tool_name="apply_patch", result=result)
+
+    assert observation.artifact_refs == ["src/legacy.py"]
+
+
+def test_apply_patch_reports_both_changed_and_deleted_files() -> None:
+    result = ToolResult(
+        ok=True,
+        summary="Applied patch: 1 file(s) changed, 1 file(s) deleted",
+        data={"changed_files": ["src/app.py"], "deleted_files": ["src/old.py"], "backup_id": "b2"},
+    )
+
+    observation = observation_from_tool_result(tool_name="apply_patch", result=result)
+
+    assert observation.artifact_refs == ["src/app.py", "src/old.py"]
+
+
 def test_failed_tool_observation_builds_explicit_action_options() -> None:
     actions = tool_observation_action_options(
         [

@@ -114,8 +114,16 @@ class ModelToolSurfaceAdapter:
                 "write",
                 "ask",
                 "apply_patch",
-                {"patch": "unified patch or structured patch payload"},
-                ["Prefer edit_file/apply_patch for existing files."],
+                {
+                    "patch": "unified diff; to DELETE a file emit a hunk whose +++ header "
+                    "is /dev/null (e.g. '--- a/path\\n+++ /dev/null'); to CREATE one use "
+                    "'--- /dev/null\\n+++ b/path'"
+                },
+                [
+                    "Prefer edit_file/apply_patch for existing files.",
+                    "Deleting a file is a valid change: use a '+++ /dev/null' patch — the "
+                    "removal is backed up and reversible, no shell rm needed.",
+                ],
             ),
             self._tool(
                 "shell",
