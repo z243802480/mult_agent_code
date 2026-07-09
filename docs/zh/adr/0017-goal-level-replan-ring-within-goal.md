@@ -1,6 +1,6 @@
 # ADR-0017 · Goal 级 replan 环闭合 = 目标内重分解，非 scope 扩张
 
-- 状态：Proposed（2026-07-05）
+- 状态：Proposed（2026-07-05）——**设计立场仍 Proposed，代码已落地于 `agent_loop.auto_replan_goal` flag 后（默认关·可逆），收敛 bug 已修（研发总计划 changelog 1.2.19）。翻默认开=独立自主性 DecisionPoint，未拍板前维持 Proposed。**
 - 关联：[[0010]] 开放 Agent Loop · [[0015]] 连续 Session 是产品架构 · [[0016]] 认知归模型/边界归状态 · S78 repair 环 · S79 task-level replan 环
 - 授权：用户 2026-07-05「授权你解锁推进」+「继续吧」（承 2026-07-04 解冻，记忆 `freeze-lifted-autonomous-loop`）
 

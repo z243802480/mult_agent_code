@@ -17,8 +17,8 @@ CLI and Studio surface (not command-only UX).
 
 ```text
 执行计划唯一入口：docs/zh/研发总计划.md（当前状态见 §16 / §16.1）
-当前 ACTIVE_PHASE：Post-S76 商业化就绪收敛（Commercial-Readiness convergence）
-当前 ACTIVE_SLICE：S77（全系统商业化就绪审计 → 针对性 R&D 重排）
+当前 ACTIVE_PHASE：Post-S76 商业化就绪收敛（Commercial-Readiness convergence）；大重塑「模型驱动专家集群」Part B 并行
+当前 ACTIVE_SLICE：S77（商业化就绪审计 → P0/P1 backlog：沙箱 / 审计完整性 / 自主环翻默认 DecisionPoint）。已落地子切片 S78 repair 环 / S79 全栈缺口收敛（Tier A 收官）+ 大重塑 Part A RA1–RA7b 收官。权威定义见 研发总计划 §16（本处为镜像·单一真源）
 当前 Brief / 审计签字：docs/zh/reports/S77-commercial-readiness-audit-20260704.md（实现≈71%、市场化 37→利基 43-45、今天不可商业推广）
 前置签字：docs/zh/reports/S76-studio-frontend-productization-20260703.md
 执行顺序：P0 法务/假默认档（小时~天级）→ 战略分叉 DecisionPoint（商业模式/目标市场/可审计深度/是否解锁自主环）→ P0 沙箱 + P1 自主闭环 & 真正确性 gate → 利基付费 Beta

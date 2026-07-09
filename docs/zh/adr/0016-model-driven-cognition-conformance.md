@@ -23,6 +23,12 @@ S77–S79 的实现就悄悄漂回了 0010/0015 明令要溶解的那台状态�
 注：`correctness_eval` 的**真实通过率**不是漂移——它是合法的**证据**（喂给模型/人看），错的是
 把它接成**自动 gate**。证据与闸门的区别是本 ADR 的核心。
 
+> **合规状态更新（2026-07-09）**：上表点名的三处漂移**已全部消解**——RA7b 删除 FSM 认知脚手架时，
+> `agent_loop_decision.py`（含 `recommended_command_for_next_action` 弹射命令）、execute 级 auto-repair/replan
+> 环、`review_agent._overall` 的 `0.9/0.6/0.2` 算分 gate 均已删除；立真身脊梁（`model_driven_turn`）为唯一执行
+> 路径，`review_agent` 完成判决改由 `CorrectnessEvalCommand.score_signal`（真退出码证据）驱动。落地登记见
+> [ADR-0022](0022-model-driven-spine-landed.md)。上表保留为**历史漂移记录**，不再代表现状代码。
+
 ### 主流实证（2026-07-04 复核 Claude Code / Cursor / OpenCode / Aider）
 
 ADR-0010 已引 Claude Agent SDK / Codex / OpenCode。本次复核四个产品，主流范式与本 ADR 三分类一致：
