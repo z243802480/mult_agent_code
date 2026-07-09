@@ -1202,22 +1202,37 @@ class ExecuteCommand:
             for obs in observations
             if _is_verification_observation(obs, allow_readback=allow_readback)
         ]
-        contract = check_completion_contract(task, changed_files, verification_results)
+        # A repair task (goal-level replan created it, carrying a `replan` lineage link) closes on a
+        # genuinely-passing verification even when changed-files detection captured nothing: the real
+        # test passing is stronger evidence than the file-change proxy, and mainstream agents treat a
+        # passing verification as done rather than re-blocking on "which files changed" (ADR-0016:
+        # verification is the objective boundary). Fresh tasks keep the strict artifact gate (no
+        # verified-noop) so a model cannot false-complete by running a pre-passing test without work.
+        is_repair_task = isinstance(task.get("replan"), dict)
+        contract = check_completion_contract(
+            task, changed_files, verification_results, allow_verified_noop=is_repair_task
+        )
         tool_calls = len(observations)
         verification_calls = contract.verification_total
 
-        if result.status == "budget_exhausted":
-            status = "blocked"
-            exit_reason = "max_rounds"
-            summary = "模型驱动循环撞上迭代保险丝（可 resume），本轮尚未收尾。"
-        elif not contract.ok:
-            status = "blocked"
-            exit_reason = "tool_failed"
-            summary = "任务完成契约未满足：" + "；".join(contract.violations)
-        else:
+        # Verified-complete DOMINATES the round fuse. Mainstream harnesses treat the model finishing
+        # its work as "done"; a flat iteration counter is only a runaway backstop, never a reason to
+        # discard genuinely-completed, contract-satisfying work. Checking `budget_exhausted` first
+        # wrongly blocked a task that satisfied its completion contract on the very turn it hit the
+        # fuse — which then fed the goal-replan ring an already-finished task and made it spin
+        # (real-stack finding, ring_val_b). So: contract satisfied → done, even if the fuse also tripped.
+        if contract.ok:
             status = "done"
             exit_reason = "completed"
             summary = result.final_message or "模型驱动循环已完成并通过完成契约。"
+        elif result.status == "budget_exhausted":
+            status = "blocked"
+            exit_reason = "max_rounds"
+            summary = "模型驱动循环撞上迭代保险丝（可 resume），本轮尚未收尾。"
+        else:
+            status = "blocked"
+            exit_reason = "tool_failed"
+            summary = "任务完成契约未满足：" + "；".join(contract.violations)
 
         # TaskBoard enforces ready→in_progress→testing→reviewing→done; complete_task walks the
         # intermediate hops (a direct in_progress→done transition is rejected). Blocked is a valid

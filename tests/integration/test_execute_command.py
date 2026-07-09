@@ -3160,3 +3160,76 @@ def test_model_driven_spine_reports_verification_calls_on_success(tmp_path: Path
     assert result.completed == 1
     assert result.blocked == 0
     assert result.executed_tasks[0].verification_calls >= 1
+
+
+class FakeModelDrivenVerifiesNeverDoneClient:
+    """Writes the artifact + a passing verification, then NEVER emits done — so the loop runs until
+    the round fuse trips (``budget_exhausted``) while the completion contract is already satisfied."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def chat(self, request: ChatRequest) -> ChatResponse:
+        self.calls += 1
+        verify = {
+            "tool_name": "run_command",
+            "args": {
+                "command": (
+                    "python -c "
+                    '"from src.notes_tool import add_note; '
+                    "assert add_note([], 'x') == ['x']\""
+                )
+            },
+        }
+        if self.calls == 1:
+            tool_calls = [
+                {
+                    "tool_name": "write_file",
+                    "args": {
+                        "path": "src/notes_tool.py",
+                        "content": "def add_note(notes, text):\n    return [*notes, text]\n",
+                        "overwrite": True,
+                    },
+                },
+                verify,
+            ]
+        else:
+            tool_calls = [verify]
+        payload = {"narration": "持续验证但不收尾。", "tool_calls": tool_calls, "done": False}
+        return ChatResponse(
+            content=json.dumps(payload, ensure_ascii=False),
+            finish_reason="stop",
+            usage=TokenUsage(1, 1, 2),
+            model_provider="fake",
+            model_name="fake-never-done",
+            raw_response={},
+        )
+
+
+@pytest.mark.spine_default
+def test_model_driven_spine_completes_verified_work_even_when_round_fuse_trips(
+    tmp_path: Path,
+) -> None:
+    """收敛正确性（真栈 ring_val_b 发现）：任务在撞上迭代保险丝（budget_exhausted）的同一轮已满足
+    完成契约（工件 + 验证通过）→ 判 done，而非被保险丝盖成 blocked。否则已完成的活会被喂给
+    goal-replan 环空转（0001→0002→0003…）。主流亦如此：模型把活干完就是 done，扁平计数只是防跑飞
+    的兜底，绝不用来丢弃已验证完成的工作。"""
+    InitCommand(tmp_path).run()
+    policy_path = tmp_path / ".asteria" / "policies.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    # max_iterations = max_rounds_per_task + 4 = 5 → the never-done fake exhausts the fuse quickly.
+    policy.setdefault("agent_loop", {})["max_rounds_per_task"] = 1
+    policy_path.write_text(json.dumps(policy, ensure_ascii=False), encoding="utf-8")
+    plan = PlanCommand(tmp_path, "create a tiny notes tool", model_client=FakePlanClient()).run()
+
+    client = FakeModelDrivenVerifiesNeverDoneClient()
+    result = ExecuteCommand(tmp_path, run_id=plan.run_id, model_client=client).run()
+
+    # The fake never says done, so the loop can only have ended by hitting the fuse — proving the
+    # budget_exhausted branch was the one that finalized the (contract-satisfied) task.
+    assert client.calls >= 2
+    assert result.completed == 1
+    assert result.blocked == 0
+    run_dir = tmp_path / ".asteria" / "runs" / plan.run_id
+    task_plan = json.loads((run_dir / "task_plan.json").read_text(encoding="utf-8"))
+    assert task_plan["tasks"][0]["status"] == "done"
