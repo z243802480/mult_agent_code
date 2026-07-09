@@ -37,6 +37,7 @@ import {
 } from "./lib/workspace-paths.mjs";
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
 import { createEventBus } from "./lib/event-bus.mjs";
+import { createJobRegistry } from "./lib/jobs.mjs";
 import {
   runtimeRequestDetailValues,
   scopeValueSummary,
@@ -61,7 +62,9 @@ const chatBackend = String(
 const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
-const liveJobs = new Map();
+// Live-job registry (in-memory active/terminal job map + bounding prune) lives in ./lib/jobs.mjs;
+// chat jobs, runtime jobs, the /jobs + /stop routes, and the workspace-switch guard all share it.
+const { liveJobs, pruneLiveJobs } = createJobRegistry();
 // Git helpers live in ./lib/git.mjs; wire them with a live workspace getter (the active
 // workspace is reassigned on switch) + the protected-path-aware safety guard.
 const {
@@ -83,25 +86,6 @@ const { startPreviewServer, getPreviewPort } = createPreviewSubsystem({
   getWorkspace: () => workspace,
   previewProxyTarget,
 });
-
-// Keep liveJobs bounded. Terminal (completed/failed/cancelled) jobs are retained briefly so the
-// jobs/stop routes still reflect a just-finished run, then pruned after a grace window; a hard cap is
-// a backstop. Running jobs are never pruned. Prevents a long-lived server from growing the map
-// unbounded and keeps the workspace-switch guard (which scans liveJobs) honest.
-function pruneLiveJobs(maxAgeMs = 10 * 60 * 1000, keepLatest = 50) {
-  const now = Date.now();
-  for (const [id, job] of liveJobs) {
-    const terminal =
-      job.status === "completed" || job.status === "failed" || job.status === "cancelled";
-    if (terminal && now - (job.started_at_ms || 0) > maxAgeMs) liveJobs.delete(id);
-  }
-  if (liveJobs.size > keepLatest) {
-    const terminalIds = [...liveJobs.entries()]
-      .filter(([, job]) => job.status !== "running")
-      .map(([id]) => id);
-    for (const id of terminalIds.slice(0, liveJobs.size - keepLatest)) liveJobs.delete(id);
-  }
-}
 
 const pendingJobs = new Map(); // jobId -> { sessionId, mode, goal, command }
 // Event bus (SSE fan-out + events.jsonl/session.json persistence) lives in ./lib/event-bus.mjs;
