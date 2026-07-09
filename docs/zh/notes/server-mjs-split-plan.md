@@ -137,3 +137,35 @@ node scripts/preview-serve-smoke.mjs
 # chat 相关刀还需跑 chat/decision/permission 相关 smoke（在 scripts/ grep chat/decision）
 ```
 安全：每次 commit/push 前扫 staged diff 不含保护路径（`.env*`/`secrets/`/`*.pem`/`*.key`/`id_rsa`/`.git/`）与真密钥；仅用户明确要求才 push。
+
+---
+
+## 6. 下一刀执行清单：`lib/chat-answer.mjs`（Layer 2 Tier 1·子代理测绘 2026-07-09·行号基于 3468 行版 server.mjs，执行前重新 grep 校准）
+
+**搬（Tier 1，buildChatAnswer 子树 + 文本/本地模板/status 助手）**——约 31 个：
+`buildChatAnswer`(1223 入口)、`chatAnswer`、`chatRuntimeAnswer`、`chatGeneralAnswer`、`chatModelAnswer`、`preferredChatRoute`、`routeLabel`、`appendModelNotice`、`chatHistoryForSession`、`extractVisibleChatAnswerFromEvents`、`stripCliChatEnvelope`、`stripCliContextNoise`、`stripThinkingBlocks`、`fsSyncReadJsonl`、`requireReadFileSync`、`cleanAssistantText`、`repairMojibake`、`isLikelyGarbledAnswer`、`localGeneralAnswer`、`localOutcomePlanAnswer`、`isModeHelpQuestion`、`chatStatusAnswer`、`friendlyWorkflow`、`chatModelRouteAnswer`、`sideAskContextHint`、`readChatContext`、`commandFromStatus`、4 个发射器 `appendChatFallbackLifecycle`/`hideManualChatModelStart`/`appendChatModelStart`/`appendChatFallbackDelta`、常量 `CHAT_MODES`。
+
+**留下（别搬）**：Tier 2 端点/驱动（submitUserGoal/handleRuntimeAction/handleDecisionResolve/Answer/handlePermission/handleChatMode/startChatJob/startRuntimeJob/tailUserProgress/tailSessionEvents）；灰区 `acknowledgementFor`(733)/`progressEventForMode`(749)——**只被 Tier 2 运行时端点调、非 chat 答案、纯函数，搬走反需反向 import 回 4 处，留下**；死常量 `CHAT_INTRO/CHAT_GREETING/CHAT_HELP/CHAT_ABOUT_CHAT/CHAT_EVIDENCE`(1795–1805) 全仓无引用（可随手删或留，勿扩）。
+
+**注入契约**（仿 event-bus/run-detail-reader 先例，接线点放在 `appendEvent`(100)/`readRunDetail`(88) 之后）：
+```js
+export function createChatAnswer({
+  getWorkspace, getRuntimeRoot,          // (a) live getter：workspace/runtimeRoot 都是可变 let，切库重赋
+  python, chatBackend,                    // (b) 稳定 const 传值（moduleName/routeClient Tier1 不用，勿注）
+  appendEvent, sessionPath, readRunDetail, overview, commandJson, runCommand, modelRouteSummary, // (c) server 本地/工厂函数引用
+})
+// 顶部直接 import(纯 lib/node)：node:fs {existsSync,readFileSync,promises as fs}、node:path、
+//   ../prompt-contract.mjs {outcomeAnswerContract}、../intent-router.mjs {classifyChatRequest,hasAny,isRuntimeMetaQuestion}、
+//   ./chat-route-context.mjs {recentChatHistoryMessages}、./text-utils.mjs {firstRuntimeText}、
+//   ./run-io.mjs {readJsonlTail}、./run-evidence-transforms.mjs {latestDecisions}、./workspace-paths.mjs {isSafeId}
+```
+**反向 import 回 server 的 5 名**（被 `startChatJob` 1036–1041 调）：`buildChatAnswer, readChatContext, sideAskContextHint, hideManualChatModelStart, appendChatFallbackLifecycle`。（`readChatContext` 两栖：既被 startChatJob 调又被 Tier1 内 `chatStatusAnswer` 调，故既内聚又导出。）
+
+**逐字节零行为铁律（本刀专属陷阱）**：
+1. `runtimeRoot` 也是 live——别只注 `workspace`（`chatModelAnswer` 用 `runtimeRoot` 拼 cwd，会随 `openWorkspace` 变）。
+2. `hideManualChatModelStart` 直接 `fs.writeFile` 重写 events.jsonl（绕过 appendEvent）——原样保留，别顺手改成 appendEvent。
+3. `statSync` 不带走（只属 Tier2 `tailSessionEvents`）。
+4. `chatModelAnswer` 里 python 脚本模块名是硬编码字面量 `asteria_runtime`、不走 `moduleName`——照搬。
+5. Tier1 不写任何内存 singleton（liveJobs/pendingJobs/sseClients/workspace/runtimeRoot 均只读），注入 appendEvent+sessionPath 即覆盖全部写路径。
+
+验证 smoke：chat-lifecycle / chat-fallback / chat-stream-final / side-chat / composer-side-ask / intent-routing / plan-output（注意 side-chat/plan-output 为 origin/main 预存基线失败，stash 对比）。
