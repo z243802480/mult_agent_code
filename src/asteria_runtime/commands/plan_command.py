@@ -24,6 +24,7 @@ from asteria_runtime.core.prompt_envelope import persist_prompt_envelope
 from asteria_runtime.core.execution_profile import resolve_execution_profile
 from asteria_runtime.core.fast_path_policy import classify_fast_path
 from asteria_runtime.core.run_config import apply_run_config, write_run_config
+from asteria_runtime.core.task_contract import task_kind
 from asteria_runtime.core.workspace_registry import WorkspaceRegistry
 from asteria_runtime.core.user_progress_view import build_plan_completion_copy
 from asteria_runtime.core.workspace_envelope import (
@@ -113,6 +114,32 @@ class PlanCommand:
         self.validation_probe_ids = list(validation_probe_ids or [])
         self.force_harness = force_harness
         self.run_id = run_id
+
+    def _protect_verification_specs(self, task_plan: dict) -> None:
+        """Anti-tamper boundary (real-stack finding, ring_val_e): an implementation task must not be
+        able to rewrite the pre-existing test file it is verified against. The planner naively scoped
+        the test named in the goal ("make test_X.py pass") into the task's write_scope /
+        expected_changed_files, so a fully-autonomous model could "pass" by deleting the failing
+        assertion instead of implementing. The deliverable of "make test_X.py pass" is the
+        implementation, not a change to the spec — so drop from those two fields any test-file path that
+        ALREADY EXISTS at plan time (a genuine pre-existing spec). Test files that do NOT yet exist stay
+        writable, so legitimate NEW test authoring is unaffected. This is an ADR-0016 §2 boundary
+        (deterministic write scope), not model cognition."""
+        for task in task_plan.get("tasks", []):
+            if task_kind(task) != "implementation":
+                continue
+            protected = {
+                str(path)
+                for key in ("write_scope", "expected_changed_files")
+                for path in (task.get(key) or [])
+                if _looks_like_test_path(str(path)) and (self.root / str(path)).exists()
+            }
+            if not protected:
+                continue
+            for key in ("write_scope", "expected_changed_files"):
+                values = task.get(key)
+                if isinstance(values, list):
+                    task[key] = [item for item in values if str(item) not in protected]
 
     def run(self) -> PlanResult:
         agent_dir = self.root / ".asteria"
@@ -492,6 +519,7 @@ class PlanCommand:
         )
         task_plan = apply_research_type_to_task_plan(goal_spec, task_plan)
         _apply_validation_probe_hints(task_plan, self.validation_probe_ids)
+        self._protect_verification_specs(task_plan)
         for task in task_plan["tasks"]:
             self.validator.validate("task", task)
         loop_dispatch = AgentLoopProfileRegistry().dispatch_plan(
@@ -802,6 +830,19 @@ class PlanCommand:
             task_plan_status=str(task_plan_eval["status"]),
             task_plan_score=float(task_plan_eval["overall_score"]),
         )
+
+
+def _looks_like_test_path(path: str) -> bool:
+    """A pytest-style test/spec file: ``test_*.py`` / ``*_test.py`` / ``conftest.py``, or any file
+    under a ``tests/``/``test/`` directory. Used to keep a task's own verification target read-only."""
+    normalized = str(path).replace("\\", "/").strip().strip("/")
+    if not normalized:
+        return False
+    parts = normalized.split("/")
+    if any(part in {"tests", "test"} for part in parts[:-1]):
+        return True
+    name = parts[-1]
+    return (name.startswith("test_") and name.endswith(".py")) or name.endswith("_test.py") or name == "conftest.py"
 
 
 def _apply_validation_probe_hints(task_plan: dict, probe_ids: list[str]) -> None:

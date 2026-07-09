@@ -4,10 +4,62 @@ from pathlib import Path
 import pytest
 
 from asteria_runtime.commands.init_command import InitCommand
-from asteria_runtime.commands.plan_command import PlanCommand
+from asteria_runtime.commands.plan_command import PlanCommand, _looks_like_test_path
 from asteria_runtime.models.base import ChatRequest, ChatResponse, TokenUsage
 
 pytestmark = pytest.mark.workflow
+
+
+def test_looks_like_test_path() -> None:
+    assert _looks_like_test_path("test_foo.py")
+    assert _looks_like_test_path("foo_test.py")
+    assert _looks_like_test_path("conftest.py")
+    assert _looks_like_test_path("tests/unit/test_x.py")
+    assert _looks_like_test_path("pkg/test/thing.py")
+    assert not _looks_like_test_path("foo.py")
+    assert not _looks_like_test_path("src/mystery.py")
+    assert not _looks_like_test_path("contest.py")
+
+
+def test_protect_verification_specs_strips_preexisting_test_from_impl_scope(tmp_path: Path) -> None:
+    """Anti-tamper (ring_val_e): a pre-existing test file (the spec) is removed from an implementation
+    task's write_scope + expected_changed_files so the model can't rewrite the test it's judged by;
+    a NOT-yet-existing test stays writable (legitimate authoring); non-impl tasks are untouched."""
+    (tmp_path / "test_mystery.py").write_text("assert False\n", encoding="utf-8")
+    cmd = PlanCommand(tmp_path, "make test_mystery.py pass")
+    task_plan = {
+        "tasks": [
+            {
+                "task_id": "task-0001",
+                "task_kind": "implementation",
+                "write_scope": ["mystery.py", "test_mystery.py"],
+                "expected_changed_files": ["mystery.py", "test_mystery.py"],
+            },
+            {
+                "task_id": "task-0002",
+                "task_kind": "implementation",
+                "write_scope": ["feature.py", "test_new_feature.py"],
+                "expected_changed_files": ["test_new_feature.py"],
+            },
+            {
+                "task_id": "task-0003",
+                "task_kind": "verification",
+                "write_scope": ["test_mystery.py"],
+                "expected_changed_files": ["test_mystery.py"],
+            },
+        ]
+    }
+
+    cmd._protect_verification_specs(task_plan)
+    t1, t2, t3 = task_plan["tasks"]
+
+    assert t1["write_scope"] == ["mystery.py"]
+    assert t1["expected_changed_files"] == ["mystery.py"]
+    # a NEW test (not yet on disk) stays writable — legitimate test authoring is unaffected
+    assert "test_new_feature.py" in t2["write_scope"]
+    assert t2["expected_changed_files"] == ["test_new_feature.py"]
+    # a non-implementation task is left alone
+    assert t3["write_scope"] == ["test_mystery.py"]
 
 
 class FakePlanClient:

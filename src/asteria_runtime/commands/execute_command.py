@@ -1202,16 +1202,14 @@ class ExecuteCommand:
             for obs in observations
             if _is_verification_observation(obs, allow_readback=allow_readback)
         ]
-        # A repair task (goal-level replan created it, carrying a `replan` lineage link) closes on a
-        # genuinely-passing verification even when changed-files detection captured nothing: the real
-        # test passing is stronger evidence than the file-change proxy, and mainstream agents treat a
-        # passing verification as done rather than re-blocking on "which files changed" (ADR-0016:
-        # verification is the objective boundary). Fresh tasks keep the strict artifact gate (no
-        # verified-noop) so a model cannot false-complete by running a pre-passing test without work.
-        is_repair_task = isinstance(task.get("replan"), dict)
-        contract = check_completion_contract(
-            task, changed_files, verification_results, allow_verified_noop=is_repair_task
-        )
+        # NB: we deliberately do NOT pass allow_verified_noop=True here. It was tempting for repair
+        # tasks (a real fix whose changed-files detection false-negatived), but real-stack validation
+        # (ring_val_f) showed it opens a false-completion hole: a task can "close" by running ANY
+        # passing command (not the acceptance test) with zero changed files. Blocking a no-op is the
+        # safe, mainstream-aligned choice — completion requires a real changed artifact AND the real
+        # verification passing. The changed-files detection gap is fixed at the source, not papered
+        # over by trusting an arbitrary passing verification.
+        contract = check_completion_contract(task, changed_files, verification_results)
         tool_calls = len(observations)
         verification_calls = contract.verification_total
 
