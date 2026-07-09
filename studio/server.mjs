@@ -18,6 +18,8 @@ import {
 import { buildOrchestrationWorkflowMonitor } from "./lib/orchestration-workflow-monitor.mjs";
 import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
 import { mapPermissionLevel, withPermissionLevel } from "./lib/permission-level.mjs";
+import { redact, redactText, tailText, percentile } from "./lib/text-utils.mjs";
+import { createGitHelpers } from "./lib/git.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -33,6 +35,14 @@ const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
 const liveJobs = new Map();
+// Git helpers live in ./lib/git.mjs; wire them with a live workspace getter (the active
+// workspace is reassigned on switch) + the protected-path-aware safety guard.
+const {
+  readWorkspaceGitStatus,
+  readWorkspaceGitDiff,
+  stageWorkspaceGitFile,
+  discardWorkspaceGitFile,
+} = createGitHelpers({ getWorkspace: () => workspace, runCommand, isSafeWorkspacePath });
 let previewPort = null; // PREVIEW-1: port of the dedicated static workspace server (null until bound)
 const previewSseClients = new Set(); // PREVIEW-2: live-reload SSE connections from preview iframes
 let previewReloadTimer = null;
@@ -4886,170 +4896,6 @@ async function browseWorkspaceFolder() {
   return { ok: true, cancelled: false, path: path.resolve(selected) };
 }
 
-async function runGit(args) {
-  return runCommand(["git", ...args], workspace);
-}
-
-function gitChangeLabel(indexStatus, worktreeStatus) {
-  const code = `${indexStatus}${worktreeStatus}`;
-  if (code.includes("?")) return "untracked";
-  if (code.includes("A")) return "added";
-  if (code.includes("D")) return "deleted";
-  if (code.includes("R")) return "renamed";
-  if (code.includes("M")) return "modified";
-  return "changed";
-}
-
-function parseGitPorcelain(text) {
-  const changes = [];
-  for (const rawLine of String(text || "").split(/\r?\n/)) {
-    const line = rawLine.trimEnd();
-    if (!line) continue;
-    if (line.startsWith("??")) {
-      const filePath = line.slice(3).trim();
-      if (!isSafeWorkspacePath(filePath)) continue;
-      changes.push({ path: filePath, status: "untracked", index: "?", worktree: "?" });
-      continue;
-    }
-    const indexStatus = line[0] || " ";
-    const worktreeStatus = line[1] || " ";
-    let filePath = line.slice(3).trim();
-    if (filePath.includes(" -> ")) filePath = filePath.split(" -> ").pop()?.trim() || filePath;
-    if (!isSafeWorkspacePath(filePath)) continue;
-    changes.push({
-      path: filePath,
-      status: gitChangeLabel(indexStatus, worktreeStatus),
-      index: indexStatus,
-      worktree: worktreeStatus,
-    });
-  }
-  return changes;
-}
-
-async function readWorkspaceGitStatus() {
-  if (!existsSync(path.join(workspace, ".git"))) {
-    return { ok: true, available: false, workspace, reason: "not a git repository" };
-  }
-  const branchResult = await runGit(["branch", "--show-current"]);
-  if (branchResult.code !== 0) {
-    return {
-      ok: true,
-      available: false,
-      workspace,
-      reason: redactText(branchResult.stderr || "git unavailable"),
-    };
-  }
-  const statusResult = await runGit(["status", "--porcelain", "-u"]);
-  if (statusResult.code !== 0) {
-    return {
-      ok: true,
-      available: false,
-      workspace,
-      reason: redactText(statusResult.stderr || "git status failed"),
-    };
-  }
-  const changes = parseGitPorcelain(statusResult.stdout);
-  const summary = changes.reduce((acc, item) => {
-    acc[item.status] = (acc[item.status] || 0) + 1;
-    return acc;
-  }, {});
-  return {
-    ok: true,
-    available: true,
-    workspace,
-    branch: String(branchResult.stdout || "").trim() || "HEAD",
-    clean: changes.length === 0,
-    change_count: changes.length,
-    summary,
-    changes,
-  };
-}
-
-async function readWorkspaceGitDiff(relativePath, stage = "all") {
-  const normalized = String(relativePath || "")
-    .replace(/\\/g, "/")
-    .trim();
-  if (!normalized) return { ok: false, error: "path is required" };
-  if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-  if (!existsSync(path.join(workspace, ".git"))) {
-    return { ok: false, error: "not a git repository" };
-  }
-  const stagedResult = await runGit(["diff", "--cached", "--no-color", "--", normalized]);
-  const unstagedResult = await runGit(["diff", "--no-color", "--", normalized]);
-  const staged = redactText(String(stagedResult.stdout || ""));
-  const unstaged = redactText(String(unstagedResult.stdout || ""));
-  let diff = "";
-  if (stage === "staged") diff = staged;
-  else if (stage === "unstaged") diff = unstaged;
-  else {
-    diff = [
-      staged ? `--- staged ---\n${staged}` : "",
-      unstaged ? `--- unstaged ---\n${unstaged}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-  }
-  if (!diff && stagedResult.code !== 0 && unstagedResult.code !== 0) {
-    return {
-      ok: false,
-      error: redactText(unstagedResult.stderr || stagedResult.stderr || "git diff failed"),
-    };
-  }
-  const clipped = diff.slice(0, 120_000);
-  return {
-    ok: true,
-    path: normalized,
-    stage,
-    diff: clipped || "(no diff — file may be untracked or binary)",
-    staged,
-    unstaged,
-    has_staged: Boolean(staged.trim()),
-    has_unstaged: Boolean(unstaged.trim()),
-    truncated: diff.length > 120_000,
-  };
-}
-
-async function stageWorkspaceGitFile(body) {
-  const normalized = String(body?.path || "")
-    .replace(/\\/g, "/")
-    .trim();
-  if (!normalized) return { ok: false, error: "path is required" };
-  if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-  if (!existsSync(path.join(workspace, ".git")))
-    return { ok: false, error: "not a git repository" };
-  const result = await runGit(["add", "--", normalized]);
-  if (result.code !== 0) return { ok: false, error: redactText(result.stderr || "git add failed") };
-  return { ok: true, path: normalized, action: "staged" };
-}
-
-async function discardWorkspaceGitFile(body) {
-  const normalized = String(body?.path || "")
-    .replace(/\\/g, "/")
-    .trim();
-  if (!normalized) return { ok: false, error: "path is required" };
-  if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-  if (!existsSync(path.join(workspace, ".git")))
-    return { ok: false, error: "not a git repository" };
-  // Untracked files (the COMMON case: a file the agent just CREATED) cannot be reverted with
-  // `git checkout` — it errors "pathspec did not match". `git status -u` still lists them, so the
-  // thread shows a Revert button for them. For an untracked file, "revert" means remove the
-  // newly-created file from disk; tracked files revert to their last committed content.
-  const tracked = await runGit(["ls-files", "--error-unmatch", "--", normalized]);
-  if (tracked.code !== 0) {
-    const absolute = path.join(workspace, normalized);
-    try {
-      if (existsSync(absolute)) await fs.rm(absolute, { force: true });
-    } catch (err) {
-      return { ok: false, error: redactText(String(err?.message || "failed to remove file")) };
-    }
-    return { ok: true, path: normalized, action: "removed" };
-  }
-  const result = await runGit(["checkout", "--", normalized]);
-  if (result.code !== 0)
-    return { ok: false, error: redactText(result.stderr || "git checkout failed") };
-  return { ok: true, path: normalized, action: "discarded" };
-}
-
 function parseArgs(items) {
   const parsed = {};
   for (let index = 0; index < items.length; index += 1) {
@@ -5059,55 +4905,4 @@ function parseArgs(items) {
     index += 1;
   }
   return parsed;
-}
-
-// A key names a credential we must redact. Note the deliberate carve-out: token *count* / usage
-// telemetry fields (estimated_input_tokens, context_window_tokens, total_tokens, token_count, …)
-// contain the substring "token" but are NOT secrets — redacting them broke the context/token meter.
-// We still redact every real credential shape (api_key, authorization, *_token, bearer, secret, …).
-function isSecretKey(key) {
-  const k = String(key).toLowerCase();
-  if (
-    /tokens?$/.test(k) &&
-    /(input|output|total|prompt|completion|context|window|estimated|max|min|cache|used|remaining|budget|count|num|per_)/.test(
-      k,
-    )
-  )
-    return false;
-  if (k === "token_count" || k === "num_tokens" || k === "n_tokens") return false;
-  return (
-    /api[_-]?key|authorization|secret|password|credential/.test(k) ||
-    /(^|[_-])(access|refresh|auth|id|bearer|api|session|csrf|xsrf|private)[_-]?tokens?$/.test(k) ||
-    k === "token"
-  );
-}
-
-function redact(value) {
-  if (Array.isArray(value)) return value.map(redact);
-  if (!value || typeof value !== "object")
-    return typeof value === "string" ? redactText(value) : value;
-  const result = {};
-  for (const [key, item] of Object.entries(value)) {
-    result[key] = isSecretKey(key) ? "[REDACTED]" : redact(item);
-  }
-  return result;
-}
-
-function redactText(text) {
-  return String(text)
-    .replace(
-      /(api[_-]?key|authorization|token|secret|password)\s*[:=]\s*['"]?[^'",}\s]+/gi,
-      "$1=[REDACTED]",
-    )
-    .replace(/(bearer\s+)[A-Za-z0-9._-]+/gi, "$1[REDACTED]");
-}
-
-function tailText(text, limit) {
-  return text.length > limit ? text.slice(-limit) : text;
-}
-
-function percentile(values, q) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)))];
 }
