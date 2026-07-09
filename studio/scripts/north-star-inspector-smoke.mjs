@@ -9,16 +9,30 @@ const repoRoot = path.resolve(studioDir, "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-north-star-smoke-"));
 const port = 8787 + Math.floor(Math.random() * 200);
 
-await runPython(["-m", "asteria_runtime", "init", "--root", workspace, "--north-star-title", "Smoke North Star", "--north-star-statement", "Inspector read-only long horizon panel"]);
+await runPython([
+  "-m",
+  "asteria_runtime",
+  "init",
+  "--root",
+  workspace,
+  "--north-star-title",
+  "Smoke North Star",
+  "--north-star-statement",
+  "Inspector read-only long horizon panel",
+]);
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: {
-    ...process.env,
-    ASTERIA_STUDIO_CHAT_BACKEND: "local",
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      ASTERIA_STUDIO_CHAT_BACKEND: "local",
+    },
   },
-});
+);
 
 let stdout = "";
 let stderr = "";
@@ -33,10 +47,23 @@ try {
   await waitForHealth();
   const diagnostics = await fetchJson("/api/diagnostics");
   const longHorizon = diagnostics.long_horizon ?? {};
-  assert(longHorizon.north_star_configured === true, "diagnostics should report configured north star");
-  assert(longHorizon.status === "configured", `expected configured status, got ${longHorizon.status}`);
-  assert(longHorizon.north_star?.title === "Smoke North Star", "north star title should surface in diagnostics");
-  assert(typeof longHorizon.north_star?.active_milestone === "string" && longHorizon.north_star.active_milestone.length > 0, "active milestone should surface");
+  assert(
+    longHorizon.north_star_configured === true,
+    "diagnostics should report configured north star",
+  );
+  assert(
+    longHorizon.status === "configured",
+    `expected configured status, got ${longHorizon.status}`,
+  );
+  assert(
+    longHorizon.north_star?.title === "Smoke North Star",
+    "north star title should surface in diagnostics",
+  );
+  assert(
+    typeof longHorizon.north_star?.active_milestone === "string" &&
+      longHorizon.north_star.active_milestone.length > 0,
+    "active milestone should surface",
+  );
   console.log("Studio North Star inspector smoke passed");
 } finally {
   server.kill("SIGTERM");
@@ -60,7 +87,9 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {

@@ -41,13 +41,15 @@ export function useStudioBootstrap(callbacks: BootstrapCallbacks = {}) {
       const fileData = await api.files().catch(() => ({ files: [] as WorkspaceFile[] }));
       setFiles(fileData.files ?? []);
       await onOverviewReadyRef.current?.(overviewData);
-      void api.diagnostics()
+      void api
+        .diagnostics()
         .then((diagnostics) => {
           setOverview((current) => ({
             ...(current ?? overviewData),
             ...diagnostics,
             runs: current?.runs ?? overviewData.runs,
-            modelRoutes: diagnostics.modelRoutes ?? current?.modelRoutes ?? overviewData.modelRoutes,
+            modelRoutes:
+              diagnostics.modelRoutes ?? current?.modelRoutes ?? overviewData.modelRoutes,
           }));
         })
         .catch(() => {});

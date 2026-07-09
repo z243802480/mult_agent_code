@@ -8,7 +8,9 @@ export type FileChangeRecord = {
 };
 
 export function fileChangePath(record: AnyRecord): string {
-  return String(record.path ?? record.file ?? record.relative_path ?? "").replace(/\\/g, "/").trim();
+  return String(record.path ?? record.file ?? record.relative_path ?? "")
+    .replace(/\\/g, "/")
+    .trim();
 }
 
 export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileChangeRecord[] {
@@ -25,7 +27,11 @@ export function extractFileChangesFromSteps(steps: NarrativeStepType[]): FileCha
     seen.add(pathValue);
     result.push({
       path: pathValue,
-      operation: raw.operation ? String(raw.operation) : raw.event_type ? String(raw.event_type) : undefined,
+      operation: raw.operation
+        ? String(raw.operation)
+        : raw.event_type
+          ? String(raw.event_type)
+          : undefined,
       additions: numberOrUndefined(raw.additions ?? raw.added_lines ?? raw.insertions),
       deletions: numberOrUndefined(raw.deletions ?? raw.removed_lines ?? raw.deletions_count),
     });

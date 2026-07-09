@@ -37,8 +37,16 @@ export function WorkflowMonitorPanel({
           value={`${String(workflow.completed_steps ?? 0)}/${String(workflow.step_count ?? steps.length)}`}
           tone={Number(workflow.failed_steps ?? 0) ? "bad" : "good"}
         />
-        <Metric label="合并" value={mergeStatus} tone={mergeStatus === "passed" ? "good" : mergeStatus === "failed" ? "bad" : "warn"} />
-        <Metric label="校验" value={verifierStatus} tone={verifierStatus === "passed" ? "good" : verifierStatus === "failed" ? "bad" : "warn"} />
+        <Metric
+          label="合并"
+          value={mergeStatus}
+          tone={mergeStatus === "passed" ? "good" : mergeStatus === "failed" ? "bad" : "warn"}
+        />
+        <Metric
+          label="校验"
+          value={verifierStatus}
+          tone={verifierStatus === "passed" ? "good" : verifierStatus === "failed" ? "bad" : "warn"}
+        />
         <Metric
           label="检查点"
           value={String(workflow.resume_checkpoint ?? "none")}
@@ -68,7 +76,9 @@ export function WorkflowMonitorPanel({
               }
             >
               <span className="workflowMonitorSummary">
-                <span>{phaseId}/{stepId}</span>
+                <span>
+                  {phaseId}/{stepId}
+                </span>
                 <Status status={status as "completed" | "failed" | "running" | "blocked"} />
               </span>
               <pre>
@@ -78,7 +88,9 @@ export function WorkflowMonitorPanel({
                   isolation.length ? `isolation=${isolation.join(", ")}` : "",
                   stepMerge ? `merge=${stepMerge}` : "",
                   step.verifier_status ? `verifier=${String(step.verifier_status)}` : "",
-                  asArray(step.worker_ids).length ? `workers=${asArray(step.worker_ids).join(", ")}` : "",
+                  asArray(step.worker_ids).length
+                    ? `workers=${asArray(step.worker_ids).join(", ")}`
+                    : "",
                 ]
                   .filter(Boolean)
                   .join("\n")}

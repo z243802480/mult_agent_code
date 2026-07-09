@@ -22,7 +22,8 @@ export function preferredDecisionOptionId(decision: AnyRecord): string {
     if (options.some((option) => option.option_id === "review_contract")) return "review_contract";
   }
   if (kind === "replan_decision" || metadata.reason === "repair_limit") {
-    if (options.some((option) => option.option_id === "create_repair_task")) return "create_repair_task";
+    if (options.some((option) => option.option_id === "create_repair_task"))
+      return "create_repair_task";
   }
   if (options.some((option) => option.option_id === "review_contract")) return "review_contract";
 
@@ -71,15 +72,8 @@ export function runtimeNextStepSummary(params: {
   canAccept: boolean;
   mainActionKind: string;
 }): string {
-  const {
-    decisions,
-    nextActionValue,
-    nextLabel,
-    loop,
-    canReview,
-    canAccept,
-    mainActionKind,
-  } = params;
+  const { decisions, nextActionValue, nextLabel, loop, canReview, canAccept, mainActionKind } =
+    params;
 
   if (decisions.length) return pendingDecisionSummary(decisions);
   // Honest affordance, not a verdict: the frontend only knows the run reached an accept/review-able
@@ -107,17 +101,21 @@ export function runtimeNextStepSummary(params: {
     return "我换了两次思路重做还是失败——你来看看,还是重新规划任务?";
   }
   if (
-    mainActionKind === "debug"
-    || normalized.includes("debug")
-    || normalized.includes("repair")
-    || exitReason.includes("repair")
+    mainActionKind === "debug" ||
+    normalized.includes("debug") ||
+    normalized.includes("repair") ||
+    exitReason.includes("repair")
   ) {
     return "某一步失败了——要我继续尝试,还是换个思路?";
   }
   if (normalized.includes("decide")) {
     return "处理下面的决定卡片以继续。";
   }
-  if (normalized.includes("resume") || normalized.includes("continue") || normalized.includes("run")) {
+  if (
+    normalized.includes("resume") ||
+    normalized.includes("continue") ||
+    normalized.includes("run")
+  ) {
     return `可以继续了——点击 ${nextLabel || "继续"}。`;
   }
   if (exitReason.includes("max_rounds") || exitReason.includes("budget")) {

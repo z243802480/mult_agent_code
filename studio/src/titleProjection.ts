@@ -18,9 +18,9 @@ export const INTERNAL_TITLE_PROJECTION: Record<string, string> = {
   "Promotion waiting for approval": "等待你的批准",
   // Resume lifecycle → plain language. The "applied decisions" moment renders from its own decision
   // payload (kind=resume); these cover the surrounding start/no-op titles the runtime emits in Chinese.
-  "准备恢复运行": "正在恢复会话",
-  "已应用恢复决策": "已恢复",
-  "无需恢复": "无需恢复",
+  准备恢复运行: "正在恢复会话",
+  已应用恢复决策: "已恢复",
+  无需恢复: "无需恢复",
   // Execution-narrative titles the runtime still emits in English (instrumentation literals). Evidence
   // stays English at source (asserted by tests); this projects them to plain Chinese on the surface.
   Thinking: "思考中",
@@ -65,14 +65,29 @@ export function projectTitle(title: string): string {
 const SUMMARY_PROJECTIONS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^(\S+) completed with verified evidence\.?$/, (m) => `${m[1]} 已完成，证据已通过验证。`],
   [/^Created (\d+) task\(s\) from the GoalSpec\.?$/, (m) => `已从目标规格生成 ${m[1]} 个任务。`],
-  [/^(\d+) changed file\(s\) are now visible in the run timeline\.?$/, (m) => `${m[1]} 个改动文件已在运行时间线中可见。`],
-  [/^Validation passed: (\d+)\/(\d+) check\(s\) passed\.?$/, (m) => `验证通过：${m[1]}/${m[2]} 项检查已通过。`],
-  [/^All (\d+) verification command\(s\) passed and no tasks are blocked\.?$/, (m) => `全部 ${m[1]} 条验证命令通过，无任务受阻。`],
+  [
+    /^(\d+) changed file\(s\) are now visible in the run timeline\.?$/,
+    (m) => `${m[1]} 个改动文件已在运行时间线中可见。`,
+  ],
+  [
+    /^Validation passed: (\d+)\/(\d+) check\(s\) passed\.?$/,
+    (m) => `验证通过：${m[1]}/${m[2]} 项检查已通过。`,
+  ],
+  [
+    /^All (\d+) verification command\(s\) passed and no tasks are blocked\.?$/,
+    (m) => `全部 ${m[1]} 条验证命令通过，无任务受阻。`,
+  ],
   // Internal task ids (task-000N) must never surface on the main thread — the user thinks in the
   // work, not the runtime's bookkeeping counter. These phrasings all carried a raw id; rewrite them
   // to plain language that drops it.
-  [/^Asked the coder model to propose execution steps for \S+\.?$/, () => `已请编码模型规划下一步执行步骤。`],
-  [/^task-\S+ 已被 task-\S+ 替代并进入后续执行。?$/, () => `当前任务已被新的修复任务替代，继续执行。`],
+  [
+    /^Asked the coder model to propose execution steps for \S+\.?$/,
+    () => `已请编码模型规划下一步执行步骤。`,
+  ],
+  [
+    /^task-\S+ 已被 task-\S+ 替代并进入后续执行。?$/,
+    () => `当前任务已被新的修复任务替代，继续执行。`,
+  ],
   [/^Tool is not allowed for \S+: (.+)$/, (m) => `当前任务不允许使用该工具：${m[1]}`],
   [/^Updated (\S+)$/, (m) => `已更新 ${m[1]}`],
   [/^Wrote file: (\S+)$/, (m) => `已写入文件：${m[1]}`],

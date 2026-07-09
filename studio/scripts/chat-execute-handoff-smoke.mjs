@@ -25,10 +25,7 @@ assert.match(
   buildRouteMessageWithChatContext(chatEvents, "那就改吧，加上 --version"),
   /Recent Studio chat/,
 );
-assert.match(
-  buildRouteMessageWithChatContext(chatEvents, "那就改吧，加上 --version"),
-  /greet_cli/,
-);
+assert.match(buildRouteMessageWithChatContext(chatEvents, "那就改吧，加上 --version"), /greet_cli/);
 
 const afterExecute = [
   ...chatEvents,
@@ -46,9 +43,6 @@ const afterExecute = [
 ];
 
 assert.equal(recentChatContextForRoute(afterExecute), null);
-assert.equal(
-  buildRouteMessageWithChatContext(afterExecute, "继续"),
-  "继续",
-);
+assert.equal(buildRouteMessageWithChatContext(afterExecute, "继续"), "继续");
 
 console.log("chat-execute-handoff-smoke: ok");

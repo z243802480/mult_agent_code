@@ -7,23 +7,35 @@ import { fileURLToPath } from "node:url";
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-homepage-copy-"));
 const port = Number(process.env.ASTERIA_STUDIO_HOMEPAGE_COPY_PORT || 18792);
-const forbidden = /Local Runtime|System Status|\bRoute\b|Evidence Explorer|Inspector|\bOps\b|run-\d{8}-\d{4}|status --json|stdout|stderr|token|model calls|command/i;
+const forbidden =
+  /Local Runtime|System Status|\bRoute\b|Evidence Explorer|Inspector|\bOps\b|run-\d{8}-\d{4}|status --json|stdout|stderr|token|model calls|command/i;
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
-});
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth();
   const html = await fetchText("/");
-  assert(!forbidden.test(html), `homepage shell leaked backend wording: ${html.match(forbidden)?.[0]}`);
+  assert(
+    !forbidden.test(html),
+    `homepage shell leaked backend wording: ${html.match(forbidden)?.[0]}`,
+  );
   const sources = [
     "src/App.tsx",
     "src/components/Sidebar.tsx",
@@ -39,10 +51,13 @@ try {
         .replace(/function LiveStream[\s\S]*?function useSmoothText/, "function useSmoothText")
         .replace(/provider route blocked/g, "provider path blocked")
         .replace(/display_level !== "inspector"/g, 'display_level !== "hidden"')
-        .replace(/function stripContextNoise[\s\S]*?function splitFinalSections/, "function splitFinalSections")
+        .replace(
+          /function stripContextNoise[\s\S]*?function splitFinalSections/,
+          "function splitFinalSections",
+        )
         .replace(/next_command/g, "next_action")
         .replace(/commandCount/g, "actionCount")
-        .replace(/command\$\{actionCount === 1 \? \"\" : \"s\"\}/g, "action")
+        .replace(/command\$\{actionCount === 1 \? "" : "s"\}/g, "action")
         .replace(/\bcommand:/g, "action_field:")
         .replace(/\.command\b/g, ".action_field")
         .replace(/latest_context_estimated_tokens/g, "latest_context_estimated_units")
@@ -56,9 +71,17 @@ try {
         .replace(/import[\s\S]*?Inspector[\s\S]*?;\r?\n/, "")
         .replace(/<(?:Inspector|SidePanel)[\s\S]*?\/>\s*/g, "");
     }
-    assert(!forbidden.test(cleaned), `${rel} leaked homepage/backend wording: ${cleaned.match(forbidden)?.[0]}`);
+    assert(
+      !forbidden.test(cleaned),
+      `${rel} leaked homepage/backend wording: ${cleaned.match(forbidden)?.[0]}`,
+    );
   }
-  assert((await fs.readFile(path.join(studioDir, "src", "components", "Composer.tsx"), "utf8")).includes("composerModeDetails"), "mode controls should be hidden behind details");
+  assert(
+    (await fs.readFile(path.join(studioDir, "src", "components", "Composer.tsx"), "utf8")).includes(
+      "composerModeDetails",
+    ),
+    "mode controls should be hidden behind details",
+  );
   console.log("Studio homepage copy smoke passed");
 } finally {
   server.kill("SIGTERM");
@@ -82,17 +105,21 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {
   const response = await fetch(`http://127.0.0.1:${port}${route}`);
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
 async function fetchText(route) {
   const response = await fetch(`http://127.0.0.1:${port}${route}`);
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.text();
 }

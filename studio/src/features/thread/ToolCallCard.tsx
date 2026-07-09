@@ -17,7 +17,10 @@ const TOOL_STATUS_LABEL: Record<string, string> = {
  * Full/raw stdout stays in the Inspector (settled NarrativeStep selection) — we never dump the
  * whole output inline. Honest: when nothing was recorded the card simply isn't expandable.
  */
-export function ToolCallCard({ step, showOutput = true }: {
+export function ToolCallCard({
+  step,
+  showOutput = true,
+}: {
   step: NarrativeStepType;
   showOutput?: boolean;
 }) {
@@ -25,7 +28,10 @@ export function ToolCallCard({ step, showOutput = true }: {
   const cmdStr = Array.isArray(command) ? command.join(" ") : String(command ?? "");
   const label = step.title || (cmdStr ? cmdStr.slice(0, 72) : step.label);
   // tool_result: the recorded output deltas for this tool step, clamped on display.
-  const output = step.events.map((event) => event.content_delta || "").join("").trim();
+  const output = step.events
+    .map((event) => event.content_delta || "")
+    .join("")
+    .trim();
   const hasOutput = Boolean(showOutput && output);
   const [open, setOpen] = useState(false);
   const status = String(step.status ?? "");
@@ -40,9 +46,11 @@ export function ToolCallCard({ step, showOutput = true }: {
         data-static={hasOutput ? undefined : "true"}
         title={cmdStr || undefined}
       >
-        {hasOutput
-          ? <ChevronRight size={12} className={`chevron ${open ? "open" : ""}`} />
-          : <span className="toolCardChevronSpacer" aria-hidden="true" />}
+        {hasOutput ? (
+          <ChevronRight size={12} className={`chevron ${open ? "open" : ""}`} />
+        ) : (
+          <span className="toolCardChevronSpacer" aria-hidden="true" />
+        )}
         <Terminal size={11} />
         <span className="toolCardLabel">{label}</span>
         {statusLabel && <span className={`toolCardStatus ${status}`}>{statusLabel}</span>}

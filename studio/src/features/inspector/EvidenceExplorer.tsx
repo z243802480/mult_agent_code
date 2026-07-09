@@ -1,12 +1,19 @@
 import React, { useState } from "react";
 import { FileText, ShieldAlert } from "lucide-react";
 import type { AnyRecord, OverviewPayload, RunDetailPayload, StudioEvent } from "../../types";
-import { Metric, formatMs, percent, Status } from "../../components/Shared";
+import { Metric, formatMs, Status } from "../../components/Shared";
 import { WorkflowMonitorPanel } from "../../components/WorkflowMonitorPanel";
 import { CopyablePre } from "../../components/CopyablePre";
 import { VerificationMatrix, LoopQualityMatrix } from "./VerificationMatrix";
 import { firstText } from "../../narrative";
-import { asArray, asRecord, formatUsage, latestRoute, metricTone, rollingValidationFromOverview, runtimeProgressFromDetail, workerCountFromTree } from "./inspectorUtils";
+import {
+  asArray,
+  asRecord,
+  formatUsage,
+  metricTone,
+  rollingValidationFromOverview,
+  workerCountFromTree,
+} from "./inspectorUtils";
 
 type EvidenceSelection = {
   title: string;
@@ -34,7 +41,8 @@ function RunUsagePanel({ runDetail }: { runDetail: RunDetailPayload | null }) {
   const loopBudget = asRecord(asRecord(runDetail?.agent_loop_run_summary).budget);
   const repairCap = Number(loopBudget.repair_attempts_limit ?? 0);
   const autoRepair = loopBudget.auto_repair_enabled === true;
-  const repairValue = repairCap > 0 ? `${repairs}/${repairCap}${autoRepair ? " auto" : ""}` : String(repairs);
+  const repairValue =
+    repairCap > 0 ? `${repairs}/${repairCap}${autoRepair ? " auto" : ""}` : String(repairs);
   const repairTone = repairCap > 0 && repairs >= repairCap ? "bad" : repairs ? "warn" : "good";
   // S79 auto-replan: the replan loop is bounded by a per-task cap but is deliberately NOT counted in
   // cost_report (no fabricated budget ledger), so we surface the bounded cap ("≤N auto") only when
@@ -84,13 +92,23 @@ export function BackgroundRunPanel({ overview }: { overview: OverviewPayload | n
       </div>
       <div className="evidenceStats">
         <Metric label="标记" value={badgeStatus} tone={runningCount ? "warn" : "good"} />
-        <Metric label="运行中" value={`${runningCount}/${totalCount}`} tone={runningCount ? "warn" : "good"} />
+        <Metric
+          label="运行中"
+          value={`${runningCount}/${totalCount}`}
+          tone={runningCount ? "warn" : "good"}
+        />
         <Metric label="云端 VM" value="暂缓" tone="good" />
       </div>
       <div className="keyValueList">
-        <div><small>摘要</small><pre>{summary}</pre></div>
+        <div>
+          <small>摘要</small>
+          <pre>{summary}</pre>
+        </div>
         {latest && Object.keys(latest).length > 0 && (
-          <div><small>最新</small><pre>{`${String(latest.background_run_id ?? "n/a")} · ${String(latest.status ?? "unknown")}\n${String(latest.goal ?? "")}`}</pre></div>
+          <div>
+            <small>最新</small>
+            <pre>{`${String(latest.background_run_id ?? "n/a")} · ${String(latest.status ?? "unknown")}\n${String(latest.goal ?? "")}`}</pre>
+          </div>
         )}
       </div>
     </div>
@@ -114,25 +132,47 @@ export function LongHorizonPanel({ overview }: { overview: OverviewPayload | nul
         <Metric label="状态" value={status} tone={configured ? "good" : ready ? "warn" : "warn"} />
         <Metric
           label="里程碑"
-          value={configured ? `${String(northStar.completed_milestones ?? 0)}/${String(northStar.milestone_count ?? 0)}` : "n/a"}
+          value={
+            configured
+              ? `${String(northStar.completed_milestones ?? 0)}/${String(northStar.milestone_count ?? 0)}`
+              : "n/a"
+          }
           tone={configured ? "good" : "warn"}
         />
         <Metric label="就绪" value={ready ? "是" : "否"} tone={ready ? "good" : "warn"} />
       </div>
       <div className="keyValueList">
-        <div><small>摘要</small><pre>{summary}</pre></div>
+        <div>
+          <small>摘要</small>
+          <pre>{summary}</pre>
+        </div>
         {configured && (
           <>
-            <div><small>标题</small><pre>{String(northStar.title ?? "")}</pre></div>
-            <div><small>当前里程碑</small><pre>{String(northStar.active_milestone ?? "none")}</pre></div>
-            <div><small>陈述</small><pre>{String(northStar.statement ?? "")}</pre></div>
+            <div>
+              <small>标题</small>
+              <pre>{String(northStar.title ?? "")}</pre>
+            </div>
+            <div>
+              <small>当前里程碑</small>
+              <pre>{String(northStar.active_milestone ?? "none")}</pre>
+            </div>
+            <div>
+              <small>陈述</small>
+              <pre>{String(northStar.statement ?? "")}</pre>
+            </div>
           </>
         )}
         {handoffCompact.available === true && (
           <>
-            <div><small>交接摘要</small><pre>{String(handoffCompact.narrative ?? "")}</pre></div>
+            <div>
+              <small>交接摘要</small>
+              <pre>{String(handoffCompact.narrative ?? "")}</pre>
+            </div>
             {handoffCompact.recommended_next_command ? (
-              <div><small>继续</small><pre>{String(handoffCompact.recommended_next_command)}</pre></div>
+              <div>
+                <small>继续</small>
+                <pre>{String(handoffCompact.recommended_next_command)}</pre>
+              </div>
             ) : null}
           </>
         )}
@@ -141,7 +181,13 @@ export function LongHorizonPanel({ overview }: { overview: OverviewPayload | nul
   );
 }
 
-function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload | null; runDetail: RunDetailPayload | null }) {
+function V02ReadinessPanel({
+  overview,
+  runDetail,
+}: {
+  overview: OverviewPayload | null;
+  runDetail: RunDetailPayload | null;
+}) {
   const rolling = rollingValidationFromOverview(overview);
   const coverage = asRecord(rolling.coverage);
   const missing = asArray(rolling.missing_evidence_categories).map(String);
@@ -152,15 +198,19 @@ function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload 
   const workerTree = asRecord(runDetail?.worker_tree);
   const agentRunGraph = asRecord(workerTree.agent_run_graph ?? runDetail?.agent_run_graph);
   const workerTotal = workerCountFromTree(workerTree);
-  const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(legacyLoopSummary.stop_reason ?? ""), "unknown");
+  const loopExit = firstText(
+    String(agentLoopSummary.exit_reason ?? ""),
+    String(legacyLoopSummary.stop_reason ?? ""),
+    "unknown",
+  );
   const loopRounds = firstText(
     `${String(agentLoopSummary.rounds_completed ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`,
-    String(legacyLoopSummary.iteration_count ?? "")
+    String(legacyLoopSummary.iteration_count ?? ""),
   );
   const nextAction = firstText(
     String(asArray(rolling.next_actions)[0] ?? ""),
     String(legacyLoopSummary.recommended_next_command ?? ""),
-    "未记录动作"
+    "未记录动作",
   );
   const coverageLine = ["route", "context", "capability", "loop", "worker"]
     .map((key) => `${key}=${coverage[key] === true ? "yes" : "no"}`)
@@ -170,21 +220,50 @@ function V02ReadinessPanel({ overview, runDetail }: { overview: OverviewPayload 
     <div className="evidenceBlock v02ReadinessPanel">
       <small>v0.2 就绪度</small>
       <div className="evidenceStats">
-        <Metric label="证据包" value={`${rollingStatus} (${sampleCount})`} tone={metricTone(rollingStatus)} />
-        <Metric label="循环退出" value={loopExit} tone={metricTone(String(agentLoopSummary.status ?? legacyLoopSummary.workflow_state ?? loopExit))} />
-        <Metric label="工作者" value={`${String(workerTree.successful_workers ?? 0)}/${String(workerTotal)}`} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : workerTotal ? "good" : "warn"} />
+        <Metric
+          label="证据包"
+          value={`${rollingStatus} (${sampleCount})`}
+          tone={metricTone(rollingStatus)}
+        />
+        <Metric
+          label="循环退出"
+          value={loopExit}
+          tone={metricTone(
+            String(agentLoopSummary.status ?? legacyLoopSummary.workflow_state ?? loopExit),
+          )}
+        />
+        <Metric
+          label="工作者"
+          value={`${String(workerTree.successful_workers ?? 0)}/${String(workerTotal)}`}
+          tone={Number(workerTree.failed_workers ?? 0) ? "bad" : workerTotal ? "good" : "warn"}
+        />
       </div>
       <div className="keyValueList">
-        <div><small>证据覆盖</small><pre>{coverageLine || "未找到 v0.2 滚动验证证据包。"}</pre></div>
-        <div><small>缺失证据</small><pre>{missing.length ? missing.join(", ") : "无"}</pre></div>
-        <div><small>循环摘要</small><pre>{`exit=${loopExit}
+        <div>
+          <small>证据覆盖</small>
+          <pre>{coverageLine || "未找到 v0.2 滚动验证证据包。"}</pre>
+        </div>
+        <div>
+          <small>缺失证据</small>
+          <pre>{missing.length ? missing.join(", ") : "无"}</pre>
+        </div>
+        <div>
+          <small>循环摘要</small>
+          <pre>{`exit=${loopExit}
 rounds=${loopRounds}
-latest_action=${String(agentLoopSummary.latest_action ?? "n/a")}`}</pre></div>
-        <div><small>工作者树</small><pre>{`roots=${asArray(workerTree.roots).length}
+latest_action=${String(agentLoopSummary.latest_action ?? "n/a")}`}</pre>
+        </div>
+        <div>
+          <small>工作者树</small>
+          <pre>{`roots=${asArray(workerTree.roots).length}
 orphans=${asArray(workerTree.orphan_workers).length}
 graph=${String(agentRunGraph.status ?? "unknown")}
-parallel_batches=${String(workerTree.parallel_batches ?? 0)}`}</pre></div>
-        <div><small>下一步动作</small><pre>{nextAction}</pre></div>
+parallel_batches=${String(workerTree.parallel_batches ?? 0)}`}</pre>
+        </div>
+        <div>
+          <small>下一步动作</small>
+          <pre>{nextAction}</pre>
+        </div>
       </div>
     </div>
   );
@@ -238,9 +317,21 @@ function PromotionPreviewPanel({
     <div className="evidenceBlock promotionPreviewPanel">
       <small>候选合并预览</small>
       <div className="evidenceStats">
-        <Metric label="导出" value={String(preview.export_count ?? 0)} tone={Number(preview.export_count ?? 0) ? "good" : "warn"} />
-        <Metric label="预览" value={mergeStatus === "ready" ? "就绪" : mergeStatus === "needs_review" ? "待查看" : "—"} tone={mergeStatus === "ready" ? "good" : mergeStatus === "needs_review" ? "bad" : "warn"} />
-        <Metric label="待处理" value={String(preview.pending_promotions ?? 0)} tone={Number(preview.pending_promotions ?? 0) ? "warn" : "good"} />
+        <Metric
+          label="导出"
+          value={String(preview.export_count ?? 0)}
+          tone={Number(preview.export_count ?? 0) ? "good" : "warn"}
+        />
+        <Metric
+          label="预览"
+          value={mergeStatus === "ready" ? "就绪" : mergeStatus === "needs_review" ? "待查看" : "—"}
+          tone={mergeStatus === "ready" ? "good" : mergeStatus === "needs_review" ? "bad" : "warn"}
+        />
+        <Metric
+          label="待处理"
+          value={String(preview.pending_promotions ?? 0)}
+          tone={Number(preview.pending_promotions ?? 0) ? "warn" : "good"}
+        />
       </div>
       {preview.merge_preview_summary ? (
         <p className="promotionPreviewSummary">{String(preview.merge_preview_summary)}</p>
@@ -254,26 +345,44 @@ function PromotionPreviewPanel({
             const merged = asRecord(lin.merged);
             const riskyFiles = asArray(merged.risky_files).map(String);
             const mergedStatus = String(merged.status ?? "");
-            const mergeLabel = mergedStatus === "promoted" ? "已合并"
-              : mergedStatus === "pending_manual_approval" ? "待人工查看"
-              : mergedStatus ? mergedStatus.replace(/_/g, " ") : "—";
+            const mergeLabel =
+              mergedStatus === "promoted"
+                ? "已合并"
+                : mergedStatus === "pending_manual_approval"
+                  ? "待人工查看"
+                  : mergedStatus
+                    ? mergedStatus.replace(/_/g, " ")
+                    : "—";
             const isoFiles = Number(isolated.files ?? 0);
             const mergedFiles = Number(merged.files ?? 0);
             return (
               <div className="lineageRow" key={String(lin.task_id ?? i)}>
                 <span className="lineageStage">
                   <small>隔离</small>
-                  <strong>{isoFiles ? `${isoFiles} 个文件` : String(isolated.status ?? "—")}</strong>
+                  <strong>
+                    {isoFiles ? `${isoFiles} 个文件` : String(isolated.status ?? "—")}
+                  </strong>
                 </span>
                 <span className="lineageArrow">→</span>
                 <span className="lineageStage">
                   <small>验证{verified.batch ? "(批量)" : ""}</small>
-                  <strong>{verified.ok === true ? "通过" : verified.ok === false ? "待查看" : "—"}</strong>
+                  <strong>
+                    {verified.ok === true ? "通过" : verified.ok === false ? "待查看" : "—"}
+                  </strong>
                 </span>
                 <span className="lineageArrow">→</span>
-                <span className={mergedStatus === "pending_manual_approval" ? "lineageStage held" : "lineageStage"}>
+                <span
+                  className={
+                    mergedStatus === "pending_manual_approval"
+                      ? "lineageStage held"
+                      : "lineageStage"
+                  }
+                >
                   <small>合并</small>
-                  <strong>{mergeLabel}{mergedFiles ? ` · ${mergedFiles}` : ""}</strong>
+                  <strong>
+                    {mergeLabel}
+                    {mergedFiles ? ` · ${mergedFiles}` : ""}
+                  </strong>
                 </span>
                 {riskyFiles.length > 0 && (
                   <span className="lineageRisk" title={riskyFiles.join(", ")}>
@@ -294,27 +403,42 @@ function PromotionPreviewPanel({
           // Honest: only when THIS held promotion's own merge_gate flagged files. No risk list for
           // empty risky_files (cause may be a deletion, which isn't recorded here).
           const riskyFiles = asArray(item.risky_files).map(String);
-          const heldForReview = String(item.status ?? "") === "pending_manual_approval" && riskyFiles.length > 0;
+          const heldForReview =
+            String(item.status ?? "") === "pending_manual_approval" && riskyFiles.length > 0;
           return (
             <button
               key={key}
               className={`promotionPreviewItem ${selectedKey === key ? "active" : ""}`}
-              onClick={() => onSelectEvidence({
-                title: id,
-                kind,
-                summary: files || String(item.summary ?? item.status ?? kind),
-                item,
-              })}
+              onClick={() =>
+                onSelectEvidence({
+                  title: id,
+                  kind,
+                  summary: files || String(item.summary ?? item.status ?? kind),
+                  item,
+                })
+              }
             >
               <span className="promotionPreviewItemHead">
                 <span>{kind.replace(/_/g, " ")}</span>
-                <Status status={(item.ok === false || item.status === "blocked" ? "blocked" : item.status === "ready" ? "completed" : "running") as StudioEvent["status"]} />
+                <Status
+                  status={
+                    (item.ok === false || item.status === "blocked"
+                      ? "blocked"
+                      : item.status === "ready"
+                        ? "completed"
+                        : "running") as StudioEvent["status"]
+                  }
+                />
               </span>
-              <pre>{[
-                item.task_id ? `task=${String(item.task_id)}` : "",
-                files ? `files=${files}` : "",
-                item.execution_profile_id ? `profile=${String(item.execution_profile_id)}` : "",
-              ].filter(Boolean).join("\n")}</pre>
+              <pre>
+                {[
+                  item.task_id ? `task=${String(item.task_id)}` : "",
+                  files ? `files=${files}` : "",
+                  item.execution_profile_id ? `profile=${String(item.execution_profile_id)}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n")}
+              </pre>
               {heldForReview && (
                 <span className="promotionPreviewItemRisk">
                   <ShieldAlert size={12} />
@@ -346,39 +470,76 @@ function WorkerTopologyPanel({
       <small>工作者拓扑</small>
       <div className="workerTopologyStats">
         <Metric label="根节点" value={String(asArray(workerTree.roots).length)} tone="warn" />
-        <Metric label="并行" value={String(workerTree.parallel_batches ?? 0)} tone={Number(workerTree.parallel_batches ?? 0) ? "good" : "warn"} />
-        <Metric label="失败" value={String(workerTree.failed_workers ?? 0)} tone={Number(workerTree.failed_workers ?? 0) ? "bad" : "good"} />
+        <Metric
+          label="并行"
+          value={String(workerTree.parallel_batches ?? 0)}
+          tone={Number(workerTree.parallel_batches ?? 0) ? "good" : "warn"}
+        />
+        <Metric
+          label="失败"
+          value={String(workerTree.failed_workers ?? 0)}
+          tone={Number(workerTree.failed_workers ?? 0) ? "bad" : "good"}
+        />
       </div>
       <div className="workerTopologyList">
         {workers.slice(0, 12).map((worker, index) => {
-          const workerId = firstText(worker.worker_invocation_id, worker.worker_id, worker.agent_id, `worker-${index + 1}`);
+          const workerId = firstText(
+            worker.worker_invocation_id,
+            worker.worker_id,
+            worker.agent_id,
+            `worker-${index + 1}`,
+          );
           const status = String(worker.status ?? worker.outcome ?? "unknown");
-          const profile = firstText(worker.execution_profile_id, worker.runtime_profile_id, worker.profile_id, worker.worker_kind, "profile unknown");
-          const safety = firstText(worker.parallel_safety, worker.sandbox_profile_id, worker.spawn_kind, "safety unknown");
-          const workspaceRef = firstText(worker.candidate_workspace, worker.workspace, worker.workspace_path, "");
+          const profile = firstText(
+            worker.execution_profile_id,
+            worker.runtime_profile_id,
+            worker.profile_id,
+            worker.worker_kind,
+            "profile unknown",
+          );
+          const safety = firstText(
+            worker.parallel_safety,
+            worker.sandbox_profile_id,
+            worker.spawn_kind,
+            "safety unknown",
+          );
+          const workspaceRef = firstText(
+            worker.candidate_workspace,
+            worker.workspace,
+            worker.workspace_path,
+            "",
+          );
           const key = `worker:${workerId}`;
           return (
             <button
               key={`${workerId}-${index}`}
               className={`workerTopologyItem ${selectedKey === key ? "active" : ""}`}
-              onClick={() => onSelectEvidence({
-                title: workerId,
-                kind: "worker",
-                summary: `${status} · ${String(worker.task_id ?? "no task")}`,
-                item: worker,
-              })}
+              onClick={() =>
+                onSelectEvidence({
+                  title: workerId,
+                  kind: "worker",
+                  summary: `${status} · ${String(worker.task_id ?? "no task")}`,
+                  item: worker,
+                })
+              }
             >
               <span className="workerTopologySummary">
-                <span style={{ paddingLeft: `${Math.min(Number(worker.depth ?? 0), 4) * 10}px` }}>{workerId}</span>
+                <span style={{ paddingLeft: `${Math.min(Number(worker.depth ?? 0), 4) * 10}px` }}>
+                  {workerId}
+                </span>
                 <Status status={status as StudioEvent["status"]} />
               </span>
-              <pre>{[
-                `task=${String(worker.task_id ?? "n/a")}`,
-                `parent=${String(worker.parent_worker_invocation_id ?? worker.parent_task_id ?? "root")}`,
-                `profile=${profile}`,
-                `safety=${safety}`,
-                workspaceRef ? `workspace=${workspaceRef}` : "",
-              ].filter(Boolean).join("\n")}</pre>
+              <pre>
+                {[
+                  `task=${String(worker.task_id ?? "n/a")}`,
+                  `parent=${String(worker.parent_worker_invocation_id ?? worker.parent_task_id ?? "root")}`,
+                  `profile=${profile}`,
+                  `safety=${safety}`,
+                  workspaceRef ? `workspace=${workspaceRef}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n")}
+              </pre>
             </button>
           );
         })}
@@ -404,14 +565,34 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
           : []
   ) as AnyRecord[];
   const latestRoute = timeline.at(-1) ?? {};
-  const workflowState = firstText(String(finalSummary.workflow_state ?? ""), String(runLoopSummary.workflow_state ?? ""), String(run.current_phase ?? "unknown"));
-  const nextCommand = firstText(String(mainAction.next_command ?? ""), String(finalSummary.recommended_next_command ?? ""), String(runLoopSummary.recommended_next_command ?? ""), "none");
+  const workflowState = firstText(
+    String(finalSummary.workflow_state ?? ""),
+    String(runLoopSummary.workflow_state ?? ""),
+    String(run.current_phase ?? "unknown"),
+  );
+  const nextCommand = firstText(
+    String(mainAction.next_command ?? ""),
+    String(finalSummary.recommended_next_command ?? ""),
+    String(runLoopSummary.recommended_next_command ?? ""),
+    "none",
+  );
   const nextLabel = firstText(String(mainAction.label ?? ""), nextCommand);
-  const commandDisplay = nextCommand === "none"
-    ? "无需操作"
-    : /^asteria\b/i.test(nextCommand) ? nextCommand : `asteria ${nextCommand}`;
-  const blocker = firstText(String(finalSummary.current_blocker ?? ""), String(runLoopSummary.current_blocker ?? ""), "none");
-  const loopExit = firstText(String(agentLoopSummary.exit_reason ?? ""), String(runLoopSummary.stop_reason ?? ""), "n/a");
+  const commandDisplay =
+    nextCommand === "none"
+      ? "无需操作"
+      : /^asteria\b/i.test(nextCommand)
+        ? nextCommand
+        : `asteria ${nextCommand}`;
+  const blocker = firstText(
+    String(finalSummary.current_blocker ?? ""),
+    String(runLoopSummary.current_blocker ?? ""),
+    "none",
+  );
+  const loopExit = firstText(
+    String(agentLoopSummary.exit_reason ?? ""),
+    String(runLoopSummary.stop_reason ?? ""),
+    "n/a",
+  );
   // loop_quality_guard SLO (observe_then_warn): an auditable no-progress signal, NOT a hard stop
   // (ADR-0010). Surface it honestly — real values when recorded, "not recorded" for older runs.
   const loopQuality = asRecord(agentLoopSummary.loop_quality);
@@ -424,24 +605,54 @@ function RunStatusPanel({ runDetail }: { runDetail: RunDetailPayload }) {
     <div className="evidenceBlock runStatusPanel">
       <small>长任务循环</small>
       <div className="evidenceStats">
-        <Metric label="状态" value={workflowState} tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"} />
+        <Metric
+          label="状态"
+          value={workflowState}
+          tone={/blocked|fail|need/i.test(workflowState) ? "bad" : "good"}
+        />
         <Metric label="下一步" value={nextLabel} tone={nextCommand === "none" ? "good" : "warn"} />
-        <Metric label="循环退出" value={loopExit} tone={/blocked|fail|limit/i.test(loopExit) ? "warn" : "good"} />
-        <Metric label="循环健康" value={loopHealth} tone={loopWarn ? "bad" : hasLoopQuality ? "good" : "warn"} />
+        <Metric
+          label="循环退出"
+          value={loopExit}
+          tone={/blocked|fail|limit/i.test(loopExit) ? "warn" : "good"}
+        />
+        <Metric
+          label="循环健康"
+          value={loopHealth}
+          tone={loopWarn ? "bad" : hasLoopQuality ? "good" : "warn"}
+        />
       </div>
       <div className="keyValueList">
-        <div><small>当前状态</small><pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre></div>
-        <div><small>当前阻塞项</small><pre>{blocker}</pre></div>
-        <div><small>建议命令</small><pre>{commandDisplay}</pre></div>
-        <div><small>主动作来源</small><pre>{`kind=${String(mainAction.kind ?? "unknown")}
+        <div>
+          <small>当前状态</small>
+          <pre>{`${String(run.status ?? "unknown")} / ${String(run.current_phase ?? "unknown")}`}</pre>
+        </div>
+        <div>
+          <small>当前阻塞项</small>
+          <pre>{blocker}</pre>
+        </div>
+        <div>
+          <small>建议命令</small>
+          <pre>{commandDisplay}</pre>
+        </div>
+        <div>
+          <small>主动作来源</small>
+          <pre>{`kind=${String(mainAction.kind ?? "unknown")}
 status=${String(mainAction.status ?? "unknown")}
 requires_permission=${String(mainAction.requires_permission ?? "unknown")}
 source=${String(mainAction.source ?? "unknown")}
-evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre></div>
-        <div><small>运行循环摘要</small><pre>{`exit=${loopExit}
-rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre></div>
-        <div><small>模型路由依据</small><pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
-reason=${String(latestRoute.reason ?? "未记录路由原因。")}`}</pre></div>
+evidence=${asArray(mainAction.evidence_refs).join(", ") || "none"}`}</pre>
+        </div>
+        <div>
+          <small>运行循环摘要</small>
+          <pre>{`exit=${loopExit}
+rounds=${String(agentLoopSummary.rounds_completed ?? runLoopSummary.iteration_count ?? "n/a")}/${String(agentLoopSummary.max_rounds ?? "n/a")}`}</pre>
+        </div>
+        <div>
+          <small>模型路由依据</small>
+          <pre>{`${String(latestRoute.purpose ?? "unknown")} -> ${String(latestRoute.selected_tier ?? "unknown")}
+reason=${String(latestRoute.reason ?? "未记录路由原因。")}`}</pre>
+        </div>
       </div>
       <LoopQualityMatrix loopQuality={loopQuality} />
     </div>
@@ -519,7 +730,11 @@ export function EvidenceExplorer({
   }
 
   function selectProgress(item: AnyRecord, index: number) {
-    const title = firstText(String(item.title ?? ""), String(item.event_type ?? ""), `progress-${index + 1}`);
+    const title = firstText(
+      String(item.title ?? ""),
+      String(item.event_type ?? ""),
+      `progress-${index + 1}`,
+    );
     selectEvidence({
       title,
       kind: "progress",
@@ -530,25 +745,68 @@ export function EvidenceExplorer({
   }
 
   function renderLine(item: AnyRecord, kind: string): string {
-    if (kind === "progress") return firstText(`${String(item.channel ?? "progress")}/${String(item.event_type ?? "message")} ${String(item.phase ?? "")} ${String(item.status ?? "")}`, String(item.summary ?? ""), String(item.title ?? ""));
+    if (kind === "progress")
+      return firstText(
+        `${String(item.channel ?? "progress")}/${String(item.event_type ?? "message")} ${String(item.phase ?? "")} ${String(item.status ?? "")}`,
+        String(item.summary ?? ""),
+        String(item.title ?? ""),
+      );
     if (kind === "model") {
       const route = [item.model_provider, item.model_name, item.purpose].filter(Boolean).join("/");
-      return firstText(`${route || "model"} ${String(item.status ?? "")} ${formatMs(item.duration_ms)}`, String(item.error ?? ""));
+      return firstText(
+        `${route || "model"} ${String(item.status ?? "")} ${formatMs(item.duration_ms)}`,
+        String(item.error ?? ""),
+      );
     }
-    if (kind === "validation") return firstText(`${String(item.name ?? item.command ?? "validation")} ${String(item.status ?? item.outcome ?? "")}`, String(item.summary ?? ""));
-    if (kind === "worker") return firstText(`${String(item.task_id ?? item.worker_id ?? "worker")} ${String(item.status ?? item.outcome ?? "")}`, String(item.summary ?? ""));
-    if (kind === "evidence") return firstText(`${String(item.task_id ?? item.kind ?? "evidence")} ${String(item.status ?? item.outcome ?? "")}`, String(item.path ?? ""));
-    if (kind === "route") return firstText(`${String(item.task_id ?? item.purpose ?? "route")} ${String(item.purpose ?? "")} -> ${String(item.selected_tier ?? "unknown")}`, String(item.reason ?? ""));
-    if (kind === "mcp") return firstText(`${String(item.server_name ?? "mcp")}/${String(item.tool_name ?? "")} ${String(item.status ?? "")}`, String(item.summary ?? ""));
-    if (kind === "skill") return firstText(`${String(item.skill_name ?? item.name ?? "skill")} ${String(item.status ?? "")}`, String(item.summary ?? ""));
+    if (kind === "validation")
+      return firstText(
+        `${String(item.name ?? item.command ?? "validation")} ${String(item.status ?? item.outcome ?? "")}`,
+        String(item.summary ?? ""),
+      );
+    if (kind === "worker")
+      return firstText(
+        `${String(item.task_id ?? item.worker_id ?? "worker")} ${String(item.status ?? item.outcome ?? "")}`,
+        String(item.summary ?? ""),
+      );
+    if (kind === "evidence")
+      return firstText(
+        `${String(item.task_id ?? item.kind ?? "evidence")} ${String(item.status ?? item.outcome ?? "")}`,
+        String(item.path ?? ""),
+      );
+    if (kind === "route")
+      return firstText(
+        `${String(item.task_id ?? item.purpose ?? "route")} ${String(item.purpose ?? "")} -> ${String(item.selected_tier ?? "unknown")}`,
+        String(item.reason ?? ""),
+      );
+    if (kind === "mcp")
+      return firstText(
+        `${String(item.server_name ?? "mcp")}/${String(item.tool_name ?? "")} ${String(item.status ?? "")}`,
+        String(item.summary ?? ""),
+      );
+    if (kind === "skill")
+      return firstText(
+        `${String(item.skill_name ?? item.name ?? "skill")} ${String(item.status ?? "")}`,
+        String(item.summary ?? ""),
+      );
     if (kind === "capability") {
       const decision = asRecord(item.decision);
-      return firstText(`${String(item.capability_type ?? "cap")}:${String(item.capability ?? "")} -> ${String(decision.decision ?? decision.effect ?? "")}`, String(decision.reason ?? ""));
+      return firstText(
+        `${String(item.capability_type ?? "cap")}:${String(item.capability ?? "")} -> ${String(decision.decision ?? decision.effect ?? "")}`,
+        String(decision.reason ?? ""),
+      );
     }
     return JSON.stringify(item).slice(0, 80);
   }
 
-  function EvidenceBlock({ title, items, kind }: { title: string; items: AnyRecord[]; kind: string }) {
+  function EvidenceBlock({
+    title,
+    items,
+    kind,
+  }: {
+    title: string;
+    items: AnyRecord[];
+    kind: string;
+  }) {
     const query = evidenceFilter.trim().toLowerCase();
     // Preserve the original index (selectProgress uses it for a stable "progress-N" fallback label).
     const shown = items
@@ -559,7 +817,10 @@ export function EvidenceExplorer({
     if (query && !shown.length) return null;
     return (
       <div className="evidenceBlock">
-        <small>{title}{query && shown.length !== items.length ? ` (${shown.length}/${items.length})` : ""}</small>
+        <small>
+          {title}
+          {query && shown.length !== items.length ? ` (${shown.length}/${items.length})` : ""}
+        </small>
         {!shown.length && <p className="muted">暂无记录。</p>}
         <div className="evidenceSelectableList">
           {shown.map(({ item, index, line }) => {
@@ -573,7 +834,12 @@ export function EvidenceExplorer({
                     selectProgress(item, index);
                     return;
                   }
-                  selectEvidence({ title: line, kind, summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), line), item });
+                  selectEvidence({
+                    title: line,
+                    kind,
+                    summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), line),
+                    item,
+                  });
                 }}
               >
                 <span>{line}</span>
@@ -593,7 +859,11 @@ export function EvidenceExplorer({
         {runs.slice(0, 6).map((run) => {
           const runId = String(run.run_id ?? "");
           return (
-            <button className={selectedRunId === runId ? "active" : ""} key={runId} onClick={() => void onOpenRun(runId)}>
+            <button
+              className={selectedRunId === runId ? "active" : ""}
+              key={runId}
+              onClick={() => void onOpenRun(runId)}
+            >
               {runId}
             </button>
           );
@@ -611,7 +881,12 @@ export function EvidenceExplorer({
               aria-label="过滤证据"
             />
             {evidenceFilter && (
-              <button type="button" className="evidenceSearchClear" onClick={() => setEvidenceFilter("")} aria-label="清除过滤">
+              <button
+                type="button"
+                className="evidenceSearchClear"
+                onClick={() => setEvidenceFilter("")}
+                aria-label="清除过滤"
+              >
                 ×
               </button>
             )}
@@ -636,9 +911,25 @@ export function EvidenceExplorer({
           />
           <EvidenceDetailPanel selection={selectedEvidence} />
           <div className="evidenceStats">
-            <Metric label="模型调用" value={String(modelCalls.length)} tone={modelCalls.some((m) => m.status === "failure") ? "bad" : "good"} />
-            <Metric label="验证" value={String(validations.length)} tone={validations.some((v) => /fail|error/i.test(String(v.status ?? v.outcome ?? ""))) ? "bad" : "warn"} />
-            <Metric label="进度" value={String(userProgress.length)} tone={userProgress.length ? "good" : "warn"} />
+            <Metric
+              label="模型调用"
+              value={String(modelCalls.length)}
+              tone={modelCalls.some((m) => m.status === "failure") ? "bad" : "good"}
+            />
+            <Metric
+              label="验证"
+              value={String(validations.length)}
+              tone={
+                validations.some((v) => /fail|error/i.test(String(v.status ?? v.outcome ?? "")))
+                  ? "bad"
+                  : "warn"
+              }
+            />
+            <Metric
+              label="进度"
+              value={String(userProgress.length)}
+              tone={userProgress.length ? "good" : "warn"}
+            />
           </div>
           <EvidenceBlock title="模型路由时间线" items={routeTimeline.slice(-8)} kind="route" />
           <EvidenceBlock title="用户进度" items={userProgress.slice(-8)} kind="progress" />
@@ -647,7 +938,12 @@ export function EvidenceExplorer({
             validations={validations.slice(-8)}
             selectedKey={selectedKey}
             onSelect={(item, label) =>
-              selectEvidence({ title: label, kind: "validation", summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), label), item })
+              selectEvidence({
+                title: label,
+                kind: "validation",
+                summary: firstText(String(item.summary ?? ""), String(item.reason ?? ""), label),
+                item,
+              })
             }
           />
           <EvidenceBlock title="工作者结果" items={workers.slice(-4)} kind="worker" />
@@ -682,4 +978,3 @@ export function EvidenceExplorer({
     </section>
   );
 }
-

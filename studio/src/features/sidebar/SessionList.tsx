@@ -197,7 +197,11 @@ function SessionRow({
           }}
         />
       ) : (
-        <button className="session sessionFlat" onClick={() => onSelect(session)} title={hint || title}>
+        <button
+          className="session sessionFlat"
+          onClick={() => onSelect(session)}
+          title={hint || title}
+        >
           <span className="sessionTitleRow">
             {showLive && <span className="sessionLiveDot" aria-label="运行中" />}
             <span className="sessionTitleText">{title}</span>

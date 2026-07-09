@@ -21,11 +21,15 @@ test.beforeEach(async () => {
   await writeWorkspaceConfig();
   await writeFixture();
 
-  server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-    cwd: studioDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
-  });
+  server = spawn(
+    process.execPath,
+    ["server.mjs", "--workspace", workspace, "--port", String(port)],
+    {
+      cwd: studioDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
+    },
+  );
   await waitForHealth();
 });
 
@@ -64,24 +68,38 @@ test("Studio composer exposes product slash actions", async ({ page }) => {
 async function driveToPermissionRequest(page) {
   await page.goto(`http://127.0.0.1:${port}/`);
 
-  await expect(page.locator(".conversationTurn", { hasText: "Smoke-test Studio interactive path" })).toBeVisible();
+  await expect(
+    page.locator(".conversationTurn", { hasText: "Smoke-test Studio interactive path" }),
+  ).toBeVisible();
   await expect(page.locator(".workflowMonitorCompact")).toHaveCount(0);
   await expect(page.locator(".threadProcessControls")).toHaveCount(0);
   await expect(page.locator(".runtimeLoopSignals")).toHaveCount(0);
-  await expect(page.locator(".runtimeSnapshot", { hasText: "1 decision need your input." })).toBeVisible();
+  await expect(
+    page.locator(".runtimeSnapshot", { hasText: "1 decision need your input." }),
+  ).toBeVisible();
   const actionFollowsTurn = await page.evaluate(() => {
     const turn = document.querySelector(".conversationTurn");
     const action = document.querySelector(".runtimeSnapshot");
-    return Boolean(turn && action && (turn.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return Boolean(
+      turn && action && turn.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
   expect(actionFollowsTurn).toBe(true);
   await expect(page.getByText("Choose the next Studio path.")).toBeVisible();
-  await expect(page.locator(".decisionOptions button").filter({ hasText: "Continue" })).toBeVisible();
+  await expect(
+    page.locator(".decisionOptions button").filter({ hasText: "Continue" }),
+  ).toBeVisible();
 
   await page.locator(".decisionOptions button").filter({ hasText: "Continue" }).click();
-  await expect(page.getByText(/Decision action: resolve|Decision action/i)).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator(".runtimeActionButton").filter({ hasText: "Accept" })).toBeVisible({ timeout: 20_000 });
-  await expect(page.locator(".runtimeActionButton").filter({ hasText: "Review changes" })).toBeVisible();
+  await expect(page.getByText(/Decision action: resolve|Decision action/i)).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.locator(".runtimeActionButton").filter({ hasText: "Accept" })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(
+    page.locator(".runtimeActionButton").filter({ hasText: "Review changes" }),
+  ).toBeVisible();
 
   await page.getByTitle(/Hide side panel/).click();
   await expect(page.locator(".appShell.panelCollapsed")).toBeVisible();
@@ -89,15 +107,19 @@ async function driveToPermissionRequest(page) {
   await expect(page.locator(".appShell.panelOpen")).toBeVisible();
   await expect(page.locator(".diffReviewPane", { hasText: "Diff review" })).toBeVisible();
 
-  const actionResponse = page.waitForResponse((response) =>
-    response.url().includes("/runtime-actions")
-    && response.request().method() === "POST"
+  const actionResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/runtime-actions") && response.request().method() === "POST",
   );
   await page.locator(".runtimeActionButton").filter({ hasText: "Accept" }).click();
   await actionResponse;
   await expect(page.locator(".permissionCard")).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator(".permissionPreview", { hasText: "Accept the reviewed result" })).toBeVisible();
-  await expect(page.locator(".permissionPreview", { hasText: "No network access requested." })).toBeVisible();
+  await expect(
+    page.locator(".permissionPreview", { hasText: "Accept the reviewed result" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".permissionPreview", { hasText: "No network access requested." }),
+  ).toBeVisible();
   await expect(page.locator(".permissionPreview", { hasText: "Risk · low" })).toBeVisible();
   await expect(page.locator(".permissionAllow")).toBeVisible();
   await expect(page.locator(".permissionDeny")).toBeVisible();
@@ -124,7 +146,11 @@ async function writeFixture() {
     current_blocker: null,
     permission_boundary: "reviewed_auto",
     todo: {
-      current: { id: "task-0001", content: "Smoke-test Studio interactive path", status: "completed" },
+      current: {
+        id: "task-0001",
+        content: "Smoke-test Studio interactive path",
+        status: "completed",
+      },
       summary: "All 1 todo item(s) are complete and verified.",
       counts: { total: 1, completed: 1 },
     },
@@ -224,8 +250,18 @@ async function writeFixture() {
       question: "Choose the next Studio path.",
       recommended_option_id: "continue",
       options: [
-        { option_id: "continue", label: "Continue", tradeoff: "Resolve and continue to acceptance.", action: "create_task" },
-        { option_id: "stop", label: "Stop", tradeoff: "Keep the reviewed result as-is.", action: "record_constraint" },
+        {
+          option_id: "continue",
+          label: "Continue",
+          tradeoff: "Resolve and continue to acceptance.",
+          action: "create_task",
+        },
+        {
+          option_id: "stop",
+          label: "Stop",
+          tradeoff: "Keep the reviewed result as-is.",
+          action: "record_constraint",
+        },
       ],
       default_option_id: "continue",
       impact: { scope: "low", budget: "low", risk: "low", quality: "medium" },
@@ -257,77 +293,93 @@ async function writeFixture() {
 
 async function writeWorkspaceConfig() {
   const agentDir = path.join(workspace, ".asteria");
-  await fs.writeFile(path.join(agentDir, "project.json"), `${JSON.stringify({
-    schema_version: "0.1.0",
-    project_id: "studio-interactive-main-path-smoke",
-    name: "Studio interactive main path smoke",
-    workspace_type: "empty_workspace",
-    created_at: "2099-01-01T00:00:00Z",
-    updated_at: "2099-01-01T00:00:00Z",
-    languages: [],
-    frameworks: [],
-    package_managers: [],
-    commands: {
-      install: null,
-      run: null,
-      test: null,
-      lint: null,
-      typecheck: null,
-      build: null,
-      format: null,
-    },
-    important_paths: [],
-    protected_paths: [".env", "secrets/", ".git/"],
-    root_guidance_path: "AGENTS.md",
-    default_policy_path: ".asteria/policies.json",
-  }, null, 2)}\n`, "utf8");
-  await fs.writeFile(path.join(agentDir, "policies.json"), `${JSON.stringify({
-    schema_version: "0.1.0",
-    decision_granularity: "balanced",
-    budgets: {
-      max_model_calls_per_goal: 10,
-      max_tool_calls_per_goal: 20,
-      max_total_minutes_per_goal: 5,
-      max_iterations_per_goal: 3,
-      max_repair_attempts_total: 1,
-      max_repair_attempts_per_task: 1,
-      max_replans_per_task: 1,
-      max_research_calls: 0,
-      max_user_decisions: 3,
-    },
-    context: {
-      compaction_threshold: 0.75,
-      hard_stop_threshold: 0.9,
-      phase_boundary_compaction: false,
-      handoff_compaction: false,
-    },
-    permissions: {
-      allow_network: false,
-      allow_shell: false,
-      allow_destructive_shell: false,
-      allow_global_package_install: false,
-      allow_secret_file_read: false,
-      allow_remote_push: false,
-      allow_deploy: false,
-      allow_restore_delete_created_files: false,
-    },
-    protected_paths: [".env", "secrets/", ".git/"],
-    hooks: {
-      enabled: false,
-      plugins_enabled: false,
-      allowed_hook_names: [],
-      redacted_data_keys: [],
-      handler_timeout_ms: 1000,
-    },
-    promotion: {
-      manual_approval_default: true,
-      release_blocking_statuses: [],
-      max_pending_release_promotions: 0,
-      max_blocked_release_promotions: 0,
-    },
-    model_routing: {},
-    commands: {},
-  }, null, 2)}\n`, "utf8");
+  await fs.writeFile(
+    path.join(agentDir, "project.json"),
+    `${JSON.stringify(
+      {
+        schema_version: "0.1.0",
+        project_id: "studio-interactive-main-path-smoke",
+        name: "Studio interactive main path smoke",
+        workspace_type: "empty_workspace",
+        created_at: "2099-01-01T00:00:00Z",
+        updated_at: "2099-01-01T00:00:00Z",
+        languages: [],
+        frameworks: [],
+        package_managers: [],
+        commands: {
+          install: null,
+          run: null,
+          test: null,
+          lint: null,
+          typecheck: null,
+          build: null,
+          format: null,
+        },
+        important_paths: [],
+        protected_paths: [".env", "secrets/", ".git/"],
+        root_guidance_path: "AGENTS.md",
+        default_policy_path: ".asteria/policies.json",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(agentDir, "policies.json"),
+    `${JSON.stringify(
+      {
+        schema_version: "0.1.0",
+        decision_granularity: "balanced",
+        budgets: {
+          max_model_calls_per_goal: 10,
+          max_tool_calls_per_goal: 20,
+          max_total_minutes_per_goal: 5,
+          max_iterations_per_goal: 3,
+          max_repair_attempts_total: 1,
+          max_repair_attempts_per_task: 1,
+          max_replans_per_task: 1,
+          max_research_calls: 0,
+          max_user_decisions: 3,
+        },
+        context: {
+          compaction_threshold: 0.75,
+          hard_stop_threshold: 0.9,
+          phase_boundary_compaction: false,
+          handoff_compaction: false,
+        },
+        permissions: {
+          allow_network: false,
+          allow_shell: false,
+          allow_destructive_shell: false,
+          allow_global_package_install: false,
+          allow_secret_file_read: false,
+          allow_remote_push: false,
+          allow_deploy: false,
+          allow_restore_delete_created_files: false,
+        },
+        protected_paths: [".env", "secrets/", ".git/"],
+        hooks: {
+          enabled: false,
+          plugins_enabled: false,
+          allowed_hook_names: [],
+          redacted_data_keys: [],
+          handler_timeout_ms: 1000,
+        },
+        promotion: {
+          manual_approval_default: true,
+          release_blocking_statuses: [],
+          max_pending_release_promotions: 0,
+          max_blocked_release_promotions: 0,
+        },
+        model_routing: {},
+        commands: {},
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 }
 
 async function writeJson(name, value) {
@@ -366,13 +418,19 @@ function costReportFixture() {
 }
 
 async function writeJsonl(name, rows) {
-  await fs.writeFile(path.join(runDir, name), `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
+  await fs.writeFile(
+    path.join(runDir, name),
+    `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
 }
 
 async function waitForHealth() {
   const deadline = Date.now() + 10_000;
   let stderr = "";
-  server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+  server.stderr.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/health`);

@@ -9,7 +9,10 @@ export type TurnRewindPlan = {
   disabledReason?: string;
 };
 
-export function planTurnRewind(runDetail: RunDetailPayload | null | undefined, isRunning: boolean): TurnRewindPlan {
+export function planTurnRewind(
+  runDetail: RunDetailPayload | null | undefined,
+  isRunning: boolean,
+): TurnRewindPlan {
   if (!runDetail?.ok || !runDetail.run_id) {
     return {
       action: "",
@@ -38,7 +41,9 @@ export function planTurnRewind(runDetail: RunDetailPayload | null | undefined, i
     loop.recommended_next_command,
     runDetail.final_report_summary?.recommended_next_command,
     runDetail.run_loop_summary?.recommended_next_command,
-  ).replace(/^asteria\s+/i, "").trim();
+  )
+    .replace(/^asteria\s+/i, "")
+    .trim();
 
   let action = recommended;
   if (!action || /^accept\b/i.test(action)) {

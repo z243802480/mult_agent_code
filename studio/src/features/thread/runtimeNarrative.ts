@@ -26,7 +26,15 @@ export function contextSectionLabel(value: string): string {
 
 export function eventStatus(value: unknown): StudioEvent["status"] {
   const text = String(value ?? "").toLowerCase();
-  if (text === "queued" || text === "running" || text === "waiting_user" || text === "completed" || text === "failed" || text === "blocked") return text;
+  if (
+    text === "queued" ||
+    text === "running" ||
+    text === "waiting_user" ||
+    text === "completed" ||
+    text === "failed" ||
+    text === "blocked"
+  )
+    return text;
   if (/fail|error/.test(text)) return "failed";
   if (/block/.test(text)) return "blocked";
   if (/wait|ask|decision|permission/.test(text)) return "waiting_user";
@@ -37,15 +45,26 @@ export function eventStatus(value: unknown): StudioEvent["status"] {
 export function goalTitle(runDetail: RunDetailPayload | null): string {
   const goal = asRecord(runDetail?.goal_spec);
   const run = asRecord(runDetail?.run);
-  return textOrFallback(goal.normalized_goal ?? goal.original_goal ?? run.goal ?? run.summary, "还没有选择目标");
+  return textOrFallback(
+    goal.normalized_goal ?? goal.original_goal ?? run.goal ?? run.summary,
+    "还没有选择目标",
+  );
 }
 
 export function actionLabel(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/^asteria\s+/, "");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/^asteria\s+/, "");
   if (normalized.startsWith("model-check")) return "检查连接";
   if (normalized.startsWith("review")) return "查看";
   if (normalized.startsWith("accept")) return "接受";
-  if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "继续";
+  if (
+    normalized.startsWith("resume") ||
+    normalized.startsWith("continue") ||
+    normalized.startsWith("run")
+  )
+    return "继续";
   if (normalized.startsWith("decide")) return "决定";
   if (normalized.startsWith("debug") || normalized.startsWith("repair")) return "调试";
   return "继续";
@@ -102,21 +121,33 @@ export function runVerificationHint(runDetail: RunDetailPayload | null): string 
     return "验证未通过——记录的测试/检查失败了。接受前请先查看。";
   }
   const reviewStatus = String(finalSummary.review_status ?? "").toLowerCase();
-  const completion = String(finalSummary.completion ?? finalSummary.completion_state ?? "").toLowerCase();
+  const completion = String(
+    finalSummary.completion ?? finalSummary.completion_state ?? "",
+  ).toLowerCase();
   if (reviewStatus === "pass" || /verified|accepted/.test(completion)) return "";
-  if (reviewStatus === "unknown" || reviewStatus === "" || /needs_review|unverified|implemented/.test(completion)) {
+  if (
+    reviewStatus === "unknown" ||
+    reviewStatus === "" ||
+    /needs_review|unverified|implemented/.test(completion)
+  ) {
     return "改动已完成,但还没验证。运行查看来核对。";
   }
   return "";
 }
 
 export function latestActiveEvent(events: StudioEvent[]): StudioEvent | null {
-  return [...events]
-    .reverse()
-    .find((event) =>
-      (!event.display_level || event.display_level === "main")
-      && (event.status === "running" || event.status === "waiting_user" || event.type === "final_answer" || event.type === "error")
-    ) ?? null;
+  return (
+    [...events]
+      .reverse()
+      .find(
+        (event) =>
+          (!event.display_level || event.display_level === "main") &&
+          (event.status === "running" ||
+            event.status === "waiting_user" ||
+            event.type === "final_answer" ||
+            event.type === "error"),
+      ) ?? null
+  );
 }
 
 export function runtimeSessionEvents(runDetail: RunDetailPayload | null): StudioEvent[] {
@@ -231,4 +262,3 @@ export function userProgressSummary(event: AnyRecord): string {
   const summary = firstText(String(event.summary ?? ""), String(event.content_delta ?? ""), title);
   return projectSummary(summary);
 }
-

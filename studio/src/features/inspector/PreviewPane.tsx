@@ -47,10 +47,13 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
       .then((res) => {
         if (cancelled) return;
         setPreviewPort(res.ok && res.port ? res.port : null);
-        setProxyTarget(res.mode === "proxy" ? res.target ?? null : null);
+        setProxyTarget(res.mode === "proxy" ? (res.target ?? null) : null);
       })
       .catch(() => {
-        if (!cancelled) { setPreviewPort(null); setProxyTarget(null); }
+        if (!cancelled) {
+          setPreviewPort(null);
+          setProxyTarget(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setPortResolved(true);
@@ -83,7 +86,8 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     api
       .previewFile(selected)
       .then((res) => {
-        if (!cancelled) setFallbackContent(res.ok && typeof res.content === "string" ? res.content : null);
+        if (!cancelled)
+          setFallbackContent(res.ok && typeof res.content === "string" ? res.content : null);
       })
       .catch(() => {
         if (!cancelled) setFallbackContent(null);
@@ -113,7 +117,9 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
     <div className="previewPane">
       <div className="previewBar">
         {proxyMode ? (
-          <span className="previewPath" title={`反向代理开发服务器 ${proxyTarget}`}>开发服务器</span>
+          <span className="previewPath" title={`反向代理开发服务器 ${proxyTarget}`}>
+            开发服务器
+          </span>
         ) : htmlFiles.length > 1 ? (
           <select
             className="previewSelect"
@@ -128,12 +134,20 @@ export function PreviewPane({ files }: { files: WorkspaceFile[] }) {
             ))}
           </select>
         ) : (
-          <span className="previewPath" title={selected}>{selected}</span>
+          <span className="previewPath" title={selected}>
+            {selected}
+          </span>
         )}
         {proxyMode ? (
-          <span className="previewLive" title={`反向代理 ${proxyTarget}(HMR 实时)`}>开发 · HMR</span>
+          <span className="previewLive" title={`反向代理 ${proxyTarget}(HMR 实时)`}>
+            开发 · HMR
+          </span>
         ) : (
-          src && <span className="previewLive" title="工作区文件变化时自动刷新">实时</span>
+          src && (
+            <span className="previewLive" title="工作区文件变化时自动刷新">
+              实时
+            </span>
+          )
         )}
         <button
           type="button"

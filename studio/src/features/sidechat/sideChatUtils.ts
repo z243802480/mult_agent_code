@@ -50,8 +50,7 @@ export function sideChatPending(events: StudioEvent[]): boolean {
   const lastUserAt = lastUser.created_at;
   const hasReply = sideEvents.some(
     (event) =>
-      (event.type === "final_answer" || event.type === "error")
-      && event.created_at >= lastUserAt,
+      (event.type === "final_answer" || event.type === "error") && event.created_at >= lastUserAt,
   );
   return !hasReply;
 }

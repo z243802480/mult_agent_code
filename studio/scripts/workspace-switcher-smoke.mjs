@@ -15,26 +15,30 @@ let initTarget = null;
 await fs.writeFile(path.join(workspaceA, "marker-a.txt"), "A", "utf8");
 await fs.writeFile(path.join(workspaceB, "marker-b.txt"), "B", "utf8");
 
-const server = spawn(process.execPath, [
-  "server.mjs",
-  "--workspace",
-  workspaceA,
-  "--runtime-root",
-  repoRoot,
-  "--port",
-  String(port),
-  "--python",
-  python,
-], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ASTERIA_HOME: path.join(os.tmpdir(), `asteria-ws-home-${Date.now()}`) },
-});
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspaceA,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    python,
+  ],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ASTERIA_HOME: path.join(os.tmpdir(), `asteria-ws-home-${Date.now()}`) },
+  },
+);
 
 try {
   await waitForHealth();
   const initial = await fetchJson("http://127.0.0.1:" + port + "/api/studio/settings");
-  if (!await samePath(initial.settings.workspace, workspaceA)) {
+  if (!(await samePath(initial.settings.workspace, workspaceA))) {
     throw new Error(`expected initial workspace A, got ${initial.settings.workspace}`);
   }
 
@@ -43,18 +47,18 @@ try {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ path: workspaceB }),
   });
-  if (!opened.ok || !await samePath(opened.workspace, workspaceB)) {
+  if (!opened.ok || !(await samePath(opened.workspace, workspaceB))) {
     throw new Error(`workspace open failed: ${JSON.stringify(opened)}`);
   }
 
   const after = await fetchJson("http://127.0.0.1:" + port + "/api/studio/settings");
-  if (!await samePath(after.settings.workspace, workspaceB)) {
+  if (!(await samePath(after.settings.workspace, workspaceB))) {
     throw new Error(`settings workspace did not switch: ${after.settings.workspace}`);
   }
 
   const registry = await fetchJson("http://127.0.0.1:" + port + "/api/studio/workspaces");
   const recentRoots = (registry.recent_workspaces ?? []).map((item) => item.workspace_root);
-  if (!await includesPath(recentRoots, workspaceB)) {
+  if (!(await includesPath(recentRoots, workspaceB))) {
     throw new Error(`recent workspaces missing B: ${JSON.stringify(recentRoots)}`);
   }
 
@@ -69,16 +73,25 @@ try {
   }
   await fs.access(path.join(initTarget, ".asteria", "project.json"));
 
-  const profile = await fetchJson(`http://127.0.0.1:${port}/api/studio/workspace/profile?path=${encodeURIComponent(workspaceB)}`);
-  if (!profile.initialized) throw new Error(`profile missing initialized flag: ${JSON.stringify(profile)}`);
+  const profile = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/workspace/profile?path=${encodeURIComponent(workspaceB)}`,
+  );
+  if (!profile.initialized)
+    throw new Error(`profile missing initialized flag: ${JSON.stringify(profile)}`);
 
-  console.log(JSON.stringify({
-    ok: true,
-    summary: "workspace switcher smoke passed",
-    workspaceA: path.resolve(workspaceA),
-    workspaceB: path.resolve(workspaceB),
-    initTarget: path.resolve(initTarget),
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        summary: "workspace switcher smoke passed",
+        workspaceA: path.resolve(workspaceA),
+        workspaceB: path.resolve(workspaceB),
+        initTarget: path.resolve(initTarget),
+      },
+      null,
+      2,
+    ),
+  );
 } finally {
   server.kill("SIGTERM");
   await fs.rm(workspaceA, { recursive: true, force: true });

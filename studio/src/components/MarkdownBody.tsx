@@ -57,7 +57,12 @@ function parseMarkdownBlocks(text: string): Block[] {
       const header = splitTableRow(raw);
       i += 2;
       const rows: string[][] = [];
-      while (i < lines.length && lines[i].trim() && isPipeRow(lines[i]) && !isSeparatorRow(lines[i])) {
+      while (
+        i < lines.length &&
+        lines[i].trim() &&
+        isPipeRow(lines[i]) &&
+        !isSeparatorRow(lines[i])
+      ) {
         rows.push(splitTableRow(lines[i]));
         i += 1;
       }
@@ -106,7 +111,11 @@ function renderInline(text: string): React.ReactNode[] {
       const url = link[2].trim();
       // Only follow safe schemes — never render javascript:/data: as a live link.
       if (/^(https?:\/\/|mailto:|\/|#)/i.test(url)) {
-        return <a key={index} href={url} target="_blank" rel="noopener noreferrer">{label}</a>;
+        return (
+          <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+            {label}
+          </a>
+        );
       }
       return <React.Fragment key={index}>{label}</React.Fragment>;
     }
@@ -152,7 +161,11 @@ export function MarkdownBody({ text }: { text: string }) {
           return <h4 key={index}>{renderInline(block.text)}</h4>;
         }
         if (block.kind === "bullet") {
-          return <p key={index} className="finalBullet">{renderInline(block.text)}</p>;
+          return (
+            <p key={index} className="finalBullet">
+              {renderInline(block.text)}
+            </p>
+          );
         }
         if (block.kind === "ordered") {
           return (
@@ -167,11 +180,19 @@ export function MarkdownBody({ text }: { text: string }) {
             <div key={index} className="markdownTableWrap">
               <table className="markdownTable">
                 <thead>
-                  <tr>{block.header.map((cell, c) => <th key={c}>{renderInline(cell)}</th>)}</tr>
+                  <tr>
+                    {block.header.map((cell, c) => (
+                      <th key={c}>{renderInline(cell)}</th>
+                    ))}
+                  </tr>
                 </thead>
                 <tbody>
                   {block.rows.map((row, r) => (
-                    <tr key={r}>{row.map((cell, c) => <td key={c}>{renderInline(cell)}</td>)}</tr>
+                    <tr key={r}>
+                      {row.map((cell, c) => (
+                        <td key={c}>{renderInline(cell)}</td>
+                      ))}
+                    </tr>
                   ))}
                 </tbody>
               </table>

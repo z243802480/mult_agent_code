@@ -34,7 +34,14 @@ const TAB_STORAGE_KEY = "asteria.studio.inspectorTab";
 function loadInspectorTab(): InspectorTabId {
   try {
     const raw = localStorage.getItem(TAB_STORAGE_KEY);
-    if (raw === "preview" || raw === "changes" || raw === "context" || raw === "agents" || raw === "evidence") return raw;
+    if (
+      raw === "preview" ||
+      raw === "changes" ||
+      raw === "context" ||
+      raw === "agents" ||
+      raw === "evidence"
+    )
+      return raw;
   } catch {
     // ignore
   }

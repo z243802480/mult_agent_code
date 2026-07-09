@@ -57,7 +57,11 @@ export function SuggestedActions({
           disabled={Boolean(busy)}
           onClick={() => void run(action.command)}
         >
-          {busy === action.command ? <Loader2 size={12} className="spinning" /> : <ArrowRight size={12} />}
+          {busy === action.command ? (
+            <Loader2 size={12} className="spinning" />
+          ) : (
+            <ArrowRight size={12} />
+          )}
           <span>{action.label}</span>
         </button>
       ))}

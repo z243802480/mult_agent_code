@@ -116,7 +116,12 @@ await writeJsonl("merge_gate_dry_runs.jsonl", [
     run_id: runId,
     dry_run: true,
     ok: true,
-    task_results: [{ task_id: "task-0001", merge_gate: { ok: true, promotable_files: ["out/alpha.txt"], violations: [] } }],
+    task_results: [
+      {
+        task_id: "task-0001",
+        merge_gate: { ok: true, promotable_files: ["out/alpha.txt"], violations: [] },
+      },
+    ],
     disjoint_write_gate: { ok: true, violations: [] },
     batch_violations: [],
     summary: "Merge gate dry-run passed.",
@@ -145,15 +150,23 @@ await writeJsonl("candidate_promotions.jsonl", [
 ]);
 
 const port = Number(process.env.ASTERIA_STUDIO_SMOKE_PORT || 18788);
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-});
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth(port);
@@ -162,7 +175,9 @@ try {
     throw new Error("promotion_preview missing or invalid");
   }
   if (detail.promotion_preview.merge_preview_status !== "ready") {
-    throw new Error(`expected merge_preview_status ready, got ${detail.promotion_preview.merge_preview_status}`);
+    throw new Error(
+      `expected merge_preview_status ready, got ${detail.promotion_preview.merge_preview_status}`,
+    );
   }
   if (!String(detail.promotion_preview.merge_preview_summary).includes("Merge preview")) {
     throw new Error("merge preview summary should use user-facing wording");
@@ -201,14 +216,26 @@ async function writeJson(name, value) {
 }
 
 async function writeJsonl(name, rows) {
-  await fs.writeFile(path.join(runDir, name), `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
+  await fs.writeFile(
+    path.join(runDir, name),
+    `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    "utf8",
+  );
 }
 
 async function writeWorkspaceConfig() {
   const agentDir = path.join(workspace, ".asteria");
   await fs.mkdir(agentDir, { recursive: true });
-  await fs.writeFile(path.join(agentDir, "project.json"), `${JSON.stringify({ schema_version: "0.1.0", project_id: "s20-smoke" }, null, 2)}\n`, "utf8");
-  await fs.writeFile(path.join(agentDir, "policies.json"), `${JSON.stringify({ schema_version: "0.1.0", protected_paths: [".git/"] }, null, 2)}\n`, "utf8");
+  await fs.writeFile(
+    path.join(agentDir, "project.json"),
+    `${JSON.stringify({ schema_version: "0.1.0", project_id: "s20-smoke" }, null, 2)}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(agentDir, "policies.json"),
+    `${JSON.stringify({ schema_version: "0.1.0", protected_paths: [".git/"] }, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 async function waitForHealth(targetPort) {
@@ -223,7 +250,9 @@ async function waitForHealth(targetPort) {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(url, init = undefined) {

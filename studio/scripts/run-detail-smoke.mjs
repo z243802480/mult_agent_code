@@ -35,7 +35,11 @@ await writeJson("run_loop_summary.json", {
     current_blocker: null,
     permission_boundary: "reviewed_auto",
     todo: {
-      current: { id: "task-0001", content: "Smoke-test Studio run detail payload", status: "completed" },
+      current: {
+        id: "task-0001",
+        content: "Smoke-test Studio run detail payload",
+        status: "completed",
+      },
       summary: "All 1 todo item(s) are complete and verified.",
       counts: { total: 1, completed: 1 },
     },
@@ -71,7 +75,11 @@ await writeJson("final_report_summary.json", {
     current_blocker: null,
     permission_boundary: "reviewed_auto",
     todo: {
-      current: { id: "task-0001", content: "Smoke-test Studio run detail payload", status: "completed" },
+      current: {
+        id: "task-0001",
+        content: "Smoke-test Studio run detail payload",
+        status: "completed",
+      },
       summary: "All 1 todo item(s) are complete and verified.",
       counts: { total: 1, completed: 1 },
     },
@@ -100,8 +108,18 @@ await writeJsonl("decisions.jsonl", [
     question: "Choose the next Studio smoke path.",
     recommended_option_id: "continue",
     options: [
-      { option_id: "continue", label: "Continue", tradeoff: "Resume the runtime path.", action: "create_task" },
-      { option_id: "stop", label: "Stop", tradeoff: "Record the current result.", action: "record_constraint" },
+      {
+        option_id: "continue",
+        label: "Continue",
+        tradeoff: "Resume the runtime path.",
+        action: "create_task",
+      },
+      {
+        option_id: "stop",
+        label: "Stop",
+        tradeoff: "Record the current result.",
+        action: "record_constraint",
+      },
     ],
     default_option_id: "continue",
     impact: { scope: "low", budget: "low", risk: "low", quality: "medium" },
@@ -266,29 +284,41 @@ await writeJsonl("skill_invocations.jsonl", [
 ]);
 await fs.writeFile(
   path.join(workspace, ".asteria", "evidence_bundles", "evidence-smoke.manifest.json"),
-  `${JSON.stringify({
-    v0_2_rolling_validation: {
-      status: "needs_evidence",
-      sample_count: 3,
-      required_sample_count: { min: 3, max: 5 },
-      coverage: { route: true, context: true, capability: true, loop: true, worker: false },
-      missing_evidence_categories: ["worker"],
-      next_actions: ["Collect worker evidence for at least one scoped task."],
+  `${JSON.stringify(
+    {
+      v0_2_rolling_validation: {
+        status: "needs_evidence",
+        sample_count: 3,
+        required_sample_count: { min: 3, max: 5 },
+        coverage: { route: true, context: true, capability: true, loop: true, worker: false },
+        missing_evidence_categories: ["worker"],
+        next_actions: ["Collect worker evidence for at least one scoped task."],
+      },
     },
-  }, null, 2)}\n`,
-  "utf8"
+    null,
+    2,
+  )}\n`,
+  "utf8",
 );
 
 const port = Number(process.env.ASTERIA_STUDIO_SMOKE_PORT || 18787);
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-});
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth(port);
@@ -307,7 +337,15 @@ try {
     throw new Error("/api/diagnostics should mark diagnostics_loaded=true");
   }
   const detail = await fetchJson(`http://127.0.0.1:${port}/api/runs/${runId}`);
-  for (const key of ["agent_loop_run_summary", "run_loop_summary", "runtime_progress", "main_action", "final_report_summary", "model_route_timeline", "worker_tree"]) {
+  for (const key of [
+    "agent_loop_run_summary",
+    "run_loop_summary",
+    "runtime_progress",
+    "main_action",
+    "final_report_summary",
+    "model_route_timeline",
+    "worker_tree",
+  ]) {
     if (!Object.prototype.hasOwnProperty.call(detail, key)) {
       throw new Error(`/api/runs/:id missing ${key}`);
     }
@@ -318,14 +356,25 @@ try {
   if (detail.run_loop_summary.workflow_state !== "review_passed") {
     throw new Error("run_loop_summary content was not returned correctly");
   }
-  if (detail.runtime_progress?.active_stage !== "verify" || detail.runtime_progress?.todo?.counts?.completed !== 1) {
+  if (
+    detail.runtime_progress?.active_stage !== "verify" ||
+    detail.runtime_progress?.todo?.counts?.completed !== 1
+  ) {
     throw new Error("/api/runs/:id did not expose final summary runtime_progress");
   }
-  if (!Array.isArray(detail.decision_requests) || detail.decision_requests[0]?.decision_id !== "decision-0001") {
+  if (
+    !Array.isArray(detail.decision_requests) ||
+    detail.decision_requests[0]?.decision_id !== "decision-0001"
+  ) {
     throw new Error("/api/runs/:id did not expose pending decision requests");
   }
-  if (detail.decision_requests[0]?.metadata?.permission_preview?.scope !== "Read: src/current.py; Write: src/new.py, tests/test_new.py") {
-    throw new Error("/api/runs/:id did not enrich runtime request decisions with exact permission scope");
+  if (
+    detail.decision_requests[0]?.metadata?.permission_preview?.scope !==
+    "Read: src/current.py; Write: src/new.py, tests/test_new.py"
+  ) {
+    throw new Error(
+      "/api/runs/:id did not enrich runtime request decisions with exact permission scope",
+    );
   }
   if (detail.runtime_requests?.[0]?.runtime_request_id !== "runtime-request-0001") {
     throw new Error("/api/runs/:id did not keep runtime requests available for Inspector");
@@ -336,7 +385,10 @@ try {
   if (detail.agent_loop_run_summary.exit_reason !== "max_rounds") {
     throw new Error("agent_loop_run_summary content was not returned correctly");
   }
-  if (detail.worker_tree.total_workers !== 2 || detail.worker_tree.roots?.[0]?.children?.[0]?.worker_invocation_id !== "worker-0002") {
+  if (
+    detail.worker_tree.total_workers !== 2 ||
+    detail.worker_tree.roots?.[0]?.children?.[0]?.worker_invocation_id !== "worker-0002"
+  ) {
     throw new Error("worker_tree was not built from worker evidence");
   }
   if (!Array.isArray(detail.model_route_timeline.route_timeline)) {
@@ -351,48 +403,77 @@ try {
   if (!Array.isArray(detail.legacy_events) || detail.legacy_events[0]?.event_id !== "evt-legacy") {
     throw new Error("legacy events should remain available as fallback evidence");
   }
-  if (!Array.isArray(detail.mcp_invocations) || detail.mcp_invocations[0]?.mcp_invocation_id !== "mcp-0001") {
+  if (
+    !Array.isArray(detail.mcp_invocations) ||
+    detail.mcp_invocations[0]?.mcp_invocation_id !== "mcp-0001"
+  ) {
     throw new Error("mcp_invocations should be available for Inspector");
   }
-  if (!Array.isArray(detail.skill_invocations) || detail.skill_invocations[0]?.skill_invocation_id !== "skill-0001") {
+  if (
+    !Array.isArray(detail.skill_invocations) ||
+    detail.skill_invocations[0]?.skill_invocation_id !== "skill-0001"
+  ) {
     throw new Error("skill_invocations should be available for Inspector");
   }
-  const sessionCreate = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions`, { method: "POST" });
+  const sessionCreate = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions`, {
+    method: "POST",
+  });
   const sessionId = sessionCreate.session?.session_id;
   if (!sessionId) throw new Error("Studio session was not created for runtime action smoke");
-  const actionResult = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/runtime-actions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ next_action: "asteria accept --latest", permission: "ask" }),
-  });
-  if (!actionResult.ok || actionResult.needs_permission !== true || actionResult.action !== "accept") {
+  const actionResult = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/runtime-actions`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ next_action: "asteria accept --latest", permission: "ask" }),
+    },
+  );
+  if (
+    !actionResult.ok ||
+    actionResult.needs_permission !== true ||
+    actionResult.action !== "accept"
+  ) {
     throw new Error("Accept action should become a permission request");
   }
-  const actionEvents = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/events`);
-  if (!actionEvents.events?.some((event) => event.type === "permission_request" && event.job_id === actionResult.job_id)) {
+  const actionEvents = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/events`,
+  );
+  if (
+    !actionEvents.events?.some(
+      (event) => event.type === "permission_request" && event.job_id === actionResult.job_id,
+    )
+  ) {
     throw new Error("Runtime action did not write a permission request event");
   }
-  const rejected = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/runtime-actions`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ next_action: "rm -rf ." }),
-  });
+  const rejected = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/runtime-actions`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ next_action: "rm -rf ." }),
+    },
+  );
   if (rejected.ok !== false) {
     throw new Error("Unsupported runtime action should be rejected");
   }
-  const resolved = await fetchJson(`http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/decisions/resolve`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ run_id: runId, decision_id: "decision-0001", option_id: "continue" }),
-  });
+  const resolved = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/sessions/${sessionId}/decisions/resolve`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ run_id: runId, decision_id: "decision-0001", option_id: "continue" }),
+    },
+  );
   if (!resolved.ok || resolved.started !== true || resolved.decision_id !== "decision-0001") {
     throw new Error("Decision resolve action should start the controlled runtime path");
   }
   await waitFor(async () => {
     const afterDecision = await fetchJson(`http://127.0.0.1:${port}/api/runs/${runId}`);
-    return afterDecision.main_action?.kind === "accept"
-      && afterDecision.main_action?.requires_permission === true
-      && afterDecision.decision_requests?.length === 0;
+    return (
+      afterDecision.main_action?.kind === "accept" &&
+      afterDecision.main_action?.requires_permission === true &&
+      afterDecision.decision_requests?.length === 0
+    );
   }, "resolved decision did not restore the accept main_action");
   console.log("Studio run detail smoke passed");
 } finally {
@@ -407,77 +488,93 @@ async function writeJson(name, value) {
 
 async function writeWorkspaceConfig() {
   const agentDir = path.join(workspace, ".asteria");
-  await fs.writeFile(path.join(agentDir, "project.json"), `${JSON.stringify({
-    schema_version: "0.1.0",
-    project_id: "studio-run-detail-smoke",
-    name: "Studio run detail smoke",
-    workspace_type: "empty_workspace",
-    created_at: "2099-01-01T00:00:00Z",
-    updated_at: "2099-01-01T00:00:00Z",
-    languages: [],
-    frameworks: [],
-    package_managers: [],
-    commands: {
-      install: null,
-      run: null,
-      test: null,
-      lint: null,
-      typecheck: null,
-      build: null,
-      format: null,
-    },
-    important_paths: [],
-    protected_paths: [".env", "secrets/", ".git/"],
-    root_guidance_path: "AGENTS.md",
-    default_policy_path: ".asteria/policies.json",
-  }, null, 2)}\n`, "utf8");
-  await fs.writeFile(path.join(agentDir, "policies.json"), `${JSON.stringify({
-    schema_version: "0.1.0",
-    decision_granularity: "balanced",
-    budgets: {
-      max_model_calls_per_goal: 10,
-      max_tool_calls_per_goal: 20,
-      max_total_minutes_per_goal: 5,
-      max_iterations_per_goal: 3,
-      max_repair_attempts_total: 1,
-      max_repair_attempts_per_task: 1,
-      max_replans_per_task: 1,
-      max_research_calls: 0,
-      max_user_decisions: 3,
-    },
-    context: {
-      compaction_threshold: 0.75,
-      hard_stop_threshold: 0.9,
-      phase_boundary_compaction: false,
-      handoff_compaction: false,
-    },
-    permissions: {
-      allow_network: false,
-      allow_shell: false,
-      allow_destructive_shell: false,
-      allow_global_package_install: false,
-      allow_secret_file_read: false,
-      allow_remote_push: false,
-      allow_deploy: false,
-      allow_restore_delete_created_files: false,
-    },
-    protected_paths: [".env", "secrets/", ".git/"],
-    hooks: {
-      enabled: false,
-      plugins_enabled: false,
-      allowed_hook_names: [],
-      redacted_data_keys: [],
-      handler_timeout_ms: 1000,
-    },
-    promotion: {
-      manual_approval_default: true,
-      release_blocking_statuses: [],
-      max_pending_release_promotions: 0,
-      max_blocked_release_promotions: 0,
-    },
-    model_routing: {},
-    commands: {},
-  }, null, 2)}\n`, "utf8");
+  await fs.writeFile(
+    path.join(agentDir, "project.json"),
+    `${JSON.stringify(
+      {
+        schema_version: "0.1.0",
+        project_id: "studio-run-detail-smoke",
+        name: "Studio run detail smoke",
+        workspace_type: "empty_workspace",
+        created_at: "2099-01-01T00:00:00Z",
+        updated_at: "2099-01-01T00:00:00Z",
+        languages: [],
+        frameworks: [],
+        package_managers: [],
+        commands: {
+          install: null,
+          run: null,
+          test: null,
+          lint: null,
+          typecheck: null,
+          build: null,
+          format: null,
+        },
+        important_paths: [],
+        protected_paths: [".env", "secrets/", ".git/"],
+        root_guidance_path: "AGENTS.md",
+        default_policy_path: ".asteria/policies.json",
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  await fs.writeFile(
+    path.join(agentDir, "policies.json"),
+    `${JSON.stringify(
+      {
+        schema_version: "0.1.0",
+        decision_granularity: "balanced",
+        budgets: {
+          max_model_calls_per_goal: 10,
+          max_tool_calls_per_goal: 20,
+          max_total_minutes_per_goal: 5,
+          max_iterations_per_goal: 3,
+          max_repair_attempts_total: 1,
+          max_repair_attempts_per_task: 1,
+          max_replans_per_task: 1,
+          max_research_calls: 0,
+          max_user_decisions: 3,
+        },
+        context: {
+          compaction_threshold: 0.75,
+          hard_stop_threshold: 0.9,
+          phase_boundary_compaction: false,
+          handoff_compaction: false,
+        },
+        permissions: {
+          allow_network: false,
+          allow_shell: false,
+          allow_destructive_shell: false,
+          allow_global_package_install: false,
+          allow_secret_file_read: false,
+          allow_remote_push: false,
+          allow_deploy: false,
+          allow_restore_delete_created_files: false,
+        },
+        protected_paths: [".env", "secrets/", ".git/"],
+        hooks: {
+          enabled: false,
+          plugins_enabled: false,
+          allowed_hook_names: [],
+          redacted_data_keys: [],
+          handler_timeout_ms: 1000,
+        },
+        promotion: {
+          manual_approval_default: true,
+          release_blocking_statuses: [],
+          max_pending_release_promotions: 0,
+          max_blocked_release_promotions: 0,
+        },
+        model_routing: {},
+        commands: {},
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
 }
 
 function costReportFixture() {
@@ -503,7 +600,7 @@ async function writeJsonl(name, rows) {
   await fs.writeFile(
     path.join(runDir, name),
     `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
-    "utf8"
+    "utf8",
   );
 }
 
@@ -519,7 +616,9 @@ async function waitForHealth(targetPort) {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function waitFor(predicate, message) {
@@ -538,5 +637,3 @@ async function fetchJson(url, init = undefined) {
   }
   return response.json();
 }
-
-

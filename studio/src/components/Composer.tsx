@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { FileText, Loader2, MessageCircle, Send, Square, X } from "lucide-react";
-import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, legacyPermission, type PermissionTierId } from "../permissionTiers";
+import {
+  PERMISSION_TIERS,
+  DEFAULT_PERMISSION_TIER,
+  legacyPermission,
+  type PermissionTierId,
+} from "../permissionTiers";
 import type { WorkspaceFile } from "../types";
 
 const MENTION_LIMIT = 8;
@@ -23,7 +28,7 @@ function basename(pathValue: string): string {
 }
 
 const MODES = ["auto", "chat", "plan", "run"] as const;
-type Mode = typeof MODES[number];
+type Mode = (typeof MODES)[number];
 
 const MODE_LABELS: Record<Mode, string> = {
   auto: "自动",
@@ -51,7 +56,13 @@ const MODE_PLACEHOLDERS: Record<Mode, string> = {
 
 export type PromptSignal = { text: string; id: number };
 
-const SLASH_ACTIONS: { key: string; label: string; mode: Mode; prompt: string; sideAsk?: boolean }[] = [
+const SLASH_ACTIONS: {
+  key: string;
+  label: string;
+  mode: Mode;
+  prompt: string;
+  sideAsk?: boolean;
+}[] = [
   { key: "/ask", label: "快速提问", mode: "auto", prompt: "", sideAsk: true },
   { key: "/plan", label: "计划", mode: "plan", prompt: "为其制定计划：" },
   { key: "/goal", label: "目标", mode: "run", prompt: "推进这个目标：" },
@@ -69,7 +80,12 @@ export function Composer({
   onStop,
   files = [],
 }: {
-  onSend: (message: string, mode: string, permission: string, permissionMode?: string) => Promise<void>;
+  onSend: (
+    message: string,
+    mode: string,
+    permission: string,
+    permissionMode?: string,
+  ) => Promise<void>;
   onSideAsk?: (message: string) => Promise<void>;
   sideAsk?: boolean;
   onSideAskToggle?: () => void;
@@ -82,7 +98,9 @@ export function Composer({
 }) {
   const [message, setMessage] = useState("");
   const [mode, setMode] = useState<Mode>("auto");
-  const [permissionMode, setPermissionMode] = useState<PermissionTierId>(initialPermissionMode ?? DEFAULT_PERMISSION_TIER);
+  const [permissionMode, setPermissionMode] = useState<PermissionTierId>(
+    initialPermissionMode ?? DEFAULT_PERMISSION_TIER,
+  );
   const permission = legacyPermission(permissionMode);
   const [sending, setSending] = useState(false);
   // Messages typed while a run is in flight (I9). They wait honestly for the run to finish, then
@@ -184,7 +202,9 @@ export function Composer({
       const [head, ...rest] = queue;
       setQueue(rest);
       setSending(true);
-      Promise.resolve(onSend(head, mode, permission, permissionMode)).finally(() => setSending(false));
+      Promise.resolve(onSend(head, mode, permission, permissionMode)).finally(() =>
+        setSending(false),
+      );
     }
     wasRunning.current = isRunning;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,10 +213,26 @@ export function Composer({
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Mention menu owns the keyboard while open: navigate + insert instead of send/stop.
     if (mentionOpen) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => (i + 1) % mentionMatches.length); return; }
-      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length); return; }
-      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(mentionMatches[mentionIndex]); return; }
-      if (e.key === "Escape") { e.preventDefault(); setMention(null); return; }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => (i + 1) % mentionMatches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        insertMention(mentionMatches[mentionIndex]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
     }
     if (e.key === "Escape" && isRunning && onStop && !sideAsk) {
       e.preventDefault();
@@ -220,20 +256,27 @@ export function Composer({
   const slashOpen = message.trim() === "/" || /^\/[a-z]*$/i.test(message.trim());
   const slashQuery = message.trim().toLowerCase();
   const slashActions = slashOpen
-    ? SLASH_ACTIONS.filter((action) => action.key.startsWith(slashQuery === "/" ? "/" : slashQuery)).slice(0, 5)
+    ? SLASH_ACTIONS.filter((action) =>
+        action.key.startsWith(slashQuery === "/" ? "/" : slashQuery),
+      ).slice(0, 5)
     : [];
 
   return (
-    <form className={`composer compact ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}${sideAsk ? " sideAskMode" : ""}`} onSubmit={(event) => void submit(event)}>
+    <form
+      className={`composer compact ${isAuto ? "autoMode" : isChat ? "chatMode" : ""}${sideAsk ? " sideAskMode" : ""}`}
+      onSubmit={(event) => void submit(event)}
+    >
       {queue.length > 0 && (
         <div className="composerQueue" role="status" aria-live="polite">
-          <span className="composerQueueLabel">
-            {queue.length} 条已排队 · 运行结束后发送
-          </span>
+          <span className="composerQueueLabel">{queue.length} 条已排队 · 运行结束后发送</span>
           {queue.map((q, i) => (
             <span key={i} className="composerQueueChip" title={q}>
               <span className="composerQueueText">{q}</span>
-              <button type="button" onClick={() => setQueue((qs) => qs.filter((_, j) => j !== i))} aria-label="移除排队消息">
+              <button
+                type="button"
+                onClick={() => setQueue((qs) => qs.filter((_, j) => j !== i))}
+                aria-label="移除排队消息"
+              >
                 <X size={11} />
               </button>
             </span>
@@ -244,7 +287,10 @@ export function Composer({
         <textarea
           ref={textareaRef}
           value={message}
-          onChange={(event) => { setMessage(event.target.value); syncMention(event.target.value, event.target.selectionStart); }}
+          onChange={(event) => {
+            setMessage(event.target.value);
+            syncMention(event.target.value, event.target.selectionStart);
+          }}
           onClick={(event) => syncMention(message, event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
@@ -312,9 +358,15 @@ export function Composer({
               clean. All modes/tiers and their runtime wiring are unchanged. */}
           {!sideAsk && (
             <label className="composerSelect" title="模式">
-              <select value={mode} onChange={(event) => setMode(event.target.value as Mode)} aria-label="模式">
+              <select
+                value={mode}
+                onChange={(event) => setMode(event.target.value as Mode)}
+                aria-label="模式"
+              >
                 {PRIMARY_MODES.map((item) => (
-                  <option key={item} value={item}>{MODE_LABELS[item]}</option>
+                  <option key={item} value={item}>
+                    {MODE_LABELS[item]}
+                  </option>
                 ))}
               </select>
             </label>
@@ -327,14 +379,21 @@ export function Composer({
                 aria-label="权限档"
               >
                 {PERMISSION_TIERS.map((tier) => (
-                  <option key={tier.id} value={tier.id}>{tier.label}</option>
+                  <option key={tier.id} value={tier.id}>
+                    {tier.label}
+                  </option>
                 ))}
               </select>
             </label>
           )}
         </div>
         {isRunning && onStop && !sideAsk ? (
-          <button className="composerSend composerStop" type="button" onClick={() => void onStop()} title="停止正在运行的任务">
+          <button
+            className="composerSend composerStop"
+            type="button"
+            onClick={() => void onStop()}
+            title="停止正在运行的任务"
+          >
             <Square size={14} />
             <span>停止</span>
           </button>

@@ -79,7 +79,9 @@ export function buildOrchestrationWorkflowMonitor(rows, workflowId = null) {
   const completed = steps.filter((step) => step.status === "completed").length;
   const failed = steps.filter((step) => step.status === "failed").length;
   const mergeSteps = steps.filter((step) => step.kind === "merge_checkpoint");
-  const verifierSteps = steps.filter((step) => step.kind === "verifier_fanout" || step.kind === "adversarial_review");
+  const verifierSteps = steps.filter(
+    (step) => step.kind === "verifier_fanout" || step.kind === "adversarial_review",
+  );
   const lastMerge = mergeSteps.length ? mergeSteps[mergeSteps.length - 1] : null;
   const lastVerifier = verifierSteps.length ? verifierSteps[verifierSteps.length - 1] : null;
 

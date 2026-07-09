@@ -28,7 +28,11 @@ function parseUnifiedDiff(text: string): DiffLine[] {
       lines.push({ kind: "meta", text: raw });
       continue;
     }
-    if (raw.startsWith("diff --git") || raw.startsWith("index ") || raw.startsWith("new file mode")) {
+    if (
+      raw.startsWith("diff --git") ||
+      raw.startsWith("index ") ||
+      raw.startsWith("new file mode")
+    ) {
       lines.push({ kind: "meta", text: raw });
       continue;
     }
@@ -70,7 +74,13 @@ function toSplitRows(lines: DiffLine[]): SplitRow[] {
   const rows: SplitRow[] = [];
   for (const line of lines) {
     if (line.kind === "meta" || line.kind === "hunk") {
-      rows.push({ kind: line.kind, left: line.text, right: line.text, oldNo: line.oldNo, newNo: line.newNo });
+      rows.push({
+        kind: line.kind,
+        left: line.text,
+        right: line.text,
+        oldNo: line.oldNo,
+        newNo: line.newNo,
+      });
       continue;
     }
     if (line.kind === "del") {
@@ -87,7 +97,12 @@ function toSplitRows(lines: DiffLine[]): SplitRow[] {
   return rows;
 }
 
-function pickStageText(diff: string, staged?: string, unstaged?: string, stage: DiffStage = "all"): string {
+function pickStageText(
+  diff: string,
+  staged?: string,
+  unstaged?: string,
+  stage: DiffStage = "all",
+): string {
   if (stage === "staged") return staged ?? "";
   if (stage === "unstaged") return unstaged ?? "";
   if (staged && unstaged) return [staged, unstaged].filter(Boolean).join("\n\n--- unstaged ---\n");
@@ -139,12 +154,22 @@ export function DiffPreview({
         {path && <div className="diffPreviewPath">{path}</div>}
         <div className="diffPreviewActions">
           {onStageFile && (
-            <button type="button" className="diffActionButton" disabled={staging} onClick={onStageFile}>
+            <button
+              type="button"
+              className="diffActionButton"
+              disabled={staging}
+              onClick={onStageFile}
+            >
               暂存文件
             </button>
           )}
           {onDiscardFile && (
-            <button type="button" className="diffActionButton danger" disabled={staging} onClick={onDiscardFile}>
+            <button
+              type="button"
+              className="diffActionButton danger"
+              disabled={staging}
+              onClick={onDiscardFile}
+            >
               丢弃改动
             </button>
           )}

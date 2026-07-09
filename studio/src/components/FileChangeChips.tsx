@@ -64,9 +64,7 @@ function FileChangeChip({
     if (pending || resolved) return;
     if (kind === "revert") {
       // Destructive: `git checkout -- <path>` discards ALL uncommitted changes to this file.
-      const ok = window.confirm(
-        `将 ${change.path} 还原到上一次提交？该文件未提交的改动将会丢失。`,
-      );
+      const ok = window.confirm(`将 ${change.path} 还原到上一次提交？该文件未提交的改动将会丢失。`);
       if (!ok) return;
     }
     const fn = kind === "accept" ? onAccept : onRevert;
@@ -123,7 +121,11 @@ function FileChangeChip({
               disabled={Boolean(pending)}
               onClick={() => void runAction("accept")}
             >
-              {pending === "accept" ? <Loader2 size={11} className="spinning" /> : <Check size={11} />}
+              {pending === "accept" ? (
+                <Loader2 size={11} className="spinning" />
+              ) : (
+                <Check size={11} />
+              )}
             </button>
           )}
           {onRevert && (
@@ -135,7 +137,11 @@ function FileChangeChip({
               disabled={Boolean(pending)}
               onClick={() => void runAction("revert")}
             >
-              {pending === "revert" ? <Loader2 size={11} className="spinning" /> : <Undo2 size={11} />}
+              {pending === "revert" ? (
+                <Loader2 size={11} className="spinning" />
+              ) : (
+                <Undo2 size={11} />
+              )}
             </button>
           )}
         </span>

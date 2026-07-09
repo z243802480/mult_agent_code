@@ -31,12 +31,20 @@ export function DiffScopeToolbar({
               <GitBranch size={13} />
               <span>{gitStatus.branch ?? "HEAD"}</span>
               <span className="muted">
-                {gitStatus.clean ? "· 干净" : `· ${gitStatus.change_count ?? gitStatus.changes?.length ?? 0} 处改动`}
+                {gitStatus.clean
+                  ? "· 干净"
+                  : `· ${gitStatus.change_count ?? gitStatus.changes?.length ?? 0} 处改动`}
               </span>
             </p>
           )}
         </div>
-        <button type="button" className="iconButton" title="刷新 git 状态" onClick={onRefresh} disabled={loading}>
+        <button
+          type="button"
+          className="iconButton"
+          title="刷新 git 状态"
+          onClick={onRefresh}
+          disabled={loading}
+        >
           <RefreshCw size={14} className={loading ? "spinning" : ""} />
         </button>
       </div>

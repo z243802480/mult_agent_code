@@ -15,16 +15,34 @@ const port = Number(process.env.ASTERIA_STUDIO_WARM_ROUTE_PORT || 18796);
 
 await setupAcceptedWorkspace(workspace);
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(port), "--python", python], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
-});
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    python,
+  ],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth();
@@ -41,12 +59,20 @@ try {
   const { events } = await fetchEventsUntil(sessionId, (items) =>
     items.some((event) => event.type === "tool_start" && Array.isArray(event.command)),
   );
-  const toolStart = events.find((event) => event.type === "tool_start" && Array.isArray(event.command));
+  const toolStart = events.find(
+    (event) => event.type === "tool_start" && Array.isArray(event.command),
+  );
   const command = toolStart?.command || [];
-  assert(command.includes("--continue-session"), `expected warm route, got ${JSON.stringify(command)}`);
+  assert(
+    command.includes("--continue-session"),
+    `expected warm route, got ${JSON.stringify(command)}`,
+  );
 
   const routeEvent = events.find((event) => event.type === "intent_route");
-  assert(/continue-session|跳过.*plan|warm/i.test(String(routeEvent?.summary || "")), "route reason should mention warm continuation");
+  assert(
+    /continue-session|跳过.*plan|warm/i.test(String(routeEvent?.summary || "")),
+    "route reason should mention warm continuation",
+  );
 
   console.log("Studio warm continuation route smoke passed");
 } finally {
@@ -99,11 +125,19 @@ print(plan.run_id)
 
 function runCommand(command, cwd, envOverrides = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command[0], command.slice(1), { cwd, env: { ...process.env, ...envOverrides }, windowsHide: true });
+    const child = spawn(command[0], command.slice(1), {
+      cwd,
+      env: { ...process.env, ...envOverrides },
+      windowsHide: true,
+    });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
 }
@@ -120,7 +154,9 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {
@@ -135,7 +171,8 @@ async function postJson(route, body) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
@@ -146,8 +183,11 @@ async function fetchEventsUntil(sessionId, predicate) {
   while (Date.now() < deadline) {
     latest = await fetchJson(route);
     if (predicate(latest.events || [])) return latest;
-    if (server.exitCode !== null) throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
+    if (server.exitCode !== null)
+      throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Timed out waiting for warm route tool_start. events=${(latest.events || []).length}`);
+  throw new Error(
+    `Timed out waiting for warm route tool_start. events=${(latest.events || []).length}`,
+  );
 }

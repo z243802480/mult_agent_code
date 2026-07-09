@@ -48,7 +48,12 @@ function ToastItem({ item }: { item: Toast }) {
           {item.action.label}
         </button>
       )}
-      <button type="button" className="toastClose" aria-label="关闭" onClick={() => setExiting(true)}>
+      <button
+        type="button"
+        className="toastClose"
+        aria-label="关闭"
+        onClick={() => setExiting(true)}
+      >
         <X size={13} />
       </button>
     </div>

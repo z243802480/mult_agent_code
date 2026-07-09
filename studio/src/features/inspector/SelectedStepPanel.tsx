@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ArrowUpRight, FileText } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { FileText } from "lucide-react";
 import type { AnyRecord, StudioEvent } from "../../types";
 import { Metric, formatMs } from "../../components/Shared";
 import { CopyablePre } from "../../components/CopyablePre";
 import { firstText } from "../../narrative";
-import { asArray, asRecord, formatUsage } from "./inspectorUtils";
+import { asRecord, formatUsage } from "./inspectorUtils";
 
 type InspectorSection = {
   id: string;
@@ -45,7 +45,9 @@ function RefList({
 }
 
 function evidenceRefToPath(value: string, runId?: string): string {
-  const text = String(value || "").trim().replace(/\\/g, "/");
+  const text = String(value || "")
+    .trim()
+    .replace(/\\/g, "/");
   if (!text) return "";
   if (text.startsWith(".asteria/runs/")) return text;
   if (runId && /^[A-Za-z0-9_.-]+\.(json|jsonl|md|txt|log)$/i.test(text)) {
@@ -67,7 +69,13 @@ function KeyValueList({ items }: { items: { label: string; value: string }[] }) 
   );
 }
 
-function RecordList({ items, render }: { items: AnyRecord[]; render: (item: AnyRecord) => string }) {
+function RecordList({
+  items,
+  render,
+}: {
+  items: AnyRecord[];
+  render: (item: AnyRecord) => string;
+}) {
   return (
     <div className="recordList">
       {items.map((item, index) => (
@@ -82,7 +90,7 @@ function RecordList({ items, render }: { items: AnyRecord[]; render: (item: AnyR
 
 export function buildInspectorSections(
   event: StudioEvent | null,
-  onOpenFile?: (path: string) => Promise<void>
+  onOpenFile?: (path: string) => Promise<void>,
 ): InspectorSection[] {
   if (!event) return [];
   const shellItems = [
@@ -101,9 +109,18 @@ export function buildInspectorSections(
   const diagnostics: AnyRecord[] = [
     ...(event.model_provider ? [{ provider: event.model_provider, model: event.model_name }] : []),
     ...(event.source
-      ? [{ source: event.source, channel: event.runtime_channel, event_type: event.runtime_event_type, run_id: event.run_id }]
+      ? [
+          {
+            source: event.source,
+            channel: event.runtime_channel,
+            event_type: event.runtime_event_type,
+            run_id: event.run_id,
+          },
+        ]
       : []),
-    ...(event.content_delta && !event.type.startsWith("tool_") ? [{ content: event.content_delta }] : []),
+    ...(event.content_delta && !event.type.startsWith("tool_")
+      ? [{ content: event.content_delta }]
+      : []),
   ].filter(Boolean);
   // Per-step telemetry gets its own scannable metric view (latency + token breakdown) instead of
   // being dumped as raw JSON inside Diagnostics.
@@ -132,7 +149,11 @@ export function buildInspectorSections(
       content: (
         <RecordList
           items={fileChanges}
-          render={(item) => firstText(`${String(item.operation ?? item.event_type ?? "change")} ${String(item.path ?? "")}`)}
+          render={(item) =>
+            firstText(
+              `${String(item.operation ?? item.event_type ?? "change")} ${String(item.path ?? "")}`,
+            )
+          }
         />
       ),
     },
@@ -143,8 +164,12 @@ export function buildInspectorSections(
       empty: "该事件没有产物或证据引用。",
       content: (
         <>
-          {artifacts.length > 0 && <RefList title="产物" items={artifacts} runId={event.run_id} onOpenFile={onOpenFile} />}
-          {evidence.length > 0 && <RefList title="证据" items={evidence} runId={event.run_id} onOpenFile={onOpenFile} />}
+          {artifacts.length > 0 && (
+            <RefList title="产物" items={artifacts} runId={event.run_id} onOpenFile={onOpenFile} />
+          )}
+          {evidence.length > 0 && (
+            <RefList title="证据" items={evidence} runId={event.run_id} onOpenFile={onOpenFile} />
+          )}
         </>
       ),
     },
@@ -166,9 +191,11 @@ export function buildInspectorSections(
           render={(item) =>
             firstText(
               item.provider ? `${String(item.provider)}/${String(item.model ?? "unknown")}` : "",
-              item.source ? `${String(item.source)} ${String(item.channel ?? "")}/${String(item.event_type ?? "")}` : "",
+              item.source
+                ? `${String(item.source)} ${String(item.channel ?? "")}/${String(item.event_type ?? "")}`
+                : "",
               String(item.content ?? ""),
-              JSON.stringify(item)
+              JSON.stringify(item),
             )
           }
         />
@@ -215,26 +242,46 @@ function TelemetryView({ telemetry }: { telemetry: AnyRecord }) {
 }
 
 function IntentAuditView({ items }: { items: AnyRecord[] }) {
-  const audit = (items.find((item) => item.intent_kind || item.route || item.permission_effect) ?? {}) as AnyRecord;
+  const audit = (items.find((item) => item.intent_kind || item.route || item.permission_effect) ??
+    {}) as AnyRecord;
   if (!items.length) return null;
   return (
     <div className="intentAudit">
       <div className="intentAuditGrid">
-        <Metric label="路由" value={String(audit.route ?? audit.selected_mode ?? "unknown")} tone="good" />
+        <Metric
+          label="路由"
+          value={String(audit.route ?? audit.selected_mode ?? "unknown")}
+          tone="good"
+        />
         <Metric label="意图" value={String(audit.intent_kind ?? "unknown")} tone="warn" />
-        <Metric label="权限" value={String(audit.permission_effect ?? "unknown")} tone={String(audit.permission_effect ?? "").includes("execute") ? "warn" : "good"} />
+        <Metric
+          label="权限"
+          value={String(audit.permission_effect ?? "unknown")}
+          tone={String(audit.permission_effect ?? "").includes("execute") ? "warn" : "good"}
+        />
       </div>
       <div className="keyValueList">
-        <div><small>原因</small><pre>{String(audit.reason ?? "未记录路由原因。")}</pre></div>
-        <div><small>Prompt 增强</small><pre>{String(audit.prompt_enrichment ?? "none")}</pre></div>
-        <div><small>原始元数据</small><CopyablePre text={JSON.stringify(items, null, 2)} /></div>
+        <div>
+          <small>原因</small>
+          <pre>{String(audit.reason ?? "未记录路由原因。")}</pre>
+        </div>
+        <div>
+          <small>Prompt 增强</small>
+          <pre>{String(audit.prompt_enrichment ?? "none")}</pre>
+        </div>
+        <div>
+          <small>原始元数据</small>
+          <CopyablePre text={JSON.stringify(items, null, 2)} />
+        </div>
       </div>
     </div>
   );
 }
 
 export function InspectorTabs({ sections }: { sections: InspectorSection[] }) {
-  const [active, setActive] = useState(sections.find((section) => section.count > 0)?.id ?? sections[0]?.id ?? "shell");
+  const [active, setActive] = useState(
+    sections.find((section) => section.count > 0)?.id ?? sections[0]?.id ?? "shell",
+  );
   useEffect(() => {
     if (!sections.some((section) => section.id === active && section.count > 0)) {
       setActive(sections.find((section) => section.count > 0)?.id ?? sections[0]?.id ?? "shell");
@@ -245,7 +292,11 @@ export function InspectorTabs({ sections }: { sections: InspectorSection[] }) {
     <div className="inspectorTabs">
       <div className="inspectorTabList">
         {sections.map((section) => (
-          <button className={section.id === active ? "active" : ""} key={section.id} onClick={() => setActive(section.id)}>
+          <button
+            className={section.id === active ? "active" : ""}
+            key={section.id}
+            onClick={() => setActive(section.id)}
+          >
             {section.title}
             <span>{section.count}</span>
           </button>
@@ -257,4 +308,3 @@ export function InspectorTabs({ sections }: { sections: InspectorSection[] }) {
     </div>
   );
 }
-

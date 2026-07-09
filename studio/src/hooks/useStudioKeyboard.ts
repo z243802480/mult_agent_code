@@ -60,5 +60,14 @@ export function useStudioKeyboard({
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sessions, activeSessionId, onTogglePanel, onToggleSidebar, onToggleDiffFocus, onToggleSideChat, onSelectSession, onOpenPalette]);
+  }, [
+    sessions,
+    activeSessionId,
+    onTogglePanel,
+    onToggleSidebar,
+    onToggleDiffFocus,
+    onToggleSideChat,
+    onSelectSession,
+    onOpenPalette,
+  ]);
 }

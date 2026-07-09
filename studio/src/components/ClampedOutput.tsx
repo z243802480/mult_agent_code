@@ -38,12 +38,18 @@ export function ClampedOutput({
         long ? "clamped" : "",
         expanded ? "expanded" : "",
         className ?? "",
-      ].filter(Boolean).join(" ")}
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{ ["--clamp-lines" as string]: String(maxLines) }}
     >
       <pre>{trimmed}</pre>
       <div className="clampedOutputActions">
-        <button type="button" className="clampedOutputCopy" onClick={(event) => void copyText(event)}>
+        <button
+          type="button"
+          className="clampedOutputCopy"
+          onClick={(event) => void copyText(event)}
+        >
           {copied ? <Check size={12} /> : <Copy size={12} />}
           <span>{copied ? "已复制" : "复制"}</span>
         </button>

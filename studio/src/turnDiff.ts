@@ -22,7 +22,10 @@ export function splitIntoTurns(steps: NarrativeStepType[]): NarrativeStepType[][
   let leading: NarrativeStepType[] | null = null;
   for (const step of steps) {
     if (step.kind === "goal") {
-      if (leading) { turns.push(leading); leading = null; }
+      if (leading) {
+        turns.push(leading);
+        leading = null;
+      }
       if (current) turns.push(current);
       current = [step];
     } else if (current) {
@@ -50,13 +53,17 @@ function turnMiddleSteps(turnSteps: NarrativeStepType[]): NarrativeStepType[] {
 function turnUserPreview(turnSteps: NarrativeStepType[]): string {
   const goalStep = turnSteps[0];
   const goalEvent = goalStep?.events[0];
-  const text = String(goalEvent?.content_delta ?? goalStep?.summary ?? goalStep?.title ?? "").trim();
+  const text = String(
+    goalEvent?.content_delta ?? goalStep?.summary ?? goalStep?.title ?? "",
+  ).trim();
   if (text.length <= 72) return text;
   return `${text.slice(0, 69)}…`;
 }
 
 export function buildTurnDiffScopes(events: StudioEvent[]): TurnDiffScope[] {
-  const mainEvents = events.filter((event) => !event.display_level || event.display_level === "main");
+  const mainEvents = events.filter(
+    (event) => !event.display_level || event.display_level === "main",
+  );
   const narrative = buildRunNarrative(toNarrativeEvents(mainEvents));
   const turns = splitIntoTurns(narrative.steps);
   const scopes: TurnDiffScope[] = [

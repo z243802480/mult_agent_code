@@ -37,5 +37,5 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren, ErrorFallba
 createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
     <App />
-  </ErrorBoundary>
+  </ErrorBoundary>,
 );

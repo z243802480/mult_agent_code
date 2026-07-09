@@ -12,16 +12,24 @@ const secondRunId = "run-20990101-0002";
 
 await writeContinuationWorkspace();
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
-});
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth();
@@ -51,10 +59,15 @@ try {
   const { events } = await fetchEventsUntil(sessionId, (items) =>
     items.some((event) => event.type === "final_answer" && event.phase === "chat"),
   );
-  const finalAnswer = events.find((event) => event.type === "final_answer" && event.phase === "chat");
+  const finalAnswer = events.find(
+    (event) => event.type === "final_answer" && event.phase === "chat",
+  );
   const answerText = String(finalAnswer?.content_delta || "");
   assert(answerText.trim().length > 0, "continuation ask should return a final answer");
-  assert(!/Temporary local fallback/i.test(answerText), "ask should not fall back to generic wrapper");
+  assert(
+    !/Temporary local fallback/i.test(answerText),
+    "ask should not fall back to generic wrapper",
+  );
 
   console.log("Studio S8 resume continuation smoke passed");
 } finally {
@@ -115,7 +128,8 @@ async function writeContinuationWorkspace() {
         path: "Plan/Todo -> Tool Use -> Verify -> Next step",
         active_stage: "plan",
         current_step: step,
-        next_command: runId === firstRunId ? "asteria review --latest" : "asteria goal \"续作：补充测试与文档\"",
+        next_command:
+          runId === firstRunId ? "asteria review --latest" : 'asteria goal "续作：补充测试与文档"',
         plan: {
           transcript_kind: "plan",
           title: "制定计划",
@@ -137,7 +151,8 @@ async function writeContinuationWorkspace() {
         path: "Plan/Todo -> Tool Use -> Verify -> Next step",
         active_stage: "plan",
         current_step: step,
-        next_command: runId === firstRunId ? "asteria review --latest" : "asteria goal \"续作：补充测试与文档\"",
+        next_command:
+          runId === firstRunId ? "asteria review --latest" : 'asteria goal "续作：补充测试与文档"',
         plan: {
           transcript_kind: "plan",
           title: "制定计划",
@@ -184,7 +199,9 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {
@@ -199,7 +216,8 @@ async function postJson(route, body) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
@@ -210,8 +228,11 @@ async function fetchEventsUntil(sessionId, predicate) {
   while (Date.now() < deadline) {
     latest = await fetchJson(route);
     if (predicate(latest.events || [])) return latest;
-    if (server.exitCode !== null) throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
+    if (server.exitCode !== null)
+      throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Timed out waiting for continuation ask answer. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`);
+  throw new Error(
+    `Timed out waiting for continuation ask answer. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`,
+  );
 }

@@ -1,5 +1,15 @@
 import React from "react";
-import { FolderOpen, GitBranch, LayoutList, PanelRightClose, PanelRightOpen, RefreshCw, Settings, ShieldCheck, WifiOff } from "lucide-react";
+import {
+  FolderOpen,
+  GitBranch,
+  LayoutList,
+  PanelRightClose,
+  PanelRightOpen,
+  RefreshCw,
+  Settings,
+  ShieldCheck,
+  WifiOff,
+} from "lucide-react";
 import type { SettingsPayload } from "../types";
 import type { ConnectivityStatus } from "../api";
 import { permissionTier } from "../permissionTiers";

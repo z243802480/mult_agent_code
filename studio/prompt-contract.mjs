@@ -20,13 +20,14 @@ export function planAnswerContract(intentKind = "general") {
     "Make reasonable assumptions when details are missing, state them briefly, and avoid asking multiple clarifying questions before giving value.",
     "Avoid domain-specific canned templates. Use a general planning pattern and adapt it to the user's actual request.",
   ];
-  const shape = intentKind === "travel_plan"
-    ? "For travel planning, include assumptions, day-by-day schedule, pace, backup options, budget/transport notes, and what to book or confirm next."
-    : intentKind === "learning_plan"
-      ? "For learning planning, include current-level assumptions, phases, daily/weekly routines, practice methods, feedback loops, and measurable checkpoints."
-      : intentKind === "content_plan"
-        ? "For content or work planning, include audience/goal assumptions, outline, production steps, review criteria, and a concrete next draft step."
-        : "For general planning, choose sections that fit the request; do not force irrelevant categories.";
+  const shape =
+    intentKind === "travel_plan"
+      ? "For travel planning, include assumptions, day-by-day schedule, pace, backup options, budget/transport notes, and what to book or confirm next."
+      : intentKind === "learning_plan"
+        ? "For learning planning, include current-level assumptions, phases, daily/weekly routines, practice methods, feedback loops, and measurable checkpoints."
+        : intentKind === "content_plan"
+          ? "For content or work planning, include audience/goal assumptions, outline, production steps, review criteria, and a concrete next draft step."
+          : "For general planning, choose sections that fit the request; do not force irrelevant categories.";
   return [...base, shape];
 }
 

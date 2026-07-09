@@ -64,10 +64,18 @@
   text-align: center;
 }
 
-.gitChangeBadge.status-modified { color: var(--warn); }
-.gitChangeBadge.status-added { color: var(--ok); }
-.gitChangeBadge.status-deleted { color: var(--bad); }
-.gitChangeBadge.status-untracked { color: var(--accent); }
+.gitChangeBadge.status-modified {
+  color: var(--warn);
+}
+.gitChangeBadge.status-added {
+  color: var(--ok);
+}
+.gitChangeBadge.status-deleted {
+  color: var(--bad);
+}
+.gitChangeBadge.status-untracked {
+  color: var(--accent);
+}
 
 .gitChangePath {
   font-family: var(--font-mono);
@@ -494,7 +502,10 @@ button.aggregateDiffChip {
   position: absolute;
   right: 6px;
   top: 6px;
-  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .markdownCodeWrap:hover .markdownCodeCopy,

@@ -54,7 +54,9 @@ export function NarrativeStep({
   selected: StudioEvent | null;
   onSelect: (event: StudioEvent) => void;
 }) {
-  const [open, setOpen] = useState(step.defaultOpen && step.kind !== "tool" && step.kind !== "repair");
+  const [open, setOpen] = useState(
+    step.defaultOpen && step.kind !== "tool" && step.kind !== "repair",
+  );
   const primary = step.events[0];
   const time = primary ? formatEventTime(primary.created_at) : "";
   const cap = capabilityInfo(primary);
@@ -66,9 +68,7 @@ export function NarrativeStep({
       <article className="narrativeStep goal completed">
         <div className="goalBubble">
           <p>{userText}</p>
-          <span className="goalMeta">
-            {time}
-          </span>
+          <span className="goalMeta">{time}</span>
         </div>
       </article>
     );
@@ -79,7 +79,9 @@ export function NarrativeStep({
   // runtime summary (which carries CLI/maintainer text) is intentionally not shown here.
   if (step.kind === "hold") {
     const data = (primary?.data ?? {}) as Record<string, unknown>;
-    const promotable = Array.isArray(data.promotable_files) ? data.promotable_files.map(String) : [];
+    const promotable = Array.isArray(data.promotable_files)
+      ? data.promotable_files.map(String)
+      : [];
     const risky = Array.isArray(data.risky_files) ? data.risky_files.map(String) : [];
     const count = promotable.length;
     return (
@@ -138,11 +140,8 @@ export function NarrativeStep({
         <div className="resumeLine">
           <RotateCcw size={14} />
           <span className="resumeText">
-            {applied > 0
-              ? `已继续 — 复用了 ${applied} 条此前的决定`
-              : "已继续该会话"}
-            {created > 0 && `，并排入 ${created} 个后续任务`}
-            。
+            {applied > 0 ? `已继续 — 复用了 ${applied} 条此前的决定` : "已继续该会话"}
+            {created > 0 && `，并排入 ${created} 个后续任务`}。
           </span>
           {time && <span className="resumeTime">{time}</span>}
         </div>
@@ -154,7 +153,15 @@ export function NarrativeStep({
     <article className={`narrativeStep ${step.kind} ${step.status}`}>
       <button className="stepChrome" onClick={() => setOpen((o) => !o)}>
         <span className="stepIcon">
-          {cap ? (cap.type === "mcp" ? <Plug size={14} /> : <Sparkles size={14} />) : stepIcon(step.kind)}
+          {cap ? (
+            cap.type === "mcp" ? (
+              <Plug size={14} />
+            ) : (
+              <Sparkles size={14} />
+            )
+          ) : (
+            stepIcon(step.kind)
+          )}
         </span>
         <span className="stepLabels">
           <strong>{step.label}</strong>
@@ -189,7 +196,11 @@ export function NarrativeStep({
           {/* Real verification commands + outcomes (ADR-0021): `✓/✗ $ <command>` lines carried on the
               verification event's content_delta, shown as the actual checks that ran — not just a count. */}
           {step.kind === "verification" && primary?.content_delta && (
-            <ClampedOutput text={primary.content_delta} className="stepVerificationDetail" maxLines={10} />
+            <ClampedOutput
+              text={primary.content_delta}
+              className="stepVerificationDetail"
+              maxLines={10}
+            />
           )}
           <div className="stepEvents">
             {step.events.map((event) => (

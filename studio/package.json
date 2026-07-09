@@ -8,6 +8,10 @@
     "server": "node server.mjs",
     "start:studio": "powershell -ExecutionPolicy Bypass -File ./start-studio.ps1",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,cjs,json,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,cjs,json,css}\"",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "smoke:run-detail": "node scripts/run-detail-smoke.mjs",
@@ -38,9 +42,18 @@
     "vite": "^7.2.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.60.0",
     "@types/node": "^24.10.2",
     "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "eslint-plugin-unused-imports": "^4.4.1",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.4",
+    "typescript-eslint": "^8.63.0"
   }
 }

@@ -45,7 +45,11 @@ for (const item of cases) {
   const audit = intentAuditFor(item.message, item.mode, item.permission, route);
   assert.equal(route.mode, item.expected.mode, `${item.name}: route mode`);
   assert.equal(audit.intent_kind, item.expected.intent_kind, `${item.name}: intent kind`);
-  assert.equal(audit.permission_effect, item.expected.permission_effect, `${item.name}: permission effect`);
+  assert.equal(
+    audit.permission_effect,
+    item.expected.permission_effect,
+    `${item.name}: permission effect`,
+  );
 }
 
 assert.equal(classifyChatRequest("设计一个青岛3天旅游计划"), "travel_plan");

@@ -107,9 +107,15 @@ function GitChangeRow({
 }) {
   const badge = STATUS_LABEL[change.status] ?? "~";
   return (
-    <button type="button" className={active ? "gitChangeRow active" : "gitChangeRow"} onClick={onSelect}>
+    <button
+      type="button"
+      className={active ? "gitChangeRow active" : "gitChangeRow"}
+      onClick={onSelect}
+    >
       <span className={`gitChangeBadge status-${change.status}`}>{badge}</span>
-      <span className="gitChangePath" title={change.path}>{basename(change.path)}</span>
+      <span className="gitChangePath" title={change.path}>
+        {basename(change.path)}
+      </span>
     </button>
   );
 }
@@ -134,15 +140,25 @@ function TurnScopeRow({
   const delta =
     additions !== undefined || deletions !== undefined ? (
       <span className="gitChangeDelta">
-        {additions !== undefined && additions > 0 ? <span className="deltaAdd">+{additions}</span> : null}
-        {deletions !== undefined && deletions > 0 ? <span className="deltaDel">-{deletions}</span> : null}
+        {additions !== undefined && additions > 0 ? (
+          <span className="deltaAdd">+{additions}</span>
+        ) : null}
+        {deletions !== undefined && deletions > 0 ? (
+          <span className="deltaDel">-{deletions}</span>
+        ) : null}
       </span>
     ) : null;
 
   return (
-    <button type="button" className={active ? "gitChangeRow active" : "gitChangeRow"} onClick={onSelect}>
+    <button
+      type="button"
+      className={active ? "gitChangeRow active" : "gitChangeRow"}
+      onClick={onSelect}
+    >
       <span className={`gitChangeBadge status-${status}`}>{badge}</span>
-      <span className="gitChangePath" title={path}>{basename(path)}</span>
+      <span className="gitChangePath" title={path}>
+        {basename(path)}
+      </span>
       {delta}
     </button>
   );

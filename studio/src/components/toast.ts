@@ -27,10 +27,7 @@ function emit(): void {
   listeners.forEach((listener) => listener());
 }
 
-export function pushToast(
-  message: string,
-  opts: { tone?: ToastTone } & ToastOptions = {},
-): number {
+export function pushToast(message: string, opts: { tone?: ToastTone } & ToastOptions = {}): number {
   const id = nextId++;
   toasts = [
     ...toasts,
@@ -55,7 +52,8 @@ export function dismissToast(id: number): void {
 }
 
 export const toast = {
-  success: (message: string, opts?: ToastOptions) => pushToast(message, { ...opts, tone: "success" }),
+  success: (message: string, opts?: ToastOptions) =>
+    pushToast(message, { ...opts, tone: "success" }),
   error: (message: string, opts?: ToastOptions) => pushToast(message, { ...opts, tone: "error" }),
   info: (message: string, opts?: ToastOptions) => pushToast(message, { ...opts, tone: "info" }),
 };

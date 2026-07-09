@@ -50,7 +50,9 @@ export function LiveStream({
   const isWaiting = activeStep?.status === "waiting_user";
   const modelText = cleanReasoning(
     steps
-      .filter((step) => step.kind === "thinking" || step.kind === "plan" || step.kind === "verification")
+      .filter(
+        (step) => step.kind === "thinking" || step.kind === "plan" || step.kind === "verification",
+      )
       .map((step) => {
         const event = step.events[0];
         // Render the real streamed model delta for every phase. The delta is already accumulated
@@ -59,19 +61,28 @@ export function LiveStream({
         return event?.content_delta || step.summary || "";
       })
       .filter(Boolean)
-      .join("\n\n")
+      .join("\n\n"),
   );
-  const toolSteps = steps.filter((step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent");
+  const toolSteps = steps.filter(
+    (step) => step.kind === "tool" || step.kind === "repair" || step.kind === "subagent",
+  );
   const fileChanges = extractFileChangesFromSteps(steps);
   const fileStats = aggregateFileChangeStats(fileChanges);
   const permEvent = steps
     .flatMap((step) => step.events)
-    .find((event) => event.type === "permission_request" && event.status === "waiting_user" && event.job_id);
+    .find(
+      (event) =>
+        event.type === "permission_request" && event.status === "waiting_user" && event.job_id,
+    );
 
   return (
     <div className="liveStream">
       <div className="livePhaseRow">
-        {isWaiting ? <span className="livePhaseDot waiting" /> : <Loader2 size={13} className="spinning liveSpinner" />}
+        {isWaiting ? (
+          <span className="livePhaseDot waiting" />
+        ) : (
+          <Loader2 size={13} className="spinning liveSpinner" />
+        )}
         <span className="livePhaseLabel">{phaseLabel}</span>
         {activeStep?.title && activeStep.title !== phaseLabel && (
           <span className="livePhaseTitle">{activeStep.title}</span>
@@ -91,7 +102,9 @@ export function LiveStream({
           files={fileStats.files}
           additions={fileStats.additions}
           deletions={fileStats.deletions}
-          onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
+          onClick={
+            turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined
+          }
         />
       ) : (
         <FileChangeChips changes={fileChanges} onSelect={onFileChangeClick} />
@@ -99,7 +112,12 @@ export function LiveStream({
 
       {showToolStreams && modelText && (
         <div className="streamTextWrap">
-          <ClampedOutput text={modelText} className="liveModelText" maxLines={8} defaultExpanded={expandOutput} />
+          <ClampedOutput
+            text={modelText}
+            className="liveModelText"
+            maxLines={8}
+            defaultExpanded={expandOutput}
+          />
           <span className="streamCaret" aria-hidden="true" />
         </div>
       )}

@@ -15,7 +15,12 @@
 
 .skel {
   animation: skelShimmer 1.4s ease-in-out infinite;
-  background: linear-gradient(90deg, var(--surface-1) 25%, var(--surface-2) 50%, var(--surface-1) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--surface-1) 25%,
+    var(--surface-2) 50%,
+    var(--surface-1) 75%
+  );
   background-size: 200% 100%;
   border-radius: var(--radius-sm);
   height: 12px;
@@ -46,6 +51,10 @@
 }
 
 @keyframes skelShimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }

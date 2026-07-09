@@ -9,9 +9,11 @@ import { fileURLToPath } from "node:url";
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(studioDir, "..");
 const workspace = process.env.B6_SIM_WORKSPACE || "h:/beta_user_sim/workspace";
-const port = Number(process.env.B6_SIM_PORT || (8700 + Math.floor(Math.random() * 200)));
+const port = Number(process.env.B6_SIM_PORT || 8700 + Math.floor(Math.random() * 200));
 const python = process.env.ASTERIA_PYTHON || "python";
-const taskPack = JSON.parse(readFileSync(path.join(repoRoot, "benchmarks/beta_user_tasks.json"), "utf8"));
+const taskPack = JSON.parse(
+  readFileSync(path.join(repoRoot, "benchmarks/beta_user_tasks.json"), "utf8"),
+);
 const taskId = process.env.B6_TASK_ID || "small_code_change";
 const task = taskPack.tasks.find((item) => item.id === taskId);
 if (!task) throw new Error(`unknown B6_TASK_ID: ${taskId}`);
@@ -30,7 +32,15 @@ if (existsSync(workspace)) {
   rmSync(workspace, { recursive: true, force: true });
 }
 
-await runPython(["-m", "asteria_runtime", "init", "--root", workspace, "--north-star-title", "Beta sim"]);
+await runPython([
+  "-m",
+  "asteria_runtime",
+  "init",
+  "--root",
+  workspace,
+  "--north-star-title",
+  "Beta sim",
+]);
 note("A4", "init fresh workspace");
 
 if (taskId === "small_code_change") {
@@ -44,31 +54,65 @@ if (taskId === "small_code_change") {
 }
 
 for (const tier of ["strong", "medium"]) {
-  const check = JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "model-check", "--root", workspace, "--tier", tier, "--json"]));
+  const check = JSON.parse(
+    await runPythonCapture([
+      "-m",
+      "asteria_runtime",
+      "model-check",
+      "--root",
+      workspace,
+      "--tier",
+      tier,
+      "--json",
+    ]),
+  );
   if (!check.call_ok) throw new Error(`model-check ${tier} failed`);
 }
 note("A3", "model routes ok");
 
-const preview = JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "studio", "--root", workspace, "--json"]));
+const preview = JSON.parse(
+  await runPythonCapture(["-m", "asteria_runtime", "studio", "--root", workspace, "--json"]),
+);
 if (!preview.studio_dir) throw new Error("studio preview failed");
 note("A5", `studio preview ${preview.ui_url}`);
 
-const server = spawn(process.execPath, [
-  "server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(port), "--python", python,
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    python,
+  ],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 let boot = "";
-server.stdout.on("data", (c) => { boot += c; });
-server.stderr.on("data", (c) => { boot += c; });
+server.stdout.on("data", (c) => {
+  boot += c;
+});
+server.stderr.on("data", (c) => {
+  boot += c;
+});
 try {
   await waitFor(() => boot.includes("Asteria Studio listening"), 20000, "studio API failed");
 
   const base = `http://127.0.0.1:${port}`;
   const { session } = await postJson(`${base}/api/studio/sessions`, {});
   const submit = await postJson(`${base}/api/studio/sessions/${session.session_id}/messages`, {
-    message: goalText, mode: "run", permission: "ask",
+    message: goalText,
+    mode: "run",
+    permission: "ask",
   });
   if (!submit.needs_permission) throw new Error("expected Studio permission card (B3)");
-  await patchJson(`${base}/api/studio/sessions/${session.session_id}/jobs/${submit.job_id}/permission`, { action: "allow" });
+  await patchJson(
+    `${base}/api/studio/sessions/${session.session_id}/jobs/${submit.job_id}/permission`,
+    { action: "allow" },
+  );
   note("B3", "Studio permission_request → Allow");
   note("B1", "Studio run job started (wait for ready_for_accept)");
 
@@ -80,14 +124,19 @@ try {
   note("B2", `session events: ${[...types].slice(0, 12).join(", ")}`);
 
   const diagnostics = await getJson(`${base}/api/diagnostics`);
-  note("B4", `workflow=${JSON.stringify(diagnostics.workflow)} friction=${JSON.stringify(friction)}`);
+  note(
+    "B4",
+    `workflow=${JSON.stringify(diagnostics.workflow)} friction=${JSON.stringify(friction)}`,
+  );
 } finally {
   server.kill("SIGTERM");
   await sleep(500);
 }
 
 await runPython(["-m", "asteria_runtime", "accept", "--root", workspace]);
-const status = JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "status", "--root", workspace, "--json"]));
+const status = JSON.parse(
+  await runPythonCapture(["-m", "asteria_runtime", "status", "--root", workspace, "--json"]),
+);
 if (status.current_phase !== "ACCEPTED") throw new Error(`accept failed: ${status.current_phase}`);
 note("C2", "accept ok");
 
@@ -99,21 +148,48 @@ if (process.env.B6_WARM_CONTINUATION === "1" && taskId === "small_code_change") 
 }
 
 const totalMin = Math.round((Date.now() - startedAt) / 60000);
-console.log(JSON.stringify({ ok: true, task_id: taskId, workspace, total_min: totalMin, log, friction, warm }, null, 2));
+console.log(
+  JSON.stringify(
+    { ok: true, task_id: taskId, workspace, total_min: totalMin, log, friction, warm },
+    null,
+    2,
+  ),
+);
 
 async function runWarmContinuationGoal() {
-  const warmGoal = process.env.B6_WARM_GOAL_TEXT
-    || "再给 greet_cli 增加 --uppercase 参数，输出时将名字转为大写，并补一个 pytest。";
+  const warmGoal =
+    process.env.B6_WARM_GOAL_TEXT ||
+    "再给 greet_cli 增加 --uppercase 参数，输出时将名字转为大写，并补一个 pytest。";
   const warmPort = port + 1;
   const warmStarted = Date.now();
-  const warmServer = spawn(process.execPath, [
-    "server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(warmPort), "--python", python,
-  ], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+  const warmServer = spawn(
+    process.execPath,
+    [
+      "server.mjs",
+      "--workspace",
+      workspace,
+      "--runtime-root",
+      repoRoot,
+      "--port",
+      String(warmPort),
+      "--python",
+      python,
+    ],
+    { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+  );
   let warmBoot = "";
-  warmServer.stdout.on("data", (c) => { warmBoot += c; });
-  warmServer.stderr.on("data", (c) => { warmBoot += c; });
+  warmServer.stdout.on("data", (c) => {
+    warmBoot += c;
+  });
+  warmServer.stderr.on("data", (c) => {
+    warmBoot += c;
+  });
   try {
-    await waitFor(() => warmBoot.includes("Asteria Studio listening"), 20000, "warm studio API failed");
+    await waitFor(
+      () => warmBoot.includes("Asteria Studio listening"),
+      20000,
+      "warm studio API failed",
+    );
     const base = `http://127.0.0.1:${warmPort}`;
     const { session } = await postJson(`${base}/api/studio/sessions`, {});
     const submit = await postJson(`${base}/api/studio/sessions/${session.session_id}/messages`, {
@@ -128,7 +204,9 @@ async function runWarmContinuationGoal() {
     note("W1", "warm continuation job started (--continue-session expected)");
     await waitForReadyOrAssist(base, session.session_id);
     const { events } = await getJson(`${base}/api/studio/sessions/${session.session_id}/events`);
-    const toolStart = events.find((event) => event.type === "tool_start" && Array.isArray(event.command));
+    const toolStart = events.find(
+      (event) => event.type === "tool_start" && Array.isArray(event.command),
+    );
     const command = toolStart?.command || [];
     if (!command.includes("--continue-session")) {
       throw new Error(`warm route missing --continue-session: ${JSON.stringify(command)}`);
@@ -181,10 +259,10 @@ function resolveGreetTestPath(root) {
 
 function isReady(status) {
   return Boolean(
-    status.can_accept
-    || status.workflow_state === "ready_for_accept"
-    || status.recommended_next_command === "accept"
-    || String(status.recommended_next_command || "").includes("accept"),
+    status.can_accept ||
+    status.workflow_state === "ready_for_accept" ||
+    status.recommended_next_command === "accept" ||
+    String(status.recommended_next_command || "").includes("accept"),
   );
 }
 
@@ -195,121 +273,142 @@ async function waitForReadyOrAssist(base, sessionId) {
   let awaitJobs = false;
   let inProgressIdlePolls = 0;
 
-  await waitFor(async () => {
-    if (awaitJobs) {
-      await waitForSessionJobsIdle(base, sessionId);
-      awaitJobs = false;
-    }
+  await waitFor(
+    async () => {
+      if (awaitJobs) {
+        await waitForSessionJobsIdle(base, sessionId);
+        awaitJobs = false;
+      }
 
-    if (actionCooldown > 0) {
-      actionCooldown -= 1;
-      return false;
-    }
+      if (actionCooldown > 0) {
+        actionCooldown -= 1;
+        return false;
+      }
 
-    const status = await getStatusJson();
-    if (isReady(status)) return true;
+      const status = await getStatusJson();
+      if (isReady(status)) return true;
 
-    const rec = normalizeCommand(status.recommended_next_command);
-    const sig = `${status.workflow_state}|${rec}|${status.pending_decision_count}|${status.can_accept}`;
+      const rec = normalizeCommand(status.recommended_next_command);
+      const sig = `${status.workflow_state}|${rec}|${status.pending_decision_count}|${status.can_accept}`;
 
-    if (Number(status.pending_decision_count) > 0 || rec.startsWith("decide")) {
-      const advanced = await resolvePendingDecisions(base, sessionId, status);
-      if (advanced) {
-        friction.decide += 1;
-        actionCooldown = 12;
+      if (Number(status.pending_decision_count) > 0 || rec.startsWith("decide")) {
+        const advanced = await resolvePendingDecisions(base, sessionId, status);
+        if (advanced) {
+          friction.decide += 1;
+          actionCooldown = 12;
+          awaitJobs = true;
+          stagnant = 0;
+          lastSig = "";
+          inProgressIdlePolls = 0;
+          return false;
+        }
+        if (
+          Number(status.pending_decision_count) > 0 &&
+          rec.startsWith("decide") &&
+          stagnant >= 8
+        ) {
+          throw new Error(`pending decisions unresolved: ${sig}`);
+        }
+      }
+
+      const action = resolveRuntimeAction(rec);
+      if (action) {
+        if (action === "model-check") {
+          const tierMatch = rec.match(/--tier\s+(\w+)/i);
+          const tier = tierMatch?.[1] || "medium";
+          const check = JSON.parse(
+            await runPythonCapture([
+              "-m",
+              "asteria_runtime",
+              "model-check",
+              "--root",
+              workspace,
+              "--tier",
+              tier,
+              "--json",
+            ]),
+          );
+          if (!check.call_ok) throw new Error(`model-check ${tier} failed during assist loop`);
+          note("B1m", `model-check ${tier} ok`);
+          actionCooldown = 4;
+          stagnant = 0;
+          lastSig = "";
+          inProgressIdlePolls = 0;
+          return false;
+        }
+        if (action === "debug") {
+          friction.debug += 1;
+          if (friction.debug > 4) {
+            throw new Error(`too many debug cycles (${friction.debug}) at ${sig}`);
+          }
+        }
+        if (action === "resume") friction.resume += 1;
+        await triggerRuntimeAction(base, sessionId, action);
+        note("B1x", `Studio runtime action: ${action}`);
+        actionCooldown = action === "debug" ? 8 : 6;
         awaitJobs = true;
         stagnant = 0;
         lastSig = "";
         inProgressIdlePolls = 0;
         return false;
       }
-      if (Number(status.pending_decision_count) > 0 && rec.startsWith("decide") && stagnant >= 8) {
-        throw new Error(`pending decisions unresolved: ${sig}`);
-      }
-    }
 
-    const action = resolveRuntimeAction(rec);
-    if (action) {
-      if (action === "model-check") {
-        const tierMatch = rec.match(/--tier\s+(\w+)/i);
-        const tier = tierMatch?.[1] || "medium";
-        const check = JSON.parse(
-          await runPythonCapture(["-m", "asteria_runtime", "model-check", "--root", workspace, "--tier", tier, "--json"]),
-        );
-        if (!check.call_ok) throw new Error(`model-check ${tier} failed during assist loop`);
-        note("B1m", `model-check ${tier} ok`);
-        actionCooldown = 4;
-        stagnant = 0;
-        lastSig = "";
-        inProgressIdlePolls = 0;
-        return false;
-      }
-      if (action === "debug") {
-        friction.debug += 1;
-        if (friction.debug > 4) {
-          throw new Error(`too many debug cycles (${friction.debug}) at ${sig}`);
-        }
-      }
-      if (action === "resume") friction.resume += 1;
-      await triggerRuntimeAction(base, sessionId, action);
-      note("B1x", `Studio runtime action: ${action}`);
-      actionCooldown = action === "debug" ? 8 : 6;
-      awaitJobs = true;
-      stagnant = 0;
-      lastSig = "";
-      inProgressIdlePolls = 0;
-      return false;
-    }
-
-    const stillRunning = /in_progress|running|execute/i.test(
-      `${status.workflow_state || ""} ${status.current_phase || ""}`,
-    );
-    if (!rec && stillRunning) {
-      const runningJobs = await sessionJobsRunning(base, sessionId);
-      if (!runningJobs) {
-        inProgressIdlePolls += 1;
-        if (inProgressIdlePolls >= 15) {
-          friction.resume += 1;
-          await triggerRuntimeAction(base, sessionId, "resume");
-          note("B1x", "nudge resume (in_progress idle, no studio jobs)");
-          actionCooldown = 6;
-          awaitJobs = true;
+      const stillRunning = /in_progress|running|execute/i.test(
+        `${status.workflow_state || ""} ${status.current_phase || ""}`,
+      );
+      if (!rec && stillRunning) {
+        const runningJobs = await sessionJobsRunning(base, sessionId);
+        if (!runningJobs) {
+          inProgressIdlePolls += 1;
+          if (inProgressIdlePolls >= 15) {
+            friction.resume += 1;
+            await triggerRuntimeAction(base, sessionId, "resume");
+            note("B1x", "nudge resume (in_progress idle, no studio jobs)");
+            actionCooldown = 6;
+            awaitJobs = true;
+            inProgressIdlePolls = 0;
+          }
+        } else {
           inProgressIdlePolls = 0;
         }
-      } else {
-        inProgressIdlePolls = 0;
+        stagnant = 0;
+        lastSig = sig;
+        return false;
       }
-      stagnant = 0;
-      lastSig = sig;
-      return false;
-    }
 
-    inProgressIdlePolls = 0;
-    if (sig === lastSig) stagnant += 1;
-    else {
-      stagnant = 0;
-      lastSig = sig;
-    }
-    if (stagnant >= 25) {
-      throw new Error(`stagnant workflow at ${sig}`);
-    }
-    return false;
-  }, 900000, "Studio run did not reach ready_for_accept");
+      inProgressIdlePolls = 0;
+      if (sig === lastSig) stagnant += 1;
+      else {
+        stagnant = 0;
+        lastSig = sig;
+      }
+      if (stagnant >= 25) {
+        throw new Error(`stagnant workflow at ${sig}`);
+      }
+      return false;
+    },
+    900000,
+    "Studio run did not reach ready_for_accept",
+  );
 }
 
 async function waitForSessionJobsIdle(base, sessionId) {
-  await waitFor(async () => {
-    const status = await getStatusJson();
-    if (isReady(status)) return true;
-    const jobsRunning = await sessionJobsRunning(base, sessionId);
-    if (!jobsRunning) return true;
-    // Long goal runs legitimately keep a job "running" — don't block the assist loop forever.
-    const stillActive = /in_progress|running|execute/i.test(
-      `${status.workflow_state || ""} ${status.current_phase || ""}`,
-    );
-    if (stillActive) return false;
-    return true;
-  }, 540000, "Studio jobs did not finish");
+  await waitFor(
+    async () => {
+      const status = await getStatusJson();
+      if (isReady(status)) return true;
+      const jobsRunning = await sessionJobsRunning(base, sessionId);
+      if (!jobsRunning) return true;
+      // Long goal runs legitimately keep a job "running" — don't block the assist loop forever.
+      const stillActive = /in_progress|running|execute/i.test(
+        `${status.workflow_state || ""} ${status.current_phase || ""}`,
+      );
+      if (stillActive) return false;
+      return true;
+    },
+    540000,
+    "Studio jobs did not finish",
+  );
 }
 
 async function sessionJobsRunning(base, sessionId) {
@@ -318,7 +417,9 @@ async function sessionJobsRunning(base, sessionId) {
 }
 
 function normalizeCommand(raw) {
-  return String(raw || "").replace(/^asteria\s+/, "").trim();
+  return String(raw || "")
+    .replace(/^asteria\s+/, "")
+    .trim();
 }
 
 function resolveRuntimeAction(rec) {
@@ -327,7 +428,12 @@ function resolveRuntimeAction(rec) {
   if (normalized.startsWith("decide")) return null;
   if (normalized.startsWith("model-check")) return "model-check";
   if (normalized.includes("debug")) return "debug";
-  if (normalized.startsWith("resume") || normalized.startsWith("continue") || normalized.startsWith("run")) return "resume";
+  if (
+    normalized.startsWith("resume") ||
+    normalized.startsWith("continue") ||
+    normalized.startsWith("run")
+  )
+    return "resume";
   if (normalized.startsWith("replan")) return "resume";
   if (normalized.startsWith("review")) return "review";
   return null;
@@ -398,7 +504,9 @@ async function triggerRuntimeAction(base, sessionId, action) {
   const body = { next_action: action, permission: "allow" };
   const result = await postJson(`${base}/api/studio/sessions/${sessionId}/runtime-actions`, body);
   if (result.needs_permission && result.job_id) {
-    await patchJson(`${base}/api/studio/sessions/${sessionId}/jobs/${result.job_id}/permission`, { action: "allow" });
+    await patchJson(`${base}/api/studio/sessions/${sessionId}/jobs/${result.job_id}/permission`, {
+      action: "allow",
+    });
     return;
   }
   if (!result.ok && !result.started) {
@@ -407,10 +515,14 @@ async function triggerRuntimeAction(base, sessionId, action) {
 }
 
 async function getStatusJson() {
-  return JSON.parse(await runPythonCapture(["-m", "asteria_runtime", "status", "--root", workspace, "--json"]));
+  return JSON.parse(
+    await runPythonCapture(["-m", "asteria_runtime", "status", "--root", workspace, "--json"]),
+  );
 }
 
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 async function waitFor(predicate, timeoutMs, message) {
   const start = Date.now();
@@ -428,20 +540,32 @@ async function getJson(url) {
 }
 
 async function postJson(url, body) {
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(`POST ${url} ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 async function patchJson(url, body) {
-  const res = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(`PATCH ${url} ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
 function runPython(args, cwd = repoRoot) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, args, { cwd, stdio: "inherit", env: { ...process.env, PYTHONPATH: path.join(repoRoot, "src") } });
+    const child = spawn(python, args, {
+      cwd,
+      stdio: "inherit",
+      env: { ...process.env, PYTHONPATH: path.join(repoRoot, "src") },
+    });
     child.on("error", reject);
     child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
   });
@@ -449,11 +573,20 @@ function runPython(args, cwd = repoRoot) {
 
 function runPythonCapture(args, cwd = repoRoot) {
   return new Promise((resolve, reject) => {
-    const child = spawn(python, args, { cwd, env: { ...process.env, PYTHONPATH: path.join(repoRoot, "src") } });
+    const child = spawn(python, args, {
+      cwd,
+      env: { ...process.env, PYTHONPATH: path.join(repoRoot, "src") },
+    });
     let out = "";
-    child.stdout?.on("data", (c) => { out += c; });
-    child.stderr?.on("data", (c) => { out += c; });
+    child.stdout?.on("data", (c) => {
+      out += c;
+    });
+    child.stderr?.on("data", (c) => {
+      out += c;
+    });
     child.on("error", reject);
-    child.on("exit", (code) => (code === 0 ? resolve(out) : reject(new Error(out || `exit ${code}`))));
+    child.on("exit", (code) =>
+      code === 0 ? resolve(out) : reject(new Error(out || `exit ${code}`)),
+    );
   });
 }

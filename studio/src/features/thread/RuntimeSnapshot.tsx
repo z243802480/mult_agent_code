@@ -1,9 +1,19 @@
 import React, { useState } from "react";
 import { CircleDot, Loader2 } from "lucide-react";
-import type { AnyRecord, OverviewPayload, PermissionPreview, RunDetailPayload, StudioEvent } from "../../types";
+import type {
+  AnyRecord,
+  OverviewPayload,
+  PermissionPreview,
+  RunDetailPayload,
+  StudioEvent,
+} from "../../types";
 import { asArray, asRecord, firstText, stripBackendWording, textOrFallback } from "./threadUtils";
 import { actionLabel, latestActiveEvent, runtimeProgress } from "./runtimeNarrative";
-import { decisionHint, pendingDecisionSummary, preferredDecisionOptionId, runtimeNextStepSummary } from "./decisionGuidance";
+import {
+  decisionHint,
+  preferredDecisionOptionId,
+  runtimeNextStepSummary,
+} from "./decisionGuidance";
 
 function DecisionCard({
   runId,
@@ -20,7 +30,8 @@ function DecisionCard({
   const [answer, setAnswer] = useState("");
   const [answering, setAnswering] = useState(false);
   const decisionId = String(decision.decision_id ?? "");
-  const recommended = preferredDecisionOptionId(decision) || String(decision.recommended_option_id ?? "");
+  const recommended =
+    preferredDecisionOptionId(decision) || String(decision.recommended_option_id ?? "");
   const options = asArray(decision.options) as AnyRecord[];
   const impact = asRecord(decision.impact);
   const metadata = asRecord(decision.metadata);
@@ -58,7 +69,11 @@ function DecisionCard({
           <CircleDot size={15} />
           <strong>{textOrFallback(decision.question, "智能体有个问题要问你")}</strong>
         </div>
-        {hint && <div className="decisionMeta"><span className="decisionHint">{hint}</span></div>}
+        {hint && (
+          <div className="decisionMeta">
+            <span className="decisionHint">{hint}</span>
+          </div>
+        )}
         <textarea
           className="openQuestionInput"
           value={answer}
@@ -74,7 +89,11 @@ function DecisionCard({
           }}
         />
         <div className="openQuestionActions">
-          <button className="runtimeActionButton primary" disabled={!answer.trim() || answering} onClick={() => void submitAnswer()}>
+          <button
+            className="runtimeActionButton primary"
+            disabled={!answer.trim() || answering}
+            onClick={() => void submitAnswer()}
+          >
             {answering ? <Loader2 size={13} className="spinning" /> : "发送回答"}
           </button>
           <small className="openQuestionHint">⌘/Ctrl + Enter</small>
@@ -98,7 +117,8 @@ function DecisionCard({
         {recommended && <span>建议: {recommended.replace(/_/g, " ")}</span>}
         {Object.keys(impact).length > 0 && (
           <span>
-            风险 {textOrFallback(impact.risk, "medium")} / 预算 {textOrFallback(impact.budget, "medium")}
+            风险 {textOrFallback(impact.risk, "medium")} / 预算{" "}
+            {textOrFallback(impact.budget, "medium")}
           </span>
         )}
       </div>
@@ -126,7 +146,6 @@ function DecisionCard({
   );
 }
 
-
 /**
  * Single source of truth for "does this run have an actionable next step?" The bottom Next-action
  * bar (this component) and the per-turn SuggestedActions chips both key off this so the thread never
@@ -149,11 +168,24 @@ export function runtimeSnapshotActionable(
   const loop = asRecord(progress.loop);
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
-  const nextActionValue = firstText(String(mainAction.next_command ?? ""), String(progress.next_command ?? ""));
-  const pendingPermission = Boolean(
-    activeEvent?.type === "permission_request" && activeEvent.status === "waiting_user" && activeEvent.job_id,
+  const nextActionValue = firstText(
+    String(mainAction.next_command ?? ""),
+    String(progress.next_command ?? ""),
   );
-  if (!decisions.length && !pendingPermission && !nextActionValue && !loop.exit_reason && !canReview && !canAccept) return false;
+  const pendingPermission = Boolean(
+    activeEvent?.type === "permission_request" &&
+    activeEvent.status === "waiting_user" &&
+    activeEvent.job_id,
+  );
+  if (
+    !decisions.length &&
+    !pendingPermission &&
+    !nextActionValue &&
+    !loop.exit_reason &&
+    !canReview &&
+    !canAccept
+  )
+    return false;
   return true;
 }
 
@@ -192,34 +224,45 @@ export function RuntimeSnapshot({
   const decisions = (runDetail?.decision_requests ?? []) as AnyRecord[];
   const mainAction = asRecord(runDetail?.main_action);
   const runId = String(runDetail?.run_id ?? "");
-  const nextActionValue = firstText(String(mainAction.next_command ?? ""), String(progress.next_command ?? ""));
+  const nextActionValue = firstText(
+    String(mainAction.next_command ?? ""),
+    String(progress.next_command ?? ""),
+  );
   const mainActionKind = String(mainAction.kind ?? "");
-  const pendingPermission = activeEvent?.type === "permission_request" && activeEvent.status === "waiting_user" && activeEvent.job_id
-    ? activeEvent
-    : null;
+  const pendingPermission =
+    activeEvent?.type === "permission_request" &&
+    activeEvent.status === "waiting_user" &&
+    activeEvent.job_id
+      ? activeEvent
+      : null;
   // Prefer the localized actionLabel over the raw backend main_action.label (which is an English
   // command name like "Debug") so the next-step button reads in Chinese.
-  const nextLabel = nextActionValue ? firstText(actionLabel(nextActionValue), String(mainAction.label ?? "")) : "";
+  const nextLabel = nextActionValue
+    ? firstText(actionLabel(nextActionValue), String(mainAction.label ?? ""))
+    : "";
   const acceptReady = canAccept || /^(?:asteria\s+)?accept\b/i.test(nextActionValue);
-  const nextStep = runtimeNextStepSummary({
-    decisions,
-    nextActionValue,
-    nextLabel,
-    loop,
-    canReview,
-    canAccept,
-    mainActionKind,
-  }) || textOrFallback(
-    loop.exit_reason ? `已停止: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
-    "当前没有需要处理的操作",
-  );
+  const nextStep =
+    runtimeNextStepSummary({
+      decisions,
+      nextActionValue,
+      nextLabel,
+      loop,
+      canReview,
+      canAccept,
+      mainActionKind,
+    }) ||
+    textOrFallback(
+      loop.exit_reason ? `已停止: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
+      "当前没有需要处理的操作",
+    );
 
   // Honest framing: under the default auto-promote config the edits are already in the real
   // workspace by the time Finalize is offered, so say so (change count is a real signal) rather
   // than implying a pre-write approval gate. Finalize records the run as done; it doesn't apply.
-  const acceptStep = acceptReady && workspaceChangeCount > 0
-    ? `工作区有 ${workspaceChangeCount} 个文件已改动——打开差异逐个保留或还原,或直接标记完成。`
-    : null;
+  const acceptStep =
+    acceptReady && workspaceChangeCount > 0
+      ? `工作区有 ${workspaceChangeCount} 个文件已改动——打开差异逐个保留或还原,或直接标记完成。`
+      : null;
 
   // Gate the primary workflow actions so a double-click can't fire duplicate review/accept/decide
   // API calls (the sibling decision + permission cards already gate on busy; this bar did not).
@@ -236,15 +279,32 @@ export function RuntimeSnapshot({
 
   return (
     <section className="runtimeSnapshot compact" aria-label="下一步">
-      <span className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}>
-        {decisions.length || pendingPermission ? "待你处理" : acceptReady ? (workspaceChangeCount > 0 ? "已应用" : "就绪") : canReview ? "待查看" : nextActionValue ? "就绪" : "已停止"}
+      <span
+        className={`runtimeStatus ${decisions.length || pendingPermission ? "waiting_user" : canReview || canAccept || nextActionValue ? "running" : "completed"}`}
+      >
+        {decisions.length || pendingPermission
+          ? "待你处理"
+          : acceptReady
+            ? workspaceChangeCount > 0
+              ? "已应用"
+              : "就绪"
+            : canReview
+              ? "待查看"
+              : nextActionValue
+                ? "就绪"
+                : "已停止"}
       </span>
       <span className="runtimeSnapshotText">{acceptStep ?? nextStep}</span>
       <div className="runtimeSnapshotActions">
         {(canReview || acceptReady) && !decisions.length && !pendingPermission ? (
           <>
             {canReview ? (
-              <button className="runtimeActionButton primary" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction("review"))}>
+              <button
+                className="runtimeActionButton primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void runAction(() => onRuntimeAction("review"))}
+              >
                 {busy ? <Loader2 size={13} className="spinning" /> : "查看"}
               </button>
             ) : null}
@@ -270,44 +330,63 @@ export function RuntimeSnapshot({
             ) : null}
           </>
         ) : decisions.length ? (
-          <button className="runtimeActionButton" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction("decide --list-pending"))}>
+          <button
+            className="runtimeActionButton"
+            type="button"
+            disabled={busy}
+            onClick={() => void runAction(() => onRuntimeAction("decide --list-pending"))}
+          >
             决定
           </button>
         ) : nextActionValue ? (
-          <button className="runtimeActionButton" type="button" disabled={busy} onClick={() => void runAction(() => onRuntimeAction(nextActionValue))}>
+          <button
+            className="runtimeActionButton"
+            type="button"
+            disabled={busy}
+            onClick={() => void runAction(() => onRuntimeAction(nextActionValue))}
+          >
             {nextLabel}
           </button>
         ) : null}
       </div>
-      {runId && decisions.slice(0, 2).map((decision) => (
-        <DecisionCard
-          key={String(decision.decision_id ?? JSON.stringify(decision))}
-          runId={runId}
-          decision={decision}
-          onResolveDecision={onResolveDecision}
-          onAnswerDecision={onAnswerDecision}
-        />
-      ))}
+      {runId &&
+        decisions
+          .slice(0, 2)
+          .map((decision) => (
+            <DecisionCard
+              key={String(decision.decision_id ?? JSON.stringify(decision))}
+              runId={runId}
+              decision={decision}
+              onResolveDecision={onResolveDecision}
+              onAnswerDecision={onAnswerDecision}
+            />
+          ))}
     </section>
   );
 }
 
 export function userFacingStateLabel(value: string): string {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!normalized) return "";
-  if (normalized.includes("provider") || normalized.includes("model-check")) return "模型连接出问题了";
+  if (normalized.includes("provider") || normalized.includes("model-check"))
+    return "模型连接出问题了";
   if (normalized.includes("tool_failed")) return "某一步失败了";
   if (normalized.includes("max_rounds")) return "需要一个决定";
   // S78 auto-repair terminal reasons (must precede the generic "repair" catch below, since
   // "repair_budget_exhausted" also contains "repair"): auto-repair already retried and stopped
   // honestly, so frame it as "I tried" — not "want me to keep trying?".
-  if (normalized.includes("repair_budget_exhausted")) return "我自动重试了几次还是失败——你来看看,还是换个思路?";
-  if (normalized.includes("loop_no_progress")) return "同样的失败一直重复、毫无进展——你来看看,还是换个思路?";
+  if (normalized.includes("repair_budget_exhausted"))
+    return "我自动重试了几次还是失败——你来看看,还是换个思路?";
+  if (normalized.includes("loop_no_progress"))
+    return "同样的失败一直重复、毫无进展——你来看看,还是换个思路?";
   // S79 auto-replan terminal reason (must precede the generic "replan"/"repair" catch, since
   // "replan_budget_exhausted" contains "replan"): auto-replan re-approached the task and stopped.
-  if (normalized.includes("replan_budget_exhausted")) return "我换了两次思路重做还是失败——你来看看,还是重新规划任务?";
-  if (normalized.includes("repair_limit") || normalized.includes("repair")) return "某一步失败了——要我继续尝试,还是换个思路?";
+  if (normalized.includes("replan_budget_exhausted"))
+    return "我换了两次思路重做还是失败——你来看看,还是重新规划任务?";
+  if (normalized.includes("repair_limit") || normalized.includes("repair"))
+    return "某一步失败了——要我继续尝试,还是换个思路?";
   if (normalized.includes("budget_hard_stop")) return "已暂停——需要你的输入";
   return stripBackendWording(value.replace(/_/g, " "));
 }
-

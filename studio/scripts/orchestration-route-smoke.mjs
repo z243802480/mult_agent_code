@@ -14,14 +14,28 @@ const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-orchestration
 
 await setupAcceptedWorkspace(workspace);
 
-const routed = JSON.parse(await runPythonCapture([
-  "-m", "asteria_runtime", "route", "--root", workspace, "--rules-only", "--json",
-  "再给 greet_cli 增加 --quiet 参数并补测试",
-]));
+const routed = JSON.parse(
+  await runPythonCapture([
+    "-m",
+    "asteria_runtime",
+    "route",
+    "--root",
+    workspace,
+    "--rules-only",
+    "--json",
+    "再给 greet_cli 增加 --quiet 参数并补测试",
+  ]),
+);
 
-assert(routed.capability_id === "session_continue_execute", `expected warm continue, got ${routed.capability_id}`);
+assert(
+  routed.capability_id === "session_continue_execute",
+  `expected warm continue, got ${routed.capability_id}`,
+);
 assert(routed.studio_mode === "continue", `expected continue mode, got ${routed.studio_mode}`);
-assert(Array.isArray(routed.catalog?.capabilities), "catalog should expose capabilities to callers");
+assert(
+  Array.isArray(routed.catalog?.capabilities),
+  "catalog should expose capabilities to callers",
+);
 
 console.log("Orchestration route smoke passed");
 
@@ -71,8 +85,12 @@ function runCommand(command, cwd) {
     const child = spawn(command[0], command.slice(1), { cwd, env: process.env, windowsHide: true });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
 }

@@ -15,9 +15,12 @@ function asRecord(value: unknown): AnyRecord {
 
 function normalizeState(raw: string): PlanItemState {
   const s = raw.toLowerCase();
-  if (["done", "completed", "complete", "verified", "passed", "accepted"].includes(s)) return "done";
-  if (["in_progress", "in-progress", "running", "active", "current", "started"].includes(s)) return "in_progress";
-  if (["blocked", "failed", "error", "needs_attention", "waiting_user", "paused"].includes(s)) return "blocked";
+  if (["done", "completed", "complete", "verified", "passed", "accepted"].includes(s))
+    return "done";
+  if (["in_progress", "in-progress", "running", "active", "current", "started"].includes(s))
+    return "in_progress";
+  if (["blocked", "failed", "error", "needs_attention", "waiting_user", "paused"].includes(s))
+    return "blocked";
   return "pending";
 }
 

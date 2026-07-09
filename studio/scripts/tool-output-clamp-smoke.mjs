@@ -11,7 +11,11 @@ const eventCard = readFileSync(path.join(root, "src/components/EventCard.tsx"), 
 
 assert.match(clamped, /clampedOutputCopy/, "ClampedOutput must expose copy action");
 assert.match(clamped, /maxLines = 8/, "ClampedOutput default clamp should be ~8 lines");
-assert.match(live, /defaultExpanded={expandOutput}/, "LiveStream must expand tool output in Verbose");
+assert.match(
+  live,
+  /defaultExpanded={expandOutput}/,
+  "LiveStream must expand tool output in Verbose",
+);
 assert.match(eventCard, /tool_observation/, "EventCard must clamp tool observation bodies");
 
 console.log("tool-output-clamp smoke passed");

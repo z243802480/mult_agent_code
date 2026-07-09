@@ -5,9 +5,17 @@ import { isSessionLive } from "../narrative";
 import { mergeEventLists } from "./eventUtils";
 import { toast } from "../components/toast";
 
-export function useSessionEvents(activeSession: StudioSession | null, sessions: StudioSession[], setSessions: (sessions: StudioSession[]) => void) {
+export function useSessionEvents(
+  activeSession: StudioSession | null,
+  sessions: StudioSession[],
+  setSessions: (sessions: StudioSession[]) => void,
+) {
   const [events, setEvents] = useState<StudioEvent[]>([]);
-  const [pendingTurn, setPendingTurn] = useState<{ message: string; mode: string; startedAt: number } | null>(null);
+  const [pendingTurn, setPendingTurn] = useState<{
+    message: string;
+    mode: string;
+    startedAt: number;
+  } | null>(null);
   const [connectivity, setConnectivity] = useState<ConnectivityStatus>("live");
   const unsubRef = useRef<(() => void) | null>(null);
   // Per-session event cache (I6): switching back to a session restores its events instantly instead
@@ -26,7 +34,10 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
     const sid = activeSession.session_id;
     setEvents(cacheRef.current.get(sid) ?? []);
     setConnectivity("live");
-    void api.events(sid).then((data) => mergeEvents(data.events ?? [])).catch(() => {});
+    void api
+      .events(sid)
+      .then((data) => mergeEvents(data.events ?? []))
+      .catch(() => {});
     unsubRef.current?.();
     unsubRef.current = subscribeToEvents(sid, mergeEvents, setConnectivity);
     return () => {
@@ -39,18 +50,33 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
 
   const isRunning = useMemo(() => isSessionLive(events), [events]);
 
-  async function sendGoal(message: string, mode: string, permission: string, permissionMode?: string) {
+  async function sendGoal(
+    message: string,
+    mode: string,
+    permission: string,
+    permissionMode?: string,
+  ) {
     if (!activeSession) return;
     setPendingTurn({ message, mode, startedAt: Date.now() });
     try {
-      await api.send(activeSession.session_id, message, mode, permission, undefined, permissionMode);
+      await api.send(
+        activeSession.session_id,
+        message,
+        mode,
+        permission,
+        undefined,
+        permissionMode,
+      );
       const refreshed = await api.sessions();
       setSessions(refreshed.sessions ?? []);
     } catch {
       // Never silently swallow a failed send — the message was NOT delivered. Offer a Retry that
       // re-sends the exact text (so the draft is not lost) instead of clearing it into the void.
       toast.error("无法发送你的消息——它未被送达。", {
-        action: { label: "重试", onClick: () => void sendGoal(message, mode, permission, permissionMode) },
+        action: {
+          label: "重试",
+          onClick: () => void sendGoal(message, mode, permission, permissionMode),
+        },
       });
     } finally {
       setPendingTurn(null);
@@ -85,7 +111,9 @@ export function useSessionEvents(activeSession: StudioSession | null, sessions: 
       // Never let Stop fail in silence — the run may still be going and the user needs to know.
       toast.error("无法停止运行——请重试。");
     }
-    const eventData = await api.events(activeSession.session_id).catch(() => ({ events: [] as StudioEvent[] }));
+    const eventData = await api
+      .events(activeSession.session_id)
+      .catch(() => ({ events: [] as StudioEvent[] }));
     mergeEvents(eventData.events ?? []);
   }
 

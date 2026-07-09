@@ -26,7 +26,9 @@ export function SessionRail({ sessions, active, isRunning, filter, onSelect }: S
         const showLive = isActive && isRunning;
         const title = cleanSessionTitle(String(session.title || "未命名"));
         const preview = sessionPreview(session);
-        const hint = [title, preview, new Date(session.updated_at).toLocaleString()].filter(Boolean).join(" · ");
+        const hint = [title, preview, new Date(session.updated_at).toLocaleString()]
+          .filter(Boolean)
+          .join(" · ");
         return (
           <button
             key={session.session_id}

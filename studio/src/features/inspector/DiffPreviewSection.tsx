@@ -56,8 +56,20 @@ export function DiffPreviewSection({
               ))}
             </div>
             <div className="diffLayoutTabs">
-              <button type="button" className={diffLayout === "unified" ? "active" : ""} onClick={() => onSelectDiffLayout("unified")}>合并视图</button>
-              <button type="button" className={diffLayout === "split" ? "active" : ""} onClick={() => onSelectDiffLayout("split")}>并排视图</button>
+              <button
+                type="button"
+                className={diffLayout === "unified" ? "active" : ""}
+                onClick={() => onSelectDiffLayout("unified")}
+              >
+                合并视图
+              </button>
+              <button
+                type="button"
+                className={diffLayout === "split" ? "active" : ""}
+                onClick={() => onSelectDiffLayout("split")}
+              >
+                并排视图
+              </button>
             </div>
           </div>
           <DiffPreview

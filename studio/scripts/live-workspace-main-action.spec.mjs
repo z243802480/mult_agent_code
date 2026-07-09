@@ -10,11 +10,15 @@ const port = Number(process.env.ASTERIA_STUDIO_LIVE_PORT || 18795);
 let server;
 
 test.beforeAll(async () => {
-  server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-    cwd: studioDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
-  });
+  server = spawn(
+    process.execPath,
+    ["server.mjs", "--workspace", workspace, "--port", String(port)],
+    {
+      cwd: studioDir,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
+    },
+  );
   await waitForHealth();
 });
 
@@ -28,15 +32,21 @@ test("Studio live workspace main action matches runtime evidence", async ({ page
   const latestRunId = String(overview.runs?.[0]?.run_id ?? "");
   test.skip(!latestRunId, "live workspace has no runtime run to inspect");
 
-  const detail = await fetchJson(`http://127.0.0.1:${port}/api/runs/${encodeURIComponent(latestRunId)}`);
+  const detail = await fetchJson(
+    `http://127.0.0.1:${port}/api/runs/${encodeURIComponent(latestRunId)}`,
+  );
   const action = detail.main_action ?? {};
   const label = String(action.label ?? "").trim();
   if (!label) throw new Error("latest live run did not expose main_action.label");
 
   await page.goto(`http://127.0.0.1:${port}/`);
-  await expect(page.locator(".conversationTurn", { hasText: runtimeGoalTitle(detail) })).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.locator(".conversationTurn", { hasText: runtimeGoalTitle(detail) }),
+  ).toBeVisible({ timeout: 15_000 });
   if (label.toLowerCase() !== "done" && String(action.kind ?? "").toLowerCase() !== "done") {
-    await expect(page.locator(".runtimeActionButton").filter({ hasText: label })).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(".runtimeActionButton").filter({ hasText: label })).toBeVisible({
+      timeout: 15_000,
+    });
   }
   await expect(page.locator(".conversationTurn")).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".turnMiddleBadge")).toBeVisible({ timeout: 15_000 });
@@ -67,18 +77,20 @@ test("Studio live workspace main action matches runtime evidence", async ({ page
 
 function runtimeGoalTitle(detail) {
   return String(
-    detail.goal_spec?.normalized_goal
-    ?? detail.goal_spec?.original_goal
-    ?? detail.run?.goal
-    ?? detail.run?.summary
-    ?? "No goal selected yet"
+    detail.goal_spec?.normalized_goal ??
+      detail.goal_spec?.original_goal ??
+      detail.run?.goal ??
+      detail.run?.summary ??
+      "No goal selected yet",
   );
 }
 
 async function waitForHealth() {
   const deadline = Date.now() + 10_000;
   let stderr = "";
-  server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+  server.stderr.on("data", (chunk) => {
+    stderr += String(chunk);
+  });
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/health`);

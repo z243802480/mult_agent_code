@@ -1,7 +1,7 @@
 import type { AnyRecord, OverviewPayload, RunDetailPayload } from "../../types";
 
 export function asRecord(value: unknown): AnyRecord {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as AnyRecord : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as AnyRecord) : {};
 }
 
 export function asArray(value: unknown): unknown[] {
@@ -20,7 +20,9 @@ export type ContextUsage = {
 // Shared, honest read of context-window usage from the run's cost_report. All values are ESTIMATES
 // the runtime records (there is no billing/pricing data), so callers must label them "est." and never
 // render a monetary cost. Returns null when the run carries no usable usage numbers → render nothing.
-export function readContextUsage(runDetail: RunDetailPayload | null | undefined): ContextUsage | null {
+export function readContextUsage(
+  runDetail: RunDetailPayload | null | undefined,
+): ContextUsage | null {
   const cost = asRecord(runDetail?.cost_report);
   if (!Object.keys(cost).length) return null;
   const num = (value: unknown): number | null => {
@@ -36,7 +38,13 @@ export function readContextUsage(runDetail: RunDetailPayload | null | undefined)
   const pressure = cost.context_pressure_status ? String(cost.context_pressure_status) : null;
   // The server may redact raw token counts (they come back non-numeric); the ratio is enough to render
   // an honest pressure meter on its own. Only bail when we have neither a ratio nor any token number.
-  if (ratio === null && usedTokens === null && windowTokens === null && inputTokens === null && outputTokens === null) {
+  if (
+    ratio === null &&
+    usedTokens === null &&
+    windowTokens === null &&
+    inputTokens === null &&
+    outputTokens === null
+  ) {
     return null;
   }
   return { usedTokens, windowTokens, ratio, inputTokens, outputTokens, pressure };
@@ -62,7 +70,7 @@ export function latestRoute(runDetail: RunDetailPayload | null): AnyRecord | nul
           ? finalSummary.model_route_timeline
           : []
   ) as AnyRecord[];
-  return timeline.length ? timeline.at(-1) ?? null : null;
+  return timeline.length ? (timeline.at(-1) ?? null) : null;
 }
 
 export function metricTone(value: string): string {
@@ -103,4 +111,3 @@ export function workerCountFromTree(workerTree: AnyRecord): number {
     items.reduce((total, item) => total + 1 + countNodes(asArray(item.children) as AnyRecord[]), 0);
   return countNodes(roots);
 }
-

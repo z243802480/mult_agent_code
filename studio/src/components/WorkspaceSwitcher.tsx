@@ -19,7 +19,9 @@ function WorkspaceProfileBadges({ profile }: { profile: WorkspaceProfile | null 
   return (
     <div className="workspaceBadges">
       {badges.map((badge) => (
-        <span key={badge} className="workspaceBadge">{badge}</span>
+        <span key={badge} className="workspaceBadge">
+          {badge}
+        </span>
       ))}
     </div>
   );
@@ -46,7 +48,8 @@ export function WorkspaceSwitcher({
     if (!open) return;
     setPathValue(currentWorkspace);
     setError(null);
-    void api.workspaces()
+    void api
+      .workspaces()
       .then((payload) => setRecent(payload.recent_workspaces ?? []))
       .catch(() => setRecent([]));
   }, [open, currentWorkspace]);
@@ -54,7 +57,9 @@ export function WorkspaceSwitcher({
   // Escape closes the switcher (was only dismissable via the backdrop / cancel button).
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -67,7 +72,8 @@ export function WorkspaceSwitcher({
       return;
     }
     const timer = window.setTimeout(() => {
-      void api.workspaceProfile(trimmed)
+      void api
+        .workspaceProfile(trimmed)
         .then((profile) => setPreviewProfile(profile))
         .catch(() => setPreviewProfile(null));
     }, 250);
@@ -144,7 +150,9 @@ export function WorkspaceSwitcher({
         <div className="workspaceCurrent">
           <small>当前主工作目录</small>
           <strong title={currentWorkspace}>{currentLabel}</strong>
-          <span className="muted" title={currentWorkspace}>{currentWorkspace}</span>
+          <span className="muted" title={currentWorkspace}>
+            {currentWorkspace}
+          </span>
         </div>
 
         <label className="workspaceField">
@@ -160,7 +168,12 @@ export function WorkspaceSwitcher({
               }}
               disabled={loading}
             />
-            <button type="button" className="secondaryButton" onClick={() => void browseFolder()} disabled={loading}>
+            <button
+              type="button"
+              className="secondaryButton"
+              onClick={() => void browseFolder()}
+              disabled={loading}
+            >
               <FolderOpen size={15} /> 浏览
             </button>
           </div>
@@ -201,7 +214,12 @@ export function WorkspaceSwitcher({
           <button type="button" className="secondaryButton" onClick={onClose} disabled={loading}>
             取消
           </button>
-          <button type="button" className="primaryButton" onClick={() => void openPath(pathValue)} disabled={loading}>
+          <button
+            type="button"
+            className="primaryButton"
+            onClick={() => void openPath(pathValue)}
+            disabled={loading}
+          >
             {loading ? "打开中…" : "打开工作区"}
           </button>
         </footer>

@@ -13,12 +13,32 @@ import { runVerificationHint, latestCorrectnessVerdict } from "./runtimeNarrativ
 import { cleanReasoning } from "../../narrative";
 import { SuggestedActions } from "./SuggestedActions";
 import { TurnRewindButton } from "./TurnRewindButton";
-import { middleRepresentativeEvent, middleSummary, hasFinalAnswerForPhase, isModelThinkingStep } from "./turnHelpers";
+import {
+  middleRepresentativeEvent,
+  middleSummary,
+  hasFinalAnswerForPhase,
+  isModelThinkingStep,
+} from "./turnHelpers";
 import { formatEventTime } from "./threadUtils";
 
 export type ProcessExpandSignal = { mode: "expand" | "collapse"; id: number } | null;
 
-function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, excludeFilePaths }: {
+function TurnMiddle({
+  steps,
+  selected,
+  onSelect,
+  onPermit,
+  expandSignal,
+  onFileChangeClick,
+  onFileAccept,
+  onFileRevert,
+  turnIndex,
+  turnDiffLabel,
+  onTurnDiffSelect,
+  onAggregateDiffClick,
+  compactDiff,
+  excludeFilePaths,
+}: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -34,9 +54,14 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   compactDiff?: boolean;
   excludeFilePaths?: Set<string>;
 }) {
-  const hasPendingPermission = steps.some((s) => s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"));
+  const hasPendingPermission = steps.some((s) =>
+    s.events.some((e) => e.type === "permission_request" && e.status === "waiting_user"),
+  );
   const representative = middleRepresentativeEvent(steps);
-  const selectedInMiddle = Boolean(selected && steps.some((step) => step.events.some((event) => event.event_id === selected.event_id)));
+  const selectedInMiddle = Boolean(
+    selected &&
+    steps.some((step) => step.events.some((event) => event.event_id === selected.event_id)),
+  );
   const [open, setOpen] = useState(hasPendingPermission);
   useEffect(() => {
     if (!expandSignal) return;
@@ -62,22 +87,29 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
               files={fileStats.files}
               additions={fileStats.additions}
               deletions={fileStats.deletions}
-              onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
+              onClick={
+                turnIndex && onAggregateDiffClick
+                  ? () => onAggregateDiffClick(turnIndex)
+                  : undefined
+              }
             />
           </div>
         )}
-        {hasPendingPermission && steps.map((step) => {
-          const permStep = step.events.find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
-          if (!permStep) return null;
-          return (
-            <PermissionCard
-              key={permStep.event_id}
-              event={permStep}
-              onAllow={() => onPermit(permStep.job_id!, "allow")}
-              onDeny={() => onPermit(permStep.job_id!, "deny")}
-            />
-          );
-        })}
+        {hasPendingPermission &&
+          steps.map((step) => {
+            const permStep = step.events.find(
+              (e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id,
+            );
+            if (!permStep) return null;
+            return (
+              <PermissionCard
+                key={permStep.event_id}
+                event={permStep}
+                onAllow={() => onPermit(permStep.job_id!, "allow")}
+                onDeny={() => onPermit(permStep.job_id!, "deny")}
+              />
+            );
+          })}
       </div>
     );
   }
@@ -87,7 +119,9 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   // pending permissions stay visible, and only the softer detail (plan / verification / observation)
   // folds into the disclosure. Diffs + summary keep reading from ALL steps so nothing is lost.
   const permissionSteps = steps.filter((step) =>
-    step.events.some((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id)
+    step.events.some(
+      (e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id,
+    ),
   );
   const permIds = new Set(permissionSteps.map((step) => step.id));
   // The model's own per-step message (ADR-0021): real model prose, shown as the model speaking above
@@ -104,7 +138,11 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   const decisionSteps = steps.filter((step) => !permIds.has(step.id) && step.kind === "decision");
   const decisionIds = new Set(decisionSteps.map((step) => step.id));
   const toolSteps = steps.filter(
-    (step) => !permIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id) && (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent")
+    (step) =>
+      !permIds.has(step.id) &&
+      !contextIds.has(step.id) &&
+      !narrationIds.has(step.id) &&
+      (step.kind === "tool" || step.kind === "repair" || step.kind === "subagent"),
   );
   const toolIds = new Set(toolSteps.map((step) => step.id));
   // Holistic rule (ADR-0021): the main thread is a conversation, not a machine dashboard. The user
@@ -116,8 +154,11 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
   const DETAIL_KINDS = new Set(["repair", "error", "subagent"]);
   const detailSteps = steps.filter(
     (step) =>
-      !permIds.has(step.id) && !toolIds.has(step.id) && !contextIds.has(step.id) && !narrationIds.has(step.id)
-      && DETAIL_KINDS.has(step.kind)
+      !permIds.has(step.id) &&
+      !toolIds.has(step.id) &&
+      !contextIds.has(step.id) &&
+      !narrationIds.has(step.id) &&
+      DETAIL_KINDS.has(step.kind),
   );
 
   return (
@@ -126,9 +167,13 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
         <div className="turnNarration">
           {narrationSteps.map((step) => {
             const text = cleanReasoning(
-              step.events.map((e) => e.content_delta || "").join("") || step.summary || ""
+              step.events.map((e) => e.content_delta || "").join("") || step.summary || "",
             );
-            return text ? <p key={step.id} className="turnNarrationText">{text}</p> : null;
+            return text ? (
+              <p key={step.id} className="turnNarrationText">
+                {text}
+              </p>
+            ) : null;
           })}
         </div>
       )}
@@ -140,7 +185,9 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
             files={fileStats.files}
             additions={fileStats.additions}
             deletions={fileStats.deletions}
-            onClick={turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined}
+            onClick={
+              turnIndex && onAggregateDiffClick ? () => onAggregateDiffClick(turnIndex) : undefined
+            }
           />
         </div>
       )}
@@ -166,7 +213,9 @@ function TurnMiddle({ steps, selected, onSelect, onPermit, expandSignal, onFileC
         </div>
       )}
       {permissionSteps.map((step) => {
-        const permStep = step.events.find((e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id);
+        const permStep = step.events.find(
+          (e) => e.type === "permission_request" && e.status === "waiting_user" && e.job_id,
+        );
         if (!permStep) return null;
         return (
           <PermissionCard
@@ -248,9 +297,16 @@ function thinkingTokens(steps: NarrativeStepType[]): number {
     for (const event of step.events) {
       const telemetry = event.telemetry as Record<string, unknown> | undefined;
       if (!telemetry) continue;
-      const raw = telemetry.output_tokens ?? telemetry.completion_tokens ?? telemetry.tokens ?? telemetry.total_tokens;
+      const raw =
+        telemetry.output_tokens ??
+        telemetry.completion_tokens ??
+        telemetry.tokens ??
+        telemetry.total_tokens;
       const value = Number(raw);
-      if (Number.isFinite(value) && value > 0) { total += value; found = true; }
+      if (Number.isFinite(value) && value > 0) {
+        total += value;
+        found = true;
+      }
     }
   }
   return found ? total : 0;
@@ -284,10 +340,12 @@ function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; li
       .flatMap((step) => step.events)
       .map((event) => cleanReasoning(event.content_delta || "").trim())
       .filter((t) => t && !THINKING_PLACEHOLDERS.has(t))
-      .join("\n\n")
+      .join("\n\n"),
   ).trim();
   const [open, setOpen] = useState(live);
-  useEffect(() => { if (live) setOpen(true); }, [live]);
+  useEffect(() => {
+    if (live) setOpen(true);
+  }, [live]);
   if (!text) return null;
   const duration = thinkingDurationSeconds(steps);
   const tokens = thinkingTokens(steps);
@@ -299,21 +357,39 @@ function ThinkingBlock({ steps, live = false }: { steps: NarrativeStepType[]; li
 
   return (
     <div className={`thinkingBlock ${open ? "open" : ""}`}>
-      <button type="button" className="thinkingChip" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+      <button
+        type="button"
+        className="thinkingChip"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
         {live ? <Loader2 size={12} className="spinning" /> : <Brain size={12} />}
         <span className="thinkingChipLabel">{label}</span>
         <ChevronRight size={12} className={`chevron ${open ? "open" : ""}`} />
       </button>
       {open && (
         <div className="thinkingBody">
-          <ClampedOutput text={text} className="thinkingText" maxLines={live ? 8 : 14} defaultExpanded={live} />
+          <ClampedOutput
+            text={text}
+            className="thinkingText"
+            maxLines={live ? 8 : 14}
+            defaultExpanded={live}
+          />
         </div>
       )}
     </div>
   );
 }
 
-export function PendingTurn({ message, mode, startedAt }: { message: string; mode: string; startedAt: number }) {
+export function PendingTurn({
+  message,
+  mode,
+  startedAt,
+}: {
+  message: string;
+  mode: string;
+  startedAt: number;
+}) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
@@ -337,7 +413,9 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
       </div>
       <div className="turnWaiting">
         <Loader2 size={14} className="spinning" />
-        <span className="waitingDots" aria-hidden="true"><i /> <i /> <i /></span>
+        <span className="waitingDots" aria-hidden="true">
+          <i /> <i /> <i />
+        </span>
         <strong>{phase}</strong>
         <small>{elapsed}s</small>
       </div>
@@ -345,7 +423,31 @@ export function PendingTurn({ message, mode, startedAt }: { message: string; mod
   );
 }
 
-export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, isRunning, expandSignal, onFileChangeClick, onFileAccept, onFileRevert, turnIndex, turnDiffLabel, onTurnDiffSelect, onAggregateDiffClick, compactDiff, excludeFilePaths, runDetail, viewMode, onTurnRewind, onSuggestedAction, suppressSuggested, onEditMessage, failed }: {
+export function ConversationTurn({
+  steps,
+  selected,
+  onSelect,
+  onPermit,
+  isLast,
+  isRunning,
+  expandSignal,
+  onFileChangeClick,
+  onFileAccept,
+  onFileRevert,
+  turnIndex,
+  turnDiffLabel,
+  onTurnDiffSelect,
+  onAggregateDiffClick,
+  compactDiff,
+  excludeFilePaths,
+  runDetail,
+  viewMode,
+  onTurnRewind,
+  onSuggestedAction,
+  suppressSuggested,
+  onEditMessage,
+  failed,
+}: {
   steps: NarrativeStepType[];
   selected: StudioEvent | null;
   onSelect: (e: StudioEvent) => void;
@@ -382,15 +484,20 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
     return -1;
   })();
   const responseStep = responseIndex >= 0 ? restSteps[responseIndex] : null;
-  const rawMiddleSteps = responseIndex >= 0 ? restSteps.filter((_, index) => index !== responseIndex) : restSteps;
+  const rawMiddleSteps =
+    responseIndex >= 0 ? restSteps.filter((_, index) => index !== responseIndex) : restSteps;
   const responsePhase = responseStep?.events[0]?.phase;
   // The same-phase thinking behind a final answer is just the streamed version of that answer —
   // drop only that duplicate (chat turns) so it isn't shown twice. Reasoning in OTHER phases is
   // genuine intermediate work and is preserved into the ThinkingBlock, NOT surgically deleted on
   // completion (deleting it is what made a real run look like "thought a while, then a review").
-  const hideResponseDuplicate = responseStep ? hasFinalAnswerForPhase([responseStep], responsePhase) : false;
+  const hideResponseDuplicate = responseStep
+    ? hasFinalAnswerForPhase([responseStep], responsePhase)
+    : false;
   const thinkingSteps = rawMiddleSteps.filter(
-    (step) => step.kind === "thinking" && !(hideResponseDuplicate && isModelThinkingStep(step, responsePhase))
+    (step) =>
+      step.kind === "thinking" &&
+      !(hideResponseDuplicate && isModelThinkingStep(step, responsePhase)),
   );
   const processSteps = rawMiddleSteps.filter((step) => step.kind !== "thinking");
   const goalEvent = goalStep?.events[0];
@@ -399,15 +506,20 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
   const turnRunning = isLast && isRunning && !responseStep;
   // Honesty: /run reports lifecycle "completed" but does not inline-run review, so qualify the
   // conclusion with a plain "done but not yet verified" note when the run is unverified.
-  const unverifiedHint = responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null) : "";
+  const unverifiedHint =
+    responseStep && isLast && !isRunning ? runVerificationHint(runDetail ?? null) : "";
   // Symmetry: when the /run loop recorded a passing executable verdict, affirm it explicitly. A bare
   // "completed" with the nag merely suppressed leaves the user unsure verification even happened —
   // the positive badge closes the "completed ≠ verified" gap honestly.
-  const verifiedPass = responseStep && isLast && !isRunning
-    && latestCorrectnessVerdict(runDetail ?? null) === "pass";
+  const verifiedPass =
+    responseStep && isLast && !isRunning && latestCorrectnessVerdict(runDetail ?? null) === "pass";
 
   return (
-    <div className={`conversationTurn${failed ? " failed" : ""}`} id={turnIndex ? `thread-turn-${turnIndex}` : undefined} data-failed={failed ? "true" : undefined}>
+    <div
+      className={`conversationTurn${failed ? " failed" : ""}`}
+      id={turnIndex ? `thread-turn-${turnIndex}` : undefined}
+      data-failed={failed ? "true" : undefined}
+    >
       {isGoalTurn && (
         <div className="turnUser">
           <div className="turnUserBubble">
@@ -429,7 +541,10 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
       )}
       {turnRunning ? (
         rawMiddleSteps.length === 0 ? (
-          <div className="turnRunning"><Loader2 size={14} className="spinning" /><span>启动中…</span></div>
+          <div className="turnRunning">
+            <Loader2 size={14} className="spinning" />
+            <span>启动中…</span>
+          </div>
         ) : rawMiddleSteps.length === 1 && isModelThinkingStep(rawMiddleSteps[0], "chat") ? (
           <ChatStreamPreview step={rawMiddleSteps[0]} />
         ) : (
@@ -475,7 +590,9 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
         </>
       )}
       {unverifiedHint && (
-        <div className="turnUnverifiedNote" role="note">{unverifiedHint}</div>
+        <div className="turnUnverifiedNote" role="note">
+          {unverifiedHint}
+        </div>
       )}
       {verifiedPass && (
         <div className="turnVerifiedNote" role="note">
@@ -499,4 +616,3 @@ export function ConversationTurn({ steps, selected, onSelect, onPermit, isLast, 
     </div>
   );
 }
-

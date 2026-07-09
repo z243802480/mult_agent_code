@@ -30,7 +30,9 @@
   cursor: pointer;
   font-size: 13px;
   padding: 6px 12px;
-  transition: background 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .inspectorTab:hover {
@@ -71,7 +73,9 @@
   position: absolute;
   right: 5px;
   top: 5px;
-  transition: opacity 120ms ease, color 120ms ease;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease;
 }
 
 .copyablePre:hover .copyablePreBtn,
@@ -536,8 +540,12 @@
   background: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
 }
-.subagentDot.isFailed { background: var(--bad); }
-.subagentDot.isDone { background: var(--ok); }
+.subagentDot.isFailed {
+  background: var(--bad);
+}
+.subagentDot.isDone {
+  background: var(--ok);
+}
 .subagentRole {
   flex: 0 0 auto;
   font-weight: 600;

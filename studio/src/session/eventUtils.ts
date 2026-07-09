@@ -28,9 +28,9 @@ export function pickRunTriggerEvent(events: StudioEvent[]): StudioEvent | null {
   events.forEach((event, index) => {
     if (!event.run_id) return;
     if (
-      !event.job_id
-      && event.status === "waiting_user"
-      && ["decision_request", "ask"].includes(String(event.transcript_kind ?? ""))
+      !event.job_id &&
+      event.status === "waiting_user" &&
+      ["decision_request", "ask"].includes(String(event.transcript_kind ?? ""))
     ) {
       decisionIdx = index;
     }

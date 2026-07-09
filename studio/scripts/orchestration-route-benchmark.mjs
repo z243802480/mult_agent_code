@@ -148,7 +148,8 @@ function printReport(results) {
 
   const simpleRows = results.filter((row) => row.expect === "chat_answer");
   const avgHybridSimple =
-    simpleRows.reduce((sum, row) => sum + row.hybrid.elapsed_ms, 0) / Math.max(simpleRows.length, 1);
+    simpleRows.reduce((sum, row) => sum + row.hybrid.elapsed_ms, 0) /
+    Math.max(simpleRows.length, 1);
   const avgRulesSimple =
     simpleRows.reduce((sum, row) => sum + row.rules.elapsed_ms, 0) / Math.max(simpleRows.length, 1);
 
@@ -156,7 +157,9 @@ function printReport(results) {
   console.log(`capability hit rate — hybrid: ${hybridHits}/${total}, rules: ${rulesHits}/${total}`);
   if (!skipModel) console.log(`capability hit rate — pure model mode: ${modelHits}/${total}`);
   console.log(`hybrid fast-path (no model): ${hybridFast}/${total}`);
-  console.log(`simple Q avg latency — hybrid: ${Math.round(avgHybridSimple)}ms, rules: ${Math.round(avgRulesSimple)}ms`);
+  console.log(
+    `simple Q avg latency — hybrid: ${Math.round(avgHybridSimple)}ms, rules: ${Math.round(avgRulesSimple)}ms`,
+  );
   console.log(
     "note: cold run path ~15-25s+ (GoalSpec+Plan); chat_answer route should stay sub-second on hybrid fast path",
   );
@@ -204,8 +207,12 @@ function runCommand(command, cwd) {
     const child = spawn(command[0], command.slice(1), { cwd, env: process.env, windowsHide: true });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
 }

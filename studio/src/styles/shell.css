@@ -57,7 +57,9 @@ body.paneDragging .appShell {
   position: absolute;
   top: 0;
   transform: translateX(-50%);
-  transition: background 0.15s, width 0.15s;
+  transition:
+    background 0.15s,
+    width 0.15s;
   width: 1px;
 }
 

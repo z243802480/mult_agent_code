@@ -1,11 +1,5 @@
 import React, { useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  PanelLeftClose,
-  Plus,
-  Sparkles,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, PanelLeftClose, Plus, Sparkles } from "lucide-react";
 import type { StudioSession, OverviewPayload, SettingsPayload } from "../types";
 import { SignalCard, gateStage, validationTone } from "./Shared";
 import type { StudioViewMode } from "../hooks/useViewMode";

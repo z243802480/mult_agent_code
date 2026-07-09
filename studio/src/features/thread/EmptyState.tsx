@@ -14,10 +14,11 @@ export function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
       <p className="emptyHint">提问、规划,或描述一个目标——涉及敏感操作前 Asteria 会先征询你。</p>
       <div className="examplePrompts">
         {EXAMPLE_PROMPTS.map((ex) => (
-          <button key={ex} type="button" onClick={() => onPrompt(ex)}>{ex}</button>
+          <button key={ex} type="button" onClick={() => onPrompt(ex)}>
+            {ex}
+          </button>
         ))}
       </div>
     </section>
   );
 }
-

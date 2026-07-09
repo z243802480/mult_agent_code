@@ -59,7 +59,12 @@ export function TurnRewindButton({
             <button type="button" onClick={() => setConfirming(false)} disabled={busy}>
               取消
             </button>
-            <button type="button" className="primary" onClick={() => void confirmRewind()} disabled={busy}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void confirmRewind()}
+              disabled={busy}
+            >
               {busy ? "执行中…" : plan.label}
             </button>
           </div>

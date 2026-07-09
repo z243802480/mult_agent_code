@@ -13,20 +13,27 @@ const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-git-smoke-"))
 await runCommand(["git", "init"], workspace);
 await fs.writeFile(path.join(workspace, "hello.txt"), "v1\n", "utf8");
 await runCommand(["git", "add", "hello.txt"], workspace);
-await runCommand(["git", "-c", "user.email=smoke@test", "-c", "user.name=smoke", "commit", "-m", "init"], workspace);
+await runCommand(
+  ["git", "-c", "user.email=smoke@test", "-c", "user.name=smoke", "commit", "-m", "init"],
+  workspace,
+);
 await fs.writeFile(path.join(workspace, "hello.txt"), "v2\n", "utf8");
 
-const server = spawn(process.execPath, [
-  "server.mjs",
-  "--workspace",
-  workspace,
-  "--runtime-root",
-  repoRoot,
-  "--port",
-  String(port),
-  "--python",
-  python,
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    python,
+  ],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 
 try {
   await waitForHealth();
@@ -36,12 +43,18 @@ try {
   if ((status.changes ?? []).length < 1) throw new Error("expected at least one git change");
 
   const target = status.changes[0].path;
-  const diff = await fetchJson(`http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}`);
+  const diff = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}`,
+  );
   if (!diff.ok || !String(diff.diff ?? "").includes("v2")) {
     throw new Error(`git diff missing expected content: ${JSON.stringify(diff)}`);
   }
-  const staged = await fetchJson(`http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}&stage=staged`);
-  const unstaged = await fetchJson(`http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}&stage=unstaged`);
+  const staged = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}&stage=staged`,
+  );
+  const unstaged = await fetchJson(
+    `http://127.0.0.1:${port}/api/studio/git/diff?path=${encodeURIComponent(target)}&stage=unstaged`,
+  );
   if (!unstaged.ok || !String(unstaged.diff ?? unstaged.unstaged ?? "").includes("v2")) {
     throw new Error(`unstaged diff missing expected content: ${JSON.stringify(unstaged)}`);
   }
@@ -49,13 +62,19 @@ try {
     throw new Error("diff payload missing staged/unstaged flags");
   }
 
-  console.log(JSON.stringify({
-    ok: true,
-    summary: "git changes smoke passed",
-    workspace,
-    branch: status.branch,
-    change: target,
-  }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        ok: true,
+        summary: "git changes smoke passed",
+        workspace,
+        branch: status.branch,
+        change: target,
+      },
+      null,
+      2,
+    ),
+  );
 } finally {
   server.kill("SIGTERM");
   await fs.rm(workspace, { recursive: true, force: true });
@@ -66,8 +85,12 @@ function runCommand(command, cwd) {
     const child = spawn(command[0], command.slice(1), { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk; });
-    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
     child.on("close", (code) => {
       if (code === 0) resolve({ stdout, stderr });
       else reject(new Error(`${command.join(" ")} failed (${code}): ${stderr || stdout}`));

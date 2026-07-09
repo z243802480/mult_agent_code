@@ -11,7 +11,9 @@ const fakePackageDir = path.join(workspace, "asteria_runtime", "commands");
 await fs.mkdir(fakePackageDir, { recursive: true });
 await fs.writeFile(path.join(workspace, "asteria_runtime", "__init__.py"), "", "utf8");
 await fs.writeFile(path.join(fakePackageDir, "__init__.py"), "", "utf8");
-await fs.writeFile(path.join(fakePackageDir, "chat_command.py"), String.raw`
+await fs.writeFile(
+  path.join(fakePackageDir, "chat_command.py"),
+  String.raw`
 import json
 import os
 from pathlib import Path
@@ -42,18 +44,28 @@ class ChatCommand:
                 for event in events:
                     f.write(json.dumps(event, ensure_ascii=False) + "\n")
         return ChatResult()
-`, "utf8");
+`,
+  "utf8",
+);
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port), "--python", "python"], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "model", PYTHONPATH: workspace },
-});
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port), "--python", "python"],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "model", PYTHONPATH: workspace },
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth();
@@ -67,13 +79,23 @@ try {
   });
 
   const { events } = await fetchEventsUntil(sessionId, (items) =>
-    items.some((event) => event.type === "final_answer" && event.phase === "chat")
+    items.some((event) => event.type === "final_answer" && event.phase === "chat"),
   );
-  const finalAnswer = events.find((event) => event.type === "final_answer" && event.phase === "chat");
+  const finalAnswer = events.find(
+    (event) => event.type === "final_answer" && event.phase === "chat",
+  );
   const answerText = String(finalAnswer?.content_delta || "");
 
-  assert(answerText.includes("\u9752\u5c9b\u771f\u5b9e\u65b9\u6848") && answerText.includes("\u6808\u6865") && answerText.includes("\u516b\u5927\u5173"), "final answer should reuse the visible streamed Chinese model answer without mojibake");
-  assert(!/Wrong fallback|non-stream answer|internal reasoning|<think>/i.test(answerText), "final answer should not replace stream with fallback or expose thinking tags");
+  assert(
+    answerText.includes("\u9752\u5c9b\u771f\u5b9e\u65b9\u6848") &&
+      answerText.includes("\u6808\u6865") &&
+      answerText.includes("\u516b\u5927\u5173"),
+    "final answer should reuse the visible streamed Chinese model answer without mojibake",
+  );
+  assert(
+    !/Wrong fallback|non-stream answer|internal reasoning|<think>/i.test(answerText),
+    "final answer should not replace stream with fallback or expose thinking tags",
+  );
 
   console.log("Studio chat stream final smoke passed");
 } finally {
@@ -98,7 +120,9 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {
@@ -113,7 +137,8 @@ async function postJson(route, body) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
@@ -124,8 +149,11 @@ async function fetchEventsUntil(sessionId, predicate) {
   while (Date.now() < deadline) {
     latest = await fetchJson(route);
     if (predicate(latest.events || [])) return latest;
-    if (server.exitCode !== null) throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
+    if (server.exitCode !== null)
+      throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Timed out waiting for final answer. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`);
+  throw new Error(
+    `Timed out waiting for final answer. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`,
+  );
 }

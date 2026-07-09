@@ -13,14 +13,20 @@ const ERROR_CATEGORY_LABELS: Record<string, string> = {
   model: "模型",
 };
 
-export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; middleSteps: NarrativeStepType[]; }) {
+export function TurnFinal({
+  step,
+  middleSteps,
+}: {
+  step: NarrativeStepType;
+  middleSteps: NarrativeStepType[];
+}) {
   const event = step.events[0];
   // The closing answer is the MODEL's real prose only (its streamed content_delta / recap). We do NOT
   // fall back to step.summary/title — those are harness-authored status strings ("task-X completed
   // with verified evidence"), and using them here is a self-certification impersonating the model
   // (ADR-0021). When the model produced no prose, render nothing / a neutral note — never a fake pass.
   const isError = step.kind === "error" || step.status === "failed";
-  const text = event?.content_delta || (isError ? (event?.summary || step.summary || "") : "");
+  const text = event?.content_delta || (isError ? event?.summary || step.summary || "" : "");
   const visibleText = humanizeRunConclusion(stripContextNoise(cleanReasoning(text)));
   const modelMeta = turnModelMetadata(middleSteps, step);
   const { lead, details } = splitLeadAndDetails(visibleText);
@@ -29,7 +35,9 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
   const leadText = lead || (isError ? "收尾时出了点问题。" : "");
   // Coarse error category (auth/rate_limit/timeout/network/model) badged from the real error, when
   // the runtime actually detected one — never invented (I12).
-  const category = isError ? String((event?.data as Record<string, unknown> | undefined)?.error_category ?? "") : "";
+  const category = isError
+    ? String((event?.data as Record<string, unknown> | undefined)?.error_category ?? "")
+    : "";
   const categoryLabel = ERROR_CATEGORY_LABELS[category] ?? "";
 
   const [copied, setCopied] = useState(false);
@@ -53,16 +61,28 @@ export function TurnFinal({ step, middleSteps }: { step: NarrativeStepType; midd
         {categoryLabel && <span className="turnFinalErrorTag">{categoryLabel}</span>}
         {modelMeta && <span className="turnFinalMeta">{modelMeta}</span>}
         {copyText && (
-          <button type="button" className="turnFinalCopy" title="复制回答" aria-label="复制回答" onClick={() => void copyAnswer()}>
+          <button
+            type="button"
+            className="turnFinalCopy"
+            title="复制回答"
+            aria-label="复制回答"
+            onClick={() => void copyAnswer()}
+          >
             {copied ? <Check size={12} /> : <Copy size={12} />}
             <span>{copied ? "已复制" : "复制"}</span>
           </button>
         )}
       </div>
       <div className="turnFinalText">
-        {leadText
-          ? <MarkdownBody text={leadText} />
-          : (!details && <span className="turnFinalEmpty" style={{ opacity: 0.6 }}>(无最终结果)</span>)}
+        {leadText ? (
+          <MarkdownBody text={leadText} />
+        ) : (
+          !details && (
+            <span className="turnFinalEmpty" style={{ opacity: 0.6 }}>
+              (无最终结果)
+            </span>
+          )
+        )}
         {details && (
           <details className="turnFinalDetails">
             <summary>运行详情</summary>
@@ -99,7 +119,8 @@ function humanizeRunConclusion(text: string): string {
 }
 
 function stripContextNoise(text: string): string {
-  const backendNoise = /\n(?:Context refs:|Current session:|Next actions:|Model route:|Route rationale:|Evidence refs:|Artifact refs:|Run id:|Latest run:)/i;
+  const backendNoise =
+    /\n(?:Context refs:|Current session:|Next actions:|Model route:|Route rationale:|Evidence refs:|Artifact refs:|Run id:|Latest run:)/i;
   return String(text || "")
     .split(backendNoise)[0]
     .replace(/\n?_Answered with model route:[\s\S]*$/i, "")
@@ -119,7 +140,9 @@ function splitLeadAndDetails(text: string): { lead: string; details: string } {
   const raw = String(text || "");
   const lines = raw.split(/\r?\n/);
   const headingIdx: number[] = [];
-  lines.forEach((line, index) => { if (/^#{2,6}\s+/.test(line)) headingIdx.push(index); });
+  lines.forEach((line, index) => {
+    if (/^#{2,6}\s+/.test(line)) headingIdx.push(index);
+  });
   if (headingIdx.length <= 1) {
     // 0 or 1 section: it's already conversational — render as prose, stripping a lone leading heading.
     const stripped = raw.replace(/^#{2,6}\s+.*$/m, "").trim();

@@ -32,7 +32,10 @@ const second = await client.route({
 const cachedMs = Math.round(performance.now() - cachedStarted);
 
 assert(first.capability_id === "chat_answer", `expected chat_answer, got ${first.capability_id}`);
-assert(first.transport === "worker" || first.transport === "subprocess", `unexpected transport ${first.transport}`);
+assert(
+  first.transport === "worker" || first.transport === "subprocess",
+  `unexpected transport ${first.transport}`,
+);
 assert(second.transport === "cache", `expected cache hit, got ${second.transport}`);
 assert(firstMs < 5000, `first route too slow: ${firstMs}ms`);
 assert(cachedMs < 50, `cache route too slow: ${cachedMs}ms`);
@@ -63,7 +66,11 @@ function runCommand(command, cwd) {
   return new Promise((resolve, reject) => {
     const child = spawn(command[0], command.slice(1), { cwd, env: process.env, windowsHide: true });
     let stderr = "";
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
-    child.on("close", (code) => (code === 0 ? resolve() : reject(new Error(stderr || `exit ${code}`))));
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("close", (code) =>
+      code === 0 ? resolve() : reject(new Error(stderr || `exit ${code}`)),
+    );
   });
 }

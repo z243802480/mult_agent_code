@@ -13,21 +13,32 @@ const mainPort = Number(process.env.ASTERIA_STUDIO_PREVIEW_PORT || 18820);
 const mainBase = `http://127.0.0.1:${mainPort}`;
 
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-preview-smoke-"));
-await fs.writeFile(path.join(workspace, "index.html"),
-  '<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><h1 id="t">HELLO_PREVIEW</h1><script src="app.js"></script></body></html>', "utf8");
+await fs.writeFile(
+  path.join(workspace, "index.html"),
+  '<!doctype html><html><head><link rel="stylesheet" href="style.css"></head><body><h1 id="t">HELLO_PREVIEW</h1><script src="app.js"></script></body></html>',
+  "utf8",
+);
 await fs.writeFile(path.join(workspace, "style.css"), "h1{color:red}", "utf8");
 await fs.writeFile(path.join(workspace, "app.js"), "window.__ok=1;", "utf8");
 await fs.mkdir(path.join(workspace, "img"), { recursive: true });
-await fs.writeFile(path.join(workspace, "img", "logo.svg"), '<svg xmlns="http://www.w3.org/2000/svg"></svg>', "utf8");
+await fs.writeFile(
+  path.join(workspace, "img", "logo.svg"),
+  '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+  "utf8",
+);
 await fs.mkdir(path.join(workspace, "page"), { recursive: true });
 await fs.writeFile(path.join(workspace, "page", "about.html"), "<h1>ABOUT_PAGE</h1>", "utf8");
 await fs.writeFile(path.join(workspace, ".env"), "SECRET=xyz", "utf8"); // must be refused
 
-const server = spawn(process.execPath, [
-  "server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(mainPort),
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(mainPort)],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 
-function assert(cond, message) { if (!cond) throw new Error(message); }
+function assert(cond, message) {
+  if (!cond) throw new Error(message);
+}
 
 try {
   await waitForHealth();
@@ -37,11 +48,17 @@ try {
 
   // index defaulting + html content-type + marker
   const root = await fetchRaw(`${pv}/`);
-  assert(root.status === 200 && /text\/html/.test(root.type), `root not html: ${root.status} ${root.type}`);
+  assert(
+    root.status === 200 && /text\/html/.test(root.type),
+    `root not html: ${root.status} ${root.type}`,
+  );
   assert(root.body.includes("HELLO_PREVIEW"), "index.html content missing");
 
   const css = await fetchRaw(`${pv}/style.css`);
-  assert(css.status === 200 && /text\/css/.test(css.type) && css.body.includes("color:red"), `css wrong: ${css.status} ${css.type}`);
+  assert(
+    css.status === 200 && /text\/css/.test(css.type) && css.body.includes("color:red"),
+    `css wrong: ${css.status} ${css.type}`,
+  );
 
   const js = await fetchRaw(`${pv}/app.js`);
   assert(js.status === 200 && /javascript/.test(js.type), `js wrong: ${js.status} ${js.type}`);
@@ -50,23 +67,36 @@ try {
   assert(svg.status === 200 && /image\/svg/.test(svg.type), `svg wrong: ${svg.status} ${svg.type}`);
 
   const about = await fetchRaw(`${pv}/page/about.html`);
-  assert(about.status === 200 && about.body.includes("ABOUT_PAGE"), `subfolder html wrong: ${about.status}`);
+  assert(
+    about.status === 200 && about.body.includes("ABOUT_PAGE"),
+    `subfolder html wrong: ${about.status}`,
+  );
 
   // Protected + traversal + missing must NOT serve
   const env = await fetchRaw(`${pv}/.env`);
   assert(env.status === 403, `.env should be forbidden, got ${env.status}`);
   const trav = await fetchRaw(`${pv}/../server.mjs`);
-  assert(trav.status === 403 || trav.status === 404, `traversal should be blocked, got ${trav.status}`);
+  assert(
+    trav.status === 403 || trav.status === 404,
+    `traversal should be blocked, got ${trav.status}`,
+  );
   const missing = await fetchRaw(`${pv}/nope.html`);
   assert(missing.status === 404, `missing should be 404, got ${missing.status}`);
 
   // PREVIEW-2: live-reload — served HTML injects the client, and a file edit broadcasts "reload".
   assert(root.body.includes("/__livereload"), "live-reload client not injected into served HTML");
   const reloaded = await waitForReload(pv, () =>
-    fs.writeFile(path.join(workspace, "index.html"), '<!doctype html><body><h1 id="t">EDITED</h1></body>', "utf8"));
+    fs.writeFile(
+      path.join(workspace, "index.html"),
+      '<!doctype html><body><h1 id="t">EDITED</h1></body>',
+      "utf8",
+    ),
+  );
   assert(reloaded, "did not receive live-reload event after editing a workspace file");
 
-  console.log("Studio preview-serve smoke passed (multi-file serve, content-types, path-safety, live-reload)");
+  console.log(
+    "Studio preview-serve smoke passed (multi-file serve, content-types, path-safety, live-reload)",
+  );
 } finally {
   server.kill("SIGTERM");
   await fs.rm(workspace, { recursive: true, force: true });
@@ -106,12 +136,17 @@ async function waitForReload(pv, triggerFn, timeoutMs = 5000) {
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
-    setTimeout(() => { triggerFn().catch(() => {}); }, 300);
+    setTimeout(() => {
+      triggerFn().catch(() => {});
+    }, 300);
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       buf += dec.decode(value, { stream: true });
-      if (/data:\s*reload/.test(buf)) { got = true; break; }
+      if (/data:\s*reload/.test(buf)) {
+        got = true;
+        break;
+      }
     }
   } catch {
     // aborted on timeout

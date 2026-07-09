@@ -83,7 +83,6 @@
   margin-bottom: 5px;
 }
 
-
 .intentAudit {
   display: grid;
   gap: 9px;
@@ -804,7 +803,10 @@
   justify-content: center;
   padding: 14px 8px;
   position: relative;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .themeOption:hover {
@@ -982,9 +984,15 @@
   gap: var(--space-2);
 }
 
-.vmTally .pass { color: var(--ok); }
-.vmTally .fail { color: var(--bad); }
-.vmTally .muted { color: var(--text-muted); }
+.vmTally .pass {
+  color: var(--ok);
+}
+.vmTally .fail {
+  color: var(--bad);
+}
+.vmTally .muted {
+  color: var(--text-muted);
+}
 
 .vmTable {
   display: flex;
@@ -1018,15 +1026,33 @@
   white-space: nowrap;
 }
 
-.vmRow:hover { background: var(--surface-2); color: var(--text-primary); }
-.vmRow.active { border-color: var(--accent-border); background: var(--accent-subtle); }
-.vmRow.pass { border-left-color: var(--ok); }
-.vmRow.fail { border-left-color: var(--bad); }
-.vmRow.unknown { border-left-color: var(--border-strong); }
+.vmRow:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.vmRow.active {
+  border-color: var(--accent-border);
+  background: var(--accent-subtle);
+}
+.vmRow.pass {
+  border-left-color: var(--ok);
+}
+.vmRow.fail {
+  border-left-color: var(--bad);
+}
+.vmRow.unknown {
+  border-left-color: var(--border-strong);
+}
 
-.vmIcon.pass { color: var(--ok); }
-.vmIcon.fail { color: var(--bad); }
-.vmIcon.unknown { color: var(--text-muted); }
+.vmIcon.pass {
+  color: var(--ok);
+}
+.vmIcon.fail {
+  color: var(--bad);
+}
+.vmIcon.unknown {
+  color: var(--text-muted);
+}
 
 .vmName {
   color: var(--text-primary);
@@ -1044,9 +1070,18 @@
   text-transform: uppercase;
 }
 
-.vmStatus.pass { background: var(--ok-subtle); color: var(--ok); }
-.vmStatus.fail { background: var(--bad-subtle); color: var(--bad); }
-.vmStatus.unknown { background: var(--surface-3); color: var(--text-muted); }
+.vmStatus.pass {
+  background: var(--ok-subtle);
+  color: var(--ok);
+}
+.vmStatus.fail {
+  background: var(--bad-subtle);
+  color: var(--bad);
+}
+.vmStatus.unknown {
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
 
 /* ── Loop-quality SLO badges (slice #7) — replaces <pre> dump ── */
 .loopQualityMatrix {
@@ -1071,12 +1106,28 @@
   padding: 2px 8px;
 }
 
-.lqBadge strong { color: var(--text-primary); font-weight: 600; margin-left: 4px; }
-.lqBadge.ok { border-color: var(--ok-subtle); }
-.lqBadge.ok strong { color: var(--ok); }
-.lqBadge.warn { border-color: var(--warn-subtle); }
-.lqBadge.warn strong { color: var(--warn); }
-.lqBadge.bad { background: var(--bad-subtle); border-color: var(--bad); color: var(--bad); }
+.lqBadge strong {
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-left: 4px;
+}
+.lqBadge.ok {
+  border-color: var(--ok-subtle);
+}
+.lqBadge.ok strong {
+  color: var(--ok);
+}
+.lqBadge.warn {
+  border-color: var(--warn-subtle);
+}
+.lqBadge.warn strong {
+  color: var(--warn);
+}
+.lqBadge.bad {
+  background: var(--bad-subtle);
+  border-color: var(--bad);
+  color: var(--bad);
+}
 
 .lqReason {
   color: var(--text-secondary);

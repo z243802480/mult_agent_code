@@ -17,7 +17,10 @@ export function sessionTimestamp(session: StudioSession): number {
   return Number.isFinite(value) ? value : 0;
 }
 
-export function filterSessions(sessions: StudioSession[], filter: SessionListFilter): StudioSession[] {
+export function filterSessions(
+  sessions: StudioSession[],
+  filter: SessionListFilter,
+): StudioSession[] {
   const sorted = [...sessions].sort((a, b) => sessionTimestamp(b) - sessionTimestamp(a));
   if (filter === "all") return sorted;
   const cutoff = Date.now() - RECENT_MS;
@@ -54,7 +57,10 @@ const GROUP_LABELS: Record<SessionDateGroup, string> = {
   earlier: "更早",
 };
 
-export function groupSessionsByDate(sessions: StudioSession[], now = new Date()): GroupedSessions[] {
+export function groupSessionsByDate(
+  sessions: StudioSession[],
+  now = new Date(),
+): GroupedSessions[] {
   const buckets = new Map<SessionDateGroup, StudioSession[]>([
     ["today", []],
     ["yesterday", []],
@@ -69,7 +75,10 @@ export function groupSessionsByDate(sessions: StudioSession[], now = new Date())
 }
 
 export function cleanSessionTitle(value: string): string {
-  const text = value.replace(/\?{2,}/g, " ").replace(/\s+/g, " ").trim();
+  const text = value
+    .replace(/\?{2,}/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return text || "未命名会话";
 }
 
@@ -84,5 +93,7 @@ export function sessionPreview(session: StudioSession): string {
 }
 
 export function sessionHint(session: StudioSession, title: string, preview: string): string {
-  return [preview, new Date(session.updated_at).toLocaleString()].filter(Boolean).join(" · ") || title;
+  return (
+    [preview, new Date(session.updated_at).toLocaleString()].filter(Boolean).join(" · ") || title
+  );
 }

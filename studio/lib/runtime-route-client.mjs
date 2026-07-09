@@ -126,16 +126,12 @@ export class RuntimeRouteClient {
 
   async #ensureWorker() {
     if (this.#child && !this.#child.killed) return;
-    const child = spawn(
-      this.#python,
-      ["-m", this.#moduleName, "route-worker"],
-      {
-        cwd: this.#runtimeRoot,
-        env: process.env,
-        windowsHide: true,
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
+    const child = spawn(this.#python, ["-m", this.#moduleName, "route-worker"], {
+      cwd: this.#runtimeRoot,
+      env: process.env,
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     this.#child = child;
     const rl = readline.createInterface({ input: child.stdout });
     rl.on("line", (line) => {
@@ -179,7 +175,9 @@ export class RuntimeRouteClient {
 
     const completed = await runCommand([this.#python, ...args], this.#runtimeRoot);
     if (completed.code !== 0) {
-      throw workerError || new Error(completed.stderr || completed.stdout || "route subprocess failed");
+      throw (
+        workerError || new Error(completed.stderr || completed.stdout || "route subprocess failed")
+      );
     }
     try {
       return { ...JSON.parse(completed.stdout), ok: true, transport: "subprocess" };
@@ -227,8 +225,12 @@ function runCommand(command, cwd) {
     const child = spawn(command[0], command.slice(1), { cwd, env: process.env, windowsHide: true });
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString("utf8"); });
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
     child.on("close", (code) => resolve({ code, stdout, stderr }));
     child.on("error", (error) => resolve({ code: 1, stdout, stderr: String(error) }));
   });

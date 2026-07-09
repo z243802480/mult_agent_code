@@ -1,8 +1,27 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BookText, Check, Cpu, FolderOpen, Info, Loader2, Monitor, Moon, Palette, Plug, ShieldCheck, Sun, X } from "lucide-react";
+import {
+  BookText,
+  Check,
+  Cpu,
+  FolderOpen,
+  Info,
+  Loader2,
+  Monitor,
+  Moon,
+  Palette,
+  Plug,
+  ShieldCheck,
+  Sun,
+  X,
+} from "lucide-react";
 import type { AnyRecord, OverviewPayload, SettingsPayload } from "../types";
 import { api } from "../api";
-import { PERMISSION_TIERS, DEFAULT_PERMISSION_TIER, isPermissionTierId, type PermissionTierId } from "../permissionTiers";
+import {
+  PERMISSION_TIERS,
+  DEFAULT_PERMISSION_TIER,
+  isPermissionTierId,
+  type PermissionTierId,
+} from "../permissionTiers";
 import type { ThemeSetting } from "../hooks/useTheme";
 
 type SectionId = "permission" | "appearance" | "workspace" | "model" | "tools" | "rules" | "about";
@@ -33,7 +52,9 @@ function AppearanceSection({
   return (
     <div className="settingsSection">
       <h3>外观</h3>
-      <p className="settingsSectionHint">选择 Studio 的外观。“跟随系统”会跟随你的操作系统，并在其变化时实时更新。</p>
+      <p className="settingsSectionHint">
+        选择 Studio 的外观。“跟随系统”会跟随你的操作系统，并在其变化时实时更新。
+      </p>
       <div className="themeToggle" role="radiogroup" aria-label="主题">
         {THEME_OPTIONS.map((option) => (
           <button
@@ -71,7 +92,9 @@ function PermissionSection({
   settings: SettingsPayload | null;
   onSaved: (next: SettingsPayload) => void;
 }) {
-  const saved = isPermissionTierId(settings?.permissionMode) ? settings!.permissionMode : DEFAULT_PERMISSION_TIER;
+  const saved = isPermissionTierId(settings?.permissionMode)
+    ? settings!.permissionMode
+    : DEFAULT_PERMISSION_TIER;
   const [busy, setBusy] = useState<PermissionTierId | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -96,9 +119,7 @@ function PermissionSection({
   return (
     <div className="settingsSection">
       <h3 className="settingsSectionTitle">默认权限</h3>
-      <p className="muted">
-        默认情况下 agent 自主执行的程度。你仍可在输入框中按每条消息单独更改。
-      </p>
+      <p className="muted">默认情况下 agent 自主执行的程度。你仍可在输入框中按每条消息单独更改。</p>
       <div className="permTierList" role="radiogroup" aria-label="默认权限档">
         {PERMISSION_TIERS.map((tier) => {
           const active = saved === tier.id;
@@ -114,7 +135,9 @@ function PermissionSection({
             >
               <span className="permTierHead">
                 <strong>{tier.label}</strong>
-                {tier.id === DEFAULT_PERMISSION_TIER && <span className="permTierDefault">推荐</span>}
+                {tier.id === DEFAULT_PERMISSION_TIER && (
+                  <span className="permTierDefault">推荐</span>
+                )}
                 {busy === tier.id ? (
                   <Loader2 size={14} className="spinning" />
                 ) : active ? (
@@ -150,11 +173,15 @@ function WorkspaceSection({
       <div className="workspaceCurrent">
         <small>当前文件夹</small>
         <strong title={settings?.workspace}>{settings?.workspaceName ?? "工作区"}</strong>
-        <span className="muted" title={settings?.workspace}>{settings?.workspace ?? "—"}</span>
+        <span className="muted" title={settings?.workspace}>
+          {settings?.workspace ?? "—"}
+        </span>
         {badges.length > 0 && (
           <div className="workspaceBadges">
             {badges.map((badge) => (
-              <span key={badge} className="workspaceBadge">{badge}</span>
+              <span key={badge} className="workspaceBadge">
+                {badge}
+              </span>
             ))}
           </div>
         )}
@@ -203,7 +230,9 @@ function ModelSection({ overview }: { overview: OverviewPayload | null }) {
       )}
       <p className="muted">近期活动——运行时在近期任务中实际使用的模型。</p>
       {routes.length === 0 ? (
-        <p className="settingsStatusBlock muted">暂无模型活动。运行一个任务，运行时选择的路由将显示在这里。</p>
+        <p className="settingsStatusBlock muted">
+          暂无模型活动。运行一个任务，运行时选择的路由将显示在这里。
+        </p>
       ) : (
         <div className="settingsRowList">
           {routes.slice(0, 8).map((route, index) => {
@@ -217,10 +246,15 @@ function ModelSection({ overview }: { overview: OverviewPayload | null }) {
               <div className="settingsRow" key={`${provider}/${model}/${purpose}/${index}`}>
                 <div className="settingsRowMain">
                   <strong>{purpose}</strong>
-                  <span className="muted">{provider}/{model}{tier ? ` · ${tier}` : ""}</span>
+                  <span className="muted">
+                    {provider}/{model}
+                    {tier ? ` · ${tier}` : ""}
+                  </span>
                 </div>
                 {total > 0 && (
-                  <span className="settingsRowMeta muted">{Math.round(successRate * 100)}% 成功 · {total} 次调用</span>
+                  <span className="settingsRowMeta muted">
+                    {Math.round(successRate * 100)}% 成功 · {total} 次调用
+                  </span>
                 )}
               </div>
             );
@@ -236,17 +270,21 @@ function ToolsSection() {
     <div className="settingsSection">
       <h3 className="settingsSectionTitle">工具与技能</h3>
       <div className="settingsStatusBlock">
-        <div className="settingsStatusHead"><Plug size={14} /> <strong>MCP 工具</strong></div>
+        <div className="settingsStatusHead">
+          <Plug size={14} /> <strong>MCP 工具</strong>
+        </div>
         <p className="muted">
           外部 MCP 工具调用通过真实的运行时连接器执行。每个任务的 MCP 活动（哪个服务器、
           哪个工具、结果如何）会显示在 Inspector 中。已连接的服务器列表目前尚未在此展示。
         </p>
       </div>
       <div className="settingsStatusBlock">
-        <div className="settingsStatusHead"><BookText size={14} /> <strong>技能</strong></div>
+        <div className="settingsStatusHead">
+          <BookText size={14} /> <strong>技能</strong>
+        </div>
         <p className="muted">
-          当任务匹配时，技能会把它们的书面流程作为上下文提供给 agent——它们是 agent 遵循的
-          指引，而非 Studio 按需运行的沙箱程序，因此没有可开关的开关项。
+          当任务匹配时，技能会把它们的书面流程作为上下文提供给 agent——它们是 agent 遵循的 指引，而非
+          Studio 按需运行的沙箱程序，因此没有可开关的开关项。
         </p>
       </div>
     </div>
@@ -296,7 +334,9 @@ function AboutSection({ settings }: { settings: SettingsPayload | null }) {
           <div className="settingsRow" key={row.label}>
             <div className="settingsRowMain">
               <strong>{row.label}</strong>
-              <span className="muted" title={row.value}>{row.value ?? "—"}</span>
+              <span className="muted" title={row.value}>
+                {row.value ?? "—"}
+              </span>
             </div>
           </div>
         ))}
@@ -336,7 +376,9 @@ export function SettingsPanel({
   // Escape closes the modal (was only dismissable by clicking the backdrop).
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);

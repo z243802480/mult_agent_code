@@ -15,15 +15,26 @@ const port = 18900 + Math.floor(Math.random() * 200);
 const sessionId = "session-smoke-regression";
 const sessionDir = path.join(workspace, ".asteria", "studio", "sessions", sessionId);
 mkdirSync(sessionDir, { recursive: true });
-writeFileSync(path.join(sessionDir, "session.json"), JSON.stringify({ updated_at: new Date().toISOString() }, null, 2));
+writeFileSync(
+  path.join(sessionDir, "session.json"),
+  JSON.stringify({ updated_at: new Date().toISOString() }, null, 2),
+);
 
-const server = spawn(process.execPath, [
-  "server.mjs",
-  "--workspace", workspace,
-  "--runtime-root", repoRoot,
-  "--port", String(port),
-  "--python", "python",
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    "python",
+  ],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 
 try {
   await waitForListen(server, 15000);
@@ -37,15 +48,21 @@ try {
   if (res.status !== 200 || !body.ok || body.action !== "debug") {
     throw new Error(`runtime-actions failed: ${res.status} ${JSON.stringify(body)}`);
   }
-  console.log(JSON.stringify({ ok: true, summary: "session-id smoke passed", sessionId, workspace }, null, 2));
+  console.log(
+    JSON.stringify({ ok: true, summary: "session-id smoke passed", sessionId, workspace }, null, 2),
+  );
 } finally {
   server.kill("SIGTERM");
 }
 
 function waitForListen(child, timeoutMs) {
   let boot = "";
-  child.stdout.on("data", (chunk) => { boot += chunk; });
-  child.stderr.on("data", (chunk) => { boot += chunk; });
+  child.stdout.on("data", (chunk) => {
+    boot += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    boot += chunk;
+  });
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const timer = setInterval(() => {

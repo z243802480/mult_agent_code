@@ -32,11 +32,17 @@ function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
 }
 
-export function contextWindowSummary(runDetail: RunDetailPayload | null): ContextWindowSummary | null {
+export function contextWindowSummary(
+  runDetail: RunDetailPayload | null,
+): ContextWindowSummary | null {
   const cost = asRecord(runDetail?.cost_report);
-  const rawUsed = Number(cost.latest_context_estimated_tokens ?? cost.max_context_estimated_tokens ?? 0);
+  const rawUsed = Number(
+    cost.latest_context_estimated_tokens ?? cost.max_context_estimated_tokens ?? 0,
+  );
   const rawCapacity = Number(cost.context_window_tokens ?? 0);
-  const rawRatio = Number(cost.context_window_ratio ?? (rawCapacity > 0 ? rawUsed / rawCapacity : 0));
+  const rawRatio = Number(
+    cost.context_window_ratio ?? (rawCapacity > 0 ? rawUsed / rawCapacity : 0),
+  );
   const rawSections = asRecord(cost.latest_context_sections ?? cost.max_context_sections);
   const sectionEntries = Object.entries(rawSections)
     .map(([id, value]) => ({ id, label: contextSectionLabel(id), value: Number(value ?? 0) }))

@@ -17,15 +17,18 @@ export function useRunEvidence(events: StudioEvent[], onGitRefresh?: () => void)
     setRunDetail(await api.runDetail(runId));
   }, []);
 
-  const openLatestRun = useCallback(async (overviewData: OverviewPayload | null) => {
-    const latestRunId = String(overviewData?.runs?.[0]?.run_id ?? "");
-    if (!latestRunId) {
-      setSelectedRunId(null);
-      setRunDetail(null);
-      return;
-    }
-    await openRun(latestRunId);
-  }, [openRun]);
+  const openLatestRun = useCallback(
+    async (overviewData: OverviewPayload | null) => {
+      const latestRunId = String(overviewData?.runs?.[0]?.run_id ?? "");
+      if (!latestRunId) {
+        setSelectedRunId(null);
+        setRunDetail(null);
+        return;
+      }
+      await openRun(latestRunId);
+    },
+    [openRun],
+  );
 
   // runDetail must track the run awaiting the user (pending decision) over the latest tool run — see
   // pickRunTriggerEvent for the M7 (decision before any tool) / L9 (stale-run mismatch) rationale.

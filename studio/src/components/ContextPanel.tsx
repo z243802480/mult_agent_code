@@ -39,16 +39,28 @@ export function ContextPanel({
           <span>上下文 {percent(summary.ratio)}</span>
           <strong>{summary.status || health}</strong>
           {onCompact && summary.ratio >= 0.75 && (
-            <button type="button" className="contextCompactButton" disabled={compacting || isRunning} onClick={onCompact}>
+            <button
+              type="button"
+              className="contextCompactButton"
+              disabled={compacting || isRunning}
+              onClick={onCompact}
+            >
               压缩
             </button>
           )}
         </div>
       )}
-      <button type="button" className="contextPanelToggle" onClick={() => setOpen((value) => !value)}>
+      <button
+        type="button"
+        className="contextPanelToggle"
+        onClick={() => setOpen((value) => !value)}
+      >
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
         <span>上下文用量</span>
-        <strong>{formatUsage(summary.used)}{summary.capacity ? ` / ${formatUsage(summary.capacity)}` : ""}</strong>
+        <strong>
+          {formatUsage(summary.used)}
+          {summary.capacity ? ` / ${formatUsage(summary.capacity)}` : ""}
+        </strong>
         <em>{percent(summary.ratio)}</em>
       </button>
       {open && (
@@ -65,9 +77,7 @@ export function ContextPanel({
                 onSelect={onSelectSection}
               />
             ))}
-            {!summary.sections.length && (
-              <p className="muted">本次运行暂无分区明细记录。</p>
-            )}
+            {!summary.sections.length && <p className="muted">本次运行暂无分区明细记录。</p>}
           </div>
         </div>
       )}

@@ -16,16 +16,25 @@ const mainPort = Number(process.env.ASTERIA_STUDIO_PREVIEW_PROXY_PORT || 18840);
 const devPort = mainPort + 500;
 const mainBase = `http://127.0.0.1:${mainPort}`;
 
-function assert(cond, message) { if (!cond) throw new Error(message); }
+function assert(cond, message) {
+  if (!cond) throw new Error(message);
+}
 
 // Fake dev server: answers HTTP with distinctive markers and completes a websocket upgrade so we can
 // prove both proxy paths without pulling in Vite.
 const devServer = createServer((req, res) => {
-  if (req.url === "/assets/app.js") { res.writeHead(200, { "content-type": "application/javascript" }); res.end("DEV_ASSET_MARKER"); return; }
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(`<h1>DEV_ROOT_MARKER ${req.url}</h1>`);
+  if (req.url === "/assets/app.js") {
+    res.writeHead(200, { "content-type": "application/javascript" });
+    res.end("DEV_ASSET_MARKER");
+    return;
+  }
+  res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+  res.end(`<h1>DEV_ROOT_MARKER ${req.url}</h1>`);
 });
 devServer.on("upgrade", (req, socket) => {
-  socket.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Dev-Upgrade: DEV_WS_MARKER\r\n\r\n");
+  socket.write(
+    "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Dev-Upgrade: DEV_WS_MARKER\r\n\r\n",
+  );
 });
 await new Promise((resolve) => devServer.listen(devPort, "127.0.0.1", resolve));
 
@@ -33,10 +42,21 @@ const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-preview-proxy
 // A static file that must be IGNORED in proxy mode (everything is forwarded to the dev server).
 await fs.writeFile(path.join(workspace, "index.html"), "<h1>STATIC_SHOULD_NOT_SHOW</h1>", "utf8");
 
-const server = spawn(process.execPath, [
-  "server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(mainPort),
-  "--preview-proxy", `http://127.0.0.1:${devPort}`,
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(mainPort),
+    "--preview-proxy",
+    `http://127.0.0.1:${devPort}`,
+  ],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 
 try {
   await waitForHealth();
@@ -48,19 +68,35 @@ try {
 
   // Root is proxied to the dev server (NOT the workspace's static index.html).
   const root = await fetchRaw(`${pv}/`);
-  assert(root.status === 200 && root.body.includes("DEV_ROOT_MARKER"), `root not proxied: ${root.status} ${root.body.slice(0, 60)}`);
+  assert(
+    root.status === 200 && root.body.includes("DEV_ROOT_MARKER"),
+    `root not proxied: ${root.status} ${root.body.slice(0, 60)}`,
+  );
   assert(!root.body.includes("STATIC_SHOULD_NOT_SHOW"), "static file leaked through in proxy mode");
 
   // A deep asset path forwards with the dev server's content-type.
   const asset = await fetchRaw(`${pv}/assets/app.js`);
-  assert(asset.status === 200 && /javascript/.test(asset.type) && asset.body.includes("DEV_ASSET_MARKER"), `asset not proxied: ${asset.status} ${asset.type}`);
+  assert(
+    asset.status === 200 &&
+      /javascript/.test(asset.type) &&
+      asset.body.includes("DEV_ASSET_MARKER"),
+    `asset not proxied: ${asset.status} ${asset.type}`,
+  );
 
   // Websocket (HMR) upgrade is proxied end-to-end: the dev server's 101 + marker header comes back.
   const upgraded = await rawUpgrade(info.port);
-  assert(/101 Switching Protocols/.test(upgraded), `no 101 from proxied upgrade: ${upgraded.slice(0, 80)}`);
-  assert(/DEV_WS_MARKER/.test(upgraded), `dev server upgrade header not forwarded: ${upgraded.slice(0, 120)}`);
+  assert(
+    /101 Switching Protocols/.test(upgraded),
+    `no 101 from proxied upgrade: ${upgraded.slice(0, 80)}`,
+  );
+  assert(
+    /DEV_WS_MARKER/.test(upgraded),
+    `dev server upgrade header not forwarded: ${upgraded.slice(0, 120)}`,
+  );
 
-  console.log("Studio preview-proxy smoke passed (HTTP reverse-proxy, asset forwarding, websocket upgrade, proxy-mode info)");
+  console.log(
+    "Studio preview-proxy smoke passed (HTTP reverse-proxy, asset forwarding, websocket upgrade, proxy-mode info)",
+  );
 } finally {
   server.kill("SIGTERM");
   devServer.close();
@@ -97,19 +133,29 @@ function rawUpgrade(previewPort) {
     const sock = net.connect(previewPort, "127.0.0.1", () => {
       sock.write(
         "GET /__hmr HTTP/1.1\r\n" +
-        `Host: 127.0.0.1:${previewPort}\r\n` +
-        "Upgrade: websocket\r\n" +
-        "Connection: Upgrade\r\n" +
-        "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
-        "Sec-WebSocket-Version: 13\r\n\r\n"
+          `Host: 127.0.0.1:${previewPort}\r\n` +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n" +
+          "Sec-WebSocket-Version: 13\r\n\r\n",
       );
     });
     let buf = "";
-    const done = setTimeout(() => { sock.destroy(); resolve(buf); }, 3000);
+    const done = setTimeout(() => {
+      sock.destroy();
+      resolve(buf);
+    }, 3000);
     sock.on("data", (chunk) => {
       buf += chunk.toString("utf8");
-      if (buf.includes("\r\n\r\n")) { clearTimeout(done); sock.destroy(); resolve(buf); }
+      if (buf.includes("\r\n\r\n")) {
+        clearTimeout(done);
+        sock.destroy();
+        resolve(buf);
+      }
     });
-    sock.on("error", (err) => { clearTimeout(done); reject(err); });
+    sock.on("error", (err) => {
+      clearTimeout(done);
+      reject(err);
+    });
   });
 }

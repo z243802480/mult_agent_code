@@ -14,7 +14,8 @@ function classifyOutcome(raw: string): Outcome {
 }
 
 function OutcomeIcon({ outcome }: { outcome: Outcome }) {
-  if (outcome === "pass") return <CheckCircle2 size={14} className="vmIcon pass" aria-label="通过" />;
+  if (outcome === "pass")
+    return <CheckCircle2 size={14} className="vmIcon pass" aria-label="通过" />;
   if (outcome === "fail") return <XCircle size={14} className="vmIcon fail" aria-label="失败" />;
   return <MinusCircle size={14} className="vmIcon unknown" aria-label="未记录" />;
 }
@@ -87,9 +88,17 @@ export function VerificationMatrix({
               role="row"
             >
               <OutcomeIcon outcome={row.outcome} />
-              <span className="vmName" role="cell">{row.name}</span>
-              <span className={`vmStatus ${row.outcome}`} role="cell">{row.statusText}</span>
-              {row.detail && <span className="vmDetail" role="cell">{row.detail}</span>}
+              <span className="vmName" role="cell">
+                {row.name}
+              </span>
+              <span className={`vmStatus ${row.outcome}`} role="cell">
+                {row.statusText}
+              </span>
+              {row.detail && (
+                <span className="vmDetail" role="cell">
+                  {row.detail}
+                </span>
+              )}
             </button>
           );
         })}
@@ -124,10 +133,18 @@ export function LoopQualityMatrix({ loopQuality }: { loopQuality: AnyRecord }) {
     <div className="loopQualityMatrix">
       <small>循环质量(SLO · observe_then_warn)</small>
       <div className="lqBadges">
-        <span className="lqBadge">模式 <strong>{String(loopQuality.mode ?? "n/a")}</strong></span>
-        <span className={`lqBadge ${warn ? "warn" : "ok"}`}>健康 <strong>{warn ? `warn (${severity})` : "ok"}</strong></span>
-        <span className="lqBadge">重复观测 <strong>{identical}</strong></span>
-        <span className="lqBadge">重复失败验证 <strong>{failedVerify}</strong></span>
+        <span className="lqBadge">
+          模式 <strong>{String(loopQuality.mode ?? "n/a")}</strong>
+        </span>
+        <span className={`lqBadge ${warn ? "warn" : "ok"}`}>
+          健康 <strong>{warn ? `warn (${severity})` : "ok"}</strong>
+        </span>
+        <span className="lqBadge">
+          重复观测 <strong>{identical}</strong>
+        </span>
+        <span className="lqBadge">
+          重复失败验证 <strong>{failedVerify}</strong>
+        </span>
         {hardBlock && <span className="lqBadge bad">硬阻断</span>}
       </div>
       {reason && reason !== "none" && <p className="lqReason">{reason}</p>}

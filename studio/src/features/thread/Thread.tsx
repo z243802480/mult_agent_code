@@ -18,10 +18,19 @@ import { derivePlan } from "./planModel";
 // stream), as opposed to just a user message or an intent acknowledgement. Used to decide whether
 // to render the session's own rich events vs. the coarse runDetail-derived fallback.
 const RUN_OUTPUT_TYPES = new Set<StudioEvent["type"]>([
-  "model_start", "model_delta", "model_end", "model_error",
-  "reasoning_delta", "assistant_delta",
-  "tool_start", "tool_delta", "tool_end", "tool_observation",
-  "file_changed", "final_answer", "error",
+  "model_start",
+  "model_delta",
+  "model_end",
+  "model_error",
+  "reasoning_delta",
+  "assistant_delta",
+  "tool_start",
+  "tool_delta",
+  "tool_end",
+  "tool_observation",
+  "file_changed",
+  "final_answer",
+  "error",
 ]);
 
 // Cap the number of fully-rendered turns so a very long run bounds the DOM node count and stays at
@@ -84,21 +93,31 @@ export function Thread({
   const [atBottom, setAtBottom] = useState(true);
   const atBottomRef = useRef(true);
   const compactDiff = viewMode === "focus";
-  const mainEvents = useMemo(() => events.filter((event) => !event.display_level || event.display_level === "main"), [events]);
-  const shouldShowPending = Boolean(pendingTurn) && !mainEvents.some((event) =>
-    event.type === "user_message" && event.content_delta === pendingTurn?.message
+  const mainEvents = useMemo(
+    () => events.filter((event) => !event.display_level || event.display_level === "main"),
+    [events],
   );
+  const shouldShowPending =
+    Boolean(pendingTurn) &&
+    !mainEvents.some(
+      (event) => event.type === "user_message" && event.content_delta === pendingTurn?.message,
+    );
   const runtimeEvents = useMemo(() => runtimeSessionEvents(runDetail ?? null), [runDetail]);
   const selectedRunId = String(runDetail?.run_id ?? "");
-  const hasSelectedRunEvents = Boolean(selectedRunId) && mainEvents.some((event) => String(event.run_id ?? "") === selectedRunId);
+  const hasSelectedRunEvents =
+    Boolean(selectedRunId) &&
+    mainEvents.some((event) => String(event.run_id ?? "") === selectedRunId);
   // Whether the session already carries its OWN granular run output (streamed model/tool/file/final
   // events, or projected transcript steps). This is the key liveness signal: those events hold the
   // real token stream. runtimeSessionEvents (the coarse fallback) drops every event without a
   // transcript_kind, so it can only ever show phase labels ("Thinking"/"Checking the work") + the
   // final — never the streamed text. So whenever the session owns run output we MUST prefer it.
   const hasOwnRunOutput = useMemo(
-    () => mainEvents.some((event) => RUN_OUTPUT_TYPES.has(event.type) || Boolean(event.transcript_kind)),
-    [mainEvents]
+    () =>
+      mainEvents.some(
+        (event) => RUN_OUTPUT_TYPES.has(event.type) || Boolean(event.transcript_kind),
+      ),
+    [mainEvents],
   );
   // Selection order:
   //  - empty session => empty thread (never render another session's / the workspace's run).
@@ -107,15 +126,19 @@ export function Thread({
   //    "thought for a long time, not a single word, then a review" report: run_id linkage can be
   //    absent/mismatched, but the session's own events.jsonl still holds the deltas.
   //  - otherwise (thin session shell + a runDetail run that lives elsewhere) => coarse runtimeEvents.
-  const sessionEvents = mainEvents.length === 0
-    ? mainEvents
-    : hasSelectedRunEvents || hasOwnRunOutput || !runtimeEvents.length
+  const sessionEvents =
+    mainEvents.length === 0
       ? mainEvents
-      : runtimeEvents;
+      : hasSelectedRunEvents || hasOwnRunOutput || !runtimeEvents.length
+        ? mainEvents
+        : runtimeEvents;
   // Plan/phase "spine" for the current run (I3). Derived from the run's real task_plan + the latest
   // event phase; only shown when the session actually owns this run's output (never a foreign run).
   const ownsRun = hasSelectedRunEvents || hasOwnRunOutput;
-  const plan = useMemo(() => (ownsRun ? derivePlan(runDetail ?? null) : null), [ownsRun, runDetail]);
+  const plan = useMemo(
+    () => (ownsRun ? derivePlan(runDetail ?? null) : null),
+    [ownsRun, runDetail],
+  );
   const currentPhase = useMemo(() => {
     for (let i = sessionEvents.length - 1; i >= 0; i -= 1) {
       const p = sessionEvents[i]?.phase;
@@ -148,7 +171,8 @@ export function Thread({
   // file_change many times across a resumed/multi-goal run). Precompute each turn's file paths so a
   // turn can hide files already shown above it — each turn surfaces only what it newly touched.
   const turnFilePaths = useMemo(
-    () => turns.map((turnSteps) => extractFileChangesFromSteps(turnSteps).map((change) => change.path)),
+    () =>
+      turns.map((turnSteps) => extractFileChangesFromSteps(turnSteps).map((change) => change.path)),
     [turns],
   );
   // B1: failed-turn markers + issue navigator. A turn "failed" if any of its steps errored or carries
@@ -163,12 +187,20 @@ export function Thread({
     return nums;
   }, [turns]);
   const [issueCursor, setIssueCursor] = useState(0);
-  const hasProcessBlocks = turns.some((turn) => turn.length > 2 || (turn.length > 1 && turn.at(-1)?.kind !== "final" && turn.at(-1)?.kind !== "error"));
+  const hasProcessBlocks = turns.some(
+    (turn) =>
+      turn.length > 2 ||
+      (turn.length > 1 && turn.at(-1)?.kind !== "final" && turn.at(-1)?.kind !== "error"),
+  );
   const showProcessControls = viewMode === "verbose" && hasProcessBlocks;
   // The bottom Next-action bar is the authoritative next-step surface. When it owns a next step,
   // suppress the last turn's inline SuggestedActions so the thread shows one prompt, not two that
   // can disagree (stale "Decide" chip vs. a run that already passed review and is ready to Accept).
-  const snapshotOwnsNextStep = runtimeSnapshotActionable(overview ?? null, runDetail ?? null, events);
+  const snapshotOwnsNextStep = runtimeSnapshotActionable(
+    overview ?? null,
+    runDetail ?? null,
+    events,
+  );
 
   // Track whether the viewport is pinned to the live edge, so we (a) never yank a user who scrolled
   // up back to the bottom, and (b) can show a "Jump to latest" affordance (I7).
@@ -196,7 +228,10 @@ export function Thread({
   }, [mainEvents.length, isRunning]);
 
   // Reset the "load earlier" reveal and issue cursor when switching to a different run/session.
-  useEffect(() => { setShowEarlier(false); setIssueCursor(0); }, [selectedRunId]);
+  useEffect(() => {
+    setShowEarlier(false);
+    setIssueCursor(0);
+  }, [selectedRunId]);
 
   const hiddenTurnCount = showEarlier ? 0 : Math.max(0, turns.length - MAX_RENDERED_TURNS);
   const visibleTurns = hiddenTurnCount > 0 ? turns.slice(-MAX_RENDERED_TURNS) : turns;
@@ -236,11 +271,7 @@ export function Thread({
         {/* During bootstrap, sessions/runs are still loading — show a quiet placeholder instead of
             the "What would you like to do?" prompt, which would otherwise flash before the
             transcript populates. Once loading settles and there is genuinely nothing, the prompt shows. */}
-        {loading ? (
-          <ThreadSkeleton />
-        ) : (
-          <EmptyState onPrompt={onPrompt} />
-        )}
+        {loading ? <ThreadSkeleton /> : <EmptyState onPrompt={onPrompt} />}
       </section>
     );
   }
@@ -266,8 +297,15 @@ export function Thread({
       )}
       {showProcessControls && (
         <div className="threadProcessControls" aria-label="过程显示控制">
-          <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>展开过程</button>
-          <button type="button" onClick={() => setExpandSignal({ mode: "collapse", id: Date.now() })}>收起过程</button>
+          <button type="button" onClick={() => setExpandSignal({ mode: "expand", id: Date.now() })}>
+            展开过程
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpandSignal({ mode: "collapse", id: Date.now() })}
+          >
+            收起过程
+          </button>
         </div>
       )}
       {hiddenTurnCount > 0 && (
@@ -322,7 +360,12 @@ export function Thread({
         </button>
       )}
       {!atBottom && (
-        <button type="button" className="jumpToLatest" onClick={scrollToLatest} aria-label="跳到最新">
+        <button
+          type="button"
+          className="jumpToLatest"
+          onClick={scrollToLatest}
+          aria-label="跳到最新"
+        >
           跳到最新 ↓
         </button>
       )}

@@ -95,17 +95,17 @@
   /* ── Elevation ───────────────────────────────────────────────── */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
   --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.32);
-  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.40);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.4);
 
   /* ── Focus & motion ──────────────────────────────────────────── */
   --focus-ring: 0 0 0 2px var(--surface-0), 0 0 0 4px var(--accent-border);
-  --ease: cubic-bezier(0.2, 0, 0, 1);        /* standard easing — reads as a fast response */
+  --ease: cubic-bezier(0.2, 0, 0, 1); /* standard easing — reads as a fast response */
 
   /* Motion durations — reused everywhere; micro-interactions stay < 200ms. */
-  --dur-fast: 120ms;     /* hover-off / press-release */
-  --dur-base: 160ms;     /* default state change */
-  --dur-reveal: 200ms;   /* disclosure / accordion reveal */
-  --press-scale: 0.97;   /* tactile button depress */
+  --dur-fast: 120ms; /* hover-off / press-release */
+  --dur-base: 160ms; /* default state change */
+  --dur-reveal: 200ms; /* disclosure / accordion reveal */
+  --press-scale: 0.97; /* tactile button depress */
 
   /* Control sizing — one toolbar rhythm. */
   --control-h: 28px;
@@ -116,7 +116,14 @@
 
   background: var(--surface-0);
   color: var(--text-primary);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -129,54 +136,54 @@
    default and is also what data-theme="dark" resolves to. Every value is a remap of a token used
    app-wide, so token-respecting components flip cleanly. */
 :root[data-theme="light"] {
-    --surface-0: #ffffff;
-    --surface-1: #f5f7f9;
-    --surface-2: #eef1f4;
-    --surface-3: #e4e8ec;
+  --surface-0: #ffffff;
+  --surface-1: #f5f7f9;
+  --surface-2: #eef1f4;
+  --surface-3: #e4e8ec;
 
-    --border-subtle: #e4e8ec;
-    --border-strong: #cdd4db;
+  --border-subtle: #e4e8ec;
+  --border-strong: #cdd4db;
 
-    --text-primary: #14181c;
-    --text-secondary: #4c5762;
-    --text-muted: #5c6773; /* darkened from #7a848e to clear WCAG AA 4.5:1 on light surfaces */
+  --text-primary: #14181c;
+  --text-secondary: #4c5762;
+  --text-muted: #5c6773; /* darkened from #7a848e to clear WCAG AA 4.5:1 on light surfaces */
 
-    --accent: #1f74c9;
-    --accent-hover: #1a67b4;
-    --accent-active: #185ea3;
-    --accent-fg: #ffffff;
-    --accent-subtle: rgba(31, 116, 201, 0.10);
-    --accent-border: rgba(31, 116, 201, 0.28);
+  --accent: #1f74c9;
+  --accent-hover: #1a67b4;
+  --accent-active: #185ea3;
+  --accent-fg: #ffffff;
+  --accent-subtle: rgba(31, 116, 201, 0.1);
+  --accent-border: rgba(31, 116, 201, 0.28);
 
-    --ok: #1f9d57;
-    --warn: #b3781d;
-    --bad: #d0473f;
-    --ok-subtle: rgba(31, 157, 87, 0.11);
-    --warn-subtle: rgba(179, 120, 29, 0.12);
-    --bad-subtle: rgba(208, 71, 63, 0.11);
+  --ok: #1f9d57;
+  --warn: #b3781d;
+  --bad: #d0473f;
+  --ok-subtle: rgba(31, 157, 87, 0.11);
+  --warn-subtle: rgba(179, 120, 29, 0.12);
+  --bad-subtle: rgba(208, 71, 63, 0.11);
 
-    --permission-bg: #f1ecfb;
-    --permission-border: #b9a6ec;
-    --permission-text: #4a3a86;
-    --permission-accent: #6b4fd0;
-    --permission-border-alpha: rgba(107, 79, 208, 0.30);
+  --permission-bg: #f1ecfb;
+  --permission-border: #b9a6ec;
+  --permission-text: #4a3a86;
+  --permission-accent: #6b4fd0;
+  --permission-border-alpha: rgba(107, 79, 208, 0.3);
 
-    --chat-bg: #e6f3fa;
-    --chat-border: #b3d6e5;
-    --chat-text: #1c4655;
-    --chat-accent: #1f8fb8;
+  --chat-bg: #e6f3fa;
+  --chat-border: #b3d6e5;
+  --chat-text: #1c4655;
+  --chat-accent: #1f8fb8;
 
-    --action-solid-bg: #14181c;
-    --action-solid-fg: #ffffff;
-    --action-solid-bg-hover: #26303a;
+  --action-solid-bg: #14181c;
+  --action-solid-fg: #ffffff;
+  --action-solid-bg-hover: #26303a;
 
-    --user-bubble-bg: #e4f0f5;
+  --user-bubble-bg: #e4f0f5;
 
-    --scrollbar-thumb-hover: #b3bcc4;
+  --scrollbar-thumb-hover: #b3bcc4;
 
-    --shadow-sm: 0 1px 2px rgba(20, 24, 28, 0.10);
-    --shadow-md: 0 8px 24px rgba(20, 24, 28, 0.12);
-    --shadow-lg: 0 18px 44px rgba(20, 24, 28, 0.16);
+  --shadow-sm: 0 1px 2px rgba(20, 24, 28, 0.1);
+  --shadow-md: 0 8px 24px rgba(20, 24, 28, 0.12);
+  --shadow-lg: 0 18px 44px rgba(20, 24, 28, 0.16);
 }
 
 * {

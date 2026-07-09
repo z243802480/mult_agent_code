@@ -17,8 +17,12 @@
 }
 
 @keyframes issueFlashPulse {
-  0% { background: color-mix(in srgb, var(--danger, #d94f4f) 16%, transparent); }
-  100% { background: transparent; }
+  0% {
+    background: color-mix(in srgb, var(--danger, #d94f4f) 16%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .conversationTurn.issueFlash {
@@ -133,7 +137,9 @@
   font-size: 11px;
   gap: 5px;
   padding: 3px 8px;
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
   width: fit-content;
 }
 
@@ -499,10 +505,18 @@
   overflow: hidden;
 }
 
-.toolCard.failed { border-color: var(--bad); }
-.toolCard.completed { border-color: var(--ok); }
-.toolCard.waiting_user { border-color: var(--permission-border); }
-.toolCard.running { border-color: var(--accent-border); }
+.toolCard.failed {
+  border-color: var(--bad);
+}
+.toolCard.completed {
+  border-color: var(--ok);
+}
+.toolCard.waiting_user {
+  border-color: var(--permission-border);
+}
+.toolCard.running {
+  border-color: var(--accent-border);
+}
 
 .toolCardHeader {
   align-items: center;
@@ -518,8 +532,12 @@
   width: 100%;
 }
 
-.toolCardHeader[data-static="true"] { cursor: default; }
-.toolCardHeader:hover:not([data-static="true"]) { background: var(--surface-1); }
+.toolCardHeader[data-static="true"] {
+  cursor: default;
+}
+.toolCardHeader:hover:not([data-static="true"]) {
+  background: var(--surface-1);
+}
 
 .toolCardChevronSpacer {
   display: inline-block;
@@ -543,10 +561,18 @@
   text-transform: uppercase;
 }
 
-.toolCardStatus.completed { color: var(--ok); }
-.toolCardStatus.failed { color: var(--bad); }
-.toolCardStatus.waiting_user { color: var(--permission-accent); }
-.toolCard.running .toolCardStatus { color: var(--accent); }
+.toolCardStatus.completed {
+  color: var(--ok);
+}
+.toolCardStatus.failed {
+  color: var(--bad);
+}
+.toolCardStatus.waiting_user {
+  color: var(--permission-accent);
+}
+.toolCard.running .toolCardStatus {
+  color: var(--accent);
+}
 
 .toolCardOutput.clampedOutput pre,
 .stepVerificationDetail.clampedOutput pre {
@@ -666,7 +692,9 @@
 
 .liveFileChip.interactive {
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .liveFileChip.interactive:hover,
@@ -830,7 +858,10 @@
   display: inline-flex;
   justify-content: center;
   padding: 2px;
-  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
 }
 
 .liveFileAction:disabled {
@@ -980,7 +1011,9 @@
   margin-left: auto;
   opacity: 0;
   padding: 2px 7px;
-  transition: opacity var(--dur-fast, 120ms) var(--ease), color var(--dur-fast, 120ms) var(--ease);
+  transition:
+    opacity var(--dur-fast, 120ms) var(--ease),
+    color var(--dur-fast, 120ms) var(--ease);
 }
 
 .turnFinal:hover .turnFinalCopy,
@@ -1336,8 +1369,14 @@
 }
 
 @keyframes streamBlink {
-  0%, 50% { opacity: 1; }
-  50.01%, 100% { opacity: 0; }
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ── Edit & resend affordance on the last user message (hover-revealed, keyboard-focusable) */
@@ -1354,7 +1393,9 @@
   margin-top: 6px;
   opacity: 0;
   padding: 2px 9px;
-  transition: opacity var(--dur-fast, 120ms) var(--ease), color var(--dur-fast, 120ms) var(--ease);
+  transition:
+    opacity var(--dur-fast, 120ms) var(--ease),
+    color var(--dur-fast, 120ms) var(--ease);
 }
 
 .turnUser:hover .turnUserEdit,
@@ -1492,7 +1533,9 @@
   font-size: var(--text-xs);
   gap: 5px;
   padding: 4px 11px;
-  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+  transition:
+    background 120ms var(--ease),
+    border-color 120ms var(--ease);
 }
 
 .suggestedActionChip:hover:not(:disabled) {
@@ -1500,27 +1543,49 @@
   border-color: var(--accent-border);
 }
 
-.suggestedActionChip:disabled { cursor: default; opacity: 0.6; }
-.suggestedActionChip svg { color: var(--accent); }
+.suggestedActionChip:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.suggestedActionChip svg {
+  color: var(--accent);
+}
 
 /* ── DS-3: conversation prose rhythm — Codex-grade reading surface ──────── */
-.turnFinalHeader { margin-bottom: 9px; }
+.turnFinalHeader {
+  margin-bottom: 9px;
+}
 
-.turnFinalText { max-width: 70ch; }
+.turnFinalText {
+  max-width: 70ch;
+}
 
 /* Markdown paragraph & list rhythm so multi-paragraph recaps read like prose. */
-.turnFinalText > p { margin: 0; }
-.turnFinalText > p + p { margin-top: 0.65em; }
+.turnFinalText > p {
+  margin: 0;
+}
+.turnFinalText > p + p {
+  margin-top: 0.65em;
+}
 .turnFinalText ul,
-.turnFinalText ol { margin: 0.5em 0; padding-left: 1.35em; }
-.turnFinalText li { margin: 0.2em 0; }
-.turnFinalText li::marker { color: var(--text-muted); }
+.turnFinalText ol {
+  margin: 0.5em 0;
+  padding-left: 1.35em;
+}
+.turnFinalText li {
+  margin: 0.2em 0;
+}
+.turnFinalText li::marker {
+  color: var(--text-muted);
+}
 .turnFinalText a {
   color: var(--accent);
   text-decoration: none;
   border-bottom: 1px solid var(--accent-border);
 }
-.turnFinalText a:hover { border-bottom-color: var(--accent); }
+.turnFinalText a:hover {
+  border-bottom-color: var(--accent);
+}
 .turnFinalText code {
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
@@ -1538,14 +1603,24 @@
   overflow: auto;
   padding: 10px 12px;
 }
-.turnFinalText pre code { background: none; border: 0; padding: 0; }
+.turnFinalText pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
 
 /* The collapsed run-detail disclosure: gentle affordance, smooth open. */
-.turnFinalDetails > summary { transition: color 0.15s var(--ease); }
-.turnFinalDetails[open] > summary { margin-bottom: 4px; }
+.turnFinalDetails > summary {
+  transition: color 0.15s var(--ease);
+}
+.turnFinalDetails[open] > summary {
+  margin-bottom: 4px;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .suggestedActionChip,
   .turnMiddleBadge,
-  .turnFinalDetails > summary { transition: none; }
+  .turnFinalDetails > summary {
+    transition: none;
+  }
 }

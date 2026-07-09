@@ -53,17 +53,26 @@ export function SideChatPanel({
             <strong>快速提问</strong>
             <p className="muted">不占用主线程的提问——主目标保持不变。</p>
           </div>
-          <button type="button" className="iconButton" title="关闭 (Ctrl+;)" aria-label="关闭快速提问" onClick={onClose}>
+          <button
+            type="button"
+            className="iconButton"
+            title="关闭 (Ctrl+;)"
+            aria-label="关闭快速提问"
+            onClick={onClose}
+          >
             <X size={16} />
           </button>
         </header>
         <div className="sideChatMessages" ref={scrollRef}>
           {items.length === 0 && !waiting && (
-            <p className="muted sideChatEmpty">可以问工作区、运行状态或规划相关的问题——不会开启新的一轮。</p>
+            <p className="muted sideChatEmpty">
+              可以问工作区、运行状态或规划相关的问题——不会开启新的一轮。
+            </p>
           )}
           {items.map((item) => (
             <div key={item.id} className={`sideChatBubble sideChatBubble-${item.kind}`}>
-              {item.kind === "assistant" && (item.text.includes("## ") || item.text.includes("```")) ? (
+              {item.kind === "assistant" &&
+              (item.text.includes("## ") || item.text.includes("```")) ? (
                 <MarkdownBody text={item.text} />
               ) : (
                 <p>{item.text}</p>
@@ -94,13 +103,7 @@ export function SideChatPanel({
   );
 }
 
-export function SideChatToggle({
-  open,
-  onToggle,
-}: {
-  open: boolean;
-  onToggle: () => void;
-}) {
+export function SideChatToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"

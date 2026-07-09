@@ -1,4 +1,20 @@
-import type { StudioSession, StudioEvent, WorkspaceFile, FilePreview, SettingsPayload, OverviewPayload, RunDetailPayload, AnyRecord, WorkspacesPayload, OpenWorkspacePayload, BrowseWorkspacePayload, WorkspaceProfile, GitStatusPayload, GitDiffPayload, GitFileActionPayload } from "./types";
+import type {
+  StudioSession,
+  StudioEvent,
+  WorkspaceFile,
+  FilePreview,
+  SettingsPayload,
+  OverviewPayload,
+  RunDetailPayload,
+  AnyRecord,
+  WorkspacesPayload,
+  OpenWorkspacePayload,
+  BrowseWorkspacePayload,
+  WorkspaceProfile,
+  GitStatusPayload,
+  GitDiffPayload,
+  GitFileActionPayload,
+} from "./types";
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -8,7 +24,10 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   sessions: () => requestJson<{ ok: boolean; sessions: StudioSession[] }>("/api/studio/sessions"),
-  createSession: () => requestJson<{ ok: boolean; session: StudioSession }>("/api/studio/sessions", { method: "POST" }),
+  createSession: () =>
+    requestJson<{ ok: boolean; session: StudioSession }>("/api/studio/sessions", {
+      method: "POST",
+    }),
   deleteSession: (id: string, purge = false) =>
     requestJson<{ ok: boolean; deleted: string; soft_deleted?: boolean; purged?: boolean }>(
       `/api/studio/sessions/${encodeURIComponent(id)}${purge ? "?purge=1" : ""}`,
@@ -21,21 +40,47 @@ export const api = {
     ),
   // Direct download URL — an <a href download> streams the bundle (with the server's
   // Content-Disposition filename) without loading a large session into JS memory.
-  previewInfo: () => requestJson<{ ok: boolean; port: number | null; mode?: "static" | "proxy"; target?: string | null }>("/api/studio/preview-info"),
+  previewInfo: () =>
+    requestJson<{
+      ok: boolean;
+      port: number | null;
+      mode?: "static" | "proxy";
+      target?: string | null;
+    }>("/api/studio/preview-info"),
   exportUrl: (id: string) => `/api/studio/sessions/${encodeURIComponent(id)}/export`,
   importSession: (bundle: unknown) =>
     requestJson<{ ok: boolean; session?: StudioSession; imported?: number; error?: string }>(
       "/api/studio/sessions/import",
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bundle }) },
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ bundle }),
+      },
     ),
-  updateSession: (id: string, body: { title?: string; goal_preview?: string; ui_state?: Record<string, unknown> }) =>
-    requestJson<{ ok: boolean; session: StudioSession }>(`/api/studio/sessions/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-  events: (id: string) => requestJson<{ ok: boolean; events: StudioEvent[] }>(`/api/studio/sessions/${encodeURIComponent(id)}/events`),
-  send: (id: string, message: string, mode: string, permission: string, channel?: string, permissionMode?: string) =>
+  updateSession: (
+    id: string,
+    body: { title?: string; goal_preview?: string; ui_state?: Record<string, unknown> },
+  ) =>
+    requestJson<{ ok: boolean; session: StudioSession }>(
+      `/api/studio/sessions/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
+  events: (id: string) =>
+    requestJson<{ ok: boolean; events: StudioEvent[] }>(
+      `/api/studio/sessions/${encodeURIComponent(id)}/events`,
+    ),
+  send: (
+    id: string,
+    message: string,
+    mode: string,
+    permission: string,
+    channel?: string,
+    permissionMode?: string,
+  ) =>
     requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(id)}/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -62,10 +107,16 @@ export const api = {
   permitJob: (sessionId: string, jobId: string, action: "allow" | "deny") =>
     requestJson<AnyRecord>(
       `/api/studio/sessions/${encodeURIComponent(sessionId)}/jobs/${encodeURIComponent(jobId)}/permission`,
-      { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) }
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action }),
+      },
     ),
   stopSession: (sessionId: string) =>
-    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/stop`, { method: "POST" }),
+    requestJson<AnyRecord>(`/api/studio/sessions/${encodeURIComponent(sessionId)}/stop`, {
+      method: "POST",
+    }),
   files: () => requestJson<{ ok: boolean; files: WorkspaceFile[] }>("/api/studio/files"),
   previewFile: (path: string) =>
     requestJson<FilePreview>("/api/studio/files/preview", {
@@ -75,11 +126,14 @@ export const api = {
     }),
   settings: () => requestJson<{ ok: boolean; settings: SettingsPayload }>("/api/studio/settings"),
   updateSettings: (body: Partial<SettingsPayload>) =>
-    requestJson<{ ok: boolean; settings: SettingsPayload; error?: string }>("/api/studio/settings", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
+    requestJson<{ ok: boolean; settings: SettingsPayload; error?: string }>(
+      "/api/studio/settings",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ),
   workspaces: () => requestJson<WorkspacesPayload>("/api/studio/workspaces"),
   openWorkspace: (pathValue: string) =>
     requestJson<OpenWorkspacePayload>("/api/studio/workspace/open", {
@@ -94,10 +148,14 @@ export const api = {
       body: JSON.stringify({}),
     }),
   workspaceProfile: (pathValue: string) =>
-    requestJson<WorkspaceProfile>(`/api/studio/workspace/profile?path=${encodeURIComponent(pathValue)}`),
+    requestJson<WorkspaceProfile>(
+      `/api/studio/workspace/profile?path=${encodeURIComponent(pathValue)}`,
+    ),
   gitStatus: () => requestJson<GitStatusPayload>("/api/studio/git/status"),
   gitDiff: (pathValue: string, stage = "all") =>
-    requestJson<GitDiffPayload>(`/api/studio/git/diff?path=${encodeURIComponent(pathValue)}&stage=${encodeURIComponent(stage)}`),
+    requestJson<GitDiffPayload>(
+      `/api/studio/git/diff?path=${encodeURIComponent(pathValue)}&stage=${encodeURIComponent(stage)}`,
+    ),
   gitStage: (pathValue: string) =>
     requestJson<GitFileActionPayload>("/api/studio/git/stage", {
       method: "POST",
@@ -112,7 +170,8 @@ export const api = {
     }),
   overview: () => requestJson<OverviewPayload>("/api/overview"),
   diagnostics: () => requestJson<OverviewPayload>("/api/diagnostics"),
-  runDetail: (runId: string) => requestJson<RunDetailPayload>(`/api/runs/${encodeURIComponent(runId)}`),
+  runDetail: (runId: string) =>
+    requestJson<RunDetailPayload>(`/api/runs/${encodeURIComponent(runId)}`),
 };
 
 export type ConnectivityStatus = "live" | "reconnecting" | "offline";
@@ -156,7 +215,11 @@ export function subscribeToEvents(
   function startPoll(interval = 8000) {
     if (pollTimer) return;
     pollTimer = setInterval(async () => {
-      if (stopped) { if (pollTimer) clearInterval(pollTimer); pollTimer = null; return; }
+      if (stopped) {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null;
+        return;
+      }
       try {
         const data = await api.events(sessionId);
         addFresh(data.events ?? []);
@@ -172,11 +235,17 @@ export function subscribeToEvents(
   function openStream() {
     if (stopped || typeof EventSource === "undefined") return;
     es = new EventSource(`/api/studio/sessions/${encodeURIComponent(sessionId)}/events/stream`);
-    es.onopen = () => { sseOk = true; reconnectAttempts = 0; computeStatus(); };
+    es.onopen = () => {
+      sseOk = true;
+      reconnectAttempts = 0;
+      computeStatus();
+    };
     es.onmessage = (e) => {
       if (!e.data || e.data.startsWith(":")) return;
       sseOk = true;
-      try { addFresh([JSON.parse(e.data) as StudioEvent]); } catch {}
+      try {
+        addFresh([JSON.parse(e.data) as StudioEvent]);
+      } catch {}
       computeStatus();
     };
     es.onerror = () => {
@@ -192,7 +261,10 @@ export function subscribeToEvents(
         if (stopped || reconnectTimer) return;
         const delay = Math.min(30000, 1000 * 2 ** reconnectAttempts);
         reconnectAttempts += 1;
-        reconnectTimer = setTimeout(() => { reconnectTimer = null; openStream(); }, delay);
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          openStream();
+        }, delay);
       }
     };
   }

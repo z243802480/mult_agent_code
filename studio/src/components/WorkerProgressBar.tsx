@@ -9,7 +9,13 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; compact?: boolean }) {
+export function WorkerProgressBar({
+  data,
+  compact = false,
+}: {
+  data: AnyRecord;
+  compact?: boolean;
+}) {
   const total = Number(data.total ?? 0);
   if (!total) return null;
   const successful = Number(data.successful ?? 0);
@@ -34,12 +40,23 @@ export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; 
     return (
       <div className="workerProgressBar" aria-label="后台任务进度">
         <div className="workerProgressTrack">
-          <span className="workerProgressFill success" style={{ width: `${(successful / total) * 100}%` }} />
-          <span className="workerProgressFill failed" style={{ width: `${(failed / total) * 100}%` }} />
-          <span className="workerProgressFill running" style={{ width: `${(running / total) * 100}%` }} />
+          <span
+            className="workerProgressFill success"
+            style={{ width: `${(successful / total) * 100}%` }}
+          />
+          <span
+            className="workerProgressFill failed"
+            style={{ width: `${(failed / total) * 100}%` }}
+          />
+          <span
+            className="workerProgressFill running"
+            style={{ width: `${(running / total) * 100}%` }}
+          />
         </div>
         <div className="workerProgressMeta">
-          <span>正在处理 {total} 项…已完成 {successful} 项</span>
+          <span>
+            正在处理 {total} 项…已完成 {successful} 项
+          </span>
           {failed > 0 && <span className="workerProgressWarn">{failed} 项需要关注</span>}
         </div>
       </div>
@@ -49,24 +66,40 @@ export function WorkerProgressBar({ data, compact = false }: { data: AnyRecord; 
   return (
     <div className="workerProgressBar" aria-label="后台任务进度">
       {schedulingLabel && (
-        <div className="workerSchedulingBadge" data-fake-path={fakePath === true ? "true" : "false"}>
+        <div
+          className="workerSchedulingBadge"
+          data-fake-path={fakePath === true ? "true" : "false"}
+        >
           {schedulingLabel}
         </div>
       )}
       <div className="workerProgressTrack">
-        <span className="workerProgressFill success" style={{ width: `${(successful / total) * 100}%` }} />
-        <span className="workerProgressFill failed" style={{ width: `${(failed / total) * 100}%` }} />
-        <span className="workerProgressFill running" style={{ width: `${(running / total) * 100}%` }} />
+        <span
+          className="workerProgressFill success"
+          style={{ width: `${(successful / total) * 100}%` }}
+        />
+        <span
+          className="workerProgressFill failed"
+          style={{ width: `${(failed / total) * 100}%` }}
+        />
+        <span
+          className="workerProgressFill running"
+          style={{ width: `${(running / total) * 100}%` }}
+        />
       </div>
       <div className="workerProgressMeta">
-        <span>{successful}/{total} 已完成</span>
+        <span>
+          {successful}/{total} 已完成
+        </span>
         {failed > 0 && <span className="workerProgressWarn">{failed} 项需要关注</span>}
         <span>{percent}%</span>
       </div>
       {workers.length > 0 && (
         <ul className="workerProgressList">
           {workers.slice(0, 6).map((worker, index) => {
-            const id = String(worker.worker_invocation_id ?? worker.worker_id ?? `worker-${index + 1}`);
+            const id = String(
+              worker.worker_invocation_id ?? worker.worker_id ?? `worker-${index + 1}`,
+            );
             const status = String(worker.result_status ?? worker.status ?? "unknown");
             const mode = String(worker.scheduling_mode ?? "").trim();
             return (

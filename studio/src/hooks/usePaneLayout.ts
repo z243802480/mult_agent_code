@@ -46,7 +46,11 @@ export function usePaneLayout() {
   const [panelWidth, setPanelWidth] = React.useState(initial.panel);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(initial.sidebarCollapsed);
   const layoutRef = React.useRef(initial);
-  const dragRef = React.useRef<{ kind: "sidebar" | "panel"; startX: number; startWidth: number } | null>(null);
+  const dragRef = React.useRef<{
+    kind: "sidebar" | "panel";
+    startX: number;
+    startWidth: number;
+  } | null>(null);
 
   layoutRef.current = { sidebar: sidebarWidth, panel: panelWidth, sidebarCollapsed };
 

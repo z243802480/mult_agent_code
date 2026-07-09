@@ -16,13 +16,21 @@ const base = `http://127.0.0.1:${port}`;
 
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-session-smoke-"));
 
-const server = spawn(process.execPath, [
-  "server.mjs",
-  "--workspace", workspace,
-  "--runtime-root", repoRoot,
-  "--port", String(port),
-  "--python", python,
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  [
+    "server.mjs",
+    "--workspace",
+    workspace,
+    "--runtime-root",
+    repoRoot,
+    "--port",
+    String(port),
+    "--python",
+    python,
+  ],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 
 function assert(cond, message) {
   if (!cond) throw new Error(message);
@@ -38,49 +46,90 @@ try {
 
   // 2. It appears in the list.
   const listAfterCreate = await fetchJson(`${base}/api/studio/sessions`);
-  assert(listAfterCreate.sessions.some((s) => s.session_id === sid), "created session missing from list");
+  assert(
+    listAfterCreate.sessions.some((s) => s.session_id === sid),
+    "created session missing from list",
+  );
 
   // --- Export / import (backup + restore-to-file) ---
   // Seed one event straight into events.jsonl (organic events need a runtime job) so export/import
   // can prove event preservation, not just session metadata.
   const eventsFile = path.join(workspace, ".asteria", "studio", "sessions", sid, "events.jsonl");
-  const seeded = { event_id: "evt-seed-1", session_id: sid, type: "user_message", summary: "hello backup", content_delta: "hello backup" };
+  const seeded = {
+    event_id: "evt-seed-1",
+    session_id: sid,
+    type: "user_message",
+    summary: "hello backup",
+    content_delta: "hello backup",
+  };
   await fs.writeFile(eventsFile, `${JSON.stringify(seeded)}\n`, "utf8");
 
   const bundle = await fetchJson(`${base}/api/studio/sessions/${sid}/export`);
-  assert(bundle.asteria_session_bundle && bundle.session?.session_id === sid, `export missing session: ${JSON.stringify(bundle).slice(0, 200)}`);
-  assert(Array.isArray(bundle.events) && bundle.events.length === 1 && bundle.events[0].event_id === "evt-seed-1", `export missing seeded event: ${JSON.stringify(bundle.events)}`);
+  assert(
+    bundle.asteria_session_bundle && bundle.session?.session_id === sid,
+    `export missing session: ${JSON.stringify(bundle).slice(0, 200)}`,
+  );
+  assert(
+    Array.isArray(bundle.events) &&
+      bundle.events.length === 1 &&
+      bundle.events[0].event_id === "evt-seed-1",
+    `export missing seeded event: ${JSON.stringify(bundle.events)}`,
+  );
 
   const imported = await fetchJson(`${base}/api/studio/sessions/import`, "POST", { bundle });
   const importedId = imported?.session?.session_id;
-  assert(imported.ok && importedId && importedId !== sid, `import failed: ${JSON.stringify(imported)}`);
-  assert(imported.imported === 1 && imported.session.imported_from === sid, `import metadata wrong: ${JSON.stringify(imported)}`);
+  assert(
+    imported.ok && importedId && importedId !== sid,
+    `import failed: ${JSON.stringify(imported)}`,
+  );
+  assert(
+    imported.imported === 1 && imported.session.imported_from === sid,
+    `import metadata wrong: ${JSON.stringify(imported)}`,
+  );
 
   const importedEvents = await fetchJson(`${base}/api/studio/sessions/${importedId}/events`);
-  assert(importedEvents.events.length === 1 && importedEvents.events[0].session_id === importedId, `imported events not re-stamped: ${JSON.stringify(importedEvents)}`);
+  assert(
+    importedEvents.events.length === 1 && importedEvents.events[0].session_id === importedId,
+    `imported events not re-stamped: ${JSON.stringify(importedEvents)}`,
+  );
 
   // Clean up the imported session so it doesn't affect the lifecycle assertions below.
   await fetchJson(`${base}/api/studio/sessions/${importedId}?purge=1`, "DELETE");
 
   // 3. Soft-delete (default): reversible, not a hard delete.
   const deleted = await fetchJson(`${base}/api/studio/sessions/${sid}`, "DELETE");
-  assert(deleted.ok && deleted.soft_deleted === true && !deleted.purged, `expected soft delete: ${JSON.stringify(deleted)}`);
+  assert(
+    deleted.ok && deleted.soft_deleted === true && !deleted.purged,
+    `expected soft delete: ${JSON.stringify(deleted)}`,
+  );
 
   // 4. Hidden from the main list...
   const listAfterDelete = await fetchJson(`${base}/api/studio/sessions`);
-  assert(!listAfterDelete.sessions.some((s) => s.session_id === sid), "soft-deleted session still in list");
+  assert(
+    !listAfterDelete.sessions.some((s) => s.session_id === sid),
+    "soft-deleted session still in list",
+  );
 
   // 5. ...but its data is preserved and marked deleted_at (recoverable).
   const readDeleted = await fetchJson(`${base}/api/studio/sessions/${sid}`);
-  assert(readDeleted.ok && readDeleted.session.deleted_at, `soft-deleted session data not preserved: ${JSON.stringify(readDeleted)}`);
+  assert(
+    readDeleted.ok && readDeleted.session.deleted_at,
+    `soft-deleted session data not preserved: ${JSON.stringify(readDeleted)}`,
+  );
 
   // 6. Restore clears the marker.
   const restored = await fetchJson(`${base}/api/studio/sessions/${sid}/restore`, "POST");
-  assert(restored.ok && restored.restored === sid && !restored.session.deleted_at, `restore failed: ${JSON.stringify(restored)}`);
+  assert(
+    restored.ok && restored.restored === sid && !restored.session.deleted_at,
+    `restore failed: ${JSON.stringify(restored)}`,
+  );
 
   // 7. Back in the list.
   const listAfterRestore = await fetchJson(`${base}/api/studio/sessions`);
-  assert(listAfterRestore.sessions.some((s) => s.session_id === sid), "restored session missing from list");
+  assert(
+    listAfterRestore.sessions.some((s) => s.session_id === sid),
+    "restored session missing from list",
+  );
 
   // 8. Explicit purge is permanent.
   const purged = await fetchJson(`${base}/api/studio/sessions/${sid}?purge=1`, "DELETE");

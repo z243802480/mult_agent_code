@@ -66,12 +66,19 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .spinning {
@@ -94,7 +101,10 @@
   font-size: 13px;
   padding: 10px 13px;
   text-align: left;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    color 0.15s var(--ease);
 }
 
 .examplePrompts button:hover {
@@ -290,9 +300,15 @@
   user-select: none;
 }
 
-.permissionScope > summary::-webkit-details-marker { display: none; }
-.permissionScope > summary::before { content: "▸ "; }
-.permissionScope[open] > summary::before { content: "▾ "; }
+.permissionScope > summary::-webkit-details-marker {
+  display: none;
+}
+.permissionScope > summary::before {
+  content: "▸ ";
+}
+.permissionScope[open] > summary::before {
+  content: "▾ ";
+}
 
 .permissionScopeGroups {
   display: flex;

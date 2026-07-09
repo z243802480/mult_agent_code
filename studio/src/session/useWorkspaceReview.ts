@@ -93,15 +93,21 @@ export function useWorkspaceReview(
     }
   }
 
-  async function persistSessionUiState(nextScopeId = diffScopeId, nextStage = diffStage, nextLayout = diffLayout) {
+  async function persistSessionUiState(
+    nextScopeId = diffScopeId,
+    nextStage = diffStage,
+    nextLayout = diffLayout,
+  ) {
     if (!activeSession) return;
-    await api.updateSession(activeSession.session_id, {
-      ui_state: {
-        diffScopeId: nextScopeId,
-        diffStage: nextStage,
-        diffLayout: nextLayout,
-      },
-    }).catch(() => {});
+    await api
+      .updateSession(activeSession.session_id, {
+        ui_state: {
+          diffScopeId: nextScopeId,
+          diffStage: nextStage,
+          diffLayout: nextLayout,
+        },
+      })
+      .catch(() => {});
   }
 
   function setDiffScope(scopeId: string) {

@@ -20,7 +20,11 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
       continue;
     }
     if (event.type === "model_delta") {
-      if (activeModel && activeModel.phase === event.phase && activeModel.model_provider === event.model_provider) {
+      if (
+        activeModel &&
+        activeModel.phase === event.phase &&
+        activeModel.model_provider === event.model_provider
+      ) {
         activeModel.content_delta = `${activeModel.content_delta ?? ""}${event.content_delta ?? ""}`;
         activeModel.summary = event.summary || activeModel.summary;
         activeModel.status = event.status;
@@ -32,7 +36,11 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
       continue;
     }
     if (event.type === "model_end") {
-      if (activeModel && activeModel.phase === event.phase && activeModel.model_provider === event.model_provider) {
+      if (
+        activeModel &&
+        activeModel.phase === event.phase &&
+        activeModel.model_provider === event.model_provider
+      ) {
         activeModel.status = "completed";
         activeModel.summary = event.summary || activeModel.summary;
         activeModel.telemetry = event.telemetry;
@@ -40,9 +48,21 @@ export function toNarrativeEvents(events: StudioEvent[]): StudioEvent[] {
       activeModel = null;
       continue;
     }
-    if (event.type === "model_error") { activeModel = null; result.push(event); continue; }
-    if (event.type === "agent_turn" || event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end" || event.type === "tool_observation") {
-      activeModel = null; result.push(event); continue;
+    if (event.type === "model_error") {
+      activeModel = null;
+      result.push(event);
+      continue;
+    }
+    if (
+      event.type === "agent_turn" ||
+      event.type === "tool_start" ||
+      event.type === "tool_delta" ||
+      event.type === "tool_end" ||
+      event.type === "tool_observation"
+    ) {
+      activeModel = null;
+      result.push(event);
+      continue;
     }
     activeModel = null;
     result.push(event);
@@ -77,9 +97,10 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   // promotion_id; the channel/event shape is kept only as a legacy fallback for older emits, and is
   // narrowed to a promotion signal so it does not swallow other progress/decision events (e.g. resume).
   if (
-    (transcriptKind === "decision_request" && Boolean(data.promotion_id))
-    || (event.runtime_channel === "progress" && event.runtime_event_type === "decision"
-        && (Boolean(data.promotable_files) || Boolean(data.promotion_id)))
+    (transcriptKind === "decision_request" && Boolean(data.promotion_id)) ||
+    (event.runtime_channel === "progress" &&
+      event.runtime_event_type === "decision" &&
+      (Boolean(data.promotable_files) || Boolean(data.promotion_id)))
   ) {
     return "hold";
   }
@@ -93,7 +114,8 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   if (transcriptKind === "plan" || transcriptKind === "todo_update") return "plan";
   // tool_use/tool_result classify as a tool card only when backed by a real tool event; otherwise
   // they are loop bookkeeping (iteration/progress markers) and fold in as a quiet turn step.
-  if (transcriptKind === "tool_use" || transcriptKind === "tool_result") return isRealToolEvent(event) ? "tool" : "turn";
+  if (transcriptKind === "tool_use" || transcriptKind === "tool_result")
+    return isRealToolEvent(event) ? "tool" : "turn";
   if (transcriptKind === "verification") return "verification";
   if (transcriptKind === "repair") return "repair";
   // Evidence/diagnostic RECORDS are quiet process rows, never the closing answer (ADR-0021). Mapping
@@ -109,7 +131,11 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   // A PENDING permission/decision ask (waiting for the user) is a prominent action card. An
   // already-recorded decision ("已记录能力决策"/"已选择权限模式") is quiet bookkeeping the loop keeps
   // per tool call — it must fold into the detail, not sit as a prominent card between the real tools.
-  if (transcriptKind === "permission_request" || transcriptKind === "decision_request" || transcriptKind === "ask") {
+  if (
+    transcriptKind === "permission_request" ||
+    transcriptKind === "decision_request" ||
+    transcriptKind === "ask"
+  ) {
     // A job-based permission_request (has job_id) is handled by PermissionCard (allow/deny). A
     // waiting_user decision WITHOUT a job_id is the loop pausing for your call (e.g. "approve this
     // run_command?") — it renders as a prominent, in-context "需要你的决定" card instead of a dead,
@@ -122,11 +148,18 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
   }
   if (transcriptKind === "subagent_summary") return "subagent";
   if (event.type === "user_message") return "goal";
-  if (event.type === "agent_turn" || event.runtime_event_type === "turn_start" || event.runtime_event_type === "turn_end") return "turn";
+  if (
+    event.type === "agent_turn" ||
+    event.runtime_event_type === "turn_start" ||
+    event.runtime_event_type === "turn_end"
+  )
+    return "turn";
   if (event.type === "intent_route") return "thinking";
   if (event.type === "permission_request") return "tool";
-  if (event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end") return "tool";
-  if (event.type === "tool_observation" || event.runtime_event_type === "tool_observation") return "observation";
+  if (event.type === "tool_start" || event.type === "tool_delta" || event.type === "tool_end")
+    return "tool";
+  if (event.type === "tool_observation" || event.runtime_event_type === "tool_observation")
+    return "observation";
   if (event.type === "model_error" || event.type === "error") return "error";
   if (event.type === "final_answer") return "final";
   if (event.phase === "plan") return "plan";
@@ -137,7 +170,13 @@ function narrativeKind(event: StudioEvent): NarrativeStep["kind"] {
     // promotion bookkeeping) folds in as a quiet turn step instead of an empty tool card.
     return isRealToolEvent(event) ? "tool" : "turn";
   }
-  if (event.type === "model_start" || event.type === "model_delta" || event.type === "model_end" || event.type === "reasoning_delta") return "thinking";
+  if (
+    event.type === "model_start" ||
+    event.type === "model_delta" ||
+    event.type === "model_end" ||
+    event.type === "reasoning_delta"
+  )
+    return "thinking";
   if (event.type === "file_changed") return "result";
   return "thinking";
 }
@@ -156,7 +195,8 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
     if (cap) return cap.label;
     return event.command?.length ? "工具调用" : "操作";
   }
-  if (kind === "result") return event.runtime_event_type === "final_report" ? "最终报告" : "文件改动";
+  if (kind === "result")
+    return event.runtime_event_type === "final_report" ? "最终报告" : "文件改动";
   if (kind === "repair") return "修复";
   if (kind === "verification") return "验证";
   if (kind === "final") return "最终答复";
@@ -173,9 +213,19 @@ function narrativeLabel(kind: NarrativeStep["kind"], event: StudioEvent): string
 
 function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   const first = step.events[0];
-  if (step.kind === "goal" || step.kind === "final" || step.kind === "error" || step.kind === "hold" || step.kind === "resume" || step.kind === "decision") return false;
-  if (step.kind === "thinking") return first.phase === event.phase && first.model_provider === event.model_provider;
-  if (step.kind === "turn") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
+  if (
+    step.kind === "goal" ||
+    step.kind === "final" ||
+    step.kind === "error" ||
+    step.kind === "hold" ||
+    step.kind === "resume" ||
+    step.kind === "decision"
+  )
+    return false;
+  if (step.kind === "thinking")
+    return first.phase === event.phase && first.model_provider === event.model_provider;
+  if (step.kind === "turn")
+    return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "tool") {
     // Same tool call → same card. A single file op emits a tool_use THEN a tool_result user_progress
     // event that share one tool_call_id (e.g. toolcall-0002) but different EN/CN summaries ("读取 X" /
@@ -189,9 +239,14 @@ function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
     // a tool's call+result share one target-carrying title like "写入 square.py").
     const cmd = first.command?.join(" ") ?? "";
     if (cmd && cmd === (event.command?.join(" ") ?? "")) return true;
-    return first.type.startsWith("tool_") && event.type.startsWith("tool_") && first.title === event.title;
+    return (
+      first.type.startsWith("tool_") &&
+      event.type.startsWith("tool_") &&
+      first.title === event.title
+    );
   }
-  if (step.kind === "observation") return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
+  if (step.kind === "observation")
+    return !!first.tool_call_id && first.tool_call_id === event.tool_call_id;
   if (step.kind === "subagent") {
     // One delegation = one card: merge a spawn_subagent's dispatch + returned-summary events by
     // their shared child_task_id. Two DIFFERENT experts (distinct child_task_id) must stay separate
@@ -203,7 +258,10 @@ function shouldGroup(step: NarrativeStep, event: StudioEvent): boolean {
   return first.phase === event.phase;
 }
 
-function mergeStatus(current: StudioEvent["status"], next: StudioEvent["status"]): StudioEvent["status"] {
+function mergeStatus(
+  current: StudioEvent["status"],
+  next: StudioEvent["status"],
+): StudioEvent["status"] {
   if (next === "failed" || current === "failed") return "failed";
   if (next === "waiting_user" || current === "waiting_user") return "waiting_user";
   if (next === "running" || current === "running") return "running";
@@ -253,28 +311,30 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
     });
   }
   // Only the last actively-running step expands automatically
-  const lastActive = [...steps].reverse().find(
-    (s) => s.status === "running" || s.status === "waiting_user"
-  );
+  const lastActive = [...steps]
+    .reverse()
+    .find((s) => s.status === "running" || s.status === "waiting_user");
   if (lastActive) lastActive.defaultOpen = true;
   // If run has ended without a final step, open only the last failed/error step
   const hasFinal = steps.some((s) => s.kind === "final");
   const hasRunning = !!lastActive;
   if (!hasFinal && !hasRunning) {
-    const lastFailed = [...steps].reverse().find(
-      (s) => s.status === "failed" || s.kind === "error"
-    );
+    const lastFailed = [...steps]
+      .reverse()
+      .find((s) => s.status === "failed" || s.kind === "error");
     if (lastFailed) lastFailed.defaultOpen = true;
   }
 
-  const finalEvent = [...events].reverse().find((e) => e.type === "final_answer" || e.type === "error");
+  const finalEvent = [...events]
+    .reverse()
+    .find((e) => e.type === "final_answer" || e.type === "error");
   const goalEvent = events.find((e) => e.type === "user_message");
   const status = finalEvent?.type === "error" ? "failed" : finalEvent ? "completed" : "running";
   if (status !== "running") {
     for (const step of steps) {
       if (step.status === "running" || step.status === "queued") step.status = "completed";
       step.events = step.events.map((e) =>
-        e.status === "running" || e.status === "queued" ? { ...e, status: "completed" } : e
+        e.status === "running" || e.status === "queued" ? { ...e, status: "completed" } : e,
       );
     }
   }
@@ -286,13 +346,22 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
         status === "running"
           ? "Agent 正在处理任务。"
           : status === "failed"
-          ? "运行遇到了问题。"
-          : "运行已完成并产出了最终结果。",
+            ? "运行遇到了问题。"
+            : "运行已完成并产出了最终结果。",
       goal: (goalEvent?.summary ?? "") as string,
       modelEvents: events.filter(
-        (e) => e.type.startsWith("model_") || e.type === "assistant_delta" || e.type === "reasoning_delta"
+        (e) =>
+          e.type.startsWith("model_") ||
+          e.type === "assistant_delta" ||
+          e.type === "reasoning_delta",
       ).length,
-      toolEvents: events.filter((e) => e.type.startsWith("tool_") || e.type === "agent_turn" || e.runtime_channel === "execution_chain" || (e.command?.length ?? 0) > 0).length,
+      toolEvents: events.filter(
+        (e) =>
+          e.type.startsWith("tool_") ||
+          e.type === "agent_turn" ||
+          e.runtime_channel === "execution_chain" ||
+          (e.command?.length ?? 0) > 0,
+      ).length,
       evidenceRefs: countRefs(events, "evidence_refs"),
       artifactRefs: countRefs(events, "artifact_refs"),
       finalText: (finalEvent?.content_delta ?? finalEvent?.summary ?? "") as string,
@@ -300,13 +369,14 @@ export function buildRunNarrative(events: StudioEvent[]): RunNarrative {
   };
 }
 
-
 // Single source of reasoning cleanup (I5): strip stray <think>/<thinking> markers a provider may
 // leave in the stream, keeping the inner text. Applied on EVERY render path (live tail + finalized,
 // chat + run) so raw tags never leak into the main thread. Intentionally conservative — it only
 // removes the tags themselves, never guesses at content, so no real output is dropped.
 export function cleanReasoning(text: string): string {
-  return String(text || "").replace(/<\/?think(?:ing)?>/gi, "").trim();
+  return String(text || "")
+    .replace(/<\/?think(?:ing)?>/gi, "")
+    .trim();
 }
 
 export function firstText(...items: unknown[]): string {
@@ -332,19 +402,20 @@ export function firstText(...items: unknown[]): string {
  * parallel writes are frozen; interleaved parallel tools could otherwise hide a still-open one.)
  */
 export function isSessionLive(events: StudioEvent[]): boolean {
-  const lastFinal = [...events].reverse().find(
-    (e) => e.type === "final_answer" || e.type === "error"
-  );
+  const lastFinal = [...events]
+    .reverse()
+    .find((e) => e.type === "final_answer" || e.type === "error");
   const cutoff = lastFinal ? eventTime(lastFinal) : null;
-  const liveEvents = cutoff
-    ? events.filter((e) => eventTime(e) > cutoff)
-    : events;
+  const liveEvents = cutoff ? events.filter((e) => eventTime(e) > cutoff) : events;
   if (!liveEvents.length) return false;
   const isActive = (e: StudioEvent) =>
     e.status === "running" || e.status === "queued" || e.status === "waiting_user";
   const isTerminal = (e: StudioEvent) =>
-    e.status === "completed" || e.status === "failed"
-    || e.type === "tool_end" || e.type === "final_answer" || e.type === "error";
+    e.status === "completed" ||
+    e.status === "failed" ||
+    e.type === "tool_end" ||
+    e.type === "final_answer" ||
+    e.type === "error";
   let lastTerminalTime = -Infinity;
   for (const event of liveEvents) {
     if (isTerminal(event)) lastTerminalTime = Math.max(lastTerminalTime, eventTime(event));

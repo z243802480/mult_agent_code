@@ -184,7 +184,10 @@
   gap: 6px;
   min-height: var(--control-h);
   padding: 0 14px;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform var(--dur-fast) var(--ease);
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 
 .composerSend:hover:not(:disabled) {
@@ -267,7 +270,9 @@
   min-height: 54px;
   padding: 10px 13px;
   resize: vertical;
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
   width: 100%;
 }
 
@@ -471,7 +476,6 @@
   max-width: 100%;
 }
 
-
 .advancedModeDetails {
   color: var(--text-secondary);
   font-size: 12px;
@@ -560,7 +564,10 @@
   display: inline-flex;
   gap: 7px;
   font-weight: var(--weight-semibold);
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease), transform var(--dur-fast) var(--ease);
+  transition:
+    background 0.15s var(--ease),
+    border-color 0.15s var(--ease),
+    transform var(--dur-fast) var(--ease);
 }
 
 .composerBar > button:hover:not(:disabled) {

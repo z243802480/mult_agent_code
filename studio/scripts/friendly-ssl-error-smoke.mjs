@@ -9,20 +9,28 @@ const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-friend
 const port = Number(process.env.ASTERIA_STUDIO_FRIENDLY_SSL_PORT || 18796);
 const sslError = "<urlopen error _ssl.c:1015: The handshake operation timed out>";
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: {
-    ...process.env,
-    ASTERIA_STUDIO_CHAT_BACKEND: "model",
-    ASTERIA_STUDIO_FAKE_CHAT_ERROR: sslError,
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: {
+      ...process.env,
+      ASTERIA_STUDIO_CHAT_BACKEND: "model",
+      ASTERIA_STUDIO_FAKE_CHAT_ERROR: sslError,
+    },
   },
-});
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth();
@@ -36,13 +44,22 @@ try {
   });
 
   const { events } = await fetchEventsUntil(sessionId, (items) =>
-    items.some((event) => event.type === "error" && event.phase === "chat")
+    items.some((event) => event.type === "error" && event.phase === "chat"),
   );
   const errorEvent = events.find((event) => event.type === "error" && event.phase === "chat");
   const text = String(errorEvent?.content_delta || "");
-  assert(text.includes("Connection timed out"), "SSL handshake timeout should be translated into a friendly connection timeout message");
-  assert(text.includes("HTTPS") && text.includes("Retry"), "friendly message should explain likely cause and next action");
-  assert(!text.includes("_ssl.c:1015") && !text.includes("urlopen error"), "raw SSL implementation details should not be shown in the main user message");
+  assert(
+    text.includes("Connection timed out"),
+    "SSL handshake timeout should be translated into a friendly connection timeout message",
+  );
+  assert(
+    text.includes("HTTPS") && text.includes("Retry"),
+    "friendly message should explain likely cause and next action",
+  );
+  assert(
+    !text.includes("_ssl.c:1015") && !text.includes("urlopen error"),
+    "raw SSL implementation details should not be shown in the main user message",
+  );
 
   console.log("Studio friendly SSL error smoke passed");
 } finally {
@@ -67,7 +84,9 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {
@@ -82,7 +101,8 @@ async function postJson(route, body) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
@@ -93,8 +113,11 @@ async function fetchEventsUntil(sessionId, predicate) {
   while (Date.now() < deadline) {
     latest = await fetchJson(route);
     if (predicate(latest.events || [])) return latest;
-    if (server.exitCode !== null) throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
+    if (server.exitCode !== null)
+      throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Timed out waiting for friendly error. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`);
+  throw new Error(
+    `Timed out waiting for friendly error. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`,
+  );
 }

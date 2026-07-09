@@ -20,28 +20,45 @@ await fs.mkdir(path.join(workspace, "src"), { recursive: true });
 await fs.writeFile(path.join(workspace, "src", "app.py"), "print('hi')\n", "utf8");
 // Noise that must NOT appear.
 await fs.mkdir(path.join(workspace, "node_modules", "pkg"), { recursive: true });
-await fs.writeFile(path.join(workspace, "node_modules", "pkg", "index.js"), "module.exports={}", "utf8");
+await fs.writeFile(
+  path.join(workspace, "node_modules", "pkg", "index.js"),
+  "module.exports={}",
+  "utf8",
+);
 await fs.mkdir(path.join(workspace, ".git"), { recursive: true });
 await fs.writeFile(path.join(workspace, ".git", "config"), "[core]\n", "utf8");
 await fs.mkdir(path.join(workspace, ".asteria", "runs"), { recursive: true });
 await fs.writeFile(path.join(workspace, ".asteria", "runs", "goal_spec.json"), "{}", "utf8");
 
-const server = spawn(process.execPath, [
-  "server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(port),
-], { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] });
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--runtime-root", repoRoot, "--port", String(port)],
+  { cwd: studioDir, stdio: ["ignore", "pipe", "pipe"] },
+);
 
-function assert(cond, message) { if (!cond) throw new Error(message); }
+function assert(cond, message) {
+  if (!cond) throw new Error(message);
+}
 
 try {
   await waitForHealth();
   const res = await fetchJson(`${base}/api/studio/files`);
   const paths = (res.files ?? []).map((f) => f.path);
   assert(res.ok, `files not ok: ${JSON.stringify(res).slice(0, 200)}`);
-  assert(paths.includes("snake-game.html"), `expected snake-game.html at root, got: ${JSON.stringify(paths)}`);
+  assert(
+    paths.includes("snake-game.html"),
+    `expected snake-game.html at root, got: ${JSON.stringify(paths)}`,
+  );
   assert(paths.includes("src/app.py"), `expected src/app.py, got: ${JSON.stringify(paths)}`);
-  assert(!paths.some((p) => p.startsWith("node_modules/")), `node_modules leaked: ${JSON.stringify(paths)}`);
+  assert(
+    !paths.some((p) => p.startsWith("node_modules/")),
+    `node_modules leaked: ${JSON.stringify(paths)}`,
+  );
   assert(!paths.some((p) => p.startsWith(".git/")), `.git leaked: ${JSON.stringify(paths)}`);
-  assert(!paths.some((p) => p.startsWith(".asteria/")), `.asteria leaked: ${JSON.stringify(paths)}`);
+  assert(
+    !paths.some((p) => p.startsWith(".asteria/")),
+    `.asteria leaked: ${JSON.stringify(paths)}`,
+  );
   console.log("Studio workspace files smoke passed (general walk, noise excluded)");
 } finally {
   server.kill("SIGTERM");

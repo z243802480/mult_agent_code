@@ -1,12 +1,20 @@
 import { spawn } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import { existsSync, statSync, readFileSync, watch as fsWatch, promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { outcomeAnswerContract } from "./prompt-contract.mjs";
-import { classifyChatRequest, hasAny, intentAuditFor, isRuntimeMetaQuestion, routeUserIntent } from "./intent-router.mjs";
-import { buildRouteMessageWithChatContext, shouldAugmentRouteWithChatContext, recentChatHistoryMessages } from "./lib/chat-route-context.mjs";
+import {
+  classifyChatRequest,
+  hasAny,
+  intentAuditFor,
+  isRuntimeMetaQuestion,
+  routeUserIntent,
+} from "./intent-router.mjs";
+import {
+  buildRouteMessageWithChatContext,
+  recentChatHistoryMessages,
+} from "./lib/chat-route-context.mjs";
 import { buildOrchestrationWorkflowMonitor } from "./lib/orchestration-workflow-monitor.mjs";
 import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
 import { mapPermissionLevel, withPermissionLevel } from "./lib/permission-level.mjs";
@@ -18,7 +26,9 @@ let workspace = path.resolve(args.workspace || repoRoot);
 let runtimeRoot = path.resolve(args.runtimeRoot || repoRoot);
 const port = Number(args.port || process.env.ASTERIA_STUDIO_PORT || 8787);
 const python = args.python || process.env.ASTERIA_PYTHON || "python";
-const chatBackend = String(args.chatBackend || process.env.ASTERIA_STUDIO_CHAT_BACKEND || "model").toLowerCase();
+const chatBackend = String(
+  args.chatBackend || process.env.ASTERIA_STUDIO_CHAT_BACKEND || "model",
+).toLowerCase();
 const moduleName = process.env.ASTERIA_MODULE || "asteria_runtime";
 const routeClient = new RuntimeRouteClient({ python, runtimeRoot, moduleName });
 const distDir = path.join(__dirname, "dist");
@@ -29,7 +39,9 @@ let previewReloadTimer = null;
 // PREVIEW-3: opt-in reverse proxy to a running dev server (Vite/Next/CRA/etc.) so SPA/framework apps
 // — which need a bundler, not static files — can be previewed. OPT-IN only (an explicit target),
 // never an auto-probe of arbitrary localhost ports, which would risk proxying an unrelated app.
-const previewProxyTarget = normalizeProxyTarget(args.previewProxy || process.env.ASTERIA_PREVIEW_PROXY);
+const previewProxyTarget = normalizeProxyTarget(
+  args.previewProxy || process.env.ASTERIA_PREVIEW_PROXY,
+);
 
 // Accept a full URL ("http://127.0.0.1:5173"), host:port ("localhost:3000"), or a bare port ("5173",
 // → 127.0.0.1:5173). Only http is proxied (local dev servers are http); returns null when unset/invalid.
@@ -41,7 +53,11 @@ function normalizeProxyTarget(value) {
     const url = new URL(/^https?:\/\//i.test(raw) ? raw : `http://${raw}`);
     if (url.protocol !== "http:") return null;
     const targetPort = url.port || "80";
-    return { hostname: url.hostname, port: targetPort, origin: `http://${url.hostname}:${targetPort}` };
+    return {
+      hostname: url.hostname,
+      port: targetPort,
+      origin: `http://${url.hostname}:${targetPort}`,
+    };
   } catch {
     return null;
   }
@@ -54,11 +70,14 @@ function normalizeProxyTarget(value) {
 function pruneLiveJobs(maxAgeMs = 10 * 60 * 1000, keepLatest = 50) {
   const now = Date.now();
   for (const [id, job] of liveJobs) {
-    const terminal = job.status === "completed" || job.status === "failed" || job.status === "cancelled";
+    const terminal =
+      job.status === "completed" || job.status === "failed" || job.status === "cancelled";
     if (terminal && now - (job.started_at_ms || 0) > maxAgeMs) liveJobs.delete(id);
   }
   if (liveJobs.size > keepLatest) {
-    const terminalIds = [...liveJobs.entries()].filter(([, job]) => job.status !== "running").map(([id]) => id);
+    const terminalIds = [...liveJobs.entries()]
+      .filter(([, job]) => job.status !== "running")
+      .map(([id]) => id);
     for (const id of terminalIds.slice(0, liveJobs.size - keepLatest)) liveJobs.delete(id);
   }
 }
@@ -71,7 +90,11 @@ function notifySSE(sessionId, event) {
   if (!clients?.size) return;
   const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const res of [...clients]) {
-    try { res.write(payload); } catch { clients.delete(res); }
+    try {
+      res.write(payload);
+    } catch {
+      clients.delete(res);
+    }
   }
 }
 
@@ -107,17 +130,30 @@ async function handleApi(request, response, url) {
   }
   if (request.method === "POST" && url.pathname === "/api/studio/sessions/import") {
     const raw = await readRequestBodyRaw(request);
-    if (raw === null) { sendJson(response, 413, { ok: false, error: "bundle too large" }); return; }
+    if (raw === null) {
+      sendJson(response, 413, { ok: false, error: "bundle too large" });
+      return;
+    }
     let body = null;
-    try { body = raw ? JSON.parse(raw) : null; } catch { body = null; }
-    if (!body) { sendJson(response, 400, { ok: false, error: "invalid bundle JSON" }); return; }
+    try {
+      body = raw ? JSON.parse(raw) : null;
+    } catch {
+      body = null;
+    }
+    if (!body) {
+      sendJson(response, 400, { ok: false, error: "invalid bundle JSON" });
+      return;
+    }
     sendJson(response, 200, await importSessionBundle(body));
     return;
   }
   if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/export$/)) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     const result = await exportSessionBundle(sessionId);
-    if (!result.ok) { sendJson(response, 404, result); return; }
+    if (!result.ok) {
+      sendJson(response, 404, result);
+      return;
+    }
     const filename = `asteria-session-${result.session_id}.json`.replace(/[^a-zA-Z0-9._-]/g, "_");
     response.writeHead(200, {
       "content-type": "application/json; charset=utf-8",
@@ -137,7 +173,10 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, await deleteSession(sessionId, { purge }));
     return;
   }
-  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/restore$/)) {
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/restore$/)
+  ) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, await restoreSession(sessionId));
     return;
@@ -152,14 +191,20 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, { ok: true, events: await readSessionEvents(sessionId) });
     return;
   }
-  if (request.method === "GET" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/events\/stream$/)) {
+  if (
+    request.method === "GET" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/events\/stream$/)
+  ) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-3) || "");
-    if (!isSafeId(sessionId)) { sendJson(response, 400, { ok: false, error: "invalid session id" }); return; }
+    if (!isSafeId(sessionId)) {
+      sendJson(response, 400, { ok: false, error: "invalid session id" });
+      return;
+    }
     response.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      "X-Accel-Buffering": "no"
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
     });
     response.write(": connected\n\n");
     const existingEvents = await readSessionEvents(sessionId);
@@ -168,7 +213,11 @@ async function handleApi(request, response, url) {
     }
     if (!sseClients.has(sessionId)) sseClients.set(sessionId, new Set());
     sseClients.get(sessionId).add(response);
-    const ping = setInterval(() => { try { response.write(": ping\n\n"); } catch {} }, 15000);
+    const ping = setInterval(() => {
+      try {
+        response.write(": ping\n\n");
+      } catch {}
+    }, 15000);
     request.on("close", () => {
       clearInterval(ping);
       sseClients.get(sessionId)?.delete(response);
@@ -185,32 +234,51 @@ async function handleApi(request, response, url) {
     sendJson(response, 200, stopSessionJobs(sessionId));
     return;
   }
-  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/messages$/)) {
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/messages$/)
+  ) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, await submitUserGoal(sessionId, await readRequestJson(request)));
     return;
   }
-  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/runtime-actions$/)) {
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/runtime-actions$/)
+  ) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-2) || "");
     sendJson(response, 200, await handleRuntimeAction(sessionId, await readRequestJson(request)));
     return;
   }
-  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/decisions\/resolve$/)) {
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/decisions\/resolve$/)
+  ) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-3) || "");
     sendJson(response, 200, await handleDecisionResolve(sessionId, await readRequestJson(request)));
     return;
   }
-  if (request.method === "POST" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/decisions\/answer$/)) {
+  if (
+    request.method === "POST" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/decisions\/answer$/)
+  ) {
     const sessionId = decodeURIComponent(url.pathname.split("/").at(-3) || "");
     sendJson(response, 200, await handleDecisionAnswer(sessionId, await readRequestJson(request)));
     return;
   }
-  if (request.method === "PATCH" && url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs\/[^/]+\/permission$/)) {
+  if (
+    request.method === "PATCH" &&
+    url.pathname.match(/^\/api\/studio\/sessions\/[^/]+\/jobs\/[^/]+\/permission$/)
+  ) {
     const parts = url.pathname.split("/");
     // /api/studio/sessions/SESSION_ID/jobs/JOB_ID/permission
     const sessionId = decodeURIComponent(parts.at(-4) || "");
     const jobId = decodeURIComponent(parts.at(-2) || "");
-    sendJson(response, 200, await handlePermission(sessionId, jobId, await readRequestJson(request)));
+    sendJson(
+      response,
+      200,
+      await handlePermission(sessionId, jobId, await readRequestJson(request)),
+    );
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/preview-info") {
@@ -247,7 +315,11 @@ async function handleApi(request, response, url) {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/workspace/profile") {
-    sendJson(response, 200, await describeWorkspaceProfile(url.searchParams.get("path") || workspace));
+    sendJson(
+      response,
+      200,
+      await describeWorkspaceProfile(url.searchParams.get("path") || workspace),
+    );
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/git/status") {
@@ -255,10 +327,14 @@ async function handleApi(request, response, url) {
     return;
   }
   if (request.method === "GET" && url.pathname === "/api/studio/git/diff") {
-    sendJson(response, 200, await readWorkspaceGitDiff(
-      url.searchParams.get("path") || "",
-      url.searchParams.get("stage") || "all",
-    ));
+    sendJson(
+      response,
+      200,
+      await readWorkspaceGitDiff(
+        url.searchParams.get("path") || "",
+        url.searchParams.get("stage") || "all",
+      ),
+    );
     return;
   }
   if (request.method === "POST" && url.pathname === "/api/studio/git/stage") {
@@ -375,7 +451,7 @@ async function submitUserGoal(sessionId, body) {
     status: "completed",
     title: "User",
     summary: goal,
-    content_delta: goal
+    content_delta: goal,
   });
   // A canned "I'll handle this: <goal>" acknowledgement is machinery, not the agent-loop's output —
   // it just repeats the user's goal back. Keep it for the Inspector, but the main thread shows only
@@ -412,17 +488,29 @@ async function submitUserGoal(sessionId, body) {
       type: "permission_request",
       status: "waiting_user",
       title: "Approval needed",
-      summary: "This may modify files or run local operations. Confirm to continue; cancel makes no changes.",
+      summary:
+        "This may modify files or run local operations. Confirm to continue; cancel makes no changes.",
       command,
       data: { permission_preview: permissionPreview },
       job_id: pendingJobId,
-      content_delta: "Confirm to start. Cancel and nothing runs."
+      content_delta: "Confirm to start. Cancel and nothing runs.",
     });
-    return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId };
+    return {
+      ok: true,
+      session: { ...session, session_id: activeSessionId },
+      started: false,
+      needs_permission: true,
+      job_id: pendingJobId,
+    };
   }
 
   startRuntimeJob(activeSessionId, mode, goal, command);
-  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, execution_route: executionRoute?.route || "direct" };
+  return {
+    ok: true,
+    session: { ...session, session_id: activeSessionId },
+    started: true,
+    execution_route: executionRoute?.route || "direct",
+  };
 }
 
 async function handleRuntimeAction(sessionId, body) {
@@ -461,11 +549,23 @@ async function handleRuntimeAction(sessionId, body) {
       job_id: pendingJobId,
       content_delta: "Confirm to start. Cancel and nothing runs.",
     });
-    return { ok: true, session: { ...session, session_id: activeSessionId }, started: false, needs_permission: true, job_id: pendingJobId, action: action.kind };
+    return {
+      ok: true,
+      session: { ...session, session_id: activeSessionId },
+      started: false,
+      needs_permission: true,
+      job_id: pendingJobId,
+      action: action.kind,
+    };
   }
 
   startRuntimeJob(activeSessionId, action.mode, action.goal, action.command);
-  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, action: action.kind };
+  return {
+    ok: true,
+    session: { ...session, session_id: activeSessionId },
+    started: true,
+    action: action.kind,
+  };
 }
 
 async function handleDecisionResolve(sessionId, body) {
@@ -480,7 +580,8 @@ async function handleDecisionResolve(sessionId, body) {
   const runDir = path.join(workspace, ".asteria", "runs", runId);
   const decisions = latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 200));
   const decision = decisions.find((item) => String(item.decision_id || "") === decisionId);
-  if (!decision || decision.status !== "pending") return { ok: false, error: "decision is not pending" };
+  if (!decision || decision.status !== "pending")
+    return { ok: false, error: "decision is not pending" };
   const options = Array.isArray(decision.options) ? decision.options : [];
   if (!options.some((option) => String(option.option_id || "") === optionId)) {
     return { ok: false, error: "option not found" };
@@ -495,16 +596,40 @@ async function handleDecisionResolve(sessionId, body) {
     phase: "decision",
     display_level: "main",
   });
-  await appendEvent(activeSessionId, progressEventForMode("decide", String(decision.question || decisionId)));
-  const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--select-option-id", optionId];
-  const metadata = decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
+  await appendEvent(
+    activeSessionId,
+    progressEventForMode("decide", String(decision.question || decisionId)),
+  );
+  const command = [
+    python,
+    "-m",
+    moduleName,
+    "decide",
+    "--root",
+    workspace,
+    "--session-id",
+    runId,
+    "--decision-id",
+    decisionId,
+    "--select-option-id",
+    optionId,
+  ];
+  const metadata =
+    decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
   const followUpMode =
-    (metadata.kind === "runtime_request" && optionId === "review_contract")
-    || (metadata.kind === "replan_decision" && optionId === "create_repair_task")
+    (metadata.kind === "runtime_request" && optionId === "review_contract") ||
+    (metadata.kind === "replan_decision" && optionId === "create_repair_task")
       ? "resume"
       : null;
   startRuntimeJob(activeSessionId, "decide", `Resolve ${decisionId}.`, command, { followUpMode });
-  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, decision_id: decisionId, option_id: optionId, follow_up_mode: followUpMode };
+  return {
+    ok: true,
+    session: { ...session, session_id: activeSessionId },
+    started: true,
+    decision_id: decisionId,
+    option_id: optionId,
+    follow_up_mode: followUpMode,
+  };
 }
 
 // Open-ended ask: the model paused the loop with a free-text question (options empty,
@@ -525,9 +650,12 @@ async function handleDecisionAnswer(sessionId, body) {
   const runDir = path.join(workspace, ".asteria", "runs", runId);
   const decisions = latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 200));
   const decision = decisions.find((item) => String(item.decision_id || "") === decisionId);
-  if (!decision || decision.status !== "pending") return { ok: false, error: "decision is not pending" };
-  const metadata = decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
-  if (metadata.kind !== "open_question") return { ok: false, error: "decision is not an open question" };
+  if (!decision || decision.status !== "pending")
+    return { ok: false, error: "decision is not pending" };
+  const metadata =
+    decision.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
+  if (metadata.kind !== "open_question")
+    return { ok: false, error: "decision is not an open question" };
   await appendEvent(activeSessionId, {
     type: "user_message",
     status: "completed",
@@ -537,11 +665,34 @@ async function handleDecisionAnswer(sessionId, body) {
     phase: "decision",
     display_level: "main",
   });
-  await appendEvent(activeSessionId, progressEventForMode("decide", String(decision.question || decisionId)));
-  const command = [python, "-m", moduleName, "decide", "--root", workspace, "--session-id", runId, "--decision-id", decisionId, "--answer", answer];
+  await appendEvent(
+    activeSessionId,
+    progressEventForMode("decide", String(decision.question || decisionId)),
+  );
+  const command = [
+    python,
+    "-m",
+    moduleName,
+    "decide",
+    "--root",
+    workspace,
+    "--session-id",
+    runId,
+    "--decision-id",
+    decisionId,
+    "--answer",
+    answer,
+  ];
   // Resume right after recording the answer so the loop continues with it as guidance.
-  startRuntimeJob(activeSessionId, "decide", `Answer ${decisionId}.`, command, { followUpMode: "resume" });
-  return { ok: true, session: { ...session, session_id: activeSessionId }, started: true, decision_id: decisionId };
+  startRuntimeJob(activeSessionId, "decide", `Answer ${decisionId}.`, command, {
+    followUpMode: "resume",
+  });
+  return {
+    ok: true,
+    session: { ...session, session_id: activeSessionId },
+    started: true,
+    decision_id: decisionId,
+  };
 }
 
 function isSafeDecisionOptionId(value) {
@@ -563,7 +714,9 @@ function latestDecisions(decisions) {
 }
 
 function runtimeActionFor(value) {
-  const raw = String(value || "").trim().toLowerCase();
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
   if (!raw) return null;
   const normalized = raw
     .replace(/^asteria\s+/, "")
@@ -607,7 +760,8 @@ function runtimeActionByKind(kind) {
       command: [python, "-m", moduleName, "accept", "--root", workspace],
       requiresPermission: true,
       summary: "I will accept the verified result after confirmation.",
-      permissionSummary: "\u63a5\u53d7\u7ed3\u679c\u4f1a\u66f4\u65b0\u5f53\u524d runtime \u72b6\u6001\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      permissionSummary:
+        "\u63a5\u53d7\u7ed3\u679c\u4f1a\u66f4\u65b0\u5f53\u524d runtime \u72b6\u6001\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
       permissionPreview: permissionPreview({
         action: "Accept the reviewed result",
         impact: "Finalize the reviewed runtime result.",
@@ -622,10 +776,22 @@ function runtimeActionByKind(kind) {
       label: "Continue",
       mode: "resume",
       goal: "Continue the current runtime goal.",
-      command: [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1"],
+      command: [
+        python,
+        "-m",
+        moduleName,
+        "resume",
+        "--root",
+        workspace,
+        "--max-iterations",
+        "8",
+        "--max-tasks-per-iteration",
+        "1",
+      ],
       requiresPermission: true,
       summary: "I will continue the current goal after confirmation.",
-      permissionSummary: "\u7ee7\u7eed\u63a8\u8fdb\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      permissionSummary:
+        "\u7ee7\u7eed\u63a8\u8fdb\u53ef\u80fd\u4f1a\u4fee\u6539\u6587\u4ef6\u6216\u8fd0\u884c\u672c\u5730\u64cd\u4f5c\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
       permissionPreview: permissionPreview({
         action: "Continue the current goal",
         impact: "May edit workspace files and run local verification.",
@@ -643,7 +809,8 @@ function runtimeActionByKind(kind) {
       command: [python, "-m", moduleName, "debug", "--root", workspace],
       requiresPermission: true,
       summary: "I will diagnose the blocked step and prepare a repair path after confirmation.",
-      permissionSummary: "\u8c03\u8bd5\u4fee\u590d\u53ef\u80fd\u4f1a\u8bfb\u53d6\u8fd0\u884c\u8bc1\u636e\u5e76\u4fee\u6539\u6587\u4ef6\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
+      permissionSummary:
+        "\u8c03\u8bd5\u4fee\u590d\u53ef\u80fd\u4f1a\u8bfb\u53d6\u8fd0\u884c\u8bc1\u636e\u5e76\u4fee\u6539\u6587\u4ef6\u3002\u8bf7\u786e\u8ba4\u662f\u5426\u7ee7\u7eed\u3002",
       permissionPreview: permissionPreview({
         action: "Diagnose and repair the blocked step",
         impact: "Read failure evidence and may edit workspace files.",
@@ -698,7 +865,10 @@ function permissionPreviewForMode(mode) {
     });
   }
   return permissionPreview({
-    action: normalized === "resume" || normalized === "continue" ? "Continue the current goal" : "Start working on this goal",
+    action:
+      normalized === "resume" || normalized === "continue"
+        ? "Continue the current goal"
+        : "Start working on this goal",
     impact: "May edit workspace files and run local verification.",
     scope: "Current workspace",
     network: "Model provider may be contacted; external tools still require separate approval.",
@@ -722,26 +892,50 @@ function permissionPreview({ action, impact, scope, network, risk, reversible, s
 // Chat mode: instant local answer, zero CLI overhead
 
 function acknowledgementFor(mode, goal) {
-  if (mode === "plan") return `\u6211\u4f1a\u5148\u7ed9\u4f60\u6574\u7406\u4e00\u4efd\u53ea\u8bfb\u8ba1\u5212\uff1a${goal}`;
-  if (mode === "run") return `\u6211\u4f1a\u6309\u53d7\u63a7\u6d41\u7a0b\u5904\u7406\u8fd9\u4e2a\u76ee\u6807\uff1a${goal}`;
-  if (mode === "continue") return `\u6211\u4f1a\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u63a8\u8fdb\uff08\u8df3\u8fc7\u91cd\u65b0 plan\uff09\uff1a${goal}`;
-  if (mode === "orchestration") return `\u6211\u4f1a\u6309 L3 workflow manifest \u6267\u884c\u591a\u9636\u6bb5\u7f16\u6392\uff08\u72b6\u6001\u843d\u5728 runner JSONL\uff09\uff1a${goal}`;
-  if (mode === "review") return `\u6211\u4f1a\u68c0\u67e5\u5f53\u524d\u7ed3\u679c\uff0c\u5e76\u7528\u4f60\u80fd\u76f4\u63a5\u5224\u65ad\u7684\u65b9\u5f0f\u603b\u7ed3\uff1a${goal}`;
-  if (mode === "resume") return `\u6211\u4f1a\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\uff1a${goal}`;
+  if (mode === "plan")
+    return `\u6211\u4f1a\u5148\u7ed9\u4f60\u6574\u7406\u4e00\u4efd\u53ea\u8bfb\u8ba1\u5212\uff1a${goal}`;
+  if (mode === "run")
+    return `\u6211\u4f1a\u6309\u53d7\u63a7\u6d41\u7a0b\u5904\u7406\u8fd9\u4e2a\u76ee\u6807\uff1a${goal}`;
+  if (mode === "continue")
+    return `\u6211\u4f1a\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u63a8\u8fdb\uff08\u8df3\u8fc7\u91cd\u65b0 plan\uff09\uff1a${goal}`;
+  if (mode === "orchestration")
+    return `\u6211\u4f1a\u6309 L3 workflow manifest \u6267\u884c\u591a\u9636\u6bb5\u7f16\u6392\uff08\u72b6\u6001\u843d\u5728 runner JSONL\uff09\uff1a${goal}`;
+  if (mode === "review")
+    return `\u6211\u4f1a\u68c0\u67e5\u5f53\u524d\u7ed3\u679c\uff0c\u5e76\u7528\u4f60\u80fd\u76f4\u63a5\u5224\u65ad\u7684\u65b9\u5f0f\u603b\u7ed3\uff1a${goal}`;
+  if (mode === "resume")
+    return `\u6211\u4f1a\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\uff1a${goal}`;
   return `\u6211\u5df2\u6536\u5230\u4f60\u7684\u8bf7\u6c42\uff1a${goal}`;
 }
 
 function progressEventForMode(mode, goal) {
   const labels = {
-    plan: ["Planning", "\u6b63\u5728\u6574\u7406\u53ea\u8bfb\u8ba1\u5212\uff0c\u4e0d\u4f1a\u4fee\u6539\u4f60\u7684\u6587\u4ef6\u3002"],
+    plan: [
+      "Planning",
+      "\u6b63\u5728\u6574\u7406\u53ea\u8bfb\u8ba1\u5212\uff0c\u4e0d\u4f1a\u4fee\u6539\u4f60\u7684\u6587\u4ef6\u3002",
+    ],
     run: ["Starting", "\u6b63\u5728\u5f00\u59cb\u53d7\u63a7\u5904\u7406\u3002"],
-    continue: ["Continuing", "\u6b63\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u6267\u884c\u3002"],
-    orchestration: ["Orchestrating", "\u6b63\u5728\u6267\u884c L3 workflow manifest\uff08runner JSONL \u53ef\u89c2\u5bdf\uff09\u3002"],
-    review: ["Reviewing", "\u6b63\u5728\u68c0\u67e5\u7ed3\u679c\u5e76\u51c6\u5907\u603b\u7ed3\u3002"],
+    continue: [
+      "Continuing",
+      "\u6b63\u5728\u5f53\u524d session \u5185\u7ee7\u7eed\u6267\u884c\u3002",
+    ],
+    orchestration: [
+      "Orchestrating",
+      "\u6b63\u5728\u6267\u884c L3 workflow manifest\uff08runner JSONL \u53ef\u89c2\u5bdf\uff09\u3002",
+    ],
+    review: [
+      "Reviewing",
+      "\u6b63\u5728\u68c0\u67e5\u7ed3\u679c\u5e76\u51c6\u5907\u603b\u7ed3\u3002",
+    ],
     resume: ["Resuming", "\u6b63\u5728\u7ee7\u7eed\u63a8\u8fdb\u5f53\u524d\u4efb\u52a1\u3002"],
     accept: ["Accepting", "\u6b63\u5728\u63a5\u53d7\u5df2\u9a8c\u8bc1\u7684\u7ed3\u679c\u3002"],
-    debug: ["Repairing", "\u6b63\u5728\u68c0\u67e5\u95ee\u9898\u5e76\u51c6\u5907\u4fee\u590d\u8def\u5f84\u3002"],
-    decide: ["Deciding", "\u6b63\u5728\u68c0\u67e5\u9700\u8981\u4f60\u5224\u65ad\u7684\u9009\u9879\u3002"],
+    debug: [
+      "Repairing",
+      "\u6b63\u5728\u68c0\u67e5\u95ee\u9898\u5e76\u51c6\u5907\u4fee\u590d\u8def\u5f84\u3002",
+    ],
+    decide: [
+      "Deciding",
+      "\u6b63\u5728\u68c0\u67e5\u9700\u8981\u4f60\u5224\u65ad\u7684\u9009\u9879\u3002",
+    ],
   };
   const [title, summary] = labels[mode] || ["Processing", "Working on the request."];
   return {
@@ -760,7 +954,9 @@ function runtimeCommand(mode, goal, options = {}) {
     return runtimeContinuationCommand(goal);
   }
   if (mode === "orchestration") {
-    const manifest = String(options.manifest || "benchmarks/orchestration_s72_ingress_manifest.json");
+    const manifest = String(
+      options.manifest || "benchmarks/orchestration_s72_ingress_manifest.json",
+    );
     const liveFlag = options.live ? "--live" : "";
     return [
       python,
@@ -776,20 +972,57 @@ function runtimeCommand(mode, goal, options = {}) {
     ];
   }
   if (mode === "run") {
-    return [python, "-m", moduleName, "run", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1", "--no-research", goal];
+    return [
+      python,
+      "-m",
+      moduleName,
+      "run",
+      "--root",
+      workspace,
+      "--max-iterations",
+      "8",
+      "--max-tasks-per-iteration",
+      "1",
+      "--no-research",
+      goal,
+    ];
   }
   if (mode === "review") return [python, "-m", moduleName, "review", "--root", workspace];
-  if (mode === "resume") return [python, "-m", moduleName, "resume", "--root", workspace, "--max-iterations", "8", "--max-tasks-per-iteration", "1"];
+  if (mode === "resume")
+    return [
+      python,
+      "-m",
+      moduleName,
+      "resume",
+      "--root",
+      workspace,
+      "--max-iterations",
+      "8",
+      "--max-tasks-per-iteration",
+      "1",
+    ];
   if (mode === "accept") return [python, "-m", moduleName, "accept", "--root", workspace];
   if (mode === "debug") return [python, "-m", moduleName, "debug", "--root", workspace];
-  if (mode === "decide") return [python, "-m", moduleName, "decide", "--root", workspace, "--list-pending"];
+  if (mode === "decide")
+    return [python, "-m", moduleName, "decide", "--root", workspace, "--list-pending"];
   return [python, "-m", moduleName, "plan", "--root", workspace, goal];
 }
 
 function runtimeContinuationCommand(goal) {
   return [
-    python, "-m", moduleName, "run", "--continue-session", "--root", workspace,
-    "--max-iterations", "8", "--max-tasks-per-iteration", "1", "--no-research", goal,
+    python,
+    "-m",
+    moduleName,
+    "run",
+    "--continue-session",
+    "--root",
+    workspace,
+    "--max-iterations",
+    "8",
+    "--max-tasks-per-iteration",
+    "1",
+    "--no-research",
+    goal,
   ];
 }
 
@@ -813,11 +1046,13 @@ async function resolveStudioOrchestrationRoute(goal, requestedMode) {
     };
   }
   const modeArg = explicit || "auto";
-  const routed = await routeClient.route({
-    root: workspace,
-    message: String(goal || ""),
-    requestedMode: modeArg,
-  }).catch(() => null);
+  const routed = await routeClient
+    .route({
+      root: workspace,
+      message: String(goal || ""),
+      requestedMode: modeArg,
+    })
+    .catch(() => null);
   if (!routed || routed.ok === false || !routed.studio_mode) {
     return resolveStudioExecutionRouteFallback(goal, requestedMode);
   }
@@ -864,7 +1099,9 @@ function orchestrationHasRouteSignal(orchestrated) {
   // warm_session, resume_in_progress, or a real runtime-router decision —
   // carries a genuine signal and should be honored.
   if (!orchestrated || !orchestrated.mode) return false;
-  return !(String(orchestrated.source) === "rules_fallback" && String(orchestrated.route) === "cold");
+  return !(
+    String(orchestrated.source) === "rules_fallback" && String(orchestrated.route) === "cold"
+  );
 }
 
 async function resolveStudioExecutionRouteFallback(goal, requestedMode) {
@@ -874,15 +1111,19 @@ async function resolveStudioExecutionRouteFallback(goal, requestedMode) {
   const status = await commandJson(["status", "--root", workspace, "--json"]).catch(() => ({}));
   const phase = String(status?.current_phase || "").toUpperCase();
   const runStatus = String(
-    status?.current_context?.run_status?.status || status?.run_status?.status || status?.status || "",
+    status?.current_context?.run_status?.status ||
+      status?.run_status?.status ||
+      status?.status ||
+      "",
   ).toLowerCase();
   const currentRunId = String(status?.current_session_id || "").trim();
   if (!currentRunId) {
     return { mode: "run", route: "cold", reason: null, command: null, source: "rules_fallback" };
   }
 
-  const inProgress = !CONTINUABLE_STUDIO_PHASES.has(phase)
-    && ["running", "blocked", "paused", "in_progress"].includes(runStatus);
+  const inProgress =
+    !CONTINUABLE_STUDIO_PHASES.has(phase) &&
+    ["running", "blocked", "paused", "in_progress"].includes(runStatus);
   if (inProgress) {
     return {
       mode: "resume",
@@ -928,7 +1169,12 @@ async function handleChatMode(sessionId, goal, route = null, audit = null, displ
     ui_intent: displayLevel === "side" ? "side_chat" : undefined,
   });
   startChatJob(sessionId, goal, route, audit, displayLevel);
-  return { ok: true, chat: true, started: true, channel: displayLevel === "side" ? "side" : "main" };
+  return {
+    ok: true,
+    chat: true,
+    started: true,
+    channel: displayLevel === "side" ? "side" : "main",
+  };
 }
 
 function startChatJob(sessionId, goal, route = null, audit = null, displayLevel = "main") {
@@ -944,7 +1190,9 @@ function startChatJob(sessionId, goal, route = null, audit = null, displayLevel 
   liveJobs.set(jobId, job);
   const stopTail = tailSessionEvents(sessionId, jobId);
   let lifecycleStarted = false;
-  const markLifecycleStarted = () => { lifecycleStarted = true; };
+  const markLifecycleStarted = () => {
+    lifecycleStarted = true;
+  };
 
   void (async () => {
     try {
@@ -1030,7 +1278,9 @@ function tailSessionEvents(sessionId, jobId) {
     if (!stopped) setTimeout(poll, 180);
   };
   setTimeout(poll, 100);
-  return () => { stopped = true; };
+  return () => {
+    stopped = true;
+  };
 }
 
 async function appendChatFallbackLifecycle(sessionId, answer) {
@@ -1044,30 +1294,44 @@ async function hideManualChatModelStart(sessionId) {
   if (!existsSync(file)) return;
   let rows;
   try {
-    rows = (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    rows = (await fs.readFile(file, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
   } catch {
     return;
   }
-  const hasProviderStart = rows.some((event) =>
-    event.type === "model_start"
-    && event.phase === "chat"
-    && String(event.event_id || "").startsWith("evt-model-")
+  const hasProviderStart = rows.some(
+    (event) =>
+      event.type === "model_start" &&
+      event.phase === "chat" &&
+      String(event.event_id || "").startsWith("evt-model-"),
   );
   if (!hasProviderStart) return;
   let changed = false;
   const nextRows = rows.map((event) => {
     if (
-      event.type === "model_start"
-      && event.phase === "chat"
-      && !String(event.event_id || "").startsWith("evt-model-")
-      && event.status === "running"
+      event.type === "model_start" &&
+      event.phase === "chat" &&
+      !String(event.event_id || "").startsWith("evt-model-") &&
+      event.status === "running"
     ) {
       changed = true;
-      return { ...event, display_level: "hidden", status: "completed", summary: "Replaced by provider streaming lifecycle." };
+      return {
+        ...event,
+        display_level: "hidden",
+        status: "completed",
+        summary: "Replaced by provider streaming lifecycle.",
+      };
     }
     return event;
   });
-  if (changed) await fs.writeFile(file, `${nextRows.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
+  if (changed)
+    await fs.writeFile(
+      file,
+      `${nextRows.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8",
+    );
 }
 
 async function appendChatModelStart(sessionId, route, streamingMode = "streaming") {
@@ -1126,7 +1390,8 @@ async function buildChatAnswer(message, sessionId, route = null, onLifecycleStar
   const lower = m.toLowerCase();
 
   if (isRuntimeMetaQuestion(lower)) return chatAnswer(await chatRuntimeAnswer(m, sessionId));
-  if (hasAny(lower, ["who are you", "\u4f60\u662f\u8c01", "\u81ea\u6211\u4ecb\u7ecd"])) return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
+  if (hasAny(lower, ["who are you", "\u4f60\u662f\u8c01", "\u81ea\u6211\u4ecb\u7ecd"]))
+    return await chatGeneralAnswer(m, sessionId, onLifecycleStart);
   if (isModeHelpQuestion(lower)) return chatAnswer(CHAT_MODES);
 
   // The backend intent router (routeUserIntent) already decided this message stays in chat rather
@@ -1146,7 +1411,19 @@ function chatAnswer(content, route = null, usedModel = false) {
 
 async function chatRuntimeAnswer(message, sessionId) {
   const lower = message.toLowerCase();
-  if (hasAny(lower, ["model route", "route rationale", "cheap mode", "cost mode", "why this model", "\u4e3a\u4ec0\u4e48\u7528", "\u6a21\u578b\u8def\u7ebf", "\u7701\u94b1", "\u6210\u672c"])) {
+  if (
+    hasAny(lower, [
+      "model route",
+      "route rationale",
+      "cheap mode",
+      "cost mode",
+      "why this model",
+      "\u4e3a\u4ec0\u4e48\u7528",
+      "\u6a21\u578b\u8def\u7ebf",
+      "\u7701\u94b1",
+      "\u6210\u672c",
+    ])
+  ) {
     return await chatModelRouteAnswer(sessionId);
   }
   return await chatStatusAnswer(sessionId);
@@ -1158,7 +1435,9 @@ async function chatGeneralAnswer(message, sessionId, onLifecycleStart = null) {
   const prompt = [
     ...outcomeAnswerContract(kind),
     `Internal intent hint: ${kind}. Use this only to choose answer shape; do not show the label.`,
-    context.latestRunId ? `Background only if relevant: latest_run=${context.latestRunId}, state=${firstRuntimeText(context.run?.status, "unknown")}/${firstRuntimeText(context.run?.current_phase, "unknown")}.` : "No run context is needed unless asked.",
+    context.latestRunId
+      ? `Background only if relevant: latest_run=${context.latestRunId}, state=${firstRuntimeText(context.run?.status, "unknown")}/${firstRuntimeText(context.run?.current_phase, "unknown")}.`
+      : "No run context is needed unless asked.",
   ].join("\n");
   const route = await preferredChatRoute();
   if (chatBackend === "model") {
@@ -1168,7 +1447,12 @@ async function chatGeneralAnswer(message, sessionId, onLifecycleStart = null) {
     const streamedAnswer = extractVisibleChatAnswerFromEvents(sessionId);
     const finalAnswer = streamedAnswer || answered;
     if (finalAnswer) return chatAnswer(appendModelNotice(finalAnswer, route, true), route, true);
-    await appendChatFallbackDelta(sessionId, lifecycle, appendModelNotice(localGeneralAnswer(message), route, false), route);
+    await appendChatFallbackDelta(
+      sessionId,
+      lifecycle,
+      appendModelNotice(localGeneralAnswer(message), route, false),
+      route,
+    );
   }
   return chatAnswer(appendModelNotice(localGeneralAnswer(message), route, false), route, false);
 }
@@ -1188,16 +1472,19 @@ function appendModelNotice(answer, route, usedModel) {
 
 async function preferredChatRoute() {
   const routes = await modelRouteSummary().catch(() => []);
-  const chatRoute = routes.find((item) => String(item.purpose || "").toLowerCase() === "chat")
-    || routes.find((item) => String(item.tier || "").toLowerCase() === "medium")
-    || routes[0]
-    || null;
-  return chatRoute ? {
-    provider: firstRuntimeText(chatRoute.provider, "unknown"),
-    model: firstRuntimeText(chatRoute.model, "unknown"),
-    tier: firstRuntimeText(chatRoute.tier, "unknown"),
-    purpose: firstRuntimeText(chatRoute.purpose, "chat"),
-  } : null;
+  const chatRoute =
+    routes.find((item) => String(item.purpose || "").toLowerCase() === "chat") ||
+    routes.find((item) => String(item.tier || "").toLowerCase() === "medium") ||
+    routes[0] ||
+    null;
+  return chatRoute
+    ? {
+        provider: firstRuntimeText(chatRoute.provider, "unknown"),
+        model: firstRuntimeText(chatRoute.model, "unknown"),
+        tier: firstRuntimeText(chatRoute.tier, "unknown"),
+        purpose: firstRuntimeText(chatRoute.purpose, "chat"),
+      }
+    : null;
 }
 
 function routeLabel(route) {
@@ -1224,10 +1511,13 @@ async function chatModelAnswer(systemPrompt, message, sessionId) {
     // Feed the recent completed chat turns (already persisted in this session's events.jsonl) into
     // ChatCommand so the reply is no longer single-turn amnesiac. ChatCommand bounds/clips further.
     const history = chatHistoryForSession(sessionId);
-    const payload = Buffer.from(JSON.stringify({
-      question: `System instruction:\n${systemPrompt}\n\nUser question:\n${message}`,
-      history,
-    }), "utf8").toString("base64");
+    const payload = Buffer.from(
+      JSON.stringify({
+        question: `System instruction:\n${systemPrompt}\n\nUser question:\n${message}`,
+        history,
+      }),
+      "utf8",
+    ).toString("base64");
     const script = [
       "import base64, json, os",
       "from pathlib import Path",
@@ -1236,11 +1526,7 @@ async function chatModelAnswer(systemPrompt, message, sessionId) {
       "result = ChatCommand(root=Path(os.environ['ASTERIA_STUDIO_ROOT']), question=data['question'], history=data.get('history')).run()",
       "print(json.dumps(result.to_dict(), ensure_ascii=False))",
     ].join("; ");
-    const completed = await runCommand([
-      python,
-      "-c",
-      script,
-    ], runtimeRoot, {
+    const completed = await runCommand([python, "-c", script], runtimeRoot, {
       PYTHONIOENCODING: "utf-8",
       ASTERIA_STUDIO_CHAT_BACKEND: undefined,
       ASTERIA_STUDIO_CHAT_PAYLOAD: payload,
@@ -1250,7 +1536,9 @@ async function chatModelAnswer(systemPrompt, message, sessionId) {
       ASTERIA_STUDIO_PHASE: "chat",
     });
     if (completed.code !== 0) return "";
-    const raw = String(completed.stdout || "").replace(/^\uFEFF/, "").trim();
+    const raw = String(completed.stdout || "")
+      .replace(/^\uFEFF/, "")
+      .trim();
     try {
       const parsed = JSON.parse(raw);
       const answer = cleanAssistantText(stripCliContextNoise(parsed.answer || ""));
@@ -1268,7 +1556,11 @@ function stripCliChatEnvelope(stdout) {
   const useful = [];
   let skippingHeader = true;
   for (const line of lines) {
-    if (skippingHeader && (/^Chat\s*$/.test(line) || /^Permission level:/.test(line) || /^Model strategy:/.test(line))) continue;
+    if (
+      skippingHeader &&
+      (/^Chat\s*$/.test(line) || /^Permission level:/.test(line) || /^Model strategy:/.test(line))
+    )
+      continue;
     skippingHeader = false;
     useful.push(line);
   }
@@ -1280,7 +1572,6 @@ function stripCliContextNoise(text) {
     .split(/\nContext refs:|\nCurrent session:|\nNext actions:/i)[0]
     .trim();
 }
-
 
 function stripThinkingBlocks(text) {
   return String(text || "")
@@ -1302,7 +1593,11 @@ function extractVisibleChatAnswerFromEvents(sessionId) {
   let latestStartIndex = -1;
   for (let i = rows.length - 1; i >= 0; i -= 1) {
     const event = rows[i];
-    if (event.type === "model_start" && event.phase === "chat" && String(event.event_id || "").startsWith("evt-model-")) {
+    if (
+      event.type === "model_start" &&
+      event.phase === "chat" &&
+      String(event.event_id || "").startsWith("evt-model-")
+    ) {
       latestStartIndex = i;
       break;
     }
@@ -1314,10 +1609,17 @@ function extractVisibleChatAnswerFromEvents(sessionId) {
   for (const event of rows.slice(latestStartIndex + 1)) {
     if (event.phase !== "chat") continue;
     if (event.type === "model_start" && event.event_id !== parentId) break;
-    if (event.type === "model_delta" && (!event.parent_event_id || event.parent_event_id === parentId)) {
+    if (
+      event.type === "model_delta" &&
+      (!event.parent_event_id || event.parent_event_id === parentId)
+    ) {
       chunks.push(String(event.content_delta || ""));
     }
-    if (event.type === "model_end" && (!event.parent_event_id || event.parent_event_id === parentId)) break;
+    if (
+      event.type === "model_end" &&
+      (!event.parent_event_id || event.parent_event_id === parentId)
+    )
+      break;
   }
   return cleanAssistantText(stripCliContextNoise(stripThinkingBlocks(chunks.join(""))));
 }
@@ -1325,7 +1627,10 @@ function extractVisibleChatAnswerFromEvents(sessionId) {
 function fsSyncReadJsonl(file) {
   try {
     const raw = requireReadFileSync(file);
-    return raw.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    return raw
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
   } catch {
     return [];
   }
@@ -1387,26 +1692,44 @@ function localGeneralAnswer(message) {
     "- Add the important constraints: time, budget, audience, location, difficulty, format, or things to avoid.",
     "- If you want a concise answer, ask for a short version; if you want depth, ask for tradeoffs and examples.",
     "",
-    "Next step: send the missing constraints and I can turn this into a more complete answer."
+    "Next step: send the missing constraints and I can turn this into a more complete answer.",
   ].join("\n");
 }
 
 function localOutcomePlanAnswer(message, kind) {
   const goal = String(message || "").trim() || "your goal";
-  const domainNote = kind === "travel_plan"
-    ? "Assumption: you want a balanced itinerary with room for rest, local food, and one backup option per day."
-    : kind === "learning_plan"
-      ? "Assumption: you want steady progress with clear practice loops and checkpoints."
-      : kind === "content_plan"
-        ? "Assumption: you want a practical outline that can become a draft or production checklist."
-        : "Assumption: you want a practical plan that can be adjusted after you add constraints.";
-  const focus = kind === "travel_plan"
-    ? ["Confirm dates, budget, travel companions, pace, and must-see constraints.", "Group activities by geography so each day has one primary area and one optional backup.", "Reserve high-demand transport, hotels, restaurants, or tickets first."]
-    : kind === "learning_plan"
-      ? ["Define the target level and one measurable outcome.", "Split the plan into input, deliberate practice, feedback, and review.", "Schedule small daily actions and a weekly checkpoint."]
-      : kind === "content_plan"
-        ? ["Clarify audience, promise, tone, and final format.", "Draft the core structure before polishing details.", "Review against usefulness, specificity, and clarity before publishing or sharing."]
-        : ["Clarify the target result and constraints.", "Break the work into phases with a visible checkpoint after each phase.", "Decide what can be simplified if time, budget, or confidence drops."];
+  const domainNote =
+    kind === "travel_plan"
+      ? "Assumption: you want a balanced itinerary with room for rest, local food, and one backup option per day."
+      : kind === "learning_plan"
+        ? "Assumption: you want steady progress with clear practice loops and checkpoints."
+        : kind === "content_plan"
+          ? "Assumption: you want a practical outline that can become a draft or production checklist."
+          : "Assumption: you want a practical plan that can be adjusted after you add constraints.";
+  const focus =
+    kind === "travel_plan"
+      ? [
+          "Confirm dates, budget, travel companions, pace, and must-see constraints.",
+          "Group activities by geography so each day has one primary area and one optional backup.",
+          "Reserve high-demand transport, hotels, restaurants, or tickets first.",
+        ]
+      : kind === "learning_plan"
+        ? [
+            "Define the target level and one measurable outcome.",
+            "Split the plan into input, deliberate practice, feedback, and review.",
+            "Schedule small daily actions and a weekly checkpoint.",
+          ]
+        : kind === "content_plan"
+          ? [
+              "Clarify audience, promise, tone, and final format.",
+              "Draft the core structure before polishing details.",
+              "Review against usefulness, specificity, and clarity before publishing or sharing.",
+            ]
+          : [
+              "Clarify the target result and constraints.",
+              "Break the work into phases with a visible checkpoint after each phase.",
+              "Decide what can be simplified if time, budget, or confidence drops.",
+            ];
   return [
     "## Goal understanding",
     `You want a usable plan for: ${goal}`,
@@ -1430,14 +1753,27 @@ function localOutcomePlanAnswer(message, kind) {
     "- The best next version should add the few details that affect the decision most.",
     "",
     "## Next action",
-    "Send the key constraints you already know, and I can turn this into a more specific final plan."
+    "Send the key constraints you already know, and I can turn this into a more specific final plan.",
   ].join("\n");
 }
 
 function isModeHelpQuestion(lower) {
   return hasAny(lower, [
-    "which mode", "what mode", "choose mode", "how to choose mode", "plan/run", "chat/plan", "review mode", "resume mode",
-    "\u6a21\u5f0f", "\u600e\u4e48\u9009\u6a21\u5f0f", "\u9009\u62e9\u54ea\u4e2a\u6a21\u5f0f", "plan \u6a21\u5f0f", "run \u6a21\u5f0f", "review \u6a21\u5f0f", "resume \u6a21\u5f0f",
+    "which mode",
+    "what mode",
+    "choose mode",
+    "how to choose mode",
+    "plan/run",
+    "chat/plan",
+    "review mode",
+    "resume mode",
+    "\u6a21\u5f0f",
+    "\u600e\u4e48\u9009\u6a21\u5f0f",
+    "\u9009\u62e9\u54ea\u4e2a\u6a21\u5f0f",
+    "plan \u6a21\u5f0f",
+    "run \u6a21\u5f0f",
+    "review \u6a21\u5f0f",
+    "resume \u6a21\u5f0f",
   ]);
 }
 
@@ -1462,18 +1798,39 @@ async function chatStatusAnswer(sessionId) {
   const progress = context.runtimeProgress || {};
   const progressTodo = progress.todo || {};
   const verification = progress.verification || {};
-  const next = firstRuntimeText(progress.next_command, commandFromStatus(status, summary, loop), "");
-  const decisionId = context.latestDecision ? (context.latestDecision.decision_id || context.latestDecision.id) : "";
+  const next = firstRuntimeText(
+    progress.next_command,
+    commandFromStatus(status, summary, loop),
+    "",
+  );
+  const decisionId = context.latestDecision
+    ? context.latestDecision.decision_id || context.latestDecision.id
+    : "";
   const blocker = firstRuntimeText(
     summary.current_blocker,
     loop.current_blocker,
     status.current_blocker,
-    decisionId ? "\u6709\u4e00\u4e2a\u9700\u8981\u4f60\u786e\u8ba4\u7684\u51b3\u7b56\u70b9\u3002" : "none"
+    decisionId
+      ? "\u6709\u4e00\u4e2a\u9700\u8981\u4f60\u786e\u8ba4\u7684\u51b3\u7b56\u70b9\u3002"
+      : "none",
   );
-  const workflow = firstRuntimeText(progress.workflow_state, summary.workflow_state, loop.workflow_state, status.workflow_state, run.current_phase, "unknown");
+  const workflow = firstRuntimeText(
+    progress.workflow_state,
+    summary.workflow_state,
+    loop.workflow_state,
+    status.workflow_state,
+    run.current_phase,
+    "unknown",
+  );
   const canReview = Boolean(status.can_review);
   const canAccept = Boolean(status.can_accept);
-  const goal = firstRuntimeText(run.goal, run.original_goal, context.goalSpec.normalized_goal, context.goalSpec.original_goal, "\u672a\u8bb0\u5f55\u76ee\u6807");
+  const goal = firstRuntimeText(
+    run.goal,
+    run.original_goal,
+    context.goalSpec.normalized_goal,
+    context.goalSpec.original_goal,
+    "\u672a\u8bb0\u5f55\u76ee\u6807",
+  );
   const lines = [
     "## \u5f53\u524d\u72b6\u6001",
     "",
@@ -1484,23 +1841,42 @@ async function chatStatusAnswer(sessionId) {
     `\u9a8c\u8bc1\uff1a${firstRuntimeText(verification.summary, "\u8fd8\u6ca1\u6709\u9a8c\u8bc1\u7ed3\u679c")}`,
     "",
     "## \u662f\u5426\u6709\u963b\u585e",
-    blocker && blocker !== "none" ? `- ${blocker}` : "- \u6682\u65f6\u6ca1\u6709\u770b\u5230\u9700\u8981\u4f60\u5904\u7406\u7684\u963b\u585e\u3002",
+    blocker && blocker !== "none"
+      ? `- ${blocker}`
+      : "- \u6682\u65f6\u6ca1\u6709\u770b\u5230\u9700\u8981\u4f60\u5904\u7406\u7684\u963b\u585e\u3002",
     "",
     "## \u5efa\u8bae\u4e0b\u4e00\u6b65",
   ];
-  if (canAccept) lines.push("- \u7ed3\u679c\u770b\u8d77\u6765\u5df2\u7ecf\u53ef\u4ee5\u63a5\u53d7\u3002\u5982\u679c\u4f60\u5bf9\u4ea7\u7269\u6ee1\u610f\uff0c\u53ef\u4ee5\u786e\u8ba4\u63a5\u53d7\u3002");
-  else if (canReview) lines.push("- \u5efa\u8bae\u5148\u8fdb\u884c\u5ba1\u67e5\uff0c\u786e\u8ba4\u7ed3\u679c\u662f\u5426\u7b26\u5408\u76ee\u6807\u3002");
-  else if (decisionId) lines.push("- \u9700\u8981\u4f60\u5148\u5904\u7406\u4e00\u4e2a\u51b3\u7b56\u70b9\uff0c\u518d\u7ee7\u7eed\u63a8\u8fdb\u3002");
-  else if (next) lines.push("- \u53ef\u4ee5\u7ee7\u7eed\u63a8\u8fdb\u4e0b\u4e00\u6b65\u3002\u6211\u4f1a\u5728\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u524d\u8bf7\u4f60\u786e\u8ba4\u3002");
-  else lines.push("- \u5efa\u8bae\u5148\u8ba9\u6211\u628a\u76ee\u6807\u518d\u6574\u7406\u6210\u4e00\u4e2a\u6e05\u6670\u8ba1\u5212\u3002");
+  if (canAccept)
+    lines.push(
+      "- \u7ed3\u679c\u770b\u8d77\u6765\u5df2\u7ecf\u53ef\u4ee5\u63a5\u53d7\u3002\u5982\u679c\u4f60\u5bf9\u4ea7\u7269\u6ee1\u610f\uff0c\u53ef\u4ee5\u786e\u8ba4\u63a5\u53d7\u3002",
+    );
+  else if (canReview)
+    lines.push(
+      "- \u5efa\u8bae\u5148\u8fdb\u884c\u5ba1\u67e5\uff0c\u786e\u8ba4\u7ed3\u679c\u662f\u5426\u7b26\u5408\u76ee\u6807\u3002",
+    );
+  else if (decisionId)
+    lines.push(
+      "- \u9700\u8981\u4f60\u5148\u5904\u7406\u4e00\u4e2a\u51b3\u7b56\u70b9\uff0c\u518d\u7ee7\u7eed\u63a8\u8fdb\u3002",
+    );
+  else if (next)
+    lines.push(
+      "- \u53ef\u4ee5\u7ee7\u7eed\u63a8\u8fdb\u4e0b\u4e00\u6b65\u3002\u6211\u4f1a\u5728\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u524d\u8bf7\u4f60\u786e\u8ba4\u3002",
+    );
+  else
+    lines.push(
+      "- \u5efa\u8bae\u5148\u8ba9\u6211\u628a\u76ee\u6807\u518d\u6574\u7406\u6210\u4e00\u4e2a\u6e05\u6670\u8ba1\u5212\u3002",
+    );
   return lines.join("\n");
 }
 
 function friendlyWorkflow(value) {
   const text = String(value || "").toLowerCase();
-  if (/accept|accepted|done|completed|pass/.test(text)) return "\u5df2\u5b8c\u6210\u6216\u7b49\u5f85\u6700\u7ec8\u786e\u8ba4";
+  if (/accept|accepted|done|completed|pass/.test(text))
+    return "\u5df2\u5b8c\u6210\u6216\u7b49\u5f85\u6700\u7ec8\u786e\u8ba4";
   if (/review/.test(text)) return "\u7b49\u5f85\u5ba1\u67e5";
-  if (/block|decision|pause|wait/.test(text)) return "\u6682\u505c\uff0c\u7b49\u5f85\u786e\u8ba4\u6216\u5904\u7406\u963b\u585e";
+  if (/block|decision|pause|wait/.test(text))
+    return "\u6682\u505c\uff0c\u7b49\u5f85\u786e\u8ba4\u6216\u5904\u7406\u963b\u585e";
   if (/run|exec|work|progress/.test(text)) return "\u6b63\u5728\u63a8\u8fdb";
   if (/plan/.test(text)) return "\u6b63\u5728\u6574\u7406\u8ba1\u5212";
   return "\u72b6\u6001\u4e0d\u660e\uff0c\u5efa\u8bae\u5148\u505a\u4e00\u6b21\u7b80\u77ed\u68c0\u67e5";
@@ -1517,7 +1893,7 @@ async function chatModelRouteAnswer(sessionId) {
     "- \u9700\u8981\u63a8\u7406\u3001\u89c4\u5212\u6216\u68c0\u67e5\u65f6\uff0c\u4f1a\u4f7f\u7528\u66f4\u7a33\u7684\u80fd\u529b\u3002",
     "- \u9700\u8981\u4fee\u6539\u3001\u6267\u884c\u6216\u9ad8\u6210\u672c\u52a8\u4f5c\u65f6\uff0c\u6211\u4f1a\u5148\u8bf4\u660e\u5e76\u7b49\u5f85\u786e\u8ba4\u3002",
     "",
-    "\u5982\u679c\u4f60\u60f3\u7701\u94b1\uff0c\u53ef\u4ee5\u76f4\u63a5\u8bf4\u201c\u7528\u7701\u94b1\u6a21\u5f0f\u201d\u6216\u201c\u5148\u7ed9\u7b80\u7248\u201d\u3002"
+    "\u5982\u679c\u4f60\u60f3\u7701\u94b1\uff0c\u53ef\u4ee5\u76f4\u63a5\u8bf4\u201c\u7528\u7701\u94b1\u6a21\u5f0f\u201d\u6216\u201c\u5148\u7ed9\u7b80\u7248\u201d\u3002",
   ].join("\n");
 }
 
@@ -1542,8 +1918,15 @@ async function readChatContext(sessionId) {
   const detail = latestRunId ? await readRunDetail(latestRunId) : {};
   const status = await commandJson(["status", "--root", workspace, "--json"]).catch(() => ({}));
   const runDir = latestRunId ? path.join(workspace, ".asteria", "runs", latestRunId) : null;
-  const decisions = runDir ? latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20)) : [];
-  const pendingDecision = [...decisions].reverse().find((item) => /pending|open|waiting/i.test(String(item.status ?? item.state ?? "pending"))) || decisions.at(-1);
+  const decisions = runDir
+    ? latestDecisions(await readJsonlTail(path.join(runDir, "decisions.jsonl"), 20))
+    : [];
+  const pendingDecision =
+    [...decisions]
+      .reverse()
+      .find((item) =>
+        /pending|open|waiting/i.test(String(item.status ?? item.state ?? "pending")),
+      ) || decisions.at(-1);
   return {
     sessionId,
     overview: overviewData,
@@ -1554,7 +1937,11 @@ async function readChatContext(sessionId) {
     goalSpec: detail.goal_spec || {},
     finalSummary: detail.final_report_summary || {},
     runLoopSummary: detail.run_loop_summary || {},
-    runtimeProgress: detail.runtime_progress || (detail.final_report_summary || {}).runtime_progress || (detail.run_loop_summary || {}).runtime_progress || {},
+    runtimeProgress:
+      detail.runtime_progress ||
+      (detail.final_report_summary || {}).runtime_progress ||
+      (detail.run_loop_summary || {}).runtime_progress ||
+      {},
     modelRouteTimeline: detail.model_route_timeline || {},
     latestDecision: pendingDecision || null,
   };
@@ -1565,7 +1952,7 @@ function commandFromStatus(status, summary, loop) {
     summary.recommended_next_command,
     loop.recommended_next_command,
     status.recommended_next_command,
-    ""
+    "",
   );
   return raw.replace(/^asteria\s+/, "").trim();
 }
@@ -1591,7 +1978,7 @@ function modelRouteSummaryLine(context) {
   return `- ${firstRuntimeText(route.purpose, "unknown")} used ${firstRuntimeText(route.selected_tier, route.tier, "unknown")}: ${firstRuntimeText(route.reason, route.model_selection_reason, "No reason recorded.")}`;
 }
 
-const CHAT_INTRO =`\u4f60\u597d\uff0c\u6211\u662f Asteria\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u95ee\u9898\u3001\u8ba9\u6211\u8981\u70b9\u5206\u6790\u3001\u5199\u4e00\u4efd\u8ba1\u5212\uff0c\u6216\u63cf\u8ff0\u4e00\u4e2a\u4f60\u60f3\u5b8c\u6210\u7684\u76ee\u6807\u3002`;
+const CHAT_INTRO = `\u4f60\u597d\uff0c\u6211\u662f Asteria\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u95ee\u9898\u3001\u8ba9\u6211\u8981\u70b9\u5206\u6790\u3001\u5199\u4e00\u4efd\u8ba1\u5212\uff0c\u6216\u63cf\u8ff0\u4e00\u4e2a\u4f60\u60f3\u5b8c\u6210\u7684\u76ee\u6807\u3002`;
 
 const CHAT_GREETING = `\u4f60\u597d\u3002\u76f4\u63a5\u544a\u8bc9\u6211\u4f60\u60f3\u89e3\u51b3\u4ec0\u4e48\u95ee\u9898\uff0c\u6211\u4f1a\u5148\u7ed9\u51fa\u81ea\u7136\u56de\u7b54\uff1b\u5982\u679c\u9700\u8981\u6267\u884c\u6216\u4fee\u6539\u5185\u5bb9\uff0c\u6211\u4f1a\u5728\u884c\u52a8\u524d\u8bf4\u660e\u5e76\u7b49\u5f85\u786e\u8ba4\u3002`;
 
@@ -1607,7 +1994,8 @@ async function handlePermission(sessionId, jobId, body) {
   const action = String(body?.action || "");
   if (action === "allow") {
     const pending = pendingJobs.get(jobId);
-    if (!pending || pending.sessionId !== sessionId) return { ok: false, error: "job not found or session mismatch" };
+    if (!pending || pending.sessionId !== sessionId)
+      return { ok: false, error: "job not found or session mismatch" };
     pendingJobs.delete(jobId);
     // Durable resolution marker: the confirm card is a one-shot prompt. Once resolved, readSessionEvents
     // drops the original waiting_user permission_request from the thread feed by this job_id, so a page
@@ -1619,7 +2007,7 @@ async function handlePermission(sessionId, jobId, body) {
       summary: "Approved \u2014 starting the task\u2026",
       phase: "execute",
       display_level: "main",
-      resolved_job_id: jobId
+      resolved_job_id: jobId,
     });
     startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command);
     return { ok: true, started: true };
@@ -1633,7 +2021,7 @@ async function handlePermission(sessionId, jobId, body) {
       summary: "Canceled \u2014 nothing was run.",
       phase: "next",
       display_level: "main",
-      resolved_job_id: jobId
+      resolved_job_id: jobId,
     });
     return { ok: true, started: false };
   }
@@ -1642,10 +2030,12 @@ async function handlePermission(sessionId, jobId, body) {
 
 /** Map user_progress channel → studio event type */
 function channelToEventType(channel, eventType) {
-  if (channel === "conclusion") return eventType === "message" ? "assistant_delta" : "reasoning_delta";
+  if (channel === "conclusion")
+    return eventType === "message" ? "assistant_delta" : "reasoning_delta";
   if (channel === "model") return "reasoning_delta";
   if (channel === "tool") return "tool_start";
-  if (channel === "execution_chain" && (eventType === "turn_start" || eventType === "turn_end")) return "agent_turn";
+  if (channel === "execution_chain" && (eventType === "turn_start" || eventType === "turn_end"))
+    return "agent_turn";
   if (channel === "execution_chain" && eventType === "tool_observation") return "tool_observation";
   if (channel === "file") return "tool_end";
   if (eventType === "heartbeat") return "tool_delta";
@@ -1664,7 +2054,10 @@ function tailUserProgress(sessionId, jobId) {
   async function poll() {
     if (stopped) return;
     const job = liveJobs.get(jobId);
-    if (!job) { stopped = true; return; }
+    if (!job) {
+      stopped = true;
+      return;
+    }
 
     // Try to locate the run directory
     if (!runDir && job.run_id) {
@@ -1680,12 +2073,19 @@ function tailUserProgress(sessionId, jobId) {
             await Promise.all(
               dirs.map(async (d) => {
                 const p = path.join(runsDir, d);
-                try { return { path: p, mtime: (await fs.stat(p)).mtimeMs }; } catch { return null; }
-              })
+                try {
+                  return { path: p, mtime: (await fs.stat(p)).mtimeMs };
+                } catch {
+                  return null;
+                }
+              }),
             )
           ).filter(Boolean);
           const recent = withStats.filter((s) => s.mtime >= job.started_at_ms - 6000);
-          if (recent.length) { recent.sort((a, b) => b.mtime - a.mtime); runDir = recent[0].path; }
+          if (recent.length) {
+            recent.sort((a, b) => b.mtime - a.mtime);
+            runDir = recent[0].path;
+          }
         } catch {}
       }
     }
@@ -1722,7 +2122,9 @@ function tailUserProgress(sessionId, jobId) {
 
   // Brief delay so the subprocess has time to start writing
   setTimeout(poll, 1200);
-  return () => { stopped = true; };
+  return () => {
+    stopped = true;
+  };
 }
 
 function sessionJobsPayload(sessionId) {
@@ -1778,8 +2180,13 @@ async function applyAutonomyForTier(permissionTier) {
   const policyPath = path.join(workspace, ".asteria", "policies.json");
   try {
     const policy = JSON.parse(await fs.readFile(policyPath, "utf8"));
-    const loop = policy.agent_loop && typeof policy.agent_loop === "object" ? policy.agent_loop : {};
-    if (loop.auto_repair === autonomous && loop.auto_replan === autonomous && loop.auto_replan_goal === autonomous) {
+    const loop =
+      policy.agent_loop && typeof policy.agent_loop === "object" ? policy.agent_loop : {};
+    if (
+      loop.auto_repair === autonomous &&
+      loop.auto_replan === autonomous &&
+      loop.auto_replan_goal === autonomous
+    ) {
       return autonomous; // already in the desired state — skip the rewrite
     }
     loop.auto_repair = autonomous;
@@ -1795,7 +2202,10 @@ async function applyAutonomyForTier(permissionTier) {
 
 function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options = {}) {
   pruneLiveJobs();
-  const command = Array.isArray(commandOverride) && commandOverride.length ? commandOverride : runtimeCommand(mode, goal);
+  const command =
+    Array.isArray(commandOverride) && commandOverride.length
+      ? commandOverride
+      : runtimeCommand(mode, goal);
   const jobId = `job-${Date.now()}`;
   const job = {
     job_id: jobId,
@@ -1815,7 +2225,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
     title: "Processing started",
     summary: "Processing started.",
     display_level: "inspector",
-    command
+    command,
   });
 
   const stopTail = tailUserProgress(sessionId, jobId);
@@ -1827,9 +2237,9 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
       ASTERIA_STUDIO_EVENT_SINK: sessionPath(sessionId, "events.jsonl"),
       ASTERIA_STUDIO_SESSION_ID: sessionId,
       ASTERIA_STUDIO_PHASE: phaseForMode(mode),
-      PYTHONIOENCODING: "utf-8"
+      PYTHONIOENCODING: "utf-8",
     },
-    windowsHide: true
+    windowsHide: true,
   });
   // Keep the child handle + pid reachable by job so a stop route can terminate a running run.
   job.child = child;
@@ -1849,7 +2259,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
       summary: summarizeRuntimeChunk(text),
       content_delta: text,
       display_level: "inspector",
-      command
+      command,
     });
   });
   child.stderr.on("data", (chunk) => {
@@ -1863,7 +2273,7 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
       summary: summarizeRuntimeChunk(text),
       content_delta: text,
       display_level: "inspector",
-      command
+      command,
     });
   });
   child.on("close", async (code) => {
@@ -1881,7 +2291,8 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
         summary: "Stopped by user.",
         command,
         display_level: "main",
-        content_delta: "Stopped by user before completion. Open the Inspector to review any partial work.",
+        content_delta:
+          "Stopped by user before completion. Open the Inspector to review any partial work.",
         job_id: jobId,
       });
       return;
@@ -1894,12 +2305,17 @@ function startRuntimeJob(sessionId, mode, goal, commandOverride = null, options 
       type: "tool_end",
       status: job.status,
       title: code === 0 ? "Processing completed" : "Processing needs attention",
-      summary: code === 0 ? "Processing completed; preparing the result." : "The task needs attention; preparing the reason and next step.",
+      summary:
+        code === 0
+          ? "Processing completed; preparing the result."
+          : "The task needs attention; preparing the reason and next step.",
       command,
       display_level: "inspector",
       run_id: completedRunId || undefined,
-      content_delta: stderr ? `stderr:
-${stderr}` : stdout.slice(-4000)
+      content_delta: stderr
+        ? `stderr:
+${stderr}`
+        : stdout.slice(-4000),
     });
     const userProgressRows = completedRunId ? await readRunUserProgress(completedRunId) : [];
     const mainFinal = latestMainFinalEvent(userProgressRows);
@@ -1914,14 +2330,19 @@ ${stderr}` : stdout.slice(-4000)
     } else {
       // ADR-0012: when the runtime emitted no main-thread conversational final, do NOT synthesize the
       // diagnostic report as the reply. Show an honest short line and point to the Inspector for detail.
-      const honest = code === 0
-        ? "Finished. Open the Inspector to review what changed and the verification details."
-        : (friendlyErrorText(stderr || stdout) || "The task needs attention — open the Inspector for the reason and next step.");
+      const honest =
+        code === 0
+          ? "Finished. Open the Inspector to review what changed and the verification details."
+          : friendlyErrorText(stderr || stdout) ||
+            "The task needs attention — open the Inspector for the reason and next step.";
       void appendEvent(sessionId, {
         type: code === 0 ? "final_answer" : "error",
         status: code === 0 ? "completed" : "failed",
         title: code === 0 ? "Result" : "Needs attention",
-        summary: code === 0 ? "Result prepared." : "The task needs attention; here is the reason and suggestion.",
+        summary:
+          code === 0
+            ? "Result prepared."
+            : "The task needs attention; here is the reason and suggestion.",
         phase: code === 0 ? "result" : "review",
         display_level: "main",
         content_delta: honest,
@@ -1953,11 +2374,10 @@ ${stderr}` : stdout.slice(-4000)
       summary: friendlyErrorSummary(rawError) || rawError,
       content_delta: friendly || redactText(rawError),
       command,
-      run_id: job.run_id || undefined
+      run_id: job.run_id || undefined,
     });
   });
 }
-
 
 function friendlyErrorText(text) {
   const raw = String(text || "");
@@ -1984,7 +2404,9 @@ function friendlyErrorText(text) {
       "- If it keeps failing, try again later or switch models.",
     ].join("\n");
   }
-  if (/\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)) {
+  if (
+    /\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)
+  ) {
     return [
       "## Authentication failed",
       "The model provider rejected the credentials (401/403) — the API key is likely missing, wrong, or lacks access to this model.",
@@ -2004,7 +2426,11 @@ function friendlyErrorText(text) {
       "- Check billing/quota, or switch to another model route.",
     ].join("\n");
   }
-  if (/model[^\n]*(not found|does not exist|unknown|not available)|no such model|invalid model|model_not_found/.test(lower)) {
+  if (
+    /model[^\n]*(not found|does not exist|unknown|not available)|no such model|invalid model|model_not_found/.test(
+      lower,
+    )
+  ) {
     return [
       "## Model not available",
       "The requested model name was not found by the provider.",
@@ -2014,7 +2440,11 @@ function friendlyErrorText(text) {
       "- Run `asteria model-check` to confirm the route.",
     ].join("\n");
   }
-  if (/econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy/.test(lower)) {
+  if (
+    /econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy/.test(
+      lower,
+    )
+  ) {
     return [
       "## Cannot reach the model service",
       "The service address could not be reached (connection refused / DNS). The base URL, port, proxy, or a local model server may be down.",
@@ -2046,11 +2476,25 @@ function friendlyErrorText(text) {
 // returns a category actually detected in the text; never invents a code.
 function friendlyErrorCategory(text) {
   const lower = String(text || "").toLowerCase();
-  if (/\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)) return "auth";
-  if (/\b(429|rate limit|quota|insufficient_quota|too many requests)\b/.test(lower)) return "rate_limit";
+  if (
+    /\b(401|403|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|authentication failed)\b/.test(lower)
+  )
+    return "auth";
+  if (/\b(429|rate limit|quota|insufficient_quota|too many requests)\b/.test(lower))
+    return "rate_limit";
   if (/timed out|timeout|deadline|handshake/.test(lower)) return "timeout";
-  if (/econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy|ssl|tls/.test(lower)) return "network";
-  if (/model[^\n]*(not found|does not exist|unknown|not available)|no such model|invalid model|model_not_found/.test(lower)) return "model";
+  if (
+    /econnrefused|connection refused|failed to connect|getaddrinfo|enotfound|network is unreachable|proxy|ssl|tls/.test(
+      lower,
+    )
+  )
+    return "network";
+  if (
+    /model[^\n]*(not found|does not exist|unknown|not available)|no such model|invalid model|model_not_found/.test(
+      lower,
+    )
+  )
+    return "model";
   return "unknown";
 }
 
@@ -2064,11 +2508,16 @@ function friendlyErrorTitle(text) {
 function friendlyErrorSummary(text) {
   const friendly = friendlyErrorText(text);
   if (!friendly) return "";
-  return friendly.split("\n").find((line) => line && !line.startsWith("##")) || "The request could not be completed.";
+  return (
+    friendly.split("\n").find((line) => line && !line.startsWith("##")) ||
+    "The request could not be completed."
+  );
 }
 
 function summarizeRuntimeChunk(text) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clean = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!clean) return "后台有新的运行输出。";
   if (/timeout|deadline|timed out/i.test(clean)) return "模型或运行步骤出现超时迹象。";
   if (/error|failed|traceback/i.test(clean)) return "运行过程中出现错误，需要核对。";
@@ -2087,22 +2536,18 @@ async function finalTextFor(mode, code, stdout, stderr) {
       summarizeUserFacingFailure(stderr || stdout),
       "",
       "## \u4e0b\u4e00\u6b65",
-      "\u4f60\u53ef\u4ee5\u8ba9\u6211\u91cd\u8bd5\u3001\u7f29\u5c0f\u8303\u56f4\uff0c\u6216\u5148\u91cd\u65b0\u5236\u5b9a\u8ba1\u5212\u3002"
+      "\u4f60\u53ef\u4ee5\u8ba9\u6211\u91cd\u8bd5\u3001\u7f29\u5c0f\u8303\u56f4\uff0c\u6216\u5148\u91cd\u65b0\u5236\u5b9a\u8ba1\u5212\u3002",
     ].join("\n");
   }
   const runId = extractRunId(stdout) || extractRunId(stderr);
   if (mode === "plan" && runId) return await planFinalTextForRun(runId, stdout);
-  if ((mode === "run" || mode === "continue" || mode === "resume") && runId) return withProcessDigest(runId, await runFinalTextForRun(runId, stdout));
-  if (mode === "review" && runId) return withProcessDigest(runId, await reviewFinalTextForRun(runId, stdout));
+  if ((mode === "run" || mode === "continue" || mode === "resume") && runId)
+    return withProcessDigest(runId, await runFinalTextForRun(runId, stdout));
+  if (mode === "review" && runId)
+    return withProcessDigest(runId, await reviewFinalTextForRun(runId, stdout));
   const text = cleanUserFacingRuntimeText(stdout);
   const result = text || "The task finished, but there was no clear user-facing result to show.";
-  return [
-    "## \u7ed3\u679c",
-    result,
-    "",
-    "## \u4e0b\u4e00\u6b65",
-    nextStepForMode(mode)
-  ].join("\n");
+  return ["## \u7ed3\u679c", result, "", "## \u4e0b\u4e00\u6b65", nextStepForMode(mode)].join("\n");
 }
 
 function summarizeUserFacingFailure(text) {
@@ -2110,9 +2555,12 @@ function summarizeUserFacingFailure(text) {
   const friendly = friendlyErrorText(text) || friendlyErrorText(clean);
   if (friendly) return friendly;
   if (!clean) return "The task did not provide enough readable detail to explain the failure.";
-  if (/timeout|deadline|timed out/i.test(clean)) return "The task appears to have timed out before finishing.";
-  if (/permission|denied|not allowed/i.test(clean)) return "The task needs permission or policy approval before it can continue.";
-  if (/traceback|exception|error|failed/i.test(clean)) return "The task hit an execution error and needs a smaller retry or debugging step.";
+  if (/timeout|deadline|timed out/i.test(clean))
+    return "The task appears to have timed out before finishing.";
+  if (/permission|denied|not allowed/i.test(clean))
+    return "The task needs permission or policy approval before it can continue.";
+  if (/traceback|exception|error|failed/i.test(clean))
+    return "The task hit an execution error and needs a smaller retry or debugging step.";
   return clean.slice(0, 800);
 }
 
@@ -2120,7 +2568,10 @@ function cleanUserFacingRuntimeText(text) {
   return String(text || "")
     .replace(/stderr:\s*/gi, "")
     .replace(/\b(run-\d{8}-\d{4})\b/g, "")
-    .replace(/.*(?:Inspector|Evidence Explorer|status --json|stdout|stderr|traceback path|\.asteria).*/gi, "")
+    .replace(
+      /.*(?:Inspector|Evidence Explorer|status --json|stdout|stderr|traceback path|\.asteria).*/gi,
+      "",
+    )
     .trim();
 }
 
@@ -2129,7 +2580,8 @@ function nextStepForMode(mode) {
   if (mode === "run") return "Review the result, then ask me to continue, revise, or summarize.";
   if (mode === "review") return "Use the review result to decide whether to accept or revise.";
   if (mode === "resume") return "Check the latest result and decide whether to continue.";
-  if (mode === "accept") return "The reviewed result is accepted; continue with the next goal when ready.";
+  if (mode === "accept")
+    return "The reviewed result is accepted; continue with the next goal when ready.";
   if (mode === "debug") return "Use the repair result to continue, ask for help, or stop cleanly.";
   if (mode === "decide") return "Choose one pending decision, then continue the runtime goal.";
   return "Tell me what you want to do next.";
@@ -2151,7 +2603,8 @@ async function userProgressDigestLines(runId) {
   }
   const lines = [];
   if (counts.model) lines.push("- I analyzed the request and prepared the response.");
-  if (counts.tool || counts.execution_chain) lines.push("- I checked the relevant steps before producing the result.");
+  if (counts.tool || counts.execution_chain)
+    lines.push("- I checked the relevant steps before producing the result.");
   if (counts.file) {
     const names = fileNames.slice(0, 4).join(", ");
     lines.push(`- I updated: ${names || "the requested files"}.`);
@@ -2162,7 +2615,8 @@ async function userProgressDigestLines(runId) {
 
 function userProgressChannelToEventType(channel, eventType, phase) {
   if (channel === "conclusion" && phase === "result") return "final_answer";
-  if (channel === "execution_chain" && (eventType === "turn_start" || eventType === "turn_end")) return "agent_turn";
+  if (channel === "execution_chain" && (eventType === "turn_start" || eventType === "turn_end"))
+    return "agent_turn";
   if (channel === "execution_chain" && eventType === "tool_observation") return "tool_observation";
   return channelToEventType(channel, eventType);
 }
@@ -2170,12 +2624,7 @@ function userProgressChannelToEventType(channel, eventType, phase) {
 async function withProcessDigest(runId, text) {
   const digest = await userProgressDigestLines(runId);
   const body = String(text || "").trim();
-  return [
-    body,
-    "",
-    "## Process summary",
-    digest.join("\n"),
-  ].filter(Boolean).join("\n");
+  return [body, "", "## Process summary", digest.join("\n")].filter(Boolean).join("\n");
 }
 
 async function planFinalTextForRun(runId, fallbackStdout) {
@@ -2187,14 +2636,21 @@ async function planFinalTextForRun(runId, fallbackStdout) {
   if (!Object.keys(goalSpec).length && !tasks.length) {
     return [
       "## Plan result",
-      cleanUserFacingRuntimeText(fallbackStdout) || "I could not produce a complete plan from the available information.",
+      cleanUserFacingRuntimeText(fallbackStdout) ||
+        "I could not produce a complete plan from the available information.",
       "",
       "## Next step",
-      "Share the missing constraints or ask me to create a smaller first version."
+      "Share the missing constraints or ask me to create a smaller first version.",
     ].join("\n");
   }
-  const goal = firstRuntimeText(goalSpec.normalized_goal, goalSpec.original_goal, "the requested goal");
-  const warnings = Array.isArray(taskEval.issues) ? taskEval.issues.filter((issue) => issue.severity !== "error") : [];
+  const goal = firstRuntimeText(
+    goalSpec.normalized_goal,
+    goalSpec.original_goal,
+    "the requested goal",
+  );
+  const warnings = Array.isArray(taskEval.issues)
+    ? taskEval.issues.filter((issue) => issue.severity !== "error")
+    : [];
   const recommendations = Array.isArray(taskEval.recommendations) ? taskEval.recommendations : [];
   const taskLines = tasks.slice(0, 6).map((task, index) => {
     const title = firstRuntimeText(task.title, task.task_id, `Step ${index + 1}`);
@@ -2204,31 +2660,38 @@ async function planFinalTextForRun(runId, fallbackStdout) {
       `- ${title}`,
       description ? `  Why: ${description}` : "",
       acceptance.length ? `  Done when: ${acceptance.join("; ")}` : "",
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   });
   const riskLines = [
     ...warnings.slice(0, 3).map((issue) => `- ${firstRuntimeText(issue.message, issue.code)}`),
-    ...recommendations.slice(0, 3).map((item) => `- ${item}`)
+    ...recommendations.slice(0, 3).map((item) => `- ${item}`),
   ];
   return [
     "## Plan result",
     `Goal: ${goal}`,
     "",
     "## Recommended work plan",
-    taskLines.length ? taskLines.join("\n") : "- Start by clarifying the goal, constraints, and success criteria.",
+    taskLines.length
+      ? taskLines.join("\n")
+      : "- Start by clarifying the goal, constraints, and success criteria.",
     "",
     "## Notes and tradeoffs",
-    riskLines.length ? [...new Set(riskLines)].join("\n") : "- Keep the first version small enough to review, then expand after feedback.",
+    riskLines.length
+      ? [...new Set(riskLines)].join("\n")
+      : "- Keep the first version small enough to review, then expand after feedback.",
     "",
     "## Next step",
-    nextPlanAction(tasks, taskEval)
+    nextPlanAction(tasks, taskEval),
   ].join("\n");
 }
 
 function nextPlanAction(tasks, taskEval) {
   const status = String(taskEval.status || "").toLowerCase();
   if (status === "warn") return "Review the assumptions and adjust the plan before execution.";
-  if (tasks.length > 1) return "Choose the first task you want to execute, or ask me to refine the plan.";
+  if (tasks.length > 1)
+    return "Choose the first task you want to execute, or ask me to refine the plan.";
   return "Confirm this plan or ask for a narrower version before execution.";
 }
 
@@ -2275,8 +2738,10 @@ async function runFinalTextForRun(runId, fallbackStdout) {
     ...(artifactLines.length ? ["## ??", ...artifactLines, ""] : []),
     ...(validationLines.length ? ["## ????", ...validationLines, ""] : []),
     "## ???",
-    nextRunAction({ status, blocked: blockedTasks.length, decisions: pendingDecisions.length })
-  ].filter(Boolean).join("\n");
+    nextRunAction({ status, blocked: blockedTasks.length, decisions: pendingDecisions.length }),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function friendlyCheckStatus(status) {
@@ -2301,12 +2766,15 @@ async function reviewFinalTextForRun(runId, fallbackStdout) {
   const runDir = path.join(workspace, ".asteria", "runs", runId);
   const evalReport = await readJson(path.join(runDir, "eval_report.json"));
   const status = firstRuntimeText(evalReport?.overall?.status, "reviewed");
-  const score = evalReport?.overall?.score != null ? Number(evalReport.overall.score).toFixed(2) : null;
+  const score =
+    evalReport?.overall?.score != null ? Number(evalReport.overall.score).toFixed(2) : null;
   const reason = firstRuntimeText(evalReport?.overall?.reason);
   const reviewMdPath = path.join(runDir, "review_report.md");
   let reviewBody = "";
   if (existsSync(reviewMdPath)) {
-    try { reviewBody = cleanUserFacingRuntimeText(await fs.readFile(reviewMdPath, "utf8")); } catch {}
+    try {
+      reviewBody = cleanUserFacingRuntimeText(await fs.readFile(reviewMdPath, "utf8"));
+    } catch {}
   }
   const lines = [
     "## ????",
@@ -2325,16 +2793,23 @@ async function readWorkerSummaryLines(runDir) {
   if (!existsSync(workersPath)) return [];
   try {
     const lines = (await fs.readFile(workersPath, "utf8")).split(/\r?\n/).filter(Boolean);
-    return lines.slice(0, 5).map((line) => {
-      try {
-        const w = JSON.parse(line);
-        const id = firstRuntimeText(w.task_id, w.worker_id, "task");
-        const st = firstRuntimeText(w.status, "?");
-        const note = firstRuntimeText(w.summary, w.result_summary, "");
-        return `- ${id}: ${st}${note ? " — " + note.slice(0, 80) : ""}`;
-      } catch { return null; }
-    }).filter(Boolean);
-  } catch { return []; }
+    return lines
+      .slice(0, 5)
+      .map((line) => {
+        try {
+          const w = JSON.parse(line);
+          const id = firstRuntimeText(w.task_id, w.worker_id, "task");
+          const st = firstRuntimeText(w.status, "?");
+          const note = firstRuntimeText(w.summary, w.result_summary, "");
+          return `- ${id}: ${st}${note ? " — " + note.slice(0, 80) : ""}`;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 async function runArtifactLines(runDir) {
@@ -2375,7 +2850,7 @@ function runArtifactRefs(runId) {
     path.join(workspace, ".asteria", "runs", runId, "goal_spec.json"),
     path.join(workspace, ".asteria", "runs", runId, "task_plan.json"),
     path.join(workspace, ".asteria", "runs", runId, "task_plan_eval.json"),
-    path.join(workspace, ".asteria", "runs", runId, "cost_report.json")
+    path.join(workspace, ".asteria", "runs", runId, "cost_report.json"),
   ];
 }
 
@@ -2388,7 +2863,9 @@ function firstRuntimeText(...items) {
 }
 
 function nonEmptyRecord(value) {
-  return value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0;
+  return (
+    value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0
+  );
 }
 
 function trimForUser(text) {
@@ -2409,7 +2886,7 @@ async function readBackgroundRuns() {
     cloud_vm: false,
     running_count: running.length,
     total_count: runs.length,
-    badge_status: running.length ? "running" : (latest?.status || "idle"),
+    badge_status: running.length ? "running" : latest?.status || "idle",
     badge_summary: running.length
       ? `${running.length} local background run(s) active.`
       : "No local background runs active.",
@@ -2466,7 +2943,7 @@ async function diagnostics() {
     packageCheck,
     modelRoutes,
     long_horizon: statusPayload?.long_horizon ?? {},
-    background_runs: statusPayload?.background_runs ?? await readBackgroundRuns(),
+    background_runs: statusPayload?.background_runs ?? (await readBackgroundRuns()),
     workflow: {
       can_review: Boolean(statusPayload?.can_review),
       can_accept: Boolean(statusPayload?.can_accept),
@@ -2486,10 +2963,14 @@ async function createSession() {
     title: "New task",
     workspace,
     created_at: now,
-    updated_at: now
+    updated_at: now,
   };
   await fs.mkdir(sessionPath(sessionId), { recursive: true });
-  await fs.writeFile(sessionPath(sessionId, "session.json"), JSON.stringify(session, null, 2), "utf8");
+  await fs.writeFile(
+    sessionPath(sessionId, "session.json"),
+    JSON.stringify(session, null, 2),
+    "utf8",
+  );
   // No seed/welcome event: a brand-new session must stay empty so the thread renders the EmptyState
   // ("What would you like to do?" + example prompts). A main-level greeting event here made every new
   // conversation non-empty, which rendered a stray assistant turn AND dragged in the workspace-level
@@ -2581,7 +3062,13 @@ async function exportSessionBundle(sessionId) {
     events = (await fs.readFile(eventsFile, "utf8"))
       .split(/\r?\n/)
       .filter(Boolean)
-      .map((line) => { try { return JSON.parse(line); } catch { return null; } })
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
       .filter(Boolean);
   }
   const bundle = {
@@ -2613,7 +3100,11 @@ async function importSessionBundle(body) {
   };
   if (src.goal_preview) session.goal_preview = String(src.goal_preview).slice(0, 160);
   await fs.mkdir(sessionPath(sessionId), { recursive: true });
-  await fs.writeFile(sessionPath(sessionId, "session.json"), JSON.stringify(session, null, 2), "utf8");
+  await fs.writeFile(
+    sessionPath(sessionId, "session.json"),
+    JSON.stringify(session, null, 2),
+    "utf8",
+  );
   if (events.length) {
     // Re-stamp session_id so the imported events belong to the new session; keep everything else
     // (event_id, timestamps, content) verbatim for a faithful restore.
@@ -2669,7 +3160,7 @@ async function appendEvent(sessionId, event) {
     created_at: new Date().toISOString(),
     artifact_refs: [],
     evidence_refs: [],
-    ...redact(event)
+    ...redact(event),
   };
   await fs.mkdir(sessionPath(sessionId), { recursive: true });
   await fs.appendFile(sessionPath(sessionId, "events.jsonl"), `${JSON.stringify(full)}\n`, "utf8");
@@ -2687,7 +3178,9 @@ async function appendEvent(sessionId, event) {
     session.updated_at = full.created_at;
     if (full.type === "user_message") {
       session.title = String(full.summary || session.title || "New task").slice(0, 64);
-      session.goal_preview = String(full.content_delta || full.summary || session.goal_preview || "").slice(0, 160);
+      session.goal_preview = String(
+        full.content_delta || full.summary || session.goal_preview || "",
+      ).slice(0, 160);
     }
     await fs.writeFile(sessionFile, JSON.stringify(session, null, 2), "utf8");
   }
@@ -2699,13 +3192,16 @@ async function readSessionEvents(sessionId) {
   if (!isSafeId(sessionId)) return [];
   const file = sessionPath(sessionId, "events.jsonl");
   if (!existsSync(file)) return [];
-  let events = (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).map((line) => {
-    try {
-      return redact(JSON.parse(line));
-    } catch {
-      return { type: "raw", content_delta: redactText(line) };
-    }
-  });
+  let events = (await fs.readFile(file, "utf8"))
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return redact(JSON.parse(line));
+      } catch {
+        return { type: "raw", content_delta: redactText(line) };
+      }
+    });
   // M4: a job-based permission confirm card is a one-shot prompt. Once its job resolved (allow/deny
   // recorded a resolved_job_id marker), drop the original waiting_user permission_request from the
   // thread feed — the "Approved/Canceled" delta already narrates the outcome, and leaving the raw
@@ -2716,13 +3212,15 @@ async function readSessionEvents(sessionId) {
   );
   if (resolvedJobIds.size) {
     events = events.filter(
-      (event) => !(event.type === "permission_request" && event.job_id && resolvedJobIds.has(event.job_id)),
+      (event) =>
+        !(event.type === "permission_request" && event.job_id && resolvedJobIds.has(event.job_id)),
     );
   }
   const runIds = new Set();
   for (const event of events) {
     if (event.type !== "final_answer" || event.phase === "chat") continue;
-    const runId = extractRunId(event.content_delta) || extractRunId((event.artifact_refs || []).join("\n"));
+    const runId =
+      extractRunId(event.content_delta) || extractRunId((event.artifact_refs || []).join("\n"));
     if (!runId) continue;
     runIds.add(runId);
     // ADR-0012: the main-thread final is the runtime's own conversational transcript text. Do NOT
@@ -2755,7 +3253,9 @@ function rememberJobRunId(jobId, runId) {
 }
 
 async function activeRuntimeRunIdsForSession(sessionId) {
-  const jobs = [...liveJobs.values()].filter((job) => job.session_id === sessionId && job.status === "running");
+  const jobs = [...liveJobs.values()].filter(
+    (job) => job.session_id === sessionId && job.status === "running",
+  );
   const runIds = [];
   for (const job of jobs) {
     const runId = job.run_id || (await discoverRuntimeRunIdForJob(job));
@@ -2798,7 +3298,9 @@ async function discoverRuntimeRunIdForJob(job) {
 async function readRuntimeUserProgressEvents(runId, sessionId) {
   const file = path.join(workspace, ".asteria", "runs", runId, "user_progress.jsonl");
   const rows = await readJsonlTail(file, 500);
-  const events = rows.map((event) => userProgressToStudioEvent(event, sessionId, runId)).filter(Boolean);
+  const events = rows
+    .map((event) => userProgressToStudioEvent(event, sessionId, runId))
+    .filter(Boolean);
   for (const event of events) {
     if (event.type !== "final_answer" || event.phase === "chat") continue;
     await enrichFinalAnswerEvent(event, runId);
@@ -2815,7 +3317,13 @@ async function enrichFinalAnswerEvent(event, runId) {
 function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {
   const runtimeTypes = new Set(runtimeEvents.map((event) => event.type));
   const runtimeIds = new Set(runtimeEvents.map((event) => event.event_id).filter(Boolean));
-  const replaceable = new Set(["model_start", "model_delta", "model_end", "model_error", "file_changed"]);
+  const replaceable = new Set([
+    "model_start",
+    "model_delta",
+    "model_end",
+    "model_error",
+    "file_changed",
+  ]);
   // Dedup the authoritative runtime re-read against the session-persisted live-tail copy by id.
   // Live-tail copies now share the runtime-<runId>-<upe> namespace, so this removes the duplicate
   // tool_start / final_answer / tool_observation rows that the id-less type filter left behind.
@@ -2837,7 +3345,7 @@ function mergeSessionAndRuntimeEvents(sessionEvents, runtimeEvents) {
     return !runtimeTypes.has(event.type);
   });
   return [...filteredSessionEvents, ...runtimeEvents].sort((a, b) =>
-    String(a.created_at || "").localeCompare(String(b.created_at || ""))
+    String(a.created_at || "").localeCompare(String(b.created_at || "")),
   );
 }
 
@@ -2906,7 +3414,7 @@ function userProgressToStudioEvent(event, sessionId, runId) {
     ui_intent: event.ui_intent,
     actions: event.actions || [],
     file_changes: event.file_changes || [],
-    run_id: runId
+    run_id: runId,
   });
 }
 
@@ -2965,17 +3473,32 @@ function isSafeId(value) {
 
 async function commandJson(commandArgs) {
   const completed = await runCommand([python, "-m", moduleName, ...commandArgs], runtimeRoot);
-  if (completed.code !== 0) return { ok: false, code: completed.code, stdout: redactText(completed.stdout), stderr: redactText(completed.stderr) };
+  if (completed.code !== 0)
+    return {
+      ok: false,
+      code: completed.code,
+      stdout: redactText(completed.stdout),
+      stderr: redactText(completed.stderr),
+    };
   try {
     return redact(JSON.parse(completed.stdout));
   } catch {
-    return { ok: false, status: "invalid_json", stdout: redactText(completed.stdout), stderr: redactText(completed.stderr) };
+    return {
+      ok: false,
+      status: "invalid_json",
+      stdout: redactText(completed.stdout),
+      stderr: redactText(completed.stderr),
+    };
   }
 }
 
 function runCommand(command, cwd, envOverrides = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command[0], command.slice(1), { cwd, env: { ...process.env, ...envOverrides }, windowsHide: true });
+    const child = spawn(command[0], command.slice(1), {
+      cwd,
+      env: { ...process.env, ...envOverrides },
+      windowsHide: true,
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (chunk) => {
@@ -2998,14 +3521,18 @@ async function readRuns() {
     if (!entry.isDirectory()) continue;
     const runDir = path.join(runsDir, entry.name);
     let stat = null;
-    try { stat = await fs.stat(runDir); } catch {}
-    runs.push(redact({
-      run_id: entry.name,
-      is_runtime_run: /^run-\d{8}-\d{4}$/.test(entry.name),
-      modified_at_ms: stat?.mtimeMs ?? 0,
-      ...(await readJson(path.join(runDir, "run.json"))),
-      cost_report: await readJson(path.join(runDir, "cost_report.json"))
-    }));
+    try {
+      stat = await fs.stat(runDir);
+    } catch {}
+    runs.push(
+      redact({
+        run_id: entry.name,
+        is_runtime_run: /^run-\d{8}-\d{4}$/.test(entry.name),
+        modified_at_ms: stat?.mtimeMs ?? 0,
+        ...(await readJson(path.join(runDir, "run.json"))),
+        cost_report: await readJson(path.join(runDir, "cost_report.json")),
+      }),
+    );
   }
   return runs.sort((a, b) => {
     if (a.is_runtime_run !== b.is_runtime_run) return a.is_runtime_run ? -1 : 1;
@@ -3019,7 +3546,8 @@ async function readRunDetail(runId) {
   if (!isSafeId(runId)) return { ok: false, error: "invalid run id" };
   const runsDir = path.join(workspace, ".asteria", "runs");
   const runDir = path.resolve(runsDir, runId);
-  if (!runDir.startsWith(runsDir) || !existsSync(runDir)) return { ok: false, error: "run not found" };
+  if (!runDir.startsWith(runsDir) || !existsSync(runDir))
+    return { ok: false, error: "run not found" };
   const jsonFiles = {
     run: "run.json",
     cost_report: "cost_report.json",
@@ -3030,42 +3558,65 @@ async function readRunDetail(runId) {
     agent_loop_run_summary: "agent_loop_run_summary.json",
     run_loop_summary: "run_loop_summary.json",
     final_report_summary: "final_report_summary.json",
-    model_route_timeline: "model_route_timeline.json"
+    model_route_timeline: "model_route_timeline.json",
   };
   const payload = { ok: true, run_id: runId };
   for (const [key, file] of Object.entries(jsonFiles)) {
     payload[key] = redact(await readJson(path.join(runDir, file)));
   }
   payload.runtime_progress = redact(
-    payload.final_report_summary?.runtime_progress
-    || payload.run_loop_summary?.runtime_progress
-    || {}
+    payload.final_report_summary?.runtime_progress ||
+      payload.run_loop_summary?.runtime_progress ||
+      {},
   );
   payload.model_calls = redact(await readJsonlTail(path.join(runDir, "model_calls.jsonl"), 120));
-  payload.task_execution_evidence = redact(await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 80));
-  payload.worker_results = redact(await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80));
-  payload.validation_results = redact(await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80));
-  payload.mcp_invocations = redact(await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80));
-  payload.skill_invocations = redact(await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80));
+  payload.task_execution_evidence = redact(
+    await readJsonlTail(path.join(runDir, "task_execution_evidence.jsonl"), 80),
+  );
+  payload.worker_results = redact(
+    await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 80),
+  );
+  payload.validation_results = redact(
+    await readJsonlTail(path.join(runDir, "validation_results.jsonl"), 80),
+  );
+  payload.mcp_invocations = redact(
+    await readJsonlTail(path.join(runDir, "mcp_invocations.jsonl"), 80),
+  );
+  payload.skill_invocations = redact(
+    await readJsonlTail(path.join(runDir, "skill_invocations.jsonl"), 80),
+  );
   // capability_decisions.jsonl was written by the runtime but never read here (have-write-no-read);
   // surface it so the Inspector can show why each tool/MCP/skill capability was allowed or denied.
-  payload.capability_decisions = redact(await readJsonlTail(path.join(runDir, "capability_decisions.jsonl"), 80));
+  payload.capability_decisions = redact(
+    await readJsonlTail(path.join(runDir, "capability_decisions.jsonl"), 80),
+  );
   const runtimeRequests = await readJsonlTail(path.join(runDir, "runtime_requests.jsonl"), 120);
   const decisions = await readJsonlTail(path.join(runDir, "decisions.jsonl"), 120);
   const currentDecisions = latestDecisions(decisions).map((decision) =>
-    enrichRuntimeRequestDecision(decision, runtimeRequests)
+    enrichRuntimeRequestDecision(decision, runtimeRequests),
   );
   payload.runtime_requests = redact(runtimeRequests);
-  payload.decision_requests = redact(currentDecisions.filter((decision) => decision?.status === "pending"));
+  payload.decision_requests = redact(
+    currentDecisions.filter((decision) => decision?.status === "pending"),
+  );
   payload.decisions = redact(currentDecisions);
   payload.decision_history = redact(decisions);
   payload.main_action = redact(mainActionForRun(payload, currentDecisions));
-  payload.candidate_exports = redact(await readJsonlTail(path.join(runDir, "candidate_exports.jsonl"), 80));
-  payload.merge_gate_dry_runs = redact(await readJsonlTail(path.join(runDir, "merge_gate_dry_runs.jsonl"), 40));
-  payload.candidate_promotions = redact(await readJsonlTail(path.join(runDir, "candidate_promotions.jsonl"), 80));
+  payload.candidate_exports = redact(
+    await readJsonlTail(path.join(runDir, "candidate_exports.jsonl"), 80),
+  );
+  payload.merge_gate_dry_runs = redact(
+    await readJsonlTail(path.join(runDir, "merge_gate_dry_runs.jsonl"), 40),
+  );
+  payload.candidate_promotions = redact(
+    await readJsonlTail(path.join(runDir, "candidate_promotions.jsonl"), 80),
+  );
   payload.promotion_preview = redact(buildPromotionPreview(payload));
   payload.worker_tree = redact(await buildWorkerTree(runDir, payload.agent_run_graph || {}));
-  const workflowStateRows = await readJsonlTail(path.join(runDir, "orchestration_runner_state.jsonl"), 120);
+  const workflowStateRows = await readJsonlTail(
+    path.join(runDir, "orchestration_runner_state.jsonl"),
+    120,
+  );
   payload.orchestration_workflow = redact(buildOrchestrationWorkflowMonitor(workflowStateRows));
   payload.runtime_progress = redact(enrichRuntimeProgress(payload.runtime_progress || {}, payload));
   // 500 (not 120) to match the thread's own event read (readRuntimeUserProgressEvents). user_progress
@@ -3092,17 +3643,22 @@ async function readRunDetail(runId) {
   payload.events = redact(
     userProgress.length
       ? userProgress.map((event) => userProgressToRunDetailEvent(event, runId)).filter(Boolean)
-      : legacyEvents
+      : legacyEvents,
   );
   payload.files = await listRunEvidenceFiles(runDir, runId);
   return redact(payload);
 }
 
 function enrichRuntimeRequestDecision(decision, runtimeRequests) {
-  const metadata = decision?.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
+  const metadata =
+    decision?.metadata && typeof decision.metadata === "object" ? decision.metadata : {};
   if (metadata.kind !== "runtime_request" || metadata.permission_preview) return decision;
-  const requestIds = new Set(Array.isArray(metadata.runtime_request_ids) ? metadata.runtime_request_ids.map(String) : []);
-  const matched = (runtimeRequests || []).filter((request) => requestIds.has(String(request.runtime_request_id || "")));
+  const requestIds = new Set(
+    Array.isArray(metadata.runtime_request_ids) ? metadata.runtime_request_ids.map(String) : [],
+  );
+  const matched = (runtimeRequests || []).filter((request) =>
+    requestIds.has(String(request.runtime_request_id || "")),
+  );
   if (!matched.length) return decision;
   return {
     ...decision,
@@ -3114,14 +3670,26 @@ function enrichRuntimeRequestDecision(decision, runtimeRequests) {
 }
 
 function permissionPreviewForRuntimeRequests(requests) {
-  const readScope = runtimeRequestDetailValues(requests, ["read_scope", "requested_read_scope", "paths"]);
+  const readScope = runtimeRequestDetailValues(requests, [
+    "read_scope",
+    "requested_read_scope",
+    "paths",
+  ]);
   const writeScope = runtimeRequestDetailValues(requests, ["write_scope", "requested_write_scope"]);
-  const tools = runtimeRequestDetailValues(requests, ["allowed_tools", "tools", "tool", "tool_name"]);
-  const requestTypes = [...new Set(requests.map((request) => String(request.request_type || "")).filter(Boolean))].sort();
+  const tools = runtimeRequestDetailValues(requests, [
+    "allowed_tools",
+    "tools",
+    "tool",
+    "tool_name",
+  ]);
+  const requestTypes = [
+    ...new Set(requests.map((request) => String(request.request_type || "")).filter(Boolean)),
+  ].sort();
   const riskRank = { low: 0, medium: 1, high: 2 };
-  const risk = requests
-    .map((request) => String(request.risk || "medium").toLowerCase())
-    .sort((left, right) => (riskRank[right] ?? 1) - (riskRank[left] ?? 1))[0] || "medium";
+  const risk =
+    requests
+      .map((request) => String(request.risk || "medium").toLowerCase())
+      .sort((left, right) => (riskRank[right] ?? 1) - (riskRank[left] ?? 1))[0] || "medium";
   let action = "Review a task boundary change";
   let impact = "Review the requested task contract change before work continues.";
   let reversible = "Rejecting keeps the current task boundary unchanged.";
@@ -3195,7 +3763,10 @@ function latestMainTranscriptEvent(events, transcriptKind) {
 }
 
 function latestMainToolEvent(events) {
-  return latestMainTranscriptEvent(events, "tool_use") || latestMainTranscriptEvent(events, "tool_result");
+  return (
+    latestMainTranscriptEvent(events, "tool_use") ||
+    latestMainTranscriptEvent(events, "tool_result")
+  );
 }
 
 function latestMainFinalEvent(events) {
@@ -3238,16 +3809,24 @@ function enrichRuntimeProgress(progress, payload) {
   );
   const userProgress = payload.user_progress || [];
   const taskPlan = payload.task_plan || {};
-  const taskSummary = Array.isArray(taskPlan.tasks) && taskPlan.tasks.length
-    ? { total: taskPlan.tasks.length }
-    : (progress.todo?.counts || null);
+  const taskSummary =
+    Array.isArray(taskPlan.tasks) && taskPlan.tasks.length
+      ? { total: taskPlan.tasks.length }
+      : progress.todo?.counts || null;
   const toolEvent = latestMainToolEvent(userProgress);
   const toolKind = toolEvent?.transcript_kind || "tool_use";
   const finalEvent = latestMainFinalEvent(userProgress);
   const finalKind = finalEvent?.transcript_kind || "final";
-  const planProjection = buildTranscriptRuntimeProgress(latestMainTranscriptEvent(userProgress, "plan"), "plan", taskSummary);
+  const planProjection = buildTranscriptRuntimeProgress(
+    latestMainTranscriptEvent(userProgress, "plan"),
+    "plan",
+    taskSummary,
+  );
   const toolProjection = buildTranscriptRuntimeProgress(toolEvent, toolKind);
-  const verifyProjection = buildTranscriptRuntimeProgress(latestMainTranscriptEvent(userProgress, "verification"), "verification");
+  const verifyProjection = buildTranscriptRuntimeProgress(
+    latestMainTranscriptEvent(userProgress, "verification"),
+    "verification",
+  );
   const finalProjection = buildTranscriptRuntimeProgress(finalEvent, finalKind);
   return {
     ...progress,
@@ -3257,33 +3836,54 @@ function enrichRuntimeProgress(progress, payload) {
     ...(finalProjection ? { final: finalProjection } : {}),
     loop: {
       ...(progress.loop || {}),
-      exit_reason: firstRuntimeText(progress.loop?.exit_reason, agentLoop.exit_reason, runLoop.stop_reason, ""),
-      rounds: progress.loop?.rounds ?? agentLoop.rounds ?? agentLoop.iteration_count ?? runLoop.iteration_count,
+      exit_reason: firstRuntimeText(
+        progress.loop?.exit_reason,
+        agentLoop.exit_reason,
+        runLoop.stop_reason,
+        "",
+      ),
+      rounds:
+        progress.loop?.rounds ??
+        agentLoop.rounds ??
+        agentLoop.iteration_count ??
+        runLoop.iteration_count,
     },
     worker_summary: workerSummary,
   };
 }
 
 function workerSummaryForProgress(workerTree, workerResults, promotionPreview = {}) {
-  const total = Number(workerTree.total_workers ?? 0) || (Array.isArray(workerResults) ? workerResults.length : 0);
+  const total =
+    Number(workerTree.total_workers ?? 0) ||
+    (Array.isArray(workerResults) ? workerResults.length : 0);
   if (!total) return {};
   const failed = Array.isArray(workerResults)
-    ? workerResults.filter((item) => /fail|error|block|denied|timeout/i.test(String(item.status ?? item.outcome ?? ""))).length
+    ? workerResults.filter((item) =>
+        /fail|error|block|denied|timeout/i.test(String(item.status ?? item.outcome ?? "")),
+      ).length
     : Number(workerTree.failed_workers ?? 0);
   const successful = Array.isArray(workerResults)
-    ? workerResults.filter((item) => /success|complete|pass|succeed/i.test(String(item.status ?? item.outcome ?? ""))).length
+    ? workerResults.filter((item) =>
+        /success|complete|pass|succeed/i.test(String(item.status ?? item.outcome ?? "")),
+      ).length
     : Number(workerTree.successful_workers ?? 0);
   const parallel = Number(workerTree.parallel_batches ?? 0);
   const status = failed ? "failed" : successful >= total ? "completed" : "running";
   const profile = firstRuntimeText(
-    Array.isArray(workerResults) ? workerResults.map((item) => item.worker_kind || item.agent_id).filter(Boolean).join(", ") : "",
-    "worker"
+    Array.isArray(workerResults)
+      ? workerResults
+          .map((item) => item.worker_kind || item.agent_id)
+          .filter(Boolean)
+          .join(", ")
+      : "",
+    "worker",
   );
   const workers = flattenWorkerNodes(workerTree);
   const promotionHint = promotionPreviewHint(promotionPreview);
-  const latestSwarm = workerTree.latest_swarm_plan && typeof workerTree.latest_swarm_plan === "object"
-    ? workerTree.latest_swarm_plan
-    : null;
+  const latestSwarm =
+    workerTree.latest_swarm_plan && typeof workerTree.latest_swarm_plan === "object"
+      ? workerTree.latest_swarm_plan
+      : null;
   const schedulingMode = String(latestSwarm?.scheduling_mode || "").trim();
   const fakePath = latestSwarm?.fake_path;
   return {
@@ -3303,7 +3903,12 @@ function workerSummaryForProgress(workerTree, workerResults, promotionPreview = 
     parallel_writes: latestSwarm?.parallel_writes ?? null,
     spawn_kind: latestSwarm?.spawn_kind || null,
     workers,
-    evidence_refs: ["workers.jsonl", "worker_results.jsonl", "swarm_execution_plans.jsonl", "agent_run_graph.json"],
+    evidence_refs: [
+      "workers.jsonl",
+      "worker_results.jsonl",
+      "swarm_execution_plans.jsonl",
+      "agent_run_graph.json",
+    ],
   };
 }
 
@@ -3337,7 +3942,9 @@ function promotionPreviewHint(promotionPreview) {
     return `${pending} candidate change${pending === 1 ? "" : "s"} waiting for your review in Inspector.`;
   }
   if (mergeStatus === "needs_review") {
-    return String(promotionPreview.merge_preview_summary || "Some candidate changes need review before merge.");
+    return String(
+      promotionPreview.merge_preview_summary || "Some candidate changes need review before merge.",
+    );
   }
   if (exportCount > 0 && mergeStatus === "ready") {
     return `${exportCount} candidate export${exportCount === 1 ? "" : "s"} passed merge preview.`;
@@ -3348,15 +3955,26 @@ function promotionPreviewHint(promotionPreview) {
 function buildPromotionPreview(payload) {
   const exports = Array.isArray(payload.candidate_exports) ? payload.candidate_exports : [];
   const dryRuns = Array.isArray(payload.merge_gate_dry_runs) ? payload.merge_gate_dry_runs : [];
-  const promotions = Array.isArray(payload.candidate_promotions) ? payload.candidate_promotions : [];
+  const promotions = Array.isArray(payload.candidate_promotions)
+    ? payload.candidate_promotions
+    : [];
   const latestDryRun = dryRuns.length ? dryRuns[dryRuns.length - 1] : null;
-  const pendingStatuses = new Set(["queued", "pending_manual_approval", "auto_approved", "blocked"]);
+  const pendingStatuses = new Set([
+    "queued",
+    "pending_manual_approval",
+    "auto_approved",
+    "blocked",
+  ]);
   const pending = promotions.filter((item) => pendingStatuses.has(String(item.status || "")));
   const promoted = promotions.filter((item) => String(item.status || "") === "promoted");
   const latestExport = exports.length ? exports[exports.length - 1] : null;
   const mergePreviewStatus = latestDryRun
-    ? (latestDryRun.ok ? "ready" : "needs_review")
-    : (exports.length ? "pending" : "none");
+    ? latestDryRun.ok
+      ? "ready"
+      : "needs_review"
+    : exports.length
+      ? "pending"
+      : "none";
   const rawSummary = String(latestDryRun?.summary || "");
   const mergePreviewSummary = rawSummary
     .replace(/Merge gate/gi, "Merge preview")
@@ -3383,22 +4001,29 @@ function buildPromotionPreview(payload) {
     entry.candidate_id = entry.candidate_id || pr.candidate_id;
     entry.merged = {
       status: pr.status,
-      files: Array.isArray(pr.promoted_files) && pr.promoted_files.length
-        ? pr.promoted_files.length
-        : (Array.isArray(pr.promotable_files) ? pr.promotable_files.length : 0),
+      files:
+        Array.isArray(pr.promoted_files) && pr.promoted_files.length
+          ? pr.promoted_files.length
+          : Array.isArray(pr.promotable_files)
+            ? pr.promotable_files.length
+            : 0,
       risky_files: Array.isArray(pr.merge_gate?.risky_files) ? pr.merge_gate.risky_files : [],
     };
     byTask.set(taskId, entry);
   }
   const batchVerified = latestDryRun ? { ok: Boolean(latestDryRun.ok), batch: true } : null;
-  const lineages = [...byTask.values()].slice(-8).map((entry) => ({ ...entry, verified: batchVerified }));
+  const lineages = [...byTask.values()]
+    .slice(-8)
+    .map((entry) => ({ ...entry, verified: batchVerified }));
   return {
     export_count: exports.length,
     dry_run_count: dryRuns.length,
     pending_promotions: pending.length,
     promoted_count: promoted.length,
     merge_preview_status: mergePreviewStatus,
-    merge_preview_summary: mergePreviewSummary || (exports.length ? "Candidate exports recorded; open Inspector for details." : ""),
+    merge_preview_summary:
+      mergePreviewSummary ||
+      (exports.length ? "Candidate exports recorded; open Inspector for details." : ""),
     latest_export: latestExport,
     latest_dry_run: latestDryRun,
     lineages,
@@ -3474,7 +4099,9 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
   const results = await readJsonlTail(path.join(runDir, "worker_results.jsonl"), 500);
   const events = await readJsonlTail(path.join(runDir, "events.jsonl"), 500);
   const swarmPlans = await readJsonlTail(path.join(runDir, "swarm_execution_plans.jsonl"), 20);
-  const resultByWorker = new Map(results.map((item) => [String(item.worker_invocation_id || ""), item]));
+  const resultByWorker = new Map(
+    results.map((item) => [String(item.worker_invocation_id || ""), item]),
+  );
   const nodes = new Map();
   for (const worker of workers) {
     const id = String(worker.worker_invocation_id || "");
@@ -3483,11 +4110,16 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
     nodes.set(id, {
       worker_invocation_id: id,
       worker_result_id: result.worker_result_id || null,
-      parent_worker_invocation_id: worker.parent_worker_invocation_id || result.parent_worker_invocation_id || null,
+      parent_worker_invocation_id:
+        worker.parent_worker_invocation_id || result.parent_worker_invocation_id || null,
       parent_task_id: worker.parent_task_id || null,
       worker_kind: worker.worker_kind || result.worker_kind || null,
       parallel_safety: worker.parallel_safety || null,
-      child_plan_refs: Array.isArray(worker.child_plan_refs) ? worker.child_plan_refs : Array.isArray(result.child_plan_refs) ? result.child_plan_refs : [],
+      child_plan_refs: Array.isArray(worker.child_plan_refs)
+        ? worker.child_plan_refs
+        : Array.isArray(result.child_plan_refs)
+          ? result.child_plan_refs
+          : [],
       task_id: worker.task_id || result.task_id || "task",
       agent_id: worker.agent_id || "agent",
       runtime_profile_id: worker.runtime_profile_id || "unknown",
@@ -3499,7 +4131,9 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
       result_status: result.status || null,
       artifact_refs: Array.isArray(result.artifact_refs) ? result.artifact_refs : [],
       validation_refs: Array.isArray(result.validation_refs) ? result.validation_refs : [],
-      failure_evidence_refs: Array.isArray(result.failure_evidence_refs) ? result.failure_evidence_refs : [],
+      failure_evidence_refs: Array.isArray(result.failure_evidence_refs)
+        ? result.failure_evidence_refs
+        : [],
       cost: result.cost || { model_calls: 0, tool_calls: 0 },
       summary: result.summary || worker.summary || "",
       children: [],
@@ -3530,16 +4164,30 @@ async function buildWorkerTree(runDir, agentRunGraph = {}) {
     total_workers: nodes.size,
     status_counts: statusCounts,
     successful_workers: statusCounts.succeeded || 0,
-    failed_workers: (statusCounts.failed || 0) + (statusCounts.denied || 0) + (statusCounts.timeout || 0),
-    parallel_batches: events.filter((event) =>
-      event.type === "task_graph_selection"
-      && ["readonly_batch_selection", "parallel_safe_batch_selection"].includes(String(event.data?.reason || ""))
+    failed_workers:
+      (statusCounts.failed || 0) + (statusCounts.denied || 0) + (statusCounts.timeout || 0),
+    parallel_batches: events.filter(
+      (event) =>
+        event.type === "task_graph_selection" &&
+        ["readonly_batch_selection", "parallel_safe_batch_selection"].includes(
+          String(event.data?.reason || ""),
+        ),
     ).length,
-    coordination_modes: [...new Set(events
-      .filter((event) => event.type === "task_graph_selection" && event.data?.reason)
-      .map((event) => String(event.data.reason)))],
-    total_model_calls: [...nodes.values()].reduce((total, node) => total + Number(node.cost?.model_calls || 0), 0),
-    total_tool_calls: [...nodes.values()].reduce((total, node) => total + Number(node.cost?.tool_calls || 0), 0),
+    coordination_modes: [
+      ...new Set(
+        events
+          .filter((event) => event.type === "task_graph_selection" && event.data?.reason)
+          .map((event) => String(event.data.reason)),
+      ),
+    ],
+    total_model_calls: [...nodes.values()].reduce(
+      (total, node) => total + Number(node.cost?.model_calls || 0),
+      0,
+    ),
+    total_tool_calls: [...nodes.values()].reduce(
+      (total, node) => total + Number(node.cost?.tool_calls || 0),
+      0,
+    ),
     agent_run_graph: agentRunGraph || {},
     collaboration_summary: agentRunGraph?.collaboration_summary || {},
     swarm_execution_plans: swarmPlans,
@@ -3572,7 +4220,7 @@ function mainActionForRun(payload, currentDecisions) {
     progress.next_command,
     finalSummary.recommended_next_command,
     loopSummary.recommended_next_command,
-    ""
+    "",
   );
   if (!nextCommand) {
     return {
@@ -3594,7 +4242,9 @@ function mainActionForRun(payload, currentDecisions) {
     requires_permission: Boolean(action?.requiresPermission),
     status: action?.requiresPermission ? "needs_permission" : "ready",
     decision_count: 0,
-    source: progress.next_command ? "runtime_progress.next_command" : "runtime_summary.recommended_next_command",
+    source: progress.next_command
+      ? "runtime_progress.next_command"
+      : "runtime_summary.recommended_next_command",
     evidence_refs: ["final_report_summary.json", "run_loop_summary.json"],
   };
 }
@@ -3628,32 +4278,65 @@ async function modelRouteSummary() {
   const runs = await readRuns();
   const summary = new Map();
   for (const run of runs.slice(0, 20)) {
-    const calls = await readJsonlTail(path.join(workspace, ".asteria", "runs", run.run_id, "model_calls.jsonl"), 500);
+    const calls = await readJsonlTail(
+      path.join(workspace, ".asteria", "runs", run.run_id, "model_calls.jsonl"),
+      500,
+    );
     for (const call of calls) {
-      const key = [call.model_provider || "unknown", call.model_name || "unknown", call.purpose || "unknown", call.model_tier || "unknown"].join("/");
-      const item = summary.get(key) || { key, provider: call.model_provider || "unknown", model: call.model_name || "unknown", purpose: call.purpose || "unknown", tier: call.model_tier || "unknown", total: 0, success: 0, failure: 0, streamingFailed: 0, durationMs: [] };
+      const key = [
+        call.model_provider || "unknown",
+        call.model_name || "unknown",
+        call.purpose || "unknown",
+        call.model_tier || "unknown",
+      ].join("/");
+      const item = summary.get(key) || {
+        key,
+        provider: call.model_provider || "unknown",
+        model: call.model_name || "unknown",
+        purpose: call.purpose || "unknown",
+        tier: call.model_tier || "unknown",
+        total: 0,
+        success: 0,
+        failure: 0,
+        streamingFailed: 0,
+        durationMs: [],
+      };
       item.total += 1;
       if (call.status === "success") item.success += 1;
       if (call.status === "failure") item.failure += 1;
       if (call.streaming?.mode === "streaming_failed") item.streamingFailed += 1;
-      if (Number.isFinite(call.streaming?.duration_ms)) item.durationMs.push(call.streaming.duration_ms);
+      if (Number.isFinite(call.streaming?.duration_ms))
+        item.durationMs.push(call.streaming.duration_ms);
       else if (Number.isFinite(call.duration_ms)) item.durationMs.push(call.duration_ms);
       summary.set(key, item);
     }
   }
-  return [...summary.values()].map((item) => ({
-    ...item,
-    successRate: item.total ? Number((item.success / item.total).toFixed(4)) : 0,
-    durationP95: percentile(item.durationMs, 0.95)
-  })).sort((a, b) => b.total - a.total);
+  return [...summary.values()]
+    .map((item) => ({
+      ...item,
+      successRate: item.total ? Number((item.success / item.total).toFixed(4)) : 0,
+      durationP95: percentile(item.durationMs, 0.95),
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 // Heavy / generated / noise directories skipped when walking a general workspace, so the file list
 // (Inspector browser + composer @-mentions) reflects the user's real source, not build output or
 // runtime bookkeeping. Dot-directories (.git/.venv/.asteria/.vscode…) are skipped separately.
 const IGNORED_WORKSPACE_DIRS = new Set([
-  "node_modules", "dist", "build", "out", "target", "vendor", "bin", "obj",
-  "__pycache__", "venv", "env", "coverage", ".gradle",
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  "target",
+  "vendor",
+  "bin",
+  "obj",
+  "__pycache__",
+  "venv",
+  "env",
+  "coverage",
+  ".gradle",
 ]);
 
 async function listWorkspaceFiles() {
@@ -3661,7 +4344,9 @@ async function listWorkspaceFiles() {
   // nothing for an arbitrary project). Bounded by depth/scan cap; returns the 200 most recent files.
   const files = [];
   await collectFiles(workspace, files, 0);
-  return files.sort((a, b) => String(b.modified_at).localeCompare(String(a.modified_at))).slice(0, 200);
+  return files
+    .sort((a, b) => String(b.modified_at).localeCompare(String(a.modified_at)))
+    .slice(0, 200);
 }
 
 async function collectFiles(directory, files, depth) {
@@ -3690,12 +4375,19 @@ async function collectFiles(directory, files, depth) {
 
 async function previewWorkspaceFile(body) {
   const relative = String(body?.path || "").replace(/\\/g, "/");
-  if (!isSafeWorkspacePath(relative) || !isPreviewableFile(relative)) return { ok: false, error: "file is not previewable" };
+  if (!isSafeWorkspacePath(relative) || !isPreviewableFile(relative))
+    return { ok: false, error: "file is not previewable" };
   const absolute = path.resolve(workspace, relative);
-  if (!absolute.startsWith(workspace) || !existsSync(absolute)) return { ok: false, error: "file not found" };
+  if (!absolute.startsWith(workspace) || !existsSync(absolute))
+    return { ok: false, error: "file not found" };
   const stat = await fs.stat(absolute);
   if (stat.size > 120_000) return { ok: false, error: "file too large for preview" };
-  return { ok: true, path: relative, size: stat.size, content: redactText(await fs.readFile(absolute, "utf8")) };
+  return {
+    ok: true,
+    path: relative,
+    size: stat.size,
+    content: redactText(await fs.readFile(absolute, "utf8")),
+  };
 }
 
 function isSafeWorkspacePath(relative) {
@@ -3723,27 +4415,48 @@ async function readJson(file) {
 
 async function readJsonlTail(file, limit) {
   try {
-    return (await fs.readFile(file, "utf8")).split(/\r?\n/).filter(Boolean).slice(-limit).map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return { raw: redactText(line) };
-      }
-    });
+    return (await fs.readFile(file, "utf8"))
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .slice(-limit)
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return { raw: redactText(line) };
+        }
+      });
   } catch {
     return [];
   }
 }
 
 const PREVIEW_MIME = {
-  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif", ".ico": "image/x-icon", ".bmp": "image/bmp",
-  ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf",
-  ".txt": "text/plain; charset=utf-8", ".map": "application/json; charset=utf-8",
-  ".wasm": "application/wasm", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".webmanifest": "application/manifest+json",
+  ".html": "text/html; charset=utf-8",
+  ".htm": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".ico": "image/x-icon",
+  ".bmp": "image/bmp",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".otf": "font/otf",
+  ".txt": "text/plain; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".wasm": "application/wasm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".webmanifest": "application/manifest+json",
 };
 
 function previewContentType(filePath) {
@@ -3762,56 +4475,106 @@ function startPreviewServer(startPort) {
     try {
       // PREVIEW-3: in proxy mode every request is reverse-proxied to the dev server, which owns
       // routing, bundling and its own HMR — we do not serve static files or inject a reload client.
-      if (previewProxyTarget) { proxyToDevServer(req, res, previewProxyTarget); return; }
-      if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); res.end("method not allowed"); return; }
+      if (previewProxyTarget) {
+        proxyToDevServer(req, res, previewProxyTarget);
+        return;
+      }
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        res.writeHead(405);
+        res.end("method not allowed");
+        return;
+      }
       let pathname = decodeURIComponent((req.url || "/").split("?")[0].split("#")[0]);
       // PREVIEW-2: live-reload SSE channel — the injected script (below) connects here; the workspace
       // watcher broadcasts "reload" so the preview refreshes when the agent edits files.
       if (pathname === "/__livereload") {
-        res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", "connection": "keep-alive" });
+        res.writeHead(200, {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache",
+          connection: "keep-alive",
+        });
         res.write(": connected\n\n");
         previewSseClients.add(res);
-        const ping = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 20000);
-        req.on("close", () => { clearInterval(ping); previewSseClients.delete(res); });
+        const ping = setInterval(() => {
+          try {
+            res.write(": ping\n\n");
+          } catch {}
+        }, 20000);
+        req.on("close", () => {
+          clearInterval(ping);
+          previewSseClients.delete(res);
+        });
         return;
       }
       if (pathname.endsWith("/")) pathname += "index.html";
       const rel = pathname.replace(/^\/+/, "") || "index.html";
-      if (!isSafeWorkspacePath(rel)) { res.writeHead(403, { "content-type": "text/plain; charset=utf-8" }); res.end("Forbidden"); return; }
+      if (!isSafeWorkspacePath(rel)) {
+        res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+        res.end("Forbidden");
+        return;
+      }
       const abs = path.resolve(workspaceRoot, rel);
-      if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + path.sep)) { res.writeHead(403); res.end("Forbidden"); return; }
-      if (!existsSync(abs) || !statSync(abs).isFile()) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8" }); res.end("Not found"); return; }
+      if (abs !== workspaceRoot && !abs.startsWith(workspaceRoot + path.sep)) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+      if (!existsSync(abs) || !statSync(abs).isFile()) {
+        res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+        res.end("Not found");
+        return;
+      }
       const contentType = previewContentType(abs);
       const body = await fs.readFile(abs);
       // PREVIEW-2: inject the live-reload client into served HTML so edits auto-refresh the preview.
       if (contentType.startsWith("text/html") && req.method !== "HEAD") {
         let html = body.toString("utf8");
-        const snippet = '\n<script>(function(){try{var s=new EventSource("/__livereload");s.onmessage=function(e){if(e.data==="reload")location.reload();};}catch(_){}})();</script>\n';
-        html = html.includes("</body>") ? html.replace("</body>", `${snippet}</body>`) : html + snippet;
-        res.writeHead(200, { "content-type": contentType, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        const snippet =
+          '\n<script>(function(){try{var s=new EventSource("/__livereload");s.onmessage=function(e){if(e.data==="reload")location.reload();};}catch(_){}})();</script>\n';
+        html = html.includes("</body>")
+          ? html.replace("</body>", `${snippet}</body>`)
+          : html + snippet;
+        res.writeHead(200, {
+          "content-type": contentType,
+          "cache-control": "no-store",
+          "x-content-type-options": "nosniff",
+        });
         res.end(html);
         return;
       }
-      res.writeHead(200, { "content-type": contentType, "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      res.writeHead(200, {
+        "content-type": contentType,
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      });
       res.end(req.method === "HEAD" ? undefined : body);
     } catch {
-      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); res.end("Preview error");
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Preview error");
     }
   });
   // PREVIEW-3: proxy the websocket upgrade too, so the dev server's HMR socket keeps working through
   // the preview iframe (Vite/Next live-update the app without a full reload).
   server.on("upgrade", (req, socket, head) => {
-    if (!previewProxyTarget) { socket.destroy(); return; }
+    if (!previewProxyTarget) {
+      socket.destroy();
+      return;
+    }
     const upstream = httpRequest({
       hostname: previewProxyTarget.hostname,
       port: previewProxyTarget.port,
       path: req.url,
       method: req.method,
-      headers: { ...req.headers, host: `${previewProxyTarget.hostname}:${previewProxyTarget.port}` },
+      headers: {
+        ...req.headers,
+        host: `${previewProxyTarget.hostname}:${previewProxyTarget.port}`,
+      },
     });
     upstream.on("upgrade", (upRes, upSocket, upHead) => {
       const statusLine = `HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage}\r\n`;
-      const headerLines = Object.entries(upRes.headers).map(([k, v]) => `${k}: ${v}`).join("\r\n");
+      const headerLines = Object.entries(upRes.headers)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join("\r\n");
       socket.write(`${statusLine}${headerLines}\r\n\r\n`);
       if (upHead?.length) upSocket.unshift(upHead);
       upSocket.pipe(socket);
@@ -3825,15 +4588,22 @@ function startPreviewServer(startPort) {
   });
   const tryPort = (p) => {
     const onError = (err) => {
-      if (err && err.code === "EADDRINUSE" && attempt < 15) { attempt += 1; tryPort(p + 1); }
-      else { previewPort = null; console.error(`Asteria preview server failed: ${err?.message || err}`); }
+      if (err && err.code === "EADDRINUSE" && attempt < 15) {
+        attempt += 1;
+        tryPort(p + 1);
+      } else {
+        previewPort = null;
+        console.error(`Asteria preview server failed: ${err?.message || err}`);
+      }
     };
     server.once("error", onError);
     server.listen(p, "127.0.0.1", () => {
       server.removeListener("error", onError);
       previewPort = p;
       if (previewProxyTarget) {
-        console.log(`Asteria preview server on http://127.0.0.1:${p} (proxy → ${previewProxyTarget.origin})`);
+        console.log(
+          `Asteria preview server on http://127.0.0.1:${p} (proxy → ${previewProxyTarget.origin})`,
+        );
       } else {
         console.log(`Asteria preview server on http://127.0.0.1:${p} (workspace static)`);
         startPreviewWatcher();
@@ -3846,26 +4616,35 @@ function startPreviewServer(startPort) {
 // PREVIEW-3: reverse-proxy one HTTP request to the configured dev server. A dead dev server yields a
 // clear 502 with the origin, not a hang, so the Preview tab can tell the user to start their server.
 function proxyToDevServer(req, res, target) {
-  const upstream = httpRequest({
-    hostname: target.hostname,
-    port: target.port,
-    path: req.url,
-    method: req.method,
-    headers: { ...req.headers, host: `${target.hostname}:${target.port}` },
-  }, (upRes) => {
-    res.writeHead(upRes.statusCode || 502, upRes.headers);
-    upRes.pipe(res);
-  });
+  const upstream = httpRequest(
+    {
+      hostname: target.hostname,
+      port: target.port,
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: `${target.hostname}:${target.port}` },
+    },
+    (upRes) => {
+      res.writeHead(upRes.statusCode || 502, upRes.headers);
+      upRes.pipe(res);
+    },
+  );
   upstream.on("error", (err) => {
     if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
-    res.end(`Preview proxy: dev server ${target.origin} is unreachable (${err.code || err.message}). Start it, then reload.`);
+    res.end(
+      `Preview proxy: dev server ${target.origin} is unreachable (${err.code || err.message}). Start it, then reload.`,
+    );
   });
   req.pipe(upstream);
 }
 
 function broadcastPreviewReload() {
   for (const res of [...previewSseClients]) {
-    try { res.write("data: reload\n\n"); } catch { previewSseClients.delete(res); }
+    try {
+      res.write("data: reload\n\n");
+    } catch {
+      previewSseClients.delete(res);
+    }
   }
 }
 
@@ -3880,7 +4659,10 @@ function startPreviewWatcher() {
       const rel = String(filename).replace(/\\/g, "/");
       if (/(^|\/)(\.asteria|\.git|node_modules|dist|\.venv|__pycache__)(\/|$)/i.test(rel)) return;
       if (previewReloadTimer) return;
-      previewReloadTimer = setTimeout(() => { previewReloadTimer = null; broadcastPreviewReload(); }, 150);
+      previewReloadTimer = setTimeout(() => {
+        previewReloadTimer = null;
+        broadcastPreviewReload();
+      }, 150);
     });
   } catch (err) {
     console.error(`Asteria preview watcher failed: ${err?.message || err}`);
@@ -3900,7 +4682,13 @@ async function serveStatic(response, pathname) {
     return;
   }
   const file = existsSync(target) ? target : path.join(distDir, "index.html");
-  const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml" }[path.extname(file)] || "application/octet-stream";
+  const type =
+    {
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".svg": "image/svg+xml",
+    }[path.extname(file)] || "application/octet-stream";
   response.writeHead(200, { "content-type": type });
   response.end(await fs.readFile(file));
 }
@@ -3937,7 +4725,11 @@ function readRequestBodyRaw(request, maxBytes = 25_000_000) {
     request.on("data", (chunk) => {
       if (overflow) return;
       size += chunk.length;
-      if (size > maxBytes) { overflow = true; request.destroy(); return; }
+      if (size > maxBytes) {
+        overflow = true;
+        request.destroy();
+        return;
+      }
       chunks.push(Buffer.from(chunk));
     });
     request.on("end", () => resolve(overflow ? null : Buffer.concat(chunks).toString("utf8")));
@@ -3977,13 +4769,15 @@ async function describeWorkspaceProfile(targetPath) {
       project_name: workspaceBasename(resolved),
     };
   }
-  const profile = described.profile && typeof described.profile === "object" ? described.profile : described;
+  const profile =
+    described.profile && typeof described.profile === "object" ? described.profile : described;
   return { ok: true, ...profile };
 }
 
 async function listWorkspaceRegistry() {
   const listed = await commandJson(["workspaces", "list", "--json"]);
-  const registry = listed.registry && typeof listed.registry === "object" ? listed.registry : listed;
+  const registry =
+    listed.registry && typeof listed.registry === "object" ? listed.registry : listed;
   const recent = Array.isArray(registry.recent_workspaces) ? registry.recent_workspaces : [];
   const recentWithProfiles = [];
   for (const entry of recent.slice(0, 8)) {
@@ -4017,7 +4811,9 @@ async function openWorkspace(body) {
   // Only a genuinely RUNNING job should block a workspace switch. liveJobs retains completed/failed
   // jobs (they hold the child handle + run_id for the jobs/stop routes), so `size > 0` was true after
   // any past run and permanently wedged workspace switching. Check live status instead.
-  const activeJobs = [...liveJobs.values()].filter((job) => job.status === "running" && !job.cancelled);
+  const activeJobs = [...liveJobs.values()].filter(
+    (job) => job.status === "running" && !job.cancelled,
+  );
   if (activeJobs.length > 0) {
     return { ok: false, error: "cannot switch workspace while a turn is still running" };
   }
@@ -4036,9 +4832,10 @@ async function openWorkspace(body) {
   runtimeRoot = path.resolve(String(body?.runtime_root || workspace));
   routeClient.reconfigure({ runtimeRoot });
   routeClient.invalidateWorkspace(workspace);
-  const profile = registered.profile && typeof registered.profile === "object"
-    ? registered.profile
-    : await describeWorkspaceProfile(workspace);
+  const profile =
+    registered.profile && typeof registered.profile === "object"
+      ? registered.profile
+      : await describeWorkspaceProfile(workspace);
   return {
     ok: true,
     workspace,
@@ -4059,22 +4856,31 @@ async function browseWorkspaceFolder() {
       "$dialog.ShowNewFolderButton = $true",
       "if ($dialog.ShowDialog() -eq 'OK') { Write-Output $dialog.SelectedPath }",
     ].join("; ");
-    const completed = await runCommand(["powershell", "-NoProfile", "-STA", "-Command", script], process.cwd());
+    const completed = await runCommand(
+      ["powershell", "-NoProfile", "-STA", "-Command", script],
+      process.cwd(),
+    );
     const selected = String(completed.stdout || "").trim();
     if (!selected) return { ok: true, cancelled: true, path: null };
     return { ok: true, cancelled: false, path: path.resolve(selected) };
   }
   if (process.platform === "darwin") {
-    const completed = await runCommand([
-      "osascript",
-      "-e",
-      'POSIX path of (choose folder with prompt "Select Asteria workspace folder")',
-    ], process.cwd());
+    const completed = await runCommand(
+      [
+        "osascript",
+        "-e",
+        'POSIX path of (choose folder with prompt "Select Asteria workspace folder")',
+      ],
+      process.cwd(),
+    );
     const selected = String(completed.stdout || "").trim();
     if (!selected) return { ok: true, cancelled: true, path: null };
     return { ok: true, cancelled: false, path: path.resolve(selected) };
   }
-  const zenity = await runCommand(["zenity", "--file-selection", "--directory", "--title=Select Asteria workspace folder"], process.cwd());
+  const zenity = await runCommand(
+    ["zenity", "--file-selection", "--directory", "--title=Select Asteria workspace folder"],
+    process.cwd(),
+  );
   const selected = String(zenity.stdout || "").trim();
   if (zenity.code !== 0 || !selected) return { ok: true, cancelled: true, path: null };
   return { ok: true, cancelled: false, path: path.resolve(selected) };
@@ -4160,7 +4966,9 @@ async function readWorkspaceGitStatus() {
 }
 
 async function readWorkspaceGitDiff(relativePath, stage = "all") {
-  const normalized = String(relativePath || "").replace(/\\/g, "/").trim();
+  const normalized = String(relativePath || "")
+    .replace(/\\/g, "/")
+    .trim();
   if (!normalized) return { ok: false, error: "path is required" };
   if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
   if (!existsSync(path.join(workspace, ".git"))) {
@@ -4177,10 +4985,15 @@ async function readWorkspaceGitDiff(relativePath, stage = "all") {
     diff = [
       staged ? `--- staged ---\n${staged}` : "",
       unstaged ? `--- unstaged ---\n${unstaged}` : "",
-    ].filter(Boolean).join("\n\n");
+    ]
+      .filter(Boolean)
+      .join("\n\n");
   }
   if (!diff && stagedResult.code !== 0 && unstagedResult.code !== 0) {
-    return { ok: false, error: redactText(unstagedResult.stderr || stagedResult.stderr || "git diff failed") };
+    return {
+      ok: false,
+      error: redactText(unstagedResult.stderr || stagedResult.stderr || "git diff failed"),
+    };
   }
   const clipped = diff.slice(0, 120_000);
   return {
@@ -4197,20 +5010,26 @@ async function readWorkspaceGitDiff(relativePath, stage = "all") {
 }
 
 async function stageWorkspaceGitFile(body) {
-  const normalized = String(body?.path || "").replace(/\\/g, "/").trim();
+  const normalized = String(body?.path || "")
+    .replace(/\\/g, "/")
+    .trim();
   if (!normalized) return { ok: false, error: "path is required" };
   if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-  if (!existsSync(path.join(workspace, ".git"))) return { ok: false, error: "not a git repository" };
+  if (!existsSync(path.join(workspace, ".git")))
+    return { ok: false, error: "not a git repository" };
   const result = await runGit(["add", "--", normalized]);
   if (result.code !== 0) return { ok: false, error: redactText(result.stderr || "git add failed") };
   return { ok: true, path: normalized, action: "staged" };
 }
 
 async function discardWorkspaceGitFile(body) {
-  const normalized = String(body?.path || "").replace(/\\/g, "/").trim();
+  const normalized = String(body?.path || "")
+    .replace(/\\/g, "/")
+    .trim();
   if (!normalized) return { ok: false, error: "path is required" };
   if (!isSafeWorkspacePath(normalized)) return { ok: false, error: "path is not allowed" };
-  if (!existsSync(path.join(workspace, ".git"))) return { ok: false, error: "not a git repository" };
+  if (!existsSync(path.join(workspace, ".git")))
+    return { ok: false, error: "not a git repository" };
   // Untracked files (the COMMON case: a file the agent just CREATED) cannot be reverted with
   // `git checkout` — it errors "pathspec did not match". `git status -u` still lists them, so the
   // thread shows a Revert button for them. For an untracked file, "revert" means remove the
@@ -4226,7 +5045,8 @@ async function discardWorkspaceGitFile(body) {
     return { ok: true, path: normalized, action: "removed" };
   }
   const result = await runGit(["checkout", "--", normalized]);
-  if (result.code !== 0) return { ok: false, error: redactText(result.stderr || "git checkout failed") };
+  if (result.code !== 0)
+    return { ok: false, error: redactText(result.stderr || "git checkout failed") };
   return { ok: true, path: normalized, action: "discarded" };
 }
 
@@ -4247,16 +5067,25 @@ function parseArgs(items) {
 // We still redact every real credential shape (api_key, authorization, *_token, bearer, secret, …).
 function isSecretKey(key) {
   const k = String(key).toLowerCase();
-  if (/tokens?$/.test(k) && /(input|output|total|prompt|completion|context|window|estimated|max|min|cache|used|remaining|budget|count|num|per_)/.test(k)) return false;
+  if (
+    /tokens?$/.test(k) &&
+    /(input|output|total|prompt|completion|context|window|estimated|max|min|cache|used|remaining|budget|count|num|per_)/.test(
+      k,
+    )
+  )
+    return false;
   if (k === "token_count" || k === "num_tokens" || k === "n_tokens") return false;
-  return /api[_-]?key|authorization|secret|password|credential/.test(k)
-    || /(^|[_-])(access|refresh|auth|id|bearer|api|session|csrf|xsrf|private)[_-]?tokens?$/.test(k)
-    || k === "token";
+  return (
+    /api[_-]?key|authorization|secret|password|credential/.test(k) ||
+    /(^|[_-])(access|refresh|auth|id|bearer|api|session|csrf|xsrf|private)[_-]?tokens?$/.test(k) ||
+    k === "token"
+  );
 }
 
 function redact(value) {
   if (Array.isArray(value)) return value.map(redact);
-  if (!value || typeof value !== "object") return typeof value === "string" ? redactText(value) : value;
+  if (!value || typeof value !== "object")
+    return typeof value === "string" ? redactText(value) : value;
   const result = {};
   for (const [key, item] of Object.entries(value)) {
     result[key] = isSecretKey(key) ? "[REDACTED]" : redact(item);
@@ -4266,7 +5095,10 @@ function redact(value) {
 
 function redactText(text) {
   return String(text)
-    .replace(/(api[_-]?key|authorization|token|secret|password)\s*[:=]\s*['"]?[^'",}\s]+/gi, "$1=[REDACTED]")
+    .replace(
+      /(api[_-]?key|authorization|token|secret|password)\s*[:=]\s*['"]?[^'",}\s]+/gi,
+      "$1=[REDACTED]",
+    )
     .replace(/(bearer\s+)[A-Za-z0-9._-]+/gi, "$1[REDACTED]");
 }
 

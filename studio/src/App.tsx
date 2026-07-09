@@ -31,7 +31,14 @@ export function App() {
   const { viewMode, cycleViewMode } = useViewMode();
   const { theme, setTheme } = useTheme();
   const { diffFocus, toggleDiffFocus } = useDiffFocus();
-  const { sideChatOpen, setSideChatOpen, toggleSideChat, closeSideChat, composerSideAsk, toggleComposerSideAsk } = useSideChat();
+  const {
+    sideChatOpen,
+    setSideChatOpen,
+    toggleSideChat,
+    closeSideChat,
+    composerSideAsk,
+    toggleComposerSideAsk,
+  } = useSideChat();
   const [sideChatSending, setSideChatSending] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -87,31 +94,65 @@ export function App() {
     }
   }, [diffFocus, panelWidth, setPanelWidth]);
 
-  const selectSession = useCallback((session: StudioSession) => {
-    bootstrap.setActiveSession(session);
-    runEvidence.clearSelection();
-    sessionEvents.clearEvents();
-    review.applySessionUiState(session);
-  }, [bootstrap, runEvidence, sessionEvents, review]);
+  const selectSession = useCallback(
+    (session: StudioSession) => {
+      bootstrap.setActiveSession(session);
+      runEvidence.clearSelection();
+      sessionEvents.clearEvents();
+      review.applySessionUiState(session);
+    },
+    [bootstrap, runEvidence, sessionEvents, review],
+  );
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const paletteCommands = useMemo<Command[]>(() => {
     const list: Command[] = [];
     for (const session of bootstrap.sessions) {
       if (session.session_id === bootstrap.activeSession?.session_id) continue;
-      list.push({ id: `session:${session.session_id}`, label: session.title || "未命名会话", hint: "切换会话", run: () => selectSession(session) });
+      list.push({
+        id: `session:${session.session_id}`,
+        label: session.title || "未命名会话",
+        hint: "切换会话",
+        run: () => selectSession(session),
+      });
     }
-    if (sessionEvents.isRunning) list.push({ id: "stop", label: "停止运行中的任务", hint: "Esc", run: () => void sessionEvents.stopRun() });
+    if (sessionEvents.isRunning)
+      list.push({
+        id: "stop",
+        label: "停止运行中的任务",
+        hint: "Esc",
+        run: () => void sessionEvents.stopRun(),
+      });
     list.push(
       { id: "review", label: "查看改动", hint: "Ctrl+Shift+D", run: () => toggleDiffFocus() },
-      { id: "panel", label: "切换侧栏面板", hint: "Ctrl+\\", run: () => setPanelOpen((open) => !open) },
-      { id: "sidebar", label: "切换会话侧边栏", hint: "Ctrl+B", run: () => toggleSidebarCollapsed() },
+      {
+        id: "panel",
+        label: "切换侧栏面板",
+        hint: "Ctrl+\\",
+        run: () => setPanelOpen((open) => !open),
+      },
+      {
+        id: "sidebar",
+        label: "切换会话侧边栏",
+        hint: "Ctrl+B",
+        run: () => toggleSidebarCollapsed(),
+      },
       { id: "sidechat", label: "切换快速提问", hint: "Ctrl+;", run: () => toggleSideChat() },
       { id: "settings", label: "打开设置", run: () => setSettingsOpen(true) },
       { id: "refresh", label: "刷新", run: () => void bootstrap.bootstrap() },
     );
     return list;
-  }, [bootstrap.sessions, bootstrap.activeSession?.session_id, sessionEvents.isRunning, sessionEvents.stopRun, selectSession, toggleDiffFocus, toggleSidebarCollapsed, toggleSideChat, bootstrap]);
+  }, [
+    bootstrap.sessions,
+    bootstrap.activeSession?.session_id,
+    sessionEvents.isRunning,
+    sessionEvents.stopRun,
+    selectSession,
+    toggleDiffFocus,
+    toggleSidebarCollapsed,
+    toggleSideChat,
+    bootstrap,
+  ]);
 
   useStudioKeyboard({
     sessions: bootstrap.sessions,
@@ -124,68 +165,92 @@ export function App() {
     onOpenPalette: () => setPaletteOpen(true),
   });
 
-  const shellClassName = useMemo(() => [
-    "appShell",
-    panelOpen ? "panelOpen" : "panelCollapsed",
-    sidebarCollapsed ? "sidebarCollapsed" : "",
-    diffFocus ? "diffFocus" : "",
-    `view-${viewMode}`,
-  ].filter(Boolean).join(" "), [panelOpen, sidebarCollapsed, diffFocus, viewMode]);
+  const shellClassName = useMemo(
+    () =>
+      [
+        "appShell",
+        panelOpen ? "panelOpen" : "panelCollapsed",
+        sidebarCollapsed ? "sidebarCollapsed" : "",
+        diffFocus ? "diffFocus" : "",
+        `view-${viewMode}`,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    [panelOpen, sidebarCollapsed, diffFocus, viewMode],
+  );
 
-  const sendSideAsk = useCallback(async (message: string) => {
-    setSideChatOpen(true);
-    setSideChatSending(true);
-    try {
-      await sessionEvents.sendSideAsk(message);
-    } finally {
-      setSideChatSending(false);
-    }
-  }, [sessionEvents, setSideChatOpen]);
+  const sendSideAsk = useCallback(
+    async (message: string) => {
+      setSideChatOpen(true);
+      setSideChatSending(true);
+      try {
+        await sessionEvents.sendSideAsk(message);
+      } finally {
+        setSideChatSending(false);
+      }
+    },
+    [sessionEvents, setSideChatOpen],
+  );
 
-  const resolveDecision = useCallback((
-    runId: string,
-    decisionId: string,
-    optionId: string,
-  ) => sessionEvents.resolveDecision(runId, decisionId, optionId, runEvidence.setRunDetail), [sessionEvents, runEvidence.setRunDetail]);
+  const resolveDecision = useCallback(
+    (runId: string, decisionId: string, optionId: string) =>
+      sessionEvents.resolveDecision(runId, decisionId, optionId, runEvidence.setRunDetail),
+    [sessionEvents, runEvidence.setRunDetail],
+  );
 
-  const answerDecision = useCallback((
-    runId: string,
-    decisionId: string,
-    answer: string,
-  ) => sessionEvents.answerDecision(runId, decisionId, answer, runEvidence.setRunDetail), [sessionEvents, runEvidence.setRunDetail]);
+  const answerDecision = useCallback(
+    (runId: string, decisionId: string, answer: string) =>
+      sessionEvents.answerDecision(runId, decisionId, answer, runEvidence.setRunDetail),
+    [sessionEvents, runEvidence.setRunDetail],
+  );
 
-  const onTurnRewind = useCallback(async (_turnIndex: number, action: string) => {
-    await sessionEvents.runRuntimeAction(action);
-  }, [sessionEvents]);
+  const onTurnRewind = useCallback(
+    async (_turnIndex: number, action: string) => {
+      await sessionEvents.runRuntimeAction(action);
+    },
+    [sessionEvents],
+  );
 
-  const openReviewFile = useCallback(async (pathValue: string) => {
-    setPanelOpen(true);
-    await review.refreshGitStatus();
-    await review.openFileChange(pathValue);
-  }, [review]);
+  const openReviewFile = useCallback(
+    async (pathValue: string) => {
+      setPanelOpen(true);
+      await review.refreshGitStatus();
+      await review.openFileChange(pathValue);
+    },
+    [review],
+  );
 
-  const openTurnReview = useCallback((turnIndex: number) => {
-    setPanelOpen(true);
-    void review.refreshGitStatus();
-    review.selectTurnDiff(turnIndex);
-  }, [review]);
+  const openTurnReview = useCallback(
+    (turnIndex: number) => {
+      setPanelOpen(true);
+      void review.refreshGitStatus();
+      review.selectTurnDiff(turnIndex);
+    },
+    [review],
+  );
 
   // Inline per-turn Keep/Revert (I11) — real git stage / checkout, with honest toasts.
-  const onFileAccept = useCallback(async (pathValue: string): Promise<boolean> => {
-    const ok = await review.acceptFileChange(pathValue);
-    if (ok) toast.success("已保留——文件已暂存。");
-    else toast.error("无法暂存该文件。请尝试查看面板。");
-    return ok;
-  }, [review]);
+  const onFileAccept = useCallback(
+    async (pathValue: string): Promise<boolean> => {
+      const ok = await review.acceptFileChange(pathValue);
+      if (ok) toast.success("已保留——文件已暂存。");
+      else toast.error("无法暂存该文件。请尝试查看面板。");
+      return ok;
+    },
+    [review],
+  );
 
-  const onFileRevert = useCallback(async (pathValue: string): Promise<boolean> => {
-    const ok = await review.revertFileChange(pathValue);
-    // Accurate for both cases: a tracked file reverts to its committed content, an agent-CREATED
-    // (untracked) file is removed — "恢复到上次提交" was wrong (and confusing) for the created case.
-    if (ok) toast.success("已还原——已撤销该文件的改动。");
-    else toast.error("无法还原该文件。请尝试查看面板。");
-    return ok;
-  }, [review]);
+  const onFileRevert = useCallback(
+    async (pathValue: string): Promise<boolean> => {
+      const ok = await review.revertFileChange(pathValue);
+      // Accurate for both cases: a tracked file reverts to its committed content, an agent-CREATED
+      // (untracked) file is removed — "恢复到上次提交" was wrong (and confusing) for the created case.
+      if (ok) toast.success("已还原——已撤销该文件的改动。");
+      else toast.error("无法还原该文件。请尝试查看面板。");
+      return ok;
+    },
+    [review],
+  );
 
   const openCurrentReview = useCallback(async () => {
     setPanelOpen(true);
@@ -196,19 +261,22 @@ export function App() {
     }
   }, [review]);
 
-  const runRuntimeAction = useCallback(async (action: string) => {
-    const trimmed = action.trim();
-    if (/^(review|accept)\b/i.test(trimmed)) {
-      await openCurrentReview();
-    }
-    // runRuntimeAction now surfaces its own failure toast and returns the server result. Only claim
-    // the terminal action succeeded when the server actually STARTED it (started===true) — previously
-    // this fired a green "已最终确认" toast even when the server had merely queued a second approval
-    // and NOT accepted, so the user was told the run was finalized when it was not.
-    const result = await sessionEvents.runRuntimeAction(action);
-    if (!result?.ok || result?.started === false) return;
-    if (/^accept\b/i.test(trimmed)) toast.success("运行已最终确认——改动已进入你的工作区。");
-  }, [openCurrentReview, sessionEvents]);
+  const runRuntimeAction = useCallback(
+    async (action: string) => {
+      const trimmed = action.trim();
+      if (/^(review|accept)\b/i.test(trimmed)) {
+        await openCurrentReview();
+      }
+      // runRuntimeAction now surfaces its own failure toast and returns the server result. Only claim
+      // the terminal action succeeded when the server actually STARTED it (started===true) — previously
+      // this fired a green "已最终确认" toast even when the server had merely queued a second approval
+      // and NOT accepted, so the user was told the run was finalized when it was not.
+      const result = await sessionEvents.runRuntimeAction(action);
+      if (!result?.ok || result?.started === false) return;
+      if (/^accept\b/i.test(trimmed)) toast.success("运行已最终确认——改动已进入你的工作区。");
+    },
+    [openCurrentReview, sessionEvents],
+  );
 
   return (
     <div
@@ -247,19 +315,25 @@ export function App() {
         settings={bootstrap.settings}
         isRunning={sessionEvents.isRunning}
         onSelect={selectSession}
-        onNew={() => void bootstrap.newSession(() => {
-          runEvidence.clearSelection();
-          sessionEvents.clearEvents();
-        })}
-        onDelete={(session) => void bootstrap.deleteSession(session, () => {
-          runEvidence.clearSelection();
-          sessionEvents.clearEvents();
-        })}
+        onNew={() =>
+          void bootstrap.newSession(() => {
+            runEvidence.clearSelection();
+            sessionEvents.clearEvents();
+          })
+        }
+        onDelete={(session) =>
+          void bootstrap.deleteSession(session, () => {
+            runEvidence.clearSelection();
+            sessionEvents.clearEvents();
+          })
+        }
         onRename={async (session, title) => {
           const result = await api.updateSession(session.session_id, { title });
-          bootstrap.setSessions(bootstrap.sessions.map((item) => (
-            item.session_id === session.session_id ? result.session : item
-          )));
+          bootstrap.setSessions(
+            bootstrap.sessions.map((item) =>
+              item.session_id === session.session_id ? result.session : item,
+            ),
+          );
           if (bootstrap.activeSession?.session_id === session.session_id) {
             bootstrap.setActiveSession(result.session);
           }
@@ -311,13 +385,16 @@ export function App() {
           pendingTurn={sessionEvents.pendingTurn}
           overview={bootstrap.overview}
           runDetail={runEvidence.runDetail}
-          workspaceChangeCount={review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0}
+          workspaceChangeCount={
+            review.gitStatus?.change_count ?? review.gitStatus?.changes?.length ?? 0
+          }
           onFileChangeClick={(pathValue) => void openReviewFile(pathValue)}
           onFileAccept={onFileAccept}
           onFileRevert={onFileRevert}
           onTurnDiffSelect={openTurnReview}
           turnDiffLabel={(turnIndex) =>
-            review.turnDiffScopes.find((scope) => scope.turnIndex === turnIndex)?.label ?? `T${turnIndex}`
+            review.turnDiffScopes.find((scope) => scope.turnIndex === turnIndex)?.label ??
+            `T${turnIndex}`
           }
           onAggregateDiffClick={openTurnReview}
           viewMode={viewMode}
@@ -332,7 +409,11 @@ export function App() {
           onSideAskToggle={toggleComposerSideAsk}
           promptSignal={bootstrap.promptSignal}
           viewMode={viewMode}
-          initialPermissionMode={isPermissionTierId(bootstrap.settings?.permissionMode) ? bootstrap.settings?.permissionMode : undefined}
+          initialPermissionMode={
+            isPermissionTierId(bootstrap.settings?.permissionMode)
+              ? bootstrap.settings?.permissionMode
+              : undefined
+          }
           isRunning={sessionEvents.isRunning}
           onStop={sessionEvents.stopRun}
           files={bootstrap.files}
@@ -407,10 +488,17 @@ export function App() {
         theme={theme}
         onThemeChange={setTheme}
         onClose={() => setSettingsOpen(false)}
-        onChangeWorkspace={() => { setSettingsOpen(false); bootstrap.setWorkspaceOpen(true); }}
+        onChangeWorkspace={() => {
+          setSettingsOpen(false);
+          bootstrap.setWorkspaceOpen(true);
+        }}
         onSaved={(next) => bootstrap.setSettings(next)}
       />
-      <CommandPalette open={paletteOpen} commands={paletteCommands} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette
+        open={paletteOpen}
+        commands={paletteCommands}
+        onClose={() => setPaletteOpen(false)}
+      />
     </div>
   );
 }

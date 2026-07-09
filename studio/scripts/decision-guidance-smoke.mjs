@@ -3,8 +3,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const source = readFileSync(path.join(studioDir, "src/features/thread/decisionGuidance.ts"), "utf8");
-const runtime = readFileSync(path.join(studioDir, "src/features/thread/RuntimeSnapshot.tsx"), "utf8");
+const source = readFileSync(
+  path.join(studioDir, "src/features/thread/decisionGuidance.ts"),
+  "utf8",
+);
+const runtime = readFileSync(
+  path.join(studioDir, "src/features/thread/RuntimeSnapshot.tsx"),
+  "utf8",
+);
 
 const required = [
   "preferredDecisionOptionId",

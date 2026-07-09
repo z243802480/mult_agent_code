@@ -8,16 +8,24 @@ const studioDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-studio-plan-output-"));
 const port = Number(process.env.ASTERIA_STUDIO_PLAN_OUTPUT_PORT || 18794);
 
-const server = spawn(process.execPath, ["server.mjs", "--workspace", workspace, "--port", String(port)], {
-  cwd: studioDir,
-  stdio: ["ignore", "pipe", "pipe"],
-  env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
-});
+const server = spawn(
+  process.execPath,
+  ["server.mjs", "--workspace", workspace, "--port", String(port)],
+  {
+    cwd: studioDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ASTERIA_STUDIO_CHAT_BACKEND: "local" },
+  },
+);
 
 let stdout = "";
 let stderr = "";
-server.stdout.on("data", (chunk) => { stdout += String(chunk); });
-server.stderr.on("data", (chunk) => { stderr += String(chunk); });
+server.stdout.on("data", (chunk) => {
+  stdout += String(chunk);
+});
+server.stderr.on("data", (chunk) => {
+  stderr += String(chunk);
+});
 
 try {
   await waitForHealth();
@@ -31,19 +39,42 @@ try {
   });
 
   const { events } = await fetchEventsUntil(sessionId, (items) =>
-    items.some((event) => event.type === "final_answer" && event.phase === "chat")
+    items.some((event) => event.type === "final_answer" && event.phase === "chat"),
   );
-  const finalAnswer = events.find((event) => event.type === "final_answer" && event.phase === "chat");
+  const finalAnswer = events.find(
+    (event) => event.type === "final_answer" && event.phase === "chat",
+  );
   const answerText = String(finalAnswer?.content_delta || "");
 
-  assert(/Goal understanding|Recommended plan|Suggested sequence|Next action/i.test(answerText), "plan-like chat answer should be a useful plan, not a fallback wrapper");
-  assert(/Qingdao|travel|itinerary/i.test(answerText), "plan should reflect the user's requested outcome");
-  assert(!/Temporary local fallback|Request type:|intent|route|model route|run was started|files were changed|permission_effect/i.test(answerText), "plan should not expose backend metadata");
-  assert(!/Context refs:|Current session:|Next actions:|Evidence Explorer|Inspector|run-[0-9]|stdout|stderr|\.asteria|command/i.test(answerText), "plan should not expose runtime context noise");
+  assert(
+    /Goal understanding|Recommended plan|Suggested sequence|Next action/i.test(answerText),
+    "plan-like chat answer should be a useful plan, not a fallback wrapper",
+  );
+  assert(
+    /Qingdao|travel|itinerary/i.test(answerText),
+    "plan should reflect the user's requested outcome",
+  );
+  assert(
+    !/Temporary local fallback|Request type:|intent|route|model route|run was started|files were changed|permission_effect/i.test(
+      answerText,
+    ),
+    "plan should not expose backend metadata",
+  );
+  assert(
+    !/Context refs:|Current session:|Next actions:|Evidence Explorer|Inspector|run-[0-9]|stdout|stderr|\.asteria|command/i.test(
+      answerText,
+    ),
+    "plan should not expose runtime context noise",
+  );
 
   const entries = await fs.readdir(workspace, { withFileTypes: true });
-  const businessEntries = entries.filter((entry) => !entry.name.startsWith(".")).map((entry) => entry.name);
-  assert(businessEntries.length === 0, `content planning should not create business files, got ${businessEntries.join(", ")}`);
+  const businessEntries = entries
+    .filter((entry) => !entry.name.startsWith("."))
+    .map((entry) => entry.name);
+  assert(
+    businessEntries.length === 0,
+    `content planning should not create business files, got ${businessEntries.join(", ")}`,
+  );
 
   console.log("Studio plan output smoke passed");
 } finally {
@@ -68,7 +99,9 @@ async function waitForHealth() {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`);
+  throw new Error(
+    `Studio server did not become healthy. stdout=${stdout} stderr=${stderr} last=${lastError}`,
+  );
 }
 
 async function fetchJson(route) {
@@ -83,7 +116,8 @@ async function postJson(route, body) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
+  if (!response.ok)
+    throw new Error(`${route} returned ${response.status}: ${await response.text()}`);
   return response.json();
 }
 
@@ -94,8 +128,11 @@ async function fetchEventsUntil(sessionId, predicate) {
   while (Date.now() < deadline) {
     latest = await fetchJson(route);
     if (predicate(latest.events || [])) return latest;
-    if (server.exitCode !== null) throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
+    if (server.exitCode !== null)
+      throw new Error(`Studio server exited early. stdout=${stdout} stderr=${stderr}`);
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`Timed out waiting for plan answer. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`);
+  throw new Error(
+    `Timed out waiting for plan answer. events=${(latest.events || []).length} stdout=${stdout} stderr=${stderr}`,
+  );
 }

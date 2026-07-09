@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { CheckCircle2, FilePenLine, FolderLock, Globe2, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  FilePenLine,
+  FolderLock,
+  Globe2,
+  RotateCcw,
+  ShieldAlert,
+  XCircle,
+} from "lucide-react";
 import type { PermissionPreview, StudioEvent } from "../types";
 
 export function PermissionCard({
@@ -17,8 +25,13 @@ export function PermissionCard({
   async function handle(action: "allow" | "deny") {
     setBusy(true);
     try {
-      if (action === "allow") { await onAllow(); setResolved("allowed"); }
-      else { await onDeny(); setResolved("denied"); }
+      if (action === "allow") {
+        await onAllow();
+        setResolved("allowed");
+      } else {
+        await onDeny();
+        setResolved("denied");
+      }
     } finally {
       setBusy(false);
     }
@@ -36,7 +49,9 @@ export function PermissionCard({
     return (
       <div className="permissionCard resolved deny">
         <XCircle size={15} />
-        <span>{"\u5df2\u53d6\u6d88\uff0c\u672c\u6b21\u4e0d\u4f1a\u7ee7\u7eed\u6267\u884c\u3002"}</span>
+        <span>
+          {"\u5df2\u53d6\u6d88\uff0c\u672c\u6b21\u4e0d\u4f1a\u7ee7\u7eed\u6267\u884c\u3002"}
+        </span>
       </div>
     );
   }
@@ -53,10 +68,18 @@ export function PermissionCard({
       {event.content_delta && !preview && <p className="permissionDetail">{event.content_delta}</p>}
       {preview && (
         <div className="permissionPreview" aria-label="权限影响">
-          {preview.action && <PermissionFact label="动作" value={preview.action} icon={<ShieldAlert size={13} />} />}
-          {preview.impact && <PermissionFact label="影响" value={preview.impact} icon={<FilePenLine size={13} />} />}
-          {preview.scope && <PermissionFact label="范围" value={preview.scope} icon={<FolderLock size={13} />} />}
-          {preview.network && <PermissionFact label="网络" value={preview.network} icon={<Globe2 size={13} />} />}
+          {preview.action && (
+            <PermissionFact label="动作" value={preview.action} icon={<ShieldAlert size={13} />} />
+          )}
+          {preview.impact && (
+            <PermissionFact label="影响" value={preview.impact} icon={<FilePenLine size={13} />} />
+          )}
+          {preview.scope && (
+            <PermissionFact label="范围" value={preview.scope} icon={<FolderLock size={13} />} />
+          )}
+          {preview.network && (
+            <PermissionFact label="网络" value={preview.network} icon={<Globe2 size={13} />} />
+          )}
           {(preview.risk || preview.reversible) && (
             <PermissionFact
               label={`风险${preview.risk ? ` · ${preview.risk}` : ""}`}
@@ -81,7 +104,7 @@ export function PermissionCard({
 
 function permissionPreview(event: StudioEvent): PermissionPreview | null {
   const value = event.data?.permission_preview;
-  return value && typeof value === "object" ? value as PermissionPreview : null;
+  return value && typeof value === "object" ? (value as PermissionPreview) : null;
 }
 
 /**
@@ -118,7 +141,15 @@ function PermissionScopeDetail({ detail }: { detail?: PermissionPreview["scope_d
   );
 }
 
-function PermissionFact({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+function PermissionFact({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+}) {
   return (
     <div className="permissionFact">
       <span>{icon}</span>

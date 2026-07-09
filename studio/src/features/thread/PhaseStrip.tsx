@@ -9,7 +9,13 @@ export function PhaseStrip({ phase, running }: { phase?: string; running: boolea
   const idx = MACRO_PHASES.findIndex((p) => p.key === current);
   if (idx < 0) return null;
   return (
-    <div className="phaseStrip" role="progressbar" aria-valuenow={idx + 1} aria-valuemin={1} aria-valuemax={MACRO_PHASES.length}>
+    <div
+      className="phaseStrip"
+      role="progressbar"
+      aria-valuenow={idx + 1}
+      aria-valuemin={1}
+      aria-valuemax={MACRO_PHASES.length}
+    >
       {MACRO_PHASES.map((p, i) => {
         const state = i < idx ? "done" : i === idx ? (running ? "active" : "done") : "todo";
         return (

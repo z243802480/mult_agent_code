@@ -85,11 +85,17 @@ function findLastExecuteBoundaryIndex(events) {
     const phase = String(event?.phase || "");
     const routeMode = String(event?.intent_route?.mode || event?.intent_route?.studio_mode || "");
 
-    if (type === "user_message" && ["execute", "plan", "understand", "resume", "review"].includes(phase)) {
+    if (
+      type === "user_message" &&
+      ["execute", "plan", "understand", "resume", "review"].includes(phase)
+    ) {
       boundary = index;
       continue;
     }
-    if (type === "intent_route" && ["run", "plan", "continue", "resume", "review", "accept"].includes(routeMode)) {
+    if (
+      type === "intent_route" &&
+      ["run", "plan", "continue", "resume", "review", "accept"].includes(routeMode)
+    ) {
       boundary = index;
       continue;
     }
@@ -133,7 +139,9 @@ function extractChatTurns(events) {
  * @param {number} max
  */
 function clipText(text, max) {
-  const compact = String(text || "").replace(/\s+/g, " ").trim();
+  const compact = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (compact.length <= max) return compact;
   return `${compact.slice(0, max - 1)}…`;
 }

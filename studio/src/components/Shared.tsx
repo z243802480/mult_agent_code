@@ -67,8 +67,10 @@ export function gateStage(overview: OverviewPayload | null): string {
 export function validationTone(overview: OverviewPayload | null): string {
   if (overview && overview.diagnostics_loaded === false) return "warn";
   const gate = (overview?.gateStatus ?? {}) as Record<string, unknown>;
-  if (gate.release_ready || /ready/i.test(String(gate.stage ?? gate.release_state ?? ""))) return "good";
-  if (/blocked|failed|missing/i.test(String(gate.stage ?? gate.release_state ?? gate.status ?? ""))) return "bad";
+  if (gate.release_ready || /ready/i.test(String(gate.stage ?? gate.release_state ?? "")))
+    return "good";
+  if (/blocked|failed|missing/i.test(String(gate.stage ?? gate.release_state ?? gate.status ?? "")))
+    return "bad";
   return "warn";
 }
 
@@ -90,7 +92,11 @@ export function routeDetail(overview: OverviewPayload | null): string {
   const gateStatus = (overview?.gateStatus ?? {}) as Record<string, unknown>;
   const guidance = (gateStatus.route_guidance ?? {}) as Record<string, unknown>;
   const strategy = (guidance.provider_route_strategy ?? {}) as Record<string, unknown>;
-  return firstNonEmpty(String(strategy.primary_model ?? ""), String(guidance.status ?? ""), String(strategy.recommended_action ?? ""));
+  return firstNonEmpty(
+    String(strategy.primary_model ?? ""),
+    String(guidance.status ?? ""),
+    String(strategy.recommended_action ?? ""),
+  );
 }
 
 function firstNonEmpty(...items: string[]): string {

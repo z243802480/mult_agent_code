@@ -9,18 +9,17 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildOrchestrationWorkflowMonitor, projectWorkflowStep } from "../lib/orchestration-workflow-monitor.mjs";
+import {
+  buildOrchestrationWorkflowMonitor,
+  projectWorkflowStep,
+} from "../lib/orchestration-workflow-monitor.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 
 async function writeJsonl(filePath, rows) {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(
-    filePath,
-    rows.map((row) => JSON.stringify(row)).join("\n") + "\n",
-    "utf8"
-  );
+  await fs.writeFile(filePath, rows.map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
 }
 
 const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "asteria-s68-workflow-"));

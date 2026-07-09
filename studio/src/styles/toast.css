@@ -30,14 +30,28 @@
   animation: toastOut 200ms var(--ease) forwards;
 }
 
-.toast.success { border-left: 2px solid var(--ok); }
-.toast.error { border-left: 2px solid var(--bad); }
-.toast.info { border-left: 2px solid var(--accent); }
+.toast.success {
+  border-left: 2px solid var(--ok);
+}
+.toast.error {
+  border-left: 2px solid var(--bad);
+}
+.toast.info {
+  border-left: 2px solid var(--accent);
+}
 
-.toastIcon { flex-shrink: 0; }
-.toast.success .toastIcon { color: var(--ok); }
-.toast.error .toastIcon { color: var(--bad); }
-.toast.info .toastIcon { color: var(--accent); }
+.toastIcon {
+  flex-shrink: 0;
+}
+.toast.success .toastIcon {
+  color: var(--ok);
+}
+.toast.error .toastIcon {
+  color: var(--bad);
+}
+.toast.info .toastIcon {
+  color: var(--accent);
+}
 
 .toastMessage {
   flex: 1;
@@ -55,7 +69,9 @@
   padding: 2px 4px;
 }
 
-.toastAction:hover { color: var(--accent-hover); }
+.toastAction:hover {
+  color: var(--accent-hover);
+}
 
 .toastClose {
   background: transparent;
@@ -66,14 +82,28 @@
   padding: 2px;
 }
 
-.toastClose:hover { color: var(--text-secondary); }
+.toastClose:hover {
+  color: var(--text-secondary);
+}
 
 @keyframes toastIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes toastOut {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(8px); }
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
 }

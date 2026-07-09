@@ -59,7 +59,13 @@ export function buildExpertRows(events: StudioEvent[]): ExpertRow[] {
     if (!childId) continue;
     let row = byChild.get(childId);
     if (!row) {
-      row = { childTaskId: childId, role: String(data.subagent_role ?? "expert"), status: "running", statusLine: "", transcript: [] };
+      row = {
+        childTaskId: childId,
+        role: String(data.subagent_role ?? "expert"),
+        status: "running",
+        statusLine: "",
+        transcript: [],
+      };
       byChild.set(childId, row);
       order.push(childId);
     }
@@ -103,8 +109,8 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
       <div className="subagentPanel subagentEmpty">
         <div className="subagentEmptyTitle">本次运行还没有委派子 agent。</div>
         <div className="subagentEmptyHint">
-          当主 agent 把子任务交给专家（reviewer / coder / researcher…）时，这里会显示每个专家的状态，
-          点开可以看它自己的过程。
+          当主 agent 把子任务交给专家（reviewer / coder /
+          researcher…）时，这里会显示每个专家的状态， 点开可以看它自己的过程。
         </div>
       </div>
     );
@@ -160,7 +166,9 @@ export function SubagentPanel({ events }: { events: StudioEvent[] }) {
                       ) : (
                         row.transcript.map((event, index) => (
                           <div key={event.event_id ?? index} className="subagentStep">
-                            {event.title && <span className="subagentStepTitle">{event.title}</span>}
+                            {event.title && (
+                              <span className="subagentStepTitle">{event.title}</span>
+                            )}
                             <span className="subagentStepSummary">{event.summary}</span>
                           </div>
                         ))

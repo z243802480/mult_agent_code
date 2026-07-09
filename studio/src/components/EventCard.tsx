@@ -32,9 +32,11 @@ function formatEventTime(value: unknown): string {
 
 function iconFor(type: StudioEvent["type"]) {
   if (type === "agent_turn") return <Clock3 size={15} />;
-  if (type === "tool_start" || type === "tool_delta" || type === "tool_end") return <Terminal size={15} />;
+  if (type === "tool_start" || type === "tool_delta" || type === "tool_end")
+    return <Terminal size={15} />;
   if (type === "tool_observation") return <ListChecks size={15} />;
-  if (type === "model_start" || type === "model_delta" || type === "model_end") return <Play size={15} />;
+  if (type === "model_start" || type === "model_delta" || type === "model_end")
+    return <Play size={15} />;
   if (type === "model_error") return <XCircle size={15} />;
   if (type === "permission_request") return <ShieldAlert size={15} />;
   if (type === "file_changed") return <FolderOpen size={15} />;
@@ -79,7 +81,15 @@ export function EventCard({
 }) {
   const [open, setOpen] = useState(false);
   const cap = capabilityInfo(event);
-  const icon = cap ? (cap.type === "mcp" ? <Plug size={15} /> : <Sparkles size={15} />) : iconFor(event.type);
+  const icon = cap ? (
+    cap.type === "mcp" ? (
+      <Plug size={15} />
+    ) : (
+      <Sparkles size={15} />
+    )
+  ) : (
+    iconFor(event.type)
+  );
   const isUser = event.type === "user_message";
   const isModel = ["model_start", "model_delta", "model_end", "model_error"].includes(event.type);
   const showBody =
@@ -93,12 +103,13 @@ export function EventCard({
     event.type === "error" ||
     event.type === "permission_request";
   const fileChanges = (event.file_changes ?? []) as AnyRecord[];
-  const bodyText = event.content_delta || (event.type === "tool_observation" ? observationText(event) : "");
+  const bodyText =
+    event.content_delta || (event.type === "tool_observation" ? observationText(event) : "");
   const clampBody =
-    compact
-    || event.type === "tool_observation"
-    || event.type === "tool_end"
-    || event.type === "tool_delta";
+    compact ||
+    event.type === "tool_observation" ||
+    event.type === "tool_end" ||
+    event.type === "tool_delta";
 
   return (
     <article
@@ -136,21 +147,25 @@ export function EventCard({
         <div className="eventFacts">
           {cap?.denied && <span className="capabilityChip denied">已被权限拦截</span>}
           {cap && !cap.denied && cap.retries > 0 && <span>重试 {cap.retries} 次</span>}
-          {cap && !cap.denied && cap.artifacts > 0 && (
-            <span>产出 {cap.artifacts} 个文件</span>
-          )}
+          {cap && !cap.denied && cap.artifacts > 0 && <span>产出 {cap.artifacts} 个文件</span>}
           {!compact && event.model_provider && (
             <span>
-              {event.model_provider}/{event.model_name ?? "未知"}{event.model_tier ? ` ? ${event.model_tier}` : ""}
+              {event.model_provider}/{event.model_name ?? "未知"}
+              {event.model_tier ? ` ? ${event.model_tier}` : ""}
             </span>
           )}
           {!compact && event.model_route && !event.model_provider && (
             <span>
-              {String((event.model_route as AnyRecord).provider ?? "model")}/{String((event.model_route as AnyRecord).model ?? "未知")}
+              {String((event.model_route as AnyRecord).provider ?? "model")}/
+              {String((event.model_route as AnyRecord).model ?? "未知")}
             </span>
           )}
-          {!compact && (event.evidence_refs?.length ?? 0) > 0 && <span>{event.evidence_refs!.length} 条证据</span>}
-          {!compact && (event.artifact_refs?.length ?? 0) > 0 && <span>{event.artifact_refs!.length} 个产物</span>}
+          {!compact && (event.evidence_refs?.length ?? 0) > 0 && (
+            <span>{event.evidence_refs!.length} 条证据</span>
+          )}
+          {!compact && (event.artifact_refs?.length ?? 0) > 0 && (
+            <span>{event.artifact_refs!.length} 个产物</span>
+          )}
           {fileChanges.length > 0 && <span>{fileChanges.length} 个文件</span>}
           <span>{formatEventTime(event.created_at)}</span>
         </div>
