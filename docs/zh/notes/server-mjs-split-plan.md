@@ -97,12 +97,16 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) { �
 
 ## 3. 推荐执行顺序（每步一刀或数刀·独立提交·真 smoke）
 
-1. **Layer 0 下沉纯工具**（低风险，先做）：`firstRuntimeText`→text-utils.mjs；`readJson`/`readJsonlTail`→新 `lib/run-io.mjs`；`latestDecisions`→中性 util。全是纯函数、多处 import down。
-2. **Layer 1a `event-bus.mjs`**：`appendEvent`+`notifySSE`+`sseClients`（工厂或单例模块，注入 `getWorkspace`/sessionPath）。**这是解锁 chat Tier 2 的关键前置。**
-3. **Layer 1b `jobs.mjs`**：`liveJobs`+`pruneLiveJobs`+ job 生命周期。
-4. **Layer 2 `run-detail-reader.mjs`**：evidence 工厂（依赖 Layer 0 已下沉）。
-5. **Layer 2 `chat-answer.mjs`**：Tier 1 干净块（依赖 Layer 0/1/2）。
-6. **Layer 3 `chat-routes.mjs`**：Tier 2 薄端点（依赖前面全部到位）。
+> **进度（2026-07-09 续会话，②f–②j 已提交在 origin 分支 claude/pensive-napier-f5b7ab）**：
+> server.mjs 4419→**3468** 行；`lib/` 新增 run-io / event-bus / jobs / run-detail-reader 四模块。
+
+1. ✅ **Layer 0 下沉纯工具**（②f `ef57166`）：`firstRuntimeText`→text-utils.mjs；`readJson`/`readJsonlTail`→`lib/run-io.mjs`；`latestDecisions`→run-evidence-transforms.mjs。
+   - ✅ 顺带 §4 死代码（②g `a4c8426`）：删 resolveStudioExecutionRoute / modelRouteSummaryLine / latestRouteDecision（级联孤儿）。
+2. ✅ **Layer 1a `event-bus.mjs`**（②h `3981542`）：`sseClients`+`notifySSE`+`appendEvent` 工厂，注入 `getWorkspace`/`sessionPath`。**已解锁 chat Tier 2 前置。**
+3. ✅ **Layer 1b `jobs.mjs`**（②i `cce3e59`）：`liveJobs`+`pruneLiveJobs` 工厂（纯内存、无 workspace 捕获）。
+4. ✅ **Layer 2 `run-detail-reader.mjs`**（②j `fd641f2`）：readRunDetail + 14 helper 的 evidence 工厂，注入 `getWorkspace`/`python`/`moduleName`；5 名反向 down-import 回 server。server.mjs 再瘦 ~730 行。
+5. ⬜ **Layer 2 `chat-answer.mjs`**：Tier 1 干净块（依赖 Layer 0/1/2，均已就位）。注入面见 §2 Tier 1（~15 项，几乎全只读）。**下一刀。**
+6. ⬜ **Layer 3 `chat-routes.mjs`**：Tier 2 薄端点（依赖前面全部到位）。
 
 execute 层（`startRuntimeJob` 家族）本轮**不动**——它是另一条轴，缠着 runtime-progress，值单独规划。
 
