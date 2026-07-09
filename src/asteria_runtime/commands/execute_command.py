@@ -1535,6 +1535,19 @@ class ExecuteCommand:
                 context.run_id, "task_started", "ExecuteCommand", f"Started {task_id}"
             )
         task_board.update_status(task_id, "in_progress")
+        # ADR-0024 §5 #1: re-scan the workspace so THIS task sees files that EARLIER tasks in the same
+        # run already wrote. ``workspace_files`` is captured once at run start (ContextLoader.load) and
+        # otherwise frozen for the whole run, so a multi-task run had the doer blindly re-creating a
+        # file a prior task had just produced. ``runtime_context`` here is already a per-task dict
+        # ({**mounted_context, ...} from the worker lambda), so overwriting this key does not pollute
+        # the shared run-level context. Best-effort: a scan error must never abort a task the run-start
+        # load already succeeded for, so it is narrowly contained and the prior snapshot is kept.
+        try:
+            runtime_context["workspace_files"] = ContextLoader(
+                context.root, self.validator
+            ).workspace_files()
+        except OSError:
+            pass
         try:
             self._record_progress(
                 context,

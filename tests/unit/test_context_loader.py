@@ -29,6 +29,26 @@ def test_context_loader_includes_small_workspace_files_and_skips_secrets(tmp_pat
     assert ".env" not in files
 
 
+def test_workspace_files_rescan_reflects_files_written_after_load(tmp_path: Path) -> None:
+    # ADR-0024 §5 #1: workspace_files() is a standalone re-scan so a later task sees files an earlier
+    # task in the same run already wrote. The run-start load() snapshot must NOT be what a later task
+    # reads; a fresh workspace_files() call must pick up the new file.
+    (tmp_path / ".asteria").mkdir(parents=True)
+    (tmp_path / "first.py").write_text("x = 1\n", encoding="utf-8")
+    loader = ContextLoader(tmp_path, validator())
+
+    at_run_start = {item["path"] for item in loader.load()["workspace_files"]}
+    assert "first.py" in at_run_start
+    assert "second.py" not in at_run_start
+
+    # An earlier task writes a new file mid-run.
+    (tmp_path / "second.py").write_text("y = 2\n", encoding="utf-8")
+
+    refreshed = {item["path"]: item for item in loader.workspace_files()}
+    assert "second.py" in refreshed, "per-task re-scan must see files written after run start"
+    assert refreshed["second.py"]["content"] == "y = 2\n"
+
+
 def test_context_loader_skips_stale_memory_rows(tmp_path: Path) -> None:
     schema_validator = validator()
     memory_dir = tmp_path / ".asteria" / "memory"

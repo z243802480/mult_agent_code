@@ -244,6 +244,14 @@ class ContextLoader:
         entries.sort(key=lambda item: str(item.get("created_at", "")))
         return entries[-self.task_failure_limit :]
 
+    def workspace_files(self) -> list[dict]:
+        """Public, standalone re-scan of the workspace file snapshot. ``load()`` captures
+        ``workspace_files`` once at run start; ExecuteCommand refreshes it per task via this method so
+        a task sees files that EARLIER tasks in the same run already wrote (the run-end
+        ``active_goal`` refresh cannot fill that in-run gap). Without it, multi-task runs had the doer
+        re-creating a file a prior task had just produced. (ADR-0024 §5 #1)"""
+        return self._workspace_files()
+
     def _workspace_files(self) -> list[dict]:
         files: list[dict] = []
         for path in sorted(self.root.rglob("*"), key=self._file_sort_key):
