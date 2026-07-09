@@ -1146,10 +1146,6 @@ async function resolveStudioExecutionRouteFallback(goal, requestedMode) {
   return { mode: "run", route: "cold", reason: null, command: null, source: "rules_fallback" };
 }
 
-async function resolveStudioExecutionRoute(sessionId, goal, requestedMode) {
-  return resolveStudioOrchestrationRoute(goal, requestedMode);
-}
-
 const CONTINUABLE_STUDIO_PHASES = new Set(["ACCEPTED", "DONE", "REVIEW"]);
 
 function phaseForMode(mode) {
@@ -1961,27 +1957,6 @@ function commandFromStatus(status, summary, loop) {
     "",
   );
   return raw.replace(/^asteria\s+/, "").trim();
-}
-
-function latestRouteDecision(context) {
-  const artifact = context.modelRouteTimeline || {};
-  const finalSummary = context.finalSummary || {};
-  const timeline = Array.isArray(artifact.timeline)
-    ? artifact.timeline
-    : Array.isArray(artifact.route_timeline)
-      ? artifact.route_timeline
-      : Array.isArray(finalSummary.model_route_timeline)
-        ? finalSummary.model_route_timeline
-        : [];
-  if (timeline.length) return timeline.at(-1);
-  const modelSelection = finalSummary.model_selection || context.status?.model_selection;
-  return modelSelection && Object.keys(modelSelection).length ? modelSelection : null;
-}
-
-function modelRouteSummaryLine(context) {
-  const route = latestRouteDecision(context);
-  if (!route) return "- No model route timeline is recorded for this run yet.";
-  return `- ${firstRuntimeText(route.purpose, "unknown")} used ${firstRuntimeText(route.selected_tier, route.tier, "unknown")}: ${firstRuntimeText(route.reason, route.model_selection_reason, "No reason recorded.")}`;
 }
 
 const CHAT_INTRO = `\u4f60\u597d\uff0c\u6211\u662f Asteria\u3002\u4f60\u53ef\u4ee5\u76f4\u63a5\u95ee\u95ee\u9898\u3001\u8ba9\u6211\u8981\u70b9\u5206\u6790\u3001\u5199\u4e00\u4efd\u8ba1\u5212\uff0c\u6216\u63cf\u8ff0\u4e00\u4e2a\u4f60\u60f3\u5b8c\u6210\u7684\u76ee\u6807\u3002`;
