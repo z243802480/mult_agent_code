@@ -97,8 +97,9 @@ export function createRunDetailReader({ getWorkspace, python, moduleName }) { �
 
 ## 3. 推荐执行顺序（每步一刀或数刀·独立提交·真 smoke）
 
-> **进度（2026-07-09 续会话，②f–②j 已提交在 origin 分支 claude/pensive-napier-f5b7ab）**：
+> **进度（2026-07-09 续会话，②f–②j 已推送 origin/main，FF `15bc6d0`→`a9bcd3d`）**：
 > server.mjs 4419→**3468** 行；`lib/` 新增 run-io / event-bus / jobs / run-detail-reader 四模块。
+> 下一刀 = Layer 2 `chat-answer.mjs`（Tier 1，注入面见 §2；执行前用子代理测绘当前行号+注入契约，法同 run-detail-reader）。
 
 1. ✅ **Layer 0 下沉纯工具**（②f `ef57166`）：`firstRuntimeText`→text-utils.mjs；`readJson`/`readJsonlTail`→`lib/run-io.mjs`；`latestDecisions`→run-evidence-transforms.mjs。
    - ✅ 顺带 §4 死代码（②g `a4c8426`）：删 resolveStudioExecutionRoute / modelRouteSummaryLine / latestRouteDecision（级联孤儿）。
