@@ -27,6 +27,13 @@ import {
   friendlyErrorSummary,
   summarizeRuntimeChunk,
 } from "./lib/friendly-error.mjs";
+import {
+  isSafeId,
+  isSafeWorkspacePath,
+  isPreviewableFile,
+  workspaceBasename,
+  isAbsoluteWorkspacePath,
+} from "./lib/workspace-paths.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -49,7 +56,7 @@ const {
   readWorkspaceGitDiff,
   stageWorkspaceGitFile,
   discardWorkspaceGitFile,
-} = createGitHelpers({ getWorkspace: () => workspace, runCommand, isSafeWorkspacePath });
+} = createGitHelpers({ getWorkspace: () => workspace, runCommand });
 let previewPort = null; // PREVIEW-1: port of the dedicated static workspace server (null until bound)
 const previewSseClients = new Set(); // PREVIEW-2: live-reload SSE connections from preview iframes
 let previewReloadTimer = null;
@@ -3337,10 +3344,6 @@ async function buildSettingsPayload() {
   };
 }
 
-function isSafeId(value) {
-  return /^[A-Za-z0-9_.-]+$/.test(String(value || ""));
-}
-
 async function commandJson(commandArgs) {
   const completed = await runCommand([python, "-m", moduleName, ...commandArgs], runtimeRoot);
   if (completed.code !== 0)
@@ -4260,21 +4263,6 @@ async function previewWorkspaceFile(body) {
   };
 }
 
-function isSafeWorkspacePath(relative) {
-  const normalized = String(relative || "").replace(/\\/g, "/");
-  if (!normalized || normalized.includes("..")) return false;
-  if (/^\.git(\/|$)/i.test(normalized) || /^secrets(\/|$)/i.test(normalized)) return false;
-  if (/\.env(\.|$)/i.test(path.basename(normalized))) return false;
-  if (/\.(pem|key)$/i.test(normalized)) return false;
-  if (/(^|\/)(id_rsa|id_ed25519|model\.routes\.local\.(ps1|json))$/i.test(normalized)) return false;
-  if (/(node_modules|dist)(\/|$)/i.test(normalized)) return false;
-  return true;
-}
-
-function isPreviewableFile(relative) {
-  return /\.(md|txt|json|jsonl|py|ts|tsx|js|mjs|css|html|toml|yaml|yml)$/i.test(relative);
-}
-
 async function readJson(file) {
   try {
     return JSON.parse(await fs.readFile(file, "utf8"));
@@ -4610,17 +4598,6 @@ function readRequestBodyRaw(request, maxBytes = 25_000_000) {
 function sendJson(response, status, payload) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(payload, null, 2));
-}
-
-function workspaceBasename(value) {
-  const normalized = String(value || "").replace(/[\\/]+$/, "");
-  return path.basename(normalized) || normalized || "workspace";
-}
-
-function isAbsoluteWorkspacePath(value) {
-  const text = String(value || "").trim();
-  if (!text) return false;
-  return path.isAbsolute(text);
 }
 
 async function describeWorkspaceProfile(targetPath) {

@@ -2,15 +2,16 @@
 //
 // A factory closes over a *live* workspace getter (the server reassigns its active
 // `workspace` when the user switches repos, so capturing it by value would target the
-// stale repo) plus injected `runCommand` and the `isSafeWorkspacePath` guard (which also
-// enforces protected-path denial: .git/secrets/.env/keys). Each public function reads the
-// current workspace once via `getWorkspace()` so its body is otherwise byte-identical to
-// the original.
+// stale repo) plus an injected `runCommand`. The protected-path guard `isSafeWorkspacePath`
+// (denies .git/secrets/.env/keys) is imported from ./workspace-paths.mjs — the single source
+// of truth shared with the server. Each public function reads the current workspace once via
+// `getWorkspace()` so its body is otherwise byte-identical to the original.
 import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
 import { redactText } from "./text-utils.mjs";
+import { isSafeWorkspacePath } from "./workspace-paths.mjs";
 
-export function createGitHelpers({ getWorkspace, runCommand, isSafeWorkspacePath }) {
+export function createGitHelpers({ getWorkspace, runCommand }) {
   function runGit(args) {
     return runCommand(["git", ...args], getWorkspace());
   }
