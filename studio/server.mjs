@@ -1609,13 +1609,17 @@ async function handlePermission(sessionId, jobId, body) {
     const pending = pendingJobs.get(jobId);
     if (!pending || pending.sessionId !== sessionId) return { ok: false, error: "job not found or session mismatch" };
     pendingJobs.delete(jobId);
+    // Durable resolution marker: the confirm card is a one-shot prompt. Once resolved, readSessionEvents
+    // drops the original waiting_user permission_request from the thread feed by this job_id, so a page
+    // reload no longer re-renders a live allow/deny card whose job is already gone (M4 dead button).
     await appendEvent(sessionId, {
       type: "assistant_delta",
       status: "completed",
       title: "Approved",
       summary: "Approved \u2014 starting the task\u2026",
       phase: "execute",
-      display_level: "main"
+      display_level: "main",
+      resolved_job_id: jobId
     });
     startRuntimeJob(sessionId, pending.mode, pending.goal, pending.command);
     return { ok: true, started: true };
@@ -1628,7 +1632,8 @@ async function handlePermission(sessionId, jobId, body) {
       title: "Canceled",
       summary: "Canceled \u2014 nothing was run.",
       phase: "next",
-      display_level: "main"
+      display_level: "main",
+      resolved_job_id: jobId
     });
     return { ok: true, started: false };
   }
@@ -2701,6 +2706,19 @@ async function readSessionEvents(sessionId) {
       return { type: "raw", content_delta: redactText(line) };
     }
   });
+  // M4: a job-based permission confirm card is a one-shot prompt. Once its job resolved (allow/deny
+  // recorded a resolved_job_id marker), drop the original waiting_user permission_request from the
+  // thread feed — the "Approved/Canceled" delta already narrates the outcome, and leaving the raw
+  // request in place made a reload re-render a live allow/deny card whose job was already gone (a dead
+  // button that reported nothing when clicked). The raw event stays in events.jsonl for audit.
+  const resolvedJobIds = new Set(
+    events.map((event) => event && event.resolved_job_id).filter(Boolean),
+  );
+  if (resolvedJobIds.size) {
+    events = events.filter(
+      (event) => !(event.type === "permission_request" && event.job_id && resolvedJobIds.has(event.job_id)),
+    );
+  }
   const runIds = new Set();
   for (const event of events) {
     if (event.type !== "final_answer" || event.phase === "chat") continue;

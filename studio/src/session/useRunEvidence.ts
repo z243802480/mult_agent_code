@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { OverviewPayload, RunDetailPayload, StudioEvent } from "../types";
 import { api } from "../api";
+import { pickRunTriggerEvent } from "./eventUtils";
 
 export function useRunEvidence(events: StudioEvent[], onGitRefresh?: () => void) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -26,20 +27,18 @@ export function useRunEvidence(events: StudioEvent[], onGitRefresh?: () => void)
     await openRun(latestRunId);
   }, [openRun]);
 
-  const latestRunEvent = useMemo(() => {
-    return [...events].reverse().find((event) =>
-      event.run_id && ["tool_end", "final_answer", "error"].includes(String(event.type ?? "")),
-    );
-  }, [events]);
+  // runDetail must track the run awaiting the user (pending decision) over the latest tool run — see
+  // pickRunTriggerEvent for the M7 (decision before any tool) / L9 (stale-run mismatch) rationale.
+  const runTrigger = useMemo(() => pickRunTriggerEvent(events), [events]);
 
   useEffect(() => {
-    const runId = String(latestRunEvent?.run_id ?? "");
-    const eventId = String(latestRunEvent?.event_id ?? "");
+    const runId = String(runTrigger?.run_id ?? "");
+    const eventId = String(runTrigger?.event_id ?? "");
     if (!runId || !eventId || eventId === refreshedRunEventRef.current) return;
     refreshedRunEventRef.current = eventId;
     void openRun(runId);
     onGitRefreshRef.current?.();
-  }, [latestRunEvent?.event_id, latestRunEvent?.run_id, openRun]);
+  }, [runTrigger?.event_id, runTrigger?.run_id, openRun]);
 
   function selectEvent(event: StudioEvent) {
     setSelectedEvent(event);
