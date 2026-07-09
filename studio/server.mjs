@@ -36,6 +36,7 @@ import {
   isAbsoluteWorkspacePath,
 } from "./lib/workspace-paths.mjs";
 import { createPreviewSubsystem, normalizeProxyTarget } from "./lib/preview-server.mjs";
+import { createEventBus } from "./lib/event-bus.mjs";
 import {
   runtimeRequestDetailValues,
   scopeValueSummary,
@@ -103,20 +104,13 @@ function pruneLiveJobs(maxAgeMs = 10 * 60 * 1000, keepLatest = 50) {
 }
 
 const pendingJobs = new Map(); // jobId -> { sessionId, mode, goal, command }
-const sseClients = new Map(); // sessionId -> Set<response>
-
-function notifySSE(sessionId, event) {
-  const clients = sseClients.get(sessionId);
-  if (!clients?.size) return;
-  const payload = `data: ${JSON.stringify(event)}\n\n`;
-  for (const res of [...clients]) {
-    try {
-      res.write(payload);
-    } catch {
-      clients.delete(res);
-    }
-  }
-}
+// Event bus (SSE fan-out + events.jsonl/session.json persistence) lives in ./lib/event-bus.mjs;
+// wire it with a live workspace getter + the sessionPath helper (both derive from the active
+// workspace, which is reassigned on openWorkspace). Chat and runtime job paths both append here.
+const { sseClients, notifySSE, appendEvent } = createEventBus({
+  getWorkspace: () => workspace,
+  sessionPath,
+});
 
 createServer(async (request, response) => {
   try {
@@ -2975,43 +2969,6 @@ async function listSessions() {
     if (loaded.ok && !loaded.session.deleted_at) sessions.push(loaded.session);
   }
   return sessions.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
-}
-
-async function appendEvent(sessionId, event) {
-  if (!isSafeId(sessionId)) return;
-  const full = {
-    schema_version: "0.1.0",
-    event_id: `evt-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    session_id: sessionId,
-    created_at: new Date().toISOString(),
-    artifact_refs: [],
-    evidence_refs: [],
-    ...redact(event),
-  };
-  await fs.mkdir(sessionPath(sessionId), { recursive: true });
-  await fs.appendFile(sessionPath(sessionId, "events.jsonl"), `${JSON.stringify(full)}\n`, "utf8");
-  const sessionFile = sessionPath(sessionId, "session.json");
-  if (existsSync(sessionFile)) {
-    let session = {};
-    try {
-      const rawSession = await fs.readFile(sessionFile, "utf8");
-      session = rawSession.trim() ? JSON.parse(rawSession) : {};
-    } catch {
-      session = {};
-    }
-    session.session_id = sessionId;
-    session.workspace = session.workspace || workspace;
-    session.updated_at = full.created_at;
-    if (full.type === "user_message") {
-      session.title = String(full.summary || session.title || "New task").slice(0, 64);
-      session.goal_preview = String(
-        full.content_delta || full.summary || session.goal_preview || "",
-      ).slice(0, 160);
-    }
-    await fs.writeFile(sessionFile, JSON.stringify(session, null, 2), "utf8");
-  }
-  notifySSE(sessionId, full);
-  return full;
 }
 
 async function readSessionEvents(sessionId) {
