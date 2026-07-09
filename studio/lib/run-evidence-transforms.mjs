@@ -85,3 +85,17 @@ export function promotionPreviewHint(promotionPreview) {
   }
   return "";
 }
+
+export function latestDecisions(decisions) {
+  const byId = new Map();
+  const anonymous = [];
+  for (const decision of decisions || []) {
+    const decisionId = String(decision?.decision_id || "").trim();
+    if (!decisionId) {
+      anonymous.push(decision);
+      continue;
+    }
+    byId.set(decisionId, decision);
+  }
+  return [...anonymous, ...byId.values()];
+}

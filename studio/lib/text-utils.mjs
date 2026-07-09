@@ -52,3 +52,11 @@ export function percentile(values, q) {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * q)))];
 }
+
+export function firstRuntimeText(...items) {
+  for (const item of items) {
+    const text = String(item ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}

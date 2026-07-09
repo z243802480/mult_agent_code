@@ -18,7 +18,8 @@ import {
 import { buildOrchestrationWorkflowMonitor } from "./lib/orchestration-workflow-monitor.mjs";
 import { RuntimeRouteClient } from "./lib/runtime-route-client.mjs";
 import { mapPermissionLevel, withPermissionLevel } from "./lib/permission-level.mjs";
-import { redact, redactText, tailText, percentile } from "./lib/text-utils.mjs";
+import { redact, redactText, tailText, percentile, firstRuntimeText } from "./lib/text-utils.mjs";
+import { readJson, readJsonlTail } from "./lib/run-io.mjs";
 import { createGitHelpers } from "./lib/git.mjs";
 import {
   friendlyErrorText,
@@ -43,6 +44,7 @@ import {
   latestMainFinalEvent,
   flattenWorkerNodes,
   promotionPreviewHint,
+  latestDecisions,
 } from "./lib/run-evidence-transforms.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -715,20 +717,6 @@ async function handleDecisionAnswer(sessionId, body) {
 
 function isSafeDecisionOptionId(value) {
   return /^[A-Za-z0-9_.:-]{1,120}$/.test(String(value || ""));
-}
-
-function latestDecisions(decisions) {
-  const byId = new Map();
-  const anonymous = [];
-  for (const decision of decisions || []) {
-    const decisionId = String(decision?.decision_id || "").trim();
-    if (!decisionId) {
-      anonymous.push(decision);
-      continue;
-    }
-    byId.set(decisionId, decision);
-  }
-  return [...anonymous, ...byId.values()];
 }
 
 function runtimeActionFor(value) {
@@ -2725,14 +2713,6 @@ function runArtifactRefs(runId) {
   ];
 }
 
-function firstRuntimeText(...items) {
-  for (const item of items) {
-    const text = String(item ?? "").trim();
-    if (text) return text;
-  }
-  return "";
-}
-
 function nonEmptyRecord(value) {
   return (
     value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0
@@ -4173,32 +4153,6 @@ async function previewWorkspaceFile(body) {
     size: stat.size,
     content: redactText(await fs.readFile(absolute, "utf8")),
   };
-}
-
-async function readJson(file) {
-  try {
-    return JSON.parse(await fs.readFile(file, "utf8"));
-  } catch {
-    return {};
-  }
-}
-
-async function readJsonlTail(file, limit) {
-  try {
-    return (await fs.readFile(file, "utf8"))
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .slice(-limit)
-      .map((line) => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return { raw: redactText(line) };
-        }
-      });
-  } catch {
-    return [];
-  }
 }
 
 async function serveStatic(response, pathname) {
