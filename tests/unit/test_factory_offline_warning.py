@@ -11,11 +11,25 @@ import warnings
 import pytest
 
 from asteria_runtime.models.factory import _warn_if_tier_silently_offline
+from asteria_runtime.models.route_diagnostics import silently_canned_tiers
 from asteria_runtime.models.routing import ModelRoute
 
 
 def _route(tier: str, provider: str) -> ModelRoute:
     return ModelRoute(tier=tier, provider=provider, env_prefix=f"AGENT_MODEL_{tier.upper()}")
+
+
+@pytest.fixture()
+def _clean_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip every ambient AGENT_MODEL_*/provider-key env so route resolution is deterministic."""
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("AGENT_MODEL") or key in {
+            "MINIMAX_API_KEY", "MINIMAX_CN_API_KEY", "ZAI_API_KEY", "GLM_API_KEY",
+            "ZHIPU_API_KEY", "BIGMODEL_API_KEY", "OPENAI_API_KEY",
+        }:
+            monkeypatch.delenv(key, raising=False)
 
 
 def test_warns_when_offline_tier_mixed_with_real_providers() -> None:
@@ -72,3 +86,38 @@ def test_quiet_when_every_tier_is_real() -> None:
         warnings.simplefilter("error")
         offline = _warn_if_tier_silently_offline(routes)
     assert offline == []
+
+
+# silently_canned_tiers is the honest source the CLI run-path banner reads to surface the
+# mixed-canned footgun loudly (Python warnings.warn is easily filtered/lost mid-run).
+
+
+def test_silently_canned_tiers_flags_mixed_config(_clean_model_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_MODEL_STRONG_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_STRONG_API_KEY", "x")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_MEDIUM_API_KEY", "x")
+    monkeypatch.setenv("AGENT_MODEL_CHEAP_PROVIDER", "fake")
+    assert silently_canned_tiers() == ["cheap"]
+
+
+def test_silently_canned_tiers_flags_mixed_via_global_default(_clean_model_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The real provider lives on the GLOBAL default route while only `cheap` is pinned to fake —
+    # the false-negative case the factory warning was specifically extended to catch.
+    monkeypatch.setenv("AGENT_MODEL_PROVIDER", "minimax")
+    monkeypatch.setenv("AGENT_MODEL_API_KEY", "x")
+    monkeypatch.setenv("AGENT_MODEL_CHEAP_PROVIDER", "fake")
+    assert silently_canned_tiers() == ["cheap"]
+
+
+def test_silently_canned_tiers_quiet_when_fully_offline(_clean_model_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    for tier in ("STRONG", "MEDIUM", "CHEAP"):
+        monkeypatch.setenv(f"AGENT_MODEL_{tier}_PROVIDER", "fake")
+    assert silently_canned_tiers() == []
+
+
+def test_silently_canned_tiers_quiet_when_fully_real(_clean_model_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    for tier in ("STRONG", "MEDIUM", "CHEAP"):
+        monkeypatch.setenv(f"AGENT_MODEL_{tier}_PROVIDER", "minimax")
+        monkeypatch.setenv(f"AGENT_MODEL_{tier}_API_KEY", "x")
+    assert silently_canned_tiers() == []

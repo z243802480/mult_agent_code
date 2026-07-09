@@ -104,6 +104,19 @@ def route_diagnostic_for_tier(tier: str) -> RouteDiagnostic:
     )
 
 
+def silently_canned_tiers(tiers: tuple[str, ...] = MODEL_TIERS) -> list[str]:
+    """Tiers that fabricate canned output while at least one *other* tier uses a real provider.
+
+    This is the silent-footgun subset only: a fully-offline run (every tier canned) is an
+    intentional air-gap and returns ``[]``; a fully-real config also returns ``[]``. Mirrors
+    gate-status ``silently_offline`` and factory ``_warn_if_tier_silently_offline`` — the mixed
+    config is the hazard, because any call routed to a canned tier (summaries, classification,
+    some model-checks) returns fabricated output while the operator believes a real model is set.
+    """
+    canned = [tier for tier in tiers if route_diagnostic_for_tier(tier).returns_canned_output]
+    return canned if 0 < len(canned) < len(tiers) else []
+
+
 def _effective_route(tier: str) -> tuple[str, str, str]:
     tier_prefix = f"AGENT_MODEL_{tier.upper()}"
     tier_provider = _env(f"{tier_prefix}_PROVIDER") or local_route_value(tier_prefix, "PROVIDER")

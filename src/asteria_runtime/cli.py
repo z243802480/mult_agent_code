@@ -56,6 +56,7 @@ from asteria_runtime.commands.verification_command import VerificationStatusComm
 from asteria_runtime.commands.correctness_eval_command import CorrectnessEvalCommand
 from asteria_runtime.commands.version_command import VersionCommand
 from asteria_runtime.commands.weekly_report_command import WeeklyReportCommand
+from asteria_runtime.models.route_diagnostics import silently_canned_tiers
 from asteria_runtime.real_model_acceptance import SCENARIOS as REAL_MODEL_SCENARIOS
 from asteria_runtime.real_model_acceptance import SUITES as REAL_MODEL_SUITES
 from asteria_runtime.real_model_acceptance import run_from_args as run_real_model_acceptance
@@ -1559,6 +1560,42 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _warn_if_model_tiers_canned() -> None:
+    """Print a loud, unmissable banner when some model tiers silently return canned output.
+
+    The library layer already emits a ``warnings.warn`` (``factory._warn_if_tier_silently_offline``),
+    but Python warnings are easily filtered/deduped and lost mid-run — a zero-config operator running
+    ``asteria run`` never notices they are getting fabricated output on a mixed config. Surface it as
+    a prominent stderr banner on the interactive run/resume path (goes to stderr, so ``--json`` stdout
+    stays clean). Fully-offline (intentional air-gap) and fully-real configs stay silent. Never raises
+    — a diagnostics hiccup must not block a run.
+    """
+    try:
+        canned = silently_canned_tiers()
+    except Exception:  # noqa: BLE001 — visibility helper must never break a run.
+        return
+    if not canned:
+        return
+    tiers = ", ".join(canned)
+    # ASCII-only, no box-drawing/emoji: this goes to stderr, which on a Windows GBK console (piped
+    # or redirected) uses errors='strict' and would raise UnicodeEncodeError on chars like U+26A0,
+    # crashing the very run this is meant to warn about. Wrapped in try/except for the same reason.
+    banner = (
+        "\n"
+        "!! MODEL CONFIG WARNING - some tiers return fake/canned output\n"
+        f"   Tier(s) [{tiers}] use the fake/offline provider and return CANNED placeholder\n"
+        "   output (not a real model) while real providers are configured for other tiers.\n"
+        "   Any step routed to those tiers (summaries, classification, some checks) uses\n"
+        "   FABRICATED output - results may look real but are not.\n"
+        f"   Fix: set AGENT_MODEL_{canned[0].upper()}_PROVIDER (or AGENT_MODEL_PROVIDER) to a\n"
+        "   real provider, or run `asteria doctor` to see the full route table.\n\n"
+    )
+    try:
+        sys.stderr.write(banner)
+    except (UnicodeEncodeError, OSError):  # never let a warning banner break the run
+        pass
+
+
 def _format_cli_error(exc: Exception) -> str:
     """Turn an uncaught business exception into a human line + an actionable next step.
 
@@ -1872,6 +1909,7 @@ def _run_cli() -> None:
         return
 
     if command in {"run", "goal"}:
+        _warn_if_model_tiers_canned()
         if args.background:
             if not args.goal:
                 raise SystemExit("goal is required when using --background")
@@ -1922,6 +1960,7 @@ def _run_cli() -> None:
         return
 
     if command == "resume":
+        _warn_if_model_tiers_canned()
         resume_result = ResumeCommand(
             root=Path(args.root),
             run_id=args.session_id,
