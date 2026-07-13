@@ -55,6 +55,15 @@ lead 一批发的专家里**含写专家**且 flag 开时：每个写 child 在*
 - 逐字节可回退（flag）；每切片独立提交。
 - 弱模型是否真扇出、扇出多少由 eval/模型决定，不反射式强制（ADR-0016 nuance）。
 
+## 真栈复验（2026-07-13 · Part B B1 · 从 Barrier fake 升级为真 glm/minimax 跑通）
+
+此前 B1-a/B1-b 只由 `threading.Barrier(2)` 确定性 fake 证过 ThreadPool 真并发，**从未在真弱模型栈跑通**。新增 `scripts/concurrent_experts_smoke.py`（零 src 改动·纯验证）忠实驱动**完整 `ExecuteCommand` 生产路径**（`_SubagentAwareToolRunner`+`_spawn_batch`+`preview_and_promote_batch`+`MergeGateDryRunner`，不绕网关），planning 桩 + **execution 真模型**，覆盖 task_plan 播种明确指示并行委派的 lead 任务。真栈无 Barrier → 并发信号=两 dispatch 卡都先于两 result 卡（`card_order=[dispatch,dispatch,result,...]`=并发批）。
+
+- **readonly 扇出**：glm(strong) ✅ + minimax(medium) ✅（各 2 dispatch+2 result·concurrent_batch=True·reviewer·2 distinct child·event_id 无撞·合并摘要已写）。
+- **disjoint 写**：glm(strong) ✅（concurrent_batch=True·coder·**merge_gate_runs=1**·**alpha.py+beta.py 均并入共享工作区**=disjoint 全晋升·event_id 无撞）。
+- **结论**：真弱模型（含 minimax）会**自发**在一批发 ≥2 个 spawn_subagent 并发扇出——B1-a/B1-b 在真栈成立，不只是 fake。
+- **张力观察（未改代码）**：FSM 时代 `worker_recorder.delegation_gate`（`execute_command:568`）仍在进脊梁前跑，对"写类任务 brief 缺 `allowed_writes`"整任务 blocked；模型驱动委派模式下 lead 若天真 `write_scope=[]`（写委派给子专家）会被误挡在进脊梁前，声明委派写并集即通过。合法 brief-quality 边界非脊梁 bug，但对委派模式偏严，暂不改（收敛），待真实 friction 再定。brief=`benchmarks/reference_briefs/B1-realstack-concurrent-experts-validation.md`。
+
 ## 回滚或替代条件
 
 - flag `agent_loop.concurrent_subagents=false` 即回退到只读并发前的串行；`agent_loop.isolated_parallel_write_production_path=false` 即回退到写批串行（两 flag 出厂均关）。
