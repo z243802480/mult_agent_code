@@ -24,6 +24,10 @@ const conversationTurn = readFileSync(
   "utf8",
 );
 const narrative = readFileSync(path.join(studioDir, "src/narrative.ts"), "utf8");
+const runtimeSnapshotSrc = readFileSync(
+  path.join(studioDir, "src/features/thread/RuntimeSnapshot.tsx"),
+  "utf8",
+);
 
 assert.ok(
   !thread.includes("WorkflowMonitorCompact"),
@@ -137,6 +141,23 @@ assert.ok(
 assert.ok(
   /event\.job_id && event\.status === "waiting_user"\) return "tool"/.test(narrative),
   "only a PENDING (waiting_user) job ask maps to a tool/PermissionCard; recorded decisions fold to observation",
+);
+
+// A CLEAN completion (exit_reason completed/stop) must not keep a dead "已停止: completed" next-step
+// bar alive — success is already conveyed by the final answer + verified badge, and "已停止" (stopped)
+// under a green badge reads as a contradiction. The bar's actionability and its exit-reason line must
+// both gate on a "noteworthy" (non-success) exit reason, so only a genuine interruption surfaces one.
+assert.ok(
+  /SUCCESS_EXIT_REASONS[\s\S]*?"completed"[\s\S]*?"stop"/.test(runtimeSnapshotSrc),
+  "RuntimeSnapshot must treat completed/stop as clean (non-actionable) completions",
+);
+assert.ok(
+  /!noteworthyExitReason\(loop\.exit_reason\)/.test(runtimeSnapshotSrc),
+  "a clean completion must not by itself keep the next-step bar actionable",
+);
+assert.ok(
+  /noteworthyExitReason\(loop\.exit_reason\)\s*\?\s*`已停止:/.test(runtimeSnapshotSrc),
+  "the '已停止: <reason>' line must only render for a noteworthy (non-success) exit reason",
 );
 
 console.log("session-main-path contract passed");

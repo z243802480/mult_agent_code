@@ -15,6 +15,20 @@ import {
   runtimeNextStepSummary,
 } from "./decisionGuidance";
 
+// Exit reasons that mean the loop finished NORMALLY (the model stopped cleanly / the task completed),
+// as opposed to a genuine interruption (tool_failed, *_budget_exhausted, loop_no_progress, max_rounds,
+// budget_hard_stop). A successful completion is already conveyed by the final answer + the green
+// "验证通过" badge, so it must NOT keep a dead "已停止: completed" next-step bar alive, nor be phrased
+// as "已停止" (stopped) — that word implies interruption and reads as a contradiction under the badge.
+const SUCCESS_EXIT_REASONS = new Set(["completed", "stop"]);
+
+// A run's exit_reason is "noteworthy" only when it is present AND not a clean completion — i.e. it
+// names something the user might act on or should be told stopped. A clean completion is silent.
+function noteworthyExitReason(exitReason: unknown): boolean {
+  const value = String(exitReason ?? "");
+  return Boolean(value) && !SUCCESS_EXIT_REASONS.has(value);
+}
+
 function DecisionCard({
   runId,
   decision,
@@ -181,7 +195,7 @@ export function runtimeSnapshotActionable(
     !decisions.length &&
     !pendingPermission &&
     !nextActionValue &&
-    !loop.exit_reason &&
+    !noteworthyExitReason(loop.exit_reason) &&
     !canReview &&
     !canAccept
   )
@@ -252,7 +266,9 @@ export function RuntimeSnapshot({
       mainActionKind,
     }) ||
     textOrFallback(
-      loop.exit_reason ? `已停止: ${userFacingStateLabel(String(loop.exit_reason))}` : "",
+      noteworthyExitReason(loop.exit_reason)
+        ? `已停止: ${userFacingStateLabel(String(loop.exit_reason))}`
+        : "",
       "当前没有需要处理的操作",
     );
 
@@ -370,6 +386,9 @@ export function userFacingStateLabel(value: string): string {
     .trim()
     .toLowerCase();
   if (!normalized) return "";
+  // A clean completion is not a failure state — never surface it as "已停止". Callers already gate on
+  // noteworthyExitReason, so this is defensive: if ever asked to label a success reason, stay silent.
+  if (SUCCESS_EXIT_REASONS.has(normalized)) return "";
   if (normalized.includes("provider") || normalized.includes("model-check"))
     return "模型连接出问题了";
   if (normalized.includes("tool_failed")) return "某一步失败了";
