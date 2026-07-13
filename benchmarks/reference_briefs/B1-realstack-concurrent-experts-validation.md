@@ -26,6 +26,7 @@
 | --- | --- | --- | --- |
 | readonly 扇出 | ✅ PASS | ✅ PASS | 2 dispatch+2 result·concurrent_batch=True·role=reviewer·2 distinct child·event_id 无撞·合并摘要已写 |
 | disjoint 写 | ✅ PASS | —(strong 足证) | concurrent_batch=True·role=coder·**merge_gate_runs=1**·**alpha.py+beta.py 均并入共享工作区**(disjoint→全晋升)·event_id 无撞 |
+| conflict 写(2026-07-13 补) | ✅ PASS | —(strong 足证) | 两 coder 都写 src/shared.py·concurrent_batch=True·**merge_gate 挡下(ok=False)**·**共享工作区无 src/shared.py(零污染)**·冲突隔离写留 candidate 未晋升·event_id 无撞 |
 
 **真弱模型(含 minimax)会自发在一批里发 ≥2 个 spawn_subagent 并发扇出**——重塑头号新能力在真栈成立。
 
